@@ -12,6 +12,7 @@ from bootstrap_services.servarr_adapters import (  # noqa: E402
     AppBootstrapContext,
     noop_before_common_steps,
 )
+from bootstrap_services.config_models import ServarrAppConfig  # noqa: E402
 from bootstrap_services.servarr_pipeline_service import (  # noqa: E402
     ClientAuth,
     ServarrPipelineInputs,
@@ -242,6 +243,43 @@ class ServarrPipelineServiceTests(unittest.TestCase):
                     ),
                 )
             )
+
+    def test_pipeline_respects_capability_flags(self):
+        service = self._service()
+        app = ServarrAppConfig.from_dict(
+            {
+                "name": "Readarr",
+                "implementation": "readarr",
+                "url": "http://readarr:8787/",
+                "root_folder": "/media/books",
+                "capabilities": {
+                    "supports_auth": False,
+                    "supports_media_management": False,
+                    "supports_root_folder": False,
+                    "supports_download_handling": False,
+                    "supports_quality_upgrade": False,
+                    "supports_prowlarr_application": False,
+                    "supports_download_clients": False,
+                    "supports_remote_path_mappings": False,
+                    "supports_discovery_lists": False,
+                    "supports_health_check": False,
+                },
+            }
+        )
+
+        service.run(self._base_inputs([app], {"readarr": "readarr-key"}))
+
+        self.ensure_app_auth_settings.assert_not_called()
+        self.ensure_arr_media_management.assert_not_called()
+        self.ensure_root_folder.assert_not_called()
+        self.ensure_arr_download_handling.assert_not_called()
+        self.ensure_arr_quality_upgrade_policy.assert_not_called()
+        self.ensure_prowlarr_application.assert_not_called()
+        self.ensure_arr_download_client.assert_not_called()
+        self.ensure_arr_remote_path_mappings.assert_not_called()
+        self.ensure_arr_discovery_lists_for_app.assert_not_called()
+        self.trigger_arr_discovery_kickoff.assert_not_called()
+        self.trigger_health_check.assert_not_called()
 
 
 if __name__ == "__main__":

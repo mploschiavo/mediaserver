@@ -32,6 +32,7 @@ BOOTSTRAP_SCRIPT_CONFIGMAP_FILES=(
   "bootstrap_services__qbit_service.py|scripts/bootstrap_services/qbit_service.py"
   "bootstrap_services__sabnzbd_service.py|scripts/bootstrap_services/sabnzbd_service.py"
   "bootstrap_services__servarr_adapters.py|scripts/bootstrap_services/servarr_adapters.py"
+  "bootstrap_services__servarr_policy_service.py|scripts/bootstrap_services/servarr_policy_service.py"
   "bootstrap_services__servarr_pipeline_service.py|scripts/bootstrap_services/servarr_pipeline_service.py"
   "core__init__.py|scripts/core/__init__.py"
   "core__decorators.py|scripts/core/decorators.py"

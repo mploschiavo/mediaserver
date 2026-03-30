@@ -66,7 +66,7 @@ from bootstrap_services.arr_service import ArrService
 from bootstrap_services.arr_queue_cleanup_service import ArrQueueCleanupService
 from bootstrap_services.auth_service import AuthService
 from bootstrap_services.bazarr_service import BazarrService
-from bootstrap_services.config_models import ArrDiscoveryListsConfig
+from bootstrap_services.config_models import ArrDiscoveryListsConfig, ServarrAppConfig
 from bootstrap_services.discovery_lists_service import DiscoveryListsService
 from bootstrap_services.health_service import HealthService
 from bootstrap_services.jellyfin_service import JellyfinLiveTvDependencies, JellyfinService
@@ -87,6 +87,7 @@ from bootstrap_services.servarr_pipeline_service import (
     ServarrPipelineService,
     ServarrRunConfig,
 )
+from bootstrap_services.servarr_policy_service import ServarrPolicyService
 
 
 def log(msg):
@@ -145,6 +146,19 @@ def _arr_queue_cleanup_service() -> ArrQueueCleanupService:
         to_int=to_int,
         normalize_token=normalize_token,
         resolve_arr_overrides_by_app=resolve_arr_overrides_by_app,
+        log=log,
+    )
+
+
+def _servarr_policy_service() -> ServarrPolicyService:
+    return ServarrPolicyService(
+        http_request=http_request,
+        bool_cfg=bool_cfg,
+        coerce_list=coerce_list,
+        normalize_token=normalize_token,
+        to_int=to_int,
+        resolve_arr_quality_preferences=resolve_arr_quality_preferences,
+        get_arr_quality_profile=get_arr_quality_profile,
         log=log,
     )
 
@@ -2609,160 +2623,35 @@ def trigger_arr_discovery_kickoff(cfg, app_cfg, app_url, api_base, api_key):
 
 
 def fetch_arr_download_client_config(app_name, app_url, api_base, api_key):
-    candidate_paths = (
-        f"{api_base}/config/downloadclient",
-        f"{api_base}/config/downloadClient",
+    return _servarr_policy_service().fetch_download_client_config(
+        app_name,
+        app_url,
+        api_base,
+        api_key,
     )
-    last_status = None
-    last_body = ""
-
-    for path in candidate_paths:
-        status, data, body = http_request(app_url, path, api_key=api_key)
-        last_status = status
-        last_body = body
-        if status == 200 and isinstance(data, dict):
-            return path, data
-        if status not in (404, 405):
-            raise RuntimeError(
-                f"{app_name}: failed reading download client config (HTTP {status}): {body}"
-            )
-
-    log(
-        f"[WARN] {app_name}: download client config endpoint not found; "
-        f"skipping CDH reconcile (last_status={last_status}, last_body={last_body})"
-    )
-    return None, None
 
 
 def ensure_arr_download_handling(app_name, app_url, api_base, api_key, handling_cfg):
-    endpoint, current = fetch_arr_download_client_config(app_name, app_url, api_base, api_key)
-    if not endpoint or not isinstance(current, dict):
-        return
-
-    desired_enable = bool_cfg(handling_cfg, "enable_completed_download_handling", True)
-    desired_remove_completed = bool_cfg(handling_cfg, "remove_completed_downloads", False)
-    desired_remove_failed = bool_cfg(handling_cfg, "remove_failed_downloads", False)
-    desired_redownload_failed = bool_cfg(handling_cfg, "auto_redownload_failed", False)
-
-    payload = dict(current)
-    payload["enableCompletedDownloadHandling"] = desired_enable
-    payload["removeCompletedDownloads"] = desired_remove_completed
-    payload["removeFailedDownloads"] = desired_remove_failed
-    payload["autoRedownloadFailed"] = desired_redownload_failed
-
-    changed = False
-    for key in (
-        "enableCompletedDownloadHandling",
-        "removeCompletedDownloads",
-        "removeFailedDownloads",
-        "autoRedownloadFailed",
-    ):
-        if bool(current.get(key)) != bool(payload.get(key)):
-            changed = True
-            break
-
-    if not changed:
-        log(
-            f"[OK] {app_name}: download handling already set "
-            f"(CDH={desired_enable}, removeCompleted={desired_remove_completed}, "
-            f"removeFailed={desired_remove_failed}, autoRedownloadFailed={desired_redownload_failed})"
-        )
-        return
-
-    status, _, body = http_request(
+    return _servarr_policy_service().ensure_download_handling(
+        app_name,
         app_url,
-        endpoint,
-        api_key=api_key,
-        method="PUT",
-        payload=payload,
+        api_base,
+        api_key,
+        handling_cfg,
     )
-    if status in (200, 201, 202):
-        log(
-            f"[OK] {app_name}: updated download handling "
-            f"(CDH={desired_enable}, removeCompleted={desired_remove_completed}, "
-            f"removeFailed={desired_remove_failed}, autoRedownloadFailed={desired_redownload_failed})"
-        )
-        return
-
-    raise RuntimeError(f"{app_name}: failed updating download handling (HTTP {status}): {body}")
 
 
 def resolve_arr_overrides_by_app(cfg_section, app_cfg):
-    by_app = (cfg_section or {}).get("by_app") or {}
-    app_name = str(app_cfg.get("name") or "")
-    app_impl = str(app_cfg.get("implementation") or "")
-    return (
-        by_app.get(app_name)
-        or by_app.get(app_impl)
-        or by_app.get(app_name.lower())
-        or by_app.get(app_impl.lower())
-        or {}
-    )
+    return _servarr_policy_service().resolve_overrides_by_app(cfg_section, app_cfg)
 
 
 def ensure_arr_media_management(app_cfg, app_url, api_base, api_key, media_cfg):
-    if not bool_cfg(media_cfg, "enabled", True):
-        return
-
-    app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
-    app_impl = str(app_cfg.get("implementation") or "")
-    app_overrides = resolve_arr_overrides_by_app(media_cfg, app_cfg)
-
-    status, current, body = http_request(
-        app_url, f"{api_base}/config/mediamanagement", api_key=api_key
-    )
-    if status != 200 or not isinstance(current, dict):
-        raise RuntimeError(
-            f"{app_name}: failed reading media management config (HTTP {status}): {body}"
-        )
-
-    desired = dict(current)
-    changed = False
-
-    if "copy_using_hardlinks" in app_overrides:
-        desired_hardlinks = bool(app_overrides.get("copy_using_hardlinks"))
-    else:
-        desired_hardlinks = bool_cfg(media_cfg, "copy_using_hardlinks", True)
-    if "copyUsingHardlinks" in desired and bool(desired.get("copyUsingHardlinks")) != bool(
-        desired_hardlinks
-    ):
-        desired["copyUsingHardlinks"] = bool(desired_hardlinks)
-        changed = True
-
-    if app_impl == "Sonarr":
-        if "create_empty_series_folders" in app_overrides:
-            desired_season_folders = bool(app_overrides.get("create_empty_series_folders"))
-        else:
-            desired_season_folders = bool_cfg(media_cfg, "create_empty_series_folders", True)
-        if "createEmptySeriesFolders" in desired and bool(
-            desired.get("createEmptySeriesFolders")
-        ) != bool(desired_season_folders):
-            desired["createEmptySeriesFolders"] = bool(desired_season_folders)
-            changed = True
-
-    if not changed:
-        log(
-            f"[OK] {app_name}: media management already set "
-            f"(hardlinks={bool(desired.get('copyUsingHardlinks', False))})"
-        )
-        return
-
-    status, _, body = http_request(
+    return _servarr_policy_service().ensure_media_management(
+        app_cfg,
         app_url,
-        f"{api_base}/config/mediamanagement",
-        api_key=api_key,
-        method="PUT",
-        payload=desired,
-    )
-    if status in (200, 201, 202):
-        log(
-            f"[OK] {app_name}: updated media management "
-            f"(hardlinks={bool(desired.get('copyUsingHardlinks', False))})"
-        )
-        return
-
-    raise RuntimeError(
-        f"{app_name}: failed updating media management config (HTTP {status}): {body}"
+        api_base,
+        api_key,
+        media_cfg,
     )
 
 
@@ -2774,138 +2663,13 @@ def ensure_arr_quality_upgrade_policy(
     api_key,
     quality_upgrade_cfg,
 ):
-    if not bool_cfg(quality_upgrade_cfg, "enabled", False):
-        return
-
-    app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
-    app_overrides = resolve_arr_overrides_by_app(quality_upgrade_cfg, app_cfg)
-    if "enabled" in app_overrides and not bool(app_overrides.get("enabled")):
-        return
-
-    allow_upgrades = bool_cfg(
-        app_overrides,
-        "allow_upgrades",
-        bool_cfg(quality_upgrade_cfg, "allow_upgrades", True),
-    )
-    disallow_tokens = [
-        normalize_token(x)
-        for x in coerce_list(
-            app_overrides.get("disallow_quality_name_tokens")
-            or quality_upgrade_cfg.get("disallow_quality_name_tokens")
-            or ["2160", "4k", "uhd"]
-        )
-        if normalize_token(x)
-    ]
-    cutoff_tokens = [
-        normalize_token(x)
-        for x in coerce_list(
-            app_overrides.get("cutoff_preferred_name_tokens")
-            or quality_upgrade_cfg.get("cutoff_preferred_name_tokens")
-            or ["1080"]
-        )
-        if normalize_token(x)
-    ]
-
-    preferred_id, preferred_names = resolve_arr_quality_preferences(cfg, app_cfg)
-    selected = get_arr_quality_profile(
-        app_name,
+    return _servarr_policy_service().ensure_quality_upgrade_policy(
+        cfg,
+        app_cfg,
         app_url,
         api_base,
         api_key,
-        preferred_id=preferred_id,
-        preferred_names=preferred_names,
-    )
-    profile_id = selected.get("id")
-    if profile_id is None:
-        raise RuntimeError(
-            f"{app_name}: quality upgrade policy could not resolve quality profile id"
-        )
-
-    desired = json.loads(json.dumps(selected))
-    changed = False
-
-    for key in ("upgradeAllowed", "upgradesAllowed"):
-        if key in desired and bool(desired.get(key)) != bool(allow_upgrades):
-            desired[key] = bool(allow_upgrades)
-            changed = True
-
-    def entry_quality_name(entry):
-        if not isinstance(entry, dict):
-            return ""
-        quality = entry.get("quality")
-        if isinstance(quality, dict):
-            name = str(quality.get("name") or "").strip()
-            if name:
-                return name
-        return str(entry.get("name") or "").strip()
-
-    def entry_quality_id(entry):
-        if not isinstance(entry, dict):
-            return None
-        quality = entry.get("quality")
-        if isinstance(quality, dict):
-            qid = to_int(quality.get("id"))
-            if qid:
-                return qid
-        return to_int(entry.get("qualityId"))
-
-    cutoff_id = None
-    items = desired.get("items")
-    if isinstance(items, list):
-        rewritten = []
-        for entry in items:
-            if not isinstance(entry, dict):
-                rewritten.append(entry)
-                continue
-            current = dict(entry)
-            qname = entry_quality_name(current)
-            qtoken = normalize_token(qname)
-
-            if disallow_tokens and any(token in qtoken for token in disallow_tokens):
-                if "allowed" in current and bool(current.get("allowed")):
-                    current["allowed"] = False
-                    changed = True
-
-            if cutoff_id is None and cutoff_tokens:
-                is_allowed = bool(current.get("allowed", True))
-                if is_allowed and any(token in qtoken for token in cutoff_tokens):
-                    qid = entry_quality_id(current)
-                    if qid:
-                        cutoff_id = int(qid)
-
-            rewritten.append(current)
-
-        if rewritten != items:
-            desired["items"] = rewritten
-            changed = True
-
-    if cutoff_id and "cutoff" in desired and to_int(desired.get("cutoff")) != int(cutoff_id):
-        desired["cutoff"] = int(cutoff_id)
-        changed = True
-
-    if not changed:
-        log(
-            f"[OK] {app_name}: quality-upgrade policy already set "
-            f"(allowUpgrades={allow_upgrades}, cutoff={desired.get('cutoff')})"
-        )
-        return
-
-    status, _, body = http_request(
-        app_url,
-        f"{api_base}/qualityprofile/{profile_id}",
-        api_key=api_key,
-        method="PUT",
-        payload=desired,
-    )
-    if status in (200, 201, 202):
-        log(
-            f"[OK] {app_name}: updated quality-upgrade policy "
-            f"(allowUpgrades={allow_upgrades}, cutoff={desired.get('cutoff')})"
-        )
-        return
-
-    raise RuntimeError(
-        f"{app_name}: failed updating quality-upgrade policy (HTTP {status}): {body}"
+        quality_upgrade_cfg,
     )
 
 
@@ -3872,7 +3636,12 @@ def main():
 
     cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
     prowlarr_url = normalize_url(cfg["prowlarr_url"])
-    arr_apps = cfg.get("arr_apps", [])
+    arr_apps_raw = cfg.get("arr_apps", [])
+    arr_app_capability_defaults = cfg.get("app_capability_defaults") or {}
+    arr_apps = ServarrAppConfig.from_list(
+        arr_apps_raw,
+        capability_defaults=arr_app_capability_defaults,
+    )
     download_clients_cfg = cfg.get("download_clients") or {}
     qbit_cfg = download_clients_cfg.get("qbittorrent", {})
     sab_cfg = download_clients_cfg.get("sabnzbd", {})
@@ -3970,8 +3739,10 @@ def main():
     app_keys = {}
     if args.mode in ("full", "media-hygiene"):
         for app in arr_apps:
-            app_dir = app["implementation"].lower()
-            app_keys[app["implementation"]] = read_api_key(args.config_root, app_dir)
+            app_dir = app.implementation.lower()
+            api_key = read_api_key(args.config_root, app_dir)
+            app_keys[app.implementation] = api_key
+            app_keys[app.implementation.lower()] = api_key
     if args.mode == "full":
         prowlarr_key = read_api_key(args.config_root, "prowlarr")
 
@@ -4044,15 +3815,15 @@ def main():
     if args.mode == "media-hygiene":
         for app in arr_apps:
             try:
-                wait_for_service(app["name"], app["url"], "/ping", args.wait_timeout)
+                wait_for_service(app.name, app.url, "/ping", args.wait_timeout)
             except Exception as exc:
                 log(
-                    f"[WARN] Media hygiene mode: service wait skipped for {app.get('name')} ({exc})"
+                    f"[WARN] Media hygiene mode: service wait skipped for {app.name} ({exc})"
                 )
         run_media_hygiene(
             cfg,
             args.config_root,
-            arr_apps,
+            arr_apps_raw,
             app_keys,
             qbit_cfg,
             qb_user,
@@ -4108,7 +3879,7 @@ def main():
             raise
         log(f"[WARN] Prowlarr: auth bootstrap skipped ({exc})")
     for app in arr_apps:
-        wait_for_service(app["name"], app["url"], "/ping", args.wait_timeout)
+        wait_for_service(app.name, app.url, "/ping", args.wait_timeout)
 
     if configure_qbit_arr_clients or set_qbit_categories:
         qbit_url = normalize_url(qbit_cfg.get("url", "http://qbittorrent:8080"))
@@ -4137,7 +3908,7 @@ def main():
             log("[OK] SABnzbd: resolved API key for bootstrap automation")
             ensure_sabnzbd_defaults(sab_cfg, sab_api_key)
             if bool_cfg(sab_cfg, "set_categories_in_sab", True):
-                ensure_sabnzbd_categories(arr_apps, sab_cfg, sab_api_key)
+                ensure_sabnzbd_categories(arr_apps_raw, sab_cfg, sab_api_key)
         elif bool_cfg(sab_cfg, "api_key_required", fully_preconfigured):
             raise RuntimeError(
                 "SABnzbd API key not found. Set SABNZBD_API_KEY or ensure "
@@ -4150,7 +3921,7 @@ def main():
             )
 
     if set_qbit_categories and qbit_login_ok:
-        setup_qbit_categories(arr_apps, qbit_cfg, qb_user, qb_pass)
+        setup_qbit_categories(arr_apps_raw, qbit_cfg, qb_user, qb_pass)
 
     _servarr_pipeline_service().run(
         ServarrPipelineInputs(
@@ -4192,7 +3963,7 @@ def main():
     if configure_bazarr_integration:
         try:
             ensure_bazarr_arr_integration(
-                cfg, args.config_root, arr_apps, app_keys, args.wait_timeout
+                cfg, args.config_root, arr_apps_raw, app_keys, args.wait_timeout
             )
         except Exception as exc:
             if bazarr_required:
@@ -4204,7 +3975,7 @@ def main():
 
     if configure_jellyseerr_services:
         try:
-            configure_jellyseerr(cfg, arr_apps, app_keys, args.config_root, args.wait_timeout)
+            configure_jellyseerr(cfg, arr_apps_raw, app_keys, args.config_root, args.wait_timeout)
         except Exception as exc:
             if jellyseerr_required:
                 raise
@@ -4301,7 +4072,7 @@ def main():
             run_media_hygiene(
                 cfg,
                 args.config_root,
-                arr_apps,
+                arr_apps_raw,
                 app_keys,
                 qbit_cfg,
                 qb_user,

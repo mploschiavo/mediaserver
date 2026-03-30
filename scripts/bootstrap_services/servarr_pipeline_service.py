@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .config_models import AppCapabilities, ServarrAppConfig
 from .servarr_adapters import AdapterDependencies, AdapterRegistry, AppBootstrapContext
 
 LogFn = Callable[[str], None]
@@ -27,6 +28,7 @@ EnsureRemoteMappingsFn = Callable[[dict[str, Any], str, str, str, list[dict[str,
 EnsureDiscoveryListsFn = Callable[[dict[str, Any], dict[str, Any], str, str, str], None]
 TriggerDiscoveryFn = Callable[[dict[str, Any], dict[str, Any], str, str, str], None]
 TriggerHealthCheckFn = Callable[[str, str, str, str], None]
+ArrAppLike = ServarrAppConfig | dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -51,7 +53,7 @@ class ClientAuth:
 @dataclass(frozen=True)
 class ServarrPipelineInputs:
     cfg: dict[str, Any]
-    arr_apps: list[dict[str, Any]]
+    arr_apps: list[ArrAppLike]
     app_keys: dict[str, str]
     prowlarr_url: str
     prowlarr_key: str
@@ -86,6 +88,37 @@ class ServarrPipelineService:
     trigger_health_check: TriggerHealthCheckFn
     adapter_deps: AdapterDependencies
 
+    @staticmethod
+    def _coerce_app(app: ArrAppLike) -> ServarrAppConfig:
+        if isinstance(app, ServarrAppConfig):
+            return app
+        if isinstance(app, dict):
+            return ServarrAppConfig.from_dict(app)
+        raise TypeError(f"Unsupported arr app entry type: {type(app)!r}")
+
+    @staticmethod
+    def _raw_app_dict(app: ServarrAppConfig) -> dict[str, Any]:
+        if app.raw:
+            return dict(app.raw)
+        return {
+            "name": app.name,
+            "implementation": app.implementation,
+            "url": app.url,
+            "root_folder": app.root_folder,
+            "category": app.category,
+        }
+
+    @staticmethod
+    def _lookup_api_key(app_keys: dict[str, str], implementation: str) -> str:
+        key = (
+            app_keys.get(implementation)
+            or app_keys.get(implementation.lower())
+            or app_keys.get(implementation.upper())
+        )
+        if key is None:
+            raise KeyError(f"Missing API key for implementation '{implementation}'")
+        return key
+
     def _apply_auth_settings(
         self,
         app_name: str,
@@ -112,6 +145,7 @@ class ServarrPipelineService:
     def _apply_download_clients(
         self,
         app: dict[str, Any],
+        app_caps: AppCapabilities,
         app_url: str,
         api_base: str,
         app_key: str,
@@ -119,7 +153,11 @@ class ServarrPipelineService:
     ) -> None:
         run_cfg = inputs.run_cfg
 
-        if run_cfg.configure_qbit_arr_clients and run_cfg.qbit_login_ok:
+        if (
+            run_cfg.configure_qbit_arr_clients
+            and run_cfg.qbit_login_ok
+            and app_caps.supports_download_clients
+        ):
             self.ensure_arr_download_client(
                 app,
                 app_url,
@@ -132,7 +170,11 @@ class ServarrPipelineService:
                 },
             )
 
-        if run_cfg.configure_sab_arr_clients and run_cfg.sab_api_key:
+        if (
+            run_cfg.configure_sab_arr_clients
+            and run_cfg.sab_api_key
+            and app_caps.supports_download_clients
+        ):
             self.ensure_arr_download_client(
                 app,
                 app_url,
@@ -145,34 +187,39 @@ class ServarrPipelineService:
                     "api_key": run_cfg.sab_api_key,
                 },
             )
-            self.ensure_arr_remote_path_mappings(
-                app,
-                app_url,
-                api_base,
-                app_key,
-                inputs.sab_remote_path_mappings,
-            )
+            if app_caps.supports_remote_path_mappings:
+                self.ensure_arr_remote_path_mappings(
+                    app,
+                    app_url,
+                    api_base,
+                    app_key,
+                    inputs.sab_remote_path_mappings,
+                )
 
     def run(self, inputs: ServarrPipelineInputs) -> None:
         run_cfg = inputs.run_cfg
         adapter_registry = AdapterRegistry.from_config(inputs.adapter_hooks_cfg)
 
-        for app in inputs.arr_apps:
-            impl = str(app.get("implementation") or "")
-            app_url = self.normalize_url(app.get("url") or "")
-            app_key = inputs.app_keys[impl]
-            app_name = str(app.get("name") or impl)
+        for app_entry in inputs.arr_apps:
+            app_model = self._coerce_app(app_entry)
+            app = self._raw_app_dict(app_model)
+            impl = str(app_model.implementation or "")
+            app_url = self.normalize_url(app_model.url or "")
+            app_key = self._lookup_api_key(inputs.app_keys, impl)
+            app_name = str(app_model.name or impl)
+            app_caps = app_model.capabilities
             self.log(f"[STEP] Processing {app_name} ({impl})")
             api_base = self.detect_arr_api_base(app_name, app_url, app_key)
 
-            self._apply_auth_settings(
-                app_name,
-                impl,
-                app_url,
-                api_base,
-                app_key,
-                inputs.app_auth_cfg,
-            )
+            if app_caps.supports_auth:
+                self._apply_auth_settings(
+                    app_name,
+                    impl,
+                    app_url,
+                    api_base,
+                    app_key,
+                    inputs.app_auth_cfg,
+                )
 
             hook = adapter_registry.before_common_steps_for(impl)
             hook(
@@ -186,7 +233,7 @@ class ServarrPipelineService:
                 ),
             )
 
-            if run_cfg.configure_arr_media_management:
+            if run_cfg.configure_arr_media_management and app_caps.supports_media_management:
                 self.ensure_arr_media_management(
                     app,
                     app_url,
@@ -195,9 +242,16 @@ class ServarrPipelineService:
                     inputs.arr_media_management_cfg,
                 )
 
-            self.ensure_root_folder(app_name, app_url, api_base, app_key, app["root_folder"])
+            if app_caps.supports_root_folder:
+                self.ensure_root_folder(
+                    app_name,
+                    app_url,
+                    api_base,
+                    app_key,
+                    app["root_folder"],
+                )
 
-            if run_cfg.configure_arr_download_handling:
+            if run_cfg.configure_arr_download_handling and app_caps.supports_download_handling:
                 self.ensure_arr_download_handling(
                     app_name,
                     app_url,
@@ -206,7 +260,7 @@ class ServarrPipelineService:
                     inputs.arr_download_handling_cfg,
                 )
 
-            if run_cfg.configure_arr_quality_upgrade:
+            if run_cfg.configure_arr_quality_upgrade and app_caps.supports_quality_upgrade:
                 self.ensure_arr_quality_upgrade_policy(
                     inputs.cfg,
                     app,
@@ -216,24 +270,26 @@ class ServarrPipelineService:
                     inputs.arr_quality_upgrade_cfg,
                 )
 
-            self.ensure_prowlarr_application(
-                inputs.prowlarr_url,
-                inputs.prowlarr_key,
-                app_name,
-                impl,
-                app_url,
-                app_key,
-            )
+            if app_caps.supports_prowlarr_application:
+                self.ensure_prowlarr_application(
+                    inputs.prowlarr_url,
+                    inputs.prowlarr_key,
+                    app_name,
+                    impl,
+                    app_url,
+                    app_key,
+                )
 
             self._apply_download_clients(
                 app,
+                app_caps,
                 app_url,
                 api_base,
                 app_key,
                 inputs,
             )
 
-            if run_cfg.configure_arr_discovery_lists:
+            if run_cfg.configure_arr_discovery_lists and app_caps.supports_discovery_lists:
                 self.ensure_arr_discovery_lists_for_app(
                     inputs.cfg,
                     app,
@@ -249,5 +305,5 @@ class ServarrPipelineService:
                     app_key,
                 )
 
-            if run_cfg.refresh_health_after_bootstrap:
+            if run_cfg.refresh_health_after_bootstrap and app_caps.supports_health_check:
                 self.trigger_health_check(app_name, app_url, api_base, app_key)

@@ -180,6 +180,91 @@ class ArrDiscoveryListsConfig:
         )
 
 
+@dataclass(frozen=True)
+class AppCapabilities:
+    supports_auth: bool = True
+    supports_media_management: bool = True
+    supports_root_folder: bool = True
+    supports_download_handling: bool = True
+    supports_quality_upgrade: bool = True
+    supports_prowlarr_application: bool = True
+    supports_download_clients: bool = True
+    supports_remote_path_mappings: bool = True
+    supports_discovery_lists: bool = True
+    supports_health_check: bool = True
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any] | None,
+        defaults: dict[str, Any] | None = None,
+    ) -> "AppCapabilities":
+        merged = dict(defaults or {})
+        merged.update(dict(data or {}))
+        return cls(
+            supports_auth=bool(merged.get("supports_auth", True)),
+            supports_media_management=bool(merged.get("supports_media_management", True)),
+            supports_root_folder=bool(merged.get("supports_root_folder", True)),
+            supports_download_handling=bool(merged.get("supports_download_handling", True)),
+            supports_quality_upgrade=bool(merged.get("supports_quality_upgrade", True)),
+            supports_prowlarr_application=bool(
+                merged.get("supports_prowlarr_application", True)
+            ),
+            supports_download_clients=bool(merged.get("supports_download_clients", True)),
+            supports_remote_path_mappings=bool(
+                merged.get("supports_remote_path_mappings", True)
+            ),
+            supports_discovery_lists=bool(merged.get("supports_discovery_lists", True)),
+            supports_health_check=bool(merged.get("supports_health_check", True)),
+        )
+
+
+@dataclass(frozen=True)
+class ServarrAppConfig:
+    name: str
+    implementation: str
+    url: str
+    root_folder: str
+    category: str = ""
+    capabilities: AppCapabilities = field(default_factory=AppCapabilities)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any] | None,
+        capability_defaults: dict[str, Any] | None = None,
+    ) -> "ServarrAppConfig":
+        src = dict(data or {})
+        impl = str(src.get("implementation", "")).strip()
+        impl_key = impl.lower()
+        default_caps = dict((capability_defaults or {}).get(impl_key) or {})
+        default_caps.update(dict((capability_defaults or {}).get(impl) or {}))
+        caps = AppCapabilities.from_dict(src.get("capabilities"), defaults=default_caps)
+        return cls(
+            name=str(src.get("name", "")).strip(),
+            implementation=impl,
+            url=str(src.get("url", "")).strip(),
+            root_folder=str(src.get("root_folder", "")).strip(),
+            category=str(src.get("category", "")).strip(),
+            capabilities=caps,
+            raw=src,
+        )
+
+    @classmethod
+    def from_list(
+        cls,
+        data: list[dict[str, Any]] | None,
+        capability_defaults: dict[str, Any] | None = None,
+    ) -> list["ServarrAppConfig"]:
+        items: list[ServarrAppConfig] = []
+        for item in data or []:
+            if not isinstance(item, dict):
+                continue
+            items.append(cls.from_dict(item, capability_defaults=capability_defaults))
+        return items
+
+
 def _to_int(value: Any, fallback: int | None = None) -> int | None:
     try:
         if value is None:
