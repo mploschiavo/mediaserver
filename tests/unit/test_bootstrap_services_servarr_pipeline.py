@@ -8,11 +8,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_services.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
-    ReadarrAdapter,
+    AppBootstrapContext,
     ServarrAdapter,
     adapter_for_implementation,
 )
 from bootstrap_services.servarr_pipeline_service import (  # noqa: E402
+    ClientAuth,
+    ServarrPipelineInputs,
     ServarrPipelineService,
     ServarrRunConfig,
 )
@@ -20,11 +22,13 @@ from bootstrap_services.servarr_pipeline_service import (  # noqa: E402
 
 class ServarrAdapterTests(unittest.TestCase):
     def test_adapter_factory_returns_known_and_default(self):
-        self.assertEqual(type(adapter_for_implementation("sonarr")).__name__, "SonarrAdapter")
-        self.assertEqual(type(adapter_for_implementation("readarr")).__name__, "ReadarrAdapter")
-
+        sonarr = adapter_for_implementation("sonarr")
+        readarr = adapter_for_implementation("readarr")
         unknown = adapter_for_implementation("myarr")
-        self.assertIsInstance(unknown, ServarrAdapter)
+
+        self.assertIsInstance(sonarr, ServarrAdapter)
+        self.assertEqual(sonarr.implementation, "sonarr")
+        self.assertEqual(readarr.implementation, "readarr")
         self.assertEqual(unknown.implementation, "myarr")
 
     def test_readarr_adapter_warns_when_metadata_optional(self):
@@ -34,15 +38,17 @@ class ServarrAdapterTests(unittest.TestCase):
             log=logs.append,
             ensure_readarr_metadata_source=mock.Mock(side_effect=RuntimeError("boom")),
         )
-        adapter = ReadarrAdapter()
+        adapter = adapter_for_implementation("readarr")
 
         adapter.before_common_steps(
             deps,
-            cfg={"readarr": {"metadata_source_required": False}},
-            app_cfg={"implementation": "Readarr"},
-            app_url="http://readarr:8787",
-            api_base="/api/v1",
-            api_key="abc",
+            AppBootstrapContext(
+                cfg={"readarr": {"metadata_source_required": False}},
+                app_cfg={"implementation": "Readarr"},
+                app_url="http://readarr:8787",
+                api_base="/api/v1",
+                api_key="abc",
+            ),
         )
 
         self.assertTrue(any("Readarr metadata source: bootstrap skipped" in line for line in logs))
@@ -53,16 +59,18 @@ class ServarrAdapterTests(unittest.TestCase):
             log=mock.Mock(),
             ensure_readarr_metadata_source=mock.Mock(side_effect=RuntimeError("boom")),
         )
-        adapter = ReadarrAdapter()
+        adapter = adapter_for_implementation("readarr")
 
         with self.assertRaises(RuntimeError):
             adapter.before_common_steps(
                 deps,
-                cfg={"readarr": {"metadata_source_required": True}},
-                app_cfg={"implementation": "Readarr"},
-                app_url="http://readarr:8787",
-                api_base="/api/v1",
-                api_key="abc",
+                AppBootstrapContext(
+                    cfg={"readarr": {"metadata_source_required": True}},
+                    app_cfg={"implementation": "Readarr"},
+                    app_url="http://readarr:8787",
+                    api_base="/api/v1",
+                    api_key="abc",
+                ),
             )
 
 
@@ -130,33 +138,33 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         }
 
         service.run(
-            cfg={"readarr": {"metadata_source_required": False}},
-            arr_apps=arr_apps,
-            app_keys=app_keys,
-            prowlarr_url="http://prowlarr:9696",
-            prowlarr_key="prowlarr-key",
-            app_auth_cfg={"fail_on_error": False},
-            arr_media_management_cfg={"enabled": True},
-            arr_download_handling_cfg={"enabled": True},
-            arr_quality_upgrade_cfg={"enabled": True},
-            qbit_cfg={"url": "http://qbittorrent:8080"},
-            qb_user="admin",
-            qb_pass="secret",
-            sab_cfg={"url": "http://sabnzbd:8080"},
-            sab_username="sab",
-            sab_password="sabpw",
-            sab_remote_path_mappings=[{"remote_path": "/a", "host_path": "/b"}],
-            run_cfg=ServarrRunConfig(
-                configure_arr_media_management=True,
-                configure_arr_download_handling=True,
-                configure_arr_quality_upgrade=True,
-                configure_arr_discovery_lists=True,
-                configure_qbit_arr_clients=True,
-                qbit_login_ok=True,
-                configure_sab_arr_clients=True,
-                sab_api_key="sab-key",
-                refresh_health_after_bootstrap=True,
-            ),
+            ServarrPipelineInputs(
+                cfg={"readarr": {"metadata_source_required": False}},
+                arr_apps=arr_apps,
+                app_keys=app_keys,
+                prowlarr_url="http://prowlarr:9696",
+                prowlarr_key="prowlarr-key",
+                app_auth_cfg={"fail_on_error": False},
+                arr_media_management_cfg={"enabled": True},
+                arr_download_handling_cfg={"enabled": True},
+                arr_quality_upgrade_cfg={"enabled": True},
+                qbit_cfg={"url": "http://qbittorrent:8080"},
+                qbit_auth=ClientAuth(username="admin", password="secret"),
+                sab_cfg={"url": "http://sabnzbd:8080"},
+                sab_auth=ClientAuth(username="sab", password="sabpw", api_key="sab-key"),
+                sab_remote_path_mappings=[{"remote_path": "/a", "host_path": "/b"}],
+                run_cfg=ServarrRunConfig(
+                    configure_arr_media_management=True,
+                    configure_arr_download_handling=True,
+                    configure_arr_quality_upgrade=True,
+                    configure_arr_discovery_lists=True,
+                    configure_qbit_arr_clients=True,
+                    qbit_login_ok=True,
+                    configure_sab_arr_clients=True,
+                    sab_api_key="sab-key",
+                    refresh_health_after_bootstrap=True,
+                ),
+            )
         )
 
         self.assertEqual(self.ensure_readarr_metadata_source.call_count, 1)
@@ -171,40 +179,40 @@ class ServarrPipelineServiceTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             service.run(
-                cfg={},
-                arr_apps=[
-                    {
-                        "name": "Sonarr",
-                        "implementation": "sonarr",
-                        "url": "http://sonarr:8989",
-                        "root_folder": "/media/tv",
-                    }
-                ],
-                app_keys={"sonarr": "sonarr-key"},
-                prowlarr_url="http://prowlarr:9696",
-                prowlarr_key="prowlarr-key",
-                app_auth_cfg={"fail_on_error": True},
-                arr_media_management_cfg={},
-                arr_download_handling_cfg={},
-                arr_quality_upgrade_cfg={},
-                qbit_cfg={},
-                qb_user="",
-                qb_pass="",
-                sab_cfg={},
-                sab_username="",
-                sab_password="",
-                sab_remote_path_mappings=[],
-                run_cfg=ServarrRunConfig(
-                    configure_arr_media_management=False,
-                    configure_arr_download_handling=False,
-                    configure_arr_quality_upgrade=False,
-                    configure_arr_discovery_lists=False,
-                    configure_qbit_arr_clients=False,
-                    qbit_login_ok=False,
-                    configure_sab_arr_clients=False,
-                    sab_api_key="",
-                    refresh_health_after_bootstrap=False,
-                ),
+                ServarrPipelineInputs(
+                    cfg={},
+                    arr_apps=[
+                        {
+                            "name": "Sonarr",
+                            "implementation": "sonarr",
+                            "url": "http://sonarr:8989",
+                            "root_folder": "/media/tv",
+                        }
+                    ],
+                    app_keys={"sonarr": "sonarr-key"},
+                    prowlarr_url="http://prowlarr:9696",
+                    prowlarr_key="prowlarr-key",
+                    app_auth_cfg={"fail_on_error": True},
+                    arr_media_management_cfg={},
+                    arr_download_handling_cfg={},
+                    arr_quality_upgrade_cfg={},
+                    qbit_cfg={},
+                    qbit_auth=ClientAuth(),
+                    sab_cfg={},
+                    sab_auth=ClientAuth(),
+                    sab_remote_path_mappings=[],
+                    run_cfg=ServarrRunConfig(
+                        configure_arr_media_management=False,
+                        configure_arr_download_handling=False,
+                        configure_arr_quality_upgrade=False,
+                        configure_arr_discovery_lists=False,
+                        configure_qbit_arr_clients=False,
+                        qbit_login_ok=False,
+                        configure_sab_arr_clients=False,
+                        sab_api_key="",
+                        refresh_health_after_bootstrap=False,
+                    ),
+                )
             )
 
 

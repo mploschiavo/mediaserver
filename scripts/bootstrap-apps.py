@@ -81,7 +81,12 @@ from bootstrap_services.prowlarr_service import ProwlarrService
 from bootstrap_services.qbit_service import QBittorrentService
 from bootstrap_services.sabnzbd_service import SabnzbdService
 from bootstrap_services.servarr_adapters import AdapterDependencies
-from bootstrap_services.servarr_pipeline_service import ServarrPipelineService, ServarrRunConfig
+from bootstrap_services.servarr_pipeline_service import (
+    ClientAuth,
+    ServarrPipelineInputs,
+    ServarrPipelineService,
+    ServarrRunConfig,
+)
 
 
 def log(msg):
@@ -4137,33 +4142,40 @@ def main():
         setup_qbit_categories(arr_apps, qbit_cfg, qb_user, qb_pass)
 
     _servarr_pipeline_service().run(
-        cfg=cfg,
-        arr_apps=arr_apps,
-        app_keys=app_keys,
-        prowlarr_url=prowlarr_url,
-        prowlarr_key=prowlarr_key,
-        app_auth_cfg=app_auth_cfg,
-        arr_media_management_cfg=arr_media_management_cfg,
-        arr_download_handling_cfg=arr_download_handling_cfg,
-        arr_quality_upgrade_cfg=arr_quality_upgrade_cfg,
-        qbit_cfg=qbit_cfg,
-        qb_user=qb_user,
-        qb_pass=qb_pass,
-        sab_cfg=sab_cfg,
-        sab_username=sab_username,
-        sab_password=sab_password,
-        sab_remote_path_mappings=sab_remote_path_mappings,
-        run_cfg=ServarrRunConfig(
-            configure_arr_media_management=configure_arr_media_management,
-            configure_arr_download_handling=configure_arr_download_handling,
-            configure_arr_quality_upgrade=configure_arr_quality_upgrade,
-            configure_arr_discovery_lists=configure_arr_discovery_lists,
-            configure_qbit_arr_clients=configure_qbit_arr_clients,
-            qbit_login_ok=qbit_login_ok,
-            configure_sab_arr_clients=configure_sab_arr_clients,
-            sab_api_key=sab_api_key,
-            refresh_health_after_bootstrap=refresh_health_after_bootstrap,
-        ),
+        ServarrPipelineInputs(
+            cfg=cfg,
+            arr_apps=arr_apps,
+            app_keys=app_keys,
+            prowlarr_url=prowlarr_url,
+            prowlarr_key=prowlarr_key,
+            app_auth_cfg=app_auth_cfg,
+            arr_media_management_cfg=arr_media_management_cfg,
+            arr_download_handling_cfg=arr_download_handling_cfg,
+            arr_quality_upgrade_cfg=arr_quality_upgrade_cfg,
+            qbit_cfg=qbit_cfg,
+            qbit_auth=ClientAuth(
+                username=qb_user,
+                password=qb_pass,
+            ),
+            sab_cfg=sab_cfg,
+            sab_auth=ClientAuth(
+                username=sab_username,
+                password=sab_password,
+                api_key=sab_api_key,
+            ),
+            sab_remote_path_mappings=sab_remote_path_mappings,
+            run_cfg=ServarrRunConfig(
+                configure_arr_media_management=configure_arr_media_management,
+                configure_arr_download_handling=configure_arr_download_handling,
+                configure_arr_quality_upgrade=configure_arr_quality_upgrade,
+                configure_arr_discovery_lists=configure_arr_discovery_lists,
+                configure_qbit_arr_clients=configure_qbit_arr_clients,
+                qbit_login_ok=qbit_login_ok,
+                configure_sab_arr_clients=configure_sab_arr_clients,
+                sab_api_key=sab_api_key,
+                refresh_health_after_bootstrap=refresh_health_after_bootstrap,
+            ),
+        )
     )
 
     if configure_bazarr_integration:
