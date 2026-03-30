@@ -13,6 +13,7 @@ BOOTSTRAP_SCRIPT_CONFIGMAP_FILES=(
   "bootstrap_lib__jellyfin.py|scripts/bootstrap_lib/jellyfin.py"
   "bootstrap_services__init__.py|scripts/bootstrap_services/__init__.py"
   "bootstrap_services__arr_service.py|scripts/bootstrap_services/arr_service.py"
+  "bootstrap_services__arr_queue_cleanup_service.py|scripts/bootstrap_services/arr_queue_cleanup_service.py"
   "bootstrap_services__auth_service.py|scripts/bootstrap_services/auth_service.py"
   "bootstrap_services__config_models.py|scripts/bootstrap_services/config_models.py"
   "bootstrap_services__discovery_lists_service.py|scripts/bootstrap_services/discovery_lists_service.py"

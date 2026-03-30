@@ -198,6 +198,8 @@ spec:
                 path: bootstrap_services/__init__.py
               - key: bootstrap_services__arr_service.py
                 path: bootstrap_services/arr_service.py
+              - key: bootstrap_services__arr_queue_cleanup_service.py
+                path: bootstrap_services/arr_queue_cleanup_service.py
               - key: bootstrap_services__auth_service.py
                 path: bootstrap_services/auth_service.py
               - key: bootstrap_services__config_models.py
