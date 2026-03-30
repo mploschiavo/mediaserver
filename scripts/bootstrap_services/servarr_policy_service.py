@@ -31,7 +31,7 @@ class ServarrPolicyService:
     def resolve_overrides_by_app(cfg_section: dict[str, Any], app_cfg: dict[str, Any]) -> dict[str, Any]:
         by_app = (cfg_section or {}).get("by_app") or {}
         app_name = str(app_cfg.get("name") or "")
-        app_impl = str(app_cfg.get("implementation") or "")
+        app_impl = str(app_cfg.get("implementation") or "").strip().lower()
         return (
             by_app.get(app_name)
             or by_app.get(app_impl)
@@ -166,7 +166,7 @@ class ServarrPolicyService:
             desired["copyUsingHardlinks"] = bool(desired_hardlinks)
             changed = True
 
-        if app_impl == "Sonarr":
+        if app_impl == "sonarr":
             if "create_empty_series_folders" in app_overrides:
                 desired_season_folders = bool(app_overrides.get("create_empty_series_folders"))
             else:

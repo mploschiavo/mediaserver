@@ -145,6 +145,38 @@ class ServarrPolicyServiceTests(unittest.TestCase):
         self.assertEqual(payload["cutoff"], 1080)
         self.assertFalse(payload["items"][1]["allowed"])
 
+    def test_media_management_applies_sonarr_series_folder_flag_case_insensitive(self):
+        requests = []
+
+        def fake_http(base_url, path, api_key=None, method="GET", payload=None, timeout=20):
+            del base_url, api_key, timeout
+            requests.append((method, path, payload))
+            if method == "GET":
+                return (
+                    200,
+                    {
+                        "copyUsingHardlinks": True,
+                        "createEmptySeriesFolders": False,
+                    },
+                    "",
+                )
+            if method == "PUT":
+                return 200, {}, ""
+            raise AssertionError(method)
+
+        svc = self._service(fake_http)
+        svc.ensure_media_management(
+            app_cfg={"name": "Sonarr", "implementation": "sonarr"},
+            app_url="http://sonarr:8989",
+            api_base="/api/v3",
+            api_key="key",
+            media_cfg={"enabled": True, "create_empty_series_folders": True},
+        )
+        put_calls = [c for c in requests if c[0] == "PUT"]
+        self.assertEqual(len(put_calls), 1)
+        payload = put_calls[0][2]
+        self.assertTrue(payload["createEmptySeriesFolders"])
+
 
 if __name__ == "__main__":
     unittest.main()

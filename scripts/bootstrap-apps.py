@@ -88,6 +88,7 @@ from bootstrap_services.servarr_pipeline_service import (
     ServarrRunConfig,
 )
 from bootstrap_services.servarr_policy_service import ServarrPolicyService
+from bootstrap_services.technology_catalog import default_servarr_catalog
 
 
 def log(msg):
@@ -3637,7 +3638,17 @@ def main():
     cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
     prowlarr_url = normalize_url(cfg["prowlarr_url"])
     arr_apps_raw = cfg.get("arr_apps", [])
-    arr_app_capability_defaults = cfg.get("app_capability_defaults") or {}
+    catalog = default_servarr_catalog()
+    arr_default_capability_defaults = load_bootstrap_default_json(
+        "app_capability_defaults.json",
+        {},
+    )
+    arr_app_capability_defaults = catalog.expand_capability_defaults(
+        deep_merge_objects(
+            arr_default_capability_defaults,
+            cfg.get("app_capability_defaults") or {},
+        )
+    )
     arr_apps = ServarrAppConfig.from_list(
         arr_apps_raw,
         capability_defaults=arr_app_capability_defaults,

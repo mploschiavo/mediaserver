@@ -202,6 +202,8 @@ spec:
                 path: bootstrap_defaults/jellyfin_home_rails.json
               - key: bootstrap_defaults__adapter_hooks.json
                 path: bootstrap_defaults/adapter_hooks.json
+              - key: bootstrap_defaults__app_capability_defaults.json
+                path: bootstrap_defaults/app_capability_defaults.json
               - key: bootstrap_services__init__.py
                 path: bootstrap_services/__init__.py
               - key: bootstrap_services__arr_service.py
@@ -236,6 +238,8 @@ spec:
                 path: bootstrap_services/sabnzbd_service.py
               - key: bootstrap_services__servarr_adapters.py
                 path: bootstrap_services/servarr_adapters.py
+              - key: bootstrap_services__technology_catalog.py
+                path: bootstrap_services/technology_catalog.py
               - key: bootstrap_services__servarr_policy_service.py
                 path: bootstrap_services/servarr_policy_service.py
               - key: bootstrap_services__servarr_pipeline_service.py
