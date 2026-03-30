@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: media-stack-ingress
+  namespace: media-stack
+spec:
+  tls:
+    - secretName: media-stack-tls
+      hosts:
+        - homepage.local
+        - jellyfin.local
+        - jellyseerr.local
+        - sonarr.local
+        - radarr.local
+        - lidarr.local
+        - readarr.local
+        - bazarr.local
+        - prowlarr.local
+        - qbittorrent.local
+        - sabnzbd.local
+        - tautulli.local

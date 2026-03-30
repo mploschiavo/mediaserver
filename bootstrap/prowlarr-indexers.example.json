@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Example Generic Torznab",
+    "implementation": "GenericTorznab",
+    "enable": true,
+    "priority": 25,
+    "fields": {
+      "baseUrl": "https://indexer.example.com",
+      "apiKey": "replace-me"
+    }
+  },
+  {
+    "name": "Example Generic Newznab",
+    "implementation": "Newznab",
+    "enable": true,
+    "priority": 25,
+    "fields": {
+      "baseUrl": "https://usenet.example.com",
+      "apiKey": "replace-me"
+    }
+  }
+]

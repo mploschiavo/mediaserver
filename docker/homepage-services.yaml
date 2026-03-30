@@ -1,0 +1,38 @@
+---
+- Media:
+    - Homepage:
+        href: http://homepage.local
+        description: Dashboard
+    - Jellyfin:
+        href: http://jellyfin.local
+        description: Primary media server
+    - Jellyseerr:
+        href: http://jellyseerr.local
+        description: Requests
+    - Sonarr:
+        href: http://sonarr.local
+        description: TV automation
+    - Radarr:
+        href: http://radarr.local
+        description: Movie automation
+    - Lidarr:
+        href: http://lidarr.local
+        description: Music automation
+    - Readarr:
+        href: http://readarr.local
+        description: Books automation
+    - Bazarr:
+        href: http://bazarr.local
+        description: Subtitles
+    - Prowlarr:
+        href: http://prowlarr.local
+        description: Source manager
+    - qBittorrent:
+        href: http://qbittorrent.local
+        description: Downloader
+    - SABnzbd:
+        href: http://sabnzbd.local
+        description: Optional usenet
+    - Tautulli:
+        href: http://tautulli.local
+        description: Optional Plex analytics

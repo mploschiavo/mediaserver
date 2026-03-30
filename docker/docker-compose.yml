@@ -1,0 +1,353 @@
+name: media-automation-stack-v4
+# Image references are digest-pinned as of 2026-03-28.
+
+x-arr-env: &arr-env
+  PUID: ${PUID}
+  PGID: ${PGID}
+  TZ: ${TZ}
+
+x-media-vols: &media-vols
+  - ${MEDIA_ROOT}/media:/media
+  - ${DATA_ROOT}/torrents:/data/torrents
+  - ${DATA_ROOT}/usenet:/data/usenet
+
+services:
+  traefik:
+    image: traefik@sha256:74d72c7a1345984f186bddbabcc462b2128d0d8054177dc84afaeac4db1f0f56
+    container_name: traefik
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --ping=true
+    ports:
+      - "${TRAEFIK_HTTP_PORT}:80"
+      - "${TRAEFIK_DASHBOARD_PORT}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c
+    container_name: homepage
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_HOST}
+    volumes:
+      - ${CONFIG_ROOT}/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./homepage-services.yaml:/app/config/services.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.homepage.rule=Host(`${HOMEPAGE_HOST}`)
+      - traefik.http.services.homepage.loadbalancer.server.port=3000
+
+  jellyfin:
+    image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+    container_name: jellyfin
+    user: "${PUID}:${PGID}"
+    group_add: ["44","109"]
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      TZ: ${TZ}
+      JELLYFIN_PublishedServerUrl: http://${JELLYFIN_HOST}
+    volumes:
+      - ${CONFIG_ROOT}/jellyfin:/config
+      - ${DATA_ROOT}/transcode:/cache
+      - ${MEDIA_ROOT}/media:/media
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyfin.rule=Host(`${JELLYFIN_HOST}`)
+      - traefik.http.services.jellyfin.loadbalancer.server.port=8096
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+    container_name: jellyseerr
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/jellyseerr:/app/config
+    restart: unless-stopped
+    depends_on:
+      jellyfin:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5055/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyseerr.rule=Host(`${JELLYSEERR_HOST}`)
+      - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82
+    container_name: prowlarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/prowlarr:/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prowlarr.rule=Host(`${PROWLARR_HOST}`)
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent@sha256:570aeb63bdedcb5f9dd2500bd8f0a75581ba07c518c05cabbef0cfeb15451b3f
+    container_name: qbittorrent
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      WEBUI_PORT: 8080
+      QBT_WEBUI_PORT: 8080
+    volumes:
+      - ${CONFIG_ROOT}/qbittorrent:/config
+      - ${DATA_ROOT}/torrents:/data/torrents
+    ports:
+      - "${QBITTORRENT_PUBLISHED_PORT}:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.qbittorrent.rule=Host(`${QBITTORRENT_HOST}`)
+      - traefik.http.services.qbittorrent.loadbalancer.server.port=8080
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2
+    container_name: sonarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/sonarr:/config
+      - ${MEDIA_ROOT}/media:/media
+      - ${DATA_ROOT}/torrents:/data/torrents
+      - ${DATA_ROOT}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8989/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sonarr.rule=Host(`${SONARR_HOST}`)
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+
+  radarr:
+    image: lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb
+    container_name: radarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/radarr:/config
+      - ${MEDIA_ROOT}/media:/media
+      - ${DATA_ROOT}/torrents:/data/torrents
+      - ${DATA_ROOT}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7878/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.radarr.rule=Host(`${RADARR_HOST}`)
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr@sha256:dbffcf91da47d48e09e613857032c95a62755b928a71a7718688e3ab03fbbd26
+    container_name: lidarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/lidarr:/config
+      - ${MEDIA_ROOT}/media:/media
+      - ${DATA_ROOT}/torrents:/data/torrents
+      - ${DATA_ROOT}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8686/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.lidarr.rule=Host(`${LIDARR_HOST}`)
+      - traefik.http.services.lidarr.loadbalancer.server.port=8686
+
+  readarr:
+    image: docker.io/linuxserver/readarr@sha256:4f291128d1a5538be73c2a30473d7cdd0820e223dc8b8533b0cbc5659000dcbe
+    container_name: readarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/readarr:/config
+      - ${MEDIA_ROOT}/media:/media
+      - ${DATA_ROOT}/torrents:/data/torrents
+      - ${DATA_ROOT}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.readarr.rule=Host(`${READARR_HOST}`)
+      - traefik.http.services.readarr.loadbalancer.server.port=8787
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e
+    container_name: bazarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/bazarr:/config
+      - ${MEDIA_ROOT}/media:/media
+    restart: unless-stopped
+    depends_on: [sonarr, radarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6767"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.bazarr.rule=Host(`${BAZARR_HOST}`)
+      - traefik.http.services.bazarr.loadbalancer.server.port=6767
+
+  unpackerr:
+    image: ghcr.io/unpackerr/unpackerr@sha256:89e13608521ece21dd300c39229fd595a55fbf4b8152771af5670a7455b5c747
+    container_name: unpackerr
+    environment:
+      TZ: ${TZ}
+      UN_SONARR_0_URL: http://sonarr:8989
+      UN_SONARR_0_API_KEY: ${UNPACKERR_SONARR_API_KEY}
+      UN_SONARR_0_PATHS_0: /data/torrents/completed/tv
+      UN_RADARR_0_URL: http://radarr:7878
+      UN_RADARR_0_API_KEY: ${UNPACKERR_RADARR_API_KEY}
+      UN_RADARR_0_PATHS_0: /data/torrents/completed/movies
+      UN_LIDARR_0_URL: http://lidarr:8686
+      UN_LIDARR_0_API_KEY: ${UNPACKERR_LIDARR_API_KEY}
+      UN_LIDARR_0_PATHS_0: /data/torrents/completed/music
+      UN_READARR_0_URL: http://readarr:8787
+      UN_READARR_0_API_KEY: ${UNPACKERR_READARR_API_KEY}
+      UN_READARR_0_PATHS_0: /data/torrents/completed/books
+    volumes:
+      - ${DATA_ROOT}/torrents:/data/torrents
+      - ${DATA_ROOT}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [sonarr, radarr, lidarr, readarr]
+
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f
+    container_name: sabnzbd
+    profiles: ["usenet"]
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/sabnzbd:/config
+      - ${DATA_ROOT}/usenet:/data/usenet
+    ports:
+      - "${SABNZBD_PUBLISHED_PORT}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sabnzbd.rule=Host(`${SABNZBD_HOST}`)
+      - traefik.http.services.sabnzbd.loadbalancer.server.port=8080
+
+  plex:
+    image: lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95
+    container_name: plex
+    profiles: ["plex"]
+    network_mode: host
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      VERSION: docker
+    volumes:
+      - ${CONFIG_ROOT}/plex:/config
+      - ${MEDIA_ROOT}/media:/media
+      - ${DATA_ROOT}/transcode:/transcode
+    restart: unless-stopped
+
+  tautulli:
+    image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
+    container_name: tautulli
+    profiles: ["plex"]
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT}/tautulli:/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tautulli.rule=Host(`${TAUTULLI_HOST}`)
+      - traefik.http.services.tautulli.loadbalancer.server.port=8181
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e
+    container_name: flaresolverr
+    profiles: ["flaresolverr"]
+    environment:
+      TZ: ${TZ}
+      LOG_LEVEL: info
+    restart: unless-stopped
+
+  jellyfin-nvidia:
+    image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+    container_name: jellyfin-nvidia
+    profiles: ["nvidia"]
+    runtime: nvidia
+    environment:
+      TZ: ${TZ}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    volumes:
+      - ${CONFIG_ROOT}/jellyfin:/config
+      - ${DATA_ROOT}/transcode:/cache
+      - ${MEDIA_ROOT}/media:/media
+    restart: unless-stopped

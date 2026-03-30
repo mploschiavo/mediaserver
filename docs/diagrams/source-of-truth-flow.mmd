@@ -1,0 +1,15 @@
+flowchart LR
+  SRC[Git Desired State\n- k8s manifests\n- bootstrap config\n- scripts]
+  SEC[Managed Secrets\nKubernetes Secret]
+  BOOT[Bootstrap/Reconcile]
+  RUN[Runtime App State]
+  TEST[Verification\nflow + smoke + playwright]
+
+  SRC --> BOOT
+  SEC --> BOOT
+  BOOT --> RUN
+  RUN --> TEST
+  TEST --> SRC
+
+  DRIFT[Manual UI Drift]
+  DRIFT -.detected and overwritten.-> BOOT

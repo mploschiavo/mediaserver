@@ -1,0 +1,252 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: media-stack-bootstrap
+  namespace: media-stack
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: media-stack-bootstrap
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: python:3.12-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: QBITTORRENT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: QBITTORRENT_USERNAME
+                  optional: true
+            - name: QBITTORRENT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: QBITTORRENT_PASSWORD
+                  optional: true
+            - name: SABNZBD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: SABNZBD_API_KEY
+                  optional: true
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: JELLYFIN_API_KEY
+                  optional: true
+            - name: JELLYFIN_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: JELLYFIN_USER_ID
+                  optional: true
+            - name: STACK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: STACK_ADMIN_USERNAME
+                  optional: true
+            - name: STACK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: STACK_ADMIN_PASSWORD
+                  optional: true
+            - name: SONARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: SONARR_API_KEY
+                  optional: true
+            - name: RADARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: RADARR_API_KEY
+                  optional: true
+            - name: LIDARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: LIDARR_API_KEY
+                  optional: true
+            - name: READARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: READARR_API_KEY
+                  optional: true
+            - name: PROWLARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: PROWLARR_API_KEY
+                  optional: true
+            - name: UNPACKERR_SONARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: UNPACKERR_SONARR_API_KEY
+                  optional: true
+            - name: UNPACKERR_RADARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: UNPACKERR_RADARR_API_KEY
+                  optional: true
+            - name: UNPACKERR_LIDARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: UNPACKERR_LIDARR_API_KEY
+                  optional: true
+            - name: UNPACKERR_READARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: UNPACKERR_READARR_API_KEY
+                  optional: true
+            - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
+              value: "3"
+            - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
+              value: "15"
+            - name: AUTO_INDEXER_HEARTBEAT_EVERY
+              value: "25"
+            - name: FULLY_PRECONFIGURED
+              value: "1"
+            - name: BOOTSTRAP_ALT_CONFIG_ROOT
+              value: /srv-host-config
+          command:
+            - python
+            - /bootstrap/bootstrap_apps.py
+            - --config
+            - /bootstrap-config/config.json
+            - --config-root
+            - /srv-config
+          volumeMounts:
+            - name: bootstrap-script
+              mountPath: /bootstrap
+              readOnly: true
+            - name: bootstrap-config
+              mountPath: /bootstrap-config
+              readOnly: true
+            - name: cfg-jellyfin
+              mountPath: /srv-config/jellyfin
+            - name: cfg-jellyseerr
+              mountPath: /srv-config/jellyseerr
+            - name: cfg-sonarr
+              mountPath: /srv-config/sonarr
+            - name: cfg-radarr
+              mountPath: /srv-config/radarr
+            - name: cfg-lidarr
+              mountPath: /srv-config/lidarr
+            - name: cfg-readarr
+              mountPath: /srv-config/readarr
+            - name: cfg-bazarr
+              mountPath: /srv-config/bazarr
+            - name: cfg-prowlarr
+              mountPath: /srv-config/prowlarr
+            - name: cfg-sabnzbd
+              mountPath: /srv-config/sabnzbd
+            - name: cfg-homepage
+              mountPath: /srv-config/homepage
+            - name: cfg-maintainerr
+              mountPath: /srv-config/maintainerr
+            - name: cfg-jellyfin-auto-collections
+              mountPath: /srv-config/jellyfin-auto-collections
+            - name: host-config-fallback
+              mountPath: /srv-host-config
+              readOnly: false
+            - name: stack-torrents
+              mountPath: /srv-stack/data/torrents
+            - name: stack-usenet
+              mountPath: /srv-stack/data/usenet
+            - name: stack-media
+              mountPath: /srv-stack/media
+            - name: host-data-fallback
+              mountPath: /srv-host-stack
+      volumes:
+        - name: bootstrap-script
+          configMap:
+            name: media-stack-bootstrap-script
+            defaultMode: 0555
+            items:
+              - key: bootstrap_apps.py
+                path: bootstrap_apps.py
+              - key: __init__.py
+                path: bootstrap_lib/__init__.py
+              - key: common.py
+                path: bootstrap_lib/common.py
+              - key: http_client.py
+                path: bootstrap_lib/http_client.py
+              - key: servarr.py
+                path: bootstrap_lib/servarr.py
+              - key: homepage.py
+                path: bootstrap_lib/homepage.py
+              - key: bazarr.py
+                path: bootstrap_lib/bazarr.py
+              - key: jellyfin.py
+                path: bootstrap_lib/jellyfin.py
+        - name: bootstrap-config
+          configMap:
+            name: media-stack-bootstrap-config
+        - name: cfg-jellyfin
+          persistentVolumeClaim:
+            claimName: media-stack-config-jellyfin
+        - name: cfg-jellyseerr
+          persistentVolumeClaim:
+            claimName: media-stack-config-jellyseerr
+        - name: cfg-sonarr
+          persistentVolumeClaim:
+            claimName: media-stack-config-sonarr
+        - name: cfg-radarr
+          persistentVolumeClaim:
+            claimName: media-stack-config-radarr
+        - name: cfg-lidarr
+          persistentVolumeClaim:
+            claimName: media-stack-config-lidarr
+        - name: cfg-readarr
+          persistentVolumeClaim:
+            claimName: media-stack-config-readarr
+        - name: cfg-bazarr
+          persistentVolumeClaim:
+            claimName: media-stack-config-bazarr
+        - name: cfg-prowlarr
+          persistentVolumeClaim:
+            claimName: media-stack-config-prowlarr
+        - name: cfg-sabnzbd
+          persistentVolumeClaim:
+            claimName: media-stack-config-sabnzbd
+        - name: cfg-homepage
+          persistentVolumeClaim:
+            claimName: media-stack-config-homepage
+        - name: cfg-maintainerr
+          persistentVolumeClaim:
+            claimName: media-stack-config-maintainerr
+        - name: cfg-jellyfin-auto-collections
+          persistentVolumeClaim:
+            claimName: media-stack-config-jellyfin-auto-collections
+        - name: host-config-fallback
+          hostPath:
+            path: /srv/media-stack/config
+            type: DirectoryOrCreate
+        - name: host-data-fallback
+          hostPath:
+            path: /srv/media-stack
+            type: DirectoryOrCreate
+        - name: stack-torrents
+          persistentVolumeClaim:
+            claimName: media-stack-data-torrents
+        - name: stack-usenet
+          persistentVolumeClaim:
+            claimName: media-stack-data-usenet
+        - name: stack-media
+          persistentVolumeClaim:
+            claimName: media-stack-media

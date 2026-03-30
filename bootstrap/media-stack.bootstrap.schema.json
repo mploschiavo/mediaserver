@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://media-stack.local/schemas/media-stack.bootstrap.schema.json",
+  "title": "Media Stack Bootstrap Config",
+  "type": "object",
+  "required": [
+    "prowlarr_url",
+    "arr_apps",
+    "download_clients"
+  ],
+  "properties": {
+    "prowlarr_url": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arr_apps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "implementation", "url", "root_folder"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "implementation": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "minLength": 1},
+          "root_folder": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": true
+      }
+    },
+    "download_clients": {
+      "type": "object",
+      "required": ["qbittorrent", "sabnzbd"],
+      "properties": {
+        "qbittorrent": {
+          "type": "object",
+          "required": ["url", "host", "port", "name", "implementation"],
+          "properties": {
+            "url": {"type": "string", "minLength": 1},
+            "host": {"type": "string", "minLength": 1},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "name": {"type": "string", "minLength": 1},
+            "implementation": {"type": "string", "minLength": 1},
+            "queue_guardrails": {"type": "object"}
+          },
+          "additionalProperties": true
+        },
+        "sabnzbd": {
+          "type": "object",
+          "required": ["url", "host", "port", "name", "implementation"],
+          "properties": {
+            "url": {"type": "string", "minLength": 1},
+            "host": {"type": "string", "minLength": 1},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "name": {"type": "string", "minLength": 1},
+            "implementation": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "arr_quality_upgrade": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "allow_upgrades": {"type": "boolean"},
+        "disallow_quality_name_tokens": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "cutoff_preferred_name_tokens": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "by_app": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "jellyfin_prewarm": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "required": {"type": "boolean"},
+        "url": {"type": "string"},
+        "refresh_library": {"type": "boolean"},
+        "refresh_channels": {"type": "boolean"},
+        "refresh_guide": {"type": "boolean"},
+        "library_refresh_query": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "jellyfin_livetv": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "required": {"type": "boolean"},
+        "refresh_on_bootstrap": {"type": "boolean"},
+        "cleanup_duplicates": {"type": "boolean"},
+        "recreate_managed_guides": {"type": "boolean"},
+        "prune_unmanaged_tuners": {"type": "boolean"},
+        "prune_unmanaged_guides": {"type": "boolean"},
+        "fallback_enable_all_tuners_when_mapping_missing": {"type": "boolean"},
+        "url": {"type": "string"},
+        "tuners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "normalize_tvg_id_suffix": {"type": "boolean"},
+              "filter_to_guide_channels": {"type": "boolean"},
+              "filter_guide_path": {"type": "string"},
+              "materialized_output_path": {"type": "string"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "guides": {"type": "array"}
+      },
+      "additionalProperties": true
+    },
+    "media_hygiene": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "required": {"type": "boolean"},
+        "cleanup_arr_failed_queue": {"type": "boolean"},
+        "arr_failed_queue_cleanup": {"type": "object"},
+        "qbit_ipfilter": {"type": "object"},
+        "filesystem": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "maintainerr": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "required": {"type": "boolean"},
+        "policy_relative_path": {"type": "string"},
+        "policy": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

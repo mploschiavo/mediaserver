@@ -1,0 +1,588 @@
+# Image references are digest-pinned as of 2026-03-28.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: jellyfin}
+  template:
+    metadata:
+      labels: {app: jellyfin}
+    spec:
+      containers:
+        - name: jellyfin
+          image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 8096
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: transcode, mountPath: /cache}
+            - {name: media, mountPath: /media}
+          readinessProbe:
+            httpGet: {path: /health, port: 8096}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /health, port: 8096}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /health, port: 8096}
+            failureThreshold: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-jellyfin}
+        - name: transcode
+          persistentVolumeClaim: {claimName: media-stack-data-transcode}
+        - name: media
+          persistentVolumeClaim: {claimName: media-stack-media}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin
+  namespace: media-stack
+spec:
+  selector: {app: jellyfin}
+  ports:
+    - port: 8096
+      targetPort: 8096
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyseerr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: jellyseerr}
+  template:
+    metadata:
+      labels: {app: jellyseerr}
+    spec:
+      containers:
+        - name: jellyseerr
+          image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 5055
+          volumeMounts:
+            - {name: config, mountPath: /app/config}
+          readinessProbe:
+            httpGet: {path: /api/v1/status, port: 5055}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /api/v1/status, port: 5055}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /api/v1/status, port: 5055}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-jellyseerr}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyseerr
+  namespace: media-stack
+spec:
+  selector: {app: jellyseerr}
+  ports:
+    - port: 5055
+      targetPort: 5055
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prowlarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prowlarr}
+  template:
+    metadata:
+      labels: {app: prowlarr}
+    spec:
+      containers:
+        - name: prowlarr
+          image: lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 9696
+          volumeMounts:
+            - {name: config, mountPath: /config}
+          readinessProbe:
+            httpGet: {path: /ping, port: 9696}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /ping, port: 9696}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /ping, port: 9696}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-prowlarr}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prowlarr
+  namespace: media-stack
+spec:
+  selector: {app: prowlarr}
+  ports:
+    - port: 9696
+      targetPort: 9696
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qbittorrent
+  namespace: media-stack
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: qbittorrent}
+  template:
+    metadata:
+      labels: {app: qbittorrent}
+    spec:
+      containers:
+        - name: qbittorrent
+          image: lscr.io/linuxserver/qbittorrent@sha256:570aeb63bdedcb5f9dd2500bd8f0a75581ba07c518c05cabbef0cfeb15451b3f
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: torrents, mountPath: /data/torrents}
+          readinessProbe:
+            httpGet: {path: /, port: 8080}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /, port: 8080}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /, port: 8080}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-qbittorrent}
+        - name: torrents
+          persistentVolumeClaim: {claimName: media-stack-data-torrents}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qbittorrent
+  namespace: media-stack
+spec:
+  selector: {app: qbittorrent}
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sonarr}
+  template:
+    metadata:
+      labels: {app: sonarr}
+    spec:
+      initContainers:
+        - name: init-media-dirs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+          volumeMounts:
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+      containers:
+        - name: sonarr
+          image: lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 8989
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+          readinessProbe:
+            httpGet: {path: /ping, port: 8989}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /ping, port: 8989}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /ping, port: 8989}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-sonarr}
+        - name: media
+          persistentVolumeClaim: {claimName: media-stack-media}
+        - name: torrents
+          persistentVolumeClaim: {claimName: media-stack-data-torrents}
+        - name: usenet
+          persistentVolumeClaim: {claimName: media-stack-data-usenet}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarr
+  namespace: media-stack
+spec:
+  selector: {app: sonarr}
+  ports:
+    - port: 8989
+      targetPort: 8989
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: radarr}
+  template:
+    metadata:
+      labels: {app: radarr}
+    spec:
+      initContainers:
+        - name: init-media-dirs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+          volumeMounts:
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+      containers:
+        - name: radarr
+          image: lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 7878
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+          readinessProbe:
+            httpGet: {path: /ping, port: 7878}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /ping, port: 7878}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /ping, port: 7878}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-radarr}
+        - name: media
+          persistentVolumeClaim: {claimName: media-stack-media}
+        - name: torrents
+          persistentVolumeClaim: {claimName: media-stack-data-torrents}
+        - name: usenet
+          persistentVolumeClaim: {claimName: media-stack-data-usenet}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radarr
+  namespace: media-stack
+spec:
+  selector: {app: radarr}
+  ports:
+    - port: 7878
+      targetPort: 7878
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lidarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lidarr}
+  template:
+    metadata:
+      labels: {app: lidarr}
+    spec:
+      initContainers:
+        - name: init-media-dirs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+          volumeMounts:
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+      containers:
+        - name: lidarr
+          image: lscr.io/linuxserver/lidarr@sha256:dbffcf91da47d48e09e613857032c95a62755b928a71a7718688e3ab03fbbd26
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 8686
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+          readinessProbe:
+            httpGet: {path: /ping, port: 8686}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /ping, port: 8686}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /ping, port: 8686}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-lidarr}
+        - name: media
+          persistentVolumeClaim: {claimName: media-stack-media}
+        - name: torrents
+          persistentVolumeClaim: {claimName: media-stack-data-torrents}
+        - name: usenet
+          persistentVolumeClaim: {claimName: media-stack-data-usenet}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lidarr
+  namespace: media-stack
+spec:
+  selector: {app: lidarr}
+  ports:
+    - port: 8686
+      targetPort: 8686
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: readarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: readarr}
+  template:
+    metadata:
+      labels: {app: readarr}
+    spec:
+      initContainers:
+        - name: init-media-dirs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+          volumeMounts:
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+      containers:
+        - name: readarr
+          image: docker.io/linuxserver/readarr@sha256:4f291128d1a5538be73c2a30473d7cdd0820e223dc8b8533b0cbc5659000dcbe
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 8787
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: media, mountPath: /media}
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+          readinessProbe:
+            httpGet: {path: /ping, port: 8787}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /ping, port: 8787}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /ping, port: 8787}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-readarr}
+        - name: media
+          persistentVolumeClaim: {claimName: media-stack-media}
+        - name: torrents
+          persistentVolumeClaim: {claimName: media-stack-data-torrents}
+        - name: usenet
+          persistentVolumeClaim: {claimName: media-stack-data-usenet}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: readarr
+  namespace: media-stack
+spec:
+  selector: {app: readarr}
+  ports:
+    - port: 8787
+      targetPort: 8787
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bazarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: bazarr}
+  template:
+    metadata:
+      labels: {app: bazarr}
+    spec:
+      containers:
+        - name: bazarr
+          image: lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          ports:
+            - containerPort: 6767
+          volumeMounts:
+            - {name: config, mountPath: /config}
+            - {name: media, mountPath: /media}
+          readinessProbe:
+            httpGet: {path: /, port: 6767}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /, port: 6767}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /, port: 6767}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-bazarr}
+        - name: media
+          persistentVolumeClaim: {claimName: media-stack-media}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bazarr
+  namespace: media-stack
+spec:
+  selector: {app: bazarr}
+  ports:
+    - port: 6767
+      targetPort: 6767

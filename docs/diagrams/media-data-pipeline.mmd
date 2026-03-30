@@ -1,0 +1,37 @@
+flowchart LR
+  subgraph Storage["PVC-backed Storage (StorageClass-driven)"]
+    CFG["config/"]
+    TOR["data/torrents/"]
+    USN["data/usenet/"]
+    MED["media/"]
+  end
+
+  Prowlarr[Prowlarr Indexers] --> Sonarr[Sonarr]
+  Prowlarr --> Radarr[Radarr]
+  Prowlarr --> Lidarr[Lidarr]
+  Prowlarr --> Readarr[Readarr]
+
+  Sonarr --> QB[qBittorrent]
+  Radarr --> QB
+  Lidarr --> QB
+  Readarr --> QB
+
+  Sonarr --> SAB[SABnzbd Optional]
+  Radarr --> SAB
+  Lidarr --> SAB
+  Readarr --> SAB
+
+  QB --> TOR
+  SAB --> USN
+
+  Unpackerr[Unpackerr Optional] --> TOR
+  Unpackerr --> USN
+
+  Sonarr --> MED
+  Radarr --> MED
+  Lidarr --> MED
+  Readarr --> MED
+  Bazarr[Bazarr] --> MED
+
+  Jellyfin[Jellyfin] --> MED
+  Plex[Plex Optional] --> MED

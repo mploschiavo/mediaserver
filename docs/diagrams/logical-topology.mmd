@@ -1,0 +1,67 @@
+flowchart LR
+  subgraph Clients[Clients]
+    TV[TV Apps<br/>Samsung/Vizio/TCL]
+    Browser[Browser/Mobile]
+  end
+
+  subgraph Edge[Cluster Edge]
+    Ingress[Ingress Controller<br/>public/nginx]
+  end
+
+  subgraph Apps[Media Stack Namespace]
+    Homepage[Homepage]
+    Jellyseerr[Jellyseerr]
+    Jellyfin[Jellyfin]
+    Plex[Plex Optional]
+    Sonarr[Sonarr]
+    Radarr[Radarr]
+    Lidarr[Lidarr]
+    Readarr[Readarr]
+    Bazarr[Bazarr]
+    Prowlarr[Prowlarr]
+    QB[qBittorrent]
+    SAB[SABnzbd Optional]
+    Unpackerr[Unpackerr Optional]
+    Flare[FlareSolverr Optional]
+  end
+
+  TV --> Ingress
+  Browser --> Ingress
+
+  Ingress --> Homepage
+  Ingress --> Jellyseerr
+  Ingress --> Jellyfin
+  Ingress --> Sonarr
+  Ingress --> Radarr
+  Ingress --> Lidarr
+  Ingress --> Readarr
+  Ingress --> Bazarr
+  Ingress --> Prowlarr
+  Ingress --> QB
+  Ingress --> SAB
+  Ingress --> Plex
+
+  Jellyseerr --> Sonarr
+  Jellyseerr --> Radarr
+  Jellyseerr --> Jellyfin
+
+  Prowlarr --> Sonarr
+  Prowlarr --> Radarr
+  Prowlarr --> Lidarr
+  Prowlarr --> Readarr
+  Flare --> Prowlarr
+
+  Sonarr --> QB
+  Radarr --> QB
+  Lidarr --> QB
+  Readarr --> QB
+
+  Sonarr --> SAB
+  Radarr --> SAB
+  Lidarr --> SAB
+  Readarr --> SAB
+
+  Unpackerr --> Sonarr
+  Unpackerr --> Radarr
+  Unpackerr --> Lidarr
+  Unpackerr --> Readarr

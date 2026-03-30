@@ -1,0 +1,11 @@
+flowchart TD
+  PLAN[Plan change]
+  CODE[Edit declarative config]
+  TEST[Test locally and in namespace]
+  APPLY[Install/Rebuild apply]
+  BOOT[Bootstrap reconcile]
+  VERIFY[verify-flow and smoke tests]
+  PROMOTE[Promote to primary namespace]
+  MONITOR[Observe + backup drills]
+
+  PLAN --> CODE --> TEST --> APPLY --> BOOT --> VERIFY --> PROMOTE --> MONITOR --> PLAN

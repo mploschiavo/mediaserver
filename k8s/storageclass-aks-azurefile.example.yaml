@@ -1,0 +1,25 @@
+# Example AKS RWX StorageClass for shared media workloads.
+# Usage:
+#   kubectl apply -f k8s/storageclass-aks-azurefile.example.yaml
+# Then either:
+#   1) mark it as default for the cluster, or
+#   2) set storageClassName on PVCs in k8s/storage-pvc.yaml.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: media-stack-azurefile
+provisioner: file.csi.azure.com
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+mountOptions:
+  - dir_mode=0777
+  - file_mode=0666
+  - uid=911
+  - gid=911
+  - mfsymlinks
+  - cache=strict
+  - nosharesock
+  - actimeo=30
+parameters:
+  skuName: Standard_LRS

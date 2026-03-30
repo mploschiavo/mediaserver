@@ -1,0 +1,27 @@
+flowchart TB
+  OP[Operator]
+  GIT[Git Repository]
+  CI[CI Validation]
+
+  subgraph ENV1[Namespace: media-stack-dev]
+    K8S1[Kubernetes Resources]
+    BOOT1[Bootstrap Job]
+    APPS1[Configured Apps]
+  end
+
+  subgraph ENV2[Namespace: media-stack]
+    K8S2[Kubernetes Resources]
+    BOOT2[Bootstrap Job]
+    APPS2[Configured Apps]
+  end
+
+  OP --> GIT
+  GIT --> CI
+  CI --> ENV1
+  ENV1 --> ENV2
+
+  K8S1 --> BOOT1 --> APPS1
+  K8S2 --> BOOT2 --> APPS2
+
+  style ENV1 fill:#e8f2ff,stroke:#1f4f99,stroke-width:2px
+  style ENV2 fill:#e9ffe8,stroke:#1a7f37,stroke-width:2px

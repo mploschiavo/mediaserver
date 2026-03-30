@@ -1,0 +1,92 @@
+name: media-stack-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck python3-yaml python3-jsonschema
+          python3 -m pip install --user yamllint
+
+      - name: Shell syntax check
+        run: bash -n scripts/*.sh
+
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
+
+      - name: Python compile check
+        run: |
+          python3 -m py_compile scripts/bootstrap-apps.py
+          python3 -m py_compile scripts/bootstrap_lib/common.py scripts/bootstrap_lib/http_client.py scripts/bootstrap_lib/servarr.py
+          python3 -m py_compile scripts/validate-bootstrap-config.py tests/e2e/api/verify_api_relationships.py
+
+      - name: Bootstrap config schema validation
+        run: python3 scripts/validate-bootstrap-config.py
+
+      - name: Python unit tests
+        run: python3 -m unittest discover -s tests/unit -p 'test_*.py'
+
+      - name: YAML lint
+        run: |
+          ~/.local/bin/yamllint -d '{"extends":"default","rules":{"line-length":"disable"}}' k8s docs .github/workflows
+
+      - name: Kubernetes YAML parse (multi-doc safe)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          for path in Path("k8s").rglob("*.yaml"):
+              with path.open() as f:
+                  list(yaml.safe_load_all(f))
+          print("k8s-yaml-ok")
+          PY
+
+      - name: Kustomize build profiles
+        run: |
+          for profile in minimal full public-demo power-user; do
+            kubectl kustomize "k8s/profiles/${profile}" >/dev/null
+          done
+
+  kind-smoke:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+      - uses: helm/kind-action@v1.10.0
+
+      - name: Apply minimal profile to kind
+        run: |
+          kubectl apply -k k8s/profiles/minimal
+          kubectl -n media-stack get deploy
+          kubectl -n media-stack get pods
+
+  playwright-spec-check:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright test deps
+        working-directory: tests/e2e/playwright
+        run: npm ci
+
+      - name: Validate Playwright test discovery
+        working-directory: tests/e2e/playwright
+        run: npx playwright test --list

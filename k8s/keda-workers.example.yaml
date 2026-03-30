@@ -1,0 +1,47 @@
+# Example KEDA ScaledObjects for non-interactive workers only.
+# Do NOT apply scale-to-zero to interactive apps (Jellyfin/Jellyseerr/Arr/qBittorrent)
+# unless you accept cold-start UX impact.
+#
+# Requires KEDA installed in cluster:
+#   https://keda.sh/docs/
+#
+# This example keeps worker apps active during daytime and scales to zero off-hours.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: unpackerr-cron
+  namespace: media-stack
+spec:
+  scaleTargetRef:
+    name: unpackerr
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  triggers:
+    - type: cron
+      metadata:
+        timezone: America/Chicago
+        start: "0 8 * * *"
+        end: "0 2 * * *"
+        desiredReplicas: "1"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: flaresolverr-cron
+  namespace: media-stack
+spec:
+  scaleTargetRef:
+    name: flaresolverr
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  triggers:
+    - type: cron
+      metadata:
+        timezone: America/Chicago
+        start: "0 8 * * *"
+        end: "0 2 * * *"
+        desiredReplicas: "1"

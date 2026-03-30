@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: media-stack-ingress
+  namespace: media-stack
+  annotations:
+    kubernetes.io/ingress.class: public
+spec:
+  ingressClassName: public
+  rules:
+    - host: homepage.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: homepage, port: {number: 3000}}}}]}
+    - host: jellyfin.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: jellyfin, port: {number: 8096}}}}]}
+    - host: jellyseerr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: jellyseerr, port: {number: 5055}}}}]}
+    - host: sonarr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: sonarr, port: {number: 8989}}}}]}
+    - host: radarr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: radarr, port: {number: 7878}}}}]}
+    - host: lidarr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: lidarr, port: {number: 8686}}}}]}
+    - host: readarr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: readarr, port: {number: 8787}}}}]}
+    - host: bazarr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: bazarr, port: {number: 6767}}}}]}
+    - host: prowlarr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: prowlarr, port: {number: 9696}}}}]}
+    - host: qbittorrent.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: qbittorrent, port: {number: 8080}}}}]}
+    - host: sabnzbd.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: sabnzbd, port: {number: 8080}}}}]}
+    - host: tautulli.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: tautulli, port: {number: 8181}}}}]}

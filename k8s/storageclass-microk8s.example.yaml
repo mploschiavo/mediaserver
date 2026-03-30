@@ -1,0 +1,16 @@
+# Example MicroK8s hostpath StorageClass with custom pvDir (MicroK8s >= 1.25).
+# Usage:
+#   microk8s kubectl apply -f k8s/storageclass-microk8s.example.yaml
+# Then either:
+#   1) mark it as default for the cluster, or
+#   2) set storageClassName on PVCs in k8s/storage-pvc.yaml.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: media-stack-hostpath
+provisioner: microk8s.io/hostpath
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  pvDir: /mnt/ssd-disk

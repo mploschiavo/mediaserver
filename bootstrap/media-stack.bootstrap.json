@@ -1,0 +1,1128 @@
+{
+  "prowlarr_url": "http://prowlarr:9696",
+  "trigger_indexer_sync": true,
+  "refresh_health_after_bootstrap": true,
+  "arr_download_handling": {
+    "enabled": true,
+    "enable_completed_download_handling": true,
+    "remove_completed_downloads": true,
+    "remove_failed_downloads": true,
+    "auto_redownload_failed": true
+  },
+  "arr_media_management": {
+    "enabled": true,
+    "copy_using_hardlinks": true,
+    "create_empty_series_folders": true
+  },
+  "arr_quality_upgrade": {
+    "enabled": true,
+    "allow_upgrades": true,
+    "disallow_quality_name_tokens": [
+      "2160",
+      "4k",
+      "uhd",
+      "remux"
+    ],
+    "cutoff_preferred_name_tokens": [
+      "1080"
+    ],
+    "by_app": {
+      "Lidarr": {
+        "enabled": false
+      },
+      "Readarr": {
+        "enabled": false
+      }
+    }
+  },
+  "quality_profiles": {
+    "preferred_names": [
+      "HD-1080p",
+      "HD - 720p/1080p",
+      "HD-720p"
+    ],
+    "by_app": {
+      "Radarr": {
+        "preferred_names": [
+          "HD-1080p",
+          "HD - 720p/1080p",
+          "HD-720p"
+        ]
+      },
+      "Sonarr": {
+        "preferred_names": [
+          "HD-1080p",
+          "HD - 720p/1080p",
+          "HD-720p"
+        ]
+      }
+    }
+  },
+  "arr_discovery_lists": {
+    "enabled": true,
+    "required": false,
+    "trigger_initial_sync": true,
+    "prune_unmanaged": true,
+    "Radarr": [
+      {
+        "name": "TMDb Trending Movies",
+        "implementation": "TMDbPopularImport",
+        "enabled": true,
+        "enable_auto": true,
+        "monitor": "movieOnly",
+        "minimum_availability": "released",
+        "search_on_add": true,
+        "field_overrides": {
+          "tMDbListType": 1
+        }
+      },
+      {
+        "name": "TMDb Popular Movies",
+        "implementation": "TMDbPopularImport",
+        "enabled": true,
+        "enable_auto": true,
+        "monitor": "movieOnly",
+        "minimum_availability": "released",
+        "search_on_add": true,
+        "field_overrides": {
+          "tMDbListType": 2
+        }
+      },
+      {
+        "name": "TMDb Top Rated Movies",
+        "implementation": "TMDbPopularImport",
+        "enabled": true,
+        "enable_auto": true,
+        "monitor": "movieOnly",
+        "minimum_availability": "released",
+        "search_on_add": true,
+        "field_overrides": {
+          "tMDbListType": 3
+        }
+      },
+      {
+        "name": "TMDb Upcoming Movies",
+        "implementation": "TMDbPopularImport",
+        "enabled": true,
+        "enable_auto": true,
+        "monitor": "movieOnly",
+        "minimum_availability": "released",
+        "search_on_add": true,
+        "field_overrides": {
+          "tMDbListType": 4
+        }
+      }
+    ],
+    "Sonarr": [
+      {
+        "name": "Trakt Trending Shows",
+        "implementation": "TraktPopularImport",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "search_for_missing_episodes": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "series_type": "standard",
+        "season_folder": true,
+        "skip_if_auth_required": true,
+        "field_overrides": {
+          "traktListType": 0,
+          "limit": 10,
+          "accessToken": "${TRAKT_ACCESS_TOKEN}",
+          "refreshToken": "${TRAKT_REFRESH_TOKEN}",
+          "authUser": "${TRAKT_USERNAME}"
+        }
+      },
+      {
+        "name": "Trakt Popular Shows",
+        "implementation": "TraktPopularImport",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "search_for_missing_episodes": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "series_type": "standard",
+        "season_folder": true,
+        "skip_if_auth_required": true,
+        "field_overrides": {
+          "traktListType": 1,
+          "limit": 10,
+          "accessToken": "${TRAKT_ACCESS_TOKEN}",
+          "refreshToken": "${TRAKT_REFRESH_TOKEN}",
+          "authUser": "${TRAKT_USERNAME}"
+        }
+      },
+      {
+        "name": "Trakt Anticipated Shows",
+        "implementation": "TraktPopularImport",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "search_for_missing_episodes": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "series_type": "standard",
+        "season_folder": true,
+        "skip_if_auth_required": true,
+        "field_overrides": {
+          "traktListType": 2,
+          "limit": 10,
+          "accessToken": "${TRAKT_ACCESS_TOKEN}",
+          "refreshToken": "${TRAKT_REFRESH_TOKEN}",
+          "authUser": "${TRAKT_USERNAME}"
+        }
+      },
+      {
+        "name": "IMDb Top Rated TV",
+        "implementation": "ImdbListImport",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "search_for_missing_episodes": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "series_type": "standard",
+        "season_folder": true,
+        "field_overrides": {
+          "listId": "ls056296799"
+        }
+      },
+      {
+        "name": "IMDb Popular TV",
+        "implementation": "ImdbListImport",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "search_for_missing_episodes": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "series_type": "standard",
+        "season_folder": true,
+        "field_overrides": {
+          "listId": "ls009668711"
+        }
+      },
+      {
+        "name": "IMDb Trending TV",
+        "implementation": "ImdbListImport",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "search_for_missing_episodes": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "series_type": "standard",
+        "season_folder": true,
+        "field_overrides": {
+          "listId": "ls095964455"
+        }
+      }
+    ],
+    "Lidarr": [
+      {
+        "name": "Last.fm Top Rock Artists (Top 10)",
+        "implementation": "LastFmTag",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "should_search": true,
+        "field_overrides": {
+          "tagId": "rock",
+          "count": 10
+        }
+      },
+      {
+        "name": "Last.fm Top Pop Artists (Top 10)",
+        "implementation": "LastFmTag",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "should_search": true,
+        "field_overrides": {
+          "tagId": "pop",
+          "count": 10
+        }
+      },
+      {
+        "name": "Last.fm Top Hip-Hop Artists (Top 10)",
+        "implementation": "LastFmTag",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "should_search": true,
+        "field_overrides": {
+          "tagId": "hip-hop",
+          "count": 10
+        }
+      },
+      {
+        "name": "Last.fm Top Electronic Artists (Top 10)",
+        "implementation": "LastFmTag",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "should_search": true,
+        "field_overrides": {
+          "tagId": "electronic",
+          "count": 10
+        }
+      }
+    ],
+    "Readarr": [
+      {
+        "name": "Goodreads Popular Science Fiction",
+        "implementation": "GoodreadsListImportList",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "should_search": true,
+        "min_refresh_interval": "168:00:00",
+        "field_overrides": {
+          "listId": "2681"
+        }
+      },
+      {
+        "name": "Goodreads Readarr Top 100",
+        "implementation": "GoodreadsListImportList",
+        "enabled": true,
+        "enable_automatic_add": true,
+        "should_monitor": "all",
+        "monitor_new_items": "all",
+        "should_search": true,
+        "min_refresh_interval": "168:00:00",
+        "field_overrides": {
+          "listId": "184476"
+        }
+      }
+    ]
+  },
+  "readarr": {
+    "metadata_source": "https://api.bookinfo.pro",
+    "metadata_source_required": false
+  },
+  "prowlarr_auto_add_tested_indexers": true,
+  "prowlarr_indexers": [],
+  "download_clients": {
+    "qbittorrent": {
+      "url": "http://qbittorrent:8080",
+      "host": "qbittorrent",
+      "port": 8080,
+      "implementation": "QBittorrent",
+      "name": "qBittorrent",
+      "configure_arr_clients": true,
+      "set_categories_in_qbit": true,
+      "login_required": true,
+      "auth_bypass": {
+        "localhost": true,
+        "whitelist_enabled": true,
+        "whitelist_subnets": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "127.0.0.1/32",
+          "::1/128"
+        ],
+        "allow_open_world": false
+      },
+      "default_save_path": "/data/torrents/completed",
+      "temp_path": "/data/torrents/incomplete",
+      "temp_path_enabled": true,
+      "auto_tmm_enabled": true,
+      "seeding_policy": {
+        "enabled": true,
+        "max_ratio": 1.2,
+        "max_seeding_time_minutes": 1440,
+        "remove_on_limit_reached": false
+      },
+      "queue_guardrails": {
+        "enabled": true,
+        "dry_run": false,
+        "default_max_queued": 35,
+        "max_queued_by_category": {
+          "tv": 50,
+          "movies": 35,
+          "music": 10,
+          "books": 8
+        },
+        "include_uncategorized": false,
+        "count_states": [
+          "downloading",
+          "queuedDL",
+          "stalledDL",
+          "metaDL",
+          "forcedDL",
+          "checkingDL",
+          "pausedDL",
+          "allocating",
+          "checkingResumeData"
+        ],
+        "prune_when_over_limit": true,
+        "prune_states": [
+          "queuedDL",
+          "stalledDL",
+          "metaDL",
+          "pausedDL",
+          "error",
+          "missingFiles"
+        ],
+        "over_limit_max_delete_per_category": 15,
+        "over_limit_delete_files": true,
+        "stale_prune": {
+          "enabled": true,
+          "max_age_hours": 168,
+          "max_stalled_hours": 24,
+          "max_eta_seconds": 1209600,
+          "min_progress": 0.98,
+          "max_download_speed_bps": 32768,
+          "states": [
+            "downloading",
+            "queuedDL",
+            "stalledDL",
+            "metaDL",
+            "pausedDL",
+            "error",
+            "missingFiles"
+          ],
+          "max_delete_per_run": 25,
+          "delete_files": true
+        }
+      },
+      "categories": {
+        "Sonarr": "tv",
+        "Radarr": "movies",
+        "Lidarr": "music",
+        "Readarr": "books"
+      },
+      "completed_paths": {
+        "tv": "/data/torrents/completed/tv",
+        "movies": "/data/torrents/completed/movies",
+        "music": "/data/torrents/completed/music",
+        "books": "/data/torrents/completed/books"
+      }
+    },
+    "sabnzbd": {
+      "url": "http://sabnzbd:8080",
+      "host": "sabnzbd",
+      "port": 8080,
+      "implementation": "Sabnzbd",
+      "name": "SABnzbd",
+      "configure_arr_clients": true,
+      "set_categories_in_sab": true,
+      "incomplete_dir": "/data/usenet/incomplete",
+      "complete_dir": "/data/usenet/completed",
+      "auto_browser": false,
+      "api_key_env": "SABNZBD_API_KEY",
+      "api_key_config_path": "sabnzbd/sabnzbd.ini",
+      "api_key_required": false,
+      "remote_path_mappings": [
+        {
+          "host": "sabnzbd",
+          "remote_path": "/config/Downloads/complete",
+          "local_path": "/data/usenet/completed"
+        },
+        {
+          "host": "sabnzbd",
+          "remote_path": "Downloads/complete",
+          "local_path": "/data/usenet/completed"
+        }
+      ],
+      "categories": {
+        "Sonarr": "tv",
+        "Radarr": "movies",
+        "Lidarr": "music",
+        "Readarr": "books"
+      },
+      "completed_paths": {
+        "tv": "/data/usenet/completed/tv",
+        "movies": "/data/usenet/completed/movies",
+        "music": "/data/usenet/completed/music",
+        "books": "/data/usenet/completed/books"
+      }
+    }
+  },
+  "app_auth": {
+    "enabled": true,
+    "method": "Forms",
+    "required": "Enabled",
+    "fail_on_error": false,
+    "username_env": "STACK_ADMIN_USERNAME",
+    "password_env": "STACK_ADMIN_PASSWORD",
+    "include": [
+      "Sonarr",
+      "Radarr",
+      "Lidarr",
+      "Readarr",
+      "Prowlarr"
+    ]
+  },
+  "homepage": {
+    "enabled": true,
+    "required": false,
+    "scheme": "http",
+    "services_relative_path": "homepage/services.yaml",
+    "hosts": [
+      "homepage.local",
+      "jellyfin.local",
+      "jellyseerr.local",
+      "sonarr.local",
+      "radarr.local",
+      "lidarr.local",
+      "readarr.local",
+      "bazarr.local",
+      "prowlarr.local",
+      "qbittorrent.local",
+      "sabnzbd.local",
+      "tautulli.local"
+    ],
+    "device_onboarding": {
+      "enabled": true,
+      "qr_size": 220,
+      "jellyfin_url": "http://jellyfin.local",
+      "jellyfin_short_link": "jellyfin.local",
+      "jellyseerr_url": "http://jellyseerr.local",
+      "jellyseerr_short_link": "jellyseerr.local"
+    }
+  },
+  "bazarr": {
+    "enabled": true,
+    "required": false,
+    "url": "http://bazarr:6767",
+    "config_relative_path": "bazarr/config/config.yaml",
+    "subtitle_defaults": {
+      "enabled": true,
+      "providers": [
+        "opensubtitlescom",
+        "podnapisi",
+        "addic7ed"
+      ],
+      "general": {
+        "serie_default_enabled": true,
+        "movie_default_enabled": true,
+        "single_language": false,
+        "minimum_score": 70,
+        "minimum_score_movie": 70,
+        "use_embedded_subs": true,
+        "ignore_pgs_subs": true,
+        "ignore_vobsub_subs": true
+      }
+    }
+  },
+  "arr_apps": [
+    {
+      "name": "Sonarr",
+      "implementation": "Sonarr",
+      "url": "http://sonarr:8989",
+      "root_folder": "/media/tv",
+      "quality_profile_preferred_names": [
+        "HD-1080p",
+        "HD - 720p/1080p",
+        "HD-720p"
+      ]
+    },
+    {
+      "name": "Radarr",
+      "implementation": "Radarr",
+      "url": "http://radarr:7878",
+      "root_folder": "/media/movies",
+      "quality_profile_preferred_names": [
+        "HD-1080p",
+        "HD - 720p/1080p",
+        "HD-720p"
+      ]
+    },
+    {
+      "name": "Lidarr",
+      "implementation": "Lidarr",
+      "url": "http://lidarr:8686",
+      "root_folder": "/media/music"
+    },
+    {
+      "name": "Readarr",
+      "implementation": "Readarr",
+      "url": "http://readarr:8787",
+      "root_folder": "/media/books"
+    }
+  ],
+  "jellyseerr": {
+    "enabled": true,
+    "required": false,
+    "url": "http://jellyseerr:5055",
+    "enforce_settings_file": true,
+    "set_media_server_type_jellyfin": true,
+    "radarr": {
+      "enabled": true,
+      "name": "Radarr",
+      "quality_profile_preferred_names": [
+        "HD-1080p",
+        "HD - 720p/1080p",
+        "HD-720p"
+      ],
+      "is4k": false,
+      "is_default": true,
+      "sync_enabled": true,
+      "prevent_search": false,
+      "minimum_availability": "released",
+      "tag_requests": false,
+      "tags": []
+    },
+    "sonarr": {
+      "enabled": true,
+      "name": "Sonarr",
+      "quality_profile_preferred_names": [
+        "HD-1080p",
+        "HD - 720p/1080p",
+        "HD-720p"
+      ],
+      "is4k": false,
+      "is_default": true,
+      "sync_enabled": true,
+      "prevent_search": false,
+      "enable_season_folders": true,
+      "series_type": "standard",
+      "anime_series_type": "anime",
+      "monitor_new_items": "all",
+      "tag_requests": false,
+      "tags": [],
+      "anime_tags": []
+    },
+    "jellyfin": {
+      "configure": true,
+      "url": "http://jellyfin:8096",
+      "external_url": "http://jellyfin.local",
+      "api_key_env": "JELLYFIN_API_KEY",
+      "auto_discover_api_key_from_db": true,
+      "api_key_db_path": "jellyfin/data/jellyfin.db",
+      "api_key_name_preference": [
+        "Jellyfin",
+        "Jellyseerr"
+      ]
+    }
+  },
+  "jellyfin_libraries": {
+    "enabled": true,
+    "required": false,
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "tuning": {
+      "enabled": true,
+      "preferred_metadata_language": "en",
+      "metadata_country_code": "US",
+      "metadata_provider_priority": [
+        "TheMovieDb",
+        "The Open Movie Database",
+        "Fanart",
+        "TheAudioDb",
+        "MusicBrainz",
+        "Open Library"
+      ],
+      "image_provider_priority": [
+        "TheMovieDb",
+        "Fanart",
+        "The Open Movie Database",
+        "TheAudioDb",
+        "MusicBrainz",
+        "Embedded Image Extractor",
+        "Screen Grabber"
+      ],
+      "artwork_profile": {
+        "Backdrop": {
+          "limit": 3,
+          "min_width": 1280
+        },
+        "Logo": {
+          "limit": 1,
+          "min_width": 0
+        },
+        "Primary": {
+          "limit": 1,
+          "min_width": 0
+        },
+        "Thumb": {
+          "limit": 1,
+          "min_width": 0
+        }
+      },
+      "enable_realtime_monitor": true,
+      "enable_preview_thumbnails_movies": true,
+      "enable_preview_thumbnails_tv": true,
+      "scan_all_libraries_after_reconcile": true
+    },
+    "libraries": [
+      {
+        "name": "Movies",
+        "collection_type": "movies",
+        "paths": [
+          "/media/movies"
+        ]
+      },
+      {
+        "name": "TV Shows",
+        "collection_type": "tvshows",
+        "paths": [
+          "/media/tv"
+        ]
+      },
+      {
+        "name": "Music",
+        "collection_type": "music",
+        "paths": [
+          "/media/music"
+        ]
+      },
+      {
+        "name": "Books",
+        "collection_type": "books",
+        "paths": [
+          "/media/books"
+        ]
+      }
+    ]
+  },
+  "jellyfin_livetv": {
+    "enabled": true,
+    "required": false,
+    "refresh_on_bootstrap": true,
+    "cleanup_duplicates": true,
+    "recreate_managed_guides": true,
+    "prune_unmanaged_tuners": true,
+    "prune_unmanaged_guides": true,
+    "fallback_enable_all_tuners_when_mapping_missing": true,
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "tuners": [
+      {
+        "name": "IPTV-ORG US",
+        "type": "m3u",
+        "url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+        "normalize_tvg_id_suffix": true,
+        "filter_to_guide_channels": true,
+        "materialized_output_path": "jellyfin/livetv-tuners/iptv-org-us-epg.m3u",
+        "allow_hw_transcoding": true
+      }
+    ],
+    "guides": [
+      {
+        "type": "xmltv",
+        "path": "https://iptv-epg.org/files/epg-us.xml",
+        "enable_all_tuners": false,
+        "enabled_tuners": [
+          "tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u"
+        ]
+      }
+    ]
+  },
+  "jellyfin_prewarm": {
+    "enabled": true,
+    "required": false,
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "refresh_library": true,
+    "refresh_channels": true,
+    "refresh_guide": true,
+    "library_refresh_query": {
+      "metadataRefreshMode": "FullRefresh",
+      "imageRefreshMode": "FullRefresh",
+      "replaceAllMetadata": "false",
+      "replaceAllImages": "false"
+    }
+  },
+  "jellyfin_plugins": {
+    "enabled": true,
+    "required": false,
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "repositories": [
+      {
+        "name": "Intro Skipper",
+        "url": "https://intro-skipper.org/manifest.json",
+        "enabled": true
+      }
+    ],
+    "install": [
+      {
+        "name": "Intro Skipper",
+        "repository_url": "https://intro-skipper.org/manifest.json"
+      },
+      {
+        "name": "TMDb Box Sets"
+      },
+      {
+        "name": "Fanart"
+      },
+      {
+        "name": "Artwork"
+      },
+      {
+        "name": "Open Subtitles"
+      },
+      {
+        "name": "Trakt"
+      }
+    ]
+  },
+  "jellyfin_playback": {
+    "enabled": true,
+    "required": false,
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "auto_discover_user_id": true,
+    "preferred_username_env": "STACK_ADMIN_USERNAME",
+    "check_intro_skip_plugin": true,
+    "user_defaults": {
+      "AudioLanguagePreference": "eng",
+      "PlayDefaultAudioTrack": true,
+      "SubtitleLanguagePreference": "eng",
+      "SubtitleMode": "Smart",
+      "RememberAudioSelections": true,
+      "RememberSubtitleSelections": true,
+      "EnableNextEpisodeAutoPlay": true,
+      "DisplayCollectionsView": false,
+      "HidePlayedInLatest": false
+    },
+    "server_defaults": {
+      "PreferredMetadataLanguage": "en",
+      "MetadataCountryCode": "US",
+      "UICulture": "en-US",
+      "ImageSavingConvention": "Compatible",
+      "ChapterImageResolution": "P720",
+      "EnableGroupingMoviesIntoCollections": true,
+      "EnableGroupingShowsIntoCollections": true,
+      "EnableExternalContentInSuggestions": true,
+      "TrickplayOptions": {
+        "EnableHwAcceleration": false,
+        "EnableHwEncoding": false,
+        "EnableKeyFrameOnlyExtraction": false,
+        "ScanBehavior": "NonBlocking",
+        "ProcessPriority": "BelowNormal",
+        "Interval": 10000,
+        "WidthResolutions": [
+          320
+        ],
+        "TileWidth": 10,
+        "TileHeight": 10,
+        "Qscale": 4,
+        "JpegQuality": 90,
+        "ProcessThreads": 1
+      }
+    },
+    "display_preferences": {
+      "enabled": true,
+      "client": "emby",
+      "preference_ids": [
+        "usersettings",
+        "home",
+        "movies",
+        "tv",
+        "music",
+        "books",
+        "livetv"
+      ],
+      "show_backdrop": true,
+      "custom_prefs": {
+        "enableNextVideoInfoOverlay": true,
+        "enableBackdrops": true,
+        "enableThemeVideos": true
+      },
+      "update_existing_custom_prefs_only": false
+    }
+  },
+  "jellyfin_home_rails": {
+    "enabled": false,
+    "required": false,
+    "cleanup_collections_when_disabled": true,
+    "cleanup_collection_names": [
+      "Trending",
+      "Top Rated",
+      "New This Week",
+      "Because You Watched",
+      "Trending TV",
+      "Top Music",
+      "Top Books"
+    ],
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "auto_discover_user_id": true,
+    "preferred_username_env": "STACK_ADMIN_USERNAME",
+    "max_items_per_rail": 40,
+    "rails": [
+      {
+        "name": "Trending",
+        "path": "/Items",
+        "query": {
+          "includeItemTypes": "Movie",
+          "recursive": "true",
+          "sortBy": "PlayCount,DatePlayed",
+          "sortOrder": "Descending"
+        },
+        "allowed_item_types": [
+          "Movie"
+        ],
+        "limit": 40
+      },
+      {
+        "name": "Top Rated",
+        "path": "/Items",
+        "query": {
+          "includeItemTypes": "Movie",
+          "recursive": "true",
+          "sortBy": "CommunityRating,CriticRating",
+          "sortOrder": "Descending",
+          "minCommunityRating": "7"
+        },
+        "allowed_item_types": [
+          "Movie"
+        ],
+        "limit": 40
+      },
+      {
+        "name": "New This Week",
+        "path": "/Items",
+        "query": {
+          "includeItemTypes": "Movie",
+          "recursive": "true",
+          "sortBy": "DateCreated,PremiereDate",
+          "sortOrder": "Descending"
+        },
+        "allowed_item_types": [
+          "Movie"
+        ],
+        "rolling_premiere_days": 7,
+        "limit": 40
+      },
+      {
+        "name": "Because You Watched",
+        "path": "/Items/Suggestions",
+        "query": {
+          "mediaType": "Video",
+          "type": "Movie"
+        },
+        "allowed_item_types": [
+          "Movie"
+        ],
+        "fallback_query": {
+          "path": "/Items",
+          "query": {
+            "includeItemTypes": "Movie",
+            "recursive": "true",
+            "isPlayed": "true",
+            "sortBy": "DatePlayed,CommunityRating",
+            "sortOrder": "Descending"
+          }
+        },
+        "limit": 40
+      },
+      {
+        "name": "Trending TV",
+        "path": "/Items",
+        "query": {
+          "includeItemTypes": "Series",
+          "recursive": "true",
+          "sortBy": "PlayCount,DatePlayed,CommunityRating",
+          "sortOrder": "Descending"
+        },
+        "allowed_item_types": [
+          "Series"
+        ],
+        "limit": 40
+      },
+      {
+        "name": "Top Music",
+        "path": "/Items",
+        "query": {
+          "includeItemTypes": "MusicAlbum",
+          "recursive": "true",
+          "sortBy": "CommunityRating,PlayCount,DatePlayed",
+          "sortOrder": "Descending"
+        },
+        "allowed_item_types": [
+          "MusicAlbum"
+        ],
+        "limit": 30
+      },
+      {
+        "name": "Top Books",
+        "path": "/Items",
+        "query": {
+          "includeItemTypes": "Book",
+          "recursive": "true",
+          "sortBy": "CommunityRating,DateCreated",
+          "sortOrder": "Descending"
+        },
+        "allowed_item_types": [
+          "Book"
+        ],
+        "limit": 30
+      }
+    ]
+  },
+  "disk_guardrails": {
+    "enabled": true,
+    "required": false,
+    "monitor_path": "/srv-stack",
+    "max_used_percent": 65,
+    "target_used_percent": 58,
+    "qbit_cleanup": {
+      "enabled": true,
+      "categories": [
+        "tv",
+        "movies",
+        "music",
+        "books"
+      ],
+      "min_completion_age_hours": 36,
+      "min_ratio": 1.0,
+      "min_seeding_time_minutes": 720,
+      "max_delete_per_run": 80,
+      "delete_files": true
+    }
+  },
+  "media_hygiene": {
+    "enabled": true,
+    "required": false,
+    "cleanup_arr_failed_queue": true,
+    "arr_failed_queue_cleanup": {
+      "enabled": true,
+      "failed_status_tokens": [
+        "failed",
+        "error",
+        "importfailed",
+        "warning"
+      ],
+      "remove_from_client": true,
+      "blocklist": true,
+      "max_delete_per_run": 50,
+      "page_size": 250
+    },
+    "qbit_ipfilter": {
+      "enabled": true,
+      "required": false,
+      "url": "https://github.com/DavidMoore/ipfilter/releases/download/lists/ipfilter.dat",
+      "fallback_urls": [],
+      "target_path": "/srv-stack/data/torrents/ipfilter.dat",
+      "mirror_target_paths": [
+        "/srv-host-stack/data/torrents/ipfilter.dat"
+      ],
+      "qbit_filter_path": "/data/torrents/ipfilter.dat",
+      "state_path": "/srv-stack/data/torrents/.ipfilter-refresh-state.json",
+      "min_refresh_interval_hours": 24,
+      "download_timeout_seconds": 30,
+      "min_valid_bytes": 1024,
+      "apply_existing_on_download_failure": true
+    },
+    "qbit_duplicate_prune": {
+      "enabled": false,
+      "dry_run": false,
+      "match_on_hash": true,
+      "match_on_name_size": true,
+      "include_category_in_key": true,
+      "categories": [
+        "tv",
+        "movies",
+        "music",
+        "books"
+      ],
+      "min_completion_age_hours": 24,
+      "max_delete_per_run": 30,
+      "keep": "oldest",
+      "delete_files": false
+    },
+    "filesystem": {
+      "enabled": true,
+      "roots": [
+        "/srv-stack/data/torrents/incomplete",
+        "/srv-stack/data/torrents/completed",
+        "/srv-stack/data/usenet/incomplete",
+        "/srv-stack/data/usenet/completed"
+      ],
+      "min_file_age_hours": 24,
+      "remove_zero_byte_files": true,
+      "temp_extensions": [
+        ".part",
+        ".tmp",
+        ".temp",
+        ".nzb",
+        ".!qb"
+      ],
+      "remove_empty_dirs": true,
+      "dedupe": {
+        "enabled": true,
+        "dry_run": false,
+        "max_delete_per_run": 20,
+        "min_size_bytes": 104857600
+      }
+    }
+  },
+  "maintainerr": {
+    "enabled": true,
+    "required": false,
+    "policy_relative_path": "maintainerr/policy.json",
+    "policy": {
+      "retention": {
+        "max_disk_used_percent": 65,
+        "target_disk_used_percent": 58,
+        "protect_recently_added_days": 21,
+        "protect_unwatched_days": 30
+      }
+    }
+  },
+  "jellyfin_auto_collections": {
+    "enabled": true,
+    "required": false,
+    "url": "http://jellyfin:8096",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "auto_discover_api_key_from_db": true,
+    "api_key_db_path": "jellyfin/data/jellyfin.db",
+    "api_key_name_preference": [
+      "Jellyfin",
+      "Jellyseerr"
+    ],
+    "auto_discover_user_id": true,
+    "preferred_username_env": "STACK_ADMIN_USERNAME",
+    "timezone": "America/Chicago",
+    "crontab": "0 */6 * * *",
+    "config_relative_path": "jellyfin-auto-collections/config.yaml",
+    "plugins": {
+      "jellyfin_api": {
+        "enabled": false,
+        "list_ids": []
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-jellyfin
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: jellyfin}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-jellyseerr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: jellyseerr}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-prowlarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: prowlarr}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-qbittorrent
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: qbittorrent}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-sonarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: sonarr}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-radarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: radarr}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-lidarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: lidarr}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-readarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: readarr}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-bazarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: bazarr}

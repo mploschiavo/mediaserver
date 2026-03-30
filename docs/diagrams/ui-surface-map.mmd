@@ -1,0 +1,17 @@
+flowchart LR
+  HOME[homepage.local\nLanding and onboarding]
+  REQUEST[jellyseerr.local\nRequest UX]
+  PLAY[jellyfin.local\nPlayback UX]
+  OPS[sonarr/radarr/lidarr/readarr/prowlarr\nOperator surface]
+  DL[qbittorrent/sabnzbd\nTransport surface]
+
+  HOME --> REQUEST
+  HOME --> PLAY
+  HOME --> OPS
+  REQUEST --> OPS
+  OPS --> DL
+  OPS --> PLAY
+
+  style HOME fill:#fff2cc,stroke:#946200,stroke-width:2px
+  style REQUEST fill:#ffe0f0,stroke:#8f2f5d,stroke-width:2px
+  style PLAY fill:#dff7ff,stroke:#0b7285,stroke-width:2px

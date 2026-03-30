@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+tests/e2e/playwright/node_modules/
+tests/e2e/playwright/playwright-report/
+tests/e2e/playwright/test-results/
+
+secrets.generated.env

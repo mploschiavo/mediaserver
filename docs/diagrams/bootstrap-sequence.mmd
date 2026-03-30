@@ -1,0 +1,16 @@
+sequenceDiagram
+  participant User
+  participant Script as bootstrap-all.sh / run-bootstrap-job.sh
+  participant Job as media-stack-bootstrap Job
+  participant Apps as Arr + Prowlarr + Jellyseerr + qB
+
+  User->>Script: Run bootstrap
+  Script->>Script: Ensure qB secret/credentials
+  Script->>Job: Apply ConfigMaps + launch job
+  Job->>Apps: Wait for services
+  Job->>Apps: Configure root folders
+  Job->>Apps: Configure Prowlarr app links
+  Job->>Apps: Configure qB categories/download clients
+  Job->>Apps: Configure Jellyseerr Sonarr/Radarr
+  Job->>Apps: Trigger Prowlarr indexer sync
+  Script->>User: Show logs + completion

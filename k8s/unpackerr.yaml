@@ -1,0 +1,50 @@
+# Image references are digest-pinned as of 2026-03-28.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unpackerr
+  namespace: media-stack
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: unpackerr}
+  template:
+    metadata:
+      labels: {app: unpackerr}
+    spec:
+      containers:
+        - name: unpackerr
+          image: ghcr.io/unpackerr/unpackerr@sha256:89e13608521ece21dd300c39229fd595a55fbf4b8152771af5670a7455b5c747
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - {name: TZ, value: "America/Chicago"}
+            - {name: UN_SONARR_0_URL, value: "http://sonarr:8989"}
+            - {name: UN_RADARR_0_URL, value: "http://radarr:7878"}
+            - {name: UN_LIDARR_0_URL, value: "http://lidarr:8686"}
+            - {name: UN_READARR_0_URL, value: "http://readarr:8787"}
+            - name: UN_SONARR_0_API_KEY
+              valueFrom: {secretKeyRef: {name: media-stack-secrets, key: UNPACKERR_SONARR_API_KEY}}
+            - name: UN_RADARR_0_API_KEY
+              valueFrom: {secretKeyRef: {name: media-stack-secrets, key: UNPACKERR_RADARR_API_KEY}}
+            - name: UN_LIDARR_0_API_KEY
+              valueFrom: {secretKeyRef: {name: media-stack-secrets, key: UNPACKERR_LIDARR_API_KEY}}
+            - name: UN_READARR_0_API_KEY
+              valueFrom: {secretKeyRef: {name: media-stack-secrets, key: UNPACKERR_READARR_API_KEY}}
+            - {name: UN_SONARR_0_PATHS_0, value: "/data/torrents/completed/tv"}
+            - {name: UN_RADARR_0_PATHS_0, value: "/data/torrents/completed/movies"}
+            - {name: UN_LIDARR_0_PATHS_0, value: "/data/torrents/completed/music"}
+            - {name: UN_READARR_0_PATHS_0, value: "/data/torrents/completed/books"}
+          volumeMounts:
+            - {name: torrents, mountPath: /data/torrents}
+            - {name: usenet, mountPath: /data/usenet}
+      volumes:
+        - name: torrents
+          persistentVolumeClaim: {claimName: media-stack-data-torrents}
+        - name: usenet
+          persistentVolumeClaim: {claimName: media-stack-data-usenet}
