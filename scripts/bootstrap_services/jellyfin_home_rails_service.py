@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from urllib import parse
+
+from bootstrap_lib.defaults import load_json_default
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -38,63 +41,20 @@ class JellyfinHomeRailsService:
     deps: JellyfinHomeRailsDependencies
 
     def default_rails(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "name": "Trending",
-                "path": "/Items",
-                "query": {
-                    "includeItemTypes": "Movie",
-                    "recursive": "true",
-                    "sortBy": "PlayCount,DatePlayed",
-                    "sortOrder": "Descending",
-                },
-                "limit": 40,
-            },
-            {
-                "name": "Top Rated",
-                "path": "/Items",
-                "query": {
-                    "includeItemTypes": "Movie",
-                    "recursive": "true",
-                    "sortBy": "CommunityRating,CriticRating",
-                    "sortOrder": "Descending",
-                    "minCommunityRating": "7",
-                },
-                "limit": 40,
-            },
-            {
-                "name": "New This Week",
-                "path": "/Items",
-                "query": {
-                    "includeItemTypes": "Movie",
-                    "recursive": "true",
-                    "sortBy": "DateCreated,PremiereDate",
-                    "sortOrder": "Descending",
-                },
-                "rolling_premiere_days": 7,
-                "limit": 40,
-            },
-            {
-                "name": "Because You Watched",
-                "path": "/Items/Suggestions",
-                "query": {
-                    "mediaType": "Video",
-                    "type": "Movie",
-                },
-                "allowed_item_types": ["Movie"],
-                "fallback_query": {
-                    "path": "/Items",
-                    "query": {
-                        "includeItemTypes": "Movie",
-                        "recursive": "true",
-                        "isPlayed": "true",
-                        "sortBy": "DatePlayed,CommunityRating",
-                        "sortOrder": "Descending",
-                    },
-                },
-                "limit": 40,
-            },
-        ]
+        defaults_dir = Path(__file__).resolve().parents[1] / "bootstrap_defaults"
+        loaded = load_json_default(
+            defaults_dir,
+            "jellyfin_home_rails.json",
+            [],
+            log=self.deps.log,
+        )
+        if isinstance(loaded, list):
+            return loaded
+        self.deps.log(
+            "[WARN] jellyfin_home_rails.json defaults must be a list. "
+            "Using empty defaults."
+        )
+        return []
 
     def find_collection_by_name(
         self,

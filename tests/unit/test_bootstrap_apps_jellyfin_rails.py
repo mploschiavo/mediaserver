@@ -17,6 +17,12 @@ SPEC.loader.exec_module(MODULE)
 
 
 class JellyfinHomeRailsTests(unittest.TestCase):
+    def test_default_rails_loaded(self):
+        rails = MODULE.default_jellyfin_home_rails()
+        names = {str(item.get("name")) for item in rails if isinstance(item, dict)}
+        self.assertIn("Trending", names)
+        self.assertIn("Top Rated", names)
+
     def test_run_jellyfin_rail_query_infers_allowed_types_from_include_item_types(self):
         rail_cfg = {
             "name": "Trending",

@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Trending",
+    "path": "/Items",
+    "query": {
+      "includeItemTypes": "Movie",
+      "recursive": "true",
+      "sortBy": "PlayCount,DatePlayed",
+      "sortOrder": "Descending"
+    },
+    "limit": 40
+  },
+  {
+    "name": "Top Rated",
+    "path": "/Items",
+    "query": {
+      "includeItemTypes": "Movie",
+      "recursive": "true",
+      "sortBy": "CommunityRating,CriticRating",
+      "sortOrder": "Descending",
+      "minCommunityRating": "7"
+    },
+    "limit": 40
+  },
+  {
+    "name": "New This Week",
+    "path": "/Items",
+    "query": {
+      "includeItemTypes": "Movie",
+      "recursive": "true",
+      "sortBy": "DateCreated,PremiereDate",
+      "sortOrder": "Descending"
+    },
+    "rolling_premiere_days": 7,
+    "limit": 40
+  },
+  {
+    "name": "Because You Watched",
+    "path": "/Items/Suggestions",
+    "query": {
+      "mediaType": "Video",
+      "type": "Movie"
+    },
+    "allowed_item_types": ["Movie"],
+    "fallback_query": {
+      "path": "/Items",
+      "query": {
+        "includeItemTypes": "Movie",
+        "recursive": "true",
+        "isPlayed": "true",
+        "sortBy": "DatePlayed,CommunityRating",
+        "sortOrder": "Descending"
+      }
+    },
+    "limit": 40
+  }
+]

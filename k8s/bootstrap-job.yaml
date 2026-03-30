@@ -194,6 +194,12 @@ spec:
                 path: bootstrap_lib/bazarr.py
               - key: bootstrap_lib__jellyfin.py
                 path: bootstrap_lib/jellyfin.py
+              - key: bootstrap_lib__defaults.py
+                path: bootstrap_lib/defaults.py
+              - key: bootstrap_defaults__maintainerr_policy.json
+                path: bootstrap_defaults/maintainerr_policy.json
+              - key: bootstrap_defaults__jellyfin_home_rails.json
+                path: bootstrap_defaults/jellyfin_home_rails.json
               - key: bootstrap_services__init__.py
                 path: bootstrap_services/__init__.py
               - key: bootstrap_services__arr_service.py

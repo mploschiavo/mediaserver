@@ -18,6 +18,7 @@ from bootstrap_lib.bazarr import apply_scalar_updates as _lib_bazarr_apply_scala
 from bootstrap_lib.common import (
     bool_cfg as _lib_bool_cfg,
 )
+from bootstrap_lib.defaults import load_json_default as _lib_load_json_default
 from bootstrap_lib.common import (
     coerce_list as _lib_coerce_list,
 )
@@ -2414,6 +2415,18 @@ def env_truthy(name, default=False):
     return _lib_env_truthy(name, default=default)
 
 
+BOOTSTRAP_DEFAULTS_DIR = Path(__file__).resolve().parent / "bootstrap_defaults"
+
+
+def load_bootstrap_default_json(filename, fallback):
+    return _lib_load_json_default(
+        BOOTSTRAP_DEFAULTS_DIR,
+        filename,
+        fallback,
+        log=log,
+    )
+
+
 def field_map(field_list):
     out = {}
     for item in field_list or []:
@@ -3410,36 +3423,14 @@ def ensure_maintainerr_policy(cfg, config_root):
     if not bool_cfg(maintainerr_cfg, "enabled", False):
         return
 
-    default_policy = {
-        "version": 1,
-        "retention": {
-            "max_disk_used_percent": 65,
-            "target_disk_used_percent": 58,
-            "protect_recently_added_days": 21,
-            "protect_unwatched_days": 30,
-            "minimum_rating_to_keep": 6.5,
+    default_policy = load_bootstrap_default_json(
+        "maintainerr_policy.json",
+        {
+            "version": 1,
+            "retention": {},
+            "rules": [],
         },
-        "rules": [
-            {
-                "name": "Purge watched movies after 120 days",
-                "libraries": ["Movies"],
-                "conditions": {"watched": True, "not_watched_for_days": 120},
-                "actions": {"delete_item": True},
-            },
-            {
-                "name": "Purge watched episodes after 45 days",
-                "libraries": ["TV Shows"],
-                "conditions": {"watched": True, "not_watched_for_days": 45},
-                "actions": {"delete_item": True},
-            },
-            {
-                "name": "Keep top-rated media",
-                "libraries": ["Movies", "TV Shows"],
-                "conditions": {"community_rating_gte": 7.5},
-                "actions": {"protect_item": True},
-            },
-        ],
-    }
+    )
     desired = deep_merge_objects(default_policy, maintainerr_cfg.get("policy") or {})
 
     relative_path = str(

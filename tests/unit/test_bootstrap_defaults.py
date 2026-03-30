@@ -1,0 +1,40 @@
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from scripts.bootstrap_lib.defaults import load_json_default
+
+
+class BootstrapDefaultsTests(unittest.TestCase):
+    def test_load_json_default_returns_fallback_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            defaults_dir = Path(tmp)
+            fallback = {"enabled": True}
+            loaded = load_json_default(defaults_dir, "missing.json", fallback)
+            self.assertEqual(loaded, fallback)
+            self.assertIsNot(loaded, fallback)
+
+    def test_load_json_default_reads_json_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            defaults_dir = Path(tmp)
+            target = defaults_dir / "sample.json"
+            target.write_text(json.dumps({"name": "demo", "count": 3}), encoding="utf-8")
+            loaded = load_json_default(defaults_dir, "sample.json", {"name": "fallback"})
+            self.assertEqual(loaded, {"name": "demo", "count": 3})
+
+    def test_repo_maintainerr_default_is_valid(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        defaults_dir = repo_root / "scripts" / "bootstrap_defaults"
+        loaded = load_json_default(defaults_dir, "maintainerr_policy.json", {})
+        self.assertIsInstance(loaded, dict)
+        self.assertEqual(loaded.get("version"), 1)
+        self.assertIsInstance(loaded.get("rules"), list)
+
+
+if __name__ == "__main__":
+    unittest.main()
