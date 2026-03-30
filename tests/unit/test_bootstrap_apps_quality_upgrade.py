@@ -45,9 +45,11 @@ class ArrQualityUpgradePolicyTests(unittest.TestCase):
             captured["payload"] = payload
             return 200, {}, ""
 
-        with mock.patch.object(MODULE, "resolve_arr_quality_preferences", return_value=(None, [])), mock.patch.object(
-            MODULE, "get_arr_quality_profile", return_value=selected_profile
-        ), mock.patch.object(MODULE, "http_request", side_effect=fake_http_request):
+        with (
+            mock.patch.object(MODULE, "resolve_arr_quality_preferences", return_value=(None, [])),
+            mock.patch.object(MODULE, "get_arr_quality_profile", return_value=selected_profile),
+            mock.patch.object(MODULE, "http_request", side_effect=fake_http_request),
+        ):
             MODULE.ensure_arr_quality_upgrade_policy(
                 cfg,
                 app_cfg,
@@ -85,9 +87,11 @@ class ArrQualityUpgradePolicyTests(unittest.TestCase):
             ],
         }
 
-        with mock.patch.object(MODULE, "resolve_arr_quality_preferences", return_value=(None, [])), mock.patch.object(
-            MODULE, "get_arr_quality_profile", return_value=selected_profile
-        ), mock.patch.object(MODULE, "http_request") as request_mock:
+        with (
+            mock.patch.object(MODULE, "resolve_arr_quality_preferences", return_value=(None, [])),
+            mock.patch.object(MODULE, "get_arr_quality_profile", return_value=selected_profile),
+            mock.patch.object(MODULE, "http_request") as request_mock,
+        ):
             MODULE.ensure_arr_quality_upgrade_policy(
                 cfg,
                 app_cfg,

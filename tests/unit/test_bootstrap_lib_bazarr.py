@@ -1,13 +1,11 @@
-import unittest
-
-from pathlib import Path
 import sys
+import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_lib.bazarr import apply_scalar_updates  # noqa: E402
-
 
 SAMPLE = """---
 general:

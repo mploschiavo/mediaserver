@@ -40,9 +40,7 @@ def basic_checks(cfg):
                 continue
             for required in ("name", "implementation", "url", "root_folder"):
                 if not str(app.get(required) or "").strip():
-                    errors.append(
-                        f"$.arr_apps[{idx}].{required}: required non-empty string"
-                    )
+                    errors.append(f"$.arr_apps[{idx}].{required}: required non-empty string")
 
     clients = cfg.get("download_clients")
     if clients is not None and not isinstance(clients, dict):
@@ -93,9 +91,7 @@ def main() -> int:
                 path = format_path(list(err.path))
                 print(f"  - {path}: {err.message}", file=sys.stderr)
             return 1
-        print(
-            f"[OK] Bootstrap config is schema-valid: {config_path} (schema={schema_path})"
-        )
+        print(f"[OK] Bootstrap config is schema-valid: {config_path} (schema={schema_path})")
         return 0
     except ModuleNotFoundError:
         fallback_errors = basic_checks(cfg)

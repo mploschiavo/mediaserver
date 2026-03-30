@@ -78,7 +78,9 @@ class DownloadClientTests(unittest.TestCase):
                 client_auth=client_auth,
             )
 
-        put_calls = [item for item in calls if item[0] == "PUT" and item[1].endswith("/downloadclient/7")]
+        put_calls = [
+            item for item in calls if item[0] == "PUT" and item[1].endswith("/downloadclient/7")
+        ]
         self.assertEqual(len(put_calls), 1)
         payload = put_calls[0][2]
         self.assertEqual(payload.get("priority"), 1)
@@ -120,9 +122,9 @@ class DownloadClientTests(unittest.TestCase):
             }
         ]
         validation_body = (
-            "[{\"propertyName\":\"Priority\","
-            "\"errorMessage\":\"'Priority' must be between 1 and 50. You entered 0.\","
-            "\"errorCode\":\"InclusiveBetweenValidator\"}]"
+            '[{"propertyName":"Priority",'
+            '"errorMessage":"\'Priority\' must be between 1 and 50. You entered 0.",'
+            '"errorCode":"InclusiveBetweenValidator"}]'
         )
 
         def fake_http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=20):
@@ -159,11 +161,15 @@ class DownloadClientTests(unittest.TestCase):
             )
 
         self.assertEqual(put_attempt["count"], 2)
-        put_calls = [item for item in calls if item[0] == "PUT" and item[1].endswith("/downloadclient/3")]
+        put_calls = [
+            item for item in calls if item[0] == "PUT" and item[1].endswith("/downloadclient/3")
+        ]
         retry_payload = put_calls[-1][2]
         self.assertEqual(retry_payload.get("priority"), 1)
         self.assertEqual(retry_payload.get("Priority"), 1)
-        retry_fields = {field["name"]: field.get("value") for field in retry_payload.get("fields", [])}
+        retry_fields = {
+            field["name"]: field.get("value") for field in retry_payload.get("fields", [])
+        }
         self.assertEqual(retry_fields.get("priority"), 1)
         self.assertEqual(retry_fields.get("Priority"), 1)
         self.assertEqual(retry_fields.get("recentTvPriority"), 1)

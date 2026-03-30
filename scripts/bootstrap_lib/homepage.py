@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from urllib import parse
 from typing import Dict, Iterable, List, Tuple
-
+from urllib import parse
 
 DEFAULT_HOSTS = [
     "homepage.local",
@@ -134,8 +133,7 @@ def _default_onboarding_cards(
         onboarding_cfg.get("jellyfin_short_link") or _short_link_label(jellyfin_url)
     )
     jellyseerr_short = str(
-        onboarding_cfg.get("jellyseerr_short_link")
-        or _short_link_label(jellyseerr_url)
+        onboarding_cfg.get("jellyseerr_short_link") or _short_link_label(jellyseerr_url)
     )
 
     cards: List[Tuple[str, str, str]] = [
@@ -147,16 +145,12 @@ def _default_onboarding_cards(
         (
             "Jellyseerr Setup QR",
             _qr_href(jellyseerr_url, qr_size),
-            "Scan to open "
-            f"{jellyseerr_url} for requests (short link: {jellyseerr_short}).",
+            "Scan to open " f"{jellyseerr_url} for requests (short link: {jellyseerr_short}).",
         ),
         (
             "Samsung TV Quick Start",
             "https://github.com/jellyfin/jellyfin-tizen",
-            (
-                "Smart Hub > Apps > install Jellyfin for Tizen, then connect to "
-                f"{jellyfin_url}."
-            ),
+            ("Smart Hub > Apps > install Jellyfin for Tizen, then connect to " f"{jellyfin_url}."),
         ),
         (
             "Vizio Quick Start",

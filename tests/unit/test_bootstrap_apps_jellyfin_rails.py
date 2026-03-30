@@ -83,9 +83,11 @@ class JellyfinHomeRailsTests(unittest.TestCase):
             captured["to_add"] = list(to_add)
             return len(to_add), 0
 
-        with mock.patch.object(MODULE, "find_jellyfin_collection_by_name", return_value="ABCD"), mock.patch.object(
-            MODULE, "collection_item_ids", return_value=[]
-        ), mock.patch.object(MODULE, "update_collection_items", side_effect=fake_update):
+        with (
+            mock.patch.object(MODULE, "find_jellyfin_collection_by_name", return_value="ABCD"),
+            mock.patch.object(MODULE, "collection_item_ids", return_value=[]),
+            mock.patch.object(MODULE, "update_collection_items", side_effect=fake_update),
+        ):
             MODULE.ensure_jellyfin_collection_membership(
                 "http://jellyfin:8096",
                 "api-key",

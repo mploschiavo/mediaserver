@@ -1,0 +1,39 @@
+{
+  "api_key_db_path": "jellyfin/data/jellyfin.db",
+  "api_key_env": "JELLYFIN_API_KEY",
+  "api_key_name_preference": [
+    "Jellyfin",
+    "Jellyseerr"
+  ],
+  "auto_discover_api_key_from_db": true,
+  "cleanup_duplicates": true,
+  "enabled": true,
+  "fallback_enable_all_tuners_when_mapping_missing": true,
+  "guides": [
+    {
+      "enable_all_tuners": false,
+      "enabled_tuners": [
+        "tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u"
+      ],
+      "path": "https://iptv-epg.org/files/epg-us.xml",
+      "type": "xmltv"
+    }
+  ],
+  "prune_unmanaged_guides": true,
+  "prune_unmanaged_tuners": true,
+  "recreate_managed_guides": true,
+  "refresh_on_bootstrap": true,
+  "required": false,
+  "tuners": [
+    {
+      "allow_hw_transcoding": true,
+      "filter_to_guide_channels": true,
+      "materialized_output_path": "jellyfin/livetv-tuners/iptv-org-us-epg.m3u",
+      "name": "IPTV-ORG US",
+      "normalize_tvg_id_suffix": true,
+      "type": "m3u",
+      "url": "https://iptv-org.github.io/iptv/countries/us.m3u"
+    }
+  ],
+  "url": "http://jellyfin:8096"
+}

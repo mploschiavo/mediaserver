@@ -1,5 +1,6 @@
 """Reusable bootstrap helpers for media-stack automation."""
 
+from .bazarr import apply_scalar_updates as apply_bazarr_scalar_updates
 from .common import (
     bool_cfg,
     coerce_list,
@@ -9,11 +10,11 @@ from .common import (
     parse_service_url,
     to_int,
 )
+from .homepage import DEFAULT_HOSTS as DEFAULT_HOMEPAGE_HOSTS
+from .homepage import render_services_yaml
 from .http_client import http_request
-from .servarr import choose_profile, choose_root_folder, find_existing_servarr
-from .homepage import DEFAULT_HOSTS as DEFAULT_HOMEPAGE_HOSTS, render_services_yaml
-from .bazarr import apply_scalar_updates as apply_bazarr_scalar_updates
 from .jellyfin import apply_artwork_profile, normalize_provider_name, reorder_provider_names
+from .servarr import choose_profile, choose_root_folder, find_existing_servarr
 
 __all__ = [
     "bool_cfg",

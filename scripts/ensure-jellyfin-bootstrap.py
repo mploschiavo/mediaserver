@@ -274,9 +274,7 @@ def try_authenticate_jellyfin(base_url, username, password):
         headers=headers,
     )
     if status != 200 or not isinstance(data, dict):
-        warn(
-            f"Jellyfin authentication with stack admin credentials failed (HTTP {status})."
-        )
+        warn(f"Jellyfin authentication with stack admin credentials failed (HTTP {status}).")
         return None
 
     token = str(data.get("AccessToken") or "").strip()
@@ -334,14 +332,14 @@ def ensure_api_key(base_url, session_token, app_name):
 
 
 def validate_api_key(base_url, api_key):
-    status, data, _ = http_request(base_url, f"/System/Info?api_key={parse.quote(api_key, safe='')}")
+    status, data, _ = http_request(
+        base_url, f"/System/Info?api_key={parse.quote(api_key, safe='')}"
+    )
     return status == 200 and isinstance(data, dict)
 
 
 def lookup_user_id_with_api_key(base_url, api_key, preferred_username):
-    status, data, body = http_request(
-        base_url, f"/Users?api_key={parse.quote(api_key, safe='')}"
-    )
+    status, data, body = http_request(base_url, f"/Users?api_key={parse.quote(api_key, safe='')}")
     if status != 200 or not isinstance(data, list):
         return ""
     preferred = str(preferred_username or "").strip().lower()
@@ -464,8 +462,12 @@ def main():
     info(f"Jellyfin service: {service_name}")
 
     secret = get_secret(kubectl, namespace, secret_name)
-    stack_user = secret.get("STACK_ADMIN_USERNAME") or os.environ.get("STACK_ADMIN_USERNAME", "mediaadmin")
-    stack_pass = secret.get("STACK_ADMIN_PASSWORD") or os.environ.get("STACK_ADMIN_PASSWORD", "media-stack-admin")
+    stack_user = secret.get("STACK_ADMIN_USERNAME") or os.environ.get(
+        "STACK_ADMIN_USERNAME", "mediaadmin"
+    )
+    stack_pass = secret.get("STACK_ADMIN_PASSWORD") or os.environ.get(
+        "STACK_ADMIN_PASSWORD", "media-stack-admin"
+    )
     existing_api_key = secret.get("JELLYFIN_API_KEY", "").strip()
     existing_user_id = secret.get("JELLYFIN_USER_ID", "").strip()
 
@@ -525,9 +527,7 @@ def main():
                     "Keeping existing API key in secret."
                 )
                 if not existing_user_id:
-                    user_id = lookup_user_id_with_api_key(
-                        base_url, existing_api_key, stack_user
-                    )
+                    user_id = lookup_user_id_with_api_key(base_url, existing_api_key, stack_user)
                     if user_id:
                         patch_secret(
                             kubectl,

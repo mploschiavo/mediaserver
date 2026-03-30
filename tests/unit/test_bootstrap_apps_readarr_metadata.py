@@ -42,9 +42,7 @@ class ReadarrMetadataSourceTests(unittest.TestCase):
 
         put_calls = [item for item in calls if item[0] == "PUT"]
         self.assertEqual(len(put_calls), 1)
-        self.assertEqual(
-            put_calls[0][2].get("metadataSource"), "https://api.bookinfo.pro"
-        )
+        self.assertEqual(put_calls[0][2].get("metadataSource"), "https://api.bookinfo.pro")
 
     def test_no_update_when_already_set(self):
         calls = []

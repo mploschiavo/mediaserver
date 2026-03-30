@@ -29,9 +29,12 @@ class DiskGuardrailsTests(unittest.TestCase):
         }
         qbit_cfg = {"url": "http://qbittorrent:8080"}
 
-        with mock.patch.object(
-            MODULE, "_disk_usage_percent", return_value=(42.0, 1_000_000, 580_000)
-        ), mock.patch.object(MODULE, "qbit_login") as login_mock:
+        with (
+            mock.patch.object(
+                MODULE, "_disk_usage_percent", return_value=(42.0, 1_000_000, 580_000)
+            ),
+            mock.patch.object(MODULE, "qbit_login") as login_mock,
+        ):
             MODULE.enforce_disk_guardrails(cfg, "/srv-config", qbit_cfg, "admin", "secret")
             login_mock.assert_not_called()
 
@@ -82,16 +85,16 @@ class DiskGuardrailsTests(unittest.TestCase):
             },
         ]
 
-        with mock.patch.object(
-            MODULE,
-            "_disk_usage_percent",
-            side_effect=[(75.0, 1_000_000, 250_000), (60.0, 1_000_000, 400_000)],
-        ), mock.patch.object(MODULE, "qbit_login", return_value=object()), mock.patch.object(
-            MODULE, "qbit_list_completed_torrents", return_value=torrents
-        ), mock.patch.object(
-            MODULE, "qbit_delete_torrents"
-        ) as delete_mock, mock.patch.object(
-            MODULE.time, "time", return_value=now
+        with (
+            mock.patch.object(
+                MODULE,
+                "_disk_usage_percent",
+                side_effect=[(75.0, 1_000_000, 250_000), (60.0, 1_000_000, 400_000)],
+            ),
+            mock.patch.object(MODULE, "qbit_login", return_value=object()),
+            mock.patch.object(MODULE, "qbit_list_completed_torrents", return_value=torrents),
+            mock.patch.object(MODULE, "qbit_delete_torrents") as delete_mock,
+            mock.patch.object(MODULE.time, "time", return_value=now),
         ):
             MODULE.enforce_disk_guardrails(cfg, "/srv-config", qbit_cfg, "admin", "secret")
 
@@ -166,12 +169,11 @@ class MediaHygieneQbitDuplicatePruneTests(unittest.TestCase):
             },
         ]
 
-        with mock.patch.object(MODULE, "qbit_login", return_value=object()), mock.patch.object(
-            MODULE, "qbit_list_completed_torrents", return_value=torrents
-        ), mock.patch.object(
-            MODULE, "qbit_delete_torrents"
-        ) as delete_mock, mock.patch.object(
-            MODULE.time, "time", return_value=now
+        with (
+            mock.patch.object(MODULE, "qbit_login", return_value=object()),
+            mock.patch.object(MODULE, "qbit_list_completed_torrents", return_value=torrents),
+            mock.patch.object(MODULE, "qbit_delete_torrents") as delete_mock,
+            mock.patch.object(MODULE.time, "time", return_value=now),
         ):
             summary = MODULE.run_qbit_duplicate_prune(
                 hygiene_cfg,
@@ -222,14 +224,15 @@ class MediaHygieneQbitIpFilterTests(unittest.TestCase):
             hygiene_cfg["qbit_ipfilter"]["state_path"] = str(state_path)
             hygiene_cfg["qbit_ipfilter"]["qbit_filter_path"] = "/data/torrents/ipfilter.dat"
 
-            with mock.patch.object(
-                MODULE.request,
-                "urlopen",
-                return_value=self._Resp(ipfilter_bytes),
-            ), mock.patch.object(MODULE, "qbit_login", return_value=object()), mock.patch.object(
-                MODULE, "qbit_set_preferences"
-            ) as prefs_mock, mock.patch.object(
-                MODULE.time, "time", return_value=5_000_000
+            with (
+                mock.patch.object(
+                    MODULE.request,
+                    "urlopen",
+                    return_value=self._Resp(ipfilter_bytes),
+                ),
+                mock.patch.object(MODULE, "qbit_login", return_value=object()),
+                mock.patch.object(MODULE, "qbit_set_preferences") as prefs_mock,
+                mock.patch.object(MODULE.time, "time", return_value=5_000_000),
             ):
                 summary = MODULE.run_qbit_ipfilter_refresh(
                     hygiene_cfg,
@@ -275,13 +278,15 @@ class MediaHygieneQbitIpFilterTests(unittest.TestCase):
             hygiene_cfg["qbit_ipfilter"]["qbit_filter_path"] = "/data/torrents/ipfilter.dat"
             hygiene_cfg["qbit_ipfilter"]["min_refresh_interval_hours"] = 0
 
-            with mock.patch.object(
-                MODULE.request,
-                "urlopen",
-                side_effect=RuntimeError("source down"),
-            ), mock.patch.object(MODULE, "qbit_login", return_value=object()), mock.patch.object(
-                MODULE, "qbit_set_preferences"
-            ) as prefs_mock:
+            with (
+                mock.patch.object(
+                    MODULE.request,
+                    "urlopen",
+                    side_effect=RuntimeError("source down"),
+                ),
+                mock.patch.object(MODULE, "qbit_login", return_value=object()),
+                mock.patch.object(MODULE, "qbit_set_preferences") as prefs_mock,
+            ):
                 summary = MODULE.run_qbit_ipfilter_refresh(
                     hygiene_cfg,
                     qbit_cfg,
@@ -374,12 +379,11 @@ class QbitQueueGuardrailsTests(unittest.TestCase):
             },
         ]
 
-        with mock.patch.object(MODULE, "qbit_login", return_value=object()), mock.patch.object(
-            MODULE, "qbit_list_torrents", return_value=torrents
-        ), mock.patch.object(
-            MODULE, "qbit_delete_torrents"
-        ) as delete_mock, mock.patch.object(
-            MODULE.time, "time", return_value=now
+        with (
+            mock.patch.object(MODULE, "qbit_login", return_value=object()),
+            mock.patch.object(MODULE, "qbit_list_torrents", return_value=torrents),
+            mock.patch.object(MODULE, "qbit_delete_torrents") as delete_mock,
+            mock.patch.object(MODULE.time, "time", return_value=now),
         ):
             summary = MODULE.run_qbit_queue_guardrails(qbit_cfg, "admin", "secret")
 
@@ -436,14 +440,12 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                 return 204, {}, ""
             raise AssertionError(f"Unexpected Live TV API call: {path}")
 
-        with mock.patch.object(MODULE, "wait_for_service"), mock.patch.object(
-            MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"
-        ), mock.patch.object(
-            MODULE, "load_jellyfin_livetv_state", return_value=existing_state
-        ), mock.patch.object(
-            MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"
-        ), mock.patch.object(
-            MODULE, "jellyfin_request", side_effect=fake_jellyfin_request
+        with (
+            mock.patch.object(MODULE, "wait_for_service"),
+            mock.patch.object(MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(MODULE, "load_jellyfin_livetv_state", return_value=existing_state),
+            mock.patch.object(MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
             MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
@@ -487,8 +489,16 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             "tuner_ids_by_key": {},
             "tuners_by_key": {
                 ("m3u", "https://iptv-org.github.io/iptv/countries/us.m3u"): [
-                    {"id": "tuner-keep", "type": "m3u", "url": "https://iptv-org.github.io/iptv/countries/us.m3u"},
-                    {"id": "tuner-dup", "type": "m3u", "url": "https://iptv-org.github.io/iptv/countries/us.m3u"},
+                    {
+                        "id": "tuner-keep",
+                        "type": "m3u",
+                        "url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+                    },
+                    {
+                        "id": "tuner-dup",
+                        "type": "m3u",
+                        "url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+                    },
                 ]
             },
             "guides_by_key": {
@@ -509,7 +519,11 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             "tuner_ids_by_key": {},
             "tuners_by_key": {
                 ("m3u", "https://iptv-org.github.io/iptv/countries/us.m3u"): [
-                    {"id": "tuner-keep", "type": "m3u", "url": "https://iptv-org.github.io/iptv/countries/us.m3u"}
+                    {
+                        "id": "tuner-keep",
+                        "type": "m3u",
+                        "url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+                    }
                 ]
             },
             "guides_by_key": {},
@@ -532,14 +546,16 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                 return 204, {}, ""
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
 
-        with mock.patch.object(MODULE, "wait_for_service"), mock.patch.object(
-            MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"
-        ), mock.patch.object(
-            MODULE, "load_jellyfin_livetv_state", side_effect=[existing_state, refreshed_state, refreshed_state]
-        ), mock.patch.object(
-            MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"
-        ), mock.patch.object(
-            MODULE, "jellyfin_request", side_effect=fake_jellyfin_request
+        with (
+            mock.patch.object(MODULE, "wait_for_service"),
+            mock.patch.object(MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(
+                MODULE,
+                "load_jellyfin_livetv_state",
+                side_effect=[existing_state, refreshed_state, refreshed_state],
+            ),
+            mock.patch.object(MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
             MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
@@ -562,9 +578,11 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             }
         }
 
-        with mock.patch.object(MODULE, "wait_for_service") as wait_mock, mock.patch.object(
-            MODULE, "resolve_jellyfin_api_key"
-        ) as api_key_mock, mock.patch.object(MODULE, "jellyfin_request") as request_mock:
+        with (
+            mock.patch.object(MODULE, "wait_for_service") as wait_mock,
+            mock.patch.object(MODULE, "resolve_jellyfin_api_key") as api_key_mock,
+            mock.patch.object(MODULE, "jellyfin_request") as request_mock,
+        ):
             MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         wait_mock.assert_not_called()
@@ -673,15 +691,15 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
 
         m3u_payload = (
             "#EXTM3U\n"
-            "#EXTINF:-1 tvg-id=\"ABCWBMA.us@SD\",ABC Example\n"
+            '#EXTINF:-1 tvg-id="ABCWBMA.us@SD",ABC Example\n'
             "https://example.invalid/abc.m3u8\n"
-            "#EXTINF:-1 tvg-id=\"NoGuide.us@SD\",No Guide Example\n"
+            '#EXTINF:-1 tvg-id="NoGuide.us@SD",No Guide Example\n'
             "https://example.invalid/noguide.m3u8\n"
         ).encode("utf-8")
         epg_payload = (
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
             "<tv>\n"
-            "  <channel id=\"ABCWBMA.us\"><display-name>ABC</display-name></channel>\n"
+            '  <channel id="ABCWBMA.us"><display-name>ABC</display-name></channel>\n'
             "</tv>\n"
         ).encode("utf-8")
 
@@ -693,27 +711,24 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                 return _Resp(epg_payload)
             raise AssertionError(f"Unexpected URL fetch: {url}")
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
-            MODULE, "wait_for_service"
-        ), mock.patch.object(
-            MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"
-        ), mock.patch.object(
-            MODULE, "load_jellyfin_livetv_state", side_effect=[existing_state, refreshed_state, refreshed_state]
-        ), mock.patch.object(
-            MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"
-        ), mock.patch.object(
-            MODULE, "jellyfin_request", side_effect=fake_jellyfin_request
-        ), mock.patch.object(
-            MODULE.request, "urlopen", side_effect=fake_urlopen
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(MODULE, "wait_for_service"),
+            mock.patch.object(MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(
+                MODULE,
+                "load_jellyfin_livetv_state",
+                side_effect=[existing_state, refreshed_state, refreshed_state],
+            ),
+            mock.patch.object(MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(MODULE.request, "urlopen", side_effect=fake_urlopen),
         ):
             MODULE.ensure_jellyfin_livetv(cfg, tmp, 30)
 
-            rendered = (
-                Path(tmp)
-                / "jellyfin"
-                / "livetv-tuners"
-                / "iptv-org-us-epg.m3u"
-            ).read_text(encoding="utf-8")
+            rendered = (Path(tmp) / "jellyfin" / "livetv-tuners" / "iptv-org-us-epg.m3u").read_text(
+                encoding="utf-8"
+            )
 
         called_paths = [item[0] for item in calls]
         self.assertIn("/LiveTv/TunerHosts?id=legacy-tuner", called_paths)

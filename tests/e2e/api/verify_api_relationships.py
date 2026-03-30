@@ -11,7 +11,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,7 +43,9 @@ class Runner:
     def _load_json(self, path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
 
-    def _run(self, args: list[str], *, check: bool = True, text: bool = True) -> subprocess.CompletedProcess:
+    def _run(
+        self, args: list[str], *, check: bool = True, text: bool = True
+    ) -> subprocess.CompletedProcess:
         proc = subprocess.run(args, capture_output=True, text=text)
         if check and proc.returncode != 0:
             cmd = " ".join(shlex.quote(x) for x in args)
@@ -86,7 +87,9 @@ class Runner:
             "-lc",
             "sleep 3600",
         )
-        self._kns("wait", "--for=condition=Ready", f"pod/{self.pod_name}", f"--timeout={self.timeout}s")
+        self._kns(
+            "wait", "--for=condition=Ready", f"pod/{self.pod_name}", f"--timeout={self.timeout}s"
+        )
         self._ok(f"Created helper pod {self.pod_name}")
 
     def cleanup(self) -> None:
@@ -108,9 +111,7 @@ class Runner:
         return json.loads(data)
 
     def read_arr_api_key(self, deploy: str) -> str:
-        cmd = (
-            "sed -n 's:.*<ApiKey>\\(.*\\)</ApiKey>.*:\\1:p' /config/config.xml | head -n1"
-        )
+        cmd = "sed -n 's:.*<ApiKey>\\(.*\\)</ApiKey>.*:\\1:p' /config/config.xml | head -n1"
         proc = self._kns("exec", f"deploy/{deploy}", "--", "sh", "-lc", cmd)
         key = proc.stdout.strip()
         if not key:
@@ -176,9 +177,7 @@ class Runner:
             key = self.read_arr_api_key(service)
             base = self.detect_arr_api_base(service, port, key)
 
-            clients = self.curl_json(
-                f"http://{service}:{port}{base}/downloadclient?apikey={key}"
-            )
+            clients = self.curl_json(f"http://{service}:{port}{base}/downloadclient?apikey={key}")
             if not isinstance(clients, list):
                 self._fail(f"{impl}: downloadclient API did not return a list")
                 continue
@@ -194,8 +193,7 @@ class Runner:
                 self._ok(f"{impl}: qBittorrent + SABnzbd download clients configured")
             else:
                 self._fail(
-                    f"{impl}: missing download client wiring "
-                    f"(qB={has_qbit}, SAB={has_sab})"
+                    f"{impl}: missing download client wiring " f"(qB={has_qbit}, SAB={has_sab})"
                 )
 
             mappings = self.curl_json(
@@ -217,7 +215,9 @@ class Runner:
             roots = self.curl_json(f"http://{service}:{port}{base}/rootfolder?apikey={key}")
             expected_root = arr_expected_roots.get(impl, "")
             if isinstance(roots, list) and expected_root:
-                root_paths = {str(item.get("path") or "") for item in roots if isinstance(item, dict)}
+                root_paths = {
+                    str(item.get("path") or "") for item in roots if isinstance(item, dict)
+                }
                 if expected_root in root_paths:
                     self._ok(f"{impl}: expected root folder exists ({expected_root})")
                 else:

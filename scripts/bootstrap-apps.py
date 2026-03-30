@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-from collections import defaultdict
 import hashlib
 import json
 import os
@@ -9,41 +8,203 @@ import sqlite3
 import sys
 import time
 import traceback
-from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
-from http import cookiejar
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib import error, parse, request
+from urllib import parse, request
+
+from bootstrap_lib.bazarr import apply_scalar_updates as _lib_bazarr_apply_scalar_updates
 from bootstrap_lib.common import (
     bool_cfg as _lib_bool_cfg,
-    coerce_list as _lib_coerce_list,
-    env_truthy as _lib_env_truthy,
-    normalize_base_path as _lib_normalize_base_path,
-    normalize_url as _lib_normalize_url,
-    parse_service_url as _lib_parse_service_url,
-    to_int as _lib_to_int,
 )
-from bootstrap_lib.http_client import http_request as _lib_http_request
-from bootstrap_lib.servarr import (
-    choose_profile as _lib_choose_profile,
-    choose_root_folder as _lib_choose_root_folder,
-    find_existing_servarr as _lib_find_existing_servarr,
-    normalize_remote_path_mappings as _lib_normalize_remote_path_mappings,
+from bootstrap_lib.common import (
+    coerce_list as _lib_coerce_list,
+)
+from bootstrap_lib.common import (
+    env_truthy as _lib_env_truthy,
+)
+from bootstrap_lib.common import (
+    normalize_base_path as _lib_normalize_base_path,
+)
+from bootstrap_lib.common import (
+    normalize_url as _lib_normalize_url,
+)
+from bootstrap_lib.common import (
+    parse_service_url as _lib_parse_service_url,
+)
+from bootstrap_lib.common import (
+    to_int as _lib_to_int,
 )
 from bootstrap_lib.homepage import (
     DEFAULT_HOSTS as _lib_default_homepage_hosts,
+)
+from bootstrap_lib.homepage import (
     render_services_yaml as _lib_render_homepage_services_yaml,
 )
-from bootstrap_lib.bazarr import apply_scalar_updates as _lib_bazarr_apply_scalar_updates
+from bootstrap_lib.http_client import http_request as _lib_http_request
 from bootstrap_lib.jellyfin import (
     apply_artwork_profile as _lib_jellyfin_apply_artwork_profile,
+)
+from bootstrap_lib.jellyfin import (
     reorder_provider_names as _lib_jellyfin_reorder_provider_names,
 )
+from bootstrap_lib.servarr import (
+    choose_profile as _lib_choose_profile,
+)
+from bootstrap_lib.servarr import (
+    choose_root_folder as _lib_choose_root_folder,
+)
+from bootstrap_lib.servarr import (
+    find_existing_servarr as _lib_find_existing_servarr,
+)
+from bootstrap_lib.servarr import (
+    normalize_remote_path_mappings as _lib_normalize_remote_path_mappings,
+)
+from bootstrap_services.arr_service import ArrService
+from bootstrap_services.auth_service import AuthService
+from bootstrap_services.bazarr_service import BazarrService
+from bootstrap_services.config_models import ArrDiscoveryListsConfig
+from bootstrap_services.discovery_lists_service import DiscoveryListsService
+from bootstrap_services.health_service import HealthService
+from bootstrap_services.jellyfin_service import JellyfinLiveTvDependencies, JellyfinService
+from bootstrap_services.jellyseerr_service import JellyseerrService
+from bootstrap_services.media_hygiene_service import MediaHygieneService
+from bootstrap_services.qbit_service import QBittorrentService
 
 
 def log(msg):
     ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     print(f"[{ts}] {msg}", flush=True)
+
+
+def _arr_service() -> ArrService:
+    return ArrService(
+        http_request=http_request,
+        log=log,
+        field_map=field_map,
+        field_list=field_list,
+        coerce_list=coerce_list,
+        to_int=to_int,
+        normalize_remote_path_mappings=normalize_remote_path_mappings,
+    )
+
+
+def _qbit_service() -> QBittorrentService:
+    return QBittorrentService(
+        log=log,
+        normalize_url=normalize_url,
+        bool_cfg=bool_cfg,
+        to_int=to_int,
+        coerce_list=coerce_list,
+    )
+
+
+def _jellyfin_service() -> JellyfinService:
+    deps = JellyfinLiveTvDependencies(
+        log=log,
+        bool_cfg=bool_cfg,
+        coerce_list=coerce_list,
+        to_int=to_int,
+        normalize_url=normalize_url,
+        wait_for_service=wait_for_service,
+        resolve_api_key=resolve_jellyfin_api_key,
+        jellyfin_request=jellyfin_request,
+        prepare_tuner_url=prepare_jellyfin_m3u_tuner_url,
+        load_state=load_jellyfin_livetv_state,
+        resolve_tuner_type_id=resolve_jellyfin_tuner_type_id,
+        normalize_enabled_tuner_ids=normalize_enabled_tuner_ids,
+        delete_entity=delete_jellyfin_livetv_entity,
+        trigger_refresh=trigger_jellyfin_livetv_refresh,
+    )
+    return JellyfinService(deps=deps)
+
+
+def _health_service() -> HealthService:
+    return HealthService(
+        http_request=http_request,
+        log=log,
+    )
+
+
+def _bazarr_service() -> BazarrService:
+    return BazarrService(
+        log=log,
+        bool_cfg=bool_cfg,
+        normalize_url=normalize_url,
+        wait_for_service=wait_for_service,
+        get_arr_app=get_arr_app,
+        parse_service_url=parse_service_url,
+        coerce_list=coerce_list,
+        resolve_path=resolve_path,
+        apply_scalar_updates=_lib_bazarr_apply_scalar_updates,
+    )
+
+
+def _jellyseerr_service() -> JellyseerrService:
+    return JellyseerrService(
+        log=log,
+        bool_cfg=bool_cfg,
+        normalize_url=normalize_url,
+        wait_for_service=wait_for_service,
+        resolve_jellyfin_api_key=resolve_jellyfin_api_key,
+        parse_service_url=parse_service_url,
+        to_int=to_int,
+        coerce_list=coerce_list,
+        choose_profile=choose_profile,
+        choose_root_folder=choose_root_folder,
+        normalize_base_path=normalize_base_path,
+        find_existing_servarr=find_existing_servarr,
+        read_json_file=read_json_file,
+        get_arr_app=get_arr_app,
+        detect_arr_api_base=detect_arr_api_base,
+        get_arr_quality_profile=get_arr_quality_profile,
+        get_arr_root_folder_path=get_arr_root_folder_path,
+        get_sonarr_language_profile_id=get_sonarr_language_profile_id,
+        read_jellyseerr_api_key=read_jellyseerr_api_key,
+        http_request=http_request,
+    )
+
+
+def _media_hygiene_service() -> MediaHygieneService:
+    return MediaHygieneService(
+        log=log,
+        bool_cfg=bool_cfg,
+        normalize_url=normalize_url,
+        detect_arr_api_base=detect_arr_api_base,
+        ensure_arr_failed_queue_cleanup=ensure_arr_failed_queue_cleanup,
+        run_filesystem_hygiene=run_filesystem_hygiene,
+        run_qbit_ipfilter_refresh=run_qbit_ipfilter_refresh,
+        run_qbit_queue_guardrails=run_qbit_queue_guardrails,
+        run_qbit_duplicate_prune=run_qbit_duplicate_prune,
+    )
+
+
+def _auth_service() -> AuthService:
+    return AuthService(
+        http_request=http_request,
+        log=log,
+        bool_cfg=bool_cfg,
+    )
+
+
+def _discovery_service() -> DiscoveryListsService:
+    return DiscoveryListsService(
+        bool_cfg=bool_cfg,
+        coerce_list=coerce_list,
+        log=log,
+        http_request=http_request,
+        resolve_env_placeholder=resolve_env_placeholder,
+        field_map=field_map,
+        field_list=field_list,
+        to_int=to_int,
+        normalize_token=normalize_token,
+        resolve_arr_quality_preferences=resolve_arr_quality_preferences,
+        get_arr_quality_profile=get_arr_quality_profile,
+        pick_first_profile_id=pick_first_profile_id,
+        env_truthy=env_truthy,
+        trigger_arr_command=_health_service().trigger_arr_command,
+    )
 
 
 def normalize_url(url):
@@ -303,16 +464,14 @@ def _extract_xmltv_channel_ids(xml_text):
 
 
 def _rewrite_extinf_tvg_id(extinf_line, new_id):
-    pattern = r'tvg-id=\"[^\"]*\"'
-    replacement = f'tvg-id=\"{new_id}\"'
+    pattern = r"tvg-id=\"[^\"]*\""
+    replacement = f'tvg-id="{new_id}"'
     if re.search(pattern, extinf_line):
         return re.sub(pattern, replacement, extinf_line, count=1)
     return extinf_line
 
 
-def _transform_m3u_for_guide(
-    m3u_text, normalize_tvg_id_suffix=False, guide_channel_ids=None
-):
+def _transform_m3u_for_guide(m3u_text, normalize_tvg_id_suffix=False, guide_channel_ids=None):
     lines = m3u_text.splitlines()
     output = []
     pending_extinf = None
@@ -351,7 +510,7 @@ def _transform_m3u_for_guide(
         total_entries += 1
         extinf = pending_extinf
         pending_extinf = None
-        tvg_id_match = re.search(r'tvg-id=\"([^\"]*)\"', extinf)
+        tvg_id_match = re.search(r"tvg-id=\"([^\"]*)\"", extinf)
         tvg_id = str((tvg_id_match.group(1) if tvg_id_match else "") or "").strip()
         effective_tvg_id = tvg_id
 
@@ -400,9 +559,7 @@ def _container_path_for_materialized_playlist(output_rel_path):
     return "/" + rel
 
 
-def prepare_jellyfin_m3u_tuner_url(
-    tuner, guides, config_root, guide_channel_ids_cache=None
-):
+def prepare_jellyfin_m3u_tuner_url(tuner, guides, config_root, guide_channel_ids_cache=None):
     if not isinstance(tuner, dict):
         return str(tuner or "").strip()
 
@@ -418,8 +575,7 @@ def prepare_jellyfin_m3u_tuner_url(
 
     source_hash = hashlib.sha1(source_url.encode("utf-8")).hexdigest()[:12]
     output_rel_path = str(
-        tuner.get("materialized_output_path")
-        or f"jellyfin/livetv-tuners/{source_hash}.m3u"
+        tuner.get("materialized_output_path") or f"jellyfin/livetv-tuners/{source_hash}.m3u"
     ).strip()
     if not output_rel_path:
         output_rel_path = f"jellyfin/livetv-tuners/{source_hash}.m3u"
@@ -579,10 +735,7 @@ def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
 
     if bool_cfg(jellyfin_cfg, "auto_discover_api_key_from_db", True):
         token, source_name = read_jellyfin_api_key_from_db(config_root, jellyfin_cfg)
-        log(
-            "[OK] Jellyfin: discovered API key from db "
-            f"(source key name='{source_name}')"
-        )
+        log("[OK] Jellyfin: discovered API key from db " f"(source key name='{source_name}')")
         return token
 
     return ""
@@ -763,8 +916,7 @@ def delete_jellyfin_livetv_entity(jellyfin_url, jellyfin_api_key, entity, entity
     )
     if status not in (200, 202, 204):
         raise RuntimeError(
-            f"Jellyfin Live TV: failed deleting {entity} {entity_id} "
-            f"(HTTP {status}): {body}"
+            f"Jellyfin Live TV: failed deleting {entity} {entity_id} " f"(HTTP {status}): {body}"
         )
 
 
@@ -839,395 +991,7 @@ def trigger_jellyfin_livetv_refresh(jellyfin_url, jellyfin_api_key, endpoint_pat
 
 
 def ensure_jellyfin_livetv(cfg, config_root, wait_timeout):
-    live_cfg = cfg.get("jellyfin_livetv") or {}
-    if not bool_cfg(live_cfg, "enabled", False):
-        return
-
-    tuners = coerce_list(live_cfg.get("tuners"))
-    guides = coerce_list(live_cfg.get("guides"))
-    refresh_on_bootstrap = bool_cfg(live_cfg, "refresh_on_bootstrap", True)
-    cleanup_duplicates = bool_cfg(live_cfg, "cleanup_duplicates", True)
-    recreate_managed_guides = bool_cfg(live_cfg, "recreate_managed_guides", True)
-    prune_unmanaged_tuners = bool_cfg(live_cfg, "prune_unmanaged_tuners", True)
-    prune_unmanaged_guides = bool_cfg(live_cfg, "prune_unmanaged_guides", True)
-    fallback_enable_all_tuners = bool_cfg(
-        live_cfg, "fallback_enable_all_tuners_when_mapping_missing", True
-    )
-    if not tuners and not guides and not refresh_on_bootstrap:
-        log("[WARN] Jellyfin Live TV: enabled but no tuners/guides configured.")
-        return
-
-    prepared_tuners = []
-    guide_channel_ids_cache = {}
-    for tuner in tuners:
-        if not isinstance(tuner, dict):
-            raise RuntimeError(
-                f"Jellyfin Live TV: each tuner entry must be an object, got: {tuner}"
-            )
-        source_url = str(tuner.get("url") or "").strip()
-        if not source_url:
-            raise RuntimeError("Jellyfin Live TV: tuner entry missing required field 'url'")
-
-        effective_url = prepare_jellyfin_m3u_tuner_url(
-            tuner,
-            guides,
-            config_root,
-            guide_channel_ids_cache=guide_channel_ids_cache,
-        )
-        prepared = dict(tuner)
-        prepared["_effective_url"] = effective_url
-        prepared_tuners.append(prepared)
-
-    desired_tuner_keys = set()
-    for tuner in prepared_tuners:
-        desired_tuner_keys.add(
-            (
-                str(tuner.get("type", "m3u")).strip().lower(),
-                str(tuner.get("_effective_url") or "").strip(),
-            )
-        )
-    desired_guide_keys = set()
-    for guide in guides:
-        if not isinstance(guide, dict):
-            continue
-        guide_path = str(guide.get("path") or "").strip()
-        if not guide_path:
-            continue
-        guide_type = str(guide.get("type", "xmltv")).strip().lower()
-        desired_guide_keys.add((guide_type, guide_path))
-
-    jellyfin_url = normalize_url(live_cfg.get("url", "http://jellyfin:8096"))
-    wait_for_service("Jellyfin", jellyfin_url, "/System/Info/Public", wait_timeout)
-
-    jellyfin_api_key = resolve_jellyfin_api_key(live_cfg, config_root)
-    if not jellyfin_api_key:
-        raise RuntimeError(
-            "Jellyfin Live TV: API key unavailable. Set JELLYFIN_API_KEY or keep "
-            "jellyfin_livetv.auto_discover_api_key_from_db=true and ensure "
-            "jellyfin/data/jellyfin.db contains a usable key."
-        )
-
-    status, _, body = jellyfin_request(jellyfin_url, "/LiveTv/Info", jellyfin_api_key)
-    if status != 200:
-        raise RuntimeError(
-            f"Jellyfin Live TV: failed auth/health check against /LiveTv/Info "
-            f"(HTTP {status}): {body}"
-        )
-
-    added_tuners = 0
-    added_guides = 0
-    state = {
-        "tuner_keys": set(),
-        "guide_keys": set(),
-        "tuner_ids_by_key": {},
-    }
-
-    if tuners or guides:
-        state = load_jellyfin_livetv_state(config_root, live_cfg)
-        total_existing_tuners = sum(
-            len(items) for items in (state.get("tuners_by_key") or {}).values()
-        )
-        total_existing_guides = sum(
-            len(items) for items in (state.get("guides_by_key") or {}).values()
-        )
-        log(
-            "[INFO] Jellyfin Live TV: state before reconcile "
-            f"(tuner_keys={len(state.get('tuner_keys') or [])}, "
-            f"tuners={total_existing_tuners}, "
-            f"guide_keys={len(state.get('guide_keys') or [])}, "
-            f"guides={total_existing_guides}, "
-            f"source={state.get('source_path', 'unknown')})"
-        )
-        cleanup_changed = False
-        recreate_changed = False
-
-        if cleanup_duplicates:
-            for tuner_key, tuner_entries in (state.get("tuners_by_key") or {}).items():
-                if len(tuner_entries) <= 1:
-                    continue
-                for duplicate in tuner_entries[1:]:
-                    tuner_id = str((duplicate or {}).get("id") or "").strip()
-                    if not tuner_id:
-                        continue
-                    delete_jellyfin_livetv_entity(
-                        jellyfin_url, jellyfin_api_key, "tuner", tuner_id
-                    )
-                    cleanup_changed = True
-                    log(
-                        "[INFO] Jellyfin Live TV: removed duplicate tuner "
-                        f"(type={tuner_key[0]}, url={tuner_key[1]}, id={tuner_id})"
-                    )
-
-            for guide_key, guide_entries in (state.get("guides_by_key") or {}).items():
-                if len(guide_entries) <= 1:
-                    continue
-                for duplicate in guide_entries[1:]:
-                    guide_id = str((duplicate or {}).get("id") or "").strip()
-                    if not guide_id:
-                        continue
-                    delete_jellyfin_livetv_entity(
-                        jellyfin_url, jellyfin_api_key, "guide", guide_id
-                    )
-                    cleanup_changed = True
-                    log(
-                        "[INFO] Jellyfin Live TV: removed duplicate guide "
-                        f"(type={guide_key[0]}, path={guide_key[1]}, id={guide_id})"
-                    )
-
-        if cleanup_changed:
-            state = load_jellyfin_livetv_state(config_root, live_cfg)
-            total_existing_tuners = sum(
-                len(items) for items in (state.get("tuners_by_key") or {}).values()
-            )
-            total_existing_guides = sum(
-                len(items) for items in (state.get("guides_by_key") or {}).values()
-            )
-            log(
-                "[INFO] Jellyfin Live TV: state after cleanup "
-                f"(tuner_keys={len(state.get('tuner_keys') or [])}, "
-                f"tuners={total_existing_tuners}, "
-                f"guide_keys={len(state.get('guide_keys') or [])}, "
-                f"guides={total_existing_guides}, "
-                f"source={state.get('source_path', 'unknown')})"
-            )
-
-        if recreate_managed_guides and guides:
-            for guide in guides:
-                if not isinstance(guide, dict):
-                    continue
-                guide_path = str(guide.get("path") or "").strip()
-                if not guide_path:
-                    continue
-                guide_type = str(guide.get("type", "xmltv")).strip().lower()
-                guide_key = (guide_type, guide_path)
-                for existing_guide in (state.get("guides_by_key") or {}).get(guide_key, []):
-                    guide_id = str((existing_guide or {}).get("id") or "").strip()
-                    if not guide_id:
-                        continue
-                    delete_jellyfin_livetv_entity(
-                        jellyfin_url, jellyfin_api_key, "guide", guide_id
-                    )
-                    recreate_changed = True
-                    log(
-                        "[INFO] Jellyfin Live TV: recreated managed guide binding "
-                        f"(type={guide_type}, path={guide_path}, id={guide_id})"
-                    )
-
-        if recreate_changed:
-            state = load_jellyfin_livetv_state(config_root, live_cfg)
-            total_existing_tuners = sum(
-                len(items) for items in (state.get("tuners_by_key") or {}).values()
-            )
-            total_existing_guides = sum(
-                len(items) for items in (state.get("guides_by_key") or {}).values()
-            )
-            log(
-                "[INFO] Jellyfin Live TV: state after cleanup "
-                f"(tuner_keys={len(state.get('tuner_keys') or [])}, "
-                f"tuners={total_existing_tuners}, "
-                f"guide_keys={len(state.get('guide_keys') or [])}, "
-                f"guides={total_existing_guides}, "
-                f"source={state.get('source_path', 'unknown')})"
-            )
-
-        prune_changed = False
-        if prune_unmanaged_tuners:
-            for tuner_key, tuner_entries in (state.get("tuners_by_key") or {}).items():
-                if tuner_key in desired_tuner_keys:
-                    continue
-                for entry in tuner_entries:
-                    tuner_id = str((entry or {}).get("id") or "").strip()
-                    if not tuner_id:
-                        continue
-                    delete_jellyfin_livetv_entity(jellyfin_url, jellyfin_api_key, "tuner", tuner_id)
-                    prune_changed = True
-                    log(
-                        "[INFO] Jellyfin Live TV: pruned unmanaged tuner "
-                        f"(type={tuner_key[0]}, url={tuner_key[1]}, id={tuner_id})"
-                    )
-
-        if prune_unmanaged_guides:
-            for guide_key, guide_entries in (state.get("guides_by_key") or {}).items():
-                if guide_key in desired_guide_keys:
-                    continue
-                for entry in guide_entries:
-                    guide_id = str((entry or {}).get("id") or "").strip()
-                    if not guide_id:
-                        continue
-                    delete_jellyfin_livetv_entity(jellyfin_url, jellyfin_api_key, "guide", guide_id)
-                    prune_changed = True
-                    log(
-                        "[INFO] Jellyfin Live TV: pruned unmanaged guide "
-                        f"(type={guide_key[0]}, path={guide_key[1]}, id={guide_id})"
-                    )
-
-        if prune_changed:
-            state = load_jellyfin_livetv_state(config_root, live_cfg)
-            total_existing_tuners = sum(
-                len(items) for items in (state.get("tuners_by_key") or {}).values()
-            )
-            total_existing_guides = sum(
-                len(items) for items in (state.get("guides_by_key") or {}).values()
-            )
-            log(
-                "[INFO] Jellyfin Live TV: state after pruning unmanaged entries "
-                f"(tuner_keys={len(state.get('tuner_keys') or [])}, "
-                f"tuners={total_existing_tuners}, "
-                f"guide_keys={len(state.get('guide_keys') or [])}, "
-                f"guides={total_existing_guides}, "
-                f"source={state.get('source_path', 'unknown')})"
-            )
-
-        for tuner in prepared_tuners:
-            tuner_url = str(tuner.get("_effective_url") or tuner.get("url") or "").strip()
-            tuner_type_requested = str(tuner.get("type", "m3u")).strip()
-            tuner_type = resolve_jellyfin_tuner_type_id(
-                jellyfin_url, jellyfin_api_key, tuner_type_requested
-            )
-            key = (tuner_type.lower(), tuner_url)
-            if key in state["tuner_keys"]:
-                log(f"[OK] Jellyfin Live TV: tuner already exists ({tuner_type} {tuner_url})")
-                continue
-
-            payload = {
-                "Type": tuner_type,
-                "Url": tuner_url,
-                "FriendlyName": str(
-                    tuner.get("friendly_name")
-                    or tuner.get("name")
-                    or f"{tuner_type.upper()} {tuner_url}"
-                ),
-                "ImportFavoritesOnly": bool(tuner.get("import_favorites_only", False)),
-                "AllowHWTranscoding": bool(tuner.get("allow_hw_transcoding", True)),
-                "AllowFmp4TranscodingContainer": bool(
-                    tuner.get("allow_fmp4_transcoding_container", False)
-                ),
-                "AllowStreamSharing": bool(tuner.get("allow_stream_sharing", True)),
-                "EnableStreamLooping": bool(tuner.get("enable_stream_looping", False)),
-                "IgnoreDts": bool(tuner.get("ignore_dts", True)),
-                "ReadAtNativeFramerate": bool(tuner.get("read_at_native_framerate", False)),
-            }
-            max_bitrate = to_int(tuner.get("fallback_max_streaming_bitrate"), 30000000)
-            if max_bitrate is not None:
-                payload["FallbackMaxStreamingBitrate"] = max_bitrate
-
-            status, data, body = jellyfin_request(
-                jellyfin_url,
-                "/LiveTv/TunerHosts",
-                jellyfin_api_key,
-                method="POST",
-                payload=payload,
-            )
-            if status not in (200, 201, 202):
-                raise RuntimeError(
-                    f"Jellyfin Live TV: failed creating tuner {tuner_url} (HTTP {status}): {body}"
-                )
-
-            created_id = str((data or {}).get("Id") or "").strip() if isinstance(data, dict) else ""
-            state["tuner_keys"].add(key)
-            if created_id:
-                state["tuner_ids_by_key"][key] = created_id
-            added_tuners += 1
-            log(f"[OK] Jellyfin Live TV: added tuner ({tuner_type} {tuner_url})")
-
-        # Refresh state from file after tuner writes in case Jellyfin adds/normalizes values.
-        state = load_jellyfin_livetv_state(config_root, live_cfg)
-
-        for guide in guides:
-            if not isinstance(guide, dict):
-                raise RuntimeError(
-                    f"Jellyfin Live TV: each guide entry must be an object, got: {guide}"
-                )
-
-            guide_path = str(guide.get("path") or "").strip()
-            if not guide_path:
-                raise RuntimeError("Jellyfin Live TV: guide entry missing required field 'path'")
-
-            guide_type = str(guide.get("type", "xmltv")).strip()
-            guide_key = (guide_type.lower(), guide_path)
-            if guide_key in state["guide_keys"]:
-                log(f"[OK] Jellyfin Live TV: guide already exists ({guide_type} {guide_path})")
-                continue
-
-            payload = {
-                "Type": guide_type,
-                "Path": guide_path,
-                "EnableAllTuners": bool(guide.get("enable_all_tuners", True)),
-            }
-
-            enabled_tuners = normalize_enabled_tuner_ids(guide.get("enabled_tuners"), state)
-            if enabled_tuners:
-                payload["EnabledTuners"] = enabled_tuners
-                payload["EnableAllTuners"] = False
-            elif not payload["EnableAllTuners"] and fallback_enable_all_tuners:
-                payload["EnableAllTuners"] = True
-                log(
-                    "[WARN] Jellyfin Live TV: guide enabled_tuners resolved empty; "
-                    f"falling back to EnableAllTuners=true for path={guide_path}"
-                )
-
-            optional_string_fields = {
-                "username": "Username",
-                "password": "Password",
-                "listings_id": "ListingsId",
-                "zip_code": "ZipCode",
-                "country": "Country",
-                "preferred_language": "PreferredLanguage",
-                "user_agent": "UserAgent",
-            }
-            for src_key, dst_key in optional_string_fields.items():
-                value = guide.get(src_key)
-                if value is not None and str(value).strip():
-                    payload[dst_key] = str(value).strip()
-
-            optional_array_fields = {
-                "news_categories": "NewsCategories",
-                "sports_categories": "SportsCategories",
-                "kids_categories": "KidsCategories",
-                "movie_categories": "MovieCategories",
-                "channel_mappings": "ChannelMappings",
-            }
-            for src_key, dst_key in optional_array_fields.items():
-                if src_key in guide:
-                    payload[dst_key] = coerce_list(guide.get(src_key))
-
-            status, _, body = jellyfin_request(
-                jellyfin_url,
-                "/LiveTv/ListingProviders",
-                jellyfin_api_key,
-                method="POST",
-                payload=payload,
-            )
-            if status not in (200, 201, 202):
-                raise RuntimeError(
-                    f"Jellyfin Live TV: failed creating guide {guide_path} (HTTP {status}): {body}"
-                )
-
-            state["guide_keys"].add(guide_key)
-            added_guides += 1
-            log(f"[OK] Jellyfin Live TV: added guide ({guide_type} {guide_path})")
-
-    if added_tuners == 0 and added_guides == 0 and refresh_on_bootstrap:
-        log("[INFO] Jellyfin Live TV: no tuner/guide changes, requesting refresh for UX consistency.")
-
-    if added_tuners > 0 or added_guides > 0 or refresh_on_bootstrap:
-        refresh_ops = [
-            ("/LiveTv/RefreshChannels", "channel refresh"),
-            ("/LiveTv/RefreshGuide", "guide refresh"),
-        ]
-        for path, label in refresh_ops:
-            ok, detail = trigger_jellyfin_livetv_refresh(
-                jellyfin_url, jellyfin_api_key, path, label
-            )
-            if ok:
-                log(f"[OK] Jellyfin Live TV: {detail}")
-            else:
-                log(f"[WARN] Jellyfin Live TV: {detail}")
-
-    log(
-        "[OK] Jellyfin Live TV: reconcile complete "
-        f"(tuners_added={added_tuners}, guides_added={added_guides})"
-    )
+    _jellyfin_service().ensure_livetv(cfg, config_root, wait_timeout)
 
 
 def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
@@ -1386,9 +1150,7 @@ def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
                         item.get("MetadataFetchers") or item.get("metadataFetchers") or []
                     ),
                     "MetadataFetcherOrder": normalize_names(
-                        item.get("MetadataFetcherOrder")
-                        or item.get("metadataFetcherOrder")
-                        or []
+                        item.get("MetadataFetcherOrder") or item.get("metadataFetcherOrder") or []
                     ),
                     "ImageFetchers": normalize_names(
                         item.get("ImageFetchers") or item.get("imageFetchers") or []
@@ -1432,9 +1194,7 @@ def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
         available_by_type = {
             str(entry.get("Type") or "").strip().lower(): entry for entry in available
         }
-        current_by_type = {
-            str(entry.get("Type") or "").strip().lower(): entry for entry in current
-        }
+        current_by_type = {str(entry.get("Type") or "").strip().lower(): entry for entry in current}
         ordered_keys = []
         for entry in available:
             key = str(entry.get("Type") or "").strip().lower()
@@ -1535,9 +1295,7 @@ def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
                 "refreshLibrary": "true",
             }
             path = f"/Library/VirtualFolders?{parse.urlencode(query)}"
-            status, _, body = jellyfin_request(
-                jellyfin_url, path, jellyfin_api_key, method="POST"
-            )
+            status, _, body = jellyfin_request(jellyfin_url, path, jellyfin_api_key, method="POST")
             if status in (200, 201, 202, 204):
                 added += 1
                 scan_requested = True
@@ -1554,7 +1312,9 @@ def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
                 for folder in existing:
                     if not isinstance(folder, dict):
                         continue
-                    folder_name = str(folder.get("Name") or folder.get("name") or "").strip().lower()
+                    folder_name = (
+                        str(folder.get("Name") or folder.get("name") or "").strip().lower()
+                    )
                     if folder_name:
                         existing_by_name[folder_name] = folder
                 current = existing_by_name.get(key)
@@ -1586,7 +1346,9 @@ def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
 
         collection_key = str(collection_type or current.get("CollectionType") or "").strip().lower()
         if collection_key in ("movies", "tvshows"):
-            enable_trickplay = enable_trickplay_movies if collection_key == "movies" else enable_trickplay_tv
+            enable_trickplay = (
+                enable_trickplay_movies if collection_key == "movies" else enable_trickplay_tv
+            )
             if enable_trickplay:
                 for trickplay_key in (
                     "EnableTrickplayImageExtraction",
@@ -1868,8 +1630,7 @@ def ensure_jellyfin_playback_defaults(cfg, config_root, wait_timeout):
                 f"Jellyfin playback: failed updating user defaults (HTTP {status}): {body}"
             )
         log(
-            "[OK] Jellyfin playback: updated user defaults "
-            f"(keys={','.join(changed_user_keys)})"
+            "[OK] Jellyfin playback: updated user defaults " f"(keys={','.join(changed_user_keys)})"
         )
     else:
         log("[OK] Jellyfin playback: user defaults already match desired config")
@@ -1956,9 +1717,7 @@ def ensure_jellyfin_playback_defaults(cfg, config_root, wait_timeout):
                 f"/DisplayPreferences/{parse.quote(pref_id, safe='')}",
                 {"userId": user_id, "client": client},
             )
-            status, display_payload, body = jellyfin_request(
-                jellyfin_url, path, jellyfin_api_key
-            )
+            status, display_payload, body = jellyfin_request(jellyfin_url, path, jellyfin_api_key)
             if status != 200 or not isinstance(display_payload, dict):
                 log(
                     f"[WARN] Jellyfin playback: unable to load DisplayPreferences '{pref_id}' "
@@ -2026,9 +1785,7 @@ def ensure_jellyfin_playback_defaults(cfg, config_root, wait_timeout):
         )
         if status == 200 and isinstance(installed_plugins, list):
             has_intro_skip = any(
-                normalize_plugin_name(
-                    item.get("Name") or item.get("name") or ""
-                )
+                normalize_plugin_name(item.get("Name") or item.get("name") or "")
                 == normalize_plugin_name("Intro Skipper")
                 for item in installed_plugins
                 if isinstance(item, dict)
@@ -2165,9 +1922,7 @@ def update_collection_items(jellyfin_url, jellyfin_api_key, collection_id, to_ad
             f"/Collections/{parse.quote(collection_id, safe='')}/Items",
             {"ids": ",".join(batch)},
         )
-        status, _, body = jellyfin_request(
-            jellyfin_url, path, jellyfin_api_key, method="DELETE"
-        )
+        status, _, body = jellyfin_request(jellyfin_url, path, jellyfin_api_key, method="DELETE")
         if status not in (200, 201, 202, 204):
             raise RuntimeError(
                 f"Jellyfin home rails: failed removing collection items (HTTP {status}): {body}"
@@ -2179,9 +1934,7 @@ def update_collection_items(jellyfin_url, jellyfin_api_key, collection_id, to_ad
             f"/Collections/{parse.quote(collection_id, safe='')}/Items",
             {"ids": ",".join(batch)},
         )
-        status, _, body = jellyfin_request(
-            jellyfin_url, path, jellyfin_api_key, method="POST"
-        )
+        status, _, body = jellyfin_request(jellyfin_url, path, jellyfin_api_key, method="POST")
         if status not in (200, 201, 202, 204):
             raise RuntimeError(
                 f"Jellyfin home rails: failed adding collection items (HTTP {status}): {body}"
@@ -2225,9 +1978,7 @@ def ensure_jellyfin_collection_membership(
             )
         created = True
         collection_id = str(
-            (create_data or {}).get("Id")
-            or (create_data or {}).get("CollectionId")
-            or ""
+            (create_data or {}).get("Id") or (create_data or {}).get("CollectionId") or ""
         ).strip()
         if not collection_id:
             collection_id = find_jellyfin_collection_by_name(
@@ -2252,9 +2003,7 @@ def ensure_jellyfin_collection_membership(
     return {"created": created, "added": added, "removed": removed}
 
 
-def delete_jellyfin_collection_by_name(
-    jellyfin_url, jellyfin_api_key, user_id, collection_name
-):
+def delete_jellyfin_collection_by_name(jellyfin_url, jellyfin_api_key, user_id, collection_name):
     collection_id = find_jellyfin_collection_by_name(
         jellyfin_url, jellyfin_api_key, user_id, collection_name
     )
@@ -2300,8 +2049,10 @@ def run_jellyfin_rail_query(jellyfin_url, jellyfin_api_key, user_id, rail_cfg, m
     rolling_days = to_int(rail_cfg.get("rolling_premiere_days"))
     if rolling_days and "minPremiereDate" not in query:
         min_premiere = (
-            datetime.now(timezone.utc) - timedelta(days=int(rolling_days))
-        ).isoformat().replace("+00:00", "Z")
+            (datetime.now(timezone.utc) - timedelta(days=int(rolling_days)))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
         query["minPremiereDate"] = min_premiere
 
     full_path = jellyfin_build_query_path(path, query)
@@ -2348,17 +2099,13 @@ def run_jellyfin_rail_query(jellyfin_url, jellyfin_api_key, user_id, rail_cfg, m
         "allowed_item_types": fallback.get("allowed_item_types")
         or rail_cfg.get("allowed_item_types"),
     }
-    return run_jellyfin_rail_query(
-        jellyfin_url, jellyfin_api_key, user_id, fallback_cfg, max_items
-    )
+    return run_jellyfin_rail_query(jellyfin_url, jellyfin_api_key, user_id, fallback_cfg, max_items)
 
 
 def ensure_jellyfin_home_rails(cfg, config_root, wait_timeout):
     rails_cfg = cfg.get("jellyfin_home_rails") or {}
     rails_enabled = bool_cfg(rails_cfg, "enabled", False)
-    cleanup_when_disabled = bool_cfg(
-        rails_cfg, "cleanup_collections_when_disabled", False
-    )
+    cleanup_when_disabled = bool_cfg(rails_cfg, "cleanup_collections_when_disabled", False)
     if not rails_enabled and not cleanup_when_disabled:
         return
 
@@ -2394,9 +2141,7 @@ def ensure_jellyfin_home_rails(cfg, config_root, wait_timeout):
 
         removed = 0
         for name in cleanup_names:
-            if delete_jellyfin_collection_by_name(
-                jellyfin_url, jellyfin_api_key, user_id, name
-            ):
+            if delete_jellyfin_collection_by_name(jellyfin_url, jellyfin_api_key, user_id, name):
                 removed += 1
 
         log(
@@ -2421,9 +2166,7 @@ def ensure_jellyfin_home_rails(cfg, config_root, wait_timeout):
         if not name:
             continue
 
-        item_ids = run_jellyfin_rail_query(
-            jellyfin_url, jellyfin_api_key, user_id, rail, max_items
-        )
+        item_ids = run_jellyfin_rail_query(jellyfin_url, jellyfin_api_key, user_id, rail, max_items)
         if not item_ids:
             log(
                 f"[WARN] Jellyfin home rails: no items matched for '{name}'. "
@@ -2464,9 +2207,7 @@ def ensure_jellyfin_plugin_repositories(jellyfin_url, jellyfin_api_key, reposito
 
     status, current, body = jellyfin_request(jellyfin_url, "/Repositories", jellyfin_api_key)
     if status != 200 or not isinstance(current, list):
-        raise RuntimeError(
-            f"Jellyfin plugins: failed listing repositories (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Jellyfin plugins: failed listing repositories (HTTP {status}): {body}")
 
     merged = []
     by_url = {}
@@ -2524,9 +2265,7 @@ def ensure_jellyfin_plugin_repositories(jellyfin_url, jellyfin_api_key, reposito
         log("[OK] Jellyfin plugins: repositories updated")
         return
 
-    raise RuntimeError(
-        f"Jellyfin plugins: failed updating repositories (HTTP {status}): {body}"
-    )
+    raise RuntimeError(f"Jellyfin plugins: failed updating repositories (HTTP {status}): {body}")
 
 
 def find_jellyfin_package(packages, target_name, repository_url=None):
@@ -2541,11 +2280,11 @@ def find_jellyfin_package(packages, target_name, repository_url=None):
         for version in versions:
             if not isinstance(version, dict):
                 continue
-            candidate = str(
-                version.get("repositoryUrl")
-                or version.get("RepositoryUrl")
-                or ""
-            ).strip().lower()
+            candidate = (
+                str(version.get("repositoryUrl") or version.get("RepositoryUrl") or "")
+                .strip()
+                .lower()
+            )
             if candidate == repo_norm:
                 return True
         return False
@@ -2635,9 +2374,8 @@ def ensure_jellyfin_plugins(cfg, config_root, wait_timeout):
 
         package = find_jellyfin_package(packages, plugin_name, repository_url or None)
         if not package:
-            message = (
-                f"Jellyfin plugins: package not found for '{plugin_name}'"
-                + (f" in repo {repository_url}" if repository_url else "")
+            message = f"Jellyfin plugins: package not found for '{plugin_name}'" + (
+                f" in repo {repository_url}" if repository_url else ""
             )
             if required:
                 raise RuntimeError(message)
@@ -2657,18 +2395,13 @@ def ensure_jellyfin_plugins(cfg, config_root, wait_timeout):
         if query:
             path = f"{path}?{parse.urlencode(query)}"
 
-        status, _, body = jellyfin_request(
-            jellyfin_url, path, jellyfin_api_key, method="POST"
-        )
+        status, _, body = jellyfin_request(jellyfin_url, path, jellyfin_api_key, method="POST")
         if status in (200, 201, 202, 204):
             requested += 1
             log(f"[OK] Jellyfin plugins: install requested for {pkg_name}")
             continue
 
-        message = (
-            f"Jellyfin plugins: failed to install {pkg_name} "
-            f"(HTTP {status}): {body}"
-        )
+        message = f"Jellyfin plugins: failed to install {pkg_name} " f"(HTTP {status}): {body}"
         if required:
             raise RuntimeError(message)
         log(f"[WARN] {message}")
@@ -2725,7 +2458,9 @@ def render_yaml(value, indent=0):
 
 def ensure_homepage_services_config(cfg, config_root):
     homepage_cfg = cfg.get("homepage") or {}
-    hosts = [str(h).strip().lower() for h in coerce_list(homepage_cfg.get("hosts")) if str(h).strip()]
+    hosts = [
+        str(h).strip().lower() for h in coerce_list(homepage_cfg.get("hosts")) if str(h).strip()
+    ]
     enabled = bool_cfg(homepage_cfg, "enabled", False) or bool(hosts)
     if not enabled:
         return False
@@ -2743,9 +2478,7 @@ def ensure_homepage_services_config(cfg, config_root):
     onboarding_cfg = homepage_cfg.get("device_onboarding")
     if not isinstance(onboarding_cfg, dict):
         onboarding_cfg = {}
-    rendered = _lib_render_homepage_services_yaml(
-        hosts, scheme=scheme, onboarding=onboarding_cfg
-    )
+    rendered = _lib_render_homepage_services_yaml(hosts, scheme=scheme, onboarding=onboarding_cfg)
     current = (
         services_path.read_text(encoding="utf-8", errors="replace")
         if services_path.exists()
@@ -2762,91 +2495,13 @@ def ensure_homepage_services_config(cfg, config_root):
 
 
 def ensure_bazarr_arr_integration(cfg, config_root, arr_apps, app_keys, wait_timeout):
-    bazarr_cfg = cfg.get("bazarr") or {}
-    if not bool_cfg(bazarr_cfg, "enabled", False):
-        return False
-
-    bazarr_url = normalize_url(bazarr_cfg.get("url", "http://bazarr:6767"))
-    wait_for_service("Bazarr", bazarr_url, "/", wait_timeout)
-
-    sonarr_cfg = get_arr_app(arr_apps, "Sonarr")
-    radarr_cfg = get_arr_app(arr_apps, "Radarr")
-    sonarr_key = (app_keys.get("Sonarr") or "").strip()
-    radarr_key = (app_keys.get("Radarr") or "").strip()
-
-    if not sonarr_cfg and not radarr_cfg:
-        log("[WARN] Bazarr: no Sonarr/Radarr app config found; skipping integration wiring.")
-        return False
-
-    config_rel_path = str(
-        bazarr_cfg.get("config_relative_path") or "bazarr/config/config.yaml"
-    ).strip()
-    config_path = resolve_path(config_root, config_rel_path)
-    if not config_path.exists():
-        raise RuntimeError(
-            f"Bazarr: config file not found at {config_path}. "
-            "Ensure Bazarr has started at least once."
-        )
-
-    updates = {"general": {}}
-    if sonarr_cfg and sonarr_key:
-        parsed = parse_service_url(sonarr_cfg["url"], 8989)
-        updates["general"]["use_sonarr"] = True
-        updates["sonarr"] = {
-            "apikey": sonarr_key,
-            "ip": parsed["hostname"],
-            "port": parsed["port"],
-            "base_url": parsed["base_url"] or "/",
-            "ssl": parsed["use_ssl"],
-        }
-    elif sonarr_cfg and not sonarr_key:
-        log("[WARN] Bazarr: Sonarr config exists but Sonarr API key is missing; skipping Sonarr link.")
-        updates["general"]["use_sonarr"] = False
-
-    if radarr_cfg and radarr_key:
-        parsed = parse_service_url(radarr_cfg["url"], 7878)
-        updates["general"]["use_radarr"] = True
-        updates["radarr"] = {
-            "apikey": radarr_key,
-            "ip": parsed["hostname"],
-            "port": parsed["port"],
-            "base_url": parsed["base_url"] or "/",
-            "ssl": parsed["use_ssl"],
-        }
-    elif radarr_cfg and not radarr_key:
-        log("[WARN] Bazarr: Radarr config exists but Radarr API key is missing; skipping Radarr link.")
-        updates["general"]["use_radarr"] = False
-
-    subtitle_defaults = bazarr_cfg.get("subtitle_defaults")
-    if isinstance(subtitle_defaults, dict) and bool_cfg(subtitle_defaults, "enabled", True):
-        general_defaults = subtitle_defaults.get("general")
-        if isinstance(general_defaults, dict):
-            updates.setdefault("general", {}).update(general_defaults)
-
-        providers = [str(x).strip() for x in coerce_list(subtitle_defaults.get("providers")) if str(x).strip()]
-        if providers:
-            updates.setdefault("general", {})["enabled_providers"] = providers
-
-        section_defaults = subtitle_defaults.get("sections")
-        if isinstance(section_defaults, dict):
-            for section_name, section_values in section_defaults.items():
-                if not isinstance(section_values, dict):
-                    continue
-                normalized_section = str(section_name or "").strip()
-                if not normalized_section:
-                    continue
-                updates.setdefault(normalized_section, {}).update(section_values)
-
-    current = config_path.read_text(encoding="utf-8", errors="replace")
-    rendered, changed = _lib_bazarr_apply_scalar_updates(current, updates)
-    if not changed:
-        log("[OK] Bazarr: Sonarr/Radarr + subtitle automation config already matches desired state")
-        return False
-
-    config_path.write_text(rendered, encoding="utf-8")
-    log(f"[OK] Bazarr: wrote integration config {config_path}")
-    log("[INFO] Bazarr: restart required to apply updated integration/subtitle settings.")
-    return True
+    return _bazarr_service().ensure_arr_integration(
+        cfg=cfg,
+        config_root=config_root,
+        arr_apps=arr_apps,
+        app_keys=app_keys,
+        wait_timeout=wait_timeout,
+    )
 
 
 def detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username):
@@ -2908,9 +2563,7 @@ def ensure_jellyfin_auto_collections_config(cfg, config_root, wait_timeout):
     user_id = resolve_jellyfin_user_id_value(auto_cfg, jellyfin_url, jellyfin_api_key)
 
     if not user_id and bool_cfg(auto_cfg, "required_user_id", False):
-        raise RuntimeError(
-            "Jellyfin Auto Collections: no Jellyfin user id could be resolved."
-        )
+        raise RuntimeError("Jellyfin Auto Collections: no Jellyfin user id could be resolved.")
     if not user_id:
         log(
             "[WARN] Jellyfin Auto Collections: could not resolve Jellyfin user id. "
@@ -2921,11 +2574,7 @@ def ensure_jellyfin_auto_collections_config(cfg, config_root, wait_timeout):
     if not isinstance(plugins_cfg, dict) or not plugins_cfg:
         plugins_cfg = default_auto_collections_plugins()
 
-    timezone_value = str(
-        auto_cfg.get("timezone")
-        or os.environ.get("TZ")
-        or "UTC"
-    ).strip()
+    timezone_value = str(auto_cfg.get("timezone") or os.environ.get("TZ") or "UTC").strip()
     crontab_value = str(auto_cfg.get("crontab") or "0 */6 * * *").strip()
 
     config_data = {
@@ -3058,25 +2707,19 @@ def field_list(mapping):
 
 def detect_arr_api_base(app_name, app_url, api_key):
     for version in ("v3", "v1"):
-        status, _, _ = http_request(
-            app_url, f"/api/{version}/system/status", api_key=api_key
-        )
+        status, _, _ = http_request(app_url, f"/api/{version}/system/status", api_key=api_key)
         if status == 200:
             api_base = f"/api/{version}"
             log(f"[OK] {app_name}: detected API base {api_base}")
             return api_base
 
-    raise RuntimeError(
-        f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)"
-    )
+    raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
 
 
 def pick_first_profile_id(app_name, app_url, api_base, api_key, endpoint, field_label):
     status, data, body = http_request(app_url, f"{api_base}/{endpoint}", api_key=api_key)
     if status != 200 or not isinstance(data, list):
-        raise RuntimeError(
-            f"{app_name}: failed to list {field_label} (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"{app_name}: failed to list {field_label} (HTTP {status}): {body}")
 
     for item in data:
         profile_id = to_int(item.get("id"))
@@ -3131,13 +2774,9 @@ def build_root_folder_payload(app_name, app_url, api_base, api_key, root_folder)
 
 
 def ensure_root_folder(app_name, app_url, api_base, api_key, root_folder):
-    status, data, body = http_request(
-        app_url, f"{api_base}/rootfolder", api_key=api_key
-    )
+    status, data, body = http_request(app_url, f"{api_base}/rootfolder", api_key=api_key)
     if status != 200 or not isinstance(data, list):
-        raise RuntimeError(
-            f"{app_name}: failed to list root folders (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"{app_name}: failed to list root folders (HTTP {status}): {body}")
 
     desired = root_folder.rstrip("/")
     for item in data:
@@ -3145,9 +2784,7 @@ def ensure_root_folder(app_name, app_url, api_base, api_key, root_folder):
             log(f"[OK] {app_name}: root folder already exists: {root_folder}")
             return
 
-    create_payload = build_root_folder_payload(
-        app_name, app_url, api_base, api_key, root_folder
-    )
+    create_payload = build_root_folder_payload(app_name, app_url, api_base, api_key, root_folder)
 
     status, _, body = http_request(
         app_url,
@@ -3168,98 +2805,33 @@ def ensure_root_folder(app_name, app_url, api_base, api_key, root_folder):
 
 
 def trigger_health_check(app_name, app_url, api_base, api_key):
-    status, _, body = http_request(
+    return _health_service().trigger_health_check(
+        app_name,
         app_url,
-        f"{api_base}/command",
-        api_key=api_key,
-        method="POST",
-        payload={"name": "CheckHealth"},
+        api_base,
+        api_key,
     )
-    if status in (200, 201, 202):
-        log(f"[OK] {app_name}: triggered CheckHealth")
-        return
-    log(f"[WARN] {app_name}: failed to trigger CheckHealth (HTTP {status}): {body}")
 
 
 def trigger_arr_command(app_name, app_url, api_base, api_key, command_name, *, required=False):
-    # Avoid queueing duplicate long-running commands on repeated bootstrap runs.
-    status, commands, body = http_request(
+    return _health_service().trigger_arr_command(
+        app_name,
         app_url,
-        f"{api_base}/command",
-        api_key=api_key,
+        api_base,
+        api_key,
+        command_name,
+        required=required,
     )
-    if status == 200 and isinstance(commands, list):
-        for item in commands:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name") or "").strip().lower()
-            state = str(item.get("status") or "").strip().lower()
-            if name == command_name.strip().lower() and state in ("queued", "started"):
-                log(
-                    f"[OK] {app_name}: command {command_name} already {state}; "
-                    "skipping duplicate trigger"
-                )
-                return True
-
-    status, _, body = http_request(
-        app_url,
-        f"{api_base}/command",
-        api_key=api_key,
-        method="POST",
-        payload={"name": command_name},
-    )
-    if status in (200, 201, 202):
-        log(f"[OK] {app_name}: triggered {command_name}")
-        return True
-
-    message = f"{app_name}: failed to trigger {command_name} (HTTP {status}): {body}"
-    if required:
-        raise RuntimeError(message)
-    log(f"[WARN] {message}")
-    return False
 
 
 def trigger_arr_discovery_kickoff(cfg, app_cfg, app_url, api_base, api_key):
-    arr_discovery_cfg = cfg.get("arr_discovery_lists") or {}
-    if not bool_cfg(arr_discovery_cfg, "trigger_initial_sync", True):
-        return
-
-    impl = str(app_cfg.get("implementation") or "").strip()
-    app_name = str(app_cfg.get("name") or impl or "Arr")
-    commands = []
-    if impl == "Lidarr":
-        commands = ["MissingAlbumSearch", "RssSync"]
-    elif impl == "Readarr":
-        commands = ["MissingBookSearch", "RssSync"]
-    else:
-        return
-
-    # Import list sync can be expensive/rate-limited (especially Readarr metadata providers).
-    # Force it only on first-run (empty library) unless explicitly overridden.
-    force_import_sync = env_truthy("ARR_FORCE_IMPORTLIST_SYNC", False)
-    if force_import_sync:
-        commands.insert(0, "ImportListSync")
-    else:
-        seed_endpoint = None
-        if impl == "Lidarr":
-            seed_endpoint = f"{api_base}/artist"
-        elif impl == "Readarr":
-            seed_endpoint = f"{api_base}/author"
-        should_seed = True
-        if seed_endpoint:
-            status, existing, _ = http_request(app_url, seed_endpoint, api_key=api_key)
-            if status == 200 and isinstance(existing, list) and len(existing) > 0:
-                should_seed = False
-        if should_seed:
-            commands.insert(0, "ImportListSync")
-        else:
-            log(
-                f"[OK] {app_name}: skipping ImportListSync during bootstrap "
-                "(library already has managed entries)"
-            )
-
-    for command_name in commands:
-        trigger_arr_command(app_name, app_url, api_base, api_key, command_name)
+    return _discovery_service().trigger_arr_discovery_kickoff(
+        cfg,
+        app_cfg,
+        app_url,
+        api_base,
+        api_key,
+    )
 
 
 def fetch_arr_download_client_config(app_name, app_url, api_base, api_key):
@@ -3338,9 +2910,7 @@ def ensure_arr_download_handling(app_name, app_url, api_base, api_key, handling_
         )
         return
 
-    raise RuntimeError(
-        f"{app_name}: failed updating download handling (HTTP {status}): {body}"
-    )
+    raise RuntimeError(f"{app_name}: failed updating download handling (HTTP {status}): {body}")
 
 
 def resolve_arr_overrides_by_app(cfg_section, app_cfg):
@@ -3356,9 +2926,7 @@ def resolve_arr_overrides_by_app(cfg_section, app_cfg):
     )
 
 
-def ensure_arr_media_management(
-    app_cfg, app_url, api_base, api_key, media_cfg
-):
+def ensure_arr_media_management(app_cfg, app_url, api_base, api_key, media_cfg):
     if not bool_cfg(media_cfg, "enabled", True):
         return
 
@@ -3389,13 +2957,9 @@ def ensure_arr_media_management(
 
     if app_impl == "Sonarr":
         if "create_empty_series_folders" in app_overrides:
-            desired_season_folders = bool(
-                app_overrides.get("create_empty_series_folders")
-            )
+            desired_season_folders = bool(app_overrides.get("create_empty_series_folders"))
         else:
-            desired_season_folders = bool_cfg(
-                media_cfg, "create_empty_series_folders", True
-            )
+            desired_season_folders = bool_cfg(media_cfg, "create_empty_series_folders", True)
         if "createEmptySeriesFolders" in desired and bool(
             desired.get("createEmptySeriesFolders")
         ) != bool(desired_season_folders):
@@ -3479,7 +3043,9 @@ def ensure_arr_quality_upgrade_policy(
     )
     profile_id = selected.get("id")
     if profile_id is None:
-        raise RuntimeError(f"{app_name}: quality upgrade policy could not resolve quality profile id")
+        raise RuntimeError(
+            f"{app_name}: quality upgrade policy could not resolve quality profile id"
+        )
 
     desired = json.loads(json.dumps(selected))
     changed = False
@@ -3570,24 +3136,11 @@ def ensure_arr_quality_upgrade_policy(
 
 
 def coerce_for_example(value, example):
-    if isinstance(example, bool):
-        if isinstance(value, str):
-            return value.strip().lower() in ("1", "true", "yes", "on")
-        return bool(value)
-    if isinstance(example, int) and not isinstance(example, bool):
-        parsed = to_int(value)
-        if parsed is not None:
-            return parsed
-    return value
+    return DiscoveryListsService._coerce_for_example(value, example)
 
 
 def resolve_import_list_definitions(arr_discovery_cfg, app_cfg):
-    app_impl = str(app_cfg.get("implementation") or "")
-    return coerce_list(
-        arr_discovery_cfg.get(app_impl)
-        or arr_discovery_cfg.get(app_impl.lower())
-        or []
-    )
+    return _discovery_service().resolve_import_list_definitions(arr_discovery_cfg, app_cfg)
 
 
 def build_arr_import_list_payload(
@@ -3597,359 +3150,22 @@ def build_arr_import_list_payload(
     default_quality_profile_id,
     default_metadata_profile_id=None,
 ):
-    name = str(list_cfg.get("name") or schema.get("implementationName") or "").strip()
-    if not name:
-        raise RuntimeError(
-            f"{app_cfg.get('name', app_cfg.get('implementation', 'Arr'))}: import list entry missing name."
-        )
-
-    values = field_map(schema.get("fields"))
-    allow_unknown_overrides = bool(list_cfg.get("allow_unknown_field_overrides", False))
-    for field_name, field_value in (list_cfg.get("field_overrides") or {}).items():
-        resolved_value = resolve_env_placeholder(field_value)
-        if field_name in values:
-            values[field_name] = coerce_for_example(resolved_value, values.get(field_name))
-        elif allow_unknown_overrides:
-            values[field_name] = resolved_value
-
-    payload = {
-        "name": name,
-        "implementation": schema.get("implementation"),
-        "configContract": schema.get("configContract"),
-        "fields": field_list(values),
-    }
-
-    for key in (
-        "enabled",
-        "enableAuto",
-        "monitor",
-        "qualityProfileId",
-        "metadataProfileId",
-        "searchOnAdd",
-        "minimumAvailability",
-        "listType",
-        "listOrder",
-        "minRefreshInterval",
-        "enableAutomaticAdd",
-        "searchForMissingEpisodes",
-        "shouldMonitor",
-        "monitorNewItems",
-        "seriesType",
-        "seasonFolder",
-        "shouldSearch",
-    ):
-        if key in schema:
-            payload[key] = schema.get(key)
-
-    cfg_key_map = {
-        "enabled": "enabled",
-        "enable_auto": "enableAuto",
-        "monitor": "monitor",
-        "quality_profile_id": "qualityProfileId",
-        "metadata_profile_id": "metadataProfileId",
-        "search_on_add": "searchOnAdd",
-        "minimum_availability": "minimumAvailability",
-        "list_type": "listType",
-        "list_order": "listOrder",
-        "min_refresh_interval": "minRefreshInterval",
-        "enable_automatic_add": "enableAutomaticAdd",
-        "search_for_missing_episodes": "searchForMissingEpisodes",
-        "should_monitor": "shouldMonitor",
-        "monitor_new_items": "monitorNewItems",
-        "series_type": "seriesType",
-        "season_folder": "seasonFolder",
-        "should_search": "shouldSearch",
-    }
-    for src_key, dst_key in cfg_key_map.items():
-        if src_key not in list_cfg:
-            continue
-        value = resolve_env_placeholder(list_cfg.get(src_key))
-        if dst_key in payload:
-            payload[dst_key] = coerce_for_example(value, payload.get(dst_key))
-        else:
-            payload[dst_key] = value
-
-    # Backward-compatibility across Arr variants:
-    # some schemas (Lidarr/Readarr) use shouldMonitor/shouldSearch/enableAutomaticAdd,
-    # while others (older Sonarr/Radarr-style) use monitor/searchOnAdd/enableAuto.
-    def apply_alias(src_key, dst_keys):
-        if src_key not in list_cfg:
-            return
-        value = resolve_env_placeholder(list_cfg.get(src_key))
-        for dst_key in dst_keys:
-            if dst_key in payload:
-                payload[dst_key] = coerce_for_example(value, payload.get(dst_key))
-
-    apply_alias("enable_auto", ("enableAutomaticAdd", "enableAuto"))
-    apply_alias("enable_automatic_add", ("enableAutomaticAdd", "enableAuto"))
-    apply_alias("monitor", ("shouldMonitor", "monitor"))
-    apply_alias("should_monitor", ("shouldMonitor", "monitor"))
-    apply_alias("search_on_add", ("shouldSearch", "searchOnAdd"))
-    apply_alias("should_search", ("shouldSearch", "searchOnAdd"))
-
-    quality_profile_id = to_int(payload.get("qualityProfileId"))
-    if (quality_profile_id is None or quality_profile_id <= 0) and default_quality_profile_id:
-        payload["qualityProfileId"] = int(default_quality_profile_id)
-
-    metadata_profile_id = to_int(payload.get("metadataProfileId"))
-    if (metadata_profile_id is None or metadata_profile_id <= 0) and default_metadata_profile_id:
-        payload["metadataProfileId"] = int(default_metadata_profile_id)
-
-    app_impl = str(app_cfg.get("implementation") or "").strip().lower()
-    # Readarr/Lidarr use different enums for shouldMonitor than Sonarr-style "all/none".
-    monitor_value = str(payload.get("shouldMonitor") or "").strip().lower()
-    if monitor_value == "all":
-        if app_impl == "readarr":
-            payload["shouldMonitor"] = "entireAuthor"
-        elif app_impl == "lidarr":
-            payload["shouldMonitor"] = "entireArtist"
-
-    root_folder_path = (
-        str(list_cfg.get("root_folder_path") or "").strip()
-        or str(app_cfg.get("root_folder") or "").strip()
+    return _discovery_service().build_arr_import_list_payload(
+        app_cfg,
+        schema,
+        list_cfg,
+        default_quality_profile_id,
+        default_metadata_profile_id,
     )
-    if root_folder_path:
-        payload["rootFolderPath"] = root_folder_path
-
-    return payload
 
 
 def ensure_arr_discovery_lists_for_app(cfg, app_cfg, app_url, api_base, api_key):
-    arr_discovery_cfg = cfg.get("arr_discovery_lists") or {}
-    if not bool_cfg(arr_discovery_cfg, "enabled", False):
-        return
-
-    app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
-    list_defs = resolve_import_list_definitions(arr_discovery_cfg, app_cfg)
-    if not list_defs:
-        return
-    prune_unmanaged = bool_cfg(arr_discovery_cfg, "prune_unmanaged", True)
-
-    status, schemas, body = http_request(
-        app_url, f"{api_base}/importlist/schema", api_key=api_key
-    )
-    if status != 200 or not isinstance(schemas, list):
-        raise RuntimeError(
-            f"{app_name}: failed reading import list schema (HTTP {status}): {body}"
-        )
-    schemas_by_impl = {
-        str(item.get("implementation") or "").strip().lower(): item
-        for item in schemas
-        if isinstance(item, dict) and str(item.get("implementation") or "").strip()
-    }
-
-    status, existing_lists, body = http_request(
-        app_url, f"{api_base}/importlist", api_key=api_key
-    )
-    if status != 200 or not isinstance(existing_lists, list):
-        raise RuntimeError(
-            f"{app_name}: failed listing import lists (HTTP {status}): {body}"
-        )
-
-    preferred_id, preferred_names = resolve_arr_quality_preferences(cfg, app_cfg)
-    selected_profile = get_arr_quality_profile(
-        app_name,
+    return _discovery_service().ensure_arr_discovery_lists_for_app(
+        cfg,
+        app_cfg,
         app_url,
         api_base,
         api_key,
-        preferred_id=preferred_id,
-        preferred_names=preferred_names,
-    )
-    selected_profile_id = to_int(selected_profile.get("id"))
-    selected_profile_name = str(selected_profile.get("name") or "")
-    log(
-        f"[OK] {app_name}: using quality profile '{selected_profile_name}' "
-        f"(id={selected_profile_id}) for discovery lists"
-    )
-
-    app_impl = str(app_cfg.get("implementation") or "")
-    selected_metadata_profile_id = None
-    if app_impl in ("Lidarr", "Readarr"):
-        for metadata_endpoint in ("metadataprofile", "metadataProfile"):
-            try:
-                selected_metadata_profile_id = pick_first_profile_id(
-                    app_name,
-                    app_url,
-                    api_base,
-                    api_key,
-                    metadata_endpoint,
-                    "metadata profiles",
-                )
-                break
-            except Exception:
-                continue
-        if selected_metadata_profile_id:
-            log(
-                f"[OK] {app_name}: using metadata profile id "
-                f"{selected_metadata_profile_id} for discovery lists"
-            )
-        else:
-            log(
-                f"[WARN] {app_name}: could not resolve metadata profile id; "
-                "list creation may fail if this Arr requires metadataProfileId."
-            )
-
-    created = 0
-    updated = 0
-    deleted = 0
-    skipped = 0
-    desired_keys = set()
-    managed_implementations = {
-        str(item.get("implementation") or "").strip().lower()
-        for item in list_defs
-        if isinstance(item, dict) and str(item.get("implementation") or "").strip()
-    }
-
-    for list_cfg in list_defs:
-        if not isinstance(list_cfg, dict):
-            continue
-
-        impl_raw = str(list_cfg.get("implementation") or "").strip()
-        if not impl_raw:
-            log(f"[WARN] {app_name}: skipping import list entry without implementation")
-            skipped += 1
-            continue
-        schema = schemas_by_impl.get(impl_raw.lower())
-        if not schema:
-            msg = (
-                f"{app_name}: import list implementation '{impl_raw}' is not supported by this Arr build."
-            )
-            if bool_cfg(list_cfg, "required", False):
-                raise RuntimeError(msg)
-            log(f"[WARN] {msg}")
-            skipped += 1
-            continue
-
-        schema_fields = {str(f.get("name") or "") for f in (schema.get("fields") or [])}
-        list_name = str(
-            list_cfg.get("name") or schema.get("implementationName") or impl_raw
-        ).strip()
-
-        # Some providers (for example Trakt popular imports in Sonarr) require OAuth.
-        if "signIn" in schema_fields:
-            access_token = str(
-                resolve_env_placeholder(
-                    ((list_cfg.get("field_overrides") or {}).get("accessToken", ""))
-                )
-            ).strip()
-            if not access_token and bool_cfg(list_cfg, "skip_if_auth_required", True):
-                log(
-                    f"[WARN] {app_name}: skipping import list '{list_name}' "
-                    f"({impl_raw}) because provider auth is required "
-                    "(set field_overrides.accessToken/refreshToken to enable)."
-                )
-                skipped += 1
-                continue
-
-        payload = build_arr_import_list_payload(
-            app_cfg,
-            schema,
-            list_cfg,
-            selected_profile_id,
-            selected_metadata_profile_id,
-        )
-        desired_keys.add(
-            (
-                str(payload.get("implementation") or "").strip().lower(),
-                str(payload.get("name") or "").strip().lower(),
-            )
-        )
-
-        existing = None
-        for item in existing_lists:
-            if not isinstance(item, dict):
-                continue
-            if (
-                str(item.get("implementation") or "").strip().lower()
-                == str(payload.get("implementation") or "").strip().lower()
-                and str(item.get("name") or "").strip().lower()
-                == str(payload.get("name") or "").strip().lower()
-            ):
-                existing = item
-                break
-
-        if existing and existing.get("id") is not None:
-            payload["id"] = existing.get("id")
-            status, _, body = http_request(
-                app_url,
-                f"{api_base}/importlist/{existing.get('id')}",
-                api_key=api_key,
-                method="PUT",
-                payload=payload,
-            )
-            if status in (200, 201, 202):
-                updated += 1
-                log(f"[OK] {app_name}: updated discovery list '{payload['name']}'")
-                continue
-            msg = (
-                f"{app_name}: failed updating discovery list '{payload['name']}' "
-                f"(HTTP {status}): {body}"
-            )
-            if bool_cfg(list_cfg, "required", False):
-                raise RuntimeError(msg)
-            log(f"[WARN] {msg}")
-            skipped += 1
-            continue
-
-        status, _, body = http_request(
-            app_url,
-            f"{api_base}/importlist",
-            api_key=api_key,
-            method="POST",
-            payload=payload,
-        )
-        if status in (200, 201, 202):
-            created += 1
-            log(f"[OK] {app_name}: created discovery list '{payload['name']}'")
-            continue
-
-        msg = (
-            f"{app_name}: failed creating discovery list '{payload['name']}' "
-            f"(HTTP {status}): {body}"
-        )
-        if bool_cfg(list_cfg, "required", False):
-            raise RuntimeError(msg)
-        log(f"[WARN] {msg}")
-        skipped += 1
-
-    if prune_unmanaged and managed_implementations:
-        status, existing_lists, body = http_request(
-            app_url, f"{api_base}/importlist", api_key=api_key
-        )
-        if status != 200 or not isinstance(existing_lists, list):
-            raise RuntimeError(
-                f"{app_name}: failed listing import lists for prune (HTTP {status}): {body}"
-            )
-        for item in existing_lists:
-            if not isinstance(item, dict):
-                continue
-            item_id = item.get("id")
-            impl = str(item.get("implementation") or "").strip().lower()
-            name = str(item.get("name") or "").strip().lower()
-            key = (impl, name)
-            if item_id is None or impl not in managed_implementations or key in desired_keys:
-                continue
-            status, _, body = http_request(
-                app_url,
-                f"{api_base}/importlist/{item_id}",
-                api_key=api_key,
-                method="DELETE",
-            )
-            if status in (200, 202, 204):
-                deleted += 1
-                log(
-                    f"[OK] {app_name}: pruned unmanaged discovery list "
-                    f"'{item.get('name', item_id)}'"
-                )
-                continue
-            log(
-                f"[WARN] {app_name}: failed pruning unmanaged discovery list "
-                f"'{item.get('name', item_id)}' (HTTP {status}): {body}"
-            )
-
-    log(
-        f"[OK] {app_name}: discovery list reconcile complete "
-        f"(created={created}, updated={updated}, deleted={deleted}, skipped={skipped})"
     )
 
 
@@ -3963,13 +3179,9 @@ def ensure_readarr_metadata_source(cfg, app_cfg, app_url, api_base, api_key):
     if not desired_source:
         return
 
-    status, current, body = http_request(
-        app_url, f"{api_base}/config/development", api_key=api_key
-    )
+    status, current, body = http_request(app_url, f"{api_base}/config/development", api_key=api_key)
     if status != 200 or not isinstance(current, dict):
-        raise RuntimeError(
-            f"Readarr: failed reading development config (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Readarr: failed reading development config (HTTP {status}): {body}")
 
     existing_source = str(current.get("metadataSource") or "").strip()
     if existing_source == desired_source:
@@ -3989,281 +3201,38 @@ def ensure_readarr_metadata_source(cfg, app_cfg, app_url, api_base, api_key):
         log(f"[OK] Readarr: updated metadata source to {desired_source}")
         return
 
-    raise RuntimeError(
-        f"Readarr: failed updating metadata source (HTTP {status}): {body}"
-    )
+    raise RuntimeError(f"Readarr: failed updating metadata source (HTTP {status}): {body}")
 
 
 def auth_scope_matches(auth_cfg, app_name, implementation):
-    include = [
-        str(x).strip().lower()
-        for x in (auth_cfg.get("include") or [])
-        if str(x).strip()
-    ]
-    if not include:
-        return True
-    app_lower = str(app_name).strip().lower()
-    impl_lower = str(implementation).strip().lower()
-    return app_lower in include or impl_lower in include
+    return _auth_service().auth_scope_matches(auth_cfg, app_name, implementation)
 
 
-def ensure_app_auth_settings(
-    app_name, implementation, app_url, api_base, api_key, auth_cfg
-):
-    if not bool_cfg(auth_cfg, "enabled", False):
-        return
-    if not auth_scope_matches(auth_cfg, app_name, implementation):
-        return
-
-    status, current, body = http_request(
-        app_url, f"{api_base}/config/host", api_key=api_key
-    )
-    if status != 200 or not isinstance(current, dict):
-        raise RuntimeError(
-            f"{app_name}: failed reading host config for auth bootstrap (HTTP {status}): {body}"
-        )
-
-    method = str(auth_cfg.get("method", "None"))
-    required = str(auth_cfg.get("required", "DisabledForLocalAddresses"))
-    username_env = auth_cfg.get("username_env", "STACK_ADMIN_USERNAME")
-    password_env = auth_cfg.get("password_env", "STACK_ADMIN_PASSWORD")
-    username = (os.environ.get(username_env) or "").strip()
-    password = (os.environ.get(password_env) or "").strip()
-
-    desired = dict(current)
-    changed = False
-
-    if str(desired.get("authenticationMethod")) != method:
-        desired["authenticationMethod"] = method
-        changed = True
-
-    if str(desired.get("authenticationRequired")) != required:
-        desired["authenticationRequired"] = required
-        changed = True
-
-    if method.lower() != "none":
-        if not username or not password:
-            raise RuntimeError(
-                f"{app_name}: auth method '{method}' requires env creds {username_env}/{password_env}"
-            )
-        if str(desired.get("username", "")) != username:
-            desired["username"] = username
-            changed = True
-        desired["password"] = password
-        changed = True
-        # Arr/Prowlarr host config validation may require explicit password confirmation.
-        desired["passwordConfirmation"] = password
-        # Some versions validate PascalCase property names.
-        desired["PasswordConfirmation"] = password
-        # Some versions use confirmPassword style keys.
-        desired["confirmPassword"] = password
-        desired["ConfirmPassword"] = password
-        changed = True
-    else:
-        if desired.get("username"):
-            desired["username"] = ""
-            changed = True
-        if desired.get("password"):
-            desired["password"] = ""
-            changed = True
-        if desired.get("passwordConfirmation"):
-            desired["passwordConfirmation"] = ""
-            changed = True
-        if desired.get("PasswordConfirmation"):
-            desired["PasswordConfirmation"] = ""
-            changed = True
-        if desired.get("confirmPassword"):
-            desired["confirmPassword"] = ""
-            changed = True
-        if desired.get("ConfirmPassword"):
-            desired["ConfirmPassword"] = ""
-            changed = True
-
-    if not changed:
-        log(f"[OK] {app_name}: auth settings already match desired config")
-        return
-
-    status, _, body = http_request(
+def ensure_app_auth_settings(app_name, implementation, app_url, api_base, api_key, auth_cfg):
+    return _auth_service().ensure_app_auth_settings(
+        app_name,
+        implementation,
         app_url,
-        f"{api_base}/config/host",
-        api_key=api_key,
-        method="PUT",
-        payload=desired,
-    )
-    if status in (200, 201, 202):
-        log(
-            f"[OK] {app_name}: auth settings applied "
-            f"(method={method}, required={required})"
-        )
-        return
-
-    # Retry once for versions that validate one specific confirmation key casing.
-    if status == 400 and "passwordconfirmation" in str(body or "").lower():
-        retry_payload = dict(desired)
-        retry_payload["passwordConfirmation"] = password
-        retry_payload["PasswordConfirmation"] = password
-        retry_payload["confirmPassword"] = password
-        retry_payload["ConfirmPassword"] = password
-        status2, _, body2 = http_request(
-            app_url,
-            f"{api_base}/config/host",
-            api_key=api_key,
-            method="PUT",
-            payload=retry_payload,
-        )
-        if status2 in (200, 201, 202):
-            log(
-                f"[OK] {app_name}: auth settings applied "
-                f"(method={method}, required={required})"
-            )
-            return
-        status = status2
-        body = body2
-
-    raise RuntimeError(
-        f"{app_name}: failed applying auth settings (HTTP {status}): {body}"
+        api_base,
+        api_key,
+        auth_cfg,
     )
 
 
 def choose_category(app_cfg, client_cfg):
-    if app_cfg.get("qbit_category"):
-        return app_cfg["qbit_category"]
-
-    categories = client_cfg.get("categories", {})
-    if app_cfg["implementation"] in categories:
-        return categories[app_cfg["implementation"]]
-
-    default_map = {
-        "Sonarr": "tv",
-        "Radarr": "movies",
-        "Lidarr": "music",
-        "Readarr": "books",
-    }
-    return default_map.get(app_cfg["implementation"], "downloads")
+    return _arr_service().choose_category(app_cfg, client_cfg)
 
 
 def normalize_mapping_path(path_value):
-    text = str(path_value or "").strip()
-    if not text:
-        return ""
-    if text != "/":
-        text = text.rstrip("/")
-    return text
+    return _arr_service().normalize_mapping_path(path_value)
 
 
 def build_sab_remote_path_mappings(sab_cfg):
-    raw = coerce_list(sab_cfg.get("remote_path_mappings"))
-    host = str(sab_cfg.get("host", "sabnzbd")).strip() or "sabnzbd"
-    complete_dir = normalize_mapping_path(
-        sab_cfg.get("complete_dir", "/data/usenet/completed")
-    )
-
-    # Keep a compatibility mapping for SAB setups that still report legacy /config paths.
-    if complete_dir:
-        raw.extend(
-            [
-                {
-                    "host": host,
-                    "remote_path": "/config/Downloads/complete",
-                    "local_path": complete_dir,
-                },
-                {
-                    "host": host,
-                    "remote_path": "Downloads/complete",
-                    "local_path": complete_dir,
-                },
-            ]
-        )
-
-    return normalize_remote_path_mappings(raw)
+    return _arr_service().build_sab_remote_path_mappings(sab_cfg)
 
 
 def ensure_arr_remote_path_mappings(app_cfg, app_url, api_base, api_key, mappings):
-    desired_mappings = normalize_remote_path_mappings(mappings)
-    if not desired_mappings:
-        return
-
-    app_name = app_cfg.get("name", app_cfg.get("implementation", "Arr"))
-    status, existing, body = http_request(
-        app_url, f"{api_base}/remotepathmapping", api_key=api_key
-    )
-    if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(
-            f"{app_name}: failed listing remote path mappings (HTTP {status}): {body}"
-        )
-
-    existing_by_key = {}
-    for item in existing:
-        if not isinstance(item, dict):
-            continue
-        host = str(item.get("host", "")).strip()
-        remote = normalize_mapping_path(item.get("remotePath"))
-        if not host or not remote:
-            continue
-        key = (host.lower(), remote)
-        if key not in existing_by_key:
-            existing_by_key[key] = item
-
-    for mapping in desired_mappings:
-        host = str(mapping.get("host", "")).strip()
-        remote = normalize_mapping_path(mapping.get("remotePath"))
-        local = normalize_mapping_path(mapping.get("localPath"))
-        if not host or not remote or not local:
-            continue
-
-        key = (host.lower(), remote)
-        current = existing_by_key.get(key)
-        if current:
-            current_local = normalize_mapping_path(current.get("localPath"))
-            if current_local == local:
-                log(
-                    f"[OK] {app_name}: remote path mapping already set "
-                    f"({host}: {remote} -> {local})"
-                )
-                continue
-
-            payload = {
-                "id": current.get("id"),
-                "host": host,
-                "remotePath": remote,
-                "localPath": local,
-            }
-            status, _, body = http_request(
-                app_url,
-                f"{api_base}/remotepathmapping/{current.get('id')}",
-                api_key=api_key,
-                method="PUT",
-                payload=payload,
-            )
-            if status in (200, 201, 202):
-                log(
-                    f"[OK] {app_name}: updated remote path mapping "
-                    f"({host}: {remote} -> {local})"
-                )
-                continue
-            raise RuntimeError(
-                f"{app_name}: failed updating remote path mapping "
-                f"({host}: {remote} -> {local}) (HTTP {status}): {body}"
-            )
-
-        payload = {"host": host, "remotePath": remote, "localPath": local}
-        status, _, body = http_request(
-            app_url,
-            f"{api_base}/remotepathmapping",
-            api_key=api_key,
-            method="POST",
-            payload=payload,
-        )
-        if status in (200, 201, 202):
-            log(
-                f"[OK] {app_name}: created remote path mapping "
-                f"({host}: {remote} -> {local})"
-            )
-            continue
-        raise RuntimeError(
-            f"{app_name}: failed creating remote path mapping "
-            f"({host}: {remote} -> {local}) (HTTP {status}): {body}"
-        )
+    _arr_service().ensure_arr_remote_path_mappings(app_cfg, app_url, api_base, api_key, mappings)
 
 
 def ensure_arr_download_client(
@@ -4274,526 +3243,48 @@ def ensure_arr_download_client(
     client_cfg,
     client_auth,
 ):
-    status, schemas, body = http_request(
-        app_url, f"{api_base}/downloadclient/schema", api_key=api_key
-    )
-    if status != 200 or not isinstance(schemas, list):
-        raise RuntimeError(
-            f"{app_cfg['name']}: failed to read download client schema (HTTP {status}): {body}"
-        )
-
-    impl_raw = str(client_cfg.get("implementation", "QBittorrent")).strip()
-    impl_target = impl_raw.lower()
-    client_label = str(client_cfg.get("name") or impl_raw or "download client")
-    client_host = str(client_cfg.get("host", "")).strip()
-    client_port = to_int(client_cfg.get("port"))
-    client_use_ssl = bool(client_cfg.get("use_ssl", False))
-    client_url_base = str(client_cfg.get("url_base", "")).strip()
-    client_priority = to_int(client_cfg.get("priority"), 1)
-    if client_priority is None:
-        client_priority = 1
-    if client_priority < 1:
-        client_priority = 1
-    if client_priority > 50:
-        client_priority = 50
-
-    auth_username = str((client_auth or {}).get("username", "")).strip()
-    auth_password = str((client_auth or {}).get("password", "")).strip()
-    auth_api_key = str(
-        (client_auth or {}).get("api_key")
-        or (client_auth or {}).get("apikey")
-        or ""
-    ).strip()
-
-    schema = None
-    for entry in schemas:
-        if str(entry.get("implementation", "")).lower() == impl_target:
-            schema = entry
-            break
-    if not schema:
-        raise RuntimeError(
-            f"{app_cfg['name']}: schema '{impl_raw}' not found in downloadclient/schema"
-        )
-
-    values = field_map(schema.get("fields"))
-    if "host" in values:
-        values["host"] = client_host
-    if "hostname" in values:
-        values["hostname"] = client_host
-    if client_port is not None and "port" in values:
-        values["port"] = int(client_port)
-
-    if "useSsl" in values:
-        values["useSsl"] = client_use_ssl
-    if "ssl" in values:
-        values["ssl"] = client_use_ssl
-    if "urlBase" in values:
-        values["urlBase"] = client_url_base
-    if "baseUrl" in values:
-        values["baseUrl"] = client_url_base
-    if "username" in values:
-        values["username"] = auth_username
-    if "password" in values:
-        values["password"] = auth_password
-    if "apiKey" in values:
-        values["apiKey"] = auth_api_key
-    if "apikey" in values:
-        values["apikey"] = auth_api_key
-    app_impl_lower = str(app_cfg.get("implementation") or "").strip().lower()
-    enforce_dual_priority_fields = app_impl_lower == "readarr"
-    for priority_key in list(values.keys()):
-        key_lower = str(priority_key).strip().lower()
-        if key_lower in ("priority", "torrentpriority", "nzbpriority") or key_lower.endswith(
-            "priority"
-        ):
-            values[priority_key] = client_priority
-    # Readarr has been observed to validate an explicit Priority value and reject defaults (0).
-    has_priority_field = any(str(k).strip().lower() == "priority" for k in values.keys())
-    if not has_priority_field:
-        values["priority"] = client_priority
-        if enforce_dual_priority_fields:
-            values["Priority"] = client_priority
-    elif enforce_dual_priority_fields:
-        values["priority"] = client_priority
-        values["Priority"] = client_priority
-
-    category = choose_category(app_cfg, client_cfg)
-    for key in (
-        "category",
-        "tvCategory",
-        "movieCategory",
-        "musicCategory",
-        "bookCategory",
-        "animeCategory",
-    ):
-        if key in values:
-            values[key] = category
-
-    payload = {
-        "name": client_label,
-        "implementation": schema.get("implementation", impl_raw),
-        "configContract": schema.get("configContract", "QBittorrentSettings"),
-        "enable": True,
-        "priority": client_priority,
-        "tags": [],
-        "fields": field_list(values),
-    }
-    if enforce_dual_priority_fields:
-        payload["Priority"] = client_priority
-
-    status, clients, body = http_request(app_url, f"{api_base}/downloadclient", api_key=api_key)
-    if status != 200 or not isinstance(clients, list):
-        raise RuntimeError(
-            f"{app_cfg['name']}: failed to list download clients (HTTP {status}): {body}"
-        )
-
-    existing = None
-    existing_by_name = None
-    named_matches = []
-    desired_name = client_label
-    for client in clients:
-        if str(client.get("implementation", "")).lower() != impl_target:
-            continue
-        if str(client.get("name", "")).strip().lower() == desired_name.strip().lower():
-            existing_by_name = client
-            named_matches.append(client)
-        fields = field_map(client.get("fields"))
-        field_host = str(fields.get("host", "") or fields.get("hostname", "")).strip()
-        field_port = to_int(fields.get("port"))
-        host_match = bool(client_host and field_host == client_host)
-        port_match = bool(client_port is None or field_port == client_port)
-        if host_match and port_match:
-            existing = client
-            break
-
-    def delete_client(client_id):
-        status, _, body = http_request(
-            app_url, f"{api_base}/downloadclient/{client_id}", api_key=api_key, method="DELETE"
-        )
-        if status not in (200, 202, 204):
-            raise RuntimeError(
-                f"{app_cfg['name']}: failed deleting duplicate {client_label} client id={client_id} "
-                f"(HTTP {status}): {body}"
-            )
-
-    # Some environments can accumulate duplicate named clients across repeated bootstrap runs.
-    # Remove extras up-front so PUT/POST validation does not fail with "Name should be unique".
-    if len(named_matches) > 1:
-        keep = existing.get("id") if existing else named_matches[0].get("id")
-        for item in named_matches:
-            item_id = item.get("id")
-            if item_id is None or item_id == keep:
-                continue
-            delete_client(item_id)
-            log(
-                f"[OK] {app_cfg['name']}: removed duplicate named {client_label} client id={item_id}"
-            )
-        status, clients, body = http_request(
-            app_url, f"{api_base}/downloadclient", api_key=api_key
-        )
-        if status != 200 or not isinstance(clients, list):
-            raise RuntimeError(
-                f"{app_cfg['name']}: failed to refresh download clients after duplicate cleanup "
-                f"(HTTP {status}): {body}"
-            )
-        existing = None
-        existing_by_name = None
-        for client in clients:
-            if str(client.get("implementation", "")).lower() != impl_target:
-                continue
-            if str(client.get("name", "")).strip().lower() == desired_name.strip().lower():
-                existing_by_name = client
-            fields = field_map(client.get("fields"))
-            field_host = str(fields.get("host", "") or fields.get("hostname", "")).strip()
-            field_port = to_int(fields.get("port"))
-            host_match = bool(client_host and field_host == client_host)
-            port_match = bool(client_port is None or field_port == client_port)
-            if host_match and port_match:
-                existing = client
-
-    def save_client(method, path, request_payload):
-        status, _, response_body = http_request(
-            app_url, path, api_key=api_key, method=method, payload=request_payload
-        )
-        if status in (200, 201, 202):
-            return True, status, response_body
-
-        body_lower = str(response_body or "").lower()
-        priority_hints = (
-            "additional properties",
-            "not allowed",
-            "unknown",
-            "unrecognized",
-            "deserialize",
-            "invalid property",
-        )
-        priority_validation_hints = ("inclusivebetweenvalidator", "between 1 and 50")
-
-        if "priority" in body_lower and any(hint in body_lower for hint in priority_validation_hints):
-            fallback = dict(request_payload)
-            fallback["priority"] = client_priority
-            if enforce_dual_priority_fields:
-                fallback["Priority"] = client_priority
-            normalized_fields = []
-            has_priority_field = False
-            has_priority_upper = False
-            for field in coerce_list(fallback.get("fields")):
-                if not isinstance(field, dict):
-                    normalized_fields.append(field)
-                    continue
-                original_name = str(field.get("name") or "").strip()
-                field_name = str(field.get("name") or "").strip().lower()
-                if field_name in ("priority", "torrentpriority", "nzbpriority") or field_name.endswith(
-                    "priority"
-                ):
-                    fixed = dict(field)
-                    fixed["value"] = client_priority
-                    normalized_fields.append(fixed)
-                    if field_name == "priority":
-                        has_priority_field = True
-                    if original_name == "Priority":
-                        has_priority_upper = True
-                else:
-                    normalized_fields.append(field)
-            if not has_priority_field:
-                normalized_fields.append({"name": "priority", "value": client_priority})
-            if enforce_dual_priority_fields and not has_priority_upper:
-                normalized_fields.append({"name": "Priority", "value": client_priority})
-            fallback["fields"] = normalized_fields
-            status2, _, response_body2 = http_request(
-                app_url, path, api_key=api_key, method=method, payload=fallback
-            )
-            if status2 in (200, 201, 202):
-                return True, status2, response_body2
-            status = status2
-            response_body = response_body2
-            body_lower = str(response_body or "").lower()
-
-        if "priority" not in body_lower or not any(hint in body_lower for hint in priority_hints):
-            return False, status, response_body
-
-        fallback = dict(request_payload)
-        fallback.pop("priority", None)
-        fallback.pop("Priority", None)
-        status2, _, response_body2 = http_request(
-            app_url, path, api_key=api_key, method=method, payload=fallback
-        )
-        if status2 in (200, 201, 202):
-            return True, status2, response_body2
-        return False, status2, response_body2
-
-    def reconcile_existing_by_name():
-        status_list, clients_list, body_list = http_request(
-            app_url, f"{api_base}/downloadclient", api_key=api_key
-        )
-        if status_list != 200 or not isinstance(clients_list, list):
-            raise RuntimeError(
-                f"{app_cfg['name']}: failed refreshing download clients after duplicate-name response (HTTP {status_list}): {body_list}"
-            )
-
-        target = None
-        for item in clients_list:
-            if str(item.get("implementation", "")).lower() != impl_target:
-                continue
-            if str(item.get("name", "")).strip().lower() == desired_name.strip().lower():
-                target = item
-                break
-        if not target:
-            raise RuntimeError(
-                f"{app_cfg['name']}: duplicate '{client_label}' client name detected but no matching existing client was found to reconcile"
-            )
-
-        payload["id"] = target.get("id")
-        ok3, status3, body3 = save_client(
-            "PUT", f"{api_base}/downloadclient/{target.get('id')}", payload
-        )
-        if ok3:
-            log(
-                f"[OK] {app_cfg['name']}: reconciled existing named {client_label} download client"
-            )
-            return
-        raise RuntimeError(
-            f"{app_cfg['name']}: failed reconciling existing {client_label} client by name (HTTP {status3}): {body3}"
-        )
-
-    if existing:
-        payload["id"] = existing.get("id")
-        ok, status, body = save_client(
-            "PUT", f"{api_base}/downloadclient/{existing.get('id')}", payload
-        )
-        if ok:
-            log(f"[OK] {app_cfg['name']}: updated {client_label} download client")
-            return
-        body_lower = str(body or "").lower()
-        if status == 400 and "should be unique" in body_lower and "name" in body_lower:
-            reconcile_existing_by_name()
-            return
-        raise RuntimeError(
-            f"{app_cfg['name']}: failed updating {client_label} client (HTTP {status}): {body}"
-        )
-
-    ok, status, body = save_client("POST", f"{api_base}/downloadclient", payload)
-    if ok:
-        log(f"[OK] {app_cfg['name']}: created {client_label} download client")
-        return
-
-    # If a previous run already created the same named client, reconcile by update.
-    body_lower = str(body or "").lower()
-    if status == 400 and "should be unique" in body_lower and "name" in body_lower:
-        if existing_by_name is not None:
-            payload["id"] = existing_by_name.get("id")
-            ok2, status2, body2 = save_client(
-                "PUT", f"{api_base}/downloadclient/{existing_by_name.get('id')}", payload
-            )
-            if ok2:
-                log(
-                    f"[OK] {app_cfg['name']}: reconciled existing named {client_label} download client"
-                )
-                return
-            raise RuntimeError(
-                f"{app_cfg['name']}: failed reconciling existing {client_label} client by name (HTTP {status2}): {body2}"
-            )
-        reconcile_existing_by_name()
-        return
-
-    raise RuntimeError(
-        f"{app_cfg['name']}: failed creating {client_label} client (HTTP {status}): {body}"
+    _arr_service().ensure_arr_download_client(
+        app_cfg=app_cfg,
+        app_url=app_url,
+        api_base=api_base,
+        api_key=api_key,
+        client_cfg=client_cfg,
+        client_auth=client_auth,
     )
 
 
 def qbit_login(base_url, username, password):
-    jar = cookiejar.CookieJar()
-    opener = request.build_opener(request.HTTPCookieProcessor(jar))
-    data = parse.urlencode({"username": username, "password": password}).encode("utf-8")
-    req = request.Request(
-        f"{normalize_url(base_url)}/api/v2/auth/login",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    with opener.open(req, timeout=20) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
-    if "Ok." not in body:
-        raise RuntimeError("qBittorrent login rejected credentials.")
-    return opener
+    return _qbit_service().login(base_url, username, password)
 
 
 def qbit_create_category(opener, base_url, category, save_path):
-    data = parse.urlencode({"category": category, "savePath": save_path}).encode("utf-8")
-    req = request.Request(
-        f"{normalize_url(base_url)}/api/v2/torrents/createCategory",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    try:
-        with opener.open(req, timeout=20):
-            pass
-        log(f"[OK] qBittorrent: category {category} -> {save_path}")
-    except error.HTTPError as exc:
-        # qBittorrent may return 409 when category already exists.
-        if exc.code == 409:
-            log(f"[OK] qBittorrent: category already exists: {category}")
-            return
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"qBittorrent: failed to create category {category} (HTTP {exc.code}): {body}"
-        )
+    return _qbit_service().create_category(opener, base_url, category, save_path)
 
 
 def qbit_set_preferences(opener, base_url, preferences):
-    data = parse.urlencode({"json": json.dumps(preferences)}).encode("utf-8")
-    req = request.Request(
-        f"{normalize_url(base_url)}/api/v2/app/setPreferences",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    try:
-        with opener.open(req, timeout=20):
-            pass
-    except error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"qBittorrent: failed updating preferences (HTTP {exc.code}): {body}"
-        ) from exc
-
-
-def _normalize_qbit_subnet_list(values):
-    normalized = []
-    seen = set()
-    for raw in coerce_list(values):
-        subnet = str(raw or "").strip()
-        if not subnet or subnet in seen:
-            continue
-        seen.add(subnet)
-        normalized.append(subnet)
-    return normalized
+    return _qbit_service().set_preferences(opener, base_url, preferences)
 
 
 def setup_qbit_storage_defaults(opener, qbit_url, qbit_cfg):
-    save_path = str(
-        qbit_cfg.get("default_save_path", "/data/torrents/completed")
-    ).rstrip("/")
-    temp_path = str(
-        qbit_cfg.get("temp_path", "/data/torrents/incomplete")
-    ).rstrip("/")
-    temp_path_enabled = bool(qbit_cfg.get("temp_path_enabled", True))
-    auto_tmm_enabled = bool(qbit_cfg.get("auto_tmm_enabled", True))
-
-    prefs = {
-        "save_path": save_path,
-        "temp_path": temp_path,
-        "temp_path_enabled": temp_path_enabled,
-        "auto_tmm_enabled": auto_tmm_enabled,
-        # Keep moving torrents between incomplete/completed category paths when state changes.
-        "torrent_changed_tmm_enabled": True,
-    }
-
-    # Keep UI auth convenient for localhost and trusted internal cluster ranges,
-    # while preventing accidental world-open bypass defaults.
-    auth_bypass = qbit_cfg.get("auth_bypass")
-    if not isinstance(auth_bypass, dict):
-        auth_bypass = {}
-
-    bypass_local_auth = bool_cfg(auth_bypass, "localhost", True)
-    bypass_whitelist_enabled = bool_cfg(auth_bypass, "whitelist_enabled", True)
-    whitelist_subnets = _normalize_qbit_subnet_list(
-        auth_bypass.get(
-            "whitelist_subnets",
-            [
-                "10.0.0.0/8",
-                "172.16.0.0/12",
-                "192.168.0.0/16",
-                "127.0.0.1/32",
-                "::1/128",
-            ],
-        )
-    )
-    allow_open_world = bool_cfg(auth_bypass, "allow_open_world", False)
-    world_open_tokens = {"0.0.0.0", "0.0.0.0/0", "::/0"}
-    if not allow_open_world:
-        filtered = []
-        for subnet in whitelist_subnets:
-            if subnet in world_open_tokens:
-                log(
-                    "[WARN] qBittorrent: refusing world-open auth bypass subnet "
-                    f"'{subnet}'. Set download_clients.qbittorrent.auth_bypass.allow_open_world=true "
-                    "to allow it explicitly."
-                )
-                continue
-            filtered.append(subnet)
-        whitelist_subnets = filtered
-
-    if bypass_whitelist_enabled and not whitelist_subnets:
-        log(
-            "[WARN] qBittorrent: auth bypass whitelist enabled but no valid subnets "
-            "resolved; disabling subnet whitelist bypass."
-        )
-        bypass_whitelist_enabled = False
-
-    prefs["bypass_local_auth"] = bypass_local_auth
-    prefs["bypass_auth_subnet_whitelist_enabled"] = bypass_whitelist_enabled
-    prefs["bypass_auth_subnet_whitelist"] = (
-        ",".join(whitelist_subnets) if bypass_whitelist_enabled else ""
-    )
-
-    # Optional seeding/retention guardrails to reduce long-lived seeding and reclaim space.
-    seeding_policy = qbit_cfg.get("seeding_policy")
-    if isinstance(seeding_policy, dict) and bool_cfg(seeding_policy, "enabled", False):
-        max_ratio = seeding_policy.get("max_ratio")
-        max_ratio_val = None
-        try:
-            if max_ratio is not None and str(max_ratio).strip() != "":
-                max_ratio_val = float(max_ratio)
-        except Exception:
-            max_ratio_val = None
-
-        max_seed_minutes = to_int(seeding_policy.get("max_seeding_time_minutes"))
-        remove_on_limit = bool_cfg(seeding_policy, "remove_on_limit_reached", False)
-        if remove_on_limit:
-            log(
-                "[WARN] qBittorrent: seeding_policy.remove_on_limit_reached=true "
-                "conflicts with Arr completed-download handling; forcing pause-on-limit."
-            )
-            remove_on_limit = False
-
-        if max_ratio_val is not None and max_ratio_val > 0:
-            prefs["max_ratio_enabled"] = True
-            prefs["max_ratio"] = max_ratio_val
-            prefs["max_ratio_act"] = 1 if remove_on_limit else 0
-        elif bool_cfg(seeding_policy, "max_ratio_enabled", False):
-            prefs["max_ratio_enabled"] = False
-
-        if max_seed_minutes is not None and max_seed_minutes > 0:
-            prefs["max_seeding_time_enabled"] = True
-            prefs["max_seeding_time"] = int(max_seed_minutes)
-            prefs["max_ratio_act"] = 1 if remove_on_limit else prefs.get("max_ratio_act", 0)
-        elif bool_cfg(seeding_policy, "max_seeding_time_enabled", False):
-            prefs["max_seeding_time_enabled"] = False
-
-    qbit_set_preferences(opener, qbit_url, prefs)
-    log(
-        "[OK] qBittorrent: storage defaults set "
-        f"(save_path={save_path}, temp_path={temp_path}, "
-        f"temp_path_enabled={temp_path_enabled}, auto_tmm_enabled={auto_tmm_enabled}, "
-        f"bypass_local_auth={bypass_local_auth}, "
-        f"bypass_auth_subnet_whitelist_enabled={bypass_whitelist_enabled}, "
-        f"whitelist_count={len(whitelist_subnets)})"
+    return _qbit_service().setup_storage_defaults(
+        opener,
+        qbit_url,
+        qbit_cfg,
+        set_preferences_fn=qbit_set_preferences,
     )
 
 
 def setup_qbit_categories(arr_apps, qbit_cfg, qb_username, qb_password):
-    qbit_url = normalize_url(qbit_cfg.get("url", "http://qbittorrent:8080"))
-    opener = qbit_login(qbit_url, qb_username, qb_password)
-    setup_qbit_storage_defaults(opener, qbit_url, qbit_cfg)
-
-    completed_paths = qbit_cfg.get("completed_paths", {})
-    for app in arr_apps:
-        category = choose_category(app, qbit_cfg)
-        default_path = f"/data/torrents/completed/{category}"
-        save_path = completed_paths.get(category, default_path)
-        qbit_create_category(opener, qbit_url, category, save_path)
+    return _qbit_service().setup_categories(
+        arr_apps,
+        qbit_cfg,
+        qb_username,
+        qb_password,
+        choose_category_fn=choose_category,
+        setup_storage_defaults_fn=setup_qbit_storage_defaults,
+        create_category_fn=qbit_create_category,
+        login_fn=qbit_login,
+    )
 
 
 def _to_float(value, fallback=None):
@@ -4839,7 +3330,9 @@ def qbit_list_completed_torrents(opener, base_url):
     try:
         payload = json.loads(body)
     except Exception as exc:
-        raise RuntimeError(f"qBittorrent: failed parsing completed torrents payload: {exc}") from exc
+        raise RuntimeError(
+            f"qBittorrent: failed parsing completed torrents payload: {exc}"
+        ) from exc
     if isinstance(payload, list):
         return payload
     raise RuntimeError("qBittorrent: completed torrent payload was not a list.")
@@ -4899,16 +3392,12 @@ def run_qbit_queue_guardrails(qbit_cfg, qb_username, qb_password):
         "checkingResumeData",
     ]
     count_states = {
-        str(x).strip().lower()
-        for x in coerce_list(queue_cfg.get("count_states"))
-        if str(x).strip()
+        str(x).strip().lower() for x in coerce_list(queue_cfg.get("count_states")) if str(x).strip()
     } or {x.lower() for x in default_count_states}
 
     default_prune_states = ["queuedDL", "stalledDL", "metaDL", "pausedDL", "error", "missingFiles"]
     prune_states = {
-        str(x).strip().lower()
-        for x in coerce_list(queue_cfg.get("prune_states"))
-        if str(x).strip()
+        str(x).strip().lower() for x in coerce_list(queue_cfg.get("prune_states")) if str(x).strip()
     } or {x.lower() for x in default_prune_states}
 
     include_uncategorized = bool_cfg(queue_cfg, "include_uncategorized", False)
@@ -4947,9 +3436,7 @@ def run_qbit_queue_guardrails(qbit_cfg, qb_username, qb_password):
         stale_max_delete_per_run = 25
     stale_delete_files = bool_cfg(stale_cfg, "delete_files", True)
     stale_states = {
-        str(x).strip().lower()
-        for x in coerce_list(stale_cfg.get("states"))
-        if str(x).strip()
+        str(x).strip().lower() for x in coerce_list(stale_cfg.get("states")) if str(x).strip()
     } or set(prune_states)
 
     opener = qbit_login(qbit_url, qb_username, qb_password)
@@ -5080,12 +3567,18 @@ def run_qbit_queue_guardrails(qbit_cfg, qb_username, qb_password):
             if progress >= float(stale_min_progress):
                 continue
             dlspeed = int(rec.get("dlspeed") or 0)
-            if stale_max_download_speed_bps is not None and dlspeed > int(stale_max_download_speed_bps):
+            if stale_max_download_speed_bps is not None and dlspeed > int(
+                stale_max_download_speed_bps
+            ):
                 continue
             age_trigger = float(rec.get("age_hours") or 0.0) >= float(stale_max_age_hours)
-            stalled_trigger = float(rec.get("stalled_hours") or 0.0) >= float(stale_max_stalled_hours)
+            stalled_trigger = float(rec.get("stalled_hours") or 0.0) >= float(
+                stale_max_stalled_hours
+            )
             eta_val = int(rec.get("eta") or -1)
-            eta_trigger = bool(stale_max_eta_seconds is not None and eta_val > int(stale_max_eta_seconds))
+            eta_trigger = bool(
+                stale_max_eta_seconds is not None and eta_val > int(stale_max_eta_seconds)
+            )
             if not (age_trigger or stalled_trigger or eta_trigger):
                 continue
             stale_pool.append(rec)
@@ -5311,9 +3804,7 @@ def delete_queue_item(app_name, app_url, api_base, api_key, item_id, remove_from
     last_status = None
     last_body = ""
     for path in query_paths:
-        status, _, body = http_request(
-            app_url, path, api_key=api_key, method="DELETE"
-        )
+        status, _, body = http_request(app_url, path, api_key=api_key, method="DELETE")
         last_status = status
         last_body = body
         if status in (200, 202, 204):
@@ -5321,14 +3812,13 @@ def delete_queue_item(app_name, app_url, api_base, api_key, item_id, remove_from
         if status == 404:
             return
     raise RuntimeError(
-        f"{app_name}: failed deleting queue item id={item_id} "
-        f"(HTTP {last_status}): {last_body}"
+        f"{app_name}: failed deleting queue item id={item_id} " f"(HTTP {last_status}): {last_body}"
     )
 
 
 def ensure_arr_failed_queue_cleanup(app_cfg, app_url, api_base, api_key, hygiene_cfg):
     app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
-    queue_cfg = (hygiene_cfg.get("arr_failed_queue_cleanup") or {})
+    queue_cfg = hygiene_cfg.get("arr_failed_queue_cleanup") or {}
     if not bool_cfg(queue_cfg, "enabled", True):
         return 0
 
@@ -5372,9 +3862,7 @@ def ensure_arr_failed_queue_cleanup(app_cfg, app_url, api_base, api_key, hygiene
             break
         if status in (404, 405):
             continue
-        raise RuntimeError(
-            f"{app_name}: failed reading queue (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"{app_name}: failed reading queue (HTTP {status}): {body}")
     if payload is None:
         log(
             f"[WARN] {app_name}: queue endpoint unavailable; skipping failed queue cleanup "
@@ -5430,7 +3918,7 @@ def _walk_existing_files(paths):
 
 
 def run_filesystem_hygiene(hygiene_cfg):
-    fs_cfg = (hygiene_cfg.get("filesystem") or {})
+    fs_cfg = hygiene_cfg.get("filesystem") or {}
     if not bool_cfg(fs_cfg, "enabled", True):
         return {"removed_temp": 0, "removed_zero": 0, "removed_dupes": 0, "removed_empty_dirs": 0}
 
@@ -5449,9 +3937,7 @@ def run_filesystem_hygiene(hygiene_cfg):
 
     remove_zero = bool_cfg(fs_cfg, "remove_zero_byte_files", True)
     temp_extensions = {
-        str(x).strip().lower()
-        for x in coerce_list(fs_cfg.get("temp_extensions"))
-        if str(x).strip()
+        str(x).strip().lower() for x in coerce_list(fs_cfg.get("temp_extensions")) if str(x).strip()
     } or {".part", ".tmp", ".temp", ".nzb", ".!qb"}
     remove_empty_dirs = bool_cfg(fs_cfg, "remove_empty_dirs", True)
 
@@ -5551,7 +4037,7 @@ def run_filesystem_hygiene(hygiene_cfg):
 
 
 def run_qbit_duplicate_prune(hygiene_cfg, qbit_cfg, qb_username, qb_password):
-    prune_cfg = (hygiene_cfg.get("qbit_duplicate_prune") or {})
+    prune_cfg = hygiene_cfg.get("qbit_duplicate_prune") or {}
     enabled = bool_cfg(prune_cfg, "enabled", False)
     summary = {
         "enabled": enabled,
@@ -5586,7 +4072,9 @@ def run_qbit_duplicate_prune(hygiene_cfg, qbit_cfg, qb_username, qb_password):
     if not match_on_hash and not match_on_name_size:
         match_on_name_size = True
 
-    raw_categories = [str(x).strip() for x in coerce_list(prune_cfg.get("categories")) if str(x).strip()]
+    raw_categories = [
+        str(x).strip() for x in coerce_list(prune_cfg.get("categories")) if str(x).strip()
+    ]
     if not raw_categories:
         raw_categories = [
             str(v).strip()
@@ -5694,7 +4182,7 @@ def run_qbit_duplicate_prune(hygiene_cfg, qbit_cfg, qb_username, qb_password):
 
 
 def run_qbit_ipfilter_refresh(hygiene_cfg, qbit_cfg, qb_username, qb_password):
-    ipf_cfg = (hygiene_cfg.get("qbit_ipfilter") or {})
+    ipf_cfg = hygiene_cfg.get("qbit_ipfilter") or {}
     enabled = bool_cfg(ipf_cfg, "enabled", False)
     summary = {
         "enabled": enabled,
@@ -5715,18 +4203,14 @@ def run_qbit_ipfilter_refresh(hygiene_cfg, qbit_cfg, qb_username, qb_password):
 
     qbit_url = normalize_url((qbit_cfg or {}).get("url", "http://qbittorrent:8080"))
     required = bool_cfg(ipf_cfg, "required", False)
-    apply_existing_on_failure = bool_cfg(
-        ipf_cfg, "apply_existing_on_download_failure", True
-    )
+    apply_existing_on_failure = bool_cfg(ipf_cfg, "apply_existing_on_download_failure", True)
     source_url = str(
         ipf_cfg.get("url")
         or ipf_cfg.get("source_url")
         or "https://github.com/DavidMoore/ipfilter/releases/download/lists/ipfilter.dat"
     ).strip()
     fallback_urls = [
-        str(x).strip()
-        for x in coerce_list(ipf_cfg.get("fallback_urls"))
-        if str(x).strip()
+        str(x).strip() for x in coerce_list(ipf_cfg.get("fallback_urls")) if str(x).strip()
     ]
     urls = []
     if source_url:
@@ -5735,17 +4219,12 @@ def run_qbit_ipfilter_refresh(hygiene_cfg, qbit_cfg, qb_username, qb_password):
         if item not in urls:
             urls.append(item)
 
-    target_path = str(
-        ipf_cfg.get("target_path") or "/srv-stack/data/torrents/ipfilter.dat"
-    ).strip()
-    qbit_filter_path = str(
-        ipf_cfg.get("qbit_filter_path") or "/data/torrents/ipfilter.dat"
-    ).strip()
+    target_path = str(ipf_cfg.get("target_path") or "/srv-stack/data/torrents/ipfilter.dat").strip()
+    qbit_filter_path = str(ipf_cfg.get("qbit_filter_path") or "/data/torrents/ipfilter.dat").strip()
     mirror_target_paths = [
         str(x).strip()
         for x in coerce_list(
-            ipf_cfg.get("mirror_target_paths")
-            or ["/srv-host-stack/data/torrents/ipfilter.dat"]
+            ipf_cfg.get("mirror_target_paths") or ["/srv-host-stack/data/torrents/ipfilter.dat"]
         )
         if str(x).strip()
     ]
@@ -5754,14 +4233,11 @@ def run_qbit_ipfilter_refresh(hygiene_cfg, qbit_cfg, qb_username, qb_password):
         if mirror not in target_candidates:
             target_candidates.append(mirror)
     state_path = str(
-        ipf_cfg.get("state_path")
-        or "/srv-stack/data/torrents/.ipfilter-refresh-state.json"
+        ipf_cfg.get("state_path") or "/srv-stack/data/torrents/.ipfilter-refresh-state.json"
     ).strip()
     timeout_seconds = to_int(ipf_cfg.get("download_timeout_seconds"), 30) or 30
     min_valid_bytes = to_int(ipf_cfg.get("min_valid_bytes"), 1024) or 1024
-    min_refresh_interval_hours = (
-        _to_float(ipf_cfg.get("min_refresh_interval_hours"), 24.0) or 24.0
-    )
+    min_refresh_interval_hours = _to_float(ipf_cfg.get("min_refresh_interval_hours"), 24.0) or 24.0
 
     target = Path(target_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -5902,97 +4378,17 @@ def run_qbit_ipfilter_refresh(hygiene_cfg, qbit_cfg, qb_username, qb_password):
     return summary
 
 
-def run_media_hygiene(cfg, config_root, arr_apps, app_keys, qbit_cfg=None, qb_username="", qb_password=""):
-    hygiene_cfg = cfg.get("media_hygiene") or {}
-    if not bool_cfg(hygiene_cfg, "enabled", False):
-        return
-
-    deleted_queue = 0
-    app_errors = 0
-    if bool_cfg(hygiene_cfg, "cleanup_arr_failed_queue", True):
-        for app in arr_apps:
-            impl = str(app.get("implementation") or "")
-            app_url = normalize_url(app.get("url") or "")
-            if not impl or not app_url:
-                continue
-            app_key = app_keys.get(impl)
-            if not app_key:
-                continue
-            try:
-                api_base = detect_arr_api_base(app.get("name") or impl, app_url, app_key)
-                deleted_queue += ensure_arr_failed_queue_cleanup(
-                    app, app_url, api_base, app_key, hygiene_cfg
-                )
-            except Exception as exc:
-                app_errors += 1
-                log(
-                    f"[WARN] Media hygiene: queue cleanup skipped for {app.get('name') or impl} "
-                    f"({exc})"
-                )
-
-    fs_summary = run_filesystem_hygiene(hygiene_cfg)
-    qbit_queue_summary = {
-        "enabled": False,
-        "dry_run": False,
-        "total": 0,
-        "over_limit_candidates": 0,
-        "stale_candidates": 0,
-        "over_limit_deleted": 0,
-        "stale_deleted": 0,
-        "by_category": {},
-    }
-    qbit_ipfilter_summary = {
-        "enabled": False,
-        "downloaded": False,
-        "applied": False,
-        "skipped_reason": "",
-        "source_url": "",
-        "target_path": "",
-        "bytes": 0,
-    }
-    qbit_summary = {"enabled": False, "dry_run": False, "groups": 0, "candidates": 0, "deleted": 0}
-    qbit_errors = 0
-    if bool_cfg(hygiene_cfg.get("qbit_ipfilter") or {}, "enabled", False):
-        try:
-            qbit_ipfilter_summary = run_qbit_ipfilter_refresh(
-                hygiene_cfg,
-                qbit_cfg or {},
-                qb_username,
-                qb_password,
-            )
-        except Exception as exc:
-            qbit_errors += 1
-            log(f"[WARN] Media hygiene: qB IP filter refresh skipped ({exc})")
-
-    if bool_cfg((qbit_cfg or {}).get("queue_guardrails") or {}, "enabled", False):
-        try:
-            qbit_queue_summary = run_qbit_queue_guardrails(
-                qbit_cfg or {},
-                qb_username,
-                qb_password,
-            )
-        except Exception as exc:
-            qbit_errors += 1
-            log(f"[WARN] Media hygiene: qB queue guardrails skipped ({exc})")
-
-    if bool_cfg(hygiene_cfg.get("qbit_duplicate_prune") or {}, "enabled", False):
-        try:
-            qbit_summary = run_qbit_duplicate_prune(
-                hygiene_cfg,
-                qbit_cfg or {},
-                qb_username,
-                qb_password,
-            )
-        except Exception as exc:
-            qbit_errors += 1
-            log(f"[WARN] Media hygiene: qB duplicate prune skipped ({exc})")
-
-    log(
-        "[OK] Media hygiene: reconcile complete "
-        f"(queue_deleted={deleted_queue}, queue_errors={app_errors}, "
-        f"qbit_ipfilter={qbit_ipfilter_summary}, "
-        f"qbit_queue={qbit_queue_summary}, qbit_dupes={qbit_summary}, "
-        f"qbit_errors={qbit_errors}, fs={fs_summary})"
+def run_media_hygiene(
+    cfg, config_root, arr_apps, app_keys, qbit_cfg=None, qb_username="", qb_password=""
+):
+    del config_root  # kept for backward-compatible signature
+    return _media_hygiene_service().run(
+        cfg=cfg,
+        arr_apps=arr_apps,
+        app_keys=app_keys,
+        qbit_cfg=qbit_cfg,
+        qb_username=qb_username,
+        qb_password=qb_password,
     )
 
 
@@ -6057,7 +4453,9 @@ def enforce_disk_guardrails(cfg, config_root, qbit_cfg, qb_username, qb_password
     min_ratio = _to_float(qbit_cleanup_cfg.get("min_ratio"), 1.0)
     min_seed_minutes = to_int(qbit_cleanup_cfg.get("min_seeding_time_minutes"), 720)
     max_delete_per_run = to_int(qbit_cleanup_cfg.get("max_delete_per_run"), 80)
-    categories = [str(x).strip() for x in coerce_list(qbit_cleanup_cfg.get("categories")) if str(x).strip()]
+    categories = [
+        str(x).strip() for x in coerce_list(qbit_cleanup_cfg.get("categories")) if str(x).strip()
+    ]
     delete_files = bool_cfg(qbit_cleanup_cfg, "delete_files", True)
 
     opener = qbit_login(qbit_url, qb_username, qb_password)
@@ -6101,7 +4499,7 @@ def enforce_disk_guardrails(cfg, config_root, qbit_cfg, qb_username, qb_password
 
     candidates.sort(key=lambda x: (x.get("completion_on") or 0, x.get("size") or 0), reverse=False)
     if max_delete_per_run is not None and max_delete_per_run > 0:
-        candidates = candidates[: max_delete_per_run]
+        candidates = candidates[:max_delete_per_run]
 
     if not candidates:
         log(
@@ -6166,12 +4564,8 @@ def ensure_sabnzbd_defaults(sab_cfg, sab_api_key):
         raise RuntimeError("SABnzbd: unexpected misc config payload from API.")
 
     desired_misc = {
-        "download_dir": str(
-            sab_cfg.get("incomplete_dir", "/data/usenet/incomplete")
-        ).strip(),
-        "complete_dir": str(
-            sab_cfg.get("complete_dir", "/data/usenet/completed")
-        ).strip(),
+        "download_dir": str(sab_cfg.get("incomplete_dir", "/data/usenet/incomplete")).strip(),
+        "complete_dir": str(sab_cfg.get("complete_dir", "/data/usenet/completed")).strip(),
     }
     if "auto_browser" in sab_cfg:
         desired_misc["auto_browser"] = "1" if bool(sab_cfg.get("auto_browser")) else "0"
@@ -6203,13 +4597,9 @@ def ensure_sabnzbd_defaults(sab_cfg, sab_api_key):
             },
         )
         if status != 200:
-            raise RuntimeError(
-                f"SABnzbd: failed setting misc.{key} (HTTP {status}): {body}"
-            )
+            raise RuntimeError(f"SABnzbd: failed setting misc.{key} (HTTP {status}): {body}")
         if isinstance(data, dict) and data.get("status") is False:
-            raise RuntimeError(
-                f"SABnzbd: API rejected misc.{key} update request: {body}"
-            )
+            raise RuntimeError(f"SABnzbd: API rejected misc.{key} update request: {body}")
         log(f"[OK] SABnzbd: set {key}={desired_normalized}")
 
 
@@ -6231,9 +4621,7 @@ def ensure_sabnzbd_categories(arr_apps, sab_cfg, sab_api_key):
     else:
         status, data, body = sabnzbd_request(sab_url, sab_api_key, {"mode": "get_cats"})
         if status != 200 or not isinstance(data, dict):
-            raise RuntimeError(
-                f"SABnzbd: failed listing categories (HTTP {status}): {body}"
-            )
+            raise RuntimeError(f"SABnzbd: failed listing categories (HTTP {status}): {body}")
         for category_name in coerce_list(data.get("categories")):
             c = str(category_name).strip()
             if c:
@@ -6253,9 +4641,10 @@ def ensure_sabnzbd_categories(arr_apps, sab_cfg, sab_api_key):
         desired_categories.append(c)
 
     completed_paths = sab_cfg.get("completed_paths", {})
-    complete_root = normalize_mapping_path(
-        sab_cfg.get("complete_dir", "/data/usenet/completed")
-    ) or "/data/usenet/completed"
+    complete_root = (
+        normalize_mapping_path(sab_cfg.get("complete_dir", "/data/usenet/completed"))
+        or "/data/usenet/completed"
+    )
     for category in desired_categories:
         current_dir = current_by_name.get(category.lower())
         category_dir = normalize_mapping_path(
@@ -6292,9 +4681,7 @@ def resolve_schema_contract(prowlarr_url, prowlarr_key, implementation):
         prowlarr_url, "/api/v1/applications/schema", api_key=prowlarr_key
     )
     if status != 200 or not isinstance(data, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to read application schema (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to read application schema (HTTP {status}): {body}")
 
     for entry in data:
         if entry.get("implementation") == implementation:
@@ -6303,13 +4690,9 @@ def resolve_schema_contract(prowlarr_url, prowlarr_key, implementation):
 
 
 def find_existing_application(prowlarr_url, prowlarr_key, implementation, base_url):
-    status, data, body = http_request(
-        prowlarr_url, "/api/v1/applications", api_key=prowlarr_key
-    )
+    status, data, body = http_request(prowlarr_url, "/api/v1/applications", api_key=prowlarr_key)
     if status != 200 or not isinstance(data, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to list applications (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to list applications (HTTP {status}): {body}")
 
     for app in data:
         if app.get("implementation") != implementation:
@@ -6325,9 +4708,7 @@ def ensure_prowlarr_application(
     prowlarr_url, prowlarr_key, app_name, implementation, app_url, app_key
 ):
     schema = resolve_schema_contract(prowlarr_url, prowlarr_key, implementation)
-    current = find_existing_application(
-        prowlarr_url, prowlarr_key, implementation, app_url
-    )
+    current = find_existing_application(prowlarr_url, prowlarr_key, implementation, app_url)
 
     values = field_map(schema.get("fields"))
     values["baseUrl"] = app_url
@@ -6375,23 +4756,17 @@ def ensure_prowlarr_application(
 
     if current:
         payload["id"] = current.get("id")
-        ok, status, body = put_or_post(
-            "PUT", f"/api/v1/applications/{current.get('id')}", payload
-        )
+        ok, status, body = put_or_post("PUT", f"/api/v1/applications/{current.get('id')}", payload)
         if ok:
             log(f"[OK] Prowlarr: updated application link for {app_name}")
             return
-        raise RuntimeError(
-            f"Prowlarr: failed updating app {app_name} (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed updating app {app_name} (HTTP {status}): {body}")
 
     ok, status, body = put_or_post("POST", "/api/v1/applications", payload)
     if ok:
         log(f"[OK] Prowlarr: created application link for {app_name}")
         return
-    raise RuntimeError(
-        f"Prowlarr: failed creating app {app_name} (HTTP {status}): {body}"
-    )
+    raise RuntimeError(f"Prowlarr: failed creating app {app_name} (HTTP {status}): {body}")
 
 
 def trigger_prowlarr_sync(prowlarr_url, prowlarr_key):
@@ -6419,9 +4794,7 @@ def ensure_prowlarr_indexer(prowlarr_url, prowlarr_key, indexer_cfg):
         prowlarr_url, "/api/v1/indexer/schema", api_key=prowlarr_key
     )
     if status != 200 or not isinstance(schemas, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to read indexer schema (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to read indexer schema (HTTP {status}): {body}")
 
     schema = None
     for entry in schemas:
@@ -6435,9 +4808,7 @@ def ensure_prowlarr_indexer(prowlarr_url, prowlarr_key, indexer_cfg):
         prowlarr_url, "/api/v1/indexer", api_key=prowlarr_key
     )
     if status != 200 or not isinstance(current_indexers, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to list indexers (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to list indexers (HTTP {status}): {body}")
 
     current = None
     for item in current_indexers:
@@ -6470,9 +4841,7 @@ def ensure_prowlarr_indexer(prowlarr_url, prowlarr_key, indexer_cfg):
         if status in (200, 202):
             log(f"[OK] Prowlarr: updated indexer {name}")
             return
-        raise RuntimeError(
-            f"Prowlarr: failed to update indexer {name} (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to update indexer {name} (HTTP {status}): {body}")
 
     status, _, body = http_request(
         prowlarr_url,
@@ -6484,9 +4853,7 @@ def ensure_prowlarr_indexer(prowlarr_url, prowlarr_key, indexer_cfg):
     if status in (200, 201, 202):
         log(f"[OK] Prowlarr: created indexer {name}")
         return
-    raise RuntimeError(
-        f"Prowlarr: failed to create indexer {name} (HTTP {status}): {body}"
-    )
+    raise RuntimeError(f"Prowlarr: failed to create indexer {name} (HTTP {status}): {body}")
 
 
 def build_indexer_payload(template):
@@ -6522,17 +4889,11 @@ def auto_add_tested_indexers(prowlarr_url, prowlarr_key):
         prowlarr_url, "/api/v1/indexer/schema", api_key=prowlarr_key
     )
     if status != 200 or not isinstance(schemas, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to read indexer schema (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to read indexer schema (HTTP {status}): {body}")
 
-    status, existing, body = http_request(
-        prowlarr_url, "/api/v1/indexer", api_key=prowlarr_key
-    )
+    status, existing, body = http_request(prowlarr_url, "/api/v1/indexer", api_key=prowlarr_key)
     if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to list existing indexers (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to list existing indexers (HTTP {status}): {body}")
 
     existing_keys = {
         (item.get("implementation"), item.get("name"))
@@ -6630,395 +4991,6 @@ def auto_add_tested_indexers(prowlarr_url, prowlarr_key):
     )
 
 
-def ensure_jellyseerr_main_settings(jellyseerr_url, jellyseerr_key, jelly_cfg):
-    media_server_type = jelly_cfg.get("media_server_type")
-    if media_server_type is None and bool_cfg(
-        jelly_cfg, "set_media_server_type_jellyfin", True
-    ):
-        # Jellyseerr MediaServerType enum: 2 = Jellyfin.
-        media_server_type = 2
-
-    if media_server_type is None:
-        return
-
-    status, current, body = http_request(
-        jellyseerr_url, "/api/v1/settings/main", api_key=jellyseerr_key
-    )
-    if status != 200 or not isinstance(current, dict):
-        raise RuntimeError(
-            f"Jellyseerr: failed to read main settings (HTTP {status}): {body}"
-        )
-
-    desired_type = int(media_server_type)
-    if to_int(current.get("mediaServerType")) == desired_type:
-        log(f"[OK] Jellyseerr: mediaServerType already set to {desired_type}")
-        return
-
-    status, _, body = http_request(
-        jellyseerr_url,
-        "/api/v1/settings/main",
-        api_key=jellyseerr_key,
-        method="POST",
-        payload={"mediaServerType": desired_type},
-    )
-    if status in (200, 201, 202):
-        log(f"[OK] Jellyseerr: set mediaServerType={desired_type}")
-        return
-
-    raise RuntimeError(
-        f"Jellyseerr: failed to set mediaServerType (HTTP {status}): {body}"
-    )
-
-
-def ensure_jellyseerr_jellyfin_settings(jellyseerr_url, jellyseerr_key, jelly_cfg, config_root):
-    jellyfin_cfg = jelly_cfg.get("jellyfin") or {}
-    if not bool_cfg(jellyfin_cfg, "configure", False):
-        return
-
-    jellyfin_api_key = resolve_jellyfin_api_key(jellyfin_cfg, config_root)
-    if not jellyfin_api_key:
-        raise RuntimeError(
-            "Jellyseerr: jellyfin.configure=true but Jellyfin API key could not be resolved."
-        )
-
-    jellyfin_url = jellyfin_cfg.get("url", "http://jellyfin:8096")
-    parsed = parse_service_url(jellyfin_url, 8096)
-
-    payload = {
-        "ip": parsed["hostname"],
-        "port": parsed["port"],
-        "useSsl": parsed["use_ssl"],
-        "urlBase": parsed["base_url"],
-        "apiKey": jellyfin_api_key,
-        "externalHostname": jellyfin_cfg.get("external_url", ""),
-        "jellyfinForgotPasswordUrl": jellyfin_cfg.get("forgot_password_url", ""),
-    }
-
-    status, _, body = http_request(
-        jellyseerr_url,
-        "/api/v1/settings/jellyfin",
-        api_key=jellyseerr_key,
-        method="POST",
-        payload=payload,
-    )
-    if status in (200, 201, 202):
-        log("[OK] Jellyseerr: configured Jellyfin connection")
-        return
-
-    raise RuntimeError(
-        f"Jellyseerr: failed to configure Jellyfin settings (HTTP {status}): {body}"
-    )
-
-
-def ensure_jellyseerr_radarr(
-    jellyseerr_url, jellyseerr_key, radarr_app_cfg, radarr_api_key, jelly_cfg
-):
-    radarr_cfg = jelly_cfg.get("radarr") or {}
-    if not bool_cfg(radarr_cfg, "enabled", True):
-        return
-
-    parsed = parse_service_url(radarr_app_cfg["url"], 7878)
-    test_payload = {
-        "hostname": parsed["hostname"],
-        "port": parsed["port"],
-        "apiKey": radarr_api_key,
-        "useSsl": parsed["use_ssl"],
-        "baseUrl": parsed["base_url"],
-    }
-
-    status, test_data, body = http_request(
-        jellyseerr_url,
-        "/api/v1/settings/radarr/test",
-        api_key=jellyseerr_key,
-        method="POST",
-        payload=test_payload,
-    )
-    if status != 200 or not isinstance(test_data, dict):
-        raise RuntimeError(
-            f"Jellyseerr: Radarr connection test failed (HTTP {status}): {body}"
-        )
-
-    profiles = test_data.get("profiles") or []
-    if not profiles:
-        raise RuntimeError("Jellyseerr: Radarr test returned no quality profiles.")
-
-    selected_profile = choose_profile(
-        profiles,
-        preferred_id=radarr_cfg.get("active_profile_id"),
-        preferred_names=coerce_list(
-            radarr_cfg.get("quality_profile_preferred_names")
-            or radarr_cfg.get("preferred_profile_names")
-            or []
-        ),
-    )
-    if not selected_profile:
-        raise RuntimeError("Jellyseerr: unable to choose Radarr profile.")
-
-    root_folders = test_data.get("rootFolders") or []
-    preferred_root = radarr_cfg.get("root_folder") or radarr_app_cfg.get("root_folder")
-    active_directory = choose_root_folder(root_folders, preferred_root)
-    if not active_directory:
-        raise RuntimeError("Jellyseerr: unable to choose Radarr root folder.")
-
-    resolved_base_url = normalize_base_path(test_data.get("urlBase") or parsed["base_url"])
-    service_name = radarr_cfg.get("name", radarr_app_cfg.get("name", "Radarr"))
-    is4k = bool_cfg(radarr_cfg, "is4k", False)
-
-    payload = {
-        "name": service_name,
-        "hostname": parsed["hostname"],
-        "port": parsed["port"],
-        "apiKey": radarr_api_key,
-        "useSsl": parsed["use_ssl"],
-        "baseUrl": resolved_base_url,
-        "activeProfileId": to_int(selected_profile.get("id")),
-        "activeProfileName": selected_profile.get("name"),
-        "activeDirectory": active_directory,
-        "is4k": is4k,
-        "minimumAvailability": radarr_cfg.get("minimum_availability", "released"),
-        "isDefault": bool_cfg(radarr_cfg, "is_default", True),
-        "externalUrl": radarr_cfg.get("external_url", ""),
-        "syncEnabled": bool_cfg(radarr_cfg, "sync_enabled", True),
-        "preventSearch": bool_cfg(radarr_cfg, "prevent_search", False),
-        "tagRequests": bool_cfg(radarr_cfg, "tag_requests", False),
-        "tags": coerce_list(radarr_cfg.get("tags")),
-        "overrideRule": coerce_list(radarr_cfg.get("override_rule")),
-    }
-
-    status, existing, body = http_request(
-        jellyseerr_url, "/api/v1/settings/radarr", api_key=jellyseerr_key
-    )
-    if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(
-            f"Jellyseerr: failed to list Radarr settings (HTTP {status}): {body}"
-        )
-
-    current = find_existing_servarr(
-        existing,
-        payload["name"],
-        payload["hostname"],
-        payload["port"],
-        payload["baseUrl"],
-        payload["is4k"],
-    )
-
-    if current:
-        current_id = current.get("id")
-        if current_id is None:
-            # Older Jellyseerr settings payloads can contain legacy entries without ids.
-            # If a matching entry already exists and our live connection test passed, keep it.
-            log(
-                "[OK] Jellyseerr: existing Radarr mapping found "
-                "(legacy entry without id)"
-            )
-            return
-        status, _, body = http_request(
-            jellyseerr_url,
-            f"/api/v1/settings/radarr/{current_id}",
-            api_key=jellyseerr_key,
-            method="PUT",
-            payload=payload,
-        )
-        if status in (200, 201, 202):
-            log("[OK] Jellyseerr: updated Radarr service mapping")
-            return
-        raise RuntimeError(
-            f"Jellyseerr: failed updating Radarr mapping (HTTP {status}): {body}"
-        )
-
-    status, _, body = http_request(
-        jellyseerr_url,
-        "/api/v1/settings/radarr",
-        api_key=jellyseerr_key,
-        method="POST",
-        payload=payload,
-    )
-    if status in (200, 201, 202):
-        log("[OK] Jellyseerr: created Radarr service mapping")
-        return
-
-    raise RuntimeError(
-        f"Jellyseerr: failed creating Radarr mapping (HTTP {status}): {body}"
-    )
-
-
-def ensure_jellyseerr_sonarr(
-    jellyseerr_url, jellyseerr_key, sonarr_app_cfg, sonarr_api_key, jelly_cfg
-):
-    sonarr_cfg = jelly_cfg.get("sonarr") or {}
-    if not bool_cfg(sonarr_cfg, "enabled", True):
-        return
-
-    parsed = parse_service_url(sonarr_app_cfg["url"], 8989)
-    test_payload = {
-        "hostname": parsed["hostname"],
-        "port": parsed["port"],
-        "apiKey": sonarr_api_key,
-        "useSsl": parsed["use_ssl"],
-        "baseUrl": parsed["base_url"],
-    }
-
-    status, test_data, body = http_request(
-        jellyseerr_url,
-        "/api/v1/settings/sonarr/test",
-        api_key=jellyseerr_key,
-        method="POST",
-        payload=test_payload,
-    )
-    if status != 200 or not isinstance(test_data, dict):
-        raise RuntimeError(
-            f"Jellyseerr: Sonarr connection test failed (HTTP {status}): {body}"
-        )
-
-    profiles = test_data.get("profiles") or []
-    if not profiles:
-        raise RuntimeError("Jellyseerr: Sonarr test returned no quality profiles.")
-    selected_profile = choose_profile(
-        profiles,
-        preferred_id=sonarr_cfg.get("active_profile_id"),
-        preferred_names=coerce_list(
-            sonarr_cfg.get("quality_profile_preferred_names")
-            or sonarr_cfg.get("preferred_profile_names")
-            or []
-        ),
-    )
-    if not selected_profile:
-        raise RuntimeError("Jellyseerr: unable to choose Sonarr profile.")
-
-    root_folders = test_data.get("rootFolders") or []
-    preferred_root = sonarr_cfg.get("root_folder") or sonarr_app_cfg.get("root_folder")
-    active_directory = choose_root_folder(root_folders, preferred_root)
-    if not active_directory:
-        raise RuntimeError("Jellyseerr: unable to choose Sonarr root folder.")
-
-    language_profiles = test_data.get("languageProfiles") or []
-    selected_language_profile = choose_profile(
-        language_profiles, sonarr_cfg.get("active_language_profile_id")
-    )
-    active_language_profile_id = (
-        to_int(selected_language_profile.get("id"))
-        if selected_language_profile
-        else to_int(sonarr_cfg.get("active_language_profile_id"))
-    )
-
-    active_anime_profile = choose_profile(profiles, sonarr_cfg.get("active_anime_profile_id"))
-    active_anime_language_profile = choose_profile(
-        language_profiles, sonarr_cfg.get("active_anime_language_profile_id")
-    )
-
-    resolved_base_url = normalize_base_path(test_data.get("urlBase") or parsed["base_url"])
-    service_name = sonarr_cfg.get("name", sonarr_app_cfg.get("name", "Sonarr"))
-    is4k = bool_cfg(sonarr_cfg, "is4k", False)
-
-    series_type = str(sonarr_cfg.get("series_type", "standard")).strip().lower()
-    if series_type not in ("standard", "daily", "anime"):
-        series_type = "standard"
-
-    anime_series_type = str(sonarr_cfg.get("anime_series_type", "anime")).strip().lower()
-    if anime_series_type not in ("standard", "daily", "anime"):
-        anime_series_type = "anime"
-
-    monitor_new_items = str(sonarr_cfg.get("monitor_new_items", "all")).strip().lower()
-    if monitor_new_items not in ("all", "none"):
-        monitor_new_items = "all"
-
-    payload = {
-        "name": service_name,
-        "hostname": parsed["hostname"],
-        "port": parsed["port"],
-        "apiKey": sonarr_api_key,
-        "useSsl": parsed["use_ssl"],
-        "baseUrl": resolved_base_url,
-        "activeProfileId": to_int(selected_profile.get("id")),
-        "activeProfileName": selected_profile.get("name"),
-        "activeLanguageProfileId": active_language_profile_id,
-        "activeDirectory": active_directory,
-        "seriesType": series_type,
-        "animeSeriesType": anime_series_type,
-        "activeAnimeProfileId": (
-            to_int(active_anime_profile.get("id"))
-            if active_anime_profile
-            else to_int(sonarr_cfg.get("active_anime_profile_id"))
-        ),
-        "activeAnimeProfileName": (
-            active_anime_profile.get("name") if active_anime_profile else None
-        ),
-        "activeAnimeLanguageProfileId": (
-            to_int(active_anime_language_profile.get("id"))
-            if active_anime_language_profile
-            else to_int(sonarr_cfg.get("active_anime_language_profile_id"))
-        ),
-        "activeAnimeDirectory": sonarr_cfg.get("active_anime_directory"),
-        "is4k": is4k,
-        "isDefault": bool_cfg(sonarr_cfg, "is_default", True),
-        "enableSeasonFolders": bool_cfg(sonarr_cfg, "enable_season_folders", True),
-        "externalUrl": sonarr_cfg.get("external_url", ""),
-        "syncEnabled": bool_cfg(sonarr_cfg, "sync_enabled", True),
-        "preventSearch": bool_cfg(sonarr_cfg, "prevent_search", False),
-        "tagRequests": bool_cfg(sonarr_cfg, "tag_requests", False),
-        "monitorNewItems": monitor_new_items,
-        "tags": coerce_list(sonarr_cfg.get("tags")),
-        "animeTags": coerce_list(sonarr_cfg.get("anime_tags")),
-        "overrideRule": coerce_list(sonarr_cfg.get("override_rule")),
-    }
-
-    status, existing, body = http_request(
-        jellyseerr_url, "/api/v1/settings/sonarr", api_key=jellyseerr_key
-    )
-    if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(
-            f"Jellyseerr: failed to list Sonarr settings (HTTP {status}): {body}"
-        )
-
-    current = find_existing_servarr(
-        existing,
-        payload["name"],
-        payload["hostname"],
-        payload["port"],
-        payload["baseUrl"],
-        payload["is4k"],
-    )
-
-    if current:
-        current_id = current.get("id")
-        if current_id is None:
-            # Older Jellyseerr settings payloads can contain legacy entries without ids.
-            # If a matching entry already exists and our live connection test passed, keep it.
-            log(
-                "[OK] Jellyseerr: existing Sonarr mapping found "
-                "(legacy entry without id)"
-            )
-            return
-        status, _, body = http_request(
-            jellyseerr_url,
-            f"/api/v1/settings/sonarr/{current_id}",
-            api_key=jellyseerr_key,
-            method="PUT",
-            payload=payload,
-        )
-        if status in (200, 201, 202):
-            log("[OK] Jellyseerr: updated Sonarr service mapping")
-            return
-        raise RuntimeError(
-            f"Jellyseerr: failed updating Sonarr mapping (HTTP {status}): {body}"
-        )
-
-    status, _, body = http_request(
-        jellyseerr_url,
-        "/api/v1/settings/sonarr",
-        api_key=jellyseerr_key,
-        method="POST",
-        payload=payload,
-    )
-    if status in (200, 201, 202):
-        log("[OK] Jellyseerr: created Sonarr service mapping")
-        return
-
-    raise RuntimeError(
-        f"Jellyseerr: failed creating Sonarr mapping (HTTP {status}): {body}"
-    )
-
-
 def get_arr_quality_profile(
     app_name,
     app_url,
@@ -7027,13 +4999,9 @@ def get_arr_quality_profile(
     preferred_id=None,
     preferred_names=None,
 ):
-    status, profiles, body = http_request(
-        app_url, f"{api_base}/qualityprofile", api_key=api_key
-    )
+    status, profiles, body = http_request(app_url, f"{api_base}/qualityprofile", api_key=api_key)
     if status != 200 or not isinstance(profiles, list):
-        raise RuntimeError(
-            f"{app_name}: failed to list quality profiles (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"{app_name}: failed to list quality profiles (HTTP {status}): {body}")
     selected = choose_profile(
         profiles,
         preferred_id=preferred_id,
@@ -7045,13 +5013,9 @@ def get_arr_quality_profile(
 
 
 def get_arr_root_folder_path(app_name, app_url, api_base, api_key, preferred_root):
-    status, root_folders, body = http_request(
-        app_url, f"{api_base}/rootfolder", api_key=api_key
-    )
+    status, root_folders, body = http_request(app_url, f"{api_base}/rootfolder", api_key=api_key)
     if status != 200 or not isinstance(root_folders, list):
-        raise RuntimeError(
-            f"{app_name}: failed to list root folders (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"{app_name}: failed to list root folders (HTTP {status}): {body}")
     chosen = choose_root_folder(root_folders, preferred_root)
     if chosen:
         return chosen
@@ -7070,196 +5034,14 @@ def get_sonarr_language_profile_id(sonarr_url, sonarr_api_base, sonarr_api_key):
     return 1
 
 
-def jellyseerr_permission_error(exc):
-    text = str(exc).lower()
-    return (
-        "(http 403)" in text
-        or "permission to access this endpoint" in text
-        or "you do not have permission" in text
-    )
-
-
-def configure_jellyseerr_via_settings_file(cfg, arr_apps, app_keys, config_root):
-    jelly_cfg = cfg.get("jellyseerr") or {}
-    settings_path = Path(config_root) / "jellyseerr" / "settings.json"
-    settings = read_json_file(settings_path)
-
-    main_cfg = settings.setdefault("main", {})
-    if bool_cfg(jelly_cfg, "set_media_server_type_jellyfin", True):
-        main_cfg["mediaServerType"] = 2
-    settings.setdefault("public", {})["initialized"] = True
-
-    jellyfin_cfg = jelly_cfg.get("jellyfin") or {}
-    if bool_cfg(jellyfin_cfg, "configure", False):
-        jellyfin_api_key = resolve_jellyfin_api_key(jellyfin_cfg, config_root)
-        if not jellyfin_api_key:
-            raise RuntimeError(
-                "Jellyseerr file bootstrap: jellyfin.configure=true but Jellyfin API key could not be resolved."
-            )
-        parsed_jf = parse_service_url(jellyfin_cfg.get("url", "http://jellyfin:8096"), 8096)
-        jf = settings.setdefault("jellyfin", {})
-        jf["name"] = jellyfin_cfg.get("name", "Jellyfin")
-        jf["ip"] = parsed_jf["hostname"]
-        jf["port"] = parsed_jf["port"]
-        jf["useSsl"] = parsed_jf["use_ssl"]
-        jf["urlBase"] = parsed_jf["base_url"]
-        jf["externalHostname"] = jellyfin_cfg.get("external_url", "")
-        jf["jellyfinForgotPasswordUrl"] = jellyfin_cfg.get("forgot_password_url", "")
-        jf["apiKey"] = jellyfin_api_key
-        log("[OK] Jellyseerr: wrote Jellyfin settings via file bootstrap")
-
-    radarr_app = get_arr_app(arr_apps, "Radarr")
-    if radarr_app and "Radarr" in app_keys and bool_cfg((jelly_cfg.get("radarr") or {}), "enabled", True):
-        radarr_cfg = jelly_cfg.get("radarr") or {}
-        radarr_url = normalize_url(radarr_app["url"])
-        radarr_api_base = detect_arr_api_base("Radarr", radarr_url, app_keys["Radarr"])
-        radarr_profile_names = coerce_list(
-            radarr_cfg.get("quality_profile_preferred_names")
-            or radarr_app.get("quality_profile_preferred_names")
-            or []
-        )
-        radarr_profile = get_arr_quality_profile(
-            "Radarr",
-            radarr_url,
-            radarr_api_base,
-            app_keys["Radarr"],
-            preferred_id=radarr_cfg.get("active_profile_id"),
-            preferred_names=radarr_profile_names,
-        )
-        radarr_root = get_arr_root_folder_path(
-            "Radarr",
-            radarr_url,
-            radarr_api_base,
-            app_keys["Radarr"],
-            radarr_app.get("root_folder"),
-        )
-        parsed_radarr = parse_service_url(radarr_app["url"], 7878)
-        settings["radarr"] = [
-            {
-                "name": radarr_cfg.get("name", "Radarr"),
-                "hostname": parsed_radarr["hostname"],
-                "port": parsed_radarr["port"],
-                "apiKey": app_keys["Radarr"],
-                "useSsl": parsed_radarr["use_ssl"],
-                "baseUrl": parsed_radarr["base_url"],
-                "activeProfileId": to_int(radarr_profile.get("id"), 1),
-                "activeProfileName": str(radarr_profile.get("name") or "Default"),
-                "activeDirectory": radarr_root,
-                "is4k": bool(radarr_cfg.get("is4k", False)),
-                "minimumAvailability": str(
-                    radarr_cfg.get("minimum_availability", "released")
-                ),
-                "isDefault": bool(radarr_cfg.get("is_default", True)),
-                "externalUrl": radarr_cfg.get("external_url", ""),
-                "syncEnabled": bool(radarr_cfg.get("sync_enabled", True)),
-                "preventSearch": bool(radarr_cfg.get("prevent_search", False)),
-            }
-        ]
-        log("[OK] Jellyseerr: wrote Radarr settings via file bootstrap")
-
-    sonarr_app = get_arr_app(arr_apps, "Sonarr")
-    if sonarr_app and "Sonarr" in app_keys and bool_cfg((jelly_cfg.get("sonarr") or {}), "enabled", True):
-        sonarr_cfg = jelly_cfg.get("sonarr") or {}
-        sonarr_url = normalize_url(sonarr_app["url"])
-        sonarr_api_base = detect_arr_api_base("Sonarr", sonarr_url, app_keys["Sonarr"])
-        sonarr_profile_names = coerce_list(
-            sonarr_cfg.get("quality_profile_preferred_names")
-            or sonarr_app.get("quality_profile_preferred_names")
-            or []
-        )
-        sonarr_profile = get_arr_quality_profile(
-            "Sonarr",
-            sonarr_url,
-            sonarr_api_base,
-            app_keys["Sonarr"],
-            preferred_id=sonarr_cfg.get("active_profile_id"),
-            preferred_names=sonarr_profile_names,
-        )
-        sonarr_root = get_arr_root_folder_path(
-            "Sonarr",
-            sonarr_url,
-            sonarr_api_base,
-            app_keys["Sonarr"],
-            sonarr_app.get("root_folder"),
-        )
-        parsed_sonarr = parse_service_url(sonarr_app["url"], 8989)
-        settings["sonarr"] = [
-            {
-                "name": sonarr_cfg.get("name", "Sonarr"),
-                "hostname": parsed_sonarr["hostname"],
-                "port": parsed_sonarr["port"],
-                "apiKey": app_keys["Sonarr"],
-                "useSsl": parsed_sonarr["use_ssl"],
-                "baseUrl": parsed_sonarr["base_url"],
-                "activeProfileId": to_int(sonarr_profile.get("id"), 1),
-                "activeProfileName": str(sonarr_profile.get("name") or "Default"),
-                "activeDirectory": sonarr_root,
-                "activeLanguageProfileId": get_sonarr_language_profile_id(
-                    sonarr_url, sonarr_api_base, app_keys["Sonarr"]
-                ),
-                "is4k": bool(sonarr_cfg.get("is4k", False)),
-                "enableSeasonFolders": bool(
-                    sonarr_cfg.get("enable_season_folders", True)
-                ),
-                "isDefault": bool(sonarr_cfg.get("is_default", True)),
-                "externalUrl": sonarr_cfg.get("external_url", ""),
-                "syncEnabled": bool(sonarr_cfg.get("sync_enabled", True)),
-                "preventSearch": bool(sonarr_cfg.get("prevent_search", False)),
-            }
-        ]
-        log("[OK] Jellyseerr: wrote Sonarr settings via file bootstrap")
-
-    settings_path.write_text(
-        json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    log("[OK] Jellyseerr: settings file bootstrap applied")
-
-
 def configure_jellyseerr(cfg, arr_apps, app_keys, config_root, wait_timeout):
-    jelly_cfg = cfg.get("jellyseerr") or {}
-    if not bool_cfg(jelly_cfg, "enabled", False):
-        return
-
-    jellyseerr_url = normalize_url(jelly_cfg.get("url", "http://jellyseerr:5055"))
-    wait_for_service("Jellyseerr", jellyseerr_url, "/api/v1/status", wait_timeout)
-
-    jellyseerr_key = read_jellyseerr_api_key(config_root, wait_timeout)
-    radarr_app = get_arr_app(arr_apps, "Radarr")
-    sonarr_app = get_arr_app(arr_apps, "Sonarr")
-    enforced_file_bootstrap = False
-
-    try:
-        ensure_jellyseerr_main_settings(jellyseerr_url, jellyseerr_key, jelly_cfg)
-        ensure_jellyseerr_jellyfin_settings(
-            jellyseerr_url, jellyseerr_key, jelly_cfg, config_root
-        )
-
-        if radarr_app and "Radarr" in app_keys:
-            ensure_jellyseerr_radarr(
-                jellyseerr_url, jellyseerr_key, radarr_app, app_keys["Radarr"], jelly_cfg
-            )
-        else:
-            log("[WARN] Jellyseerr: Radarr app config not found; skipping Radarr mapping.")
-
-        if sonarr_app and "Sonarr" in app_keys:
-            ensure_jellyseerr_sonarr(
-                jellyseerr_url, jellyseerr_key, sonarr_app, app_keys["Sonarr"], jelly_cfg
-            )
-        else:
-            log("[WARN] Jellyseerr: Sonarr app config not found; skipping Sonarr mapping.")
-    except Exception as exc:
-        if not jellyseerr_permission_error(exc):
-            raise
-        log(
-            "[WARN] Jellyseerr API bootstrap hit permission gate; "
-            "applying settings-file bootstrap fallback."
-        )
-        configure_jellyseerr_via_settings_file(cfg, arr_apps, app_keys, config_root)
-        enforced_file_bootstrap = True
-
-    if bool_cfg(jelly_cfg, "enforce_settings_file", True) and not enforced_file_bootstrap:
-        configure_jellyseerr_via_settings_file(cfg, arr_apps, app_keys, config_root)
+    return _jellyseerr_service().configure(
+        cfg=cfg,
+        arr_apps=arr_apps,
+        app_keys=app_keys,
+        config_root=config_root,
+        wait_timeout=wait_timeout,
+    )
 
 
 def main():
@@ -7305,7 +5087,9 @@ def main():
     arr_download_handling_cfg = cfg.get("arr_download_handling") or {}
     arr_media_management_cfg = cfg.get("arr_media_management") or {}
     arr_quality_upgrade_cfg = cfg.get("arr_quality_upgrade") or {}
-    arr_discovery_lists_cfg = cfg.get("arr_discovery_lists") or {}
+    arr_discovery_lists_cfg = ArrDiscoveryListsConfig.from_dict(
+        cfg.get("arr_discovery_lists") or {}
+    )
     jellyseerr_cfg = cfg.get("jellyseerr") or {}
     homepage_cfg = cfg.get("homepage") or {}
     bazarr_cfg = cfg.get("bazarr") or {}
@@ -7343,7 +5127,7 @@ def main():
     configure_arr_media_management = bool_cfg(arr_media_management_cfg, "enabled", True)
     configure_arr_quality_upgrade = bool_cfg(arr_quality_upgrade_cfg, "enabled", False)
     configure_arr_download_handling = bool_cfg(arr_download_handling_cfg, "enabled", True)
-    configure_arr_discovery_lists = bool_cfg(arr_discovery_lists_cfg, "enabled", False)
+    configure_arr_discovery_lists = arr_discovery_lists_cfg.enabled
     set_qbit_categories = bool(qbit_cfg.get("set_categories_in_qbit", False))
     qbit_login_required = bool(qbit_cfg.get("login_required", fully_preconfigured))
     refresh_health_after_bootstrap = bool(cfg.get("refresh_health_after_bootstrap", True))
@@ -7363,16 +5147,12 @@ def main():
     jellyfin_plugins_required = bool_cfg(jellyfin_plugins_cfg, "required", False)
     configure_jellyfin_playback = bool_cfg(jellyfin_playback_cfg, "enabled", False)
     jellyfin_playback_required = bool_cfg(jellyfin_playback_cfg, "required", False)
-    configure_jellyfin_home_rails = bool_cfg(
-        jellyfin_home_rails_cfg, "enabled", False
-    ) or bool_cfg(jellyfin_home_rails_cfg, "cleanup_collections_when_disabled", False)
+    configure_jellyfin_home_rails = bool_cfg(jellyfin_home_rails_cfg, "enabled", False) or bool_cfg(
+        jellyfin_home_rails_cfg, "cleanup_collections_when_disabled", False
+    )
     jellyfin_home_rails_required = bool_cfg(jellyfin_home_rails_cfg, "required", False)
-    configure_auto_collections = bool_cfg(
-        jellyfin_auto_collections_cfg, "enabled", False
-    )
-    auto_collections_required = bool_cfg(
-        jellyfin_auto_collections_cfg, "required", False
-    )
+    configure_auto_collections = bool_cfg(jellyfin_auto_collections_cfg, "enabled", False)
+    auto_collections_required = bool_cfg(jellyfin_auto_collections_cfg, "required", False)
     configure_disk_guardrails = bool_cfg(disk_guardrails_cfg, "enabled", False)
     disk_guardrails_required = bool_cfg(disk_guardrails_cfg, "required", False)
     configure_jellyfin_prewarm = bool_cfg(jellyfin_prewarm_cfg, "enabled", False)
@@ -7405,12 +5185,10 @@ def main():
     qbit_login_ok = False
     sab_api_key = ""
     sab_username = (
-        os.environ.get(str(sab_cfg.get("username_env", "SABNZBD_USERNAME")))
-        or ""
+        os.environ.get(str(sab_cfg.get("username_env", "SABNZBD_USERNAME"))) or ""
     ).strip()
     sab_password = (
-        os.environ.get(str(sab_cfg.get("password_env", "SABNZBD_PASSWORD")))
-        or ""
+        os.environ.get(str(sab_cfg.get("password_env", "SABNZBD_PASSWORD"))) or ""
     ).strip()
 
     log(
@@ -7419,36 +5197,36 @@ def main():
         f"arr_apps={len(arr_apps)}, "
         f"prowlarr_indexers={len(prowlarr_indexers)}, "
         f"auto_indexers={auto_indexers}, "
-            f"configure_arr_clients={configure_arr_clients}, "
-            f"configure_qbit_arr_clients={configure_qbit_arr_clients}, "
-            f"configure_sab_arr_clients={configure_sab_arr_clients}, "
-            f"sab_remote_path_mappings={len(sab_remote_path_mappings)}, "
-            f"configure_arr_media_management={configure_arr_media_management}, "
-            f"configure_arr_quality_upgrade={configure_arr_quality_upgrade}, "
-            f"configure_arr_download_handling={configure_arr_download_handling}, "
-            f"configure_arr_discovery_lists={configure_arr_discovery_lists}, "
+        f"configure_arr_clients={configure_arr_clients}, "
+        f"configure_qbit_arr_clients={configure_qbit_arr_clients}, "
+        f"configure_sab_arr_clients={configure_sab_arr_clients}, "
+        f"sab_remote_path_mappings={len(sab_remote_path_mappings)}, "
+        f"configure_arr_media_management={configure_arr_media_management}, "
+        f"configure_arr_quality_upgrade={configure_arr_quality_upgrade}, "
+        f"configure_arr_download_handling={configure_arr_download_handling}, "
+        f"configure_arr_discovery_lists={configure_arr_discovery_lists}, "
         f"set_qbit_categories={set_qbit_categories}, "
         f"qbit_login_required={qbit_login_required}, "
         f"refresh_health_after_bootstrap={refresh_health_after_bootstrap}, "
-            f"app_auth_enabled={bool_cfg(app_auth_cfg, 'enabled', False)}, "
-            f"configure_homepage={configure_homepage_services}, "
-            f"configure_bazarr={configure_bazarr_integration}, "
-            f"configure_jellyseerr={configure_jellyseerr_services}, "
-            f"configure_jellyfin_libraries={configure_jellyfin_libraries}, "
-            f"configure_jellyfin_livetv={configure_jellyfin_livetv}, "
-            f"configure_jellyfin_plugins={configure_jellyfin_plugins}, "
-            f"configure_jellyfin_playback={configure_jellyfin_playback}, "
-            f"configure_jellyfin_home_rails={configure_jellyfin_home_rails}, "
-            f"configure_auto_collections={configure_auto_collections}, "
-            f"configure_disk_guardrails={configure_disk_guardrails}, "
-            f"configure_jellyfin_prewarm={configure_jellyfin_prewarm}, "
-            f"configure_media_hygiene={configure_media_hygiene}, "
-            f"configure_maintainerr_policy={configure_maintainerr_policy}, "
-            f"jellyfin_livetv_tuners={len(coerce_list(jellyfin_livetv_cfg.get('tuners')))}, "
-            f"jellyfin_livetv_guides={len(coerce_list(jellyfin_livetv_cfg.get('guides')))}, "
-            f"fully_preconfigured={fully_preconfigured}, "
-            f"trigger_sync={trigger_sync}"
-        )
+        f"app_auth_enabled={bool_cfg(app_auth_cfg, 'enabled', False)}, "
+        f"configure_homepage={configure_homepage_services}, "
+        f"configure_bazarr={configure_bazarr_integration}, "
+        f"configure_jellyseerr={configure_jellyseerr_services}, "
+        f"configure_jellyfin_libraries={configure_jellyfin_libraries}, "
+        f"configure_jellyfin_livetv={configure_jellyfin_livetv}, "
+        f"configure_jellyfin_plugins={configure_jellyfin_plugins}, "
+        f"configure_jellyfin_playback={configure_jellyfin_playback}, "
+        f"configure_jellyfin_home_rails={configure_jellyfin_home_rails}, "
+        f"configure_auto_collections={configure_auto_collections}, "
+        f"configure_disk_guardrails={configure_disk_guardrails}, "
+        f"configure_jellyfin_prewarm={configure_jellyfin_prewarm}, "
+        f"configure_media_hygiene={configure_media_hygiene}, "
+        f"configure_maintainerr_policy={configure_maintainerr_policy}, "
+        f"jellyfin_livetv_tuners={len(coerce_list(jellyfin_livetv_cfg.get('tuners')))}, "
+        f"jellyfin_livetv_guides={len(coerce_list(jellyfin_livetv_cfg.get('guides')))}, "
+        f"fully_preconfigured={fully_preconfigured}, "
+        f"trigger_sync={trigger_sync}"
+    )
 
     if args.mode == "jellyfin-prewarm":
         ensure_jellyfin_prewarm(cfg, args.config_root, args.wait_timeout)
@@ -7775,9 +5553,7 @@ def main():
 
     if configure_auto_collections:
         try:
-            ensure_jellyfin_auto_collections_config(
-                cfg, args.config_root, args.wait_timeout
-            )
+            ensure_jellyfin_auto_collections_config(cfg, args.config_root, args.wait_timeout)
         except Exception as exc:
             if auto_collections_required:
                 raise

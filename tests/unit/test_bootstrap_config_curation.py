@@ -12,7 +12,7 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         cls.cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
     def test_lidarr_discovery_lists_focus_on_top_10_seed_sets(self):
-        lists_cfg = ((self.cfg.get("arr_discovery_lists") or {}).get("Lidarr") or [])
+        lists_cfg = (self.cfg.get("arr_discovery_lists") or {}).get("Lidarr") or []
         self.assertGreaterEqual(len(lists_cfg), 4)
 
         counts = set()
@@ -31,7 +31,7 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertTrue(any("Electronic" in name for name in names))
 
     def test_readarr_discovery_lists_have_popular_sources(self):
-        lists_cfg = ((self.cfg.get("arr_discovery_lists") or {}).get("Readarr") or [])
+        lists_cfg = (self.cfg.get("arr_discovery_lists") or {}).get("Readarr") or []
         self.assertGreaterEqual(len(lists_cfg), 2)
 
         impls = {str(item.get("implementation") or "") for item in lists_cfg}

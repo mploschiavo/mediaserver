@@ -5,8 +5,34 @@ on:
   pull_request:
 
 jobs:
+  preflight-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fast Python compile check (migrated scripts)
+        run: |
+          python3 -m py_compile scripts/core/*.py scripts/bootstrap_services/*.py
+          python3 -m py_compile scripts/ensure_sabnzbd_api_access.py
+          python3 -m py_compile scripts/set_pvc_storage_class.py
+          python3 -m py_compile scripts/sync_unpackerr_keys.py
+
+      - name: Fast migrated unit tests + shell wrapper contracts
+        run: |
+          python3 -m unittest \
+            tests.unit.test_core_decorators \
+            tests.unit.test_ensure_sabnzbd_api_access \
+            tests.unit.test_set_pvc_storage_class \
+            tests.unit.test_sync_unpackerr_keys \
+            tests.unit.test_shell_wrapper_contracts \
+            tests.unit.test_bootstrap_config_golden
+
   validate:
     runs-on: ubuntu-latest
+    needs: preflight-fast
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
@@ -17,7 +43,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck python3-yaml python3-jsonschema
-          python3 -m pip install --user yamllint
+          python3 -m pip install --user \
+            yamllint==1.35.1 \
+            ruff==0.6.9 \
+            black==24.10.0
 
       - name: Shell syntax check
         run: bash -n scripts/*.sh
@@ -29,7 +58,36 @@ jobs:
         run: |
           python3 -m py_compile scripts/bootstrap-apps.py
           python3 -m py_compile scripts/bootstrap_lib/common.py scripts/bootstrap_lib/http_client.py scripts/bootstrap_lib/servarr.py
+          python3 -m py_compile scripts/core/*.py scripts/bootstrap_services/*.py
+          python3 -m py_compile scripts/sync_unpackerr_keys.py
           python3 -m py_compile scripts/validate-bootstrap-config.py tests/e2e/api/verify_api_relationships.py
+
+      - name: Python style (ruff + black)
+        run: |
+          ~/.local/bin/ruff check \
+            scripts/core \
+            scripts/bootstrap_services \
+            scripts/ensure_sabnzbd_api_access.py \
+            scripts/set_pvc_storage_class.py \
+            scripts/sync_unpackerr_keys.py \
+            tests/unit/test_core_decorators.py \
+            tests/unit/test_bootstrap_config_golden.py \
+            tests/unit/test_ensure_sabnzbd_api_access.py \
+            tests/unit/test_set_pvc_storage_class.py \
+            tests/unit/test_shell_wrapper_contracts.py \
+            tests/unit/test_sync_unpackerr_keys.py
+          ~/.local/bin/black --check \
+            scripts/core \
+            scripts/bootstrap_services \
+            scripts/ensure_sabnzbd_api_access.py \
+            scripts/set_pvc_storage_class.py \
+            scripts/sync_unpackerr_keys.py \
+            tests/unit/test_core_decorators.py \
+            tests/unit/test_bootstrap_config_golden.py \
+            tests/unit/test_ensure_sabnzbd_api_access.py \
+            tests/unit/test_set_pvc_storage_class.py \
+            tests/unit/test_shell_wrapper_contracts.py \
+            tests/unit/test_sync_unpackerr_keys.py
 
       - name: Bootstrap config schema validation
         run: python3 scripts/validate-bootstrap-config.py

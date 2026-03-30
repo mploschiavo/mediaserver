@@ -18,9 +18,7 @@ def choose_profile(profiles, preferred_id=None, preferred_names=None):
                 return profile
 
     preferred_name_tokens = [
-        _norm_profile_name(name)
-        for name in (preferred_names or [])
-        if _norm_profile_name(name)
+        _norm_profile_name(name) for name in (preferred_names or []) if _norm_profile_name(name)
     ]
     if preferred_name_tokens:
         normalized_profiles = [
@@ -67,9 +65,7 @@ def normalize_remote_path_mappings(mappings):
         remote_path = _normalize_mapping_path(
             mapping.get("remote_path") or mapping.get("remotePath")
         )
-        local_path = _normalize_mapping_path(
-            mapping.get("local_path") or mapping.get("localPath")
-        )
+        local_path = _normalize_mapping_path(mapping.get("local_path") or mapping.get("localPath"))
         if not host or not remote_path or not local_path:
             continue
         key = (host.lower(), remote_path)

@@ -1,0 +1,239 @@
+{
+  "Lidarr": [
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "count": 10,
+        "tagId": "rock"
+      },
+      "implementation": "LastFmTag",
+      "monitor_new_items": "all",
+      "name": "Last.fm Top Rock Artists (Top 10)",
+      "should_monitor": "all",
+      "should_search": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "count": 10,
+        "tagId": "pop"
+      },
+      "implementation": "LastFmTag",
+      "monitor_new_items": "all",
+      "name": "Last.fm Top Pop Artists (Top 10)",
+      "should_monitor": "all",
+      "should_search": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "count": 10,
+        "tagId": "hip-hop"
+      },
+      "implementation": "LastFmTag",
+      "monitor_new_items": "all",
+      "name": "Last.fm Top Hip-Hop Artists (Top 10)",
+      "should_monitor": "all",
+      "should_search": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "count": 10,
+        "tagId": "electronic"
+      },
+      "implementation": "LastFmTag",
+      "monitor_new_items": "all",
+      "name": "Last.fm Top Electronic Artists (Top 10)",
+      "should_monitor": "all",
+      "should_search": true
+    }
+  ],
+  "Radarr": [
+    {
+      "enable_auto": true,
+      "enabled": true,
+      "field_overrides": {
+        "tMDbListType": 1
+      },
+      "implementation": "TMDbPopularImport",
+      "minimum_availability": "released",
+      "monitor": "movieOnly",
+      "name": "TMDb Trending Movies",
+      "search_on_add": true
+    },
+    {
+      "enable_auto": true,
+      "enabled": true,
+      "field_overrides": {
+        "tMDbListType": 2
+      },
+      "implementation": "TMDbPopularImport",
+      "minimum_availability": "released",
+      "monitor": "movieOnly",
+      "name": "TMDb Popular Movies",
+      "search_on_add": true
+    },
+    {
+      "enable_auto": true,
+      "enabled": true,
+      "field_overrides": {
+        "tMDbListType": 3
+      },
+      "implementation": "TMDbPopularImport",
+      "minimum_availability": "released",
+      "monitor": "movieOnly",
+      "name": "TMDb Top Rated Movies",
+      "search_on_add": true
+    },
+    {
+      "enable_auto": true,
+      "enabled": true,
+      "field_overrides": {
+        "tMDbListType": 4
+      },
+      "implementation": "TMDbPopularImport",
+      "minimum_availability": "released",
+      "monitor": "movieOnly",
+      "name": "TMDb Upcoming Movies",
+      "search_on_add": true
+    }
+  ],
+  "Readarr": [
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "listId": "2681"
+      },
+      "implementation": "GoodreadsListImportList",
+      "min_refresh_interval": "168:00:00",
+      "monitor_new_items": "all",
+      "name": "Goodreads Popular Science Fiction",
+      "should_monitor": "all",
+      "should_search": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "listId": "184476"
+      },
+      "implementation": "GoodreadsListImportList",
+      "min_refresh_interval": "168:00:00",
+      "monitor_new_items": "all",
+      "name": "Goodreads Readarr Top 100",
+      "should_monitor": "all",
+      "should_search": true
+    }
+  ],
+  "Sonarr": [
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "accessToken": "${TRAKT_ACCESS_TOKEN}",
+        "authUser": "${TRAKT_USERNAME}",
+        "limit": 10,
+        "refreshToken": "${TRAKT_REFRESH_TOKEN}",
+        "traktListType": 0
+      },
+      "implementation": "TraktPopularImport",
+      "monitor_new_items": "all",
+      "name": "Trakt Trending Shows",
+      "search_for_missing_episodes": true,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "all",
+      "skip_if_auth_required": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "accessToken": "${TRAKT_ACCESS_TOKEN}",
+        "authUser": "${TRAKT_USERNAME}",
+        "limit": 10,
+        "refreshToken": "${TRAKT_REFRESH_TOKEN}",
+        "traktListType": 1
+      },
+      "implementation": "TraktPopularImport",
+      "monitor_new_items": "all",
+      "name": "Trakt Popular Shows",
+      "search_for_missing_episodes": true,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "all",
+      "skip_if_auth_required": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "accessToken": "${TRAKT_ACCESS_TOKEN}",
+        "authUser": "${TRAKT_USERNAME}",
+        "limit": 10,
+        "refreshToken": "${TRAKT_REFRESH_TOKEN}",
+        "traktListType": 2
+      },
+      "implementation": "TraktPopularImport",
+      "monitor_new_items": "all",
+      "name": "Trakt Anticipated Shows",
+      "search_for_missing_episodes": true,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "all",
+      "skip_if_auth_required": true
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "listId": "ls056296799"
+      },
+      "implementation": "ImdbListImport",
+      "monitor_new_items": "all",
+      "name": "IMDb Top Rated TV",
+      "search_for_missing_episodes": true,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "all"
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "listId": "ls009668711"
+      },
+      "implementation": "ImdbListImport",
+      "monitor_new_items": "all",
+      "name": "IMDb Popular TV",
+      "search_for_missing_episodes": true,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "all"
+    },
+    {
+      "enable_automatic_add": true,
+      "enabled": true,
+      "field_overrides": {
+        "listId": "ls095964455"
+      },
+      "implementation": "ImdbListImport",
+      "monitor_new_items": "all",
+      "name": "IMDb Trending TV",
+      "search_for_missing_episodes": true,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "all"
+    }
+  ],
+  "enabled": true,
+  "prune_unmanaged": true,
+  "required": false,
+  "trigger_initial_sync": true
+}

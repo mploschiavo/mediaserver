@@ -1,0 +1,138 @@
+{
+  "qbittorrent": {
+    "auth_bypass": {
+      "allow_open_world": false,
+      "localhost": true,
+      "whitelist_enabled": true,
+      "whitelist_subnets": [
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "127.0.0.1/32",
+        "::1/128"
+      ]
+    },
+    "auto_tmm_enabled": true,
+    "categories": {
+      "Lidarr": "music",
+      "Radarr": "movies",
+      "Readarr": "books",
+      "Sonarr": "tv"
+    },
+    "completed_paths": {
+      "books": "/data/torrents/completed/books",
+      "movies": "/data/torrents/completed/movies",
+      "music": "/data/torrents/completed/music",
+      "tv": "/data/torrents/completed/tv"
+    },
+    "configure_arr_clients": true,
+    "default_save_path": "/data/torrents/completed",
+    "host": "qbittorrent",
+    "implementation": "QBittorrent",
+    "login_required": true,
+    "name": "qBittorrent",
+    "port": 8080,
+    "queue_guardrails": {
+      "count_states": [
+        "downloading",
+        "queuedDL",
+        "stalledDL",
+        "metaDL",
+        "forcedDL",
+        "checkingDL",
+        "pausedDL",
+        "allocating",
+        "checkingResumeData"
+      ],
+      "default_max_queued": 35,
+      "dry_run": false,
+      "enabled": true,
+      "include_uncategorized": false,
+      "max_queued_by_category": {
+        "books": 8,
+        "movies": 35,
+        "music": 10,
+        "tv": 50
+      },
+      "over_limit_delete_files": true,
+      "over_limit_max_delete_per_category": 15,
+      "prune_states": [
+        "queuedDL",
+        "stalledDL",
+        "metaDL",
+        "pausedDL",
+        "error",
+        "missingFiles"
+      ],
+      "prune_when_over_limit": true,
+      "stale_prune": {
+        "delete_files": true,
+        "enabled": true,
+        "max_age_hours": 168,
+        "max_delete_per_run": 25,
+        "max_download_speed_bps": 32768,
+        "max_eta_seconds": 1209600,
+        "max_stalled_hours": 24,
+        "min_progress": 0.98,
+        "states": [
+          "downloading",
+          "queuedDL",
+          "stalledDL",
+          "metaDL",
+          "pausedDL",
+          "error",
+          "missingFiles"
+        ]
+      }
+    },
+    "seeding_policy": {
+      "enabled": true,
+      "max_ratio": 1.2,
+      "max_seeding_time_minutes": 1440,
+      "remove_on_limit_reached": false
+    },
+    "set_categories_in_qbit": true,
+    "temp_path": "/data/torrents/incomplete",
+    "temp_path_enabled": true,
+    "url": "http://qbittorrent:8080"
+  },
+  "sabnzbd": {
+    "api_key_config_path": "sabnzbd/sabnzbd.ini",
+    "api_key_env": "SABNZBD_API_KEY",
+    "api_key_required": false,
+    "auto_browser": false,
+    "categories": {
+      "Lidarr": "music",
+      "Radarr": "movies",
+      "Readarr": "books",
+      "Sonarr": "tv"
+    },
+    "complete_dir": "/data/usenet/completed",
+    "completed_paths": {
+      "books": "/data/usenet/completed/books",
+      "movies": "/data/usenet/completed/movies",
+      "music": "/data/usenet/completed/music",
+      "tv": "/data/usenet/completed/tv"
+    },
+    "configure_arr_clients": true,
+    "host": "sabnzbd",
+    "implementation": "Sabnzbd",
+    "incomplete_dir": "/data/usenet/incomplete",
+    "name": "SABnzbd",
+    "port": 8080,
+    "remote_path_mappings": [
+      {
+        "host": "sabnzbd",
+        "local_path": "/data/usenet/completed",
+        "remote_path": "/config/Downloads/complete"
+      },
+      {
+        "host": "sabnzbd",
+        "local_path": "/data/usenet/completed",
+        "remote_path": "Downloads/complete"
+      }
+    ],
+    "set_categories_in_sab": true,
+    "url": "http://sabnzbd:8080"
+  }
+}
