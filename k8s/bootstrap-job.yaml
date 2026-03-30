@@ -210,8 +210,12 @@ spec:
                 path: bootstrap_services/bazarr_service.py
               - key: bootstrap_services__jellyfin_service.py
                 path: bootstrap_services/jellyfin_service.py
+              - key: bootstrap_services__jellyfin_home_rails_service.py
+                path: bootstrap_services/jellyfin_home_rails_service.py
               - key: bootstrap_services__jellyseerr_service.py
                 path: bootstrap_services/jellyseerr_service.py
+              - key: bootstrap_services__media_hygiene_ops_service.py
+                path: bootstrap_services/media_hygiene_ops_service.py
               - key: bootstrap_services__media_hygiene_service.py
                 path: bootstrap_services/media_hygiene_service.py
               - key: bootstrap_services__qbit_service.py
