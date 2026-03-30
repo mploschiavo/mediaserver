@@ -4,6 +4,7 @@ set -Eeuo pipefail
 NAMESPACE="${NAMESPACE:-media-stack}"
 TIMEOUT="${TIMEOUT:-10m}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/bootstrap-script-configmap.sh"
 CONFIG_FILE="${1:-$ROOT_DIR/bootstrap/media-stack.bootstrap.json}"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-15}"
 JOB_LOG_TAIL_LINES="${JOB_LOG_TAIL_LINES:-120}"
@@ -508,16 +509,7 @@ info "Updating bootstrap script/config ConfigMaps"
 bootstrap_script_cm_yaml="$(mktemp -t media-stack-bootstrap-script.XXXXXX.yaml)"
 bootstrap_config_cm_yaml="$(mktemp -t media-stack-bootstrap-config.XXXXXX.yaml)"
 
-"${KUBECTL[@]}" -n "$NAMESPACE" create configmap media-stack-bootstrap-script \
-  --from-file=bootstrap_apps.py="$ROOT_DIR/scripts/bootstrap-apps.py" \
-  --from-file=__init__.py="$ROOT_DIR/scripts/bootstrap_lib/__init__.py" \
-  --from-file=common.py="$ROOT_DIR/scripts/bootstrap_lib/common.py" \
-  --from-file=http_client.py="$ROOT_DIR/scripts/bootstrap_lib/http_client.py" \
-  --from-file=servarr.py="$ROOT_DIR/scripts/bootstrap_lib/servarr.py" \
-  --from-file=homepage.py="$ROOT_DIR/scripts/bootstrap_lib/homepage.py" \
-  --from-file=bazarr.py="$ROOT_DIR/scripts/bootstrap_lib/bazarr.py" \
-  --from-file=jellyfin.py="$ROOT_DIR/scripts/bootstrap_lib/jellyfin.py" \
-  --dry-run=client -o yaml >"$bootstrap_script_cm_yaml"
+bootstrap_script_configmap_create_yaml "$NAMESPACE" "$ROOT_DIR" "$bootstrap_script_cm_yaml"
 if ! "${KUBECTL[@]}" -n "$NAMESPACE" replace -f "$bootstrap_script_cm_yaml" >/dev/null 2>&1; then
   "${KUBECTL[@]}" -n "$NAMESPACE" create -f "$bootstrap_script_cm_yaml" >/dev/null
 else

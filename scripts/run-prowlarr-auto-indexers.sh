@@ -4,6 +4,7 @@ set -Eeuo pipefail
 NAMESPACE="${NAMESPACE:-media-stack}"
 TIMEOUT="${TIMEOUT:-20m}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/bootstrap-script-configmap.sh"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-15}"
 PREPARE_HOST_ROOT="${PREPARE_HOST_ROOT:-/srv/media-stack}"
 HB_PID=""
@@ -318,16 +319,7 @@ phase_start "Update bootstrap script ConfigMap"
 info "Updating bootstrap script ConfigMap for auto-indexer job"
 bootstrap_script_cm_yaml="$(mktemp -t media-stack-bootstrap-script.auto.XXXXXX.yaml)"
 bootstrap_auto_cfg_cm_yaml="$(mktemp -t media-stack-bootstrap-config-auto.XXXXXX.yaml)"
-"${KUBECTL[@]}" -n "$NAMESPACE" create configmap media-stack-bootstrap-script \
-  --from-file=bootstrap_apps.py="$ROOT_DIR/scripts/bootstrap-apps.py" \
-  --from-file=__init__.py="$ROOT_DIR/scripts/bootstrap_lib/__init__.py" \
-  --from-file=common.py="$ROOT_DIR/scripts/bootstrap_lib/common.py" \
-  --from-file=http_client.py="$ROOT_DIR/scripts/bootstrap_lib/http_client.py" \
-  --from-file=servarr.py="$ROOT_DIR/scripts/bootstrap_lib/servarr.py" \
-  --from-file=homepage.py="$ROOT_DIR/scripts/bootstrap_lib/homepage.py" \
-  --from-file=bazarr.py="$ROOT_DIR/scripts/bootstrap_lib/bazarr.py" \
-  --from-file=jellyfin.py="$ROOT_DIR/scripts/bootstrap_lib/jellyfin.py" \
-  --dry-run=client -o yaml >"$bootstrap_script_cm_yaml"
+bootstrap_script_configmap_create_yaml "$NAMESPACE" "$ROOT_DIR" "$bootstrap_script_cm_yaml"
 if ! "${KUBECTL[@]}" -n "$NAMESPACE" replace -f "$bootstrap_script_cm_yaml" >/dev/null 2>&1; then
   "${KUBECTL[@]}" -n "$NAMESPACE" create -f "$bootstrap_script_cm_yaml" >/dev/null
 else
@@ -358,163 +350,7 @@ phase_start "Recreate auto-indexer Job"
 "${KUBECTL[@]}" -n "$NAMESPACE" delete job media-stack-prowlarr-auto-indexers --ignore-not-found
 
 info "Creating auto-indexer Job"
-cat <<EOF | "${KUBECTL[@]}" apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: media-stack-prowlarr-auto-indexers
-  namespace: $NAMESPACE
-spec:
-  backoffLimit: 0
-  ttlSecondsAfterFinished: 600
-  template:
-    metadata:
-      labels:
-        app: media-stack-prowlarr-auto-indexers
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: bootstrap
-          image: python:3.12-alpine
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: PROWLARR_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: media-stack-secrets
-                  key: PROWLARR_API_KEY
-                  optional: true
-            - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
-              value: "3"
-            - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
-              value: "15"
-            - name: AUTO_INDEXER_HEARTBEAT_EVERY
-              value: "25"
-            - name: BOOTSTRAP_ALT_CONFIG_ROOT
-              value: /srv-host-config
-          command:
-            - python
-            - /bootstrap/bootstrap_apps.py
-            - --config
-            - /bootstrap-config/config.json
-            - --config-root
-            - /srv-config
-            - --auto-prowlarr-indexers
-          volumeMounts:
-            - name: bootstrap-script
-              mountPath: /bootstrap
-              readOnly: true
-            - name: bootstrap-config
-              mountPath: /bootstrap-config
-              readOnly: true
-            - name: cfg-jellyfin
-              mountPath: /srv-config/jellyfin
-            - name: cfg-jellyseerr
-              mountPath: /srv-config/jellyseerr
-            - name: cfg-sonarr
-              mountPath: /srv-config/sonarr
-            - name: cfg-radarr
-              mountPath: /srv-config/radarr
-            - name: cfg-lidarr
-              mountPath: /srv-config/lidarr
-            - name: cfg-readarr
-              mountPath: /srv-config/readarr
-            - name: cfg-bazarr
-              mountPath: /srv-config/bazarr
-            - name: cfg-prowlarr
-              mountPath: /srv-config/prowlarr
-            - name: cfg-sabnzbd
-              mountPath: /srv-config/sabnzbd
-            - name: cfg-homepage
-              mountPath: /srv-config/homepage
-            - name: cfg-maintainerr
-              mountPath: /srv-config/maintainerr
-            - name: cfg-jellyfin-auto-collections
-              mountPath: /srv-config/jellyfin-auto-collections
-            - name: host-config-fallback
-              mountPath: /srv-host-config
-              readOnly: true
-            - name: stack-torrents
-              mountPath: /srv-stack/data/torrents
-            - name: stack-usenet
-              mountPath: /srv-stack/data/usenet
-            - name: stack-media
-              mountPath: /srv-stack/media
-      volumes:
-        - name: bootstrap-script
-          configMap:
-            name: media-stack-bootstrap-script
-            defaultMode: 0555
-            items:
-              - key: bootstrap_apps.py
-                path: bootstrap_apps.py
-              - key: __init__.py
-                path: bootstrap_lib/__init__.py
-              - key: common.py
-                path: bootstrap_lib/common.py
-              - key: http_client.py
-                path: bootstrap_lib/http_client.py
-              - key: servarr.py
-                path: bootstrap_lib/servarr.py
-              - key: homepage.py
-                path: bootstrap_lib/homepage.py
-              - key: bazarr.py
-                path: bootstrap_lib/bazarr.py
-              - key: jellyfin.py
-                path: bootstrap_lib/jellyfin.py
-        - name: bootstrap-config
-          configMap:
-            name: media-stack-bootstrap-config-auto
-        - name: cfg-jellyfin
-          persistentVolumeClaim:
-            claimName: media-stack-config-jellyfin
-        - name: cfg-jellyseerr
-          persistentVolumeClaim:
-            claimName: media-stack-config-jellyseerr
-        - name: cfg-sonarr
-          persistentVolumeClaim:
-            claimName: media-stack-config-sonarr
-        - name: cfg-radarr
-          persistentVolumeClaim:
-            claimName: media-stack-config-radarr
-        - name: cfg-lidarr
-          persistentVolumeClaim:
-            claimName: media-stack-config-lidarr
-        - name: cfg-readarr
-          persistentVolumeClaim:
-            claimName: media-stack-config-readarr
-        - name: cfg-bazarr
-          persistentVolumeClaim:
-            claimName: media-stack-config-bazarr
-        - name: cfg-prowlarr
-          persistentVolumeClaim:
-            claimName: media-stack-config-prowlarr
-        - name: cfg-sabnzbd
-          persistentVolumeClaim:
-            claimName: media-stack-config-sabnzbd
-        - name: cfg-homepage
-          persistentVolumeClaim:
-            claimName: media-stack-config-homepage
-        - name: cfg-maintainerr
-          persistentVolumeClaim:
-            claimName: media-stack-config-maintainerr
-        - name: cfg-jellyfin-auto-collections
-          persistentVolumeClaim:
-            claimName: media-stack-config-jellyfin-auto-collections
-        - name: host-config-fallback
-          hostPath:
-            path: /srv/media-stack/config
-            type: DirectoryOrCreate
-        - name: stack-torrents
-          persistentVolumeClaim:
-            claimName: media-stack-data-torrents
-        - name: stack-usenet
-          persistentVolumeClaim:
-            claimName: media-stack-data-usenet
-        - name: stack-media
-          persistentVolumeClaim:
-            claimName: media-stack-media
-EOF
+manifest_overrides <"$ROOT_DIR/k8s/prowlarr-auto-indexers-job.yaml" | "${KUBECTL[@]}" apply -f -
 phase_end "ok"
 
 phase_start "Wait for auto-indexer Job completion"
