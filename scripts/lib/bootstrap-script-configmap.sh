@@ -14,6 +14,7 @@ BOOTSTRAP_SCRIPT_CONFIGMAP_FILES=(
   "bootstrap_lib__defaults.py|scripts/bootstrap_lib/defaults.py"
   "bootstrap_defaults__maintainerr_policy.json|scripts/bootstrap_defaults/maintainerr_policy.json"
   "bootstrap_defaults__jellyfin_home_rails.json|scripts/bootstrap_defaults/jellyfin_home_rails.json"
+  "bootstrap_defaults__adapter_hooks.json|scripts/bootstrap_defaults/adapter_hooks.json"
   "bootstrap_services__init__.py|scripts/bootstrap_services/__init__.py"
   "bootstrap_services__arr_service.py|scripts/bootstrap_services/arr_service.py"
   "bootstrap_services__arr_queue_cleanup_service.py|scripts/bootstrap_services/arr_queue_cleanup_service.py"

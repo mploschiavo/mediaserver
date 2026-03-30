@@ -3895,6 +3895,17 @@ def main():
     disk_guardrails_cfg = cfg.get("disk_guardrails") or {}
     media_hygiene_cfg = cfg.get("media_hygiene") or {}
     maintainerr_cfg = cfg.get("maintainerr") or {}
+    adapter_hooks_cfg = deep_merge_objects(
+        load_bootstrap_default_json(
+            "adapter_hooks.json",
+            {
+                "before_common_steps": {
+                    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
+                }
+            },
+        ),
+        cfg.get("adapter_hooks") or {},
+    )
     app_auth_cfg = cfg.get("app_auth") or {}
     prowlarr_indexers = cfg.get("prowlarr_indexers", [])
     fully_preconfigured = env_truthy("FULLY_PRECONFIGURED", False)
@@ -4161,9 +4172,9 @@ def main():
             sab_auth=ClientAuth(
                 username=sab_username,
                 password=sab_password,
-                api_key=sab_api_key,
             ),
             sab_remote_path_mappings=sab_remote_path_mappings,
+            adapter_hooks_cfg=adapter_hooks_cfg,
             run_cfg=ServarrRunConfig(
                 configure_arr_media_management=configure_arr_media_management,
                 configure_arr_download_handling=configure_arr_download_handling,

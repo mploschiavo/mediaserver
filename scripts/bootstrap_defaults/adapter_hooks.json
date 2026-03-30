@@ -1,0 +1,5 @@
+{
+  "before_common_steps": {
+    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
+  }
+}

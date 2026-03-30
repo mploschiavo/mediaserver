@@ -1,11 +1,11 @@
-"""Orchestrate shared Servarr bootstrap flow using per-app adapters."""
+"""Orchestrate shared Servarr bootstrap flow using config-driven adapter hooks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .servarr_adapters import AdapterDependencies, AppBootstrapContext, adapter_for_implementation
+from .servarr_adapters import AdapterDependencies, AdapterRegistry, AppBootstrapContext
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
@@ -46,7 +46,6 @@ class ServarrRunConfig:
 class ClientAuth:
     username: str = ""
     password: str = ""
-    api_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -65,6 +64,7 @@ class ServarrPipelineInputs:
     sab_cfg: dict[str, Any]
     sab_auth: ClientAuth
     sab_remote_path_mappings: list[dict[str, Any]]
+    adapter_hooks_cfg: dict[str, Any]
     run_cfg: ServarrRunConfig
 
 
@@ -155,6 +155,7 @@ class ServarrPipelineService:
 
     def run(self, inputs: ServarrPipelineInputs) -> None:
         run_cfg = inputs.run_cfg
+        adapter_registry = AdapterRegistry.from_config(inputs.adapter_hooks_cfg)
 
         for app in inputs.arr_apps:
             impl = str(app.get("implementation") or "")
@@ -173,8 +174,8 @@ class ServarrPipelineService:
                 inputs.app_auth_cfg,
             )
 
-            adapter = adapter_for_implementation(impl)
-            adapter.before_common_steps(
+            hook = adapter_registry.before_common_steps_for(impl)
+            hook(
                 self.adapter_deps,
                 AppBootstrapContext(
                     cfg=inputs.cfg,

@@ -1,7 +1,8 @@
-"""Per-technology Servarr adapter strategies for bootstrap extension points."""
+"""Config-driven Servarr adapter hooks with optional reflection loading."""
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -26,14 +27,14 @@ class AppBootstrapContext:
     api_key: str
 
 
-AdapterHook = Callable[[AdapterDependencies, AppBootstrapContext], None]
+HookFn = Callable[[AdapterDependencies, AppBootstrapContext], None]
 
 
-def _noop_before_common_steps(_deps: AdapterDependencies, _ctx: AppBootstrapContext) -> None:
+def noop_before_common_steps(_deps: AdapterDependencies, _ctx: AppBootstrapContext) -> None:
     return None
 
 
-def _readarr_before_common_steps(deps: AdapterDependencies, ctx: AppBootstrapContext) -> None:
+def readarr_before_common_steps(deps: AdapterDependencies, ctx: AppBootstrapContext) -> None:
     readarr_cfg = ctx.cfg.get("readarr") or {}
     try:
         deps.ensure_readarr_metadata_source(
@@ -52,23 +53,53 @@ def _readarr_before_common_steps(deps: AdapterDependencies, ctx: AppBootstrapCon
         )
 
 
+def _load_hook_from_spec(spec: str) -> HookFn:
+    raw = str(spec or "").strip()
+    if not raw:
+        raise ValueError("Adapter hook spec must not be empty.")
+    if ":" not in raw:
+        raise ValueError(
+            f"Invalid adapter hook spec '{raw}'. Expected format 'module.submodule:function_name'."
+        )
+    module_name, func_name = raw.rsplit(":", 1)
+    module_name = module_name.strip()
+    func_name = func_name.strip()
+    if not module_name or not func_name:
+        raise ValueError(
+            f"Invalid adapter hook spec '{raw}'. Expected format 'module.submodule:function_name'."
+        )
+    module = importlib.import_module(module_name)
+    hook = getattr(module, func_name, None)
+    if not callable(hook):
+        raise TypeError(f"Adapter hook '{raw}' is not callable.")
+    return hook
+
+
 @dataclass(frozen=True)
-class ServarrAdapter:
-    implementation: str
-    before_common_steps: AdapterHook = _noop_before_common_steps
+class AdapterRegistry:
+    before_common_steps: dict[str, HookFn]
 
+    @classmethod
+    def from_config(cls, adapter_hooks_cfg: dict[str, Any] | None = None) -> "AdapterRegistry":
+        hooks: dict[str, HookFn] = {
+            "readarr": readarr_before_common_steps,
+        }
+        cfg = adapter_hooks_cfg or {}
+        before_cfg = cfg.get("before_common_steps") or {}
+        if not isinstance(before_cfg, dict):
+            raise ValueError("adapter_hooks.before_common_steps must be an object/map.")
 
-_ADAPTERS: dict[str, ServarrAdapter] = {
-    "sonarr": ServarrAdapter(implementation="sonarr"),
-    "radarr": ServarrAdapter(implementation="radarr"),
-    "lidarr": ServarrAdapter(implementation="lidarr"),
-    "readarr": ServarrAdapter(
-        implementation="readarr",
-        before_common_steps=_readarr_before_common_steps,
-    ),
-}
+        for impl, spec in before_cfg.items():
+            key = str(impl or "").strip().lower()
+            if not key:
+                continue
+            if spec is None or str(spec).strip() == "":
+                hooks.pop(key, None)
+                continue
+            hooks[key] = _load_hook_from_spec(str(spec))
 
+        return cls(before_common_steps=hooks)
 
-def adapter_for_implementation(implementation: str) -> ServarrAdapter:
-    impl = str(implementation or "").strip().lower()
-    return _ADAPTERS.get(impl, ServarrAdapter(implementation=impl or "unknown"))
+    def before_common_steps_for(self, implementation: str) -> HookFn:
+        impl = str(implementation or "").strip().lower()
+        return self.before_common_steps.get(impl, noop_before_common_steps)

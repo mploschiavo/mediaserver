@@ -8,9 +8,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_services.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
+    AdapterRegistry,
     AppBootstrapContext,
-    ServarrAdapter,
-    adapter_for_implementation,
+    noop_before_common_steps,
 )
 from bootstrap_services.servarr_pipeline_service import (  # noqa: E402
     ClientAuth,
@@ -20,57 +20,62 @@ from bootstrap_services.servarr_pipeline_service import (  # noqa: E402
 )
 
 
-class ServarrAdapterTests(unittest.TestCase):
-    def test_adapter_factory_returns_known_and_default(self):
-        sonarr = adapter_for_implementation("sonarr")
-        readarr = adapter_for_implementation("readarr")
-        unknown = adapter_for_implementation("myarr")
-
-        self.assertIsInstance(sonarr, ServarrAdapter)
-        self.assertEqual(sonarr.implementation, "sonarr")
-        self.assertEqual(readarr.implementation, "readarr")
-        self.assertEqual(unknown.implementation, "myarr")
-
-    def test_readarr_adapter_warns_when_metadata_optional(self):
-        logs = []
+class ServarrAdapterRegistryTests(unittest.TestCase):
+    def test_registry_defaults_include_readarr_hook(self):
         deps = AdapterDependencies(
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
-            log=logs.append,
-            ensure_readarr_metadata_source=mock.Mock(side_effect=RuntimeError("boom")),
+            log=mock.Mock(),
+            ensure_readarr_metadata_source=mock.Mock(),
         )
-        adapter = adapter_for_implementation("readarr")
-
-        adapter.before_common_steps(
+        registry = AdapterRegistry.from_config({})
+        hook = registry.before_common_steps_for("readarr")
+        hook(
             deps,
             AppBootstrapContext(
-                cfg={"readarr": {"metadata_source_required": False}},
-                app_cfg={"implementation": "Readarr"},
+                cfg={},
+                app_cfg={"implementation": "readarr"},
                 app_url="http://readarr:8787",
                 api_base="/api/v1",
                 api_key="abc",
             ),
         )
+        deps.ensure_readarr_metadata_source.assert_called_once()
 
-        self.assertTrue(any("Readarr metadata source: bootstrap skipped" in line for line in logs))
-
-    def test_readarr_adapter_raises_when_metadata_required(self):
+    def test_registry_can_disable_default_hook(self):
         deps = AdapterDependencies(
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
             log=mock.Mock(),
-            ensure_readarr_metadata_source=mock.Mock(side_effect=RuntimeError("boom")),
+            ensure_readarr_metadata_source=mock.Mock(),
         )
-        adapter = adapter_for_implementation("readarr")
+        registry = AdapterRegistry.from_config(
+            {
+                "before_common_steps": {
+                    "readarr": "",
+                }
+            }
+        )
+        hook = registry.before_common_steps_for("readarr")
+        self.assertIs(hook, noop_before_common_steps)
+        hook(
+            deps,
+            AppBootstrapContext(
+                cfg={},
+                app_cfg={"implementation": "readarr"},
+                app_url="http://readarr:8787",
+                api_base="/api/v1",
+                api_key="abc",
+            ),
+        )
+        deps.ensure_readarr_metadata_source.assert_not_called()
 
-        with self.assertRaises(RuntimeError):
-            adapter.before_common_steps(
-                deps,
-                AppBootstrapContext(
-                    cfg={"readarr": {"metadata_source_required": True}},
-                    app_cfg={"implementation": "Readarr"},
-                    app_url="http://readarr:8787",
-                    api_base="/api/v1",
-                    api_key="abc",
-                ),
+    def test_registry_invalid_hook_spec_raises(self):
+        with self.assertRaises(ValueError):
+            AdapterRegistry.from_config(
+                {
+                    "before_common_steps": {
+                        "readarr": "not-a-valid-spec",
+                    }
+                }
             )
 
 
@@ -116,6 +121,36 @@ class ServarrPipelineServiceTests(unittest.TestCase):
             adapter_deps=deps,
         )
 
+    def _base_inputs(self, arr_apps, app_keys, adapter_hooks_cfg=None):
+        return ServarrPipelineInputs(
+            cfg={"readarr": {"metadata_source_required": False}},
+            arr_apps=arr_apps,
+            app_keys=app_keys,
+            prowlarr_url="http://prowlarr:9696",
+            prowlarr_key="prowlarr-key",
+            app_auth_cfg={"fail_on_error": False},
+            arr_media_management_cfg={"enabled": True},
+            arr_download_handling_cfg={"enabled": True},
+            arr_quality_upgrade_cfg={"enabled": True},
+            qbit_cfg={"url": "http://qbittorrent:8080"},
+            qbit_auth=ClientAuth(username="admin", password="secret"),
+            sab_cfg={"url": "http://sabnzbd:8080"},
+            sab_auth=ClientAuth(username="sab", password="sabpw"),
+            sab_remote_path_mappings=[{"remote_path": "/a", "host_path": "/b"}],
+            adapter_hooks_cfg=adapter_hooks_cfg or {},
+            run_cfg=ServarrRunConfig(
+                configure_arr_media_management=True,
+                configure_arr_download_handling=True,
+                configure_arr_quality_upgrade=True,
+                configure_arr_discovery_lists=True,
+                configure_qbit_arr_clients=True,
+                qbit_login_ok=True,
+                configure_sab_arr_clients=True,
+                sab_api_key="sab-key",
+                refresh_health_after_bootstrap=True,
+            ),
+        )
+
     def test_pipeline_runs_common_flow_and_readarr_hook(self):
         service = self._service()
         arr_apps = [
@@ -137,41 +172,33 @@ class ServarrPipelineServiceTests(unittest.TestCase):
             "readarr": "readarr-key",
         }
 
-        service.run(
-            ServarrPipelineInputs(
-                cfg={"readarr": {"metadata_source_required": False}},
-                arr_apps=arr_apps,
-                app_keys=app_keys,
-                prowlarr_url="http://prowlarr:9696",
-                prowlarr_key="prowlarr-key",
-                app_auth_cfg={"fail_on_error": False},
-                arr_media_management_cfg={"enabled": True},
-                arr_download_handling_cfg={"enabled": True},
-                arr_quality_upgrade_cfg={"enabled": True},
-                qbit_cfg={"url": "http://qbittorrent:8080"},
-                qbit_auth=ClientAuth(username="admin", password="secret"),
-                sab_cfg={"url": "http://sabnzbd:8080"},
-                sab_auth=ClientAuth(username="sab", password="sabpw", api_key="sab-key"),
-                sab_remote_path_mappings=[{"remote_path": "/a", "host_path": "/b"}],
-                run_cfg=ServarrRunConfig(
-                    configure_arr_media_management=True,
-                    configure_arr_download_handling=True,
-                    configure_arr_quality_upgrade=True,
-                    configure_arr_discovery_lists=True,
-                    configure_qbit_arr_clients=True,
-                    qbit_login_ok=True,
-                    configure_sab_arr_clients=True,
-                    sab_api_key="sab-key",
-                    refresh_health_after_bootstrap=True,
-                ),
-            )
-        )
+        service.run(self._base_inputs(arr_apps, app_keys))
 
         self.assertEqual(self.ensure_readarr_metadata_source.call_count, 1)
         self.assertEqual(self.ensure_root_folder.call_count, 2)
         self.assertEqual(self.ensure_arr_download_client.call_count, 4)
         self.assertEqual(self.ensure_arr_remote_path_mappings.call_count, 2)
         self.assertEqual(self.trigger_health_check.call_count, 2)
+
+    def test_pipeline_allows_reflection_override_for_readarr(self):
+        service = self._service()
+        arr_apps = [
+            {
+                "name": "Readarr",
+                "implementation": "readarr",
+                "url": "http://readarr:8787/",
+                "root_folder": "/media/books",
+            },
+        ]
+        app_keys = {"readarr": "readarr-key"}
+        override = {
+            "before_common_steps": {
+                "readarr": "bootstrap_services.servarr_adapters:noop_before_common_steps"
+            }
+        }
+
+        service.run(self._base_inputs(arr_apps, app_keys, adapter_hooks_cfg=override))
+        self.ensure_readarr_metadata_source.assert_not_called()
 
     def test_pipeline_respects_fail_on_error_auth(self):
         service = self._service()
@@ -201,6 +228,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
                     sab_cfg={},
                     sab_auth=ClientAuth(),
                     sab_remote_path_mappings=[],
+                    adapter_hooks_cfg={},
                     run_cfg=ServarrRunConfig(
                         configure_arr_media_management=False,
                         configure_arr_download_handling=False,
