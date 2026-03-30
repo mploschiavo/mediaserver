@@ -77,7 +77,9 @@ from bootstrap_services.jellyfin_home_rails_service import (
 from bootstrap_services.jellyseerr_service import JellyseerrService
 from bootstrap_services.media_hygiene_ops_service import MediaHygieneOpsService
 from bootstrap_services.media_hygiene_service import MediaHygieneService
+from bootstrap_services.prowlarr_service import ProwlarrService
 from bootstrap_services.qbit_service import QBittorrentService
+from bootstrap_services.sabnzbd_service import SabnzbdService
 
 
 def log(msg):
@@ -104,6 +106,27 @@ def _qbit_service() -> QBittorrentService:
         bool_cfg=bool_cfg,
         to_int=to_int,
         coerce_list=coerce_list,
+    )
+
+
+def _prowlarr_service() -> ProwlarrService:
+    return ProwlarrService(
+        http_request=http_request,
+        field_map=field_map,
+        field_list=field_list,
+        log=log,
+    )
+
+
+def _sabnzbd_service() -> SabnzbdService:
+    return SabnzbdService(
+        http_request=http_request,
+        normalize_url=normalize_url,
+        normalize_mapping_path=normalize_mapping_path,
+        choose_category=choose_category,
+        coerce_list=coerce_list,
+        resolve_path=resolve_path,
+        log=log,
     )
 
 
@@ -712,24 +735,7 @@ def prepare_jellyfin_m3u_tuner_url(tuner, guides, config_root, guide_channel_ids
 
 
 def read_sabnzbd_api_key(config_root, sab_cfg):
-    env_name = str(sab_cfg.get("api_key_env", "SABNZBD_API_KEY")).strip() or "SABNZBD_API_KEY"
-    env_value = (os.environ.get(env_name) or "").strip()
-    if env_value:
-        log(f"[OK] SABnzbd: using API key from env {env_name}")
-        return env_value
-
-    ini_rel_path = sab_cfg.get("api_key_config_path", "sabnzbd/sabnzbd.ini")
-    ini_path = resolve_path(config_root, ini_rel_path)
-    if not ini_path.exists():
-        return ""
-
-    text = ini_path.read_text(encoding="utf-8", errors="replace")
-    match = re.search(r"^\s*api_key\s*=\s*(\S+)\s*$", text, flags=re.MULTILINE)
-    if match:
-        log(f"[OK] SABnzbd: discovered API key from {ini_path}")
-        return match.group(1).strip()
-
-    return ""
+    return _sabnzbd_service().read_api_key(config_root, sab_cfg)
 
 
 def read_jellyfin_api_key_from_db(config_root, jellyfin_cfg):
@@ -3661,461 +3667,87 @@ def enforce_disk_guardrails(cfg, config_root, qbit_cfg, qb_username, qb_password
 
 
 def sabnzbd_request(base_url, api_key, params, timeout=20):
-    query = dict(params or {})
-    query["apikey"] = api_key
-    query["output"] = "json"
-    path = f"/api?{parse.urlencode(query)}"
-    return http_request(normalize_url(base_url), path, timeout=timeout)
+    return _sabnzbd_service().request(
+        base_url=base_url,
+        api_key=api_key,
+        params=params,
+        timeout=timeout,
+    )
 
 
 def sabnzbd_get_config_section(base_url, sab_api_key, section):
-    status, data, body = sabnzbd_request(
-        base_url, sab_api_key, {"mode": "get_config", "section": section}
+    return _sabnzbd_service().get_config_section(
+        base_url=base_url,
+        sab_api_key=sab_api_key,
+        section=section,
     )
-    if status != 200 or not isinstance(data, dict):
-        raise RuntimeError(
-            f"SABnzbd: failed reading config section '{section}' (HTTP {status}): {body}"
-        )
-    config = data.get("config", {})
-    if not isinstance(config, dict):
-        return None
-    return config.get(section)
 
 
 def ensure_sabnzbd_defaults(sab_cfg, sab_api_key):
-    if not sab_api_key:
-        return
-
-    sab_url = normalize_url(sab_cfg.get("url", "http://sabnzbd:8080"))
-    misc = sabnzbd_get_config_section(sab_url, sab_api_key, "misc")
-    if not isinstance(misc, dict):
-        raise RuntimeError("SABnzbd: unexpected misc config payload from API.")
-
-    desired_misc = {
-        "download_dir": str(sab_cfg.get("incomplete_dir", "/data/usenet/incomplete")).strip(),
-        "complete_dir": str(sab_cfg.get("complete_dir", "/data/usenet/completed")).strip(),
-    }
-    if "auto_browser" in sab_cfg:
-        desired_misc["auto_browser"] = "1" if bool(sab_cfg.get("auto_browser")) else "0"
-
-    for key, desired in desired_misc.items():
-        if not desired:
-            continue
-        current = misc.get(key)
-        if isinstance(current, bool):
-            current_normalized = "1" if current else "0"
-        elif current is None:
-            current_normalized = ""
-        else:
-            current_normalized = str(current).strip()
-
-        desired_normalized = str(desired).strip()
-        if current_normalized == desired_normalized:
-            log(f"[OK] SABnzbd: {key} already set to {desired_normalized}")
-            continue
-
-        status, data, body = sabnzbd_request(
-            sab_url,
-            sab_api_key,
-            {
-                "mode": "set_config",
-                "section": "misc",
-                "keyword": key,
-                "value": desired_normalized,
-            },
-        )
-        if status != 200:
-            raise RuntimeError(f"SABnzbd: failed setting misc.{key} (HTTP {status}): {body}")
-        if isinstance(data, dict) and data.get("status") is False:
-            raise RuntimeError(f"SABnzbd: API rejected misc.{key} update request: {body}")
-        log(f"[OK] SABnzbd: set {key}={desired_normalized}")
+    _sabnzbd_service().ensure_defaults(sab_cfg=sab_cfg, sab_api_key=sab_api_key)
 
 
 def ensure_sabnzbd_categories(arr_apps, sab_cfg, sab_api_key):
-    if not sab_api_key:
-        return
-
-    sab_url = normalize_url(sab_cfg.get("url", "http://sabnzbd:8080"))
-    categories_section = sabnzbd_get_config_section(sab_url, sab_api_key, "categories")
-    current_by_name = {}
-    if isinstance(categories_section, list):
-        for entry in categories_section:
-            if not isinstance(entry, dict):
-                continue
-            name = str(entry.get("name") or "").strip()
-            if not name:
-                continue
-            current_by_name[name.lower()] = normalize_mapping_path(entry.get("dir"))
-    else:
-        status, data, body = sabnzbd_request(sab_url, sab_api_key, {"mode": "get_cats"})
-        if status != 200 or not isinstance(data, dict):
-            raise RuntimeError(f"SABnzbd: failed listing categories (HTTP {status}): {body}")
-        for category_name in coerce_list(data.get("categories")):
-            c = str(category_name).strip()
-            if c:
-                current_by_name[c.lower()] = ""
-
-    category_values = [choose_category(app, sab_cfg) for app in arr_apps]
-    desired_categories = []
-    seen = set()
-    for cat in category_values:
-        c = str(cat).strip()
-        if not c:
-            continue
-        low = c.lower()
-        if low in seen:
-            continue
-        seen.add(low)
-        desired_categories.append(c)
-
-    completed_paths = sab_cfg.get("completed_paths", {})
-    complete_root = (
-        normalize_mapping_path(sab_cfg.get("complete_dir", "/data/usenet/completed"))
-        or "/data/usenet/completed"
+    _sabnzbd_service().ensure_categories(
+        arr_apps=arr_apps,
+        sab_cfg=sab_cfg,
+        sab_api_key=sab_api_key,
     )
-    for category in desired_categories:
-        current_dir = current_by_name.get(category.lower())
-        category_dir = normalize_mapping_path(
-            completed_paths.get(category, f"{complete_root}/{category}")
-        )
-        if current_dir is not None and current_dir == category_dir:
-            log(f"[OK] SABnzbd: category already set: {category} -> {category_dir}")
-            continue
-
-        status, data, body = sabnzbd_request(
-            sab_url,
-            sab_api_key,
-            {
-                "mode": "set_config",
-                "section": "categories",
-                "name": category,
-                "dir": category_dir,
-            },
-        )
-        if status != 200:
-            raise RuntimeError(
-                f"SABnzbd: failed creating category '{category}' (HTTP {status}): {body}"
-            )
-        if isinstance(data, dict) and data.get("status") is False:
-            raise RuntimeError(
-                f"SABnzbd: API rejected category '{category}' create request: {body}"
-            )
-        action = "updated" if current_dir is not None else "created"
-        log(f"[OK] SABnzbd: {action} category {category} -> {category_dir}")
 
 
 def resolve_schema_contract(prowlarr_url, prowlarr_key, implementation):
-    status, data, body = http_request(
-        prowlarr_url, "/api/v1/applications/schema", api_key=prowlarr_key
+    return _prowlarr_service().resolve_schema_contract(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        implementation=implementation,
     )
-    if status != 200 or not isinstance(data, list):
-        raise RuntimeError(f"Prowlarr: failed to read application schema (HTTP {status}): {body}")
-
-    for entry in data:
-        if entry.get("implementation") == implementation:
-            return entry
-    raise RuntimeError(f"Prowlarr: no application schema found for {implementation}")
 
 
 def find_existing_application(prowlarr_url, prowlarr_key, implementation, base_url):
-    status, data, body = http_request(prowlarr_url, "/api/v1/applications", api_key=prowlarr_key)
-    if status != 200 or not isinstance(data, list):
-        raise RuntimeError(f"Prowlarr: failed to list applications (HTTP {status}): {body}")
-
-    for app in data:
-        if app.get("implementation") != implementation:
-            continue
-        values = field_map(app.get("fields"))
-        app_base = str(values.get("baseUrl", "")).rstrip("/")
-        if app_base == base_url.rstrip("/"):
-            return app
-    return None
+    return _prowlarr_service().find_existing_application(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        implementation=implementation,
+        base_url=base_url,
+    )
 
 
 def ensure_prowlarr_application(
     prowlarr_url, prowlarr_key, app_name, implementation, app_url, app_key
 ):
-    schema = resolve_schema_contract(prowlarr_url, prowlarr_key, implementation)
-    current = find_existing_application(prowlarr_url, prowlarr_key, implementation, app_url)
-
-    values = field_map(schema.get("fields"))
-    values["baseUrl"] = app_url
-    values["apiKey"] = app_key
-    if "prowlarrUrl" in values:
-        values["prowlarrUrl"] = prowlarr_url
-
-    payload = {
-        "name": app_name,
-        "implementation": implementation,
-        "configContract": schema.get("configContract", f"{implementation}Settings"),
-        "enable": True,
-        "fields": field_list(values),
-        "tags": [],
-        "syncLevel": "fullSync",
-    }
-
-    def put_or_post(method, path, body):
-        status, _, response_body = http_request(
-            prowlarr_url,
-            path,
-            api_key=prowlarr_key,
-            method=method,
-            payload=body,
-        )
-        if status in (200, 201, 202):
-            return True, status, response_body
-
-        # Compatibility fallback for versions that don't accept syncLevel shape/value.
-        if "syncLevel" in body:
-            fallback = dict(body)
-            fallback.pop("syncLevel", None)
-            status2, _, response_body2 = http_request(
-                prowlarr_url,
-                path,
-                api_key=prowlarr_key,
-                method=method,
-                payload=fallback,
-            )
-            if status2 in (200, 201, 202):
-                return True, status2, response_body2
-            return False, status2, response_body2
-
-        return False, status, response_body
-
-    if current:
-        payload["id"] = current.get("id")
-        ok, status, body = put_or_post("PUT", f"/api/v1/applications/{current.get('id')}", payload)
-        if ok:
-            log(f"[OK] Prowlarr: updated application link for {app_name}")
-            return
-        raise RuntimeError(f"Prowlarr: failed updating app {app_name} (HTTP {status}): {body}")
-
-    ok, status, body = put_or_post("POST", "/api/v1/applications", payload)
-    if ok:
-        log(f"[OK] Prowlarr: created application link for {app_name}")
-        return
-    raise RuntimeError(f"Prowlarr: failed creating app {app_name} (HTTP {status}): {body}")
+    _prowlarr_service().ensure_application(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        app_name=app_name,
+        implementation=implementation,
+        app_url=app_url,
+        app_key=app_key,
+    )
 
 
 def trigger_prowlarr_sync(prowlarr_url, prowlarr_key):
-    status, _, body = http_request(
-        prowlarr_url,
-        "/api/v1/command",
-        api_key=prowlarr_key,
-        method="POST",
-        payload={"name": "ApplicationIndexerSync"},
-    )
-    if status in (200, 201, 202):
-        log("[OK] Prowlarr: triggered ApplicationIndexerSync")
-        return
-    raise RuntimeError(
-        f"Prowlarr: failed to trigger ApplicationIndexerSync (HTTP {status}): {body}"
+    _prowlarr_service().trigger_sync(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
     )
 
 
 def ensure_prowlarr_indexer(prowlarr_url, prowlarr_key, indexer_cfg):
-    implementation = indexer_cfg["implementation"]
-    name = indexer_cfg["name"]
-    field_overrides = indexer_cfg.get("fields", {})
-
-    status, schemas, body = http_request(
-        prowlarr_url, "/api/v1/indexer/schema", api_key=prowlarr_key
+    _prowlarr_service().ensure_indexer(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        indexer_cfg=indexer_cfg,
     )
-    if status != 200 or not isinstance(schemas, list):
-        raise RuntimeError(f"Prowlarr: failed to read indexer schema (HTTP {status}): {body}")
-
-    schema = None
-    for entry in schemas:
-        if entry.get("implementation") == implementation:
-            schema = entry
-            break
-    if not schema:
-        raise RuntimeError(f"Prowlarr: no indexer schema found for {implementation}")
-
-    status, current_indexers, body = http_request(
-        prowlarr_url, "/api/v1/indexer", api_key=prowlarr_key
-    )
-    if status != 200 or not isinstance(current_indexers, list):
-        raise RuntimeError(f"Prowlarr: failed to list indexers (HTTP {status}): {body}")
-
-    current = None
-    for item in current_indexers:
-        if item.get("implementation") == implementation and item.get("name") == name:
-            current = item
-            break
-
-    values = field_map(schema.get("fields"))
-    values.update(field_overrides)
-
-    payload = {
-        "name": name,
-        "implementation": implementation,
-        "configContract": schema.get("configContract", f"{implementation}Settings"),
-        "enable": bool(indexer_cfg.get("enable", True)),
-        "priority": int(indexer_cfg.get("priority", 25)),
-        "tags": indexer_cfg.get("tags", []),
-        "fields": field_list(values),
-    }
-
-    if current:
-        payload["id"] = current.get("id")
-        status, _, body = http_request(
-            prowlarr_url,
-            f"/api/v1/indexer/{current.get('id')}",
-            api_key=prowlarr_key,
-            method="PUT",
-            payload=payload,
-        )
-        if status in (200, 202):
-            log(f"[OK] Prowlarr: updated indexer {name}")
-            return
-        raise RuntimeError(f"Prowlarr: failed to update indexer {name} (HTTP {status}): {body}")
-
-    status, _, body = http_request(
-        prowlarr_url,
-        "/api/v1/indexer",
-        api_key=prowlarr_key,
-        method="POST",
-        payload=payload,
-    )
-    if status in (200, 201, 202):
-        log(f"[OK] Prowlarr: created indexer {name}")
-        return
-    raise RuntimeError(f"Prowlarr: failed to create indexer {name} (HTTP {status}): {body}")
 
 
 def build_indexer_payload(template):
-    allowed_keys = {
-        "name",
-        "implementation",
-        "configContract",
-        "fields",
-        "priority",
-        "tags",
-        "appProfileId",
-        "downloadClientId",
-        "enable",
-        "redirect",
-        "enableRss",
-        "enableAutomaticSearch",
-        "enableInteractiveSearch",
-    }
-    payload = {}
-    for key in allowed_keys:
-        if key in template and template[key] is not None:
-            payload[key] = template[key]
-
-    payload.setdefault("enable", True)
-    payload.setdefault("priority", 25)
-    payload.setdefault("tags", [])
-    payload.setdefault("fields", [])
-    return payload
+    return _prowlarr_service().build_indexer_payload(template)
 
 
 def auto_add_tested_indexers(prowlarr_url, prowlarr_key):
-    status, schemas, body = http_request(
-        prowlarr_url, "/api/v1/indexer/schema", api_key=prowlarr_key
-    )
-    if status != 200 or not isinstance(schemas, list):
-        raise RuntimeError(f"Prowlarr: failed to read indexer schema (HTTP {status}): {body}")
-
-    status, existing, body = http_request(prowlarr_url, "/api/v1/indexer", api_key=prowlarr_key)
-    if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(f"Prowlarr: failed to list existing indexers (HTTP {status}): {body}")
-
-    existing_keys = {
-        (item.get("implementation"), item.get("name"))
-        for item in existing
-        if item.get("implementation") and item.get("name")
-    }
-
-    candidates = []
-    for schema in schemas:
-        presets = schema.get("presets") or []
-        if presets:
-            candidates.extend(presets)
-        else:
-            candidates.append(schema)
-
-    heartbeat_every = int(os.environ.get("AUTO_INDEXER_HEARTBEAT_EVERY", "25"))
-    heartbeat_every = max(1, heartbeat_every)
-    log_skip_details = str(os.environ.get("AUTO_INDEXER_LOG_SKIPS", "0")).strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
-
-    scanned = 0
-    attempted = 0
-    added = 0
-    skipped_existing = 0
-    skipped_test = 0
-    failed_create = 0
-
-    for candidate in candidates:
-        payload = build_indexer_payload(candidate)
-        impl = payload.get("implementation")
-        name = payload.get("name")
-        if not impl or not name:
-            continue
-
-        scanned += 1
-        key = (impl, name)
-        if key in existing_keys:
-            skipped_existing += 1
-            if scanned % heartbeat_every == 0:
-                log(
-                    "[WAIT] Auto indexer progress: "
-                    f"scanned={scanned}/{len(candidates)}, attempted={attempted}, "
-                    f"added={added}, skipped_existing={skipped_existing}, "
-                    f"skipped_test={skipped_test}, failed_create={failed_create}"
-                )
-            continue
-
-        attempted += 1
-
-        status, _, body = http_request(
-            prowlarr_url,
-            "/api/v1/indexer/test",
-            api_key=prowlarr_key,
-            method="POST",
-            payload=payload,
-        )
-        if status not in (200, 201, 202):
-            skipped_test += 1
-            if log_skip_details:
-                log(f"[SKIP] {name}: test failed (HTTP {status})")
-            continue
-
-        status, _, body = http_request(
-            prowlarr_url,
-            "/api/v1/indexer",
-            api_key=prowlarr_key,
-            method="POST",
-            payload=payload,
-        )
-        if status in (200, 201, 202):
-            existing_keys.add(key)
-            added += 1
-            log(f"[ADD] {name}")
-        else:
-            failed_create += 1
-            log(f"[FAIL] {name}: create failed (HTTP {status}) {body}")
-
-        if scanned % heartbeat_every == 0:
-            log(
-                "[WAIT] Auto indexer progress: "
-                f"scanned={scanned}/{len(candidates)}, attempted={attempted}, "
-                f"added={added}, skipped_existing={skipped_existing}, "
-                f"skipped_test={skipped_test}, failed_create={failed_create}"
-            )
-
-    log(
-        "[OK] Auto indexer summary: "
-        f"scanned={scanned}/{len(candidates)}, attempted={attempted}, added={added}, "
-        f"skipped_existing={skipped_existing}, skipped_test={skipped_test}, "
-        f"failed_create={failed_create}"
+    _prowlarr_service().auto_add_tested_indexers(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
     )
 
 

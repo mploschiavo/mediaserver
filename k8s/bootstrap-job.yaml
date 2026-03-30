@@ -226,8 +226,12 @@ spec:
                 path: bootstrap_services/media_hygiene_ops_service.py
               - key: bootstrap_services__media_hygiene_service.py
                 path: bootstrap_services/media_hygiene_service.py
+              - key: bootstrap_services__prowlarr_service.py
+                path: bootstrap_services/prowlarr_service.py
               - key: bootstrap_services__qbit_service.py
                 path: bootstrap_services/qbit_service.py
+              - key: bootstrap_services__sabnzbd_service.py
+                path: bootstrap_services/sabnzbd_service.py
               - key: core__init__.py
                 path: core/__init__.py
               - key: core__decorators.py
