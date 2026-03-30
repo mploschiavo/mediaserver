@@ -80,6 +80,8 @@ from bootstrap_services.media_hygiene_service import MediaHygieneService
 from bootstrap_services.prowlarr_service import ProwlarrService
 from bootstrap_services.qbit_service import QBittorrentService
 from bootstrap_services.sabnzbd_service import SabnzbdService
+from bootstrap_services.servarr_adapters import AdapterDependencies
+from bootstrap_services.servarr_pipeline_service import ServarrPipelineService, ServarrRunConfig
 
 
 def log(msg):
@@ -278,6 +280,31 @@ def _discovery_service() -> DiscoveryListsService:
         pick_first_profile_id=pick_first_profile_id,
         env_truthy=env_truthy,
         trigger_arr_command=_health_service().trigger_arr_command,
+    )
+
+
+def _servarr_pipeline_service() -> ServarrPipelineService:
+    adapter_deps = AdapterDependencies(
+        bool_cfg=bool_cfg,
+        log=log,
+        ensure_readarr_metadata_source=ensure_readarr_metadata_source,
+    )
+    return ServarrPipelineService(
+        log=log,
+        normalize_url=normalize_url,
+        detect_arr_api_base=detect_arr_api_base,
+        ensure_app_auth_settings=ensure_app_auth_settings,
+        ensure_arr_media_management=ensure_arr_media_management,
+        ensure_root_folder=ensure_root_folder,
+        ensure_arr_download_handling=ensure_arr_download_handling,
+        ensure_arr_quality_upgrade_policy=ensure_arr_quality_upgrade_policy,
+        ensure_prowlarr_application=ensure_prowlarr_application,
+        ensure_arr_download_client=ensure_arr_download_client,
+        ensure_arr_remote_path_mappings=ensure_arr_remote_path_mappings,
+        ensure_arr_discovery_lists_for_app=ensure_arr_discovery_lists_for_app,
+        trigger_arr_discovery_kickoff=trigger_arr_discovery_kickoff,
+        trigger_health_check=trigger_health_check,
+        adapter_deps=adapter_deps,
     )
 
 
@@ -4109,128 +4136,35 @@ def main():
     if set_qbit_categories and qbit_login_ok:
         setup_qbit_categories(arr_apps, qbit_cfg, qb_user, qb_pass)
 
-    for app in arr_apps:
-        impl = app["implementation"]
-        app_url = normalize_url(app["url"])
-        app_key = app_keys[impl]
-        log(f"[STEP] Processing {app['name']} ({impl})")
-        api_base = detect_arr_api_base(app["name"], app_url, app_key)
-        try:
-            ensure_app_auth_settings(
-                app["name"],
-                impl,
-                app_url,
-                api_base,
-                app_key,
-                app_auth_cfg,
-            )
-        except Exception as exc:
-            if bool_cfg(app_auth_cfg, "fail_on_error", False):
-                raise
-            log(f"[WARN] {app['name']}: auth bootstrap skipped ({exc})")
-
-        if str(impl).strip().lower() == "readarr":
-            readarr_cfg = cfg.get("readarr") or {}
-            try:
-                ensure_readarr_metadata_source(
-                    cfg,
-                    app,
-                    app_url,
-                    api_base,
-                    app_key,
-                )
-            except Exception as exc:
-                if bool_cfg(readarr_cfg, "metadata_source_required", False):
-                    raise
-                log(
-                    f"[WARN] Readarr metadata source: bootstrap skipped ({exc}). "
-                    "Set readarr.metadata_source_required=true to fail the bootstrap instead."
-                )
-
-        if configure_arr_media_management:
-            ensure_arr_media_management(
-                app,
-                app_url,
-                api_base,
-                app_key,
-                arr_media_management_cfg,
-            )
-
-        ensure_root_folder(app["name"], app_url, api_base, app_key, app["root_folder"])
-        if configure_arr_download_handling:
-            ensure_arr_download_handling(
-                app["name"],
-                app_url,
-                api_base,
-                app_key,
-                arr_download_handling_cfg,
-            )
-        if configure_arr_quality_upgrade:
-            ensure_arr_quality_upgrade_policy(
-                cfg,
-                app,
-                app_url,
-                api_base,
-                app_key,
-                arr_quality_upgrade_cfg,
-            )
-        ensure_prowlarr_application(
-            prowlarr_url,
-            prowlarr_key,
-            app["name"],
-            impl,
-            app_url,
-            app_key,
-        )
-        if configure_qbit_arr_clients and qbit_login_ok:
-            ensure_arr_download_client(
-                app,
-                app_url,
-                api_base,
-                app_key,
-                qbit_cfg,
-                {
-                    "username": qb_user,
-                    "password": qb_pass,
-                },
-            )
-        if configure_sab_arr_clients and sab_api_key:
-            ensure_arr_download_client(
-                app,
-                app_url,
-                api_base,
-                app_key,
-                sab_cfg,
-                {
-                    "username": sab_username,
-                    "password": sab_password,
-                    "api_key": sab_api_key,
-                },
-            )
-            ensure_arr_remote_path_mappings(
-                app,
-                app_url,
-                api_base,
-                app_key,
-                sab_remote_path_mappings,
-            )
-        if configure_arr_discovery_lists:
-            ensure_arr_discovery_lists_for_app(
-                cfg,
-                app,
-                app_url,
-                api_base,
-                app_key,
-            )
-            trigger_arr_discovery_kickoff(
-                cfg,
-                app,
-                app_url,
-                api_base,
-                app_key,
-            )
-        if refresh_health_after_bootstrap:
-            trigger_health_check(app["name"], app_url, api_base, app_key)
+    _servarr_pipeline_service().run(
+        cfg=cfg,
+        arr_apps=arr_apps,
+        app_keys=app_keys,
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        app_auth_cfg=app_auth_cfg,
+        arr_media_management_cfg=arr_media_management_cfg,
+        arr_download_handling_cfg=arr_download_handling_cfg,
+        arr_quality_upgrade_cfg=arr_quality_upgrade_cfg,
+        qbit_cfg=qbit_cfg,
+        qb_user=qb_user,
+        qb_pass=qb_pass,
+        sab_cfg=sab_cfg,
+        sab_username=sab_username,
+        sab_password=sab_password,
+        sab_remote_path_mappings=sab_remote_path_mappings,
+        run_cfg=ServarrRunConfig(
+            configure_arr_media_management=configure_arr_media_management,
+            configure_arr_download_handling=configure_arr_download_handling,
+            configure_arr_quality_upgrade=configure_arr_quality_upgrade,
+            configure_arr_discovery_lists=configure_arr_discovery_lists,
+            configure_qbit_arr_clients=configure_qbit_arr_clients,
+            qbit_login_ok=qbit_login_ok,
+            configure_sab_arr_clients=configure_sab_arr_clients,
+            sab_api_key=sab_api_key,
+            refresh_health_after_bootstrap=refresh_health_after_bootstrap,
+        ),
+    )
 
     if configure_bazarr_integration:
         try:

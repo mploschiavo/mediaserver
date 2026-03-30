@@ -139,6 +139,10 @@ spec:
                 path: bootstrap_services/qbit_service.py
               - key: bootstrap_services__sabnzbd_service.py
                 path: bootstrap_services/sabnzbd_service.py
+              - key: bootstrap_services__servarr_adapters.py
+                path: bootstrap_services/servarr_adapters.py
+              - key: bootstrap_services__servarr_pipeline_service.py
+                path: bootstrap_services/servarr_pipeline_service.py
               - key: core__init__.py
                 path: core/__init__.py
               - key: core__decorators.py
