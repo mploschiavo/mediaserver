@@ -7,6 +7,7 @@ bash scripts/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
 ```
 
 Files are one-per-host and overwritten on each capture run.
+Capture attempts authenticated login per app before taking the screenshot.
 
 Current host coverage:
 - `homepage_local.png`
