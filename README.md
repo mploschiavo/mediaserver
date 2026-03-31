@@ -139,6 +139,66 @@ Kubernetes profiles:
 
 See [docs/deployment-model.md](docs/deployment-model.md).
 
+## Operator/User Prerequisites
+
+Use this list if you want to deploy and run the stack.
+
+- Linux host (recommended: Ubuntu 24.04 LTS or Ubuntu 25.04+)
+  - Ubuntu downloads: https://ubuntu.com/download
+- Kubernetes runtime:
+  - MicroK8s install/getting started: https://microk8s.io/docs/getting-started
+- Kubernetes CLI access:
+  - `kubectl` install guide: https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/
+  - Or use `microk8s kubectl` directly
+- Python 3 and pip (needed by script tooling):
+  - Python downloads: https://www.python.org/downloads/
+  - On Ubuntu:
+    - `sudo apt-get update`
+    - `sudo apt-get install -y python3 python3-pip`
+- Git:
+  - https://git-scm.com/download/linux
+
+Recommended validation before install:
+
+```bash
+microk8s status --wait-ready
+kubectl version --client
+python3 --version
+pip3 --version
+git --version
+```
+
+If you use local hostnames (`*.local`), configure DNS/hosts for your node IP:
+
+```bash
+bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+```
+
+## Developer Prerequisites
+
+Use this list if you want to modify/refactor/test the project.
+
+- Everything in Operator/User prerequisites
+- Python virtual environment tooling:
+  - On Ubuntu: `sudo apt-get install -y python3-venv`
+- Node.js + npm (Playwright tests and Mermaid rendering):
+  - Node.js downloads: https://nodejs.org/en/download
+- Docker Engine (for Compose path and bootstrap-runner image builds):
+  - https://docs.docker.com/engine/install/ubuntu/
+- Optional local image registry (if you push custom bootstrap runner images):
+  - project default example: `192.168.1.60:30002/library/...`
+
+Recommended developer validation:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install ruff black
+npx -y @mermaid-js/mermaid-cli@10.9.1 -h
+bash scripts/test.sh
+```
+
 ## Quick Start (Kubernetes)
 
 Recommended one-command install:

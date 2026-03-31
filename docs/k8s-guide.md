@@ -5,6 +5,59 @@ This bundle assumes:
 - an ingress class named `public` is available (MicroK8s default)
 - PVC-backed storage via `k8s/storage-pvc.yaml`
 
+## Prerequisites (Operator/User)
+
+Use this path if your goal is to deploy and run the stack.
+
+- Host OS: Ubuntu 24.04 LTS or Ubuntu 25.04+ (recommended)
+  - https://ubuntu.com/download
+- Kubernetes runtime:
+  - MicroK8s: https://microk8s.io/docs/getting-started
+- Kubernetes CLI:
+  - `kubectl`: https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/
+  - Or use `microk8s kubectl`
+- Python 3 + pip:
+  - https://www.python.org/downloads/
+  - Ubuntu install:
+    - `sudo apt-get update`
+    - `sudo apt-get install -y python3 python3-pip`
+- Git:
+  - https://git-scm.com/download/linux
+
+Quick validation:
+
+```bash
+microk8s status --wait-ready
+kubectl version --client
+python3 --version
+pip3 --version
+git --version
+```
+
+## Prerequisites (Developer)
+
+Use this path if you are modifying code, running tests, or extending adapters.
+
+- Everything in Operator/User prerequisites
+- Python virtual environment tooling:
+  - Ubuntu: `sudo apt-get install -y python3-venv`
+- Node.js + npm (Playwright and Mermaid rendering):
+  - https://nodejs.org/en/download
+- Docker Engine (Compose flow + bootstrap-runner image build/push):
+  - https://docs.docker.com/engine/install/ubuntu/
+- Optional local image registry access for custom bootstrap runner images
+
+Quick validation:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install ruff black
+npx -y @mermaid-js/mermaid-cli@10.9.1 -h
+bash scripts/test.sh
+```
+
 ## Apply
 ```bash
 # installer wizard with profile selection
