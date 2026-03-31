@@ -17,26 +17,62 @@ The bootstrap step `ensure_maintainerr_policy` composes the final policy in this
 
 ## Rule File Format
 
-Each file can be either:
+Preferred format is **Maintainerr API-shaped rule payload** (same keys used by `POST /api/rules`), with optional wrapper metadata for file-level toggles.
 
-1. A direct rule object
-2. A wrapped object with `enabled` + `rule`
+Supported file shapes:
 
-Recommended (wrapper format):
+1. Direct API rule object
+2. Wrapped object with `enabled` + `rule` (or `payload`)
+3. Array of either of the above
+
+Recommended wrapper:
 
 ```json
 {
   "id": "movies-delete-watched-after-30d",
   "enabled": true,
-  "description": "Delete watched movies older than 30 days.",
   "rule": {
     "name": "Delete Watched Movies After 30 Days",
-    "libraries": ["Movies"],
-    "conditions": {"watched": true, "added_days_ago_gte": 30},
-    "actions": {"delete_item": true, "arr_delete_or_unmonitor": "delete"}
+    "description": "Delete watched movies older than 30 days.",
+    "library_titles": ["Movies"],
+    "dataType": "movie",
+    "isActive": true,
+    "arrAction": 0,
+    "useRules": true,
+    "listExclusions": false,
+    "forceSeerr": false,
+    "notifications": [],
+    "rules": [
+      {
+        "firstVal": [6, 5],
+        "operator": null,
+        "action": 0,
+        "customVal": {"ruleTypeId": 0, "value": "0"},
+        "section": 0
+      },
+      {
+        "firstVal": [6, 0],
+        "operator": 0,
+        "action": 5,
+        "customVal": {"ruleTypeId": 1, "value": "days_ago:30"},
+        "section": 0
+      }
+    ],
+    "collection": {
+      "visibleOnHome": false,
+      "visibleOnRecommended": false,
+      "keepLogsForMonths": 3
+    }
   }
 }
 ```
+
+Notes:
+
+- `library_titles` is a portability helper so rules remain copy/paste friendly across environments where `libraryId` differs.
+- `customVal.value` supports relative time tokens: `days_ago:<n>`, `{{days_ago:<n>}}`, `now-<n>d`.
+- API export objects containing rule entries with `ruleJson` are also accepted and normalized during sync.
+- Legacy `conditions` + `actions` rules are still supported for backward compatibility.
 
 ## Included Default Rules
 
@@ -100,32 +136,39 @@ kubectl -n media-stack exec deploy/maintainerr -- sh -lc 'python3 - <<\"PY\"\nim
 
 ## Example Rule Snippets
 
-Example 1: Protect favorites
+Example 1: Delete watched TV after 30 days (API-shaped)
 
 ```json
-{"rule":{"name":"Protect Favorited Media","conditions":{"favorited_by_any_user":true},"actions":{"protect_item":true}}}
+{
+  "rule": {
+    "name": "Delete Watched TV After 30 Days",
+    "library_titles": ["TV Shows"],
+    "dataType": "show",
+    "arrAction": 0,
+    "useRules": true,
+    "notifications": [],
+    "rules": [
+      {"firstVal": [6, 17], "operator": null, "action": 0, "customVal": {"ruleTypeId": 0, "value": "0"}, "section": 0},
+      {"firstVal": [6, 0], "operator": 0, "action": 5, "customVal": {"ruleTypeId": 1, "value": "days_ago:30"}, "section": 0}
+    ]
+  }
+}
 ```
 
-Example 2: Delete watched TV after 30 days
+Example 2: API export copy/paste
 
 ```json
-{"rule":{"name":"Delete Watched TV After 30 Days","libraries":["TV Shows"],"conditions":{"watched":true,"added_days_ago_gte":30},"actions":{"delete_item":true}}}
-```
-
-Example 3: Remove old requested unwatched content
-
-```json
-{"rule":{"name":"Remove Old Requested Unwatched Content","conditions":{"requested_via":"jellyseerr","watched":false,"requested_days_ago_gte":90},"actions":{"delete_item":true,"remove_request_record":true}}}
-```
-
-Example 4: Unmonitor stale TV
-
-```json
-{"rule":{"name":"Unmonitor Unwatched TV After 180 Days","libraries":["TV Shows"],"conditions":{"watched":false,"last_watched_days_ago_gte":180},"actions":{"arr_unmonitor":true}}}
-```
-
-Example 5: Leaving Soon collection
-
-```json
-{"rule":{"name":"Leaving Soon (5 Day Warning)","actions":{"add_to_collection":"Leaving Soon","collection_days_before_delete":5}}}
+{
+  "rule": {
+    "name": "Copied From API",
+    "libraryId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
+    "dataType": "movie",
+    "arrAction": 0,
+    "useRules": true,
+    "notifications": [],
+    "rules": [
+      {"ruleJson": "{\"firstVal\":[6,5],\"operator\":null,\"action\":0,\"customVal\":{\"ruleTypeId\":0,\"value\":\"0\"},\"section\":0}"}
+    ]
+  }
+}
 ```

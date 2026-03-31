@@ -1,4 +1,7 @@
+import json
+import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -70,7 +73,11 @@ class MaintainerrServiceTests(unittest.TestCase):
                     "maintainerr": {
                         "enabled": True,
                         "url": "http://maintainerr:6246",
-                        "integrations": {"enabled": True, "test_connections": True},
+                        "integrations": {
+                            "enabled": True,
+                            "test_connections": True,
+                            "sync_rules": False,
+                        },
                     },
                     "jellyseerr": {"url": "http://jellyseerr:5055"},
                     "tautulli": {"url": "http://tautulli:8181"},
@@ -156,7 +163,11 @@ class MaintainerrServiceTests(unittest.TestCase):
                     "maintainerr": {
                         "enabled": True,
                         "url": "http://maintainerr:6246",
-                        "integrations": {"enabled": True, "test_connections": False},
+                        "integrations": {
+                            "enabled": True,
+                            "test_connections": False,
+                            "sync_rules": False,
+                        },
                     },
                     "jellyseerr": {"url": "http://jellyseerr:5055"},
                     "tautulli": {"url": "http://tautulli:8181"},
@@ -179,6 +190,222 @@ class MaintainerrServiceTests(unittest.TestCase):
 
         posted_paths = [path for method, path, _payload in calls if method == "POST"]
         self.assertEqual([], posted_paths)
+
+    def test_ensure_integrations_syncs_policy_rules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_root = Path(tmp)
+            (cfg_root / "maintainerr").mkdir(parents=True, exist_ok=True)
+            policy = {
+                "version": 1,
+                "rules": [
+                    {
+                        "name": "Delete Watched Movies After 30 Days",
+                        "description": "Delete watched movies.",
+                        "libraries": ["Movies"],
+                        "conditions": {"watched": True, "added_days_ago_gte": 30},
+                        "actions": {"delete_item": True},
+                    },
+                    {
+                        "name": "Delete Watched TV After 30 Days",
+                        "description": "Delete watched TV.",
+                        "libraries": ["TV Shows"],
+                        "conditions": {"watched": True, "added_days_ago_gte": 30},
+                        "actions": {"delete_item": True},
+                    },
+                    {
+                        "name": "Delete Played Music After 30 Days",
+                        "description": "Unsupported library should be skipped.",
+                        "libraries": ["Music"],
+                        "conditions": {"watched": True, "added_days_ago_gte": 30},
+                        "actions": {"delete_item": True},
+                    },
+                ],
+            }
+            (cfg_root / "maintainerr" / "policy.json").write_text(
+                json.dumps(policy), encoding="utf-8"
+            )
+
+            calls: list[tuple[str, str, dict | None]] = []
+
+            def http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=30):
+                del base_url, api_key, timeout
+                calls.append((method, path, payload))
+                if (method, path) == ("GET", "/api/settings"):
+                    return 200, {}, "{}"
+                if (method, path) == ("GET", "/api/settings/radarr"):
+                    return 200, [], "[]"
+                if (method, path) == ("GET", "/api/settings/sonarr"):
+                    return 200, [], "[]"
+                if (method, path) == ("GET", "/api/settings/seerr"):
+                    return 200, {"url": "", "api_key": ""}, "{}"
+                if (method, path) == ("GET", "/api/settings/tautulli"):
+                    return 200, {"url": "", "api_key": ""}, "{}"
+                if (method, path) == ("GET", "/api/media-server/libraries"):
+                    return 200, [
+                        {"id": "lib-movies", "title": "Movies", "type": "movie"},
+                        {"id": "lib-tv", "title": "TV Shows", "type": "show"},
+                    ], "[]"
+                if (method, path) == ("GET", "/api/rules?activeOnly=false"):
+                    return 200, [], "[]"
+                if (method, path) == ("POST", "/api/rules"):
+                    return 201, {"code": 1, "result": "Success"}, "{}"
+                if method == "POST":
+                    return 200, {"ok": True}, "{}"
+                raise AssertionError(f"unexpected request: {method} {path}")
+
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "TAUTULLI_API_KEY": "tautulli-key",
+                    "JELLYFIN_API_KEY": "jf-key",
+                    "JELLYFIN_USER_ID": "jf-user",
+                },
+                clear=False,
+            ):
+                service = self._service(http_request)
+                service.ensure_integrations(
+                    cfg={
+                        "maintainerr": {
+                            "enabled": True,
+                            "url": "http://maintainerr:6246",
+                            "policy_relative_path": "maintainerr/policy.json",
+                            "integrations": {
+                                "enabled": True,
+                                "test_connections": False,
+                                "sync_rules": True,
+                            },
+                        },
+                        "jellyseerr": {"url": "http://jellyseerr:5055"},
+                        "tautulli": {"url": "http://tautulli:8181"},
+                    },
+                    config_root=str(cfg_root),
+                    arr_apps=[
+                        {
+                            "implementation": "radarr",
+                            "name": "Radarr",
+                            "url": "http://radarr:7878",
+                        },
+                        {
+                            "implementation": "sonarr",
+                            "name": "Sonarr",
+                            "url": "http://sonarr:8989",
+                        },
+                    ],
+                    wait_timeout=30,
+                )
+
+            rule_posts = [
+                payload
+                for method, path, payload in calls
+                if method == "POST" and path == "/api/rules"
+            ]
+            self.assertEqual(2, len(rule_posts))
+            names = {payload.get("name") for payload in rule_posts if isinstance(payload, dict)}
+            self.assertIn("Delete Watched Movies After 30 Days", names)
+            self.assertIn("Delete Watched TV After 30 Days", names)
+            for payload in rule_posts:
+                self.assertEqual([], payload.get("notifications"))
+                self.assertTrue(payload.get("rules"))
+
+    def test_ensure_integrations_accepts_native_rule_payload_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_root = Path(tmp)
+            (cfg_root / "maintainerr").mkdir(parents=True, exist_ok=True)
+            policy = {
+                "version": 1,
+                "rules": [
+                    {
+                        "name": "Native Maintainerr Rule",
+                        "description": "API-native shape",
+                        "libraryTitles": ["Movies"],
+                        "dataType": "movie",
+                        "arrAction": 0,
+                        "useRules": True,
+                        "rules": [
+                            {
+                                "ruleJson": "{\"firstVal\":[6,0],\"operator\":null,"
+                                "\"action\":5,\"customVal\":{\"ruleTypeId\":1,"
+                                "\"value\":\"days_ago:30\"},\"section\":0}"
+                            }
+                        ],
+                        "collection": {
+                            "visibleOnHome": False,
+                            "visibleOnRecommended": False,
+                            "keepLogsForMonths": 6,
+                        },
+                    }
+                ],
+            }
+            (cfg_root / "maintainerr" / "policy.json").write_text(
+                json.dumps(policy), encoding="utf-8"
+            )
+
+            posted_rules: list[dict] = []
+
+            def http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=30):
+                del base_url, api_key, timeout
+                if (method, path) == ("GET", "/api/settings"):
+                    return 200, {}, "{}"
+                if (method, path) == ("GET", "/api/settings/radarr"):
+                    return 200, [], "[]"
+                if (method, path) == ("GET", "/api/settings/sonarr"):
+                    return 200, [], "[]"
+                if (method, path) == ("GET", "/api/settings/seerr"):
+                    return 200, {"url": "", "api_key": ""}, "{}"
+                if (method, path) == ("GET", "/api/settings/tautulli"):
+                    return 200, {"url": "", "api_key": ""}, "{}"
+                if (method, path) == ("GET", "/api/media-server/libraries"):
+                    return 200, [
+                        {"id": "lib-movies", "title": "Movies", "type": "movie"},
+                    ], "[]"
+                if (method, path) == ("GET", "/api/rules?activeOnly=false"):
+                    return 200, [], "[]"
+                if (method, path) == ("POST", "/api/rules"):
+                    posted_rules.append(payload)
+                    return 201, {"code": 1, "result": "Success"}, "{}"
+                if method == "POST":
+                    return 200, {"ok": True}, "{}"
+                raise AssertionError(f"unexpected request: {method} {path}")
+
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "TAUTULLI_API_KEY": "tautulli-key",
+                    "JELLYFIN_API_KEY": "jf-key",
+                    "JELLYFIN_USER_ID": "jf-user",
+                },
+                clear=False,
+            ):
+                service = self._service(http_request)
+                service.ensure_integrations(
+                    cfg={
+                        "maintainerr": {
+                            "enabled": True,
+                            "url": "http://maintainerr:6246",
+                            "policy_relative_path": "maintainerr/policy.json",
+                            "integrations": {
+                                "enabled": True,
+                                "test_connections": False,
+                                "sync_rules": True,
+                            },
+                        },
+                        "jellyseerr": {"url": "http://jellyseerr:5055"},
+                        "tautulli": {"url": "http://tautulli:8181"},
+                    },
+                    config_root=str(cfg_root),
+                    arr_apps=[],
+                    wait_timeout=30,
+                )
+
+            self.assertEqual(1, len(posted_rules))
+            payload = posted_rules[0]
+            self.assertEqual("Native Maintainerr Rule", payload["name"])
+            self.assertEqual("movie", payload["dataType"])
+            self.assertEqual(0, payload["arrAction"])
+            self.assertEqual(6, payload["collection"]["keepLogsForMonths"])
+            self.assertEqual([6, 0], payload["rules"][0]["firstVal"])
+            val = str((payload["rules"][0].get("customVal") or {}).get("value") or "")
+            self.assertRegex(val, re.compile(r"^\d{4}-\d{2}-\d{2}T"))
 
 
 if __name__ == "__main__":

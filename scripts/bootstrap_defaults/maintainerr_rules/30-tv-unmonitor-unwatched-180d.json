@@ -1,18 +1,34 @@
 {
   "id": "tv-unmonitor-unwatched-180d",
   "enabled": true,
-  "description": "Unmonitor TV series not watched in the last 6 months.",
+  "description": "Unmonitor TV series not watched in the last 6 months (API-shaped rule).",
   "rule": {
     "name": "Unmonitor Unwatched TV After 180 Days",
-    "libraries": [
+    "library_titles": [
       "TV Shows"
     ],
-    "conditions": {
-      "watched": false,
-      "last_watched_days_ago_gte": 180
-    },
-    "actions": {
-      "arr_unmonitor": true
-    }
+    "dataType": "show",
+    "isActive": true,
+    "arrAction": 3,
+    "useRules": true,
+    "listExclusions": false,
+    "forceSeerr": false,
+    "notifications": [],
+    "rules": [
+      {
+        "firstVal": [6, 17],
+        "operator": null,
+        "action": 2,
+        "customVal": {"ruleTypeId": 0, "value": "0"},
+        "section": 0
+      },
+      {
+        "firstVal": [6, 13],
+        "operator": 0,
+        "action": 5,
+        "customVal": {"ruleTypeId": 1, "value": "days_ago:180"},
+        "section": 0
+      }
+    ]
   }
 }

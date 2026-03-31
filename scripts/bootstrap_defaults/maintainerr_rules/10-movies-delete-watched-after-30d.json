@@ -1,19 +1,34 @@
 {
   "id": "movies-delete-watched-after-30d",
   "enabled": true,
-  "description": "Delete watched movies that were added at least 30 days ago.",
+  "description": "Delete watched movies that were added at least 30 days ago (API-shaped rule).",
   "rule": {
     "name": "Delete Watched Movies After 30 Days",
-    "libraries": [
+    "library_titles": [
       "Movies"
     ],
-    "conditions": {
-      "watched": true,
-      "added_days_ago_gte": 30
-    },
-    "actions": {
-      "delete_item": true,
-      "arr_delete_or_unmonitor": "delete"
-    }
+    "dataType": "movie",
+    "isActive": true,
+    "arrAction": 0,
+    "useRules": true,
+    "listExclusions": false,
+    "forceSeerr": false,
+    "notifications": [],
+    "rules": [
+      {
+        "firstVal": [6, 5],
+        "operator": null,
+        "action": 0,
+        "customVal": {"ruleTypeId": 0, "value": "0"},
+        "section": 0
+      },
+      {
+        "firstVal": [6, 0],
+        "operator": 0,
+        "action": 5,
+        "customVal": {"ruleTypeId": 1, "value": "days_ago:30"},
+        "section": 0
+      }
+    ]
   }
 }

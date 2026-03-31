@@ -95,21 +95,25 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             }
             self.assertTrue(expected_rule_names.issubset(set(by_name.keys())))
 
+            movie_rules = by_name["Delete Watched Movies After 30 Days"].get("rules") or []
+            self.assertTrue(len(movie_rules) >= 2)
             self.assertEqual(
-                int(
+                "days_ago:30",
+                str(
                     (
-                        (by_name["Delete Watched Movies After 30 Days"].get("conditions") or {})
-                    ).get("added_days_ago_gte", 0)
+                        (movie_rules[1].get("customVal") or {}).get("value")
+                    )
                 ),
-                30,
             )
+            tv_rules = by_name["Delete Watched TV After 30 Days"].get("rules") or []
+            self.assertTrue(len(tv_rules) >= 2)
             self.assertEqual(
-                int(
+                "days_ago:30",
+                str(
                     (
-                        (by_name["Delete Watched TV After 30 Days"].get("conditions") or {})
-                    ).get("added_days_ago_gte", 0)
+                        (tv_rules[1].get("customVal") or {}).get("value")
+                    )
                 ),
-                30,
             )
             self.assertEqual(
                 int(
@@ -123,15 +127,8 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
                 90,
             )
             self.assertEqual(
-                int(
-                    (
-                        (
-                            by_name["Unmonitor Unwatched TV After 180 Days"].get("conditions")
-                            or {}
-                        )
-                    ).get("last_watched_days_ago_gte", 0)
-                ),
-                180,
+                int(by_name["Unmonitor Unwatched TV After 180 Days"].get("arrAction", 0)),
+                3,
             )
             self.assertEqual(
                 int(
@@ -245,6 +242,55 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             rules = rendered.get("rules") or []
             self.assertEqual(len(rules), 1)
             self.assertEqual(str(rules[0].get("name") or ""), "Custom Only Rule")
+
+    def test_maintainerr_policy_rule_wrapper_can_set_description_and_payload_alias(self):
+        svc = _service()
+        with tempfile.TemporaryDirectory() as tmp:
+            custom_rules_dir = Path(tmp) / "maintainerr" / "rules"
+            custom_rules_dir.mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "native-rule.json").write_text(
+                json.dumps(
+                    {
+                        "enabled": True,
+                        "description": "Wrapper description",
+                        "payload": {
+                            "name": "Native Payload Rule",
+                            "library_titles": ["Movies"],
+                            "rules": [
+                                {
+                                    "firstVal": [6, 5],
+                                    "operator": None,
+                                    "action": 0,
+                                    "customVal": {"ruleTypeId": 0, "value": "0"},
+                                    "section": 0,
+                                }
+                            ],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = {
+                "maintainerr": {
+                    "enabled": True,
+                    "rules_library": {
+                        "enabled": True,
+                        "include_defaults": False,
+                        "relative_path": "maintainerr/rules",
+                        "merge_mode": "replace",
+                    },
+                    "policy": {},
+                }
+            }
+            svc.ensure_maintainerr_policy(cfg, tmp)
+            rendered = json.loads(
+                (Path(tmp) / "maintainerr" / "policy.json").read_text(encoding="utf-8")
+            )
+            rules = rendered.get("rules") or []
+            self.assertEqual(1, len(rules))
+            self.assertEqual("Native Payload Rule", rules[0].get("name"))
+            self.assertEqual("Wrapper description", rules[0].get("description"))
 
 
 if __name__ == "__main__":

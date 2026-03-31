@@ -258,9 +258,15 @@ class ConfigArtifactsService:
         if isinstance(payload, dict) and "rule" in payload:
             enabled = bool(payload.get("enabled", True))
             rule_obj = payload.get("rule")
+            wrapper = payload
+        elif isinstance(payload, dict) and "payload" in payload:
+            enabled = bool(payload.get("enabled", True))
+            rule_obj = payload.get("payload")
+            wrapper = payload
         else:
             enabled = bool(payload.get("enabled", True)) if isinstance(payload, dict) else True
             rule_obj = payload
+            wrapper = payload if isinstance(payload, dict) else {}
 
         if not enabled:
             self.log(f"[INFO] Maintainerr policy rules: skipped disabled entry from {source}")
@@ -272,6 +278,10 @@ class ConfigArtifactsService:
             )
 
         out = json.loads(json.dumps(rule_obj))
+        if isinstance(wrapper, dict):
+            for field in ("description", "dataType", "libraryId", "library_titles"):
+                if field in wrapper and field not in out:
+                    out[field] = json.loads(json.dumps(wrapper[field]))
         if not str(out.get("name") or "").strip():
             stem = Path(source).stem
             out["name"] = stem
