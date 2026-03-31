@@ -128,8 +128,8 @@ Design constraints for maintainability:
 ## Deployment Model
 
 Supported paths:
-- Kubernetes (recommended): profile-driven deploy + bootstrap + verification
-- Docker Compose (quick local path)
+- Kubernetes (production-oriented): profile-driven deploy + bootstrap + verification
+- Container image build/publish (tooling path): build and push bootstrap runner images used by Kubernetes Jobs/CronJobs
 
 Kubernetes profiles:
 - `minimal`: core stack only
@@ -183,7 +183,7 @@ Use this list if you want to modify/refactor/test the project.
   - On Ubuntu: `sudo apt-get install -y python3-venv`
 - Node.js + npm (Playwright tests and Mermaid rendering):
   - Node.js downloads: https://nodejs.org/en/download
-- Docker Engine (for Compose path and bootstrap-runner image builds):
+- Docker Engine (for bootstrap-runner image builds/pushes):
   - https://docs.docker.com/engine/install/ubuntu/
 - Optional local image registry (if you push custom bootstrap runner images):
   - project default example: `192.168.1.60:30002/library/...`
@@ -289,13 +289,14 @@ bash scripts/bootstrap-all.sh --state-file .state/bootstrap-all-media-stack.json
 Overlay details:
 - [config/runtime/README.md](config/runtime/README.md)
 
-## Quick Start (Docker Compose)
+## Container Build Tooling (Optional)
 
+This project does not use Docker Compose as the runtime deployment model.
+Docker is only used as build tooling for Kubernetes runner images.
+
+Build and push the bootstrap runner image:
 ```bash
-bash scripts/prepare-host.sh
-cp docker/.env.example docker/.env
-cd docker
-docker compose up -d
+bash scripts/build-bootstrap-runner-image.sh
 ```
 
 ## End-to-End Automation Scope
