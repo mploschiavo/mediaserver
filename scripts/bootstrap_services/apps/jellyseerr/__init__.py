@@ -1,5 +1,7 @@
-"""Jellyseerr app services."""
+"""Jellyseerr app package.
 
-from .service import JellyseerrService
+Imports are intentionally not re-exported here to avoid circular import
+issues when compatibility modules import back into top-level services.
+"""
 
-__all__ = ["JellyseerrService"]
+__all__: list[str] = []

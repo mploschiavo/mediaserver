@@ -34,8 +34,8 @@ class DownloadClientPipelineInputs:
     fully_preconfigured: bool
     wait_timeout: int
     adapter_hooks_cfg: dict[str, Any]
-    torrent_client_key: str = "qbittorrent"
-    usenet_client_key: str = "sabnzbd"
+    torrent_client_key: str = ""
+    usenet_client_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -69,8 +69,25 @@ class DownloadClientPipelineService:
             ),
         )
 
-        torrent_key = str(inputs.torrent_client_key or "qbittorrent").strip().lower() or "qbittorrent"
-        usenet_key = str(inputs.usenet_client_key or "sabnzbd").strip().lower() or "sabnzbd"
+        hook_defaults = ((inputs.adapter_hooks_cfg or {}).get("default_bindings") or {}) if isinstance(inputs.adapter_hooks_cfg, dict) else {}
+        hook_torrent = str(hook_defaults.get("torrent_client") or "").strip().lower()
+        hook_usenet = str(hook_defaults.get("usenet_client") or "").strip().lower()
+        cfg_torrent = str(inputs.qbit_cfg.get("technology_key") or "").strip().lower()
+        cfg_usenet = str(inputs.sab_cfg.get("technology_key") or "").strip().lower()
+
+        # Keep compatibility while preferring config-driven resolution.
+        torrent_key = (
+            str(inputs.torrent_client_key or "").strip().lower()
+            or hook_torrent
+            or cfg_torrent
+            or "qbittorrent"
+        )
+        usenet_key = (
+            str(inputs.usenet_client_key or "").strip().lower()
+            or hook_usenet
+            or cfg_usenet
+            or "sabnzbd"
+        )
 
         qbit_context = DownloadClientAdapterContext(
             key=torrent_key,

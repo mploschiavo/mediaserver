@@ -81,4 +81,3 @@ class BootstrapRuntime:
     configure_jellyfin_prewarm: bool
     jellyfin_prewarm_required: bool
     media_server_backend: str = "jellyfin"
-
