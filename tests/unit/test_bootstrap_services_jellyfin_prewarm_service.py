@@ -312,7 +312,11 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
                     },
                     "",
                 )
-            if path.startswith("/Items/movie-a/Refresh") or path.startswith("/Items/movie-b/Refresh"):
+            if (
+                path.startswith("/Items/movie-a/Refresh")
+                or path.startswith("/Items/movie-b/Refresh")
+                or path.startswith("/Items/lib-movies/Refresh")
+            ):
                 refresh_calls.append((method, path))
                 return (204, {}, "")
             return (200, {}, "")
@@ -349,6 +353,7 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
                     "libraries": ["Movies"],
                     "refresh_missing_primary_image": True,
                     "refresh_missing_overview": True,
+                    "refresh_collection_folder_images": True,
                     "max_refresh_per_library": 10,
                 },
                 "artwork_health_check": {"enabled": False},
@@ -360,6 +365,7 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("/Items/movie-a/Refresh") for path in refreshed_paths))
         self.assertTrue(any(path.startswith("/Items/movie-b/Refresh") for path in refreshed_paths))
         self.assertFalse(any(path.startswith("/Items/movie-c/Refresh") for path in refreshed_paths))
+        self.assertTrue(any(path.startswith("/Items/lib-movies/Refresh") for path in refreshed_paths))
         self.assertTrue(any("metadata backfill complete" in line for line in logs))
 
 

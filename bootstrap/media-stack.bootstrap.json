@@ -632,18 +632,26 @@
       "metadata_country_code": "US",
       "metadata_provider_priority": [
         "TheMovieDb",
+        "TheTVDB",
         "The Open Movie Database",
         "Fanart",
         "TheAudioDb",
         "MusicBrainz",
+        "Google Books",
+        "Discogs",
+        "Cover Art Archive",
         "Open Library"
       ],
       "image_provider_priority": [
         "TheMovieDb",
+        "TheTVDB",
         "Fanart",
         "The Open Movie Database",
         "TheAudioDb",
         "MusicBrainz",
+        "Google Books",
+        "Discogs",
+        "Cover Art Archive",
         "Embedded Image Extractor",
         "Screen Grabber"
       ],
@@ -735,7 +743,7 @@
         "path": "https://iptv-epg.org/files/epg-us.xml",
         "materialized_output_path": "jellyfin/livetv-guides/iptv-org-us-epg.enriched.xml",
         "enrich_program_icons_from_tuner_logo": true,
-        "replace_existing_program_icons_with_tuner_logo": true,
+        "replace_existing_program_icons_with_tuner_logo": false,
         "default_program_icon_url": "https://raw.githubusercontent.com/iptv-org/logo/master/tv.png",
         "enrich_program_categories_from_tuner_groups": true,
         "movie_categories": [
@@ -882,8 +890,19 @@
         "name": "Trakt"
       },
       {
-        "name": "Trailers",
-        "required": false
+        "name": "Google Books"
+      },
+      {
+        "name": "Cover Art Archive"
+      },
+      {
+        "name": "Discogs"
+      },
+      {
+        "name": "LrcLib Lyrics"
+      },
+      {
+        "name": "Local Intros"
       }
     ]
   },

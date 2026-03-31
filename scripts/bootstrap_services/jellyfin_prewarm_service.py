@@ -539,6 +539,9 @@ class JellyfinPrewarmService:
         }
         refresh_missing_primary = d.bool_cfg(backfill_cfg, "refresh_missing_primary_image", True)
         refresh_missing_overview = d.bool_cfg(backfill_cfg, "refresh_missing_overview", True)
+        refresh_collection_folders = d.bool_cfg(
+            backfill_cfg, "refresh_collection_folder_images", True
+        )
         required = d.bool_cfg(backfill_cfg, "required", False)
         try:
             max_refresh_per_library = int(backfill_cfg.get("max_refresh_per_library") or 80)
@@ -584,6 +587,10 @@ class JellyfinPrewarmService:
         total_candidates = 0
         total_requested = 0
         total_failed = 0
+        folders_attempted = 0
+        folders_refreshed = 0
+        folders_failed = 0
+        selected_libraries: list[tuple[str, str]] = []
 
         for library in libraries_payload:
             if not isinstance(library, dict):
@@ -596,6 +603,7 @@ class JellyfinPrewarmService:
             name_key = library_name.lower()
             if libraries_filter and collection_type not in libraries_filter and name_key not in libraries_filter:
                 continue
+            selected_libraries.append((library_name or collection_type, library_id))
 
             include_types = type_map.get(collection_type) or []
             list_path = d.build_query_path(
@@ -678,14 +686,38 @@ class JellyfinPrewarmService:
                 f"for {library_name} (targets={len(targets)}, requested={library_requested}, failed={library_failed})"
             )
 
-        if total_failed and required:
+        if refresh_collection_folders:
+            for library_name, library_id in selected_libraries:
+                folders_attempted += 1
+                refresh_path = d.build_query_path(f"/Items/{library_id}/Refresh", refresh_params)
+                status, _, body = d.jellyfin_request(
+                    jellyfin_url,
+                    refresh_path,
+                    jellyfin_api_key,
+                    method="POST",
+                )
+                if status in (200, 201, 202, 204):
+                    folders_refreshed += 1
+                else:
+                    folders_failed += 1
+                    d.log(
+                        "[WARN] Jellyfin prewarm: collection-folder image refresh failed "
+                        f"for {library_name} item={library_id} (HTTP {status}): {body}"
+                    )
+            d.log(
+                "[OK] Jellyfin prewarm: collection-folder image refresh complete "
+                f"(attempted={folders_attempted}, refreshed={folders_refreshed}, failed={folders_failed})"
+            )
+
+        if (total_failed or folders_failed) and required:
             raise RuntimeError(
                 "Jellyfin prewarm: metadata backfill had refresh failures "
-                f"(requested={total_requested}, failed={total_failed})"
+                f"(requested={total_requested}, failed={total_failed}, folder_failed={folders_failed})"
             )
         d.log(
             "[OK] Jellyfin prewarm: metadata backfill complete "
-            f"(candidates={total_candidates}, requested={total_requested}, failed={total_failed})"
+            f"(candidates={total_candidates}, requested={total_requested}, failed={total_failed}, "
+            f"folder_refreshed={folders_refreshed}, folder_failed={folders_failed})"
         )
 
     def _run_artwork_health_check(
