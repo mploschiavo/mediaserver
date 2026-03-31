@@ -22,6 +22,12 @@ from typing import Any, Callable
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
 from core.kube import KubectlClient
 
+from cli.bootstrap_job_wait_service import BootstrapJobWaitConfig, BootstrapJobWaitService
+from cli.bootstrap_secret_priming_service import (
+    BootstrapSecretPrimingConfig,
+    BootstrapSecretPrimingService,
+)
+
 
 def ts() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -136,6 +142,27 @@ class RunBootstrapJobRunner:
                 suffix=".json",
                 delete=False,
             ).name
+        )
+
+    def _job_wait_service(self) -> BootstrapJobWaitService:
+        return BootstrapJobWaitService(
+            cfg=BootstrapJobWaitConfig(
+                namespace=self.cfg.namespace,
+                timeout_seconds=self.cfg.timeout_seconds,
+                timeout_raw=self.cfg.timeout_raw,
+                heartbeat_interval=self.cfg.heartbeat_interval,
+            ),
+            kube=self.kube,
+            info=info,
+            warn=warn,
+        )
+
+    def _secret_priming_service(self) -> BootstrapSecretPrimingService:
+        return BootstrapSecretPrimingService(
+            cfg=BootstrapSecretPrimingConfig(namespace=self.cfg.namespace),
+            kube=self.kube,
+            info=info,
+            warn=warn,
         )
 
     def run(self) -> int:
@@ -393,176 +420,17 @@ class RunBootstrapJobRunner:
         self.job_config_file.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
         info(f"Resolved job config: {self.job_config_file}")
 
-    def _read_api_key_from_deploy(self, app: str) -> str:
-        command = (
-            "sed -n 's:.*<ApiKey>\\(.*\\)</ApiKey>.*:\\1:p' /config/config.xml "
-            "| head -n1"
-        )
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", f"deploy/{app}", "--", "sh", "-c", command],
-            check=False,
-        )
-        if result.returncode != 0:
-            return ""
-        return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
-
-    def _read_sab_api_key_from_deploy(self) -> str:
-        command = (
-            "sed -n 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*//p' /config/sabnzbd.ini "
-            "| head -n1"
-        )
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/sabnzbd", "--", "sh", "-c", command],
-            check=False,
-        )
-        if result.returncode != 0:
-            return ""
-        return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
-
-    def _read_jellyseerr_api_key_from_deploy(self) -> str:
-        command = (
-            "node -e \"const fs=require('fs'); "
-            "const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); "
-            "process.stdout.write(String(((d.main||{}).apiKey||'')).trim());\""
-        )
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/jellyseerr", "--", "sh", "-c", command],
-            check=False,
-        )
-        if result.returncode != 0:
-            return ""
-        return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
-
-    def _read_tautulli_api_key_from_deploy(self) -> str:
-        command = (
-            "sed -n 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*//p' /config/config.ini "
-            "| head -n1"
-        )
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/tautulli", "--", "sh", "-c", command],
-            check=False,
-        )
-        if result.returncode != 0:
-            return ""
-        return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
-
-    def _patch_secret_string(self, key_name: str, key_value: str) -> None:
-        if not key_name or not key_value:
-            return
-        payload = json.dumps({"stringData": {key_name: key_value}})
-        result = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "patch",
-                "secret",
-                "media-stack-secrets",
-                "--type",
-                "merge",
-                "-p",
-                payload,
-            ],
-            check=False,
-        )
-        if result.returncode != 0:
-            raise KubernetesError(result.stderr or result.stdout)
-
     def prime_servarr_api_keys_secret(self) -> None:
-        secret_exists = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "secret", "media-stack-secrets"],
-            check=False,
-        ).returncode == 0
-        if not secret_exists:
-            warn(
-                f"Secret {self.cfg.namespace}/media-stack-secrets not found; "
-                "skipping Arr API key priming."
-            )
-            return
-
-        apps = ["sonarr", "radarr", "lidarr", "readarr", "prowlarr"]
-        found = 0
-        for app in apps:
-            key = self._read_api_key_from_deploy(app)
-            if not key:
-                warn(f"Could not read API key from deploy/{app} yet; continuing.")
-                continue
-            upper = app.upper()
-            self._patch_secret_string(f"{upper}_API_KEY", key)
-            if app != "prowlarr":
-                self._patch_secret_string(f"UNPACKERR_{upper}_API_KEY", key)
-            info(f"Seeded {upper}_API_KEY in media-stack-secrets from deploy/{app}")
-            found += 1
-
-        if found == 0:
-            warn("No Arr/Prowlarr API keys were discovered from running deployments.")
-        else:
-            info(f"Primed API keys in secret for {found} app(s).")
+        self._secret_priming_service().prime_servarr_api_keys()
 
     def prime_sab_api_key_secret(self) -> None:
-        secret_exists = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "secret", "media-stack-secrets"],
-            check=False,
-        ).returncode == 0
-        if not secret_exists:
-            warn(
-                f"Secret {self.cfg.namespace}/media-stack-secrets not found; "
-                "skipping SABnzbd API key priming."
-            )
-            return
-
-        key = os.environ.get("SABNZBD_API_KEY", "").strip()
-        if not key:
-            key = self._read_sab_api_key_from_deploy()
-        if not key:
-            warn("Could not discover SABnzbd API key from env or deploy/sabnzbd; continuing.")
-            return
-
-        self._patch_secret_string("SABNZBD_API_KEY", key)
-        info("Seeded SABNZBD_API_KEY in media-stack-secrets.")
+        self._secret_priming_service().prime_sab_api_key()
 
     def prime_jellyseerr_api_key_secret(self) -> None:
-        secret_exists = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "secret", "media-stack-secrets"],
-            check=False,
-        ).returncode == 0
-        if not secret_exists:
-            warn(
-                f"Secret {self.cfg.namespace}/media-stack-secrets not found; "
-                "skipping Jellyseerr API key priming."
-            )
-            return
-
-        key = os.environ.get("JELLYSEERR_API_KEY", "").strip()
-        if not key:
-            key = self._read_jellyseerr_api_key_from_deploy()
-        if not key:
-            warn("Could not discover Jellyseerr API key from env or deploy/jellyseerr; continuing.")
-            return
-
-        self._patch_secret_string("JELLYSEERR_API_KEY", key)
-        info("Seeded JELLYSEERR_API_KEY in media-stack-secrets.")
+        self._secret_priming_service().prime_jellyseerr_api_key()
 
     def prime_tautulli_api_key_secret(self) -> None:
-        secret_exists = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "secret", "media-stack-secrets"],
-            check=False,
-        ).returncode == 0
-        if not secret_exists:
-            warn(
-                f"Secret {self.cfg.namespace}/media-stack-secrets not found; "
-                "skipping Tautulli API key priming."
-            )
-            return
-
-        key = os.environ.get("TAUTULLI_API_KEY", "").strip()
-        if not key:
-            key = self._read_tautulli_api_key_from_deploy()
-        if not key:
-            warn("Could not discover Tautulli API key from env or deploy/tautulli; continuing.")
-            return
-
-        self._patch_secret_string("TAUTULLI_API_KEY", key)
-        info("Seeded TAUTULLI_API_KEY in media-stack-secrets.")
+        self._secret_priming_service().prime_tautulli_api_key()
 
     def _replace_or_create_yaml(self, yaml_path: Path, kind_name: str) -> None:
         replaced = self.kube.run(
@@ -627,250 +495,11 @@ class RunBootstrapJobRunner:
             if result.returncode != 0:
                 raise KubernetesError(result.stderr or result.stdout)
 
-    def _get_job(self, job_name: str) -> dict[str, Any] | None:
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "job", job_name, "-o", "json"],
-            check=False,
-        )
-        if result.returncode != 0:
-            return None
-        try:
-            return json.loads(result.stdout or "{}")
-        except json.JSONDecodeError:
-            return None
-
-    def _get_pods(self, selector: str) -> list[dict[str, Any]]:
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "pods", "-l", selector, "-o", "json"],
-            check=False,
-        )
-        if result.returncode != 0:
-            return []
-        try:
-            payload = json.loads(result.stdout or "{}")
-        except json.JSONDecodeError:
-            return []
-        items = payload.get("items")
-        return list(items) if isinstance(items, list) else []
-
-    def _describe(self, kind: str, name: str) -> str:
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "describe", kind, name],
-            check=False,
-        )
-        return result.stdout or ""
-
-    def _heartbeat(self, job_name: str, selector: str, elapsed: int) -> None:
-        info(f"Waiting on job/{job_name} (elapsed {elapsed}s, timeout {self.cfg.timeout_raw})")
-        job_table = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "job",
-                job_name,
-                "-o",
-                "custom-columns=NAME:.metadata.name,COMPLETIONS:.status.succeeded,FAILED:.status.failed,ACTIVE:.status.active,AGE:.metadata.creationTimestamp",
-                "--no-headers",
-            ],
-            check=False,
-        )
-        if job_table.stdout.strip():
-            print(job_table.stdout.rstrip())
-
-        pod_table = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "pods",
-                "-l",
-                selector,
-                "-o",
-                "custom-columns=NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount",
-                "--no-headers",
-            ],
-            check=False,
-        )
-        if pod_table.stdout.strip():
-            print(pod_table.stdout.rstrip())
-
-    def _pod_schedule_reason_and_message(self, pod: dict[str, Any]) -> tuple[str, str]:
-        for condition in pod.get("status", {}).get("conditions", []) or []:
-            if condition.get("type") == "PodScheduled":
-                return str(condition.get("reason") or ""), str(condition.get("message") or "")
-        return "", ""
-
-    def _print_pending_events(self, pod_name: str) -> None:
-        describe = self._describe("pod", pod_name)
-        if not describe:
-            return
-        lines = describe.splitlines()
-        if "Events:" not in lines:
-            return
-        idx = lines.index("Events:")
-        print("[PENDING] Events:")
-        for line in lines[idx + 1 : idx + 16]:
-            print(f"[PENDING] {line}")
-
-    def _tail_pod_logs(self, pod_name: str, lines: int = 8) -> None:
-        logs = self.kube.run(
-            ["-n", self.cfg.namespace, "logs", pod_name, f"--tail={lines}"],
-            check=False,
-        )
-        if logs.stdout.strip():
-            for line in logs.stdout.rstrip().splitlines():
-                print(f"[JOB] {line}")
-
-    def _print_failure_context(self, job_name: str, selector: str) -> None:
-        describe_job = self.kube.run(
-            ["-n", self.cfg.namespace, "describe", "job", job_name],
-            check=False,
-        )
-        if describe_job.stdout.strip():
-            print(describe_job.stdout.rstrip())
-        if describe_job.stderr.strip():
-            print(describe_job.stderr.rstrip(), file=sys.stderr)
-
-        pods_wide = self.kube.run(
-            ["-n", self.cfg.namespace, "get", "pods", "-l", selector, "-o", "wide"],
-            check=False,
-        )
-        if pods_wide.stdout.strip():
-            print(pods_wide.stdout.rstrip())
-        if pods_wide.stderr.strip():
-            print(pods_wide.stderr.rstrip(), file=sys.stderr)
-
-        pods = self._get_pods(selector)
-        if pods:
-            pod_name = str(pods[0].get("metadata", {}).get("name") or "")
-            if pod_name:
-                describe_pod = self.kube.run(
-                    ["-n", self.cfg.namespace, "describe", "pod", pod_name],
-                    check=False,
-                )
-                if describe_pod.stdout.strip():
-                    print(describe_pod.stdout.rstrip())
-                if describe_pod.stderr.strip():
-                    print(describe_pod.stderr.rstrip(), file=sys.stderr)
-
-        job_logs = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "logs",
-                f"job/{job_name}",
-                "--tail=300",
-                "--timestamps",
-            ],
-            check=False,
-        )
-        if job_logs.stdout.strip():
-            print(job_logs.stdout.rstrip())
-        if job_logs.stderr.strip():
-            print(job_logs.stderr.rstrip(), file=sys.stderr)
-
     def wait_for_bootstrap_job(self) -> None:
-        job_name = "media-stack-bootstrap"
-        selector = "app=media-stack-bootstrap"
-        start = int(time.time())
-        last_heartbeat = -self.cfg.heartbeat_interval
-        last_pending_dump = -99999
-
-        while True:
-            now = int(time.time())
-            elapsed = now - start
-
-            if elapsed - last_heartbeat >= self.cfg.heartbeat_interval:
-                self._heartbeat(job_name, selector, elapsed)
-                last_heartbeat = elapsed
-
-            job = self._get_job(job_name)
-            if not job:
-                warn(f"Job {self.cfg.namespace}/{job_name} not found while waiting.")
-                raise KubernetesError("Bootstrap job disappeared while waiting")
-
-            status = job.get("status", {}) or {}
-            succeeded = int(status.get("succeeded") or 0)
-            failed = int(status.get("failed") or 0)
-            conditions = status.get("conditions") or []
-            complete = any(c.get("type") == "Complete" and c.get("status") == "True" for c in conditions)
-            failed_condition = any(c.get("type") == "Failed" and c.get("status") == "True" for c in conditions)
-            backoff = any(
-                c.get("reason") == "BackoffLimitExceeded" and c.get("status") == "True"
-                for c in conditions
-            )
-
-            if complete or succeeded >= 1:
-                return
-            if failed_condition or backoff or failed >= 1:
-                warn("Job failed before completion.")
-                self._print_failure_context(job_name, selector)
-                raise KubernetesError("Bootstrap job failed")
-
-            pods = self._get_pods(f"job-name={job_name}")
-            pod = pods[0] if pods else None
-            if pod:
-                pod_name = str(pod.get("metadata", {}).get("name") or "")
-                pod_phase = str(pod.get("status", {}).get("phase") or "")
-                statuses = pod.get("status", {}).get("containerStatuses") or []
-                wait_reason = ""
-                wait_message = ""
-                if statuses and isinstance(statuses, list):
-                    waiting = (statuses[0] or {}).get("state", {}).get("waiting", {}) or {}
-                    wait_reason = str(waiting.get("reason") or "")
-                    wait_message = str(waiting.get("message") or "")
-
-                if wait_reason in ("ErrImagePull", "ImagePullBackOff"):
-                    warn(f"Job pod cannot pull bootstrap runner image ({wait_reason}).")
-                    if wait_message:
-                        warn(f"Image pull message: {wait_message}")
-                    warn("Build/push the runner image and retry: bash scripts/build-bootstrap-runner-image.sh")
-                    raise KubernetesError("Bootstrap job image pull failed")
-
-                if pod_phase in ("Failed", "Unknown"):
-                    warn("Job failed before completion.")
-                    self._print_failure_context(job_name, selector)
-                    raise KubernetesError("Bootstrap job pod failed")
-
-                if pod_phase == "Pending":
-                    reason, sched_message = self._pod_schedule_reason_and_message(pod)
-                    if elapsed - last_pending_dump >= 45:
-                        warn(f"Job pod is Pending: {pod_name} (reason={reason or 'unknown'})")
-                        if sched_message:
-                            warn(f"Job pod scheduling message: {sched_message}")
-                        if pod_name:
-                            self._print_pending_events(pod_name)
-                        last_pending_dump = elapsed
-                    if elapsed >= 20 and "persistentvolumeclaim" in sched_message and "not found" in sched_message:
-                        warn("Job pod remained Pending because required PVCs are missing.")
-                        warn(f"Scheduling message: {sched_message}")
-                        raise KubernetesError("Missing required PVCs for bootstrap job")
-                    if elapsed >= 120 and any(
-                        marker in sched_message
-                        for marker in (
-                            "persistentvolumeclaim",
-                            "unbound immediate PersistentVolumeClaims",
-                            "volume node affinity conflict",
-                            "Multi-Attach",
-                            "didn't match Pod's node affinity",
-                        )
-                    ):
-                        warn(
-                            "Job pod remained Pending with a hard scheduling/storage "
-                            f"error for {elapsed}s."
-                        )
-                        warn(f"Scheduling message: {sched_message}")
-                        raise KubernetesError("Bootstrap job scheduling failed")
-                elif pod_name:
-                    self._tail_pod_logs(pod_name, lines=8)
-
-            if elapsed >= self.cfg.timeout_seconds:
-                warn(f"Job did not complete within {self.cfg.timeout_raw}.")
-                self._print_failure_context(job_name, selector)
-                raise KubernetesError("Bootstrap job timed out")
-
-            time.sleep(2)
+        self._job_wait_service().wait_for_job(
+            job_name="media-stack-bootstrap",
+            selector="app=media-stack-bootstrap",
+        )
 
     def print_bootstrap_job_logs(self) -> None:
         result = self.kube.run(
