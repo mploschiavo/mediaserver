@@ -16,16 +16,25 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Any, Callable
+from tempfile import NamedTemporaryFile
+from typing import Callable
 
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
 from core.kube import KubectlClient
 
+from cli.bootstrap_config_resolver_service import (
+    BootstrapConfigResolverConfig,
+    BootstrapConfigResolverService,
+)
 from cli.bootstrap_job_wait_service import BootstrapJobWaitConfig, BootstrapJobWaitService
+from cli.bootstrap_manifest_service import BootstrapManifestConfig, BootstrapManifestService
 from cli.bootstrap_secret_priming_service import (
     BootstrapSecretPrimingConfig,
     BootstrapSecretPrimingService,
+)
+from cli.jellyfin_plugin_activation_service import (
+    JellyfinPluginActivationConfig,
+    JellyfinPluginActivationService,
 )
 
 
@@ -165,6 +174,46 @@ class RunBootstrapJobRunner:
             warn=warn,
         )
 
+    def _manifest_service(self) -> BootstrapManifestService:
+        return BootstrapManifestService(
+            cfg=BootstrapManifestConfig(
+                namespace=self.cfg.namespace,
+                root_dir=self.cfg.root_dir,
+                prepare_host_root=self.cfg.prepare_host_root,
+                bootstrap_runner_image=self.cfg.bootstrap_runner_image,
+                job_config_file=self.job_config_file,
+            ),
+            kube=self.kube,
+            info=info,
+            warn=warn,
+        )
+
+    def _config_resolver_service(self) -> BootstrapConfigResolverService:
+        return BootstrapConfigResolverService(
+            cfg=BootstrapConfigResolverConfig(
+                namespace=self.cfg.namespace,
+                ingress_name=self.cfg.ingress_name,
+                config_file=self.cfg.config_file,
+                job_config_file=self.job_config_file,
+            ),
+            kube=self.kube,
+            info=info,
+        )
+
+    def _jellyfin_plugin_service(self) -> JellyfinPluginActivationService:
+        return JellyfinPluginActivationService(
+            cfg=JellyfinPluginActivationConfig(namespace=self.cfg.namespace),
+            kube=self.kube,
+            info=info,
+            warn=warn,
+            deployment_exists=self.deployment_exists,
+            restart_deployment=lambda deployment, timeout_seconds: self.restart_deployment(
+                deployment,
+                timeout_seconds=timeout_seconds,
+            ),
+            read_secret_key=self._read_secret_key,
+        )
+
     def run(self) -> int:
         if not self.cfg.config_file.exists():
             raise ConfigError(f"Config file not found: {self.cfg.config_file}")
@@ -299,126 +348,13 @@ class RunBootstrapJobRunner:
             )
 
     def manifest_overrides(self, text: str) -> str:
-        out = re.sub(
-            r"namespace:\s*media-stack\b",
-            f"namespace: {self.cfg.namespace}",
-            text,
-        )
-        out = re.sub(
-            r"name:\s*media-stack\s*$",
-            f"name: {self.cfg.namespace}",
-            out,
-            flags=re.MULTILINE,
-        )
-        out = re.sub(
-            r"image:\s*192\.168\.1\.60:30002/library/media-stack-bootstrap-runner:latest",
-            f"image: {self.cfg.bootstrap_runner_image}",
-            out,
-        )
-        out = out.replace("/srv/media-stack", self.cfg.prepare_host_root)
-        return out
+        return self._manifest_service().manifest_overrides(text)
 
     def ensure_bootstrap_pvc_prereqs(self) -> None:
-        storage_manifest = self.cfg.root_dir / "k8s" / "storage-pvc.yaml"
-        required = [
-            "media-stack-config-jellyfin",
-            "media-stack-config-jellyseerr",
-            "media-stack-config-sonarr",
-            "media-stack-config-radarr",
-            "media-stack-config-lidarr",
-            "media-stack-config-readarr",
-            "media-stack-config-bazarr",
-            "media-stack-config-prowlarr",
-            "media-stack-config-sabnzbd",
-            "media-stack-config-homepage",
-            "media-stack-config-maintainerr",
-            "media-stack-config-jellyfin-auto-collections",
-            "media-stack-data-torrents",
-            "media-stack-data-usenet",
-            "media-stack-media",
-        ]
-
-        if storage_manifest.exists():
-            info(f"Ensuring bootstrap PVC prerequisites via {storage_manifest}")
-            with TemporaryDirectory(prefix="media-stack-storage-pvc-") as tmpdir:
-                patched = Path(tmpdir) / "storage-pvc.yaml"
-                patched.write_text(
-                    self.manifest_overrides(storage_manifest.read_text(encoding="utf-8")),
-                    encoding="utf-8",
-                )
-                result = self.kube.run(["apply", "-f", str(patched)], check=False)
-                if result.stdout.strip():
-                    print(result.stdout.rstrip())
-                if result.stderr.strip():
-                    print(result.stderr.rstrip(), file=sys.stderr)
-        else:
-            warn(f"PVC manifest not found at {storage_manifest}")
-
-        missing = []
-        for pvc in required:
-            result = self.kube.run(
-                ["-n", self.cfg.namespace, "get", "pvc", pvc],
-                check=False,
-            )
-            if result.returncode != 0:
-                missing.append(pvc)
-
-        if missing:
-            warn(f"Missing required PVC(s) for bootstrap job: {' '.join(missing)}")
-            warn(
-                "Apply storage PVCs and retry: "
-                f"{' '.join(self.kube.cmd_prefix)} apply -f {self.cfg.root_dir / 'k8s' / 'storage-pvc.yaml'}"
-            )
-            raise ConfigError("Missing required PVCs for bootstrap job")
-
-        info("Bootstrap PVC prerequisites are present.")
-
-    def _load_json(self, path: Path) -> dict[str, Any]:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ConfigError(f"Expected JSON object in {path}")
-        return data
+        self._manifest_service().ensure_bootstrap_pvc_prereqs()
 
     def resolve_bootstrap_config(self) -> None:
-        hosts_result = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "ingress",
-                self.cfg.ingress_name,
-                "-o",
-                "jsonpath={range .spec.rules[*]}{.host}{'\\n'}{end}",
-            ],
-            check=False,
-        )
-        hosts: list[str] = []
-        if hosts_result.returncode == 0:
-            for line in (hosts_result.stdout or "").splitlines():
-                host = line.strip()
-                if host:
-                    hosts.append(host)
-        hosts = sorted(set(hosts))
-        hosts_csv = ",".join(hosts)
-        if hosts_csv:
-            info(f"Injecting homepage hosts from ingress/{self.cfg.ingress_name}: {hosts_csv}")
-        else:
-            info(
-                f"No ingress hosts discovered from ingress/{self.cfg.ingress_name}; "
-                "using bootstrap config defaults."
-            )
-
-        cfg = self._load_json(self.cfg.config_file)
-        if hosts:
-            homepage = cfg.get("homepage")
-            if not isinstance(homepage, dict):
-                homepage = {}
-            homepage["enabled"] = True
-            homepage["hosts"] = hosts
-            cfg["homepage"] = homepage
-
-        self.job_config_file.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
-        info(f"Resolved job config: {self.job_config_file}")
+        self._config_resolver_service().resolve_bootstrap_config()
 
     def prime_servarr_api_keys_secret(self) -> None:
         self._secret_priming_service().prime_servarr_api_keys()
@@ -432,68 +368,11 @@ class RunBootstrapJobRunner:
     def prime_tautulli_api_key_secret(self) -> None:
         self._secret_priming_service().prime_tautulli_api_key()
 
-    def _replace_or_create_yaml(self, yaml_path: Path, kind_name: str) -> None:
-        replaced = self.kube.run(
-            ["-n", self.cfg.namespace, "replace", "-f", str(yaml_path)],
-            check=False,
-        )
-        if replaced.returncode == 0:
-            info(f"{kind_name} replaced")
-            return
-        created = self.kube.run(
-            ["-n", self.cfg.namespace, "create", "-f", str(yaml_path)],
-            check=False,
-        )
-        if created.returncode != 0:
-            raise KubernetesError(created.stderr or created.stdout)
-
     def update_bootstrap_configmaps(self) -> None:
-        info("Updating bootstrap config ConfigMap")
-        with TemporaryDirectory(prefix="media-stack-bootstrap-config-") as tmpdir:
-            configmap_yaml = Path(tmpdir) / "bootstrap-config.yaml"
-            generated = self.kube.run(
-                [
-                    "-n",
-                    self.cfg.namespace,
-                    "create",
-                    "configmap",
-                    "media-stack-bootstrap-config",
-                    f"--from-file=config.json={self.job_config_file}",
-                    "--dry-run=client",
-                    "-o",
-                    "yaml",
-                ]
-            )
-            configmap_yaml.write_text(generated.stdout, encoding="utf-8")
-            self._replace_or_create_yaml(configmap_yaml, "configmap/media-stack-bootstrap-config")
+        self._manifest_service().update_bootstrap_configmaps()
 
     def recreate_bootstrap_job(self) -> None:
-        info("Recreating bootstrap Job")
-        self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "delete",
-                "job",
-                "media-stack-bootstrap",
-                "--ignore-not-found",
-            ],
-            check=False,
-        )
-        manifest_path = self.cfg.root_dir / "k8s" / "bootstrap-job.yaml"
-        with TemporaryDirectory(prefix="media-stack-bootstrap-job-") as tmpdir:
-            patched = Path(tmpdir) / "bootstrap-job.yaml"
-            patched.write_text(
-                self.manifest_overrides(manifest_path.read_text(encoding="utf-8")),
-                encoding="utf-8",
-            )
-            result = self.kube.run(["-n", self.cfg.namespace, "apply", "-f", str(patched)], check=False)
-            if result.stdout.strip():
-                print(result.stdout.rstrip())
-            if result.stderr.strip():
-                print(result.stderr.rstrip(), file=sys.stderr)
-            if result.returncode != 0:
-                raise KubernetesError(result.stderr or result.stdout)
+        self._manifest_service().recreate_bootstrap_job()
 
     def wait_for_bootstrap_job(self) -> None:
         self._job_wait_service().wait_for_job(
@@ -586,44 +465,7 @@ class RunBootstrapJobRunner:
             return ""
 
     def activate_jellyfin_plugins(self) -> None:
-        if not self.deployment_exists("jellyfin"):
-            info(f"deployment/jellyfin not found in namespace/{self.cfg.namespace}; skipping restart check.")
-            return
-
-        jellyfin_api_key = self._read_secret_key("media-stack-secrets", "JELLYFIN_API_KEY")
-        if not jellyfin_api_key:
-            info("JELLYFIN_API_KEY not found in secret; skipping Jellyfin plugin activation restart.")
-            return
-
-        plugins_url = f"http://localhost:8096/Plugins?api_key={jellyfin_api_key}"
-        command = f"curl -fsS {shlex.quote(plugins_url)}"
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/jellyfin", "--", "sh", "-lc", command],
-            check=False,
-        )
-        if result.returncode != 0:
-            warn("Could not query Jellyfin plugins; skipping plugin activation restart check.")
-            return
-
-        restart_count = 0
-        try:
-            payload = json.loads(result.stdout or "[]")
-            if isinstance(payload, list):
-                restart_count = sum(
-                    1 for item in payload if isinstance(item, dict) and item.get("Status") == "Restart"
-                )
-        except json.JSONDecodeError:
-            restart_count = (result.stdout or "").count('"Status":"Restart"')
-
-        if restart_count > 0:
-            info(
-                f"Detected {restart_count} Jellyfin plugin(s) pending restart; "
-                "restarting deployment/jellyfin."
-            )
-            self.restart_deployment("jellyfin", timeout_seconds=300)
-            info("Jellyfin restarted to activate pending plugin changes.")
-        else:
-            info("No Jellyfin plugin restart pending.")
+        self._jellyfin_plugin_service().activate_plugins_if_needed()
 
 
 def build_parser(root_dir: Path) -> argparse.ArgumentParser:
