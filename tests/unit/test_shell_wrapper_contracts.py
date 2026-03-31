@@ -151,6 +151,41 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/validate-bootstrap-config.sh", proc.stdout)
 
+    def test_verify_flow_wrapper_help_contract(self):
+        proc = run_wrapper("verify-flow.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/verify-flow.sh", proc.stdout)
+
+    def test_microk8s_smoke_test_wrapper_help_contract(self):
+        proc = run_wrapper("microk8s-smoke-test.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/microk8s-smoke-test.sh", proc.stdout)
+
+    def test_watch_install_wrapper_help_contract(self):
+        proc = run_wrapper("watch-install.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/watch-install.sh", proc.stdout)
+
+    def test_fast_first_run_wrapper_help_contract(self):
+        proc = run_wrapper("fast-first-run.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/fast-first-run.sh", proc.stdout)
+
+    def test_reset_qbit_webui_auth_wrapper_help_contract(self):
+        proc = run_wrapper("reset-qbit-webui-auth.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/reset-qbit-webui-auth.sh", proc.stdout)
+
+    def test_build_bootstrap_runner_image_wrapper_help_contract(self):
+        proc = run_wrapper("build-bootstrap-runner-image.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/build-bootstrap-runner-image.sh", proc.stdout)
+
+    def test_microk8s_reconcile_wrapper_help_contract(self):
+        proc = run_wrapper("microk8s-reconcile.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/microk8s-reconcile.sh", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
