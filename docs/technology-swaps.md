@@ -21,6 +21,8 @@ Two sections control swaps:
 2. `adapter_hooks`
 - maps technology key -> Python adapter class path (`module:ClassName`)
 - resolved dynamically at runtime
+- supports `default_bindings` to define fallback role bindings (`torrent_client`, `usenet_client`, `media_server`)
+- optional `technology_aliases` lets you use shorthand keys in bindings (for example `qbit`, `sab`, `jf`)
 - can also register custom runner operations via `operation_handlers`:
   - `operation_name -> module.submodule:callable_name`
 - can override media-server operation plans via:
@@ -30,6 +32,17 @@ Two sections control swaps:
   - media server: `bootstrap_services.media_server_adapters.<key_as_module>`
   - servarr app impl: `bootstrap_services.servarr_technologies.<impl_as_module>`
 - set a mapping value to empty (`""`) to intentionally disable an adapter key and force generic no-op fallback.
+
+Primary one-place edit surface for most swaps:
+- `bootstrap/media-stack.bootstrap.json`:
+  - `technology_bindings`
+  - `adapter_hooks` (all adapter/service maps + aliases)
+  - `download_clients.<key>` / `arr_apps[]` / app-specific config blocks
+
+In practice, most technology swaps are now:
+1. add adapter module file
+2. change one binding key + one hook path in this single JSON
+3. rerun bootstrap
 
 Example:
 
@@ -120,6 +133,19 @@ Servarr app behavior is adapter-based. To swap per app:
    - `adapter_hooks.adapter_classes.<implementation>`
 4. Set app capabilities in:
    - `app_capability_defaults` (or per-app `capabilities`)
+
+For first-party defaults, this repo now carries explicit hook mappings for:
+- `jellyfin`
+- `jellyseerr`
+- `sonarr`
+- `radarr`
+- `lidarr`
+- `readarr`
+- `bazarr`
+- `prowlarr`
+- `qbittorrent`
+- `sabnzbd`
+- `tautulli`
 
 ## Design Rule
 

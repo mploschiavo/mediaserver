@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = ROOT / "scripts" / "validate-bootstrap-config.py"
+SCRIPT_PATH = ROOT / "scripts" / "cli" / "validate_bootstrap_config_main.py"
 
 
 def _load_module():
@@ -94,6 +94,63 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             errors,
         )
 
+    def test_basic_checks_validate_app_service_class_spec_format(self):
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "download_clients": {
+                "qbittorrent": {"url": "http://qbittorrent:8080"},
+                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            },
+            "adapter_hooks": {
+                "app_service_classes": {
+                    "jellyseerr_service": "invalid-service-spec"
+                }
+            },
+        }
+        errors = self.mod.basic_checks(cfg)
+        self.assertTrue(
+            any("invalid hook spec" in err for err in errors),
+            errors,
+        )
+
+    def test_basic_checks_validate_technology_aliases_shape(self):
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "download_clients": {
+                "qbittorrent": {"url": "http://qbittorrent:8080"},
+                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            },
+            "adapter_hooks": {
+                "technology_aliases": {
+                    "qbit": "",
+                }
+            },
+        }
+        errors = self.mod.basic_checks(cfg)
+        self.assertTrue(
+            any("technology_aliases" in err for err in errors),
+            errors,
+        )
+
+    def test_basic_checks_accepts_valid_technology_aliases(self):
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "download_clients": {
+                "qbittorrent": {"url": "http://qbittorrent:8080"},
+                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            },
+            "adapter_hooks": {
+                "technology_aliases": {
+                    "qbit": "qbittorrent",
+                    "sab": "sabnzbd",
+                }
+            },
+        }
+        self.assertEqual(self.mod.basic_checks(cfg), [])
+
     def test_basic_checks_validate_media_server_operation_plan_shape(self):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
@@ -115,6 +172,43 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             },
         }
         self.assertEqual(self.mod.basic_checks(cfg), [])
+
+    def test_basic_checks_use_adapter_default_bindings_for_active_client_validation(self):
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "download_clients": {
+                "transmission": {"url": "http://transmission:9091"},
+                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            },
+            "adapter_hooks": {
+                "default_bindings": {
+                    "torrent_client": "transmission",
+                    "usenet_client": "sabnzbd",
+                }
+            },
+        }
+        self.assertEqual(self.mod.basic_checks(cfg), [])
+
+    def test_basic_checks_reject_empty_default_binding_values(self):
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "download_clients": {
+                "qbittorrent": {"url": "http://qbittorrent:8080"},
+                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            },
+            "adapter_hooks": {
+                "default_bindings": {
+                    "torrent_client": "",
+                }
+            },
+        }
+        errors = self.mod.basic_checks(cfg)
+        self.assertTrue(
+            any("default_bindings.torrent_client" in err for err in errors),
+            errors,
+        )
 
     def test_basic_checks_reject_media_server_operation_step_without_operation(self):
         cfg = {

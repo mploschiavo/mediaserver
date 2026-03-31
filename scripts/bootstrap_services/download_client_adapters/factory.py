@@ -14,17 +14,8 @@ from .base import (
     DownloadClientAdapterDependencies,
 )
 from .generic import GenericDownloadClientAdapter
-from .qbittorrent import QbittorrentDownloadClientAdapter
-from .sabnzbd import SabnzbdDownloadClientAdapter
-from .transmission import TransmissionDownloadClientAdapter
 
 AdapterClass = type[DownloadClientAdapterBase]
-
-_DEFAULT_ADAPTER_CLASSES: dict[str, AdapterClass] = {
-    "qbittorrent": QbittorrentDownloadClientAdapter,
-    "sabnzbd": SabnzbdDownloadClientAdapter,
-    "transmission": TransmissionDownloadClientAdapter,
-}
 
 
 def _load_adapter_class_from_spec(spec: str) -> AdapterClass:
@@ -61,7 +52,7 @@ class DownloadClientAdapterFactory:
     _disabled_keys: set[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        mapping = dict(_DEFAULT_ADAPTER_CLASSES)
+        mapping: dict[str, AdapterClass] = {}
         disabled: set[str] = set()
         if self.adapter_class_specs is not None and not isinstance(self.adapter_class_specs, dict):
             raise ValueError("adapter_hooks.download_client_adapter_classes must be an object/map.")

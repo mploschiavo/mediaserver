@@ -8,6 +8,34 @@
     "media_server": "jellyfin"
   },
   "adapter_hooks": {
+    "default_bindings": {
+      "torrent_client": "qbittorrent",
+      "usenet_client": "sabnzbd",
+      "media_server": "jellyfin"
+    },
+    "technology_aliases": {
+      "qbit": "qbittorrent",
+      "qb": "qbittorrent",
+      "sab": "sabnzbd",
+      "jf": "jellyfin",
+      "seerr": "jellyseerr",
+      "sarr": "sonarr",
+      "rarr": "radarr",
+      "larr": "lidarr",
+      "rdr": "readarr",
+      "barr": "bazarr",
+      "prow": "prowlarr",
+      "tau": "tautulli"
+    },
+    "before_common_steps": {
+      "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
+    },
+    "adapter_classes": {
+      "sonarr": "bootstrap_services.servarr_technologies.sonarr:SonarrAdapter",
+      "radarr": "bootstrap_services.servarr_technologies.radarr:RadarrAdapter",
+      "lidarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter",
+      "readarr": "bootstrap_services.servarr_technologies.readarr:ReadarrAdapter"
+    },
     "operation_handlers": {},
     "download_client_adapter_classes": {
       "qbittorrent": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
@@ -16,6 +44,22 @@
     },
     "media_server_adapter_classes": {
       "jellyfin": "bootstrap_services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
+    },
+    "app_service_classes": {
+      "jellyfin_livetv_service": "bootstrap_services.apps.jellyfin.livetv_service:JellyfinService",
+      "jellyfin_livetv_source_service": "bootstrap_services.apps.jellyfin.livetv_source_service:JellyfinLiveTvSourceService",
+      "jellyfin_livetv_state_service": "bootstrap_services.apps.jellyfin.livetv_state_service:JellyfinLiveTvStateService",
+      "jellyfin_libraries_service": "bootstrap_services.apps.jellyfin.libraries_service:JellyfinLibrariesService",
+      "jellyfin_home_rails_service": "bootstrap_services.apps.jellyfin.home_rails_service:JellyfinHomeRailsService",
+      "jellyfin_playback_service": "bootstrap_services.apps.jellyfin.playback_service:JellyfinPlaybackService",
+      "jellyfin_plugins_service": "bootstrap_services.apps.jellyfin.plugins_service:JellyfinPluginsService",
+      "jellyfin_prewarm_service": "bootstrap_services.apps.jellyfin.prewarm_service:JellyfinPrewarmService",
+      "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService",
+      "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService",
+      "sabnzbd_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService",
+      "bazarr_service": "bootstrap_services.apps.bazarr.service:BazarrService",
+      "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
+      "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService"
     }
   },
   "arr_download_handling": {

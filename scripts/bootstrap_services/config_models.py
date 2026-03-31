@@ -60,13 +60,29 @@ class TechnologyBindingsConfig:
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> "TechnologyBindingsConfig":
+    def from_dict(
+        cls,
+        data: dict[str, Any] | None,
+        defaults: dict[str, Any] | None = None,
+    ) -> "TechnologyBindingsConfig":
         src = dict(data or {})
+        default_src = dict(defaults or {})
+        default_torrent = (
+            str(default_src.get("torrent_client", "qbittorrent")).strip().lower() or "qbittorrent"
+        )
+        default_usenet = (
+            str(default_src.get("usenet_client", "sabnzbd")).strip().lower() or "sabnzbd"
+        )
+        default_media_server = (
+            str(default_src.get("media_server", "jellyfin")).strip().lower() or "jellyfin"
+        )
         return cls(
-            torrent_client=str(src.get("torrent_client", "qbittorrent")).strip().lower()
-            or "qbittorrent",
-            usenet_client=str(src.get("usenet_client", "sabnzbd")).strip().lower() or "sabnzbd",
-            media_server=str(src.get("media_server", "jellyfin")).strip().lower() or "jellyfin",
+            torrent_client=str(src.get("torrent_client", default_torrent)).strip().lower()
+            or default_torrent,
+            usenet_client=str(src.get("usenet_client", default_usenet)).strip().lower()
+            or default_usenet,
+            media_server=str(src.get("media_server", default_media_server)).strip().lower()
+            or default_media_server,
             raw=src,
         )
 

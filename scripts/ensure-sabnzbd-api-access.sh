@@ -2,7 +2,4 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-
-exec "$PYTHON_BIN" "$SCRIPT_DIR/ensure_sabnzbd_api_access.py" "$@"
-
+exec "$SCRIPT_DIR/lib/run-python-cli.sh" ensure_sabnzbd_api_access_main.py "$@"

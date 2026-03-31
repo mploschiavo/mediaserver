@@ -30,35 +30,20 @@
     },
     "download_clients": {
       "type": "object",
-      "required": ["qbittorrent", "sabnzbd"],
-      "properties": {
-        "qbittorrent": {
-          "type": "object",
-          "required": ["url", "host", "port", "name", "implementation"],
-          "properties": {
-            "url": {"type": "string", "minLength": 1},
-            "host": {"type": "string", "minLength": 1},
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "name": {"type": "string", "minLength": 1},
-            "implementation": {"type": "string", "minLength": 1},
-            "queue_guardrails": {"type": "object"}
-          },
-          "additionalProperties": true
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "host", "port", "name", "implementation"],
+        "properties": {
+          "url": {"type": "string", "minLength": 1},
+          "host": {"type": "string", "minLength": 1},
+          "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+          "name": {"type": "string", "minLength": 1},
+          "implementation": {"type": "string", "minLength": 1},
+          "queue_guardrails": {"type": "object"}
         },
-        "sabnzbd": {
-          "type": "object",
-          "required": ["url", "host", "port", "name", "implementation"],
-          "properties": {
-            "url": {"type": "string", "minLength": 1},
-            "host": {"type": "string", "minLength": 1},
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "name": {"type": "string", "minLength": 1},
-            "implementation": {"type": "string", "minLength": 1}
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
+        "additionalProperties": true
+      }
     },
     "arr_quality_upgrade": {
       "type": "object",
@@ -138,6 +123,50 @@
         "required": {"type": "boolean"},
         "policy_relative_path": {"type": "string"},
         "policy": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "adapter_hooks": {
+      "type": "object",
+      "properties": {
+        "default_bindings": {
+          "type": "object",
+          "properties": {
+            "torrent_client": {"type": "string"},
+            "usenet_client": {"type": "string"},
+            "media_server": {"type": "string"}
+          },
+          "additionalProperties": true
+        },
+        "before_common_steps": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "adapter_classes": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "download_client_adapter_classes": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "media_server_adapter_classes": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "technology_aliases": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "app_service_classes": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "operation_handlers": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "media_server_operation_plans": {"type": "object"}
       },
       "additionalProperties": true
     }

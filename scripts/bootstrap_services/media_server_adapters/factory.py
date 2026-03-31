@@ -10,13 +10,8 @@ from typing import Any
 from ..adapter_reflection import discover_adapter_class
 from .base import MediaServerAdapterBase, MediaServerAdapterContext
 from .generic import GenericMediaServerAdapter
-from .jellyfin import JellyfinMediaServerAdapter
 
 AdapterClass = type[MediaServerAdapterBase]
-
-_DEFAULT_ADAPTER_CLASSES: dict[str, AdapterClass] = {
-    "jellyfin": JellyfinMediaServerAdapter,
-}
 
 
 def _load_adapter_class_from_spec(spec: str) -> AdapterClass:
@@ -48,7 +43,7 @@ class MediaServerAdapterFactory:
     _disabled_keys: set[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        mapping = dict(_DEFAULT_ADAPTER_CLASSES)
+        mapping: dict[str, AdapterClass] = {}
         disabled: set[str] = set()
         if self.adapter_class_specs is not None and not isinstance(self.adapter_class_specs, dict):
             raise ValueError("adapter_hooks.media_server_adapter_classes must be an object/map.")

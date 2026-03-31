@@ -4,12 +4,22 @@ import sys
 import traceback
 
 import bootstrap_services.entrypoint_runtime as _rt
+import bootstrap_services.runtime_core as _rt_core
+import bootstrap_services.runtime_media_ops as _rt_media
+import bootstrap_services.runtime_servarr_ops as _rt_servarr
 from bootstrap_services.entrypoint_runtime import *  # noqa: F401,F403
 
 _disk_usage_percent = _rt._disk_usage_percent
 _fmt_bytes = _rt._fmt_bytes
 _to_float = _rt._to_float
 _servarr_pipeline_service = _rt._servarr_pipeline_service
+
+_RUNTIME_SYNC_MODULES = [
+    _rt,
+    _rt_core,
+    _rt_media,
+    _rt_servarr,
+]
 
 
 _RUNTIME_SYNC_SYMBOLS = [
@@ -35,8 +45,12 @@ _RUNTIME_SYNC_SYMBOLS = [
 
 def _sync_runtime_symbols() -> None:
     for symbol in _RUNTIME_SYNC_SYMBOLS:
-        if symbol in globals():
-            setattr(_rt, symbol, globals()[symbol])
+        if symbol not in globals():
+            continue
+        value = globals()[symbol]
+        for module in _RUNTIME_SYNC_MODULES:
+            if hasattr(module, symbol):
+                setattr(module, symbol, value)
 
 
 def _delegate_runtime(name):
@@ -130,6 +144,7 @@ def main():
         )
     )
     runtime = build_result.runtime
+    set_runtime_context_cfg(runtime.cfg, runtime.adapter_hooks_cfg)
     log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
     runner_operations = build_runner_operation_registry(
         RunnerOperationHandlers(

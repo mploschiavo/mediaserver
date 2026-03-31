@@ -588,7 +588,7 @@ info "Preserve secret on rebuild: $PRESERVE_SECRET_ON_REBUILD"
 notify "info" "media-stack rebuild/bootstrap started (profile=$PROFILE, namespace=$NAMESPACE)"
 
 phase_start "Validate bootstrap config schema"
-python3 "$ROOT_DIR/scripts/validate-bootstrap-config.py" --config "$CONFIG_FILE"
+bash "$ROOT_DIR/scripts/validate-bootstrap-config.sh" --config "$CONFIG_FILE"
 phase_end "ok"
 
 if [[ "$SKIP_PREPARE_HOST" != "1" ]]; then

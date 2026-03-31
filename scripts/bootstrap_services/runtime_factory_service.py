@@ -165,29 +165,134 @@ class BootstrapRuntimeFactoryService:
         )
 
         download_clients_cfg = cfg.get("download_clients") or {}
-        bindings_cfg = TechnologyBindingsConfig.from_dict(cfg.get("technology_bindings") or {})
+        media_server_cfg = cfg.get("media_server") or {}
+
+        default_media_server_operation_plans = self.deps.load_bootstrap_default_json(
+            "media_server_operation_plans.json",
+            {},
+        )
+
+        adapter_hooks_cfg = self.deps.deep_merge_objects(
+            self.deps.load_bootstrap_default_json(
+                "adapter_hooks.json",
+                {},
+            ),
+            {"media_server_operation_plans": default_media_server_operation_plans},
+        )
+        adapter_hooks_cfg = self.deps.deep_merge_objects(
+            adapter_hooks_cfg,
+            cfg.get("adapter_hooks") or {},
+        )
+        adapter_hooks_cfg = self.deps.deep_merge_objects(
+            adapter_hooks_cfg,
+            {
+                "media_server_operation_plans": media_server_cfg.get("operation_plans") or {},
+            },
+        )
+        default_binding_cfg = (adapter_hooks_cfg or {}).get("default_bindings") or {}
+        bindings_cfg = TechnologyBindingsConfig.from_dict(
+            cfg.get("technology_bindings") or {},
+            defaults=default_binding_cfg if isinstance(default_binding_cfg, dict) else {},
+        )
+        legacy_binding_defaults = TechnologyBindingsConfig.from_dict({})
+
+        raw_aliases = (adapter_hooks_cfg or {}).get("technology_aliases") or {}
+        technology_aliases: dict[str, str] = {}
+        if isinstance(raw_aliases, dict):
+            for source, target in raw_aliases.items():
+                src = str(source or "").strip().lower()
+                dst = str(target or "").strip().lower()
+                if src and dst:
+                    technology_aliases[src] = dst
+
+        def _canonical_tech_key(value: str, fallback: str) -> str:
+            token = str(value or "").strip().lower() or str(fallback or "").strip().lower()
+            if not token:
+                return ""
+            return technology_aliases.get(token, token)
+
+        def _hook_keys(hook_key: str) -> list[str]:
+            hook_map = (adapter_hooks_cfg or {}).get(hook_key) or {}
+            if not isinstance(hook_map, dict):
+                return []
+            keys: list[str] = []
+            for key in hook_map.keys():
+                canonical = _canonical_tech_key(str(key), "")
+                if canonical and canonical not in keys:
+                    keys.append(canonical)
+            return keys
+
+        def _first_configured_key(candidates: list[str]) -> str:
+            for key in candidates:
+                if isinstance(download_clients_cfg.get(key), dict):
+                    return key
+            return ""
 
         def _resolve_client_cfg(
             requested_key: str,
             fallback_key: str,
         ) -> tuple[str, dict[str, Any]]:
-            req = str(requested_key or "").strip().lower() or fallback_key
-            fallback = str(fallback_key or "").strip().lower() or req
-            selected = download_clients_cfg.get(req)
-            if isinstance(selected, dict):
-                return req, selected
-            fallback_cfg = download_clients_cfg.get(fallback)
-            if isinstance(fallback_cfg, dict):
-                return fallback, fallback_cfg
+            req = _canonical_tech_key(requested_key, fallback_key)
+            fallback = _canonical_tech_key(fallback_key, req)
+            candidates = [req]
+            if fallback and fallback not in candidates:
+                candidates.append(fallback)
+            for key in candidates:
+                selected = download_clients_cfg.get(key)
+                if isinstance(selected, dict):
+                    return key, selected
             return req, {}
+
+        configured_download_client_keys = [
+            str(key).strip().lower()
+            for key, value in (download_clients_cfg or {}).items()
+            if isinstance(value, dict) and str(key).strip()
+        ]
+        hook_download_client_keys = _hook_keys("download_client_adapter_classes")
+        fallback_torrent = _canonical_tech_key(
+            bindings_cfg.torrent_client,
+            legacy_binding_defaults.torrent_client,
+        )
+        fallback_usenet = _canonical_tech_key(
+            bindings_cfg.usenet_client,
+            legacy_binding_defaults.usenet_client,
+        )
+        torrent_default_key = _first_configured_key(
+            [
+                _canonical_tech_key(bindings_cfg.torrent_client, ""),
+                *hook_download_client_keys,
+                *configured_download_client_keys,
+            ]
+        ) or _first_configured_key(
+            [
+                fallback_torrent,
+                fallback_usenet,
+                *hook_download_client_keys,
+                *configured_download_client_keys,
+            ]
+        ) or fallback_torrent
+        usenet_default_key = _first_configured_key(
+            [
+                _canonical_tech_key(bindings_cfg.usenet_client, ""),
+                *hook_download_client_keys,
+                *configured_download_client_keys,
+            ]
+        ) or _first_configured_key(
+            [
+                fallback_usenet,
+                fallback_torrent,
+                *hook_download_client_keys,
+                *configured_download_client_keys,
+            ]
+        ) or fallback_usenet
 
         torrent_client_key, qbit_cfg = _resolve_client_cfg(
             bindings_cfg.torrent_client,
-            "qbittorrent",
+            torrent_default_key,
         )
         usenet_client_key, sab_cfg = _resolve_client_cfg(
             bindings_cfg.usenet_client,
-            "sabnzbd",
+            usenet_default_key,
         )
 
         arr_download_handling_cfg = ArrDownloadHandlingPolicy.from_dict(
@@ -223,52 +328,18 @@ class BootstrapRuntimeFactoryService:
         disk_guardrails_cfg = cfg.get("disk_guardrails") or {}
         media_hygiene_cfg = cfg.get("media_hygiene") or {}
         maintainerr_cfg = cfg.get("maintainerr") or {}
-        media_server_cfg = cfg.get("media_server") or {}
 
-        default_media_server_operation_plans = self.deps.load_bootstrap_default_json(
-            "media_server_operation_plans.json",
-            {},
+        hook_media_server_keys = _hook_keys("media_server_adapter_classes")
+        media_server_default_key = (
+            _canonical_tech_key(bindings_cfg.media_server, "")
+            or (hook_media_server_keys[0] if hook_media_server_keys else "")
+            or _canonical_tech_key(bindings_cfg.media_server, legacy_binding_defaults.media_server)
+            or legacy_binding_defaults.media_server
         )
-
-        adapter_hooks_cfg = self.deps.deep_merge_objects(
-            self.deps.load_bootstrap_default_json(
-                "adapter_hooks.json",
-                {
-                    "before_common_steps": {
-                        "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
-                    },
-                    "adapter_classes": {
-                        "sonarr": "bootstrap_services.servarr_technologies.sonarr:SonarrAdapter",
-                        "radarr": "bootstrap_services.servarr_technologies.radarr:RadarrAdapter",
-                        "lidarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter",
-                        "readarr": "bootstrap_services.servarr_technologies.readarr:ReadarrAdapter",
-                    },
-                    "download_client_adapter_classes": {
-                        "qbittorrent": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
-                        "sabnzbd": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
-                        "transmission": "bootstrap_services.download_client_adapters.transmission:TransmissionDownloadClientAdapter",
-                    },
-                    "media_server_adapter_classes": {
-                        "jellyfin": "bootstrap_services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
-                    },
-                    "operation_handlers": {},
-                },
-            ),
-            {"media_server_operation_plans": default_media_server_operation_plans},
+        media_server_backend = _canonical_tech_key(
+            str(media_server_cfg.get("backend") or bindings_cfg.media_server),
+            media_server_default_key,
         )
-        adapter_hooks_cfg = self.deps.deep_merge_objects(
-            adapter_hooks_cfg,
-            cfg.get("adapter_hooks") or {},
-        )
-        adapter_hooks_cfg = self.deps.deep_merge_objects(
-            adapter_hooks_cfg,
-            {
-                "media_server_operation_plans": media_server_cfg.get("operation_plans") or {},
-            },
-        )
-        media_server_backend = str(
-            (media_server_cfg.get("backend") or bindings_cfg.media_server)
-        ).strip().lower() or "jellyfin"
 
         app_auth_cfg = cfg.get("app_auth") or {}
         fully_preconfigured = self.deps.env_truthy("FULLY_PRECONFIGURED", False)

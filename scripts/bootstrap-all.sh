@@ -219,7 +219,7 @@ fi
 if [[ "$SKIP_JELLYFIN_BOOTSTRAP" != "1" ]]; then
   phase_start "Ensure Jellyfin bootstrap and API key"
   info "Step 2/7: Completing Jellyfin startup and syncing API key into secret"
-  NAMESPACE="$NAMESPACE" SECRET_NAME="$SECRET_NAME" python3 "$ROOT_DIR/scripts/ensure-jellyfin-bootstrap.py"
+  NAMESPACE="$NAMESPACE" SECRET_NAME="$SECRET_NAME" bash "$ROOT_DIR/scripts/ensure-jellyfin-bootstrap.sh"
   phase_end "ok"
 else
   phase_start "Ensure Jellyfin bootstrap and API key"

@@ -11,19 +11,8 @@ from ..adapter_reflection import discover_adapter_class
 from ..servarr_adapters import AdapterDependencies, HookFn
 from .base import ServarrAdapterBase, ServarrAdapterContext, ServarrAdapterDependencies
 from .generic import GenericServarrAdapter
-from .lidarr import LidarrAdapter
-from .radarr import RadarrAdapter
-from .readarr import ReadarrAdapter
-from .sonarr import SonarrAdapter
 
 AdapterClass = type[ServarrAdapterBase]
-
-_DEFAULT_ADAPTER_CLASSES: dict[str, AdapterClass] = {
-    "sonarr": SonarrAdapter,
-    "radarr": RadarrAdapter,
-    "lidarr": LidarrAdapter,
-    "readarr": ReadarrAdapter,
-}
 
 
 def _load_adapter_class_from_spec(spec: str) -> AdapterClass:
@@ -60,7 +49,7 @@ class ServarrAdapterFactory:
     _disabled_keys: set[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        mapping = dict(_DEFAULT_ADAPTER_CLASSES)
+        mapping: dict[str, AdapterClass] = {}
         disabled: set[str] = set()
         if self.adapter_class_specs is not None and not isinstance(self.adapter_class_specs, dict):
             raise ValueError("adapter_hooks.adapter_classes must be an object/map.")

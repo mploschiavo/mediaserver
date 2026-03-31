@@ -46,6 +46,12 @@ def basic_checks(cfg):
     if clients is not None and not isinstance(clients, dict):
         errors.append("$.download_clients: must be an object")
 
+    adapter_hooks = cfg.get("adapter_hooks")
+    if adapter_hooks is not None and not isinstance(adapter_hooks, dict):
+        errors.append("$.adapter_hooks: must be an object")
+    if not isinstance(adapter_hooks, dict):
+        adapter_hooks = {}
+
     bindings = cfg.get("technology_bindings")
     if bindings is not None and not isinstance(bindings, dict):
         errors.append("$.technology_bindings: must be an object")
@@ -53,9 +59,33 @@ def basic_checks(cfg):
     if not isinstance(bindings, dict):
         bindings = {}
 
+    aliases_map = adapter_hooks.get("technology_aliases")
+    aliases: dict[str, str] = {}
+    if aliases_map is not None:
+        if not isinstance(aliases_map, dict):
+            errors.append("$.adapter_hooks.technology_aliases: must be an object")
+        else:
+            for src, dst in aliases_map.items():
+                src_key = str(src or "").strip().lower()
+                dst_key = str(dst or "").strip().lower()
+                if not src_key or not dst_key:
+                    errors.append(
+                        "$.adapter_hooks.technology_aliases: keys and values must be non-empty strings"
+                    )
+                    continue
+                aliases[src_key] = dst_key
+
+    default_bindings = adapter_hooks.get("default_bindings")
+    if default_bindings is not None and not isinstance(default_bindings, dict):
+        errors.append("$.adapter_hooks.default_bindings: must be an object")
+        default_bindings = {}
+    if not isinstance(default_bindings, dict):
+        default_bindings = {}
+
     def _bound_key(name: str, default: str) -> str:
-        value = str(bindings.get(name, default) or "").strip().lower()
-        return value or default
+        default_value = str(default_bindings.get(name, default) or "").strip().lower() or default
+        value = str(bindings.get(name, default_value) or "").strip().lower() or default_value
+        return aliases.get(value, value)
 
     torrent_client_key = _bound_key("torrent_client", "qbittorrent")
     usenet_client_key = _bound_key("usenet_client", "sabnzbd")
@@ -65,15 +95,13 @@ def basic_checks(cfg):
             if name not in clients:
                 errors.append(f"$.download_clients: missing active client section '{name}'")
 
-    adapter_hooks = cfg.get("adapter_hooks")
-    if adapter_hooks is not None and not isinstance(adapter_hooks, dict):
-        errors.append("$.adapter_hooks: must be an object")
     if isinstance(adapter_hooks, dict):
         for hook_key in (
             "before_common_steps",
             "adapter_classes",
             "download_client_adapter_classes",
             "media_server_adapter_classes",
+            "app_service_classes",
             "operation_handlers",
         ):
             hook_map = adapter_hooks.get(hook_key)
@@ -89,6 +117,16 @@ def basic_checks(cfg):
                 if ":" not in str(spec):
                     errors.append(
                         f"{path}: invalid hook spec '{spec}' (expected module.submodule:Symbol)"
+                    )
+
+        if isinstance(default_bindings, dict):
+            for role in ("torrent_client", "usenet_client", "media_server"):
+                if role not in default_bindings:
+                    continue
+                token = str(default_bindings.get(role) or "").strip()
+                if not token:
+                    errors.append(
+                        f"$.adapter_hooks.default_bindings.{role}: required non-empty string"
                     )
 
         _validate_media_server_operation_plans(
@@ -142,7 +180,10 @@ def _validate_media_server_operation_plans(plans, path_prefix, errors):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate media-stack bootstrap config")
+    parser = argparse.ArgumentParser(
+        prog="scripts/validate-bootstrap-config.sh",
+        description="Validate media-stack bootstrap config",
+    )
     parser.add_argument(
         "--config",
         default="bootstrap/media-stack.bootstrap.json",

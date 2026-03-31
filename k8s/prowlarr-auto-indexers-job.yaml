@@ -157,6 +157,56 @@ spec:
                 path: bootstrap_services/media_server_adapters/plans.py
               - key: bootstrap_services__entrypoint_runtime.py
                 path: bootstrap_services/entrypoint_runtime.py
+              - key: bootstrap_services__runtime_core.py
+                path: bootstrap_services/runtime_core.py
+              - key: bootstrap_services__runtime_media_ops.py
+                path: bootstrap_services/runtime_media_ops.py
+              - key: bootstrap_services__runtime_servarr_ops.py
+                path: bootstrap_services/runtime_servarr_ops.py
+              - key: bootstrap_services__apps__init__.py
+                path: bootstrap_services/apps/__init__.py
+              - key: bootstrap_services__apps__bazarr__init__.py
+                path: bootstrap_services/apps/bazarr/__init__.py
+              - key: bootstrap_services__apps__bazarr__service.py
+                path: bootstrap_services/apps/bazarr/service.py
+              - key: bootstrap_services__apps__jellyfin__init__.py
+                path: bootstrap_services/apps/jellyfin/__init__.py
+              - key: bootstrap_services__apps__jellyfin__home_rails_service.py
+                path: bootstrap_services/apps/jellyfin/home_rails_service.py
+              - key: bootstrap_services__apps__jellyfin__libraries_service.py
+                path: bootstrap_services/apps/jellyfin/libraries_service.py
+              - key: bootstrap_services__apps__jellyfin__livetv_service.py
+                path: bootstrap_services/apps/jellyfin/livetv_service.py
+              - key: bootstrap_services__apps__jellyfin__livetv_source_service.py
+                path: bootstrap_services/apps/jellyfin/livetv_source_service.py
+              - key: bootstrap_services__apps__jellyfin__livetv_state_service.py
+                path: bootstrap_services/apps/jellyfin/livetv_state_service.py
+              - key: bootstrap_services__apps__jellyfin__playback_service.py
+                path: bootstrap_services/apps/jellyfin/playback_service.py
+              - key: bootstrap_services__apps__jellyfin__plugins_service.py
+                path: bootstrap_services/apps/jellyfin/plugins_service.py
+              - key: bootstrap_services__apps__jellyfin__prewarm_service.py
+                path: bootstrap_services/apps/jellyfin/prewarm_service.py
+              - key: bootstrap_services__apps__jellyseerr__init__.py
+                path: bootstrap_services/apps/jellyseerr/__init__.py
+              - key: bootstrap_services__apps__jellyseerr__service.py
+                path: bootstrap_services/apps/jellyseerr/service.py
+              - key: bootstrap_services__apps__prowlarr__init__.py
+                path: bootstrap_services/apps/prowlarr/__init__.py
+              - key: bootstrap_services__apps__prowlarr__service.py
+                path: bootstrap_services/apps/prowlarr/service.py
+              - key: bootstrap_services__apps__qbittorrent__init__.py
+                path: bootstrap_services/apps/qbittorrent/__init__.py
+              - key: bootstrap_services__apps__qbittorrent__service.py
+                path: bootstrap_services/apps/qbittorrent/service.py
+              - key: bootstrap_services__apps__sabnzbd__init__.py
+                path: bootstrap_services/apps/sabnzbd/__init__.py
+              - key: bootstrap_services__apps__sabnzbd__service.py
+                path: bootstrap_services/apps/sabnzbd/service.py
+              - key: bootstrap_services__apps__tautulli__init__.py
+                path: bootstrap_services/apps/tautulli/__init__.py
+              - key: bootstrap_services__apps__tautulli__service.py
+                path: bootstrap_services/apps/tautulli/service.py
               - key: bootstrap_services__runtime_factory_service.py
                 path: bootstrap_services/runtime_factory_service.py
               - key: bootstrap_services__operation_wiring.py

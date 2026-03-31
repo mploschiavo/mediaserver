@@ -11,8 +11,8 @@ pushd "$ROOT_DIR" >/dev/null
 
 python3 -m unittest discover -s tests/unit -p 'test_*.py'
 bash -n scripts/*.sh
-python3 -m py_compile scripts/bootstrap-apps.py scripts/ensure-jellyfin-bootstrap.py
-python3 scripts/validate-bootstrap-config.py
+python3 -m py_compile scripts/bootstrap-apps.py scripts/cli/ensure_jellyfin_bootstrap_main.py
+bash scripts/validate-bootstrap-config.sh
 
 if [[ "$RUN_PLAYWRIGHT" == "1" ]]; then
   if [[ -z "$STACK_NODE_IP" ]]; then

@@ -102,6 +102,11 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/sync-unpackerr-keys.sh", proc.stdout)
 
+    def test_ensure_jellyfin_wrapper_help_contract(self):
+        proc = run_wrapper("ensure-jellyfin-bootstrap.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/ensure-jellyfin-bootstrap.sh", proc.stdout)
+
     def test_run_bootstrap_job_wrapper_help_contract(self):
         proc = run_wrapper("run-bootstrap-job.sh", "--help")
         self.assertEqual(proc.returncode, 0)
@@ -116,6 +121,11 @@ class ShellWrapperContractTests(unittest.TestCase):
         proc = run_wrapper("run-prowlarr-auto-indexers.sh", "--help")
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/run-prowlarr-auto-indexers.sh", proc.stdout)
+
+    def test_validate_bootstrap_config_wrapper_help_contract(self):
+        proc = run_wrapper("validate-bootstrap-config.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/validate-bootstrap-config.sh", proc.stdout)
 
 
 if __name__ == "__main__":

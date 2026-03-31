@@ -146,6 +146,75 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         self.assertEqual(result.runtime.qbit_cfg.get("name"), "Transmission")
         self.assertEqual(result.runtime.media_server_backend, "emby")
 
+    def test_technology_bindings_apply_aliases_from_adapter_hooks(self):
+        factory = self._factory()
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbit",
+                "usenet_client": "sab",
+                "media_server": "jf",
+            },
+            "adapter_hooks": {
+                "technology_aliases": {
+                    "qbit": "qbittorrent",
+                    "sab": "sabnzbd",
+                    "jf": "jellyfin",
+                }
+            },
+            "download_clients": {
+                "qbittorrent": {
+                    "url": "http://qbittorrent:8080",
+                    "name": "qBittorrent",
+                    "configure_arr_clients": True,
+                },
+                "sabnzbd": {
+                    "url": "http://sabnzbd:8080",
+                    "name": "SABnzbd",
+                    "configure_arr_clients": True,
+                },
+            },
+        }
+
+        result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertEqual(result.runtime.torrent_client_key, "qbittorrent")
+        self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
+        self.assertEqual(result.runtime.media_server_backend, "jellyfin")
+
+    def test_default_bindings_from_adapter_hooks_drive_selection_without_explicit_bindings(self):
+        factory = self._factory()
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "adapter_hooks": {
+                "default_bindings": {
+                    "torrent_client": "transmission",
+                    "usenet_client": "sabnzbd",
+                    "media_server": "emby",
+                }
+            },
+            "download_clients": {
+                "transmission": {
+                    "url": "http://transmission:9091",
+                    "name": "Transmission",
+                    "configure_arr_clients": True,
+                },
+                "sabnzbd": {
+                    "url": "http://sabnzbd:8080",
+                    "name": "SABnzbd",
+                    "configure_arr_clients": True,
+                },
+            },
+        }
+
+        result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertEqual(result.runtime.torrent_client_key, "transmission")
+        self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
+        self.assertEqual(result.runtime.media_server_backend, "emby")
+
 
 if __name__ == "__main__":
     unittest.main()

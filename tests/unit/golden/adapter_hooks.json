@@ -1,0 +1,55 @@
+{
+  "adapter_classes": {
+    "lidarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter",
+    "radarr": "bootstrap_services.servarr_technologies.radarr:RadarrAdapter",
+    "readarr": "bootstrap_services.servarr_technologies.readarr:ReadarrAdapter",
+    "sonarr": "bootstrap_services.servarr_technologies.sonarr:SonarrAdapter"
+  },
+  "app_service_classes": {
+    "bazarr_service": "bootstrap_services.apps.bazarr.service:BazarrService",
+    "jellyfin_home_rails_service": "bootstrap_services.apps.jellyfin.home_rails_service:JellyfinHomeRailsService",
+    "jellyfin_libraries_service": "bootstrap_services.apps.jellyfin.libraries_service:JellyfinLibrariesService",
+    "jellyfin_livetv_service": "bootstrap_services.apps.jellyfin.livetv_service:JellyfinService",
+    "jellyfin_livetv_source_service": "bootstrap_services.apps.jellyfin.livetv_source_service:JellyfinLiveTvSourceService",
+    "jellyfin_livetv_state_service": "bootstrap_services.apps.jellyfin.livetv_state_service:JellyfinLiveTvStateService",
+    "jellyfin_playback_service": "bootstrap_services.apps.jellyfin.playback_service:JellyfinPlaybackService",
+    "jellyfin_plugins_service": "bootstrap_services.apps.jellyfin.plugins_service:JellyfinPluginsService",
+    "jellyfin_prewarm_service": "bootstrap_services.apps.jellyfin.prewarm_service:JellyfinPrewarmService",
+    "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService",
+    "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService",
+    "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
+    "sabnzbd_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService",
+    "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService"
+  },
+  "before_common_steps": {
+    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
+  },
+  "default_bindings": {
+    "media_server": "jellyfin",
+    "torrent_client": "qbittorrent",
+    "usenet_client": "sabnzbd"
+  },
+  "download_client_adapter_classes": {
+    "qbittorrent": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
+    "sabnzbd": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
+    "transmission": "bootstrap_services.download_client_adapters.transmission:TransmissionDownloadClientAdapter"
+  },
+  "media_server_adapter_classes": {
+    "jellyfin": "bootstrap_services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
+  },
+  "operation_handlers": {},
+  "technology_aliases": {
+    "barr": "bazarr",
+    "jf": "jellyfin",
+    "larr": "lidarr",
+    "prow": "prowlarr",
+    "qb": "qbittorrent",
+    "qbit": "qbittorrent",
+    "rarr": "radarr",
+    "rdr": "readarr",
+    "sab": "sabnzbd",
+    "sarr": "sonarr",
+    "seerr": "jellyseerr",
+    "tau": "tautulli"
+  }
+}

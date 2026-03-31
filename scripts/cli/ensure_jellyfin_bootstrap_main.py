@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import base64
 import json
 import os
@@ -449,7 +450,18 @@ def discover_api_key_from_jellyfin_db(
             pass
 
 
-def main():
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="scripts/ensure-jellyfin-bootstrap.sh",
+        description=(
+            "Completes Jellyfin first-run bootstrap and syncs API key/user id into media-stack secret."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    parse_args(argv)
     namespace = os.environ.get("NAMESPACE", "media-stack")
     secret_name = os.environ.get("SECRET_NAME", "media-stack-secrets")
     service_name = os.environ.get("JELLYFIN_SERVICE_NAME", "jellyfin")

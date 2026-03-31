@@ -54,7 +54,7 @@ Recommended fastest order (about 15-25 minutes):
    - bash scripts/rebuild-and-bootstrap.sh $NODE_IP
 2) Run full bootstrap automation (if namespace already exists):
    - bash scripts/set-qbit-secret.sh   # defaults to admin/media-stack-admin
-   - python3 scripts/ensure-jellyfin-bootstrap.py   # auto-discovers/updates Jellyfin API key in secret
+   - bash scripts/ensure-jellyfin-bootstrap.sh   # auto-discovers/updates Jellyfin API key in secret
    - bash scripts/bootstrap-all.sh
    - (this wires Arr + Prowlarr + qBittorrent clients/categories + Jellyseerr Sonarr/Radarr + Unpackerr keys)
 3) qBittorrent:

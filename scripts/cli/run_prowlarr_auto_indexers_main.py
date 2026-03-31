@@ -581,7 +581,7 @@ def parse_config(argv: list[str] | None = None) -> AutoIndexerConfig:
         timeout_raw=timeout_raw,
         heartbeat_interval=heartbeat_interval,
         prepare_host_root=prepare_host_root,
-        root_dir=Path(__file__).resolve().parents[1],
+        root_dir=Path(__file__).resolve().parents[2],
     )
 
 

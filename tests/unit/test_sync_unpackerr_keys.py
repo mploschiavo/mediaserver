@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 SPEC = importlib.util.spec_from_file_location(
-    "sync_unpackerr_keys", ROOT / "scripts" / "sync_unpackerr_keys.py"
+    "sync_unpackerr_keys", ROOT / "scripts" / "cli" / "sync_unpackerr_keys_main.py"
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader

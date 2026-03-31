@@ -42,7 +42,7 @@ sudo PUID=911 PGID=911 bash scripts/fix-media-perms.sh /srv/media-stack
 
 Run:
 ```bash
-python3 scripts/ensure-jellyfin-bootstrap.py
+bash scripts/ensure-jellyfin-bootstrap.sh
 bash scripts/bootstrap-all.sh
 ```
 Then retry in private/incognito browser session to avoid stale client state.

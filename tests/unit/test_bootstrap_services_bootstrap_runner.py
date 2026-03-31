@@ -187,6 +187,33 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             runner.run(runtime)
 
+    def test_runner_canonicalizes_lifecycle_keys_from_aliases(self):
+        deps = self._deps()
+        runner = BootstrapRunnerService(deps=deps)
+        runtime = self._runtime(
+            torrent_client_key="qbit",
+            usenet_client_key="sab",
+            adapter_hooks_cfg={
+                "technology_aliases": {
+                    "qbit": "qbittorrent",
+                    "sab": "sabnzbd",
+                },
+                "download_client_adapter_classes": {
+                    "qbit": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
+                    "sab": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
+                },
+                "app_service_classes": {
+                    "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                },
+            },
+        )
+        runner.run(runtime)
+        self.assertIsNotNone(runner.lifecycle_manager)
+        self.assertIsNotNone(runner.lifecycle_manager.state("qbittorrent"))
+        self.assertIsNotNone(runner.lifecycle_manager.state("sabnzbd"))
+        self.assertIsNone(runner.lifecycle_manager.state("qbit"))
+        self.assertIsNone(runner.lifecycle_manager.state("sab"))
+
 
 if __name__ == "__main__":
     unittest.main()

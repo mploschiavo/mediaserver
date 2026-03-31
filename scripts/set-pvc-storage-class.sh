@@ -2,7 +2,4 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-
-exec "$PYTHON_BIN" "$SCRIPT_DIR/set_pvc_storage_class.py" "$@"
-
+exec "$SCRIPT_DIR/lib/run-python-cli.sh" set_pvc_storage_class_main.py "$@"

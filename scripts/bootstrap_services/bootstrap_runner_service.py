@@ -120,45 +120,94 @@ class BootstrapRunnerService:
     def _invoke_operation(self, operation: RunnerOperation, *args: Any, **kwargs: Any) -> Any:
         return self.deps.operations.invoke(operation, *args, **kwargs)
 
-    @staticmethod
-    def _canonical_tech_key(raw: str) -> str:
+    def _technology_aliases(self, rt: BootstrapRuntime) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        raw = (rt.adapter_hooks_cfg or {}).get("technology_aliases") or {}
+        if isinstance(raw, dict):
+            for source, target in raw.items():
+                src = str(source or "").strip().lower()
+                dst = str(target or "").strip().lower()
+                if not src or not dst:
+                    continue
+                aliases[src] = dst
+        return aliases
+
+    def _canonical_tech_key(self, raw: str, rt: BootstrapRuntime) -> str:
         token = str(raw or "").strip().lower()
-        aliases = {
-            "qbittorrent": "qbittorrent",
-            "qbit": "qbittorrent",
-            "sab": "sabnzbd",
-            "sabnzbd": "sabnzbd",
-        }
-        return aliases.get(token, token)
+        if not token:
+            return ""
+        return self._technology_aliases(rt).get(token, token)
+
+    def _technology_keys_from_hook_map(self, rt: BootstrapRuntime, hook_key: str) -> tuple[str, ...]:
+        hook_map = (rt.adapter_hooks_cfg or {}).get(hook_key) or {}
+        if not isinstance(hook_map, dict):
+            return ()
+        keys = [self._canonical_tech_key(str(key), rt) for key in hook_map.keys()]
+        return tuple(dict.fromkeys([key for key in keys if key]))
+
+    def _app_service_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
+        hook_map = (rt.adapter_hooks_cfg or {}).get("app_service_classes") or {}
+        if not isinstance(hook_map, dict):
+            return ()
+        keys: list[str] = []
+        for service_key in hook_map.keys():
+            key = str(service_key or "").strip().lower()
+            if not key:
+                continue
+            if key.startswith("jellyfin_"):
+                tech_key = "jellyfin"
+            elif key.endswith("_service"):
+                tech_key = key[: -len("_service")]
+            else:
+                continue
+            canonical = self._canonical_tech_key(tech_key, rt)
+            if canonical:
+                keys.append(canonical)
+        return tuple(dict.fromkeys(keys))
+
+    def _baseline_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
+        keys = list(self._technology_keys_from_hook_map(rt, "adapter_classes"))
+        keys += list(self._technology_keys_from_hook_map(rt, "download_client_adapter_classes"))
+        keys += list(self._technology_keys_from_hook_map(rt, "media_server_adapter_classes"))
+        keys += list(self._app_service_lifecycle_keys(rt))
+        backend = self._canonical_tech_key(str(rt.media_server_backend or ""), rt)
+        if backend:
+            keys.append(backend)
+        if str(rt.prowlarr_url or "").strip():
+            keys.append("prowlarr")
+        return tuple(dict.fromkeys([key for key in keys if key]))
 
     def _arr_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
         keys = [
-            self._canonical_tech_key(app.implementation)
+            self._canonical_tech_key(app.implementation, rt)
             for app in rt.arr_apps
             if str(app.implementation or "").strip()
         ]
         if not keys:
-            keys = ["sonarr", "radarr", "lidarr", "readarr"]
+            keys = list(self._technology_keys_from_hook_map(rt, "adapter_classes"))
         return tuple(dict.fromkeys(keys))
 
     def _download_client_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
         keys = [
-            self._canonical_tech_key(rt.torrent_client_key),
-            self._canonical_tech_key(rt.usenet_client_key),
+            self._canonical_tech_key(rt.torrent_client_key, rt),
+            self._canonical_tech_key(rt.usenet_client_key, rt),
         ]
         return tuple(dict.fromkeys([k for k in keys if k]))
 
-    def _build_lifecycle_manager(self, rt: BootstrapRuntime) -> TechnologyLifecycleManager:
-        default_keys = [
-            "jellyfin",
-            "jellyseerr",
-            "bazarr",
-            "prowlarr",
-            "tautulli",
+    def _non_servarr_aux_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
+        arr_keys = set(self._arr_lifecycle_keys(rt))
+        download_keys = set(self._download_client_lifecycle_keys(rt))
+        keys = [
+            key
+            for key in self._baseline_lifecycle_keys(rt)
+            if key not in arr_keys and key not in download_keys
         ]
+        return tuple(dict.fromkeys(keys))
+
+    def _build_lifecycle_manager(self, rt: BootstrapRuntime) -> TechnologyLifecycleManager:
         all_keys = list(
             dict.fromkeys(
-                default_keys
+                list(self._baseline_lifecycle_keys(rt))
                 + list(self._arr_lifecycle_keys(rt))
                 + list(self._download_client_lifecycle_keys(rt))
             )
@@ -169,8 +218,8 @@ class BootstrapRunnerService:
             lifecycles["prowlarr"].precheck_fn = lambda runtime, state: state.details.update(
                 {"api_base": self._ensure_prowlarr_ready(runtime)}
             )
-        torrent_key = self._canonical_tech_key(rt.torrent_client_key)
-        usenet_key = self._canonical_tech_key(rt.usenet_client_key)
+        torrent_key = self._canonical_tech_key(rt.torrent_client_key, rt)
+        usenet_key = self._canonical_tech_key(rt.usenet_client_key, rt)
         if torrent_key in lifecycles:
             lifecycles[torrent_key].prepare_fn = lambda runtime, state: state.details.update(
                 {"login_ok": self._prepare_download_clients(runtime).qbit_login_ok}
@@ -296,7 +345,12 @@ class BootstrapRunnerService:
         factory = MediaServerAdapterFactory(
             adapter_class_specs=(rt.adapter_hooks_cfg or {}).get("media_server_adapter_classes"),
         )
-        backend = str(rt.media_server_backend or "jellyfin").strip().lower() or "jellyfin"
+        backend = self._canonical_tech_key(str(rt.media_server_backend or ""), rt)
+        if not backend:
+            media_keys = self._technology_keys_from_hook_map(rt, "media_server_adapter_classes")
+            backend = media_keys[0] if media_keys else str(rt.media_server_backend or "").strip()
+        if not backend:
+            backend = "generic"
         return factory.create(
             backend,
             MediaServerAdapterContext(
@@ -388,8 +442,8 @@ class BootstrapRunnerService:
         self._run_lifecycle_phase("precheck", rt, keys=("prowlarr",))
         self._wait_for_servarr_services(rt)
         self._run_lifecycle_phase("prepare", rt, keys=self._download_client_lifecycle_keys(rt))
-        torrent_key = self._canonical_tech_key(rt.torrent_client_key)
-        usenet_key = self._canonical_tech_key(rt.usenet_client_key)
+        torrent_key = self._canonical_tech_key(rt.torrent_client_key, rt)
+        usenet_key = self._canonical_tech_key(rt.usenet_client_key, rt)
         qbit_state = self.lifecycle_manager.state(torrent_key) if self.lifecycle_manager else None
         sab_state = self.lifecycle_manager.state(usenet_key) if self.lifecycle_manager else None
         qbit_login_ok = bool((qbit_state.details if qbit_state else {}).get("login_ok", False))
@@ -566,11 +620,7 @@ class BootstrapRunnerService:
             "ensure",
             rt,
             keys=self._arr_lifecycle_keys(rt)
-            + (
-                "bazarr",
-                "jellyseerr",
-                "jellyfin",
-            )
+            + self._non_servarr_aux_lifecycle_keys(rt)
             + self._download_client_lifecycle_keys(rt),
         )
         self._run_indexers(rt)

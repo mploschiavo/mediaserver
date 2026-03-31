@@ -66,6 +66,27 @@ Technology backends are selected declaratively via:
 - `technology_bindings` (active backend per role)
 - `adapter_hooks` (reflection mapping key -> adapter class + optional operation handler hooks)
 
+## Swap One Technology (Quick Path)
+
+Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> another media backend, or one Servarr app implementation) without editing `bootstrap-apps.py`.
+
+1. Add/update the app/client config block in `bootstrap/media-stack.bootstrap.json`.
+2. Add or update one adapter module under `scripts/bootstrap_services/...`.
+3. Register the adapter class path in `bootstrap/media-stack.bootstrap.json` under `adapter_hooks`.
+4. Change the active binding in `technology_bindings`.
+5. Validate and reconcile:
+
+```bash
+bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+bash scripts/bootstrap-all.sh
+```
+
+Optional defaults:
+- `adapter_hooks.default_bindings` sets default `torrent_client`, `usenet_client`, and `media_server`.
+- `adapter_hooks.technology_aliases` maps shorthand keys (`qbit`, `sab`, `jf`) to canonical keys.
+
+Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
+
 ## Deployment Model
 
 Supported paths:
@@ -205,7 +226,7 @@ Deep guidance:
 Current layout (with platform-oriented structure overlays):
 - `k8s/`: deployable Kubernetes manifests and profiles (runtime source)
 - `bootstrap/`: declarative app bootstrap configuration
-- `scripts/`: install/reconcile/verify tooling
+- `scripts/`: install/reconcile/verify tooling (`*.sh` operator entrypoints + Python implementations under `scripts/cli/` and `scripts/bootstrap_services/`)
 - `tests/`: unit + Playwright e2e smoke checks
 - `docs/`: architecture/operations/design docs and diagrams
 - `platform/`, `apps/`, `config/`, `examples/`: productized structure scaffolding and guidance
@@ -241,7 +262,7 @@ bash scripts/test.sh
 
 Schema-only config validation:
 ```bash
-python3 scripts/validate-bootstrap-config.py
+bash scripts/validate-bootstrap-config.sh
 ```
 
 Run Playwright ingress smoke:

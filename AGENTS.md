@@ -22,6 +22,7 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
   - Python CLIs in `scripts/*.py`
 - Domain/service logic:
   - `scripts/bootstrap_services/`
+  - App-scoped compatibility/service modules in `scripts/bootstrap_services/apps/<app>/`
 - Reusable bootstrap helpers:
   - `scripts/bootstrap_lib/`
 - Cross-cutting infrastructure helpers:
@@ -34,6 +35,23 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Side effects go through small adapters/services.
 - Stateless transforms stay as pure functions.
 - Avoid hidden global state when dependency injection is practical.
+
+## App Swap Contract
+Swapping a technology should be app-local and config-driven.
+
+Primary binding points:
+- `adapter_hooks.adapter_classes` for Servarr technologies
+- `adapter_hooks.download_client_adapter_classes` for download clients
+- `adapter_hooks.media_server_adapter_classes` for media server backends
+- `adapter_hooks.app_service_classes` for app-scoped service classes
+
+Swap workflow:
+1. Add/replace app adapter/service module under `scripts/bootstrap_services/apps/<app>/...`
+2. Update the matching hook key in bootstrap config (or defaults) to the new import path
+3. Ensure module is included in ConfigMap packaging list (`scripts/lib/bootstrap-script-configmap.sh`)
+4. Run unit tests + live bootstrap smoke
+
+Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
 
 ## Design Rules
 - Prefer composition over inheritance.
@@ -59,6 +77,12 @@ When bootstrap code is mounted into Kubernetes jobs, all required modules must b
   - `scripts/lib/bootstrap-script-configmap.sh`
 - Do not duplicate `--from-file` maps across scripts.
 - Any new import path used by `bootstrap-apps.py` must be added to this shared mapping.
+- If introducing app-scoped modules under `scripts/bootstrap_services/apps/`, include both package `__init__.py` files and service module files.
+
+## Scripts Directory Policy
+- Keep `scripts/*.sh` as user/operator entrypoints and small compatibility wrappers.
+- Keep `scripts/*.py` limited to CLI entrypoints and intentionally shared tooling.
+- Put domain behavior in `scripts/bootstrap_services/**` rather than root `scripts/` where possible.
 
 ## Logging, Errors, and Secrets
 - Use structured logging via `scripts/core/logging_utils.py`.

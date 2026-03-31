@@ -66,7 +66,7 @@ RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash scripts/test.sh
 RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
 bash scripts/run-api-e2e.sh <NAMESPACE>
 bash scripts/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
-python3 scripts/validate-bootstrap-config.py
+bash scripts/validate-bootstrap-config.sh
 ```
 
 ## Backup and Restore

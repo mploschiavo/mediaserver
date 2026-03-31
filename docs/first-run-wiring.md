@@ -113,7 +113,7 @@ Downloader note:
 
 If `jellyfin.local` still opens `/web/#/wizard/start`:
 ```bash
-python3 scripts/ensure-jellyfin-bootstrap.py
+bash scripts/ensure-jellyfin-bootstrap.sh
 bash scripts/bootstrap-all.sh
 ```
 Then retry in a private/incognito browser session to avoid stale local UI state.

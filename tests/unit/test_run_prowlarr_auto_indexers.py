@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 SPEC = importlib.util.spec_from_file_location(
     "run_prowlarr_auto_indexers",
-    ROOT / "scripts" / "run_prowlarr_auto_indexers.py",
+    ROOT / "scripts" / "cli" / "run_prowlarr_auto_indexers_main.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader

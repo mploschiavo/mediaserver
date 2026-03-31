@@ -2,6 +2,4 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-
-exec "$PYTHON_BIN" "$SCRIPT_DIR/run_prowlarr_auto_indexers.py" "$@"
+exec "$SCRIPT_DIR/lib/run-python-cli.sh" run_prowlarr_auto_indexers_main.py "$@"

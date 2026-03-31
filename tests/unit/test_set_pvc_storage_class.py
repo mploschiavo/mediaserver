@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 SPEC = importlib.util.spec_from_file_location(
-    "set_pvc_storage_class", ROOT / "scripts" / "set_pvc_storage_class.py"
+    "set_pvc_storage_class", ROOT / "scripts" / "cli" / "set_pvc_storage_class_main.py"
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
