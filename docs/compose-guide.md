@@ -1,32 +1,15 @@
-# Compose Guide
+# Compose Guide (Deprecated)
 
-## Start core stack
-```bash
-cd docker
-docker compose up -d
-```
+Docker Compose runtime deployment is deprecated for this project.
 
-## Start with optional Plex
-```bash
-docker compose --profile plex up -d
-```
+The supported runtime path is Kubernetes only.
 
-## Start with optional SABnzbd
-```bash
-docker compose --profile usenet up -d
-```
+Use these docs instead:
+- [Kubernetes Guide](k8s-guide.md)
+- [Deployment Model](deployment-model.md)
+- [Operations](operations.md)
 
-## Start with optional NVIDIA Jellyfin variant
-```bash
-COMPOSE_PROFILES=nvidia docker compose up -d
-```
-
-## Useful commands
-```bash
-docker compose ps
-docker compose logs -f jellyfin
-docker compose restart sonarr
-```
+Docker remains optional build tooling for bootstrap runner image build/push workflows only.
 
 ---
 

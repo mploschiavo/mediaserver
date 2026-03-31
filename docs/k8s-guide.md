@@ -43,7 +43,7 @@ Use this path if you are modifying code, running tests, or extending adapters.
   - Ubuntu: `sudo apt-get install -y python3-venv`
 - Node.js + npm (Playwright and Mermaid rendering):
   - https://nodejs.org/en/download
-- Docker Engine (Compose flow + bootstrap-runner image build/push):
+- Docker Engine (optional, for bootstrap-runner image build/push):
   - https://docs.docker.com/engine/install/ubuntu/
 - Optional local image registry access for custom bootstrap runner images
 
