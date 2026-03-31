@@ -513,6 +513,181 @@ class JellyfinPrewarmService:
             return True
         return False
 
+    @staticmethod
+    def _item_has_overview(item: dict[str, Any]) -> bool:
+        return bool(str(item.get("Overview") or "").strip())
+
+    def _run_metadata_backfill(
+        self,
+        prewarm_cfg: dict[str, Any],
+        jellyfin_url: str,
+        jellyfin_api_key: str,
+    ) -> None:
+        d = self.deps
+        backfill_cfg = prewarm_cfg.get("metadata_backfill")
+        if not isinstance(backfill_cfg, dict):
+            backfill_cfg = {}
+        if not d.bool_cfg(backfill_cfg, "enabled", True):
+            return
+
+        libraries_filter = {
+            token.lower()
+            for token in self._normalize_text_list(
+                backfill_cfg.get("libraries"),
+                ["Movies", "TV Shows", "Music", "Books"],
+            )
+        }
+        refresh_missing_primary = d.bool_cfg(backfill_cfg, "refresh_missing_primary_image", True)
+        refresh_missing_overview = d.bool_cfg(backfill_cfg, "refresh_missing_overview", True)
+        required = d.bool_cfg(backfill_cfg, "required", False)
+        try:
+            max_refresh_per_library = int(backfill_cfg.get("max_refresh_per_library") or 80)
+        except Exception:
+            max_refresh_per_library = 80
+        try:
+            sample_multiplier = int(backfill_cfg.get("sample_multiplier") or 4)
+        except Exception:
+            sample_multiplier = 4
+        sample_limit = max(1, max_refresh_per_library * max(1, sample_multiplier))
+        refresh_params = backfill_cfg.get("refresh_query")
+        if not isinstance(refresh_params, dict):
+            refresh_params = {
+                "metadataRefreshMode": "FullRefresh",
+                "imageRefreshMode": "FullRefresh",
+                "replaceAllMetadata": "true",
+                "replaceAllImages": "true",
+            }
+
+        status, libraries_payload, body = d.jellyfin_request(
+            jellyfin_url,
+            "/Library/VirtualFolders",
+            jellyfin_api_key,
+        )
+        if status != 200 or not isinstance(libraries_payload, list):
+            message = (
+                "Jellyfin prewarm: metadata backfill could not list libraries "
+                f"(HTTP {status}): {body}"
+            )
+            if required:
+                raise RuntimeError(message)
+            d.log(f"[WARN] {message}")
+            return
+
+        type_map = {
+            "movies": ["Movie"],
+            "tvshows": ["Series", "Episode"],
+            "tv": ["Series", "Episode"],
+            "books": ["Book"],
+            "music": ["MusicAlbum", "MusicArtist", "Audio"],
+        }
+
+        total_candidates = 0
+        total_requested = 0
+        total_failed = 0
+
+        for library in libraries_payload:
+            if not isinstance(library, dict):
+                continue
+            library_name = str(library.get("Name") or "").strip()
+            library_id = str(library.get("ItemId") or "").strip()
+            collection_type = str(library.get("CollectionType") or "").strip().lower()
+            if not library_id:
+                continue
+            name_key = library_name.lower()
+            if libraries_filter and collection_type not in libraries_filter and name_key not in libraries_filter:
+                continue
+
+            include_types = type_map.get(collection_type) or []
+            list_path = d.build_query_path(
+                "/Items",
+                {
+                    "ParentId": library_id,
+                    "Recursive": "true",
+                    "IncludeItemTypes": ",".join(include_types) if include_types else None,
+                    "Fields": "ImageTags,PrimaryImageTag,PrimaryImageItemId,AlbumPrimaryImageTag,BackdropImageTags,Overview",
+                    "Limit": str(sample_limit),
+                    "SortBy": "DateCreated",
+                    "SortOrder": "Descending",
+                },
+            )
+            status, payload, body = d.jellyfin_request(jellyfin_url, list_path, jellyfin_api_key)
+            if status != 200:
+                message = (
+                    f"Jellyfin prewarm: metadata backfill query failed for {library_name or collection_type} "
+                    f"(HTTP {status}): {body}"
+                )
+                if required:
+                    raise RuntimeError(message)
+                d.log(f"[WARN] {message}")
+                continue
+
+            if isinstance(payload, dict):
+                items = payload.get("Items")
+                rows = items if isinstance(items, list) else []
+            elif isinstance(payload, list):
+                rows = payload
+            else:
+                rows = []
+
+            targets: list[str] = []
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                item_id = str(item.get("Id") or "").strip()
+                if not item_id:
+                    continue
+                needs_primary = refresh_missing_primary and (not self._item_has_artwork(item))
+                needs_overview = refresh_missing_overview and (not self._item_has_overview(item))
+                if not (needs_primary or needs_overview):
+                    continue
+                targets.append(item_id)
+                if len(targets) >= max_refresh_per_library:
+                    break
+
+            if not targets:
+                d.log(
+                    "[OK] Jellyfin prewarm: metadata backfill found no missing items "
+                    f"for {library_name}"
+                )
+                continue
+
+            library_requested = 0
+            library_failed = 0
+            for item_id in targets:
+                refresh_path = d.build_query_path(f"/Items/{item_id}/Refresh", refresh_params)
+                status, _, body = d.jellyfin_request(
+                    jellyfin_url,
+                    refresh_path,
+                    jellyfin_api_key,
+                    method="POST",
+                )
+                if status in (200, 201, 202, 204):
+                    library_requested += 1
+                else:
+                    library_failed += 1
+                    d.log(
+                        "[WARN] Jellyfin prewarm: metadata backfill refresh failed "
+                        f"for {library_name} item={item_id} (HTTP {status}): {body}"
+                    )
+
+            total_candidates += len(targets)
+            total_requested += library_requested
+            total_failed += library_failed
+            d.log(
+                "[OK] Jellyfin prewarm: metadata backfill refresh requested "
+                f"for {library_name} (targets={len(targets)}, requested={library_requested}, failed={library_failed})"
+            )
+
+        if total_failed and required:
+            raise RuntimeError(
+                "Jellyfin prewarm: metadata backfill had refresh failures "
+                f"(requested={total_requested}, failed={total_failed})"
+            )
+        d.log(
+            "[OK] Jellyfin prewarm: metadata backfill complete "
+            f"(candidates={total_candidates}, requested={total_requested}, failed={total_failed})"
+        )
+
     def _run_artwork_health_check(
         self,
         prewarm_cfg: dict[str, Any],
@@ -782,6 +957,7 @@ class JellyfinPrewarmService:
                 )
                 time.sleep(wait_seconds)
 
+        self._run_metadata_backfill(prewarm_cfg, jellyfin_url, jellyfin_api_key)
         self._run_artwork_health_check(prewarm_cfg, jellyfin_url, jellyfin_api_key)
 
         d.log("[OK] Jellyfin prewarm: reconcile complete")

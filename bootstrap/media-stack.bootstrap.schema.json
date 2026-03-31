@@ -73,6 +73,7 @@
         "refresh_guide": {"type": "boolean"},
         "book_sidecar_artwork": {"type": "object"},
         "music_sidecar_artwork": {"type": "object"},
+        "metadata_backfill": {"type": "object"},
         "artwork_health_check": {"type": "object"},
         "library_refresh_query": {"type": "object"}
       },

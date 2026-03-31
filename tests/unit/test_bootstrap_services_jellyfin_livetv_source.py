@@ -287,6 +287,62 @@ class JellyfinLiveTvSourceServiceTests(unittest.TestCase):
             self.assertNotIn("https://old.example/icon.png", enriched)
             self.assertIn("https://example.test/new-logo.png", enriched)
 
+    def test_prepare_xmltv_guide_path_uses_default_program_icon_when_no_logo_match(self):
+        logs = []
+        service = self._service(logs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_m3u = root / "source.m3u"
+            guide_xml = root / "guide.xml"
+            source_m3u.write_text(
+                "\n".join(
+                    [
+                        "#EXTM3U",
+                        '#EXTINF:-1 tvg-id="channel-no-logo@iptv" group-title="News",Channel Without Logo',
+                        "http://stream/channel-no-logo",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            guide_xml.write_text(
+                "\n".join(
+                    [
+                        "<tv>",
+                        '  <channel id="channel-no-logo"/>',
+                        '  <programme start="20260330010000 +0000" stop="20260330020000 +0000" channel="channel-no-logo">',
+                        "    <title>Morning Bulletin</title>",
+                        "  </programme>",
+                        "</tv>",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rendered_path = service.prepare_xmltv_guide_path(
+                guide={
+                    "type": "xmltv",
+                    "path": str(guide_xml),
+                    "materialized_output_path": "jellyfin/livetv-guides/default-icon.xml",
+                    "enrich_program_icons_from_tuner_logo": True,
+                    "default_program_icon_url": "https://example.test/default-live-tv.png",
+                },
+                tuners=[
+                    {
+                        "type": "m3u",
+                        "url": str(source_m3u),
+                    }
+                ],
+                config_root=str(root),
+            )
+
+            self.assertEqual(rendered_path, "/config/livetv-guides/default-icon.xml")
+            output_path = root / "jellyfin" / "livetv-guides" / "default-icon.xml"
+            enriched = output_path.read_text(encoding="utf-8")
+            self.assertIn("https://example.test/default-live-tv.png", enriched)
+
     def test_prepare_xmltv_guide_path_appends_mapped_category_when_existing_category_present(self):
         logs = []
         service = self._service(logs)

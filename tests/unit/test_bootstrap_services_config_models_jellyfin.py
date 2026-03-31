@@ -70,6 +70,7 @@ class JellyfinConfigModelTests(unittest.TestCase):
                 "refresh_guide": False,
                 "book_sidecar_artwork": {"enabled": True},
                 "music_sidecar_artwork": {"enabled": True},
+                "metadata_backfill": {"enabled": True, "refresh_missing_overview": True},
                 "artwork_health_check": {"enabled": True, "libraries": ["Books", "Music"]},
                 "library_refresh_query": {"metadataRefreshMode": "FullRefresh"},
             }
@@ -81,6 +82,7 @@ class JellyfinConfigModelTests(unittest.TestCase):
         self.assertFalse(model.refresh_guide)
         self.assertTrue(model.book_sidecar_artwork["enabled"])
         self.assertTrue(model.music_sidecar_artwork["enabled"])
+        self.assertTrue(model.metadata_backfill["enabled"])
         self.assertTrue(model.artwork_health_check["enabled"])
         self.assertEqual(model.library_refresh_query["metadataRefreshMode"], "FullRefresh")
 

@@ -294,7 +294,7 @@ class JellyfinLiveTvSourceService:
                         groups_by_channel.setdefault(cid, set()).add(group_title)
 
                 if tvg_logo:
-                    for raw_name in (tvg_name, channel_name):
+                    for raw_name in (tvg_name, channel_name, tvg_id, normalized_id):
                         norm_name = self._normalize_name(raw_name)
                         if norm_name and norm_name not in logo_by_name:
                             logo_by_name[norm_name] = tvg_logo
@@ -312,6 +312,7 @@ class JellyfinLiveTvSourceService:
         replace_existing_icons: bool,
         add_categories: bool,
         default_category: str,
+        default_icon_url: str,
     ) -> tuple[str, dict[str, int]]:
         if not xml_text:
             return xml_text, {
@@ -353,6 +354,14 @@ class JellyfinLiveTvSourceService:
                     if candidate:
                         logo_url = candidate
                         break
+            if not logo_url:
+                logo_url = (
+                    logo_by_name.get(self._normalize_name(channel_id))
+                    or logo_by_name.get(self._normalize_name(channel_id_norm))
+                    or ""
+                )
+            if not logo_url and default_icon_url:
+                logo_url = default_icon_url
             raw_groups = groups_by_channel.get(channel_id) or groups_by_channel.get(channel_id_norm) or set()
             mapped_categories: list[str] = []
             for group in sorted(raw_groups):
@@ -445,6 +454,7 @@ class JellyfinLiveTvSourceService:
         if not enrich_icons and not enrich_categories:
             return source_path
         default_category = str(guide.get("default_program_category", "Shows") or "").strip()
+        default_icon_url = str(guide.get("default_program_icon_url") or "").strip()
 
         source_hash = hashlib.sha1(source_path.encode("utf-8")).hexdigest()[:12]
         output_rel_path = str(
@@ -471,6 +481,7 @@ class JellyfinLiveTvSourceService:
                 replace_existing_icons=replace_existing_icons,
                 add_categories=enrich_categories,
                 default_category=default_category,
+                default_icon_url=default_icon_url,
             )
 
             for root in self.candidate_config_roots(config_root):

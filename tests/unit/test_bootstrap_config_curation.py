@@ -109,6 +109,10 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertTrue(bool(prewarm.get("enabled")))
         self.assertTrue(bool(prewarm.get("refresh_library")))
         self.assertTrue(bool(prewarm.get("refresh_guide")))
+        metadata_backfill = prewarm.get("metadata_backfill") or {}
+        self.assertTrue(bool(metadata_backfill.get("enabled")))
+        self.assertTrue(bool(metadata_backfill.get("refresh_missing_primary_image")))
+        self.assertTrue(bool(metadata_backfill.get("refresh_missing_overview")))
 
         hygiene = self.cfg.get("media_hygiene") or {}
         self.assertTrue(bool(hygiene.get("enabled")))
@@ -146,6 +150,11 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertTrue(bool(first.get("normalize_tvg_id_suffix")))
         self.assertTrue(bool(first.get("filter_to_guide_channels")))
         self.assertIn("jellyfin/livetv-tuners", str(first.get("materialized_output_path", "")))
+        guides = live_tv.get("guides") or []
+        self.assertGreaterEqual(len(guides), 1)
+        first_guide = guides[0] if isinstance(guides[0], dict) else {}
+        self.assertTrue(bool(first_guide.get("replace_existing_program_icons_with_tuner_logo")))
+        self.assertIn("http", str(first_guide.get("default_program_icon_url") or ""))
 
     def test_maintainerr_policy_defaults_are_declared(self):
         maintainerr = self.cfg.get("maintainerr") or {}

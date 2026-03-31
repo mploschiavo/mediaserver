@@ -735,7 +735,8 @@
         "path": "https://iptv-epg.org/files/epg-us.xml",
         "materialized_output_path": "jellyfin/livetv-guides/iptv-org-us-epg.enriched.xml",
         "enrich_program_icons_from_tuner_logo": true,
-        "replace_existing_program_icons_with_tuner_logo": false,
+        "replace_existing_program_icons_with_tuner_logo": true,
+        "default_program_icon_url": "https://raw.githubusercontent.com/iptv-org/logo/master/tv.png",
         "enrich_program_categories_from_tuner_groups": true,
         "movie_categories": [
           "Movie",
@@ -801,6 +802,26 @@
       "replace_existing": false,
       "max_albums_per_run": 1200
     },
+    "metadata_backfill": {
+      "enabled": true,
+      "required": false,
+      "libraries": [
+        "Movies",
+        "TV Shows",
+        "Music",
+        "Books"
+      ],
+      "refresh_missing_primary_image": true,
+      "refresh_missing_overview": true,
+      "max_refresh_per_library": 80,
+      "sample_multiplier": 4,
+      "refresh_query": {
+        "metadataRefreshMode": "FullRefresh",
+        "imageRefreshMode": "FullRefresh",
+        "replaceAllMetadata": "true",
+        "replaceAllImages": "true"
+      }
+    },
     "artwork_health_check": {
       "enabled": true,
       "required": false,
@@ -859,6 +880,10 @@
       },
       {
         "name": "Trakt"
+      },
+      {
+        "name": "Trailers",
+        "required": false
       }
     ]
   },

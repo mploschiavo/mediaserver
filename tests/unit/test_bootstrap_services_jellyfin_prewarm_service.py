@@ -286,6 +286,82 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
         for label in expected_labels:
             self.assertTrue(any(label in line for line in logs), label)
 
+    def test_metadata_backfill_refreshes_items_missing_artwork_or_overview(self):
+        logs = []
+        refresh_calls = []
+
+        def jellyfin_request(_base, path, _key, method="GET", payload=None, timeout=30):
+            del payload, timeout
+            if path.startswith("/Library/VirtualFolders"):
+                return (
+                    200,
+                    [
+                        {"Name": "Movies", "ItemId": "lib-movies", "CollectionType": "movies"},
+                    ],
+                    "",
+                )
+            if path.startswith("/Items?ParentId=lib-movies"):
+                return (
+                    200,
+                    {
+                        "Items": [
+                            {"Id": "movie-a", "ImageTags": {}, "Overview": ""},
+                            {"Id": "movie-b", "ImageTags": {"Primary": "x"}, "Overview": ""},
+                            {"Id": "movie-c", "ImageTags": {"Primary": "x"}, "Overview": "Has summary"},
+                        ]
+                    },
+                    "",
+                )
+            if path.startswith("/Items/movie-a/Refresh") or path.startswith("/Items/movie-b/Refresh"):
+                refresh_calls.append((method, path))
+                return (204, {}, "")
+            return (200, {}, "")
+
+        deps = JellyfinPrewarmDependencies(
+            log=logs.append,
+            bool_cfg=lambda cfg, key, fallback: bool(cfg.get(key, fallback)),
+            normalize_url=lambda value: str(value).rstrip("/"),
+            wait_for_service=lambda *_args, **_kwargs: None,
+            resolve_api_key=lambda _cfg, _root: "api-key",
+            jellyfin_request=jellyfin_request,
+            build_query_path=lambda path, params: path
+            + (
+                "?"
+                + "&".join(f"{k}={v}" for k, v in (params or {}).items() if v not in (None, ""))
+                if params
+                else ""
+            ),
+            trigger_livetv_refresh=lambda *_args, **_kwargs: (True, "ok"),
+        )
+        service = JellyfinPrewarmService(deps=deps)
+
+        cfg = {
+            "jellyfin_prewarm": {
+                "enabled": True,
+                "url": "http://jellyfin:8096",
+                "refresh_library": False,
+                "refresh_channels": False,
+                "refresh_guide": False,
+                "book_sidecar_artwork": {"enabled": False},
+                "music_sidecar_artwork": {"enabled": False},
+                "metadata_backfill": {
+                    "enabled": True,
+                    "libraries": ["Movies"],
+                    "refresh_missing_primary_image": True,
+                    "refresh_missing_overview": True,
+                    "max_refresh_per_library": 10,
+                },
+                "artwork_health_check": {"enabled": False},
+            }
+        }
+
+        service.ensure(cfg=cfg, config_root="/tmp", wait_timeout=5)
+        refreshed_paths = [path for _method, path in refresh_calls]
+        self.assertTrue(any(path.startswith("/Items/movie-a/Refresh") for path in refreshed_paths))
+        self.assertTrue(any(path.startswith("/Items/movie-b/Refresh") for path in refreshed_paths))
+        self.assertFalse(any(path.startswith("/Items/movie-c/Refresh") for path in refreshed_paths))
+        self.assertTrue(any("metadata backfill complete" in line for line in logs))
+
 
 if __name__ == "__main__":
     unittest.main()
