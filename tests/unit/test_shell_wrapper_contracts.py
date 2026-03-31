@@ -10,9 +10,15 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 
 
-def run_wrapper(script_name: str, *args: str) -> subprocess.CompletedProcess[str]:
+def run_wrapper(
+    script_name: str,
+    *args: str,
+    env_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["PYTHON_BIN"] = sys.executable
+    if env_overrides:
+        env.update(env_overrides)
     return subprocess.run(
         [str(SCRIPTS / script_name), *args],
         cwd=str(ROOT),
@@ -24,6 +30,24 @@ def run_wrapper(script_name: str, *args: str) -> subprocess.CompletedProcess[str
 
 
 class ShellWrapperContractTests(unittest.TestCase):
+    def test_install_wrapper_help_contract(self):
+        proc = run_wrapper("install.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/install.sh", proc.stdout)
+
+    def test_rebuild_wrapper_help_contract(self):
+        proc = run_wrapper("rebuild-and-bootstrap.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/rebuild-and-bootstrap.sh", proc.stdout)
+
+    def test_rebuild_wrapper_missing_config_file(self):
+        proc = run_wrapper(
+            "rebuild-and-bootstrap.sh",
+            env_overrides={"CONFIG_FILE": "/tmp/does-not-exist-rebuild.json"},
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("Config file not found", proc.stdout + proc.stderr)
+
     def test_bootstrap_all_wrapper_help_contract(self):
         proc = run_wrapper("bootstrap-all.sh", "--help")
         self.assertEqual(proc.returncode, 0)

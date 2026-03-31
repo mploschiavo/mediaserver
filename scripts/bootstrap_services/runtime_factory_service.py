@@ -14,7 +14,9 @@ from .config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,
+    DownloadClientsConfig,
     JellyfinLibrariesConfig,
+    JellyfinLiveTvConfig,
     JellyfinPlaybackConfig,
     JellyfinPluginsConfig,
     JellyfinPrewarmConfig,
@@ -215,7 +217,8 @@ class BootstrapRuntimeFactoryService:
             capability_defaults=arr_app_capability_defaults,
         )
 
-        download_clients_cfg = cfg.get("download_clients") or {}
+        download_clients_model = DownloadClientsConfig.from_dict(cfg.get("download_clients") or {})
+        download_clients_cfg = download_clients_model.raw
         media_server_cfg = cfg.get("media_server") or {}
 
         default_media_server_operation_plans = self.deps.load_bootstrap_default_json(
@@ -275,7 +278,7 @@ class BootstrapRuntimeFactoryService:
 
         def _first_configured_key(candidates: list[str]) -> str:
             for key in candidates:
-                if isinstance(download_clients_cfg.get(key), dict):
+                if download_clients_model.get(key):
                     return key
             return ""
 
@@ -289,16 +292,12 @@ class BootstrapRuntimeFactoryService:
             if fallback and fallback not in candidates:
                 candidates.append(fallback)
             for key in candidates:
-                selected = download_clients_cfg.get(key)
-                if isinstance(selected, dict):
-                    return key, selected
+                selected = download_clients_model.get(key)
+                if selected:
+                    return key, selected.raw
             return req, {}
 
-        configured_download_client_keys = [
-            str(key).strip().lower()
-            for key, value in (download_clients_cfg or {}).items()
-            if isinstance(value, dict) and str(key).strip()
-        ]
+        configured_download_client_keys = download_clients_model.configured_keys()
         hook_download_client_keys = _hook_keys("download_client_adapter_classes")
         fallback_torrent = _canonical_tech_key(
             bindings_cfg.torrent_client,
@@ -368,7 +367,8 @@ class BootstrapRuntimeFactoryService:
         jellyfin_libraries_model = JellyfinLibrariesConfig.from_dict(
             cfg.get("jellyfin_libraries") or {}
         )
-        jellyfin_livetv_cfg = cfg.get("jellyfin_livetv") or {}
+        jellyfin_livetv_model = JellyfinLiveTvConfig.from_dict(cfg.get("jellyfin_livetv") or {})
+        jellyfin_livetv_cfg = jellyfin_livetv_model.raw
         jellyfin_plugins_model = JellyfinPluginsConfig.from_dict(cfg.get("jellyfin_plugins") or {})
         jellyfin_playback_model = JellyfinPlaybackConfig.from_dict(
             cfg.get("jellyfin_playback") or {}
@@ -441,8 +441,8 @@ class BootstrapRuntimeFactoryService:
         configure_jellyfin_libraries = jellyfin_libraries_model.enabled
         jellyfin_libraries_required = jellyfin_libraries_model.required
 
-        configure_jellyfin_livetv = self.deps.bool_cfg(jellyfin_livetv_cfg, "enabled", False)
-        jellyfin_livetv_required = self.deps.bool_cfg(jellyfin_livetv_cfg, "required", False)
+        configure_jellyfin_livetv = jellyfin_livetv_model.enabled
+        jellyfin_livetv_required = jellyfin_livetv_model.required
 
         configure_jellyfin_plugins = jellyfin_plugins_model.enabled
         jellyfin_plugins_required = jellyfin_plugins_model.required
@@ -619,8 +619,8 @@ class BootstrapRuntimeFactoryService:
             configure_jellyfin_prewarm=configure_jellyfin_prewarm,
             configure_media_hygiene=configure_media_hygiene,
             configure_maintainerr_policy=configure_maintainerr_policy,
-            jellyfin_livetv_tuners=len(self.deps.coerce_list(jellyfin_livetv_cfg.get("tuners"))),
-            jellyfin_livetv_guides=len(self.deps.coerce_list(jellyfin_livetv_cfg.get("guides"))),
+            jellyfin_livetv_tuners=len(jellyfin_livetv_model.tuners),
+            jellyfin_livetv_guides=len(jellyfin_livetv_model.guides),
             fully_preconfigured=fully_preconfigured,
             trigger_sync=trigger_sync,
         )

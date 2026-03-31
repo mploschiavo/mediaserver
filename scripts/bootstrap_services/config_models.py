@@ -53,6 +53,34 @@ class DownloadClientConfig:
 
 
 @dataclass(frozen=True)
+class DownloadClientsConfig:
+    clients: dict[str, DownloadClientConfig] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "DownloadClientsConfig":
+        if data is not None and not isinstance(data, dict):
+            raise ValueError("download_clients must be an object")
+        src = dict(data or {})
+        clients: dict[str, DownloadClientConfig] = {}
+        for key, value in src.items():
+            token = str(key or "").strip().lower()
+            if not token or not isinstance(value, dict):
+                continue
+            clients[token] = DownloadClientConfig.from_dict(value)
+        return cls(clients=clients, raw=src)
+
+    def get(self, key: str) -> DownloadClientConfig | None:
+        token = str(key or "").strip().lower()
+        if not token:
+            return None
+        return self.clients.get(token)
+
+    def configured_keys(self) -> list[str]:
+        return sorted(self.clients.keys())
+
+
+@dataclass(frozen=True)
 class TechnologyBindingsConfig:
     torrent_client: str = "qbittorrent"
     usenet_client: str = "sabnzbd"
@@ -190,28 +218,62 @@ class JellyfinLiveTvConfig:
 
 
 @dataclass(frozen=True)
+class ArrDiscoveryListEntry:
+    name: str
+    implementation: str
+    enabled: bool
+    enable_auto: bool
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "ArrDiscoveryListEntry":
+        src = dict(data or {})
+        return cls(
+            name=str(src.get("name", "")).strip(),
+            implementation=str(src.get("implementation", "")).strip(),
+            enabled=bool(src.get("enabled", True)),
+            enable_auto=bool(src.get("enable_auto", src.get("enableAuto", True))),
+            raw=src,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
 class ArrDiscoveryListsConfig:
     enabled: bool
     required: bool
     trigger_initial_sync: bool
     prune_unmanaged: bool
     by_app: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    typed_by_app: dict[str, list[ArrDiscoveryListEntry]] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ArrDiscoveryListsConfig":
         src = dict(data or {})
         by_app: dict[str, list[dict[str, Any]]] = {}
+        typed_by_app: dict[str, list[ArrDiscoveryListEntry]] = {}
         for key, value in src.items():
             if key in {"enabled", "required", "trigger_initial_sync", "prune_unmanaged"}:
                 continue
             if isinstance(value, list):
-                by_app[str(key)] = [x for x in value if isinstance(x, dict)]
+                typed_items = [
+                    ArrDiscoveryListEntry.from_dict(item)
+                    for item in value
+                    if isinstance(item, dict)
+                ]
+                by_app[str(key)] = [entry.to_dict() for entry in typed_items]
+                typed_by_app[str(key)] = typed_items
         return cls(
             enabled=bool(src.get("enabled", False)),
             required=bool(src.get("required", False)),
             trigger_initial_sync=bool(src.get("trigger_initial_sync", False)),
             prune_unmanaged=bool(src.get("prune_unmanaged", False)),
             by_app=by_app,
+            typed_by_app=typed_by_app,
+            raw=src,
         )
 
 

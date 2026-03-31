@@ -10,7 +10,8 @@ This directory intentionally contains both:
 - Shared wrapper behavior lives in [`scripts/lib/run-python-cli.sh`](./lib/run-python-cli.sh).
 - Python CLIs should live in `scripts/cli/*_main.py`.
 - Avoid new root-level Python compatibility wrappers.
-- `run-bootstrap-job.sh` and `bootstrap-all.sh` are now Python-backed wrappers with
+- `install.sh`, `rebuild-and-bootstrap.sh`, `run-bootstrap-job.sh`, and `bootstrap-all.sh`
+  are now Python-backed wrappers with
   phase logging and checkpoint-aware orchestration.
 
 ## Stable Operator Entrypoints
