@@ -59,7 +59,9 @@ class ServarrPolicyServiceTests(unittest.TestCase):
             raise AssertionError(path)
 
         svc = self._service(fake_http)
-        endpoint, payload = svc.fetch_download_client_config("Readarr", "http://readarr", "/api/v1", "k")
+        endpoint, payload = svc.fetch_download_client_config(
+            "Readarr", "http://readarr", "/api/v1", "k"
+        )
         self.assertEqual(endpoint, "/api/v1/config/downloadClient")
         self.assertEqual(payload, {"ok": True})
         self.assertEqual(len(calls), 2)

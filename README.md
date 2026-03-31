@@ -34,6 +34,7 @@ See [docs/why-this-exists.md](docs/why-this-exists.md).
 - Primary architecture doc: [docs/architecture.md](docs/architecture.md)
 - Deployment model: [docs/deployment-model.md](docs/deployment-model.md)
 - Source-of-truth model: [docs/source-of-truth.md](docs/source-of-truth.md)
+- Technology swap guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 
 Diagram set:
 - [Logical topology](docs/diagrams/logical-topology.svg)
@@ -60,6 +61,10 @@ Priority order:
 If UI state conflicts with bootstrap config, reconciliation pushes runtime back toward declared configuration.
 
 See [docs/source-of-truth.md](docs/source-of-truth.md).
+
+Technology backends are selected declaratively via:
+- `technology_bindings` (active backend per role)
+- `adapter_hooks` (reflection mapping key -> adapter class + optional operation handler hooks)
 
 ## Deployment Model
 

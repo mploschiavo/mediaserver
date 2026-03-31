@@ -139,13 +139,80 @@ SKIP_QBIT_ENSURE="${SKIP_QBIT_ENSURE:-0}"
 SKIP_SAB_ENSURE="${SKIP_SAB_ENSURE:-0}"
 SKIP_JELLYFIN_BOOTSTRAP="${SKIP_JELLYFIN_BOOTSTRAP:-0}"
 
-if [[ "$SKIP_QBIT_ENSURE" != "1" ]]; then
+config_probe_default_true() {
+  local probe="$1"
+  local result=""
+  result="$(python3 - "$CONFIG_FILE" "$probe" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+def resolved_client(cfg, role_key, default_key):
+    bindings = cfg.get("technology_bindings") or {}
+    clients = cfg.get("download_clients") or {}
+    if not isinstance(bindings, dict):
+        bindings = {}
+    if not isinstance(clients, dict):
+        clients = {}
+
+    selected = str(bindings.get(role_key, default_key) or "").strip().lower() or default_key
+    selected_cfg = clients.get(selected)
+    if isinstance(selected_cfg, dict):
+        return selected_cfg
+    fallback_cfg = clients.get(default_key)
+    if isinstance(fallback_cfg, dict):
+        return fallback_cfg
+    return {}
+
+try:
+    cfg = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+    probe = str(sys.argv[2] if len(sys.argv) > 2 else "").strip()
+    if probe == "torrent-ensure":
+        client_cfg = resolved_client(cfg, "torrent_client", "qbittorrent")
+        enabled = bool(
+            client_cfg.get("configure_arr_clients")
+            or client_cfg.get("set_categories_in_qbit")
+            or client_cfg.get("set_categories")
+        )
+    elif probe == "usenet-ensure":
+        client_cfg = resolved_client(cfg, "usenet_client", "sabnzbd")
+        enabled = bool(client_cfg.get("configure_arr_clients"))
+    else:
+        raise RuntimeError(f"Unknown config probe: {probe}")
+    print("1" if enabled else "0")
+except Exception:
+    print("error")
+PY
+)"
+  if [[ "$result" == "1" ]]; then
+    return 0
+  fi
+  if [[ "$result" == "0" ]]; then
+    return 1
+  fi
+  # Preserve previous behavior if config parsing or evaluation fails.
+  return 0
+}
+
+should_run_qbit_ensure=0
+if config_probe_default_true "torrent-ensure"; then
+  should_run_qbit_ensure=1
+fi
+
+should_run_sab_ensure=0
+if config_probe_default_true "usenet-ensure"; then
+  should_run_sab_ensure=1
+fi
+
+if [[ "$SKIP_QBIT_ENSURE" != "1" && "$should_run_qbit_ensure" == "1" ]]; then
   phase_start "Ensure qBittorrent credentials"
   info "Step 1/7: Ensuring qBittorrent credentials are config-as-code and usable"
   NAMESPACE="$NAMESPACE" PREPARE_HOST_ROOT="$PREPARE_HOST_ROOT" bash "$ROOT_DIR/scripts/ensure-qbit-credentials.sh"
   phase_end "ok"
 else
   phase_start "Ensure qBittorrent credentials"
+  if [[ "$SKIP_QBIT_ENSURE" != "1" ]]; then
+    info "Torrent client ensure skipped: active torrent client is not configured for bootstrap."
+  fi
   phase_end "skipped"
 fi
 
@@ -159,13 +226,16 @@ else
   phase_end "skipped"
 fi
 
-if [[ "$SKIP_SAB_ENSURE" != "1" ]]; then
+if [[ "$SKIP_SAB_ENSURE" != "1" && "$should_run_sab_ensure" == "1" ]]; then
   phase_start "Ensure SABnzbd API access"
   info "Step 3/7: Ensuring SABnzbd API is reachable from Arr pods"
   NAMESPACE="$NAMESPACE" bash "$ROOT_DIR/scripts/ensure-sabnzbd-api-access.sh"
   phase_end "ok"
 else
   phase_start "Ensure SABnzbd API access"
+  if [[ "$SKIP_SAB_ENSURE" != "1" ]]; then
+    info "Usenet client ensure skipped: active usenet client is not configured for bootstrap."
+  fi
   phase_end "skipped"
 fi
 

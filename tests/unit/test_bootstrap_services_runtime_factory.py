@@ -1,0 +1,151 @@
+import os
+import sys
+import unittest
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from bootstrap_services.config_models import (  # noqa: E402
+    ArrDownloadHandlingPolicy,
+    ArrMediaManagementPolicy,
+    ArrQualityUpgradePolicy,
+)
+from bootstrap_services.enums import BootstrapMode  # noqa: E402
+from bootstrap_services.runtime_factory_service import (  # noqa: E402
+    BootstrapCliArgs,
+    BootstrapRuntimeFactoryDependencies,
+    BootstrapRuntimeFactoryService,
+)
+
+
+class RuntimeFactoryServiceTests(unittest.TestCase):
+    def _factory(self, read_api_key=None):
+        deps = BootstrapRuntimeFactoryDependencies(
+            load_bootstrap_default_json=lambda filename, fallback: fallback,
+            deep_merge_objects=lambda base, override: {**dict(base or {}), **dict(override or {})},
+            bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
+            coerce_list=lambda value: (
+                value if isinstance(value, list) else ([] if value is None else [value])
+            ),
+            env_truthy=lambda name, default=False: str(os.environ.get(name, str(default)))
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"},
+            read_api_key=read_api_key or (lambda config_root, app: f"{app}-key"),
+            build_sab_remote_path_mappings=lambda sab_cfg: [
+                {
+                    "host": "sabnzbd",
+                    "remotePath": "/config/Downloads/complete",
+                    "localPath": "/data/usenet/completed",
+                }
+            ],
+        )
+        return BootstrapRuntimeFactoryService(deps=deps)
+
+    def _args(self, mode=BootstrapMode.FULL):
+        return BootstrapCliArgs(
+            mode=mode,
+            config_path="bootstrap/media-stack.bootstrap.json",
+            config_root="/srv-config",
+            wait_timeout=30,
+            auto_prowlarr_indexers=False,
+        )
+
+    def test_full_mode_reads_servarr_and_prowlarr_keys(self):
+        read_api_key = mock.Mock(side_effect=lambda _root, app: f"{app}-api")
+        factory = self._factory(read_api_key=read_api_key)
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [
+                {
+                    "name": "Sonarr",
+                    "implementation": "sonarr",
+                    "url": "http://sonarr:8989",
+                    "root_folder": "/media/tv",
+                }
+            ],
+            "download_clients": {"qbittorrent": {"configure_arr_clients": True}},
+        }
+
+        result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertEqual(result.runtime.prowlarr_key, "prowlarr-api")
+        self.assertEqual(result.runtime.app_keys.get("sonarr"), "sonarr-api")
+        self.assertIsInstance(result.runtime.arr_media_management_cfg, ArrMediaManagementPolicy)
+        self.assertIsInstance(result.runtime.arr_download_handling_cfg, ArrDownloadHandlingPolicy)
+        self.assertIsInstance(result.runtime.arr_quality_upgrade_cfg, ArrQualityUpgradePolicy)
+        self.assertTrue(result.plan.configure_arr_clients)
+        self.assertEqual(read_api_key.call_count, 2)
+
+    def test_non_full_mode_skips_api_key_reads(self):
+        read_api_key = mock.Mock(return_value="unused")
+        factory = self._factory(read_api_key=read_api_key)
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [
+                {
+                    "name": "Sonarr",
+                    "implementation": "sonarr",
+                    "url": "http://sonarr:8989",
+                    "root_folder": "/media/tv",
+                }
+            ],
+        }
+
+        result = factory.build(self._args(mode=BootstrapMode.JELLYFIN_PREWARM), cfg)
+
+        self.assertEqual(result.runtime.prowlarr_key, "")
+        self.assertEqual(result.runtime.app_keys, {})
+        read_api_key.assert_not_called()
+
+    def test_fully_preconfigured_sets_default_app_auth(self):
+        factory = self._factory()
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+        }
+
+        with mock.patch.dict(os.environ, {"FULLY_PRECONFIGURED": "1"}, clear=False):
+            result = factory.build(self._args(mode=BootstrapMode.MEDIA_HYGIENE), cfg)
+
+        app_auth = result.runtime.app_auth_cfg
+        self.assertTrue(app_auth.get("enabled"))
+        self.assertEqual(app_auth.get("method"), "Forms")
+        self.assertIn("Sonarr", app_auth.get("include", []))
+
+    def test_technology_bindings_select_active_clients_and_media_backend(self):
+        factory = self._factory()
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "transmission",
+                "usenet_client": "sabnzbd",
+                "media_server": "emby",
+            },
+            "download_clients": {
+                "transmission": {
+                    "url": "http://transmission:9091",
+                    "name": "Transmission",
+                    "configure_arr_clients": True,
+                },
+                "sabnzbd": {
+                    "url": "http://sabnzbd:8080",
+                    "name": "SABnzbd",
+                    "configure_arr_clients": True,
+                },
+            },
+        }
+
+        result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertEqual(result.runtime.torrent_client_key, "transmission")
+        self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
+        self.assertEqual(result.runtime.qbit_cfg.get("name"), "Transmission")
+        self.assertEqual(result.runtime.media_server_backend, "emby")
+
+
+if __name__ == "__main__":
+    unittest.main()

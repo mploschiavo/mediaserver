@@ -1,5 +1,20 @@
 {
   "before_common_steps": {
     "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
-  }
+  },
+  "adapter_classes": {
+    "sonarr": "bootstrap_services.servarr_technologies.sonarr:SonarrAdapter",
+    "radarr": "bootstrap_services.servarr_technologies.radarr:RadarrAdapter",
+    "lidarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter",
+    "readarr": "bootstrap_services.servarr_technologies.readarr:ReadarrAdapter"
+  },
+  "download_client_adapter_classes": {
+    "qbittorrent": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
+    "sabnzbd": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
+    "transmission": "bootstrap_services.download_client_adapters.transmission:TransmissionDownloadClientAdapter"
+  },
+  "media_server_adapter_classes": {
+    "jellyfin": "bootstrap_services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
+  },
+  "operation_handlers": {}
 }

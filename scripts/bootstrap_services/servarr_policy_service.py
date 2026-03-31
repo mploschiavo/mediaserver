@@ -6,6 +6,16 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .config_models import (
+    ArrDownloadHandlingPolicy,
+    ArrDownloadHandlingResolvedPolicy,
+    ArrMediaManagementPolicy,
+    ArrMediaManagementResolvedPolicy,
+    ArrQualityUpgradePolicy,
+    ArrQualityUpgradeResolvedPolicy,
+    ServarrAppConfig,
+)
+
 HttpRequestFn = Callable[..., tuple[int, Any, str]]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 CoerceListFn = Callable[[Any], list[Any]]
@@ -14,6 +24,7 @@ ToIntFn = Callable[[Any, int | None], int | None]
 ResolveQualityPrefsFn = Callable[[dict[str, Any], dict[str, Any]], tuple[Any, list[str]]]
 GetQualityProfileFn = Callable[..., dict[str, Any]]
 LogFn = Callable[[str], None]
+AppRef = ServarrAppConfig | dict[str, Any] | str
 
 
 @dataclass
@@ -28,10 +39,102 @@ class ServarrPolicyService:
     log: LogFn
 
     @staticmethod
-    def resolve_overrides_by_app(cfg_section: dict[str, Any], app_cfg: dict[str, Any]) -> dict[str, Any]:
+    def _coerce_app_ref(app_cfg: AppRef) -> ServarrAppConfig:
+        if isinstance(app_cfg, ServarrAppConfig):
+            return app_cfg
+        if isinstance(app_cfg, dict):
+            src = dict(app_cfg)
+            impl = str(src.get("implementation") or "").strip().lower()
+            if "capabilities" not in src and impl == "sonarr":
+                src["capabilities"] = {"supports_series_folder_management": True}
+            return ServarrAppConfig.from_dict(src)
+        token = str(app_cfg or "").strip()
+        return ServarrAppConfig.from_dict({"name": token, "implementation": token})
+
+    @staticmethod
+    def _coerce_download_handling_policy(
+        cfg: ArrDownloadHandlingPolicy | dict[str, Any],
+    ) -> ArrDownloadHandlingPolicy:
+        if isinstance(cfg, ArrDownloadHandlingPolicy):
+            return cfg
+        return ArrDownloadHandlingPolicy.from_dict(cfg or {})
+
+    @staticmethod
+    def _coerce_media_management_policy(
+        cfg: ArrMediaManagementPolicy | dict[str, Any],
+    ) -> ArrMediaManagementPolicy:
+        if isinstance(cfg, ArrMediaManagementPolicy):
+            return cfg
+        return ArrMediaManagementPolicy.from_dict(cfg or {})
+
+    @staticmethod
+    def _coerce_quality_upgrade_policy(
+        cfg: ArrQualityUpgradePolicy | dict[str, Any],
+    ) -> ArrQualityUpgradePolicy:
+        if isinstance(cfg, ArrQualityUpgradePolicy):
+            return cfg
+        return ArrQualityUpgradePolicy.from_dict(cfg or {})
+
+    @staticmethod
+    def resolve_overrides_by_app(
+        cfg_section: (
+            dict[str, Any]
+            | ArrMediaManagementPolicy
+            | ArrDownloadHandlingPolicy
+            | ArrQualityUpgradePolicy
+        ),
+        app_cfg: AppRef,
+    ) -> dict[str, Any]:
+        app_model = ServarrPolicyService._coerce_app_ref(app_cfg)
+
+        if isinstance(cfg_section, ArrMediaManagementPolicy):
+            override = cfg_section.override_for(app_model)
+            payload: dict[str, Any] = {}
+            if override.enabled is not None:
+                payload["enabled"] = bool(override.enabled)
+            if override.copy_using_hardlinks is not None:
+                payload["copy_using_hardlinks"] = bool(override.copy_using_hardlinks)
+            if override.create_empty_series_folders is not None:
+                payload["create_empty_series_folders"] = bool(override.create_empty_series_folders)
+            return payload
+
+        if isinstance(cfg_section, ArrDownloadHandlingPolicy):
+            override = cfg_section.override_for(app_model)
+            payload = {}
+            if override.enabled is not None:
+                payload["enabled"] = bool(override.enabled)
+            if override.enable_completed_download_handling is not None:
+                payload["enable_completed_download_handling"] = bool(
+                    override.enable_completed_download_handling
+                )
+            if override.remove_completed_downloads is not None:
+                payload["remove_completed_downloads"] = bool(override.remove_completed_downloads)
+            if override.remove_failed_downloads is not None:
+                payload["remove_failed_downloads"] = bool(override.remove_failed_downloads)
+            if override.auto_redownload_failed is not None:
+                payload["auto_redownload_failed"] = bool(override.auto_redownload_failed)
+            return payload
+
+        if isinstance(cfg_section, ArrQualityUpgradePolicy):
+            override = cfg_section.override_for(app_model)
+            payload = {}
+            if override.enabled is not None:
+                payload["enabled"] = bool(override.enabled)
+            if override.allow_upgrades is not None:
+                payload["allow_upgrades"] = bool(override.allow_upgrades)
+            if override.disallow_quality_name_tokens is not None:
+                payload["disallow_quality_name_tokens"] = list(
+                    override.disallow_quality_name_tokens
+                )
+            if override.cutoff_preferred_name_tokens is not None:
+                payload["cutoff_preferred_name_tokens"] = list(
+                    override.cutoff_preferred_name_tokens
+                )
+            return payload
+
         by_app = (cfg_section or {}).get("by_app") or {}
-        app_name = str(app_cfg.get("name") or "")
-        app_impl = str(app_cfg.get("implementation") or "").strip().lower()
+        app_name = str(app_model.name or "")
+        app_impl = str(app_model.implementation or "").strip().lower()
         return (
             by_app.get(app_name)
             or by_app.get(app_impl)
@@ -73,20 +176,27 @@ class ServarrPolicyService:
 
     def ensure_download_handling(
         self,
-        app_name: str,
+        app_cfg: AppRef,
         app_url: str,
         api_base: str,
         api_key: str,
-        handling_cfg: dict[str, Any],
+        handling_cfg: ArrDownloadHandlingPolicy | dict[str, Any],
     ) -> None:
+        app_model = self._coerce_app_ref(app_cfg)
+        app_name = str(app_model.name or app_model.implementation or "Arr")
+        policy_cfg = self._coerce_download_handling_policy(handling_cfg)
+        policy: ArrDownloadHandlingResolvedPolicy = policy_cfg.resolved_for(app_model)
+        if not policy.enabled:
+            return
+
         endpoint, current = self.fetch_download_client_config(app_name, app_url, api_base, api_key)
         if not endpoint or not isinstance(current, dict):
             return
 
-        desired_enable = self.bool_cfg(handling_cfg, "enable_completed_download_handling", True)
-        desired_remove_completed = self.bool_cfg(handling_cfg, "remove_completed_downloads", False)
-        desired_remove_failed = self.bool_cfg(handling_cfg, "remove_failed_downloads", False)
-        desired_redownload_failed = self.bool_cfg(handling_cfg, "auto_redownload_failed", False)
+        desired_enable = policy.enable_completed_download_handling
+        desired_remove_completed = policy.remove_completed_downloads
+        desired_remove_failed = policy.remove_failed_downloads
+        desired_redownload_failed = policy.auto_redownload_failed
 
         payload = dict(current)
         payload["enableCompletedDownloadHandling"] = desired_enable
@@ -132,18 +242,19 @@ class ServarrPolicyService:
 
     def ensure_media_management(
         self,
-        app_cfg: dict[str, Any],
+        app_cfg: AppRef,
         app_url: str,
         api_base: str,
         api_key: str,
-        media_cfg: dict[str, Any],
+        media_cfg: ArrMediaManagementPolicy | dict[str, Any],
     ) -> None:
-        if not self.bool_cfg(media_cfg, "enabled", True):
+        app_model = self._coerce_app_ref(app_cfg)
+        app_name = str(app_model.name or app_model.implementation or "Arr")
+        app_caps = app_model.capabilities
+        policy_cfg = self._coerce_media_management_policy(media_cfg)
+        policy: ArrMediaManagementResolvedPolicy = policy_cfg.resolved_for(app_model)
+        if not policy.enabled:
             return
-
-        app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
-        app_impl = str(app_cfg.get("implementation") or "")
-        app_overrides = self.resolve_overrides_by_app(media_cfg, app_cfg)
 
         status, current, body = self.http_request(
             app_url, f"{api_base}/config/mediamanagement", api_key=api_key
@@ -156,21 +267,15 @@ class ServarrPolicyService:
         desired = dict(current)
         changed = False
 
-        if "copy_using_hardlinks" in app_overrides:
-            desired_hardlinks = bool(app_overrides.get("copy_using_hardlinks"))
-        else:
-            desired_hardlinks = self.bool_cfg(media_cfg, "copy_using_hardlinks", True)
+        desired_hardlinks = policy.copy_using_hardlinks
         if "copyUsingHardlinks" in desired and bool(desired.get("copyUsingHardlinks")) != bool(
             desired_hardlinks
         ):
             desired["copyUsingHardlinks"] = bool(desired_hardlinks)
             changed = True
 
-        if app_impl == "sonarr":
-            if "create_empty_series_folders" in app_overrides:
-                desired_season_folders = bool(app_overrides.get("create_empty_series_folders"))
-            else:
-                desired_season_folders = self.bool_cfg(media_cfg, "create_empty_series_folders", True)
+        if app_caps.supports_series_folder_management:
+            desired_season_folders = policy.create_empty_series_folders
             if "createEmptySeriesFolders" in desired and bool(
                 desired.get("createEmptySeriesFolders")
             ) != bool(desired_season_folders):
@@ -205,45 +310,32 @@ class ServarrPolicyService:
     def ensure_quality_upgrade_policy(
         self,
         cfg: dict[str, Any],
-        app_cfg: dict[str, Any],
+        app_cfg: AppRef,
         app_url: str,
         api_base: str,
         api_key: str,
-        quality_upgrade_cfg: dict[str, Any],
+        quality_upgrade_cfg: ArrQualityUpgradePolicy | dict[str, Any],
     ) -> None:
-        if not self.bool_cfg(quality_upgrade_cfg, "enabled", False):
+        app_model = self._coerce_app_ref(app_cfg)
+        app_name = str(app_model.name or app_model.implementation or "Arr")
+        policy_cfg = self._coerce_quality_upgrade_policy(quality_upgrade_cfg)
+        policy: ArrQualityUpgradeResolvedPolicy = policy_cfg.resolved_for(app_model)
+        if not policy.enabled:
             return
 
-        app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
-        app_overrides = self.resolve_overrides_by_app(quality_upgrade_cfg, app_cfg)
-        if "enabled" in app_overrides and not bool(app_overrides.get("enabled")):
-            return
-
-        allow_upgrades = self.bool_cfg(
-            app_overrides,
-            "allow_upgrades",
-            self.bool_cfg(quality_upgrade_cfg, "allow_upgrades", True),
-        )
+        allow_upgrades = policy.allow_upgrades
         disallow_tokens = [
             self.normalize_token(x)
-            for x in self.coerce_list(
-                app_overrides.get("disallow_quality_name_tokens")
-                or quality_upgrade_cfg.get("disallow_quality_name_tokens")
-                or ["2160", "4k", "uhd"]
-            )
+            for x in self.coerce_list(policy.disallow_quality_name_tokens)
             if self.normalize_token(x)
         ]
         cutoff_tokens = [
             self.normalize_token(x)
-            for x in self.coerce_list(
-                app_overrides.get("cutoff_preferred_name_tokens")
-                or quality_upgrade_cfg.get("cutoff_preferred_name_tokens")
-                or ["1080"]
-            )
+            for x in self.coerce_list(policy.cutoff_preferred_name_tokens)
             if self.normalize_token(x)
         ]
 
-        preferred_id, preferred_names = self.resolve_arr_quality_preferences(cfg, app_cfg)
+        preferred_id, preferred_names = self.resolve_arr_quality_preferences(cfg, app_model.raw)
         selected = self.get_arr_quality_profile(
             app_name,
             app_url,
@@ -316,7 +408,11 @@ class ServarrPolicyService:
                 desired["items"] = rewritten
                 changed = True
 
-        if cutoff_id and "cutoff" in desired and self.to_int(desired.get("cutoff")) != int(cutoff_id):
+        if (
+            cutoff_id
+            and "cutoff" in desired
+            and self.to_int(desired.get("cutoff")) != int(cutoff_id)
+        ):
             desired["cutoff"] = int(cutoff_id)
             changed = True
 

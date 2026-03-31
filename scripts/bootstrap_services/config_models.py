@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,25 @@ class DownloadClientConfig:
             auth_bypass=dict(src.get("auth_bypass") or {}),
             seeding_policy=dict(src.get("seeding_policy") or {}),
             queue_guardrails=dict(src.get("queue_guardrails") or {}),
+            raw=src,
+        )
+
+
+@dataclass(frozen=True)
+class TechnologyBindingsConfig:
+    torrent_client: str = "qbittorrent"
+    usenet_client: str = "sabnzbd"
+    media_server: str = "jellyfin"
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "TechnologyBindingsConfig":
+        src = dict(data or {})
+        return cls(
+            torrent_client=str(src.get("torrent_client", "qbittorrent")).strip().lower()
+            or "qbittorrent",
+            usenet_client=str(src.get("usenet_client", "sabnzbd")).strip().lower() or "sabnzbd",
+            media_server=str(src.get("media_server", "jellyfin")).strip().lower() or "jellyfin",
             raw=src,
         )
 
@@ -180,6 +199,467 @@ class ArrDiscoveryListsConfig:
         )
 
 
+def _coerce_bool_opt(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _coerce_str_list_opt(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    token = str(value).strip()
+    return [token] if token else []
+
+
+def _normalize_by_app_key(
+    key: str,
+    canonicalize: Callable[[str], str] | None = None,
+) -> str:
+    raw = str(key or "").strip()
+    if not raw:
+        return ""
+    if canonicalize:
+        candidate = str(canonicalize(raw)).strip()
+        if candidate:
+            return candidate.lower()
+    return raw.lower()
+
+
+def _app_lookup_keys(
+    app: "ServarrAppConfig | dict[str, Any] | str",
+    canonicalize: Callable[[str], str] | None = None,
+) -> tuple[str, ...]:
+    if isinstance(app, ServarrAppConfig):
+        name = app.name
+        impl = app.implementation
+    elif isinstance(app, dict):
+        name = str(app.get("name") or "").strip()
+        impl = str(app.get("implementation") or "").strip()
+    else:
+        name = str(app or "").strip()
+        impl = ""
+
+    candidates: list[str] = []
+    for token in (name, impl):
+        for variant in (token, token.lower()):
+            normalized = _normalize_by_app_key(variant, canonicalize=canonicalize)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+    return tuple(candidates)
+
+
+@dataclass(frozen=True)
+class ArrMediaManagementOverride:
+    enabled: bool | None = None
+    copy_using_hardlinks: bool | None = None
+    create_empty_series_folders: bool | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "ArrMediaManagementOverride":
+        src = dict(data or {})
+        return cls(
+            enabled=_coerce_bool_opt(src.get("enabled")),
+            copy_using_hardlinks=_coerce_bool_opt(src.get("copy_using_hardlinks")),
+            create_empty_series_folders=_coerce_bool_opt(src.get("create_empty_series_folders")),
+        )
+
+
+@dataclass(frozen=True)
+class ArrMediaManagementResolvedPolicy:
+    enabled: bool
+    copy_using_hardlinks: bool
+    create_empty_series_folders: bool
+
+
+@dataclass(frozen=True)
+class ArrMediaManagementPolicy:
+    enabled: bool
+    copy_using_hardlinks: bool
+    create_empty_series_folders: bool
+    by_app: dict[str, ArrMediaManagementOverride] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any] | None,
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> "ArrMediaManagementPolicy":
+        src = dict(data or {})
+        by_app_raw = src.get("by_app") or {}
+        by_app: dict[str, ArrMediaManagementOverride] = {}
+        if isinstance(by_app_raw, dict):
+            for key, value in by_app_raw.items():
+                if not isinstance(value, dict):
+                    continue
+                token = _normalize_by_app_key(str(key), canonicalize=canonicalize)
+                if not token:
+                    continue
+                by_app[token] = ArrMediaManagementOverride.from_dict(value)
+
+        return cls(
+            enabled=bool(src.get("enabled", True)),
+            copy_using_hardlinks=bool(src.get("copy_using_hardlinks", True)),
+            create_empty_series_folders=bool(src.get("create_empty_series_folders", True)),
+            by_app=by_app,
+            raw=src,
+        )
+
+    def override_for(
+        self,
+        app: "ServarrAppConfig | dict[str, Any] | str",
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> ArrMediaManagementOverride:
+        for key in _app_lookup_keys(app, canonicalize=canonicalize):
+            override = self.by_app.get(key)
+            if override:
+                return override
+        return ArrMediaManagementOverride()
+
+    def resolved_for(
+        self,
+        app: "ServarrAppConfig | dict[str, Any] | str",
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> ArrMediaManagementResolvedPolicy:
+        override = self.override_for(app, canonicalize=canonicalize)
+        return ArrMediaManagementResolvedPolicy(
+            enabled=self.enabled if override.enabled is None else bool(override.enabled),
+            copy_using_hardlinks=(
+                self.copy_using_hardlinks
+                if override.copy_using_hardlinks is None
+                else bool(override.copy_using_hardlinks)
+            ),
+            create_empty_series_folders=(
+                self.create_empty_series_folders
+                if override.create_empty_series_folders is None
+                else bool(override.create_empty_series_folders)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ArrDownloadHandlingOverride:
+    enabled: bool | None = None
+    enable_completed_download_handling: bool | None = None
+    remove_completed_downloads: bool | None = None
+    remove_failed_downloads: bool | None = None
+    auto_redownload_failed: bool | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "ArrDownloadHandlingOverride":
+        src = dict(data or {})
+        return cls(
+            enabled=_coerce_bool_opt(src.get("enabled")),
+            enable_completed_download_handling=_coerce_bool_opt(
+                src.get("enable_completed_download_handling")
+            ),
+            remove_completed_downloads=_coerce_bool_opt(src.get("remove_completed_downloads")),
+            remove_failed_downloads=_coerce_bool_opt(src.get("remove_failed_downloads")),
+            auto_redownload_failed=_coerce_bool_opt(src.get("auto_redownload_failed")),
+        )
+
+
+@dataclass(frozen=True)
+class ArrDownloadHandlingResolvedPolicy:
+    enabled: bool
+    enable_completed_download_handling: bool
+    remove_completed_downloads: bool
+    remove_failed_downloads: bool
+    auto_redownload_failed: bool
+
+
+@dataclass(frozen=True)
+class ArrDownloadHandlingPolicy:
+    enabled: bool
+    enable_completed_download_handling: bool
+    remove_completed_downloads: bool
+    remove_failed_downloads: bool
+    auto_redownload_failed: bool
+    by_app: dict[str, ArrDownloadHandlingOverride] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any] | None,
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> "ArrDownloadHandlingPolicy":
+        src = dict(data or {})
+        by_app_raw = src.get("by_app") or {}
+        by_app: dict[str, ArrDownloadHandlingOverride] = {}
+        if isinstance(by_app_raw, dict):
+            for key, value in by_app_raw.items():
+                if not isinstance(value, dict):
+                    continue
+                token = _normalize_by_app_key(str(key), canonicalize=canonicalize)
+                if not token:
+                    continue
+                by_app[token] = ArrDownloadHandlingOverride.from_dict(value)
+
+        return cls(
+            enabled=bool(src.get("enabled", True)),
+            enable_completed_download_handling=bool(
+                src.get("enable_completed_download_handling", True)
+            ),
+            remove_completed_downloads=bool(src.get("remove_completed_downloads", False)),
+            remove_failed_downloads=bool(src.get("remove_failed_downloads", False)),
+            auto_redownload_failed=bool(src.get("auto_redownload_failed", False)),
+            by_app=by_app,
+            raw=src,
+        )
+
+    def override_for(
+        self,
+        app: "ServarrAppConfig | dict[str, Any] | str",
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> ArrDownloadHandlingOverride:
+        for key in _app_lookup_keys(app, canonicalize=canonicalize):
+            override = self.by_app.get(key)
+            if override:
+                return override
+        return ArrDownloadHandlingOverride()
+
+    def resolved_for(
+        self,
+        app: "ServarrAppConfig | dict[str, Any] | str",
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> ArrDownloadHandlingResolvedPolicy:
+        override = self.override_for(app, canonicalize=canonicalize)
+        return ArrDownloadHandlingResolvedPolicy(
+            enabled=self.enabled if override.enabled is None else bool(override.enabled),
+            enable_completed_download_handling=(
+                self.enable_completed_download_handling
+                if override.enable_completed_download_handling is None
+                else bool(override.enable_completed_download_handling)
+            ),
+            remove_completed_downloads=(
+                self.remove_completed_downloads
+                if override.remove_completed_downloads is None
+                else bool(override.remove_completed_downloads)
+            ),
+            remove_failed_downloads=(
+                self.remove_failed_downloads
+                if override.remove_failed_downloads is None
+                else bool(override.remove_failed_downloads)
+            ),
+            auto_redownload_failed=(
+                self.auto_redownload_failed
+                if override.auto_redownload_failed is None
+                else bool(override.auto_redownload_failed)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ArrQualityUpgradeOverride:
+    enabled: bool | None = None
+    allow_upgrades: bool | None = None
+    disallow_quality_name_tokens: list[str] | None = None
+    cutoff_preferred_name_tokens: list[str] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "ArrQualityUpgradeOverride":
+        src = dict(data or {})
+        return cls(
+            enabled=_coerce_bool_opt(src.get("enabled")),
+            allow_upgrades=_coerce_bool_opt(src.get("allow_upgrades")),
+            disallow_quality_name_tokens=_coerce_str_list_opt(
+                src.get("disallow_quality_name_tokens")
+            ),
+            cutoff_preferred_name_tokens=_coerce_str_list_opt(
+                src.get("cutoff_preferred_name_tokens")
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ArrQualityUpgradeResolvedPolicy:
+    enabled: bool
+    allow_upgrades: bool
+    disallow_quality_name_tokens: list[str]
+    cutoff_preferred_name_tokens: list[str]
+
+
+@dataclass(frozen=True)
+class ArrQualityUpgradePolicy:
+    enabled: bool
+    allow_upgrades: bool
+    disallow_quality_name_tokens: list[str] = field(default_factory=list)
+    cutoff_preferred_name_tokens: list[str] = field(default_factory=list)
+    by_app: dict[str, ArrQualityUpgradeOverride] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any] | None,
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> "ArrQualityUpgradePolicy":
+        src = dict(data or {})
+        by_app_raw = src.get("by_app") or {}
+        by_app: dict[str, ArrQualityUpgradeOverride] = {}
+        if isinstance(by_app_raw, dict):
+            for key, value in by_app_raw.items():
+                if not isinstance(value, dict):
+                    continue
+                token = _normalize_by_app_key(str(key), canonicalize=canonicalize)
+                if not token:
+                    continue
+                by_app[token] = ArrQualityUpgradeOverride.from_dict(value)
+
+        disallow_tokens = _coerce_str_list_opt(src.get("disallow_quality_name_tokens")) or [
+            "2160",
+            "4k",
+            "uhd",
+        ]
+        cutoff_tokens = _coerce_str_list_opt(src.get("cutoff_preferred_name_tokens")) or ["1080"]
+
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            allow_upgrades=bool(src.get("allow_upgrades", True)),
+            disallow_quality_name_tokens=disallow_tokens,
+            cutoff_preferred_name_tokens=cutoff_tokens,
+            by_app=by_app,
+            raw=src,
+        )
+
+    def override_for(
+        self,
+        app: "ServarrAppConfig | dict[str, Any] | str",
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> ArrQualityUpgradeOverride:
+        for key in _app_lookup_keys(app, canonicalize=canonicalize):
+            override = self.by_app.get(key)
+            if override:
+                return override
+        return ArrQualityUpgradeOverride()
+
+    def resolved_for(
+        self,
+        app: "ServarrAppConfig | dict[str, Any] | str",
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> ArrQualityUpgradeResolvedPolicy:
+        override = self.override_for(app, canonicalize=canonicalize)
+        return ArrQualityUpgradeResolvedPolicy(
+            enabled=self.enabled if override.enabled is None else bool(override.enabled),
+            allow_upgrades=(
+                self.allow_upgrades
+                if override.allow_upgrades is None
+                else bool(override.allow_upgrades)
+            ),
+            disallow_quality_name_tokens=(
+                list(self.disallow_quality_name_tokens)
+                if override.disallow_quality_name_tokens is None
+                else list(override.disallow_quality_name_tokens)
+            ),
+            cutoff_preferred_name_tokens=(
+                list(self.cutoff_preferred_name_tokens)
+                if override.cutoff_preferred_name_tokens is None
+                else list(override.cutoff_preferred_name_tokens)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class JellyfinLibrariesConfig:
+    enabled: bool
+    required: bool
+    url: str
+    libraries: list[dict[str, Any]] = field(default_factory=list)
+    tuning: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "JellyfinLibrariesConfig":
+        src = dict(data or {})
+        libraries = [x for x in (src.get("libraries") or []) if isinstance(x, dict)]
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            required=bool(src.get("required", False)),
+            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            libraries=libraries,
+            tuning=dict(src.get("tuning") or {}),
+            raw=src,
+        )
+
+
+@dataclass(frozen=True)
+class JellyfinPluginsConfig:
+    enabled: bool
+    required: bool
+    url: str
+    repositories: list[dict[str, Any]] = field(default_factory=list)
+    install: list[Any] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "JellyfinPluginsConfig":
+        src = dict(data or {})
+        repositories = [x for x in (src.get("repositories") or []) if isinstance(x, dict)]
+        install = list(src.get("install") or [])
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            required=bool(src.get("required", False)),
+            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            repositories=repositories,
+            install=install,
+            raw=src,
+        )
+
+
+@dataclass(frozen=True)
+class JellyfinPlaybackConfig:
+    enabled: bool
+    required: bool
+    url: str
+    user_defaults: dict[str, Any] = field(default_factory=dict)
+    server_defaults: dict[str, Any] = field(default_factory=dict)
+    display_preferences: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "JellyfinPlaybackConfig":
+        src = dict(data or {})
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            required=bool(src.get("required", False)),
+            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            user_defaults=dict(src.get("user_defaults") or {}),
+            server_defaults=dict(src.get("server_defaults") or {}),
+            display_preferences=dict(src.get("display_preferences") or {}),
+            raw=src,
+        )
+
+
+@dataclass(frozen=True)
+class JellyfinPrewarmConfig:
+    enabled: bool
+    required: bool
+    url: str
+    refresh_library: bool
+    refresh_channels: bool
+    refresh_guide: bool
+    library_refresh_query: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "JellyfinPrewarmConfig":
+        src = dict(data or {})
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            required=bool(src.get("required", False)),
+            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            refresh_library=bool(src.get("refresh_library", True)),
+            refresh_channels=bool(src.get("refresh_channels", True)),
+            refresh_guide=bool(src.get("refresh_guide", True)),
+            library_refresh_query=dict(src.get("library_refresh_query") or {}),
+            raw=src,
+        )
+
+
 @dataclass(frozen=True)
 class AppCapabilities:
     supports_auth: bool = True
@@ -192,6 +672,7 @@ class AppCapabilities:
     supports_remote_path_mappings: bool = True
     supports_discovery_lists: bool = True
     supports_health_check: bool = True
+    supports_series_folder_management: bool = False
 
     @classmethod
     def from_dict(
@@ -207,15 +688,14 @@ class AppCapabilities:
             supports_root_folder=bool(merged.get("supports_root_folder", True)),
             supports_download_handling=bool(merged.get("supports_download_handling", True)),
             supports_quality_upgrade=bool(merged.get("supports_quality_upgrade", True)),
-            supports_prowlarr_application=bool(
-                merged.get("supports_prowlarr_application", True)
-            ),
+            supports_prowlarr_application=bool(merged.get("supports_prowlarr_application", True)),
             supports_download_clients=bool(merged.get("supports_download_clients", True)),
-            supports_remote_path_mappings=bool(
-                merged.get("supports_remote_path_mappings", True)
-            ),
+            supports_remote_path_mappings=bool(merged.get("supports_remote_path_mappings", True)),
             supports_discovery_lists=bool(merged.get("supports_discovery_lists", True)),
             supports_health_check=bool(merged.get("supports_health_check", True)),
+            supports_series_folder_management=bool(
+                merged.get("supports_series_folder_management", False)
+            ),
         )
 
 

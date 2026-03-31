@@ -281,6 +281,25 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         self.trigger_arr_discovery_kickoff.assert_not_called()
         self.trigger_health_check.assert_not_called()
 
+    def test_pipeline_rejects_invalid_adapter_class_config_shape(self):
+        service = self._service()
+        arr_apps = [
+            {
+                "name": "Sonarr",
+                "implementation": "sonarr",
+                "url": "http://sonarr:8989/",
+                "root_folder": "/media/tv",
+            }
+        ]
+        with self.assertRaises(ValueError):
+            service.run(
+                self._base_inputs(
+                    arr_apps,
+                    {"sonarr": "sonarr-key"},
+                    adapter_hooks_cfg={"adapter_classes": "invalid"},
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

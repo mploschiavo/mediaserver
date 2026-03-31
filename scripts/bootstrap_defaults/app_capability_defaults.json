@@ -1,5 +1,7 @@
 {
-  "sonarr": {},
+  "sonarr": {
+    "supports_series_folder_management": true
+  },
   "radarr": {},
   "lidarr": {},
   "readarr": {}
