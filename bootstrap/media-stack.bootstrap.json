@@ -963,6 +963,7 @@
       "preference_ids": [
         "usersettings",
         "home",
+        "libraries",
         "movies",
         "tv",
         "music",
@@ -973,6 +974,7 @@
       "custom_prefs": {
         "enableNextVideoInfoOverlay": true,
         "enableBackdrops": true,
+        "enableLibraryBackdrops": true,
         "enableThemeVideos": true,
         "homesection0": "smalllibrarytiles",
         "homesection1": "resume",

@@ -135,6 +135,17 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         mirrors = {str(x).strip() for x in (qbit_ipfilter_cfg.get("mirror_target_paths") or [])}
         self.assertEqual(mirrors, set())
 
+    def test_jellyfin_libraries_backdrops_default_is_enabled_in_display_prefs(self):
+        playback = self.cfg.get("jellyfin_playback") or {}
+        display = playback.get("display_preferences") or {}
+        self.assertTrue(bool(display.get("enabled")))
+        self.assertTrue(bool(display.get("show_backdrop")))
+        pref_ids = [str(x).strip() for x in (display.get("preference_ids") or [])]
+        self.assertIn("libraries", pref_ids)
+        custom = display.get("custom_prefs") or {}
+        self.assertTrue(bool(custom.get("enableBackdrops")))
+        self.assertTrue(bool(custom.get("enableLibraryBackdrops")))
+
     def test_jellyfin_livetv_self_healing_defaults_are_enabled(self):
         live_tv = self.cfg.get("jellyfin_livetv") or {}
         self.assertTrue(bool(live_tv.get("enabled")))
