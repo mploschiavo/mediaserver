@@ -4,33 +4,47 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import json
 import os
 import re
-import shlex
-import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Callable
 
-from core.exceptions import ConfigError, KubernetesError, MediaStackError
+from core.exceptions import ConfigError, MediaStackError
 from core.kube import KubectlClient
 
 from cli.bootstrap_config_resolver_service import (
     BootstrapConfigResolverConfig,
     BootstrapConfigResolverService,
 )
+from cli.bootstrap_deployment_ops_service import (
+    BootstrapDeploymentOpsConfig,
+    BootstrapDeploymentOpsService,
+)
+from cli.bootstrap_job_logs_service import (
+    BootstrapJobLogsConfig,
+    BootstrapJobLogsService,
+)
 from cli.bootstrap_job_wait_service import BootstrapJobWaitConfig, BootstrapJobWaitService
 from cli.bootstrap_manifest_service import BootstrapManifestConfig, BootstrapManifestService
+from cli.bootstrap_notification_service import (
+    BootstrapNotificationConfig,
+    BootstrapNotificationService,
+)
+from cli.bootstrap_script_runner_service import (
+    BootstrapScriptRunnerConfig,
+    BootstrapScriptRunnerService,
+)
 from cli.bootstrap_secret_priming_service import (
     BootstrapSecretPrimingConfig,
     BootstrapSecretPrimingService,
+)
+from cli.bootstrap_secret_reader_service import (
+    BootstrapSecretReaderConfig,
+    BootstrapSecretReaderService,
 )
 from cli.jellyfin_plugin_activation_service import (
     JellyfinPluginActivationConfig,
@@ -214,6 +228,42 @@ class RunBootstrapJobRunner:
             read_secret_key=self._read_secret_key,
         )
 
+    def _notification_service(self) -> BootstrapNotificationService:
+        return BootstrapNotificationService(
+            cfg=BootstrapNotificationConfig(
+                alert_webhook_url=self.cfg.alert_webhook_url,
+            )
+        )
+
+    def _script_runner_service(self) -> BootstrapScriptRunnerService:
+        return BootstrapScriptRunnerService(
+            cfg=BootstrapScriptRunnerConfig(root_dir=self.cfg.root_dir),
+        )
+
+    def _deployment_ops_service(self) -> BootstrapDeploymentOpsService:
+        return BootstrapDeploymentOpsService(
+            cfg=BootstrapDeploymentOpsConfig(namespace=self.cfg.namespace),
+            kube=self.kube,
+            info=info,
+        )
+
+    def _secret_reader_service(self) -> BootstrapSecretReaderService:
+        return BootstrapSecretReaderService(
+            cfg=BootstrapSecretReaderConfig(namespace=self.cfg.namespace),
+            kube=self.kube,
+        )
+
+    def _job_logs_service(self) -> BootstrapJobLogsService:
+        return BootstrapJobLogsService(
+            cfg=BootstrapJobLogsConfig(
+                namespace=self.cfg.namespace,
+                job_name="media-stack-bootstrap",
+                log_file=self.job_log_file,
+                tail_lines=self.cfg.job_log_tail_lines,
+            ),
+            kube=self.kube,
+        )
+
     def run(self) -> int:
         if not self.cfg.config_file.exists():
             raise ConfigError(f"Config file not found: {self.cfg.config_file}")
@@ -309,43 +359,10 @@ class RunBootstrapJobRunner:
                 pass
 
     def notify(self, status: str, message: str) -> None:
-        if not self.cfg.alert_webhook_url:
-            return
-        payload = json.dumps({"status": status, "message": message}).encode("utf-8")
-        request = urllib.request.Request(
-            self.cfg.alert_webhook_url,
-            data=payload,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=8):
-                return
-        except urllib.error.URLError:
-            return
+        self._notification_service().notify(status, message)
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
-        script_path = self.cfg.root_dir / "scripts" / script_name
-        call_env = dict(os.environ)
-        if env:
-            call_env.update({k: str(v) for k, v in env.items()})
-        proc = subprocess.run(
-            ["bash", str(script_path), *list(args)],
-            cwd=str(self.cfg.root_dir),
-            env=call_env,
-            check=False,
-            text=True,
-            capture_output=True,
-        )
-        if proc.stdout.strip():
-            print(proc.stdout.rstrip())
-        if proc.stderr.strip():
-            print(proc.stderr.rstrip(), file=sys.stderr)
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"{script_name} failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in [str(script_path), *args])}"
-            )
+        self._script_runner_service().run_script(script_name, *args, env=env)
 
     def manifest_overrides(self, text: str) -> str:
         return self._manifest_service().manifest_overrides(text)
@@ -381,88 +398,28 @@ class RunBootstrapJobRunner:
         )
 
     def print_bootstrap_job_logs(self) -> None:
-        result = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "logs",
-                "job/media-stack-bootstrap",
-                "--timestamps",
-            ],
-            check=False,
-        )
-        if result.returncode != 0:
-            raise KubernetesError(result.stderr or result.stdout)
-        self.job_log_file.write_text(result.stdout or "", encoding="utf-8")
-        lines = (result.stdout or "").splitlines()
-        tail = lines[-max(1, self.cfg.job_log_tail_lines) :]
-        if tail:
-            print("\n".join(tail))
+        self._job_logs_service().capture_logs()
 
     def _log_contains(self, marker: str) -> bool:
-        if not self.job_log_file.exists():
-            return False
-        try:
-            return marker in self.job_log_file.read_text(encoding="utf-8")
-        except Exception:
-            return False
+        return self._job_logs_service().log_contains(marker)
 
     def deployment_exists(self, deployment: str) -> bool:
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "get", f"deploy/{deployment}"],
-            check=False,
-        )
-        return result.returncode == 0
+        return self._deployment_ops_service().deployment_exists(deployment)
 
     def restart_deployment(self, deployment: str, *, timeout_seconds: int) -> None:
-        info(f"Restarting deployment/{deployment}.")
-        restart = self.kube.run(
-            ["-n", self.cfg.namespace, "rollout", "restart", f"deployment/{deployment}"],
-            check=False,
+        self._deployment_ops_service().restart_deployment(
+            deployment,
+            timeout_seconds=timeout_seconds,
         )
-        if restart.returncode != 0:
-            raise KubernetesError(restart.stderr or restart.stdout)
-        status = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "rollout",
-                "status",
-                f"deployment/{deployment}",
-                f"--timeout={timeout_seconds}s",
-            ],
-            check=False,
-        )
-        if status.returncode != 0:
-            raise KubernetesError(status.stderr or status.stdout)
 
     def restart_deployment_if_exists(self, deployment: str, *, timeout_seconds: int) -> None:
-        if not self.deployment_exists(deployment):
-            info(f"deployment/{deployment} not found in namespace/{self.cfg.namespace}; skipping restart.")
-            return
-        self.restart_deployment(deployment, timeout_seconds=timeout_seconds)
+        self._deployment_ops_service().restart_deployment_if_exists(
+            deployment,
+            timeout_seconds=timeout_seconds,
+        )
 
     def _read_secret_key(self, secret: str, key_name: str) -> str:
-        result = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "secret",
-                secret,
-                f"-o=jsonpath={{.data.{key_name}}}",
-            ],
-            check=False,
-        )
-        if result.returncode != 0:
-            return ""
-        value = (result.stdout or "").strip()
-        if not value:
-            return ""
-        try:
-            return base64.b64decode(value).decode("utf-8")
-        except Exception:
-            return ""
+        return self._secret_reader_service().read_secret_key(secret, key_name)
 
     def activate_jellyfin_plugins(self) -> None:
         self._jellyfin_plugin_service().activate_plugins_if_needed()
