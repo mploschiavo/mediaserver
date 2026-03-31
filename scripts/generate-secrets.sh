@@ -7,8 +7,6 @@ OUTPUT_FILE="${OUTPUT_FILE:-./secrets.generated.env}"
 ROTATE_EXISTING="${ROTATE_EXISTING:-0}"
 PASS_LENGTH="${PASS_LENGTH:-24}"
 STACK_ADMIN_USER="${STACK_ADMIN_USER:-admin}"
-QBIT_USE_STACK_ADMIN="${QBIT_USE_STACK_ADMIN:-1}"
-QBIT_USER="${QBIT_USER:-$STACK_ADMIN_USER}"
 
 usage() {
   cat <<'EOF'
@@ -23,10 +21,8 @@ Environment variables:
   NAMESPACE        (default: media-stack)
   SECRET_NAME      (default: media-stack-secrets)
   OUTPUT_FILE      (default: ./secrets.generated.env)
-  ROTATE_EXISTING  (default: 0; set to 1 to rotate qB credentials)
+  ROTATE_EXISTING  (default: 0; set to 1 to rotate stack admin credentials)
   STACK_ADMIN_USER (default: admin)
-  QBIT_USE_STACK_ADMIN (default: 1; keep qB credentials equal to stack admin)
-  QBIT_USER        (default: STACK_ADMIN_USER)
   SABNZBD_API_KEY  (default: preserve existing or empty; optional bootstrap override)
   PASS_LENGTH      (default: 24)
 EOF
@@ -66,8 +62,6 @@ if "${KUBECTL[@]}" -n "$NAMESPACE" get secret "$SECRET_NAME" >/dev/null 2>&1; th
   exists=1
 fi
 
-current_qb_user="$(get_secret_key QBITTORRENT_USERNAME)"
-current_qb_pass="$(get_secret_key QBITTORRENT_PASSWORD)"
 current_sab_api_key="$(get_secret_key SABNZBD_API_KEY)"
 current_jellyfin_api_key="$(get_secret_key JELLYFIN_API_KEY)"
 current_jellyfin_user_id="$(get_secret_key JELLYFIN_USER_ID)"
@@ -78,25 +72,11 @@ current_un_readarr="$(get_secret_key UNPACKERR_READARR_API_KEY)"
 current_stack_admin_user="$(get_secret_key STACK_ADMIN_USERNAME)"
 current_stack_admin_pass="$(get_secret_key STACK_ADMIN_PASSWORD)"
 
-if [[ -z "$current_qb_user" || "$ROTATE_EXISTING" == "1" ]]; then
-  current_qb_user=""
-fi
 if [[ -z "$current_stack_admin_user" || "$ROTATE_EXISTING" == "1" ]]; then
   current_stack_admin_user="$STACK_ADMIN_USER"
 fi
 if [[ -z "$current_stack_admin_pass" || "$ROTATE_EXISTING" == "1" ]]; then
   current_stack_admin_pass="$(rand_secret "$PASS_LENGTH")"
-fi
-if [[ "$QBIT_USE_STACK_ADMIN" == "1" ]]; then
-  current_qb_user="$current_stack_admin_user"
-  current_qb_pass="$current_stack_admin_pass"
-else
-  if [[ -z "$current_qb_user" || "$ROTATE_EXISTING" == "1" ]]; then
-    current_qb_user="${QBIT_USER:-$current_stack_admin_user}"
-  fi
-  if [[ -z "$current_qb_pass" || "$ROTATE_EXISTING" == "1" ]]; then
-    current_qb_pass="$current_stack_admin_pass"
-  fi
 fi
 if [[ -z "$current_jellyfin_api_key" ]]; then
   current_jellyfin_api_key=""
@@ -128,8 +108,6 @@ metadata:
   namespace: ${NAMESPACE}
 type: Opaque
 stringData:
-  QBITTORRENT_USERNAME: "${current_qb_user}"
-  QBITTORRENT_PASSWORD: "${current_qb_pass}"
   STACK_ADMIN_USERNAME: "${current_stack_admin_user}"
   STACK_ADMIN_PASSWORD: "${current_stack_admin_pass}"
   SABNZBD_API_KEY: "${current_sab_api_key}"
@@ -147,8 +125,6 @@ cat >"$OUTPUT_FILE" <<EOF
 # Keep this file private.
 NAMESPACE=${NAMESPACE}
 SECRET_NAME=${SECRET_NAME}
-QBITTORRENT_USERNAME=${current_qb_user}
-QBITTORRENT_PASSWORD=${current_qb_pass}
 STACK_ADMIN_USERNAME=${current_stack_admin_user}
 STACK_ADMIN_PASSWORD=${current_stack_admin_pass}
 SABNZBD_API_KEY=${current_sab_api_key}

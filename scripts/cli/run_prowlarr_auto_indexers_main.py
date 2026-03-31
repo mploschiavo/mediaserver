@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -39,6 +40,8 @@ class AutoIndexerConfig:
     timeout_raw: str
     heartbeat_interval: int
     prepare_host_root: str
+    bootstrap_runner_image: str
+    exclude_name_tokens: list[str]
     root_dir: Path
 
     @property
@@ -116,9 +119,9 @@ class ProwlarrAutoIndexerRunner:
         info(f"Namespace: {self.cfg.namespace}")
         info(f"Heartbeat interval: {self.cfg.heartbeat_interval}s")
         info(f"Host root: {self.cfg.prepare_host_root}")
+        info(f"Bootstrap runner image: {self.cfg.bootstrap_runner_image}")
 
         self._run_phase("Ensure auto-indexer PVC prerequisites", self.ensure_pvc_prereqs)
-        self._run_phase("Update bootstrap script ConfigMap", self.update_bootstrap_script_configmap)
         self._run_phase("Update auto-indexer config ConfigMap", self.update_auto_configmap)
         self._run_phase("Recreate auto-indexer Job", self.recreate_job)
         self._run_phase("Wait for auto-indexer Job completion", self.wait_for_job)
@@ -140,45 +143,16 @@ class ProwlarrAutoIndexerRunner:
     def manifest_overrides(self, text: str) -> str:
         text = re.sub(r"namespace:\s*media-stack", f"namespace: {self.cfg.namespace}", text)
         text = text.replace("/srv/media-stack", self.cfg.prepare_host_root)
+        text = text.replace(
+            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+            self.cfg.bootstrap_runner_image,
+        )
         return text
 
     def ensure_pvc_prereqs(self) -> None:
-        storage_manifest = self.cfg.root_dir / "k8s" / "storage-pvc.yaml"
         required_pvcs = [
-            "media-stack-config-jellyfin",
-            "media-stack-config-jellyseerr",
-            "media-stack-config-sonarr",
-            "media-stack-config-radarr",
-            "media-stack-config-lidarr",
-            "media-stack-config-readarr",
-            "media-stack-config-bazarr",
             "media-stack-config-prowlarr",
-            "media-stack-config-sabnzbd",
-            "media-stack-config-homepage",
-            "media-stack-config-maintainerr",
-            "media-stack-config-jellyfin-auto-collections",
-            "media-stack-data-torrents",
-            "media-stack-data-usenet",
-            "media-stack-media",
         ]
-
-        if storage_manifest.exists():
-            info(f"Ensuring auto-indexer PVC prerequisites via {storage_manifest}")
-            with TemporaryDirectory(prefix="media-stack-auto-indexer-") as tmpdir:
-                patched_path = Path(tmpdir) / "storage-pvc.yaml"
-                patched_path.write_text(
-                    self.manifest_overrides(storage_manifest.read_text(encoding="utf-8")),
-                    encoding="utf-8",
-                )
-                result = self.kube.run(["apply", "-f", str(patched_path)], check=False)
-                if result.stdout.strip():
-                    print(result.stdout.rstrip())
-                if result.stderr.strip():
-                    print(result.stderr.rstrip(), file=sys.stderr)
-                if result.returncode != 0:
-                    raise KubernetesError(result.stderr or result.stdout)
-        else:
-            warn(f"PVC manifest not found at {storage_manifest}")
 
         missing: list[str] = []
         for pvc in required_pvcs:
@@ -192,32 +166,13 @@ class ProwlarrAutoIndexerRunner:
         if missing:
             warn(f"Missing required PVC(s) for auto-indexer job: {' '.join(missing)}")
             warn(
-                "Apply storage PVCs and retry: "
+                "Provision/restore required PVC(s) and retry. "
+                "You can apply storage defaults with: "
                 f"kubectl apply -f {self.cfg.root_dir / 'k8s' / 'storage-pvc.yaml'}"
             )
             raise ConfigError("Missing required PVCs for auto-indexer job")
 
         info("Auto-indexer PVC prerequisites are present.")
-
-    def _load_bootstrap_script_files(self) -> list[tuple[str, Path]]:
-        helper = self.cfg.root_dir / "scripts" / "lib" / "bootstrap-script-configmap.sh"
-        if not helper.exists():
-            raise ConfigError(f"Missing bootstrap helper: {helper}")
-
-        entries: list[tuple[str, Path]] = []
-        for line in helper.read_text(encoding="utf-8").splitlines():
-            match = re.match(r'^\s*"([^"|]+)\|([^"]+)"\s*$', line)
-            if not match:
-                continue
-            key = match.group(1).strip()
-            rel_path = Path(match.group(2).strip())
-            entries.append((key, rel_path))
-
-        if not entries:
-            raise ConfigError(
-                "No ConfigMap file entries parsed from scripts/lib/bootstrap-script-configmap.sh"
-            )
-        return entries
 
     def _replace_or_create_from_yaml(self, yaml_path: Path, kind_name: str) -> None:
         result = self.kube.run(
@@ -235,32 +190,13 @@ class ProwlarrAutoIndexerRunner:
         if create.returncode != 0:
             raise KubernetesError(create.stderr or create.stdout)
 
-    def update_bootstrap_script_configmap(self) -> None:
-        info("Updating bootstrap script ConfigMap for auto-indexer job")
-        entries = self._load_bootstrap_script_files()
-
-        with TemporaryDirectory(prefix="media-stack-bootstrap-script-auto-") as tmpdir:
-            cm_yaml = Path(tmpdir) / "bootstrap-script.yaml"
-            args = [
-                "-n",
-                self.cfg.namespace,
-                "create",
-                "configmap",
-                "media-stack-bootstrap-script",
-            ]
-            for key, rel in entries:
-                args.append(f"--from-file={key}={self.cfg.root_dir / rel}")
-            args.extend(["--dry-run=client", "-o", "yaml"])
-            generated = self.kube.run(args)
-            cm_yaml.write_text(generated.stdout, encoding="utf-8")
-            self._replace_or_create_from_yaml(cm_yaml, "configmap/media-stack-bootstrap-script")
-
     def update_auto_configmap(self) -> None:
         info("Updating temporary bootstrap config ConfigMap")
         config_payload = {
             "prowlarr_url": "http://prowlarr:9696",
             "trigger_indexer_sync": True,
             "arr_apps": [],
+            "prowlarr_auto_indexer_exclude_name_tokens": list(self.cfg.exclude_name_tokens),
         }
         with TemporaryDirectory(prefix="media-stack-bootstrap-auto-config-") as tmpdir:
             config_json = Path(tmpdir) / "config.json"
@@ -441,10 +377,22 @@ class ProwlarrAutoIndexerRunner:
             pod = pods[0] if pods else None
             pod_name = str((pod or {}).get("metadata", {}).get("name") or "")
             pod_phase = str((pod or {}).get("status", {}).get("phase") or "")
+            statuses = ((pod or {}).get("status", {}) or {}).get("containerStatuses") or []
+            waiting = ((statuses[0].get("state") or {}).get("waiting") or {}) if statuses else {}
+            wait_reason = str(waiting.get("reason") or "")
+            wait_message = str(waiting.get("message") or "")
 
             if pod_phase in {"Failed", "Unknown"}:
                 self._print_failure_context(job_name, selector)
                 raise KubernetesError(f"Auto-indexer pod entered terminal phase: {pod_phase}")
+
+            if wait_reason in {"ErrImagePull", "ImagePullBackOff"}:
+                warn(f"Auto-indexer pod cannot pull bootstrap runner image ({wait_reason}).")
+                if wait_message:
+                    warn(f"Image pull message: {wait_message}")
+                warn("Build/push the runner image and retry: bash scripts/build-bootstrap-runner-image.sh")
+                self._print_failure_context(job_name, selector)
+                raise KubernetesError("Auto-indexer pod failed due to bootstrap image pull error")
 
             if pod_phase == "Pending" and pod_name:
                 if elapsed - last_pending_dump >= 45:
@@ -557,6 +505,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", default="20m")
     parser.add_argument("--heartbeat-interval", type=int, default=15)
     parser.add_argument("--prepare-host-root", default="/srv/media-stack")
+    parser.add_argument(
+        "--bootstrap-runner-image",
+        default=os.getenv(
+            "BOOTSTRAP_RUNNER_IMAGE",
+            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+        ),
+    )
+    parser.add_argument(
+        "--exclude-name-token",
+        action="append",
+        default=None,
+        help=(
+            "Exclude auto-indexer candidates whose name contains this token. "
+            "Can be passed multiple times."
+        ),
+    )
     return parser
 
 
@@ -566,6 +530,19 @@ def parse_config(argv: list[str] | None = None) -> AutoIndexerConfig:
     timeout_raw = str(args.timeout or "").strip()
     heartbeat_interval = int(args.heartbeat_interval)
     prepare_host_root = str(args.prepare_host_root or "").strip()
+    bootstrap_runner_image = str(args.bootstrap_runner_image or "").strip()
+    cli_excludes = [str(item).strip().lower() for item in (args.exclude_name_token or []) if str(item).strip()]
+    env_excludes = [
+        item.strip().lower()
+        for item in str(os.getenv("AUTO_INDEXER_EXCLUDE_NAME_TOKENS", "")).split(",")
+        if item.strip()
+    ]
+    default_excludes = [
+        "the pirate bay",
+        "limetorrents",
+        "torrentgalaxyclone",
+    ]
+    exclude_name_tokens = list(dict.fromkeys(cli_excludes + env_excludes + default_excludes))
 
     if not namespace:
         raise ConfigError("namespace must be non-empty")
@@ -575,12 +552,16 @@ def parse_config(argv: list[str] | None = None) -> AutoIndexerConfig:
         raise ConfigError("heartbeat interval must be > 0")
     if not prepare_host_root:
         raise ConfigError("prepare host root must be non-empty")
+    if not bootstrap_runner_image:
+        raise ConfigError("bootstrap runner image must be non-empty")
 
     return AutoIndexerConfig(
         namespace=namespace,
         timeout_raw=timeout_raw,
         heartbeat_interval=heartbeat_interval,
         prepare_host_root=prepare_host_root,
+        bootstrap_runner_image=bootstrap_runner_image,
+        exclude_name_tokens=exclude_name_tokens,
         root_dir=Path(__file__).resolve().parents[2],
     )
 

@@ -19,7 +19,7 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 ## Architecture Layers
 - Orchestration entrypoints:
   - Bash wrappers in `scripts/*.sh` (thin only)
-  - Python CLIs in `scripts/*.py`
+  - Python CLIs in `scripts/cli/*.py` (and `scripts/bootstrap-apps.py` composition root)
 - Domain/service logic:
   - `scripts/bootstrap_services/`
   - App-scoped compatibility/service modules in `scripts/bootstrap_services/apps/<app>/`
@@ -48,7 +48,7 @@ Primary binding points:
 Swap workflow:
 1. Add/replace app adapter/service module under `scripts/bootstrap_services/apps/<app>/...`
 2. Update the matching hook key in bootstrap config (or defaults) to the new import path
-3. Ensure module is included in ConfigMap packaging list (`scripts/lib/bootstrap-script-configmap.sh`)
+3. Rebuild and push the bootstrap runner image (`scripts/build-bootstrap-runner-image.sh`)
 4. Run unit tests + live bootstrap smoke
 
 Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
@@ -71,13 +71,11 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 Keep Bash when it is a tiny, stable wrapper.
 Migrate Bash to Python when logic includes non-trivial branching, loops, parsing, retries, JSON/YAML transforms, or needs tests.
 
-## ConfigMap Packaging Contract
-When bootstrap code is mounted into Kubernetes jobs, all required modules must be present.
-- Source list for bootstrap script packaging lives in:
-  - `scripts/lib/bootstrap-script-configmap.sh`
-- Do not duplicate `--from-file` maps across scripts.
-- Any new import path used by `bootstrap-apps.py` must be added to this shared mapping.
-- If introducing app-scoped modules under `scripts/bootstrap_services/apps/`, include both package `__init__.py` files and service module files.
+## Bootstrap Image Packaging Contract
+Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
+- Any new module imported by `scripts/bootstrap-apps.py` must be included by the image build context.
+- Keep runtime Python under `scripts/` so `COPY scripts /opt/media-stack/scripts` captures required modules.
+- Validate runtime changes by rebuilding/pushing the bootstrap runner image before live bootstrap tests.
 
 ## Scripts Directory Policy
 - Keep `scripts/*.sh` as user/operator entrypoints and small compatibility wrappers.

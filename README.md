@@ -35,6 +35,7 @@ See [docs/why-this-exists.md](docs/why-this-exists.md).
 - Deployment model: [docs/deployment-model.md](docs/deployment-model.md)
 - Source-of-truth model: [docs/source-of-truth.md](docs/source-of-truth.md)
 - Technology swap guide: [docs/technology-swaps.md](docs/technology-swaps.md)
+- Software design models: [docs/software-design-models.md](docs/software-design-models.md)
 
 Diagram set:
 - [Logical topology](docs/diagrams/logical-topology.svg)
@@ -44,6 +45,9 @@ Diagram set:
 - [Source-of-truth flow](docs/diagrams/source-of-truth-flow.svg)
 - [Operating loop](docs/diagrams/operating-loop.svg)
 - [UI surface map](docs/diagrams/ui-surface-map.svg)
+- [Software component model](docs/diagrams/software-component-model.svg)
+- [Technology adapter model](docs/diagrams/technology-adapter-model.svg)
+- [Bootstrap runtime model](docs/diagrams/bootstrap-runtime-model.svg)
 
 Regenerate diagrams:
 ```bash
@@ -138,6 +142,25 @@ Examples:
 bash scripts/rebuild-verify.sh 192.168.1.60 media-stack full
 bash scripts/rebuild-verify.sh 192.168.1.60 media-stack-dev power-user
 ```
+
+## Bootstrap Runner Image
+
+Bootstrap Jobs/CronJobs run from a prebuilt image instead of mounting Python source via ConfigMap.
+
+Build and push to local registry:
+```bash
+bash scripts/build-bootstrap-runner-image.sh
+```
+
+Override image for one run:
+```bash
+BOOTSTRAP_RUNNER_IMAGE=192.168.1.60:30002/library/media-stack-bootstrap-runner:latest \
+  bash scripts/bootstrap-all.sh
+```
+
+The same `BOOTSTRAP_RUNNER_IMAGE` env var is respected by:
+- `scripts/run-bootstrap-job.sh`
+- `scripts/run-prowlarr-auto-indexers.sh`
 
 ## Quick Start (Docker Compose)
 
@@ -311,6 +334,7 @@ bash scripts/bootstrap-debug.sh
 - [docs/diagrams/README.md](docs/diagrams/README.md)
 - [docs/deployment-model.md](docs/deployment-model.md)
 - [docs/source-of-truth.md](docs/source-of-truth.md)
+- [docs/software-design-models.md](docs/software-design-models.md)
 - [docs/repo-layout.md](docs/repo-layout.md)
 - [docs/operational-principles.md](docs/operational-principles.md)
 - [docs/gitops.md](docs/gitops.md)

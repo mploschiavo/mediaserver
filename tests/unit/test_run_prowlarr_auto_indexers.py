@@ -1,6 +1,5 @@
 import importlib.util
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +29,8 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
                 timeout_raw="20m",
                 heartbeat_interval=15,
                 prepare_host_root="/srv/media-stack",
+                bootstrap_runner_image="registry.example/media-stack-bootstrap-runner:latest",
+                exclude_name_tokens=[],
                 root_dir=ROOT,
             ).timeout_seconds,
             1200,
@@ -40,6 +41,8 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
                 timeout_raw="90s",
                 heartbeat_interval=15,
                 prepare_host_root="/srv/media-stack",
+                bootstrap_runner_image="registry.example/media-stack-bootstrap-runner:latest",
+                exclude_name_tokens=[],
                 root_dir=ROOT,
             ).timeout_seconds,
             90,
@@ -50,6 +53,8 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
                 timeout_raw="2h",
                 heartbeat_interval=15,
                 prepare_host_root="/srv/media-stack",
+                bootstrap_runner_image="registry.example/media-stack-bootstrap-runner:latest",
+                exclude_name_tokens=[],
                 root_dir=ROOT,
             ).timeout_seconds,
             7200,
@@ -61,6 +66,8 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
             timeout_raw="20m",
             heartbeat_interval=15,
             prepare_host_root="/mnt/media-dev",
+            bootstrap_runner_image="registry.example/custom/bootstrap:dev",
+            exclude_name_tokens=[],
             root_dir=ROOT,
         )
         runner = MODULE.ProwlarrAutoIndexerRunner(
@@ -70,49 +77,14 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
         )
 
         rendered = runner.manifest_overrides(
-            "namespace: media-stack\npath: /srv/media-stack\n"
+            "namespace: media-stack\n"
+            "image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest\n"
+            "path: /srv/media-stack\n"
         )
         self.assertIn("namespace: media-stack-dev", rendered)
         self.assertIn("/mnt/media-dev", rendered)
+        self.assertIn("image: registry.example/custom/bootstrap:dev", rendered)
         self.assertNotIn("/srv/media-stack", rendered)
-
-    def test_load_bootstrap_script_files_parses_shared_helper(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            helper = root / "scripts" / "lib" / "bootstrap-script-configmap.sh"
-            helper.parent.mkdir(parents=True, exist_ok=True)
-            helper.write_text(
-                "\n".join(
-                    [
-                        "BOOTSTRAP_SCRIPT_CONFIGMAP_FILES=(",
-                        '  "alpha.py|scripts/alpha.py"',
-                        '  "beta.py|scripts/beta.py"',
-                        ")",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            cfg = MODULE.AutoIndexerConfig(
-                namespace="media-stack",
-                timeout_raw="20m",
-                heartbeat_interval=15,
-                prepare_host_root="/srv/media-stack",
-                root_dir=root,
-            )
-            runner = MODULE.ProwlarrAutoIndexerRunner(
-                cfg=cfg,
-                kube=_FakeKube(),
-                tracker=MODULE.PhaseTracker(),
-            )
-
-            entries = runner._load_bootstrap_script_files()
-            self.assertEqual(
-                entries,
-                [
-                    ("alpha.py", Path("scripts/alpha.py")),
-                    ("beta.py", Path("scripts/beta.py")),
-                ],
-            )
 
 
 if __name__ == "__main__":

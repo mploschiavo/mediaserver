@@ -308,8 +308,12 @@ class Runner:
 
         # qBittorrent + SAB API checks
         secret = self.get_secret("media-stack-secrets")
-        qbit_user = self.secret_value(secret, "QBITTORRENT_USERNAME")
-        qbit_pass = self.secret_value(secret, "QBITTORRENT_PASSWORD")
+        qbit_user = self.secret_value(secret, "STACK_ADMIN_USERNAME") or self.secret_value(
+            secret, "QBITTORRENT_USERNAME"
+        )
+        qbit_pass = self.secret_value(secret, "STACK_ADMIN_PASSWORD") or self.secret_value(
+            secret, "QBITTORRENT_PASSWORD"
+        )
         sab_key = self.secret_value(secret, "SABNZBD_API_KEY")
 
         if qbit_user and qbit_pass:

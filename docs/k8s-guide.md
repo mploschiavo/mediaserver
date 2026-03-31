@@ -62,6 +62,11 @@ kubectl -n media-stack scale deploy/unpackerr --replicas=1
 ```
 
 ## Configuration-as-code bootstrap
+Build/push bootstrap runner image first (used by bootstrap Job + cronjobs):
+```bash
+bash scripts/build-bootstrap-runner-image.sh
+```
+
 Run idempotent post-deploy wiring:
 ```bash
 # one-command pipeline:
@@ -103,9 +108,16 @@ Declarative config and job files:
 - `bootstrap/prowlarr-indexers.example.json`
 - `scripts/bootstrap-apps.py`
 - `k8s/bootstrap-job.yaml`
+- `docker/bootstrap-runner.Dockerfile`
+- `scripts/build-bootstrap-runner-image.sh`
 
-Set qBittorrent credentials in `k8s/secrets.example.yaml` for fully automated download-client wiring.
-Defaults are `admin` / `media-stack-admin` for both qBittorrent and Arr/Prowlarr admin auth.
+Override the runner image without editing manifests:
+```bash
+BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-bootstrap-runner:<tag> bash scripts/bootstrap-all.sh
+```
+
+Set stack admin credentials in `k8s/secrets.example.yaml` for fully automated download-client wiring.
+Defaults are `admin` / `media-stack-admin`, and qBittorrent uses those same values by default.
 `JELLYFIN_API_KEY` is optional; bootstrap can auto-discover/recover it from Jellyfin DB and persist it in the secret.
 Set/update live:
 ```bash

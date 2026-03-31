@@ -111,6 +111,239 @@ class JellyfinLiveTvSourceServiceTests(unittest.TestCase):
                 msg=f"logs={logs}",
             )
 
+    def test_prepare_xmltv_guide_path_enriches_icons_and_categories(self):
+        logs = []
+        service = self._service(logs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_m3u = root / "source.m3u"
+            guide_xml = root / "guide.xml"
+            source_m3u.write_text(
+                "\n".join(
+                    [
+                        "#EXTM3U",
+                        '#EXTINF:-1 tvg-id="sports.1@iptv" tvg-logo="https://example.test/sports.png" group-title="Sports",Sports One',
+                        "http://stream/sports-one",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            guide_xml.write_text(
+                "\n".join(
+                    [
+                        "<tv>",
+                        '  <channel id="sports.1"/>',
+                        '  <programme start="20260330010000 +0000" stop="20260330020000 +0000" channel="sports.1">',
+                        "    <title>Sports Tonight</title>",
+                        "  </programme>",
+                        "</tv>",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rendered_path = service.prepare_xmltv_guide_path(
+                guide={
+                    "type": "xmltv",
+                    "path": str(guide_xml),
+                    "materialized_output_path": "jellyfin/livetv-guides/test.enriched.xml",
+                    "enrich_program_icons_from_tuner_logo": True,
+                    "enrich_program_categories_from_tuner_groups": True,
+                },
+                tuners=[
+                    {
+                        "type": "m3u",
+                        "url": str(source_m3u),
+                    }
+                ],
+                config_root=str(root),
+            )
+
+            self.assertEqual(rendered_path, "/config/livetv-guides/test.enriched.xml")
+            output_path = root / "jellyfin" / "livetv-guides" / "test.enriched.xml"
+            enriched = output_path.read_text(encoding="utf-8")
+            self.assertIn('icon src="https://example.test/sports.png"', enriched)
+            self.assertIn("<category lang=\"en\">Sports</category>", enriched)
+            self.assertTrue(any("prepared XMLTV guide" in line for line in logs), msg=f"logs={logs}")
+
+    def test_prepare_xmltv_guide_path_uses_display_name_logo_fallback_and_default_category(self):
+        logs = []
+        service = self._service(logs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_m3u = root / "source.m3u"
+            guide_xml = root / "guide.xml"
+            source_m3u.write_text(
+                "\n".join(
+                    [
+                        "#EXTM3U",
+                        '#EXTINF:-1 tvg-id="unknown.chan" tvg-logo="https://example.test/logo.png" tvg-name="Example Network",Example Network',
+                        "http://stream/example-network",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            guide_xml.write_text(
+                "\n".join(
+                    [
+                        "<tv>",
+                        '  <channel id="epg.chan.1">',
+                        "    <display-name>Example Network</display-name>",
+                        "  </channel>",
+                        '  <programme start="20260330010000 +0000" stop="20260330020000 +0000" channel="epg.chan.1">',
+                        "    <title>Late Night Show</title>",
+                        "  </programme>",
+                        "</tv>",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rendered_path = service.prepare_xmltv_guide_path(
+                guide={
+                    "type": "xmltv",
+                    "path": str(guide_xml),
+                    "materialized_output_path": "jellyfin/livetv-guides/display-name-fallback.xml",
+                    "enrich_program_icons_from_tuner_logo": True,
+                    "enrich_program_categories_from_tuner_groups": True,
+                    "default_program_category": "Shows",
+                },
+                tuners=[
+                    {
+                        "type": "m3u",
+                        "url": str(source_m3u),
+                    }
+                ],
+                config_root=str(root),
+            )
+
+            self.assertEqual(rendered_path, "/config/livetv-guides/display-name-fallback.xml")
+            output_path = root / "jellyfin" / "livetv-guides" / "display-name-fallback.xml"
+            enriched = output_path.read_text(encoding="utf-8")
+            self.assertIn('icon src="https://example.test/logo.png"', enriched)
+            self.assertIn("<category lang=\"en\">Shows</category>", enriched)
+
+    def test_prepare_xmltv_guide_path_replaces_existing_program_icons_when_enabled(self):
+        logs = []
+        service = self._service(logs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_m3u = root / "source.m3u"
+            guide_xml = root / "guide.xml"
+            source_m3u.write_text(
+                "\n".join(
+                    [
+                        "#EXTM3U",
+                        '#EXTINF:-1 tvg-id="news.1@iptv" tvg-logo="https://example.test/new-logo.png" group-title="News",News One',
+                        "http://stream/news-one",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            guide_xml.write_text(
+                "\n".join(
+                    [
+                        "<tv>",
+                        '  <channel id="news.1"/>',
+                        '  <programme start="20260330010000 +0000" stop="20260330020000 +0000" channel="news.1">',
+                        "    <title>News Hour</title>",
+                        '    <icon src="https://old.example/icon.png" />',
+                        "  </programme>",
+                        "</tv>",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rendered_path = service.prepare_xmltv_guide_path(
+                guide={
+                    "type": "xmltv",
+                    "path": str(guide_xml),
+                    "materialized_output_path": "jellyfin/livetv-guides/replace-icons.xml",
+                    "enrich_program_icons_from_tuner_logo": True,
+                    "replace_existing_program_icons_with_tuner_logo": True,
+                },
+                tuners=[
+                    {
+                        "type": "m3u",
+                        "url": str(source_m3u),
+                    }
+                ],
+                config_root=str(root),
+            )
+
+            self.assertEqual(rendered_path, "/config/livetv-guides/replace-icons.xml")
+            output_path = root / "jellyfin" / "livetv-guides" / "replace-icons.xml"
+            enriched = output_path.read_text(encoding="utf-8")
+            self.assertNotIn("https://old.example/icon.png", enriched)
+            self.assertIn("https://example.test/new-logo.png", enriched)
+
+    def test_prepare_xmltv_guide_path_appends_mapped_category_when_existing_category_present(self):
+        logs = []
+        service = self._service(logs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_m3u = root / "source.m3u"
+            guide_xml = root / "guide.xml"
+            source_m3u.write_text(
+                "\n".join(
+                    [
+                        "#EXTM3U",
+                        '#EXTINF:-1 tvg-id="sports.2@iptv" group-title="Sports",Sports Two',
+                        "http://stream/sports-two",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            guide_xml.write_text(
+                "\n".join(
+                    [
+                        "<tv>",
+                        '  <channel id="sports.2"/>',
+                        '  <programme start="20260330010000 +0000" stop="20260330020000 +0000" channel="sports.2">',
+                        "    <title>Sports Center</title>",
+                        "    <category lang=\"en\">Entertainment</category>",
+                        "  </programme>",
+                        "</tv>",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rendered_path = service.prepare_xmltv_guide_path(
+                guide={
+                    "type": "xmltv",
+                    "path": str(guide_xml),
+                    "materialized_output_path": "jellyfin/livetv-guides/category-append.xml",
+                    "enrich_program_categories_from_tuner_groups": True,
+                },
+                tuners=[
+                    {
+                        "type": "m3u",
+                        "url": str(source_m3u),
+                    }
+                ],
+                config_root=str(root),
+            )
+
+            self.assertEqual(rendered_path, "/config/livetv-guides/category-append.xml")
+            output_path = root / "jellyfin" / "livetv-guides" / "category-append.xml"
+            enriched = output_path.read_text(encoding="utf-8")
+            self.assertIn("<category lang=\"en\">Entertainment</category>", enriched)
+            self.assertIn("<category lang=\"en\">Sports</category>", enriched)
+
 
 if __name__ == "__main__":
     unittest.main()

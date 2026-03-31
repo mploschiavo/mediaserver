@@ -1,0 +1,53 @@
+flowchart LR
+  CFG[bootstrap/media-stack.bootstrap.json]
+  BIND[technology_bindings]
+  HOOKS[adapter_hooks]
+
+  FACT[Adapter Resolution Factory]
+  CONV[Convention Fallback Discovery]
+  NOP[Generic No-op Adapter]
+
+  subgraph Roles[Technology Roles]
+    TOR[torrent_client]
+    USE[usenet_client]
+    MED[media_server]
+    ARR[arr_apps implementation]
+  end
+
+  subgraph Impl[Concrete Adapter Modules]
+    QBA[download_client_adapters/qbittorrent.py]
+    SABA[download_client_adapters/sabnzbd.py]
+    MSA[media_server_adapters/jellyfin.py]
+    SONA[servarr_technologies/sonarr.py]
+    RADA[servarr_technologies/radarr.py]
+    LIDA[servarr_technologies/lidarr.py]
+    READA[servarr_technologies/readarr.py]
+  end
+
+  CFG --> BIND
+  CFG --> HOOKS
+
+  BIND --> TOR
+  BIND --> USE
+  BIND --> MED
+  BIND --> ARR
+
+  TOR --> FACT
+  USE --> FACT
+  MED --> FACT
+  ARR --> FACT
+  HOOKS --> FACT
+
+  FACT --> QBA
+  FACT --> SABA
+  FACT --> MSA
+  FACT --> SONA
+  FACT --> RADA
+  FACT --> LIDA
+  FACT --> READA
+
+  FACT --> CONV --> NOP
+
+  style CFG fill:#eef7ff,stroke:#1f4f99,stroke-width:2px
+  style FACT fill:#fff7e8,stroke:#9a6b00,stroke-width:2px
+  style NOP fill:#ffecec,stroke:#ad1f2f,stroke-width:2px

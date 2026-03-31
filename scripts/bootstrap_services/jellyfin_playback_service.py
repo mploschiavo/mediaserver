@@ -94,6 +94,74 @@ class JellyfinPlaybackService:
                 desired_user_cfg[key] = value
                 changed_user_keys.append(key)
 
+        # Hide selected system views from "My Media" to keep home UX focused.
+        home_media_cfg = playback_cfg.get("home_media")
+        if not isinstance(home_media_cfg, dict):
+            home_media_cfg = {}
+        if d.bool_cfg(home_media_cfg, "enabled", True):
+            status, views_payload, body = d.jellyfin_request(
+                jellyfin_url,
+                f"/Users/{parse.quote(user_id, safe='')}/Views",
+                jellyfin_api_key,
+            )
+            if status != 200 or not isinstance(views_payload, dict):
+                d.log(
+                    "[WARN] Jellyfin playback: could not read user views for My Media exclusions "
+                    f"(HTTP {status}): {body}"
+                )
+            else:
+                items = views_payload.get("Items")
+                views = items if isinstance(items, list) else []
+                managed_view_ids: set[str] = set()
+                selected_view_ids: set[str] = set()
+                additional_types = {
+                    str(item).strip().lower()
+                    for item in d.coerce_list(home_media_cfg.get("additional_excluded_collection_types"))
+                    if str(item).strip()
+                }
+                exclude_collections = d.bool_cfg(home_media_cfg, "exclude_collections", True)
+                exclude_playlists = d.bool_cfg(home_media_cfg, "exclude_playlists", True)
+                cleanup_managed = d.bool_cfg(home_media_cfg, "cleanup_managed_exclusions", True)
+
+                for view in views:
+                    if not isinstance(view, dict):
+                        continue
+                    view_id = str(view.get("Id") or view.get("id") or "").strip()
+                    collection_type = str(
+                        view.get("CollectionType") or view.get("collectionType") or ""
+                    ).strip().lower()
+                    if not view_id or not collection_type:
+                        continue
+
+                    managed_type = collection_type in (
+                        "boxsets",
+                        "collections",
+                        "playlists",
+                    ) or collection_type in additional_types
+                    if managed_type:
+                        managed_view_ids.add(view_id)
+
+                    if collection_type in ("boxsets", "collections") and exclude_collections:
+                        selected_view_ids.add(view_id)
+                    elif collection_type == "playlists" and exclude_playlists:
+                        selected_view_ids.add(view_id)
+                    elif collection_type in additional_types:
+                        selected_view_ids.add(view_id)
+
+                existing_excludes = {
+                    str(item).strip()
+                    for item in d.coerce_list(desired_user_cfg.get("MyMediaExcludes"))
+                    if str(item).strip()
+                }
+                desired_excludes = set(existing_excludes)
+                if cleanup_managed:
+                    desired_excludes -= managed_view_ids
+                desired_excludes |= selected_view_ids
+
+                if desired_excludes != existing_excludes:
+                    desired_user_cfg["MyMediaExcludes"] = sorted(desired_excludes)
+                    changed_user_keys.append("MyMediaExcludes")
+
         if changed_user_keys:
             update_path = d.build_query_path("/Users/Configuration", {"userId": user_id})
             status, _, body = d.jellyfin_request(

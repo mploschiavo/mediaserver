@@ -265,7 +265,24 @@ class ProwlarrService:
         payload.setdefault("fields", [])
         return payload
 
-    def auto_add_tested_indexers(self, prowlarr_url: str, prowlarr_key: str) -> None:
+    @staticmethod
+    def _coerce_exclude_name_tokens(raw_tokens: Any) -> list[str]:
+        if isinstance(raw_tokens, list):
+            tokens = [str(item).strip().lower() for item in raw_tokens if str(item).strip()]
+            return tokens
+        if raw_tokens is None:
+            return []
+        text = str(raw_tokens).strip()
+        if not text:
+            return []
+        return [item.strip().lower() for item in text.split(",") if item.strip()]
+
+    def auto_add_tested_indexers(
+        self,
+        prowlarr_url: str,
+        prowlarr_key: str,
+        exclude_name_tokens: list[str] | None = None,
+    ) -> None:
         status, schemas, body = self.http_request(
             prowlarr_url,
             "/api/v1/indexer/schema",
@@ -298,6 +315,17 @@ class ProwlarrService:
             else:
                 candidates.append(schema)
 
+        configured_excludes = self._coerce_exclude_name_tokens(exclude_name_tokens)
+        env_excludes = self._coerce_exclude_name_tokens(
+            os.environ.get("AUTO_INDEXER_EXCLUDE_NAME_TOKENS", "")
+        )
+        exclude_tokens = list(dict.fromkeys(configured_excludes + env_excludes))
+        if exclude_tokens:
+            self.log(
+                "[INFO] Auto indexer: excluding candidates matching name tokens: "
+                + ", ".join(exclude_tokens)
+            )
+
         heartbeat_every = int(os.environ.get("AUTO_INDEXER_HEARTBEAT_EVERY", "25"))
         heartbeat_every = max(1, heartbeat_every)
         log_skip_details = str(os.environ.get("AUTO_INDEXER_LOG_SKIPS", "0")).strip().lower() in (
@@ -311,6 +339,7 @@ class ProwlarrService:
         attempted = 0
         added = 0
         skipped_existing = 0
+        skipped_excluded = 0
         skipped_test = 0
         failed_create = 0
 
@@ -335,6 +364,13 @@ class ProwlarrService:
                 continue
 
             attempted += 1
+            if exclude_tokens:
+                name_lc = str(name).lower()
+                if any(token in name_lc for token in exclude_tokens):
+                    skipped_excluded += 1
+                    if log_skip_details:
+                        self.log(f"[SKIP] {name}: excluded by name token policy")
+                    continue
 
             status, _, body = self.http_request(
                 prowlarr_url,
@@ -368,13 +404,13 @@ class ProwlarrService:
                 self.log(
                     "[WAIT] Auto indexer progress: "
                     f"scanned={scanned}/{len(candidates)}, attempted={attempted}, "
-                    f"added={added}, skipped_existing={skipped_existing}, "
+                    f"added={added}, skipped_existing={skipped_existing}, skipped_excluded={skipped_excluded}, "
                     f"skipped_test={skipped_test}, failed_create={failed_create}"
                 )
 
         self.log(
             "[OK] Auto indexer summary: "
             f"scanned={scanned}/{len(candidates)}, attempted={attempted}, added={added}, "
-            f"skipped_existing={skipped_existing}, skipped_test={skipped_test}, "
+            f"skipped_existing={skipped_existing}, skipped_excluded={skipped_excluded}, skipped_test={skipped_test}, "
             f"failed_create={failed_create}"
         )

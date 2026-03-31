@@ -1,0 +1,20 @@
+stateDiagram-v2
+  [*] --> ParseConfig
+  ParseConfig --> ResolveBindings
+  ResolveBindings --> BuildRuntime
+  BuildRuntime --> RunCommonOps
+  RunCommonOps --> RunDownloadClientOps
+  RunDownloadClientOps --> RunServarrOps
+  RunServarrOps --> RunMediaServerOps
+  RunMediaServerOps --> RunAppServices
+  RunAppServices --> RunHygiene
+  RunHygiene --> VerifyHealth
+  VerifyHealth --> [*]
+
+  RunServarrOps --> RetryableFailure: transient http/k8s error
+  RetryableFailure --> RunServarrOps: retry decorator
+  RetryableFailure --> FatalFailure: max retries
+  FatalFailure --> [*]
+
+  RunDownloadClientOps --> FatalFailure: invalid adapter config
+  RunMediaServerOps --> FatalFailure: unsupported operation plan

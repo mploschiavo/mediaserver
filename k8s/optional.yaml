@@ -378,21 +378,9 @@ spec:
           restartPolicy: Never
           containers:
             - name: bootstrap-reconcile
-              image: python:3.12-alpine
+              image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
               imagePullPolicy: IfNotPresent
               env:
-                - name: QBITTORRENT_USERNAME
-                  valueFrom:
-                    secretKeyRef:
-                      name: media-stack-secrets
-                      key: QBITTORRENT_USERNAME
-                      optional: true
-                - name: QBITTORRENT_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: media-stack-secrets
-                      key: QBITTORRENT_PASSWORD
-                      optional: true
                 - name: SABNZBD_API_KEY
                   valueFrom:
                     secretKeyRef:
@@ -432,16 +420,13 @@ spec:
                 - name: FULLY_PRECONFIGURED
                   value: "1"
               command:
-                - python
-                - /bootstrap/bootstrap_apps.py
+                - python3
+                - /opt/media-stack/scripts/bootstrap-apps.py
                 - --config
                 - /bootstrap-config/config.json
                 - --config-root
                 - /srv-config
               volumeMounts:
-                - name: bootstrap-script
-                  mountPath: /bootstrap
-                  readOnly: true
                 - name: bootstrap-config
                   mountPath: /bootstrap-config
                   readOnly: true
@@ -478,27 +463,6 @@ spec:
                 - name: host-data-fallback
                   mountPath: /srv-host-stack
           volumes:
-            - name: bootstrap-script
-              configMap:
-                name: media-stack-bootstrap-script
-                defaultMode: 0555
-                items:
-                  - key: bootstrap_apps.py
-                    path: bootstrap_apps.py
-                  - key: __init__.py
-                    path: bootstrap_lib/__init__.py
-                  - key: common.py
-                    path: bootstrap_lib/common.py
-                  - key: http_client.py
-                    path: bootstrap_lib/http_client.py
-                  - key: servarr.py
-                    path: bootstrap_lib/servarr.py
-                  - key: homepage.py
-                    path: bootstrap_lib/homepage.py
-                  - key: bazarr.py
-                    path: bootstrap_lib/bazarr.py
-                  - key: jellyfin.py
-                    path: bootstrap_lib/jellyfin.py
             - name: bootstrap-config
               configMap:
                 name: media-stack-bootstrap-config
@@ -576,7 +540,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: jellyfin-prewarm
-              image: python:3.12-alpine
+              image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
               imagePullPolicy: IfNotPresent
               env:
                 - name: JELLYFIN_API_KEY
@@ -602,8 +566,8 @@ spec:
                 - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
                   value: "15"
               command:
-                - python
-                - /bootstrap/bootstrap_apps.py
+                - python3
+                - /opt/media-stack/scripts/bootstrap-apps.py
                 - --mode
                 - jellyfin-prewarm
                 - --config
@@ -611,36 +575,12 @@ spec:
                 - --config-root
                 - /srv-config
               volumeMounts:
-                - name: bootstrap-script
-                  mountPath: /bootstrap
-                  readOnly: true
                 - name: bootstrap-config
                   mountPath: /bootstrap-config
                   readOnly: true
                 - name: cfg-jellyfin
                   mountPath: /srv-config/jellyfin
           volumes:
-            - name: bootstrap-script
-              configMap:
-                name: media-stack-bootstrap-script
-                defaultMode: 0555
-                items:
-                  - key: bootstrap_apps.py
-                    path: bootstrap_apps.py
-                  - key: __init__.py
-                    path: bootstrap_lib/__init__.py
-                  - key: common.py
-                    path: bootstrap_lib/common.py
-                  - key: http_client.py
-                    path: bootstrap_lib/http_client.py
-                  - key: servarr.py
-                    path: bootstrap_lib/servarr.py
-                  - key: homepage.py
-                    path: bootstrap_lib/homepage.py
-                  - key: bazarr.py
-                    path: bootstrap_lib/bazarr.py
-                  - key: jellyfin.py
-                    path: bootstrap_lib/jellyfin.py
             - name: bootstrap-config
               configMap:
                 name: media-stack-bootstrap-config
@@ -672,20 +612,20 @@ spec:
           restartPolicy: Never
           containers:
             - name: media-hygiene
-              image: python:3.12-alpine
+              image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
               imagePullPolicy: IfNotPresent
               env:
-                - name: QBITTORRENT_USERNAME
+                - name: STACK_ADMIN_USERNAME
                   valueFrom:
                     secretKeyRef:
                       name: media-stack-secrets
-                      key: QBITTORRENT_USERNAME
+                      key: STACK_ADMIN_USERNAME
                       optional: true
-                - name: QBITTORRENT_PASSWORD
+                - name: STACK_ADMIN_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: media-stack-secrets
-                      key: QBITTORRENT_PASSWORD
+                      key: STACK_ADMIN_PASSWORD
                       optional: true
                 - name: SONARR_API_KEY
                   valueFrom:
@@ -722,8 +662,8 @@ spec:
                 - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
                   value: "15"
               command:
-                - python
-                - /bootstrap/bootstrap_apps.py
+                - python3
+                - /opt/media-stack/scripts/bootstrap-apps.py
                 - --mode
                 - media-hygiene
                 - --config
@@ -731,9 +671,6 @@ spec:
                 - --config-root
                 - /srv-config
               volumeMounts:
-                - name: bootstrap-script
-                  mountPath: /bootstrap
-                  readOnly: true
                 - name: bootstrap-config
                   mountPath: /bootstrap-config
                   readOnly: true
@@ -770,27 +707,6 @@ spec:
                 - name: host-data-fallback
                   mountPath: /srv-host-stack
           volumes:
-            - name: bootstrap-script
-              configMap:
-                name: media-stack-bootstrap-script
-                defaultMode: 0555
-                items:
-                  - key: bootstrap_apps.py
-                    path: bootstrap_apps.py
-                  - key: __init__.py
-                    path: bootstrap_lib/__init__.py
-                  - key: common.py
-                    path: bootstrap_lib/common.py
-                  - key: http_client.py
-                    path: bootstrap_lib/http_client.py
-                  - key: servarr.py
-                    path: bootstrap_lib/servarr.py
-                  - key: homepage.py
-                    path: bootstrap_lib/homepage.py
-                  - key: bazarr.py
-                    path: bootstrap_lib/bazarr.py
-                  - key: jellyfin.py
-                    path: bootstrap_lib/jellyfin.py
             - name: bootstrap-config
               configMap:
                 name: media-stack-bootstrap-config

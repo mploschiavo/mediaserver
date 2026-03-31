@@ -594,6 +594,7 @@ class BootstrapRunnerService:
                 RunnerOperation.AUTO_ADD_TESTED_INDEXERS,
                 rt.prowlarr_url,
                 rt.prowlarr_key,
+                rt.cfg.get("prowlarr_auto_indexer_exclude_name_tokens", []),
             )
 
         if rt.trigger_sync:

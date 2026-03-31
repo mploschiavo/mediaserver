@@ -39,7 +39,7 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
             if self.context.login_required:
                 raise RuntimeError(
                     "qBittorrent login failed with secret credentials. "
-                    "Update QBITTORRENT_USERNAME/QBITTORRENT_PASSWORD."
+                    "Update STACK_ADMIN_USERNAME/STACK_ADMIN_PASSWORD."
                 ) from exc
             self.deps.log(
                 "[WARN] qBittorrent login failed. "

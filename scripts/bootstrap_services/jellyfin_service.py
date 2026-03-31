@@ -16,6 +16,7 @@ WaitForServiceFn = Callable[[str, str, str, int], None]
 ResolveApiKeyFn = Callable[[dict[str, Any], str], str]
 JellyfinRequestFn = Callable[..., tuple[int, Any, str]]
 PrepareTunerFn = Callable[[dict[str, Any], list[dict[str, Any]], str, dict[str, set[str]]], str]
+PrepareGuideFn = Callable[[dict[str, Any], list[dict[str, Any]], str], str]
 LoadStateFn = Callable[[str, dict[str, Any]], dict[str, Any]]
 ResolveTunerTypeFn = Callable[[str, str, str], str]
 NormalizeEnabledTunersFn = Callable[[Any, dict[str, Any]], list[str]]
@@ -34,6 +35,7 @@ class JellyfinLiveTvDependencies:
     resolve_api_key: ResolveApiKeyFn
     jellyfin_request: JellyfinRequestFn
     prepare_tuner_url: PrepareTunerFn
+    prepare_guide_path: PrepareGuideFn
     load_state: LoadStateFn
     resolve_tuner_type_id: ResolveTunerTypeFn
     normalize_enabled_tuner_ids: NormalizeEnabledTunersFn
@@ -87,6 +89,20 @@ class JellyfinService:
             prepared["_effective_url"] = effective_url
             prepared_tuners.append(prepared)
 
+        prepared_guides = []
+        for guide in guides:
+            if not isinstance(guide, dict):
+                raise RuntimeError(
+                    f"Jellyfin Live TV: each guide entry must be an object, got: {guide}"
+                )
+            guide_path = str(guide.get("path") or "").strip()
+            if not guide_path:
+                raise RuntimeError("Jellyfin Live TV: guide entry missing required field 'path'")
+            effective_path = d.prepare_guide_path(guide, prepared_tuners, config_root)
+            prepared = dict(guide)
+            prepared["_effective_path"] = effective_path
+            prepared_guides.append(prepared)
+
         desired_tuner_keys = set()
         for tuner in prepared_tuners:
             desired_tuner_keys.add(
@@ -96,10 +112,10 @@ class JellyfinService:
                 )
             )
         desired_guide_keys = set()
-        for guide in guides:
+        for guide in prepared_guides:
             if not isinstance(guide, dict):
                 continue
-            guide_path = str(guide.get("path") or "").strip()
+            guide_path = str(guide.get("_effective_path") or guide.get("path") or "").strip()
             if not guide_path:
                 continue
             guide_type = str(guide.get("type", "xmltv")).strip().lower()
@@ -196,11 +212,11 @@ class JellyfinService:
                     f"source={state.get('source_path', 'unknown')})"
                 )
 
-            if recreate_managed_guides and guides:
-                for guide in guides:
+            if recreate_managed_guides and prepared_guides:
+                for guide in prepared_guides:
                     if not isinstance(guide, dict):
                         continue
-                    guide_path = str(guide.get("path") or "").strip()
+                    guide_path = str(guide.get("_effective_path") or guide.get("path") or "").strip()
                     if not guide_path:
                         continue
                     guide_type = str(guide.get("type", "xmltv")).strip().lower()
@@ -337,13 +353,13 @@ class JellyfinService:
 
             state = d.load_state(config_root, live_cfg)
 
-            for guide in guides:
+            for guide in prepared_guides:
                 if not isinstance(guide, dict):
                     raise RuntimeError(
                         f"Jellyfin Live TV: each guide entry must be an object, got: {guide}"
                     )
 
-                guide_path = str(guide.get("path") or "").strip()
+                guide_path = str(guide.get("_effective_path") or guide.get("path") or "").strip()
                 if not guide_path:
                     raise RuntimeError(
                         "Jellyfin Live TV: guide entry missing required field 'path'"

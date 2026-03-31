@@ -6,9 +6,7 @@ USERNAME="${1:-}"
 PASSWORD="${2:-}"
 DEFAULT_STACK_ADMIN_USER="${DEFAULT_STACK_ADMIN_USER:-admin}"
 DEFAULT_STACK_ADMIN_PASS="${DEFAULT_STACK_ADMIN_PASS:-media-stack-admin}"
-DEFAULT_QBIT_USER="${DEFAULT_QBIT_USER:-$DEFAULT_STACK_ADMIN_USER}"
-DEFAULT_QBIT_PASS="${DEFAULT_QBIT_PASS:-$DEFAULT_STACK_ADMIN_PASS}"
-SYNC_STACK_ADMIN="${SYNC_STACK_ADMIN:-1}"
+WRITE_LEGACY_QBIT_KEYS="${WRITE_LEGACY_QBIT_KEYS:-0}"
 
 usage() {
   cat <<'EOF'
@@ -16,18 +14,15 @@ Usage:
   scripts/set-qbit-secret.sh [USERNAME] [PASSWORD]
 
 Description:
-  Sets or updates qBittorrent credentials in media-stack-secrets:
-  - QBITTORRENT_USERNAME
-  - QBITTORRENT_PASSWORD
+  Sets or updates stack admin credentials in media-stack-secrets.
+  qBittorrent uses STACK_ADMIN_USERNAME / STACK_ADMIN_PASSWORD by default.
   If USERNAME/PASSWORD are omitted, defaults are used.
 
 Environment variables:
   NAMESPACE          (default: media-stack)
   DEFAULT_STACK_ADMIN_USER (default: admin)
   DEFAULT_STACK_ADMIN_PASS (default: media-stack-admin)
-  DEFAULT_QBIT_USER  (default: DEFAULT_STACK_ADMIN_USER)
-  DEFAULT_QBIT_PASS  (default: DEFAULT_STACK_ADMIN_PASS)
-  SYNC_STACK_ADMIN   (default: 1; update STACK_ADMIN_* to match qB credentials)
+  WRITE_LEGACY_QBIT_KEYS (default: 0; if 1 also writes legacy QBITTORRENT_* keys)
 EOF
 }
 
@@ -37,9 +32,9 @@ if [[ "$USERNAME" == "-h" || "$USERNAME" == "--help" ]]; then
 fi
 
 if [[ -z "$USERNAME" && -z "$PASSWORD" ]]; then
-  USERNAME="$DEFAULT_QBIT_USER"
-  PASSWORD="$DEFAULT_QBIT_PASS"
-  echo "[INFO] Using default qB credentials from env defaults."
+  USERNAME="$DEFAULT_STACK_ADMIN_USER"
+  PASSWORD="$DEFAULT_STACK_ADMIN_PASS"
+  echo "[INFO] Using default stack admin credentials from env defaults."
 elif [[ -z "$USERNAME" || -z "$PASSWORD" ]]; then
   echo "[ERR] Provide both USERNAME and PASSWORD, or provide neither to use defaults." >&2
   exit 1
@@ -63,10 +58,8 @@ metadata:
   namespace: $NAMESPACE
 type: Opaque
 stringData:
-  QBITTORRENT_USERNAME: "$USERNAME"
-  QBITTORRENT_PASSWORD: "$PASSWORD"
-  STACK_ADMIN_USERNAME: "$DEFAULT_STACK_ADMIN_USER"
-  STACK_ADMIN_PASSWORD: "$DEFAULT_STACK_ADMIN_PASS"
+  STACK_ADMIN_USERNAME: "$USERNAME"
+  STACK_ADMIN_PASSWORD: "$PASSWORD"
   JELLYFIN_API_KEY: ""
   JELLYFIN_USER_ID: ""
   UNPACKERR_SONARR_API_KEY: "replace-after-first-boot"
@@ -74,18 +67,23 @@ stringData:
   UNPACKERR_LIDARR_API_KEY: "replace-after-first-boot"
   UNPACKERR_READARR_API_KEY: "replace-after-first-boot"
 EOF
-  echo "[OK] Created $NAMESPACE/media-stack-secrets with qBittorrent + stack admin defaults."
+  if [[ "$WRITE_LEGACY_QBIT_KEYS" == "1" ]]; then
+    "${KUBECTL[@]}" -n "$NAMESPACE" patch secret media-stack-secrets \
+      --type merge \
+      -p "{\"stringData\":{\"QBITTORRENT_USERNAME\":\"$USERNAME\",\"QBITTORRENT_PASSWORD\":\"$PASSWORD\"}}" >/dev/null
+  fi
+  echo "[OK] Created $NAMESPACE/media-stack-secrets with stack admin credentials."
   exit 0
 fi
 
-if [[ "$SYNC_STACK_ADMIN" == "1" ]]; then
+if [[ "$WRITE_LEGACY_QBIT_KEYS" == "1" ]]; then
   "${KUBECTL[@]}" -n "$NAMESPACE" patch secret media-stack-secrets \
     --type merge \
-    -p "{\"stringData\":{\"QBITTORRENT_USERNAME\":\"$USERNAME\",\"QBITTORRENT_PASSWORD\":\"$PASSWORD\",\"STACK_ADMIN_USERNAME\":\"$USERNAME\",\"STACK_ADMIN_PASSWORD\":\"$PASSWORD\"}}"
+    -p "{\"stringData\":{\"STACK_ADMIN_USERNAME\":\"$USERNAME\",\"STACK_ADMIN_PASSWORD\":\"$PASSWORD\",\"QBITTORRENT_USERNAME\":\"$USERNAME\",\"QBITTORRENT_PASSWORD\":\"$PASSWORD\"}}" >/dev/null
 else
   "${KUBECTL[@]}" -n "$NAMESPACE" patch secret media-stack-secrets \
     --type merge \
-    -p "{\"stringData\":{\"QBITTORRENT_USERNAME\":\"$USERNAME\",\"QBITTORRENT_PASSWORD\":\"$PASSWORD\"}}"
+    -p "{\"stringData\":{\"STACK_ADMIN_USERNAME\":\"$USERNAME\",\"STACK_ADMIN_PASSWORD\":\"$PASSWORD\"}}" >/dev/null
 fi
 
-echo "[OK] Updated qBittorrent credentials in $NAMESPACE/media-stack-secrets."
+echo "[OK] Updated stack admin credentials in $NAMESPACE/media-stack-secrets."

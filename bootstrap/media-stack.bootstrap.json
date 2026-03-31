@@ -173,107 +173,7 @@
         }
       }
     ],
-    "Sonarr": [
-      {
-        "name": "Trakt Trending Shows",
-        "implementation": "TraktPopularImport",
-        "enabled": true,
-        "enable_automatic_add": true,
-        "search_for_missing_episodes": true,
-        "should_monitor": "all",
-        "monitor_new_items": "all",
-        "series_type": "standard",
-        "season_folder": true,
-        "skip_if_auth_required": true,
-        "field_overrides": {
-          "traktListType": 0,
-          "limit": 10,
-          "accessToken": "${TRAKT_ACCESS_TOKEN}",
-          "refreshToken": "${TRAKT_REFRESH_TOKEN}",
-          "authUser": "${TRAKT_USERNAME}"
-        }
-      },
-      {
-        "name": "Trakt Popular Shows",
-        "implementation": "TraktPopularImport",
-        "enabled": true,
-        "enable_automatic_add": true,
-        "search_for_missing_episodes": true,
-        "should_monitor": "all",
-        "monitor_new_items": "all",
-        "series_type": "standard",
-        "season_folder": true,
-        "skip_if_auth_required": true,
-        "field_overrides": {
-          "traktListType": 1,
-          "limit": 10,
-          "accessToken": "${TRAKT_ACCESS_TOKEN}",
-          "refreshToken": "${TRAKT_REFRESH_TOKEN}",
-          "authUser": "${TRAKT_USERNAME}"
-        }
-      },
-      {
-        "name": "Trakt Anticipated Shows",
-        "implementation": "TraktPopularImport",
-        "enabled": true,
-        "enable_automatic_add": true,
-        "search_for_missing_episodes": true,
-        "should_monitor": "all",
-        "monitor_new_items": "all",
-        "series_type": "standard",
-        "season_folder": true,
-        "skip_if_auth_required": true,
-        "field_overrides": {
-          "traktListType": 2,
-          "limit": 10,
-          "accessToken": "${TRAKT_ACCESS_TOKEN}",
-          "refreshToken": "${TRAKT_REFRESH_TOKEN}",
-          "authUser": "${TRAKT_USERNAME}"
-        }
-      },
-      {
-        "name": "IMDb Top Rated TV",
-        "implementation": "ImdbListImport",
-        "enabled": true,
-        "enable_automatic_add": true,
-        "search_for_missing_episodes": true,
-        "should_monitor": "all",
-        "monitor_new_items": "all",
-        "series_type": "standard",
-        "season_folder": true,
-        "field_overrides": {
-          "listId": "ls056296799"
-        }
-      },
-      {
-        "name": "IMDb Popular TV",
-        "implementation": "ImdbListImport",
-        "enabled": true,
-        "enable_automatic_add": true,
-        "search_for_missing_episodes": true,
-        "should_monitor": "all",
-        "monitor_new_items": "all",
-        "series_type": "standard",
-        "season_folder": true,
-        "field_overrides": {
-          "listId": "ls009668711"
-        }
-      },
-      {
-        "name": "IMDb Trending TV",
-        "implementation": "ImdbListImport",
-        "enabled": true,
-        "enable_automatic_add": true,
-        "search_for_missing_episodes": true,
-        "should_monitor": "all",
-        "monitor_new_items": "all",
-        "series_type": "standard",
-        "season_folder": true,
-        "field_overrides": {
-          "listId": "ls095964455"
-        }
-      }
-    ],
+    "Sonarr": [],
     "Lidarr": [
       {
         "name": "Last.fm Top Rock Artists (Top 10)",
@@ -357,11 +257,39 @@
       }
     ]
   },
+  "sonarr_seed_series": {
+    "enabled": true,
+    "max_series": 10,
+    "monitor": "firstSeason",
+    "season_folder": true,
+    "search_for_missing_episodes": true,
+    "quality_profile_name_tokens": [
+      "1080",
+      "hd"
+    ],
+    "series": [
+      "Breaking Bad",
+      "Stranger Things",
+      "The Last of Us",
+      "The Boys",
+      "Severance",
+      "House of the Dragon",
+      "The Bear",
+      "Reacher",
+      "Silo",
+      "The White Lotus"
+    ]
+  },
   "readarr": {
     "metadata_source": "https://api.bookinfo.pro",
     "metadata_source_required": false
   },
   "prowlarr_auto_add_tested_indexers": true,
+  "prowlarr_auto_indexer_exclude_name_tokens": [
+    "the pirate bay",
+    "limetorrents",
+    "torrentgalaxyclone"
+  ],
   "prowlarr_indexers": [],
   "download_clients": {
     "qbittorrent": {
@@ -777,6 +705,31 @@
       {
         "type": "xmltv",
         "path": "https://iptv-epg.org/files/epg-us.xml",
+        "materialized_output_path": "jellyfin/livetv-guides/iptv-org-us-epg.enriched.xml",
+        "enrich_program_icons_from_tuner_logo": true,
+        "replace_existing_program_icons_with_tuner_logo": false,
+        "enrich_program_categories_from_tuner_groups": true,
+        "movie_categories": [
+          "Movie",
+          "Movies",
+          "Film",
+          "Cinema"
+        ],
+        "sports_categories": [
+          "Sports",
+          "Sport"
+        ],
+        "kids_categories": [
+          "Kids",
+          "Children",
+          "Family",
+          "Animation"
+        ],
+        "news_categories": [
+          "News",
+          "Weather",
+          "Politics"
+        ],
         "enable_all_tuners": false,
         "enabled_tuners": [
           "tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u"
@@ -798,6 +751,17 @@
     "refresh_library": true,
     "refresh_channels": true,
     "refresh_guide": true,
+    "book_sidecar_artwork": {
+      "enabled": true,
+      "books_root_path": "/srv-stack/media/books",
+      "books_root_paths": [
+        "/srv-stack/media/books",
+        "/srv-host-stack/media/books"
+      ],
+      "output_filename": "folder.jpg",
+      "replace_existing": false,
+      "max_books_per_run": 500
+    },
     "library_refresh_query": {
       "metadataRefreshMode": "FullRefresh",
       "imageRefreshMode": "FullRefresh",
@@ -915,6 +879,12 @@
         "enableThemeVideos": true
       },
       "update_existing_custom_prefs_only": false
+    },
+    "home_media": {
+      "enabled": true,
+      "exclude_collections": true,
+      "exclude_playlists": true,
+      "cleanup_managed_exclusions": true
     }
   },
   "jellyfin_home_rails": {

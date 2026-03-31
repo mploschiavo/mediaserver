@@ -25,6 +25,7 @@ def _jellyfin_service(cfg=None) -> JellyfinService:
         resolve_api_key=resolve_jellyfin_api_key,
         jellyfin_request=jellyfin_request,
         prepare_tuner_url=prepare_jellyfin_m3u_tuner_url,
+        prepare_guide_path=prepare_jellyfin_xmltv_guide_path,
         load_state=load_jellyfin_livetv_state,
         resolve_tuner_type_id=resolve_jellyfin_tuner_type_id,
         normalize_enabled_tuner_ids=normalize_enabled_tuner_ids,
@@ -206,6 +207,13 @@ def prepare_jellyfin_m3u_tuner_url(tuner, guides, config_root, guide_channel_ids
         guides=guides,
         config_root=config_root,
         guide_channel_ids_cache=guide_channel_ids_cache,
+    )
+
+def prepare_jellyfin_xmltv_guide_path(guide, tuners, config_root):
+    return _jellyfin_livetv_source_service().prepare_xmltv_guide_path(
+        guide=guide,
+        tuners=tuners,
+        config_root=config_root,
     )
 
 def read_jellyfin_api_key_from_db(config_root, jellyfin_cfg):

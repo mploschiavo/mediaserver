@@ -196,7 +196,7 @@ class MediaHygieneOpsService:
 
         if not str(qb_username or "").strip() or not str(qb_password or "").strip():
             raise RuntimeError(
-                "qB duplicate prune requires qB credentials (QBITTORRENT_USERNAME/QBITTORRENT_PASSWORD)."
+                "qB duplicate prune requires qB credentials (STACK_ADMIN_USERNAME/STACK_ADMIN_PASSWORD)."
             )
 
         qbit_url = self.normalize_url((qbit_cfg or {}).get("url", "http://qbittorrent:8080"))
@@ -354,7 +354,7 @@ class MediaHygieneOpsService:
 
         if not str(qb_username or "").strip() or not str(qb_password or "").strip():
             raise RuntimeError(
-                "qB IP filter refresh requires qB credentials (QBITTORRENT_USERNAME/QBITTORRENT_PASSWORD)."
+                "qB IP filter refresh requires qB credentials (STACK_ADMIN_USERNAME/STACK_ADMIN_PASSWORD)."
             )
 
         qbit_url = self.normalize_url((qbit_cfg or {}).get("url", "http://qbittorrent:8080"))
@@ -565,7 +565,7 @@ class MediaHygieneOpsService:
         if not str(qb_username or "").strip() or not str(qb_password or "").strip():
             raise RuntimeError(
                 "qB queue guardrails requires qB credentials "
-                "(QBITTORRENT_USERNAME/QBITTORRENT_PASSWORD)."
+                "(STACK_ADMIN_USERNAME/STACK_ADMIN_PASSWORD)."
             )
 
         qbit_url = self.normalize_url((qbit_cfg or {}).get("url", "http://qbittorrent:8080"))

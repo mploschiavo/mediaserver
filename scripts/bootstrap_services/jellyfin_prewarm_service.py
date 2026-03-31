@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import posixpath
+from pathlib import Path
+from zipfile import ZipFile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -30,6 +34,175 @@ class JellyfinPrewarmDependencies:
 @dataclass
 class JellyfinPrewarmService:
     deps: JellyfinPrewarmDependencies
+
+    @staticmethod
+    def _extract_epub_cover_bytes(epub_path: Path) -> bytes | None:
+        with ZipFile(epub_path) as archive:
+            names = archive.namelist()
+            lower_name_map = {name.lower(): name for name in names}
+
+            def read_member(member_name: str) -> bytes | None:
+                target = lower_name_map.get(member_name.lower())
+                if not target:
+                    return None
+                return archive.read(target)
+
+            cover_href: str | None = None
+            container_raw = read_member("META-INF/container.xml")
+            if container_raw:
+                try:
+                    root = ET.fromstring(container_raw)
+                    rootfile = root.find(".//{*}rootfile")
+                    opf_path = str((rootfile.attrib.get("full-path") if rootfile is not None else "") or "")
+                    if opf_path:
+                        opf_raw = read_member(opf_path)
+                        if opf_raw:
+                            opf_root = ET.fromstring(opf_raw)
+                            manifest = {
+                                str(item.attrib.get("id") or "").strip(): str(
+                                    item.attrib.get("href") or ""
+                                ).strip()
+                                for item in opf_root.findall(".//{*}manifest/{*}item")
+                            }
+                            for meta in opf_root.findall(".//{*}metadata/{*}meta"):
+                                if str(meta.attrib.get("name") or "").strip().lower() == "cover":
+                                    cover_id = str(meta.attrib.get("content") or "").strip()
+                                    if cover_id and cover_id in manifest:
+                                        opf_dir = posixpath.dirname(opf_path)
+                                        cover_href = posixpath.normpath(
+                                            posixpath.join(opf_dir, manifest[cover_id])
+                                        )
+                                        break
+                except Exception:
+                    cover_href = None
+
+            if cover_href:
+                cover_bytes = read_member(cover_href)
+                if cover_bytes:
+                    return cover_bytes
+
+            for name in names:
+                name_lower = name.lower()
+                if not name_lower.endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    continue
+                if "cover" in name_lower:
+                    return archive.read(name)
+
+            for name in names:
+                if name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    return archive.read(name)
+        return None
+
+    @staticmethod
+    def _iter_sidecar_books_root_candidates(sidecar_cfg: dict[str, Any]) -> list[Path]:
+        raw_candidates: list[str] = []
+        configured_list = sidecar_cfg.get("books_root_paths")
+        if isinstance(configured_list, list):
+            raw_candidates.extend(str(item or "").strip() for item in configured_list)
+        elif configured_list is not None:
+            raw_candidates.append(str(configured_list).strip())
+
+        raw_candidates.append(
+            str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip()
+        )
+        raw_candidates.extend(
+            [
+                "/srv-host-stack/media/books",
+                "/media/books",
+            ]
+        )
+
+        deduped: list[Path] = []
+        seen: set[str] = set()
+        for raw in raw_candidates:
+            text = str(raw or "").strip()
+            if not text:
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
+            deduped.append(Path(text))
+        return deduped
+
+    @staticmethod
+    def _path_has_epub(path: Path) -> bool:
+        try:
+            for _ in path.rglob("*.epub"):
+                return True
+        except Exception:
+            return False
+        return False
+
+    def _resolve_books_root_path(self, sidecar_cfg: dict[str, Any]) -> tuple[Path | None, list[Path]]:
+        candidates = self._iter_sidecar_books_root_candidates(sidecar_cfg)
+        existing = [path for path in candidates if path.exists() and path.is_dir()]
+        if not existing:
+            return None, candidates
+        with_epub = [path for path in existing if self._path_has_epub(path)]
+        if with_epub:
+            return with_epub[0], candidates
+        return existing[0], candidates
+
+    def _ensure_book_sidecar_artwork(self, prewarm_cfg: dict[str, Any]) -> None:
+        d = self.deps
+        sidecar_cfg = prewarm_cfg.get("book_sidecar_artwork")
+        if not isinstance(sidecar_cfg, dict):
+            sidecar_cfg = {}
+        if not d.bool_cfg(sidecar_cfg, "enabled", True):
+            return
+
+        books_root, candidates = self._resolve_books_root_path(sidecar_cfg)
+        if books_root is None:
+            candidate_label = ", ".join(str(path) for path in candidates)
+            d.log(
+                "[WARN] Jellyfin prewarm: books_root_path missing for sidecar artwork "
+                f"(checked: {candidate_label})"
+            )
+            return
+        preferred_root = str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip()
+        if preferred_root and str(books_root) != preferred_root:
+            d.log(
+                "[INFO] Jellyfin prewarm: using fallback books root for sidecar artwork "
+                f"({books_root})"
+            )
+
+        output_name = str(sidecar_cfg.get("output_filename") or "folder.jpg").strip() or "folder.jpg"
+        replace_existing = d.bool_cfg(sidecar_cfg, "replace_existing", False)
+        try:
+            max_books = int(sidecar_cfg.get("max_books_per_run") or 500)
+        except Exception:
+            max_books = 500
+
+        scanned = 0
+        written = 0
+        skipped = 0
+        failed = 0
+        epub_paths = sorted(books_root.rglob("*.epub"))
+        for epub_path in epub_paths:
+            if scanned >= max_books:
+                break
+            scanned += 1
+            output_path = epub_path.parent / output_name
+            if output_path.exists() and not replace_existing:
+                skipped += 1
+                continue
+            try:
+                cover = self._extract_epub_cover_bytes(epub_path)
+                if not cover:
+                    skipped += 1
+                    continue
+                output_path.write_bytes(cover)
+                written += 1
+            except Exception as exc:
+                failed += 1
+                d.log(
+                    f"[WARN] Jellyfin prewarm: failed sidecar artwork for {epub_path} ({exc})"
+                )
+
+        d.log(
+            "[OK] Jellyfin prewarm: book sidecar artwork reconcile complete "
+            f"(scanned={scanned}, written={written}, skipped={skipped}, failed={failed})"
+        )
 
     def ensure(self, cfg: dict[str, Any], config_root: str, wait_timeout: int) -> None:
         d = self.deps
@@ -60,6 +233,8 @@ class JellyfinPrewarmService:
         jellyfin_url = d.normalize_url(api_cfg.get("url"))
         d.wait_for_service("Jellyfin", jellyfin_url, "/System/Info/Public", wait_timeout)
         jellyfin_api_key = d.resolve_api_key(api_cfg, config_root)
+
+        self._ensure_book_sidecar_artwork(prewarm_cfg)
 
         refresh_params = prewarm_cfg.get("library_refresh_query")
         if not isinstance(refresh_params, dict):

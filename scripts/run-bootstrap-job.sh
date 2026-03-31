@@ -4,13 +4,13 @@ set -Eeuo pipefail
 NAMESPACE="${NAMESPACE:-media-stack}"
 TIMEOUT="${TIMEOUT:-10m}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$ROOT_DIR/scripts/lib/bootstrap-script-configmap.sh"
 CONFIG_FILE="${1:-$ROOT_DIR/bootstrap/media-stack.bootstrap.json}"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-15}"
 JOB_LOG_TAIL_LINES="${JOB_LOG_TAIL_LINES:-120}"
 ALERT_WEBHOOK_URL="${ALERT_WEBHOOK_URL:-}"
 PREPARE_HOST_ROOT="${PREPARE_HOST_ROOT:-/srv/media-stack}"
 INGRESS_NAME="${INGRESS_NAME:-media-stack-ingress}"
+BOOTSTRAP_RUNNER_IMAGE="${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}"
 HB_PID=""
 JOB_LOG_FILE="$(mktemp -t media-stack-bootstrap-log.XXXXXX)"
 JOB_CONFIG_FILE="$(mktemp -t media-stack-bootstrap-config.XXXXXX)"
@@ -30,7 +30,7 @@ Description:
   Runs the media-stack bootstrap Kubernetes Job.
   - ensures qBittorrent credentials secret exists and is usable by automation
   - ensures SABnzbd API-access guardrails (host whitelist/local ranges) are compatible with Arr
-  - creates/updates ConfigMaps from local bootstrap config + script
+  - creates/updates ConfigMap from resolved bootstrap config
   - recreates the Job
   - waits for completion and prints logs
 
@@ -42,6 +42,7 @@ Environment variables:
   AUTO_INDEXER_LOG_SKIPS (default: 0; set 1 for per-template skip logs)
   PREPARE_HOST_ROOT (default: /srv/media-stack)
   INGRESS_NAME (default: media-stack-ingress)
+  BOOTSTRAP_RUNNER_IMAGE (default: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest)
   SKIP_QBIT_ENSURE (default: 0)
   SKIP_SAB_ENSURE (default: 0)
   ALERT_WEBHOOK_URL (optional; POSTs JSON status updates)
@@ -61,13 +62,15 @@ escape_sed_replacement() {
 }
 
 manifest_overrides() {
-  local ns_escaped root_escaped
+  local ns_escaped root_escaped image_escaped
   ns_escaped="$(escape_sed_replacement "$NAMESPACE")"
   root_escaped="$(escape_sed_replacement "$PREPARE_HOST_ROOT")"
+  image_escaped="$(escape_sed_replacement "$BOOTSTRAP_RUNNER_IMAGE")"
 
   sed \
     -e "s#namespace:[[:space:]]*media-stack#namespace: ${ns_escaped}#g" \
     -e "s#name:[[:space:]]*media-stack\$#name: ${ns_escaped}#g" \
+    -e "s#image:[[:space:]]*192\\.168\\.1\\.60:30002/library/media-stack-bootstrap-runner:latest#image: ${image_escaped}#g" \
     -e "s#/srv/media-stack#${root_escaped}#g"
 }
 
@@ -345,7 +348,7 @@ wait_for_job_complete_or_fail() {
   local timeout_seconds="$2"
   local start elapsed
   local succeeded failed pod_phase failed_condition failed_pods complete_condition backoff_condition
-  local pod_name pod_sched_message
+  local pod_name pod_sched_message pod_wait_reason pod_wait_message
 
   start="$(date +%s)"
   while true; do
@@ -384,6 +387,14 @@ wait_for_job_complete_or_fail() {
     # Fail fast on pod phase so we don't wait for delayed Job status propagation.
     pod_name="$("${KUBECTL[@]}" -n "$NAMESPACE" get pods -l job-name="$job_name" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
     pod_phase="$("${KUBECTL[@]}" -n "$NAMESPACE" get pods -l job-name="$job_name" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || true)"
+    pod_wait_reason="$("${KUBECTL[@]}" -n "$NAMESPACE" get pods -l job-name="$job_name" -o jsonpath='{.items[0].status.containerStatuses[0].state.waiting.reason}' 2>/dev/null || true)"
+    pod_wait_message="$("${KUBECTL[@]}" -n "$NAMESPACE" get pods -l job-name="$job_name" -o jsonpath='{.items[0].status.containerStatuses[0].state.waiting.message}' 2>/dev/null || true)"
+    if [[ "$pod_wait_reason" == "ErrImagePull" || "$pod_wait_reason" == "ImagePullBackOff" ]]; then
+      warn "Job pod cannot pull bootstrap runner image (${pod_wait_reason})."
+      [[ -n "$pod_wait_message" ]] && warn "Image pull message: ${pod_wait_message}"
+      warn "Build/push the runner image and retry: bash scripts/build-bootstrap-runner-image.sh"
+      return 1
+    fi
     if [[ "$pod_phase" == "Failed" || "$pod_phase" == "Unknown" ]]; then
       return 1
     fi
@@ -437,6 +448,7 @@ fi
 info "Namespace: $NAMESPACE"
 info "Config: $CONFIG_FILE"
 info "Ingress: $INGRESS_NAME"
+info "Bootstrap runner image: $BOOTSTRAP_RUNNER_IMAGE"
 info "Heartbeat interval: ${HEARTBEAT_INTERVAL}s"
 notify "info" "media-stack bootstrap job started (namespace=$NAMESPACE)"
 
@@ -505,16 +517,8 @@ prime_sab_api_key_secret
 phase_end "ok"
 
 phase_start "Update bootstrap ConfigMaps"
-info "Updating bootstrap script/config ConfigMaps"
-bootstrap_script_cm_yaml="$(mktemp -t media-stack-bootstrap-script.XXXXXX.yaml)"
+info "Updating bootstrap config ConfigMap"
 bootstrap_config_cm_yaml="$(mktemp -t media-stack-bootstrap-config.XXXXXX.yaml)"
-
-bootstrap_script_configmap_create_yaml "$NAMESPACE" "$ROOT_DIR" "$bootstrap_script_cm_yaml"
-if ! "${KUBECTL[@]}" -n "$NAMESPACE" replace -f "$bootstrap_script_cm_yaml" >/dev/null 2>&1; then
-  "${KUBECTL[@]}" -n "$NAMESPACE" create -f "$bootstrap_script_cm_yaml" >/dev/null
-else
-  info "configmap/media-stack-bootstrap-script replaced"
-fi
 
 "${KUBECTL[@]}" -n "$NAMESPACE" create configmap media-stack-bootstrap-config \
   --from-file=config.json="$JOB_CONFIG_FILE" \
@@ -524,7 +528,7 @@ if ! "${KUBECTL[@]}" -n "$NAMESPACE" replace -f "$bootstrap_config_cm_yaml" >/de
 else
   info "configmap/media-stack-bootstrap-config replaced"
 fi
-rm -f "$bootstrap_script_cm_yaml" "$bootstrap_config_cm_yaml"
+rm -f "$bootstrap_config_cm_yaml"
 phase_end "ok"
 
 phase_start "Recreate bootstrap Job"

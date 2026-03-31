@@ -2,6 +2,9 @@
 
 This stack supports technology replacement through config binding + reflection.
 
+Design model reference:
+- [Technology adapter model diagram](diagrams/technology-adapter-model.svg)
+
 The intent is:
 - keep `scripts/bootstrap-apps.py` as composition/wiring
 - move behavior into technology adapters

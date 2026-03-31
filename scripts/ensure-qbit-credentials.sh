@@ -18,6 +18,7 @@ QBIT_FORCE_CONFIG_SYNC="${QBIT_FORCE_CONFIG_SYNC:-1}"
 QBIT_STRICT_LOGIN_CHECK="${QBIT_STRICT_LOGIN_CHECK:-0}"
 QBIT_API_VALIDATION="${QBIT_API_VALIDATION:-0}"
 QBIT_USE_STACK_ADMIN="${QBIT_USE_STACK_ADMIN:-1}"
+QBIT_WRITE_LEGACY_SECRET_KEYS="${QBIT_WRITE_LEGACY_SECRET_KEYS:-0}"
 
 usage() {
   cat <<'EOF'
@@ -47,6 +48,7 @@ Environment variables:
   QBIT_STRICT_LOGIN_CHECK (default: 0; if 1, fail when API validation cannot authenticate)
   QBIT_API_VALIDATION (default: 0; when 1 validates login via qB API/port-forward)
   QBIT_USE_STACK_ADMIN (default: 1; keep qB credentials equal to stack admin)
+  QBIT_WRITE_LEGACY_SECRET_KEYS (default: 0; if 1 also writes legacy QBITTORRENT_* keys)
 EOF
 }
 
@@ -105,15 +107,35 @@ patch_secret_keys() {
   local pass="$2"
   local stack_user="${3:-}"
   local stack_pass="${4:-}"
-  local patch
-  patch="{\"stringData\":{\"QBITTORRENT_USERNAME\":\"$user\",\"QBITTORRENT_PASSWORD\":\"$pass\""
+  local patch write_legacy
+  patch='{"stringData":{'
+  write_legacy="$QBIT_WRITE_LEGACY_SECRET_KEYS"
+  if [[ "$QBIT_USE_STACK_ADMIN" != "1" ]]; then
+    write_legacy=1
+  fi
+  local first=1
   if [[ -n "$stack_user" ]]; then
-    patch+=",\"STACK_ADMIN_USERNAME\":\"$stack_user\""
+    patch+="\"STACK_ADMIN_USERNAME\":\"$stack_user\""
+    first=0
   fi
   if [[ -n "$stack_pass" ]]; then
-    patch+=",\"STACK_ADMIN_PASSWORD\":\"$stack_pass\""
+    if [[ "$first" == "0" ]]; then
+      patch+=","
+    fi
+    patch+="\"STACK_ADMIN_PASSWORD\":\"$stack_pass\""
+    first=0
   fi
-  patch+="}}"
+  if [[ "$write_legacy" == "1" ]]; then
+    if [[ "$first" == "0" ]]; then
+      patch+=","
+    fi
+    patch+="\"QBITTORRENT_USERNAME\":\"$user\",\"QBITTORRENT_PASSWORD\":\"$pass\""
+    first=0
+  fi
+  patch+='}}'
+  if [[ "$first" == "1" ]]; then
+    return 0
+  fi
   "${KUBECTL[@]}" -n "$NAMESPACE" patch secret "$SECRET_NAME" --type merge -p "$patch" >/dev/null
 }
 
@@ -127,8 +149,6 @@ metadata:
   namespace: $NAMESPACE
 type: Opaque
 stringData:
-  QBITTORRENT_USERNAME: "$DEFAULT_QBIT_USER"
-  QBITTORRENT_PASSWORD: "$DEFAULT_QBIT_PASS"
   STACK_ADMIN_USERNAME: "$DEFAULT_STACK_ADMIN_USER"
   STACK_ADMIN_PASSWORD: "$DEFAULT_STACK_ADMIN_PASS"
   JELLYFIN_API_KEY: ""
@@ -138,7 +158,7 @@ stringData:
   UNPACKERR_LIDARR_API_KEY: "replace-after-first-boot"
   UNPACKERR_READARR_API_KEY: "replace-after-first-boot"
 EOF
-    echo "[OK] Created $NAMESPACE/$SECRET_NAME with default qBittorrent credentials."
+    echo "[OK] Created $NAMESPACE/$SECRET_NAME with default stack admin credentials."
   fi
 }
 
@@ -558,10 +578,10 @@ if [[ "$QBIT_FORCE_CONFIG_SYNC" == "1" ]]; then
   require_python3
 fi
 
-QB_USER="$(get_secret_key QBITTORRENT_USERNAME)"
-QB_PASS="$(get_secret_key QBITTORRENT_PASSWORD)"
 STACK_ADMIN_USER="$(get_secret_key STACK_ADMIN_USERNAME)"
 STACK_ADMIN_PASS="$(get_secret_key STACK_ADMIN_PASSWORD)"
+LEGACY_QB_USER="$(get_secret_key QBITTORRENT_USERNAME)"
+LEGACY_QB_PASS="$(get_secret_key QBITTORRENT_PASSWORD)"
 
 if [[ -z "$STACK_ADMIN_USER" ]]; then
   STACK_ADMIN_USER="$DEFAULT_STACK_ADMIN_USER"
@@ -570,17 +590,20 @@ if [[ -z "$STACK_ADMIN_PASS" || "$STACK_ADMIN_PASS" == "change-me" ]]; then
   STACK_ADMIN_PASS="$DEFAULT_STACK_ADMIN_PASS"
 fi
 
-if [[ -z "$QB_USER" ]]; then
-  QB_USER="$DEFAULT_QBIT_USER"
-fi
+QB_USER="$STACK_ADMIN_USER"
+QB_PASS="$STACK_ADMIN_PASS"
 
-if [[ -z "$QB_PASS" || "$QB_PASS" == "change-me" ]]; then
-  QB_PASS="$DEFAULT_QBIT_PASS"
-fi
-
-if [[ "$QBIT_USE_STACK_ADMIN" == "1" ]]; then
-  QB_USER="$STACK_ADMIN_USER"
-  QB_PASS="$STACK_ADMIN_PASS"
+if [[ "$QBIT_USE_STACK_ADMIN" != "1" ]]; then
+  if [[ -n "$LEGACY_QB_USER" ]]; then
+    QB_USER="$LEGACY_QB_USER"
+  else
+    QB_USER="$DEFAULT_QBIT_USER"
+  fi
+  if [[ -n "$LEGACY_QB_PASS" && "$LEGACY_QB_PASS" != "change-me" ]]; then
+    QB_PASS="$LEGACY_QB_PASS"
+  else
+    QB_PASS="$DEFAULT_QBIT_PASS"
+  fi
 fi
 
 patch_secret_keys "$QB_USER" "$QB_PASS" "$STACK_ADMIN_USER" "$STACK_ADMIN_PASS"

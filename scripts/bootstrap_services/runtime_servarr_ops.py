@@ -628,8 +628,9 @@ def build_indexer_payload(template):
         template
     )
 
-def auto_add_tested_indexers(prowlarr_url, prowlarr_key):
+def auto_add_tested_indexers(prowlarr_url, prowlarr_key, exclude_name_tokens=None):
     _prowlarr_service().auto_add_tested_indexers(
         prowlarr_url=prowlarr_url,
         prowlarr_key=prowlarr_key,
+        exclude_name_tokens=exclude_name_tokens,
     )

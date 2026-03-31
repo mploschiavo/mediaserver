@@ -221,6 +221,36 @@ class ProwlarrServiceTests(unittest.TestCase):
         self.assertTrue(any(line == "[ADD] NewOne" for line in self.logs))
         self.assertTrue(any("Auto indexer summary" in line for line in self.logs))
 
+    def test_auto_add_tested_indexers_honors_exclude_name_tokens(self):
+        create_calls = 0
+
+        def stub(_base_url, path, _api_key, method, payload):
+            nonlocal create_calls
+            if path == "/api/v1/indexer/schema" and method == "GET":
+                return 200, [
+                    {"implementation": "X", "name": "LimeTorrents", "fields": []},
+                    {"implementation": "Y", "name": "SafeIndexer", "fields": []},
+                ], ""
+            if path == "/api/v1/indexer" and method == "GET":
+                return 200, [], ""
+            if path == "/api/v1/indexer/test" and method == "POST":
+                return 200, {}, ""
+            if path == "/api/v1/indexer" and method == "POST":
+                create_calls += 1
+                return 201, {}, ""
+            return 500, {}, f"unexpected {method} {path}"
+
+        service = self._service_with_stub(stub)
+        service.auto_add_tested_indexers(
+            prowlarr_url="http://prowlarr:9696",
+            prowlarr_key="key",
+            exclude_name_tokens=["lime"],
+        )
+
+        self.assertEqual(create_calls, 1)
+        self.assertTrue(any(line == "[ADD] SafeIndexer" for line in self.logs))
+        self.assertFalse(any("[ADD] LimeTorrents" in line for line in self.logs))
+
 
 if __name__ == "__main__":
     unittest.main()

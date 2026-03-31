@@ -1,0 +1,66 @@
+flowchart TB
+  subgraph Operators[Operator Surface]
+    SH1[install.sh / rebuild-and-bootstrap.sh]
+    SH2[bootstrap-all.sh / run-bootstrap-job.sh]
+    SH3[verify-flow.sh / test.sh]
+  end
+
+  subgraph Entry[Composition Root]
+    MAIN[scripts/bootstrap-apps.py]
+    RF[runtime_factory_service.py]
+    RUN[bootstrap_runner_service.py]
+    WIRE[operation_wiring.py]
+  end
+
+  subgraph AppSvc[App Service Modules]
+    JF[apps/jellyfin/*]
+    JS[apps/jellyseerr/service.py]
+    PR[apps/prowlarr/service.py]
+    QB[apps/qbittorrent/service.py]
+    SAB[apps/sabnzbd/service.py]
+    BAZ[apps/bazarr/service.py]
+  end
+
+  subgraph Adapters[Technology Adapters]
+    DL[download_client_adapters/*]
+    MS[media_server_adapters/*]
+    SA[servarr_technologies/*]
+  end
+
+  subgraph Core[Shared Runtime Core]
+    CFG[config_models.py]
+    CORE[runtime_core.py]
+    MED[runtime_media_ops.py]
+    ARR[runtime_servarr_ops.py]
+    LIB[core/* helpers]
+  end
+
+  subgraph Runtime[Cluster Runtime]
+    JOB[media-stack-bootstrap Job]
+    APPS[Arr/Prowlarr/Jellyfin/Jellyseerr/qB/SAB]
+  end
+
+  SH1 --> MAIN
+  SH2 --> MAIN
+  SH3 --> MAIN
+  MAIN --> RF --> RUN
+  RUN --> WIRE
+
+  WIRE --> JF
+  WIRE --> JS
+  WIRE --> PR
+  WIRE --> QB
+  WIRE --> SAB
+  WIRE --> BAZ
+
+  RUN --> DL
+  RUN --> MS
+  RUN --> SA
+
+  RUN --> CFG
+  RUN --> CORE
+  RUN --> MED
+  RUN --> ARR
+  RUN --> LIB
+
+  RUN --> JOB --> APPS

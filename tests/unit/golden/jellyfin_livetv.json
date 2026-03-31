@@ -15,7 +15,32 @@
       "enabled_tuners": [
         "tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u"
       ],
+      "enrich_program_categories_from_tuner_groups": true,
+      "enrich_program_icons_from_tuner_logo": true,
+      "kids_categories": [
+        "Kids",
+        "Children",
+        "Family",
+        "Animation"
+      ],
+      "materialized_output_path": "jellyfin/livetv-guides/iptv-org-us-epg.enriched.xml",
+      "movie_categories": [
+        "Movie",
+        "Movies",
+        "Film",
+        "Cinema"
+      ],
+      "news_categories": [
+        "News",
+        "Weather",
+        "Politics"
+      ],
       "path": "https://iptv-epg.org/files/epg-us.xml",
+      "replace_existing_program_icons_with_tuner_logo": false,
+      "sports_categories": [
+        "Sports",
+        "Sport"
+      ],
       "type": "xmltv"
     }
   ],

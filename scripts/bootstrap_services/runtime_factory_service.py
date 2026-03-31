@@ -451,18 +451,18 @@ class BootstrapRuntimeFactoryService:
         if args.mode == BootstrapMode.FULL:
             prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
 
-        torrent_username_env = str(qbit_cfg.get("username_env", "QBITTORRENT_USERNAME")).strip()
-        torrent_password_env = str(qbit_cfg.get("password_env", "QBITTORRENT_PASSWORD")).strip()
+        torrent_username_env = str(qbit_cfg.get("username_env", "STACK_ADMIN_USERNAME")).strip()
+        torrent_password_env = str(qbit_cfg.get("password_env", "STACK_ADMIN_PASSWORD")).strip()
         qb_user = (
             os.environ.get(torrent_username_env)
-            or os.environ.get("QBITTORRENT_USERNAME")
             or os.environ.get("STACK_ADMIN_USERNAME")
-            or "mediaadmin"
+            or os.environ.get("QBITTORRENT_USERNAME")
+            or "admin"
         )
         qb_pass = (
             os.environ.get(torrent_password_env)
-            or os.environ.get("QBITTORRENT_PASSWORD")
             or os.environ.get("STACK_ADMIN_PASSWORD")
+            or os.environ.get("QBITTORRENT_PASSWORD")
             or "media-stack-admin"
         )
         sab_username = (

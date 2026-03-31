@@ -20,6 +20,11 @@ Product/operations diagrams:
 - `operating-loop.*`
 - `ui-surface-map.*`
 
+Software design model diagrams:
+- `software-component-model.*`
+- `technology-adapter-model.*`
+- `bootstrap-runtime-model.*`
+
 Regenerate all diagrams:
 ```bash
 bash scripts/render-architecture-diagrams.sh
@@ -92,6 +97,16 @@ flowchart TD
   APPS --> VERIFY[verify-flow and smoke tests]
   VERIFY --> GIT
 ```
+
+## Software Design Models
+
+Detailed model guide:
+- [docs/software-design-models.md](software-design-models.md)
+
+Key rendered artifacts:
+- [Software component model](diagrams/software-component-model.svg)
+- [Technology adapter model](diagrams/technology-adapter-model.svg)
+- [Bootstrap runtime model](diagrams/bootstrap-runtime-model.svg)
 
 ## Architectural Guarantees
 
