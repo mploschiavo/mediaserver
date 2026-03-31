@@ -130,8 +130,6 @@ class BootstrapSecretPrimingService:
                 continue
             upper = app.upper()
             self._patch_secret_string(f"{upper}_API_KEY", key)
-            if app != "prowlarr":
-                self._patch_secret_string(f"UNPACKERR_{upper}_API_KEY", key)
             self.info(f"Seeded {upper}_API_KEY in media-stack-secrets from deploy/{app}")
             found += 1
 

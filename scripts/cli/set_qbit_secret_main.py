@@ -128,10 +128,6 @@ stringData:
   STACK_ADMIN_PASSWORD: "{cfg.password}"
   JELLYFIN_API_KEY: ""
   JELLYFIN_USER_ID: ""
-  UNPACKERR_SONARR_API_KEY: "replace-after-first-boot"
-  UNPACKERR_RADARR_API_KEY: "replace-after-first-boot"
-  UNPACKERR_LIDARR_API_KEY: "replace-after-first-boot"
-  UNPACKERR_READARR_API_KEY: "replace-after-first-boot"
 """
         _apply_manifest(kubectl, manifest)
         if cfg.write_legacy_qbit_keys:

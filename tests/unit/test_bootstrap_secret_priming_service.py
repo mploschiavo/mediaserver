@@ -72,7 +72,7 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
         self.assertIn({"stringData": {"JELLYSEERR_API_KEY": "jellyseerr-key"}}, payloads)
         self.assertIn({"stringData": {"TAUTULLI_API_KEY": "tautulli-key"}}, payloads)
 
-    def test_primes_all_servarr_and_unpackerr_keys(self):
+    def test_primes_all_servarr_and_prowlarr_keys(self):
         kube = _Kube()
         svc = BootstrapSecretPrimingService(
             cfg=BootstrapSecretPrimingConfig(namespace="media-stack"),
@@ -97,10 +97,6 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
         self.assertIn("LIDARR_API_KEY", keys)
         self.assertIn("READARR_API_KEY", keys)
         self.assertIn("PROWLARR_API_KEY", keys)
-        self.assertIn("UNPACKERR_SONARR_API_KEY", keys)
-        self.assertIn("UNPACKERR_RADARR_API_KEY", keys)
-        self.assertIn("UNPACKERR_LIDARR_API_KEY", keys)
-        self.assertIn("UNPACKERR_READARR_API_KEY", keys)
 
     def test_skips_when_secret_missing(self):
         kube = _Kube(secret_exists=False)

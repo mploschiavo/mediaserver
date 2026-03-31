@@ -100,10 +100,6 @@ class SyncUnpackerrKeysService:
             "LIDARR_API_KEY": keys["lidarr"],
             "READARR_API_KEY": keys["readarr"],
             "PROWLARR_API_KEY": keys["prowlarr"],
-            "UNPACKERR_SONARR_API_KEY": keys["sonarr"],
-            "UNPACKERR_RADARR_API_KEY": keys["radarr"],
-            "UNPACKERR_LIDARR_API_KEY": keys["lidarr"],
-            "UNPACKERR_READARR_API_KEY": keys["readarr"],
         }
 
         lines = [
@@ -206,7 +202,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         prog="scripts/sync-unpackerr-keys.sh",
         description=(
             "Reads Sonarr/Radarr/Lidarr/Readarr/Prowlarr API keys from running pods and "
-            "updates media-stack-secrets for both Unpackerr and bootstrap env fallback."
+            "updates media-stack-secrets."
         ),
     )
     parser.add_argument("--namespace", default="media-stack")

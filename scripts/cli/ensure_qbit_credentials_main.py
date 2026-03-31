@@ -169,10 +169,6 @@ stringData:
   STACK_ADMIN_PASSWORD: "{cfg.default_stack_admin_pass}"
   JELLYFIN_API_KEY: ""
   JELLYFIN_USER_ID: ""
-  UNPACKERR_SONARR_API_KEY: "replace-after-first-boot"
-  UNPACKERR_RADARR_API_KEY: "replace-after-first-boot"
-  UNPACKERR_LIDARR_API_KEY: "replace-after-first-boot"
-  UNPACKERR_READARR_API_KEY: "replace-after-first-boot"
 """
     kube.run(["apply", "-f", "-"], input_text=manifest)
     print(f"[OK] Created {cfg.namespace}/{cfg.secret_name} with default stack admin credentials.")

@@ -40,7 +40,7 @@ class ApiKeysService:
         if not app_token:
             return ""
 
-        candidates = [f"{app_token}_API_KEY", f"UNPACKERR_{app_token}_API_KEY"]
+        candidates = [f"{app_token}_API_KEY"]
         for env_name in candidates:
             value = (os.environ.get(env_name) or "").strip()
             if not value:
