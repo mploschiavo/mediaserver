@@ -406,7 +406,7 @@ class MediaHygieneOpsService:
         mirror_target_paths = [
             str(x).strip()
             for x in self.coerce_list(
-                ipf_cfg.get("mirror_target_paths") or ["/srv-host-stack/data/torrents/ipfilter.dat"]
+                ipf_cfg.get("mirror_target_paths") or []
             )
             if str(x).strip()
         ]

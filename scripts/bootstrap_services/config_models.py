@@ -820,6 +820,9 @@ class JellyfinPrewarmConfig:
     refresh_library: bool
     refresh_channels: bool
     refresh_guide: bool
+    book_sidecar_artwork: dict[str, Any] = field(default_factory=dict)
+    music_sidecar_artwork: dict[str, Any] = field(default_factory=dict)
+    artwork_health_check: dict[str, Any] = field(default_factory=dict)
     library_refresh_query: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -833,6 +836,9 @@ class JellyfinPrewarmConfig:
             refresh_library=bool(src.get("refresh_library", True)),
             refresh_channels=bool(src.get("refresh_channels", True)),
             refresh_guide=bool(src.get("refresh_guide", True)),
+            book_sidecar_artwork=dict(src.get("book_sidecar_artwork") or {}),
+            music_sidecar_artwork=dict(src.get("music_sidecar_artwork") or {}),
+            artwork_health_check=dict(src.get("artwork_health_check") or {}),
             library_refresh_query=dict(src.get("library_refresh_query") or {}),
             raw=src,
         )

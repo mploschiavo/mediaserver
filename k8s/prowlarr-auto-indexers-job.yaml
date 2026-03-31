@@ -34,8 +34,6 @@ spec:
               value: "15"
             - name: AUTO_INDEXER_HEARTBEAT_EVERY
               value: "25"
-            - name: BOOTSTRAP_ALT_CONFIG_ROOT
-              value: /srv-host-config
           command:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py

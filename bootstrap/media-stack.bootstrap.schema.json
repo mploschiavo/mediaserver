@@ -71,6 +71,9 @@
         "refresh_library": {"type": "boolean"},
         "refresh_channels": {"type": "boolean"},
         "refresh_guide": {"type": "boolean"},
+        "book_sidecar_artwork": {"type": "object"},
+        "music_sidecar_artwork": {"type": "object"},
+        "artwork_health_check": {"type": "object"},
         "library_refresh_query": {"type": "object"}
       },
       "additionalProperties": true

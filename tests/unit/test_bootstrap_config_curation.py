@@ -129,7 +129,7 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertIn("DavidMoore/ipfilter", str(qbit_ipfilter_cfg.get("url", "")))
         self.assertEqual(int(qbit_ipfilter_cfg.get("min_refresh_interval_hours", 0)), 24)
         mirrors = {str(x).strip() for x in (qbit_ipfilter_cfg.get("mirror_target_paths") or [])}
-        self.assertIn("/srv-host-stack/data/torrents/ipfilter.dat", mirrors)
+        self.assertEqual(mirrors, set())
 
     def test_jellyfin_livetv_self_healing_defaults_are_enabled(self):
         live_tv = self.cfg.get("jellyfin_livetv") or {}

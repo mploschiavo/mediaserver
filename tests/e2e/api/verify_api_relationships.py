@@ -151,6 +151,19 @@ class Runner:
             return ""
         return base64.b64decode(encoded).decode("utf-8", errors="replace")
 
+    @staticmethod
+    def _jellyfin_item_has_artwork(item: dict[str, Any]) -> bool:
+        image_tags = item.get("ImageTags")
+        if isinstance(image_tags, dict) and any(str(v or "").strip() for v in image_tags.values()):
+            return True
+        for key in ("PrimaryImageTag", "AlbumPrimaryImageTag", "PrimaryImageItemId"):
+            if str(item.get(key) or "").strip():
+                return True
+        backdrop_tags = item.get("BackdropImageTags")
+        if isinstance(backdrop_tags, list) and backdrop_tags:
+            return True
+        return False
+
     def run_checks(self) -> None:
         arr_expected_roots = {
             str(item.get("implementation") or ""): str(item.get("root_folder") or "")
@@ -389,6 +402,128 @@ class Runner:
                     self._warn("Jellyfin virtual folders API returned unexpected payload")
             except Exception as exc:
                 self._warn(f"Jellyfin library verification failed: {exc}")
+
+            # Jellyfin artwork health verification (coverage across major media surfaces)
+            try:
+                prewarm_cfg = self.cfg.get("jellyfin_prewarm") or {}
+                health_cfg = (
+                    prewarm_cfg.get("artwork_health_check")
+                    if isinstance(prewarm_cfg, dict)
+                    else {}
+                )
+                if not isinstance(health_cfg, dict):
+                    health_cfg = {}
+                if bool(health_cfg.get("enabled", True)):
+                    selected = {
+                        str(token or "").strip().lower()
+                        for token in (
+                            health_cfg.get("libraries")
+                            or ["Movies", "TV Shows", "Music", "Books", "Live TV"]
+                        )
+                        if str(token or "").strip()
+                    }
+                    max_items = int(health_cfg.get("max_items_per_library") or 400)
+                    warn_below = float(health_cfg.get("warn_below_coverage_percent") or 70)
+                    fail_below = float(health_cfg.get("fail_below_coverage_percent") or 30)
+                    required = bool(health_cfg.get("required", False))
+
+                    library_payload = self.curl_json(
+                        f"http://jellyfin:8096/Library/VirtualFolders?api_key={jellyfin_key}"
+                    )
+                    type_map = {
+                        "movies": ["Movie"],
+                        "tvshows": ["Series", "Episode"],
+                        "tv": ["Series", "Episode"],
+                        "music": ["MusicAlbum", "MusicArtist", "Audio"],
+                        "books": ["Book"],
+                    }
+                    if isinstance(library_payload, list):
+                        for library in library_payload:
+                            if not isinstance(library, dict):
+                                continue
+                            name = str(library.get("Name") or "").strip()
+                            item_id = str(library.get("ItemId") or "").strip()
+                            collection_type = str(library.get("CollectionType") or "").strip().lower()
+                            name_key = name.lower()
+                            if selected and collection_type not in selected and name_key not in selected:
+                                continue
+                            if not item_id:
+                                continue
+                            include_types = type_map.get(collection_type) or []
+                            params = {
+                                "ParentId": item_id,
+                                "Recursive": "true",
+                                "Limit": str(max_items),
+                                "Fields": "ImageTags,PrimaryImageTag,PrimaryImageItemId,AlbumPrimaryImageTag,BackdropImageTags",
+                            }
+                            if include_types:
+                                params["IncludeItemTypes"] = ",".join(include_types)
+                            query = "&".join(f"{k}={v}" for k, v in params.items() if v)
+                            payload = self.curl_json(
+                                f"http://jellyfin:8096/Items?{query}&api_key={jellyfin_key}"
+                            )
+                            rows = (
+                                payload.get("Items")
+                                if isinstance(payload, dict) and isinstance(payload.get("Items"), list)
+                                else payload
+                                if isinstance(payload, list)
+                                else []
+                            )
+                            valid_rows = [row for row in rows if isinstance(row, dict)]
+                            if not valid_rows:
+                                self._warn(f"Jellyfin artwork health: {name} has no sampled items")
+                                continue
+                            with_art = sum(
+                                1 for row in valid_rows if self._jellyfin_item_has_artwork(row)
+                            )
+                            coverage = (with_art / len(valid_rows)) * 100.0
+                            summary = (
+                                f"Jellyfin artwork health: {name} coverage "
+                                f"{coverage:.1f}% ({with_art}/{len(valid_rows)})"
+                            )
+                            if coverage < fail_below and required:
+                                self._fail(summary + f" below required threshold {fail_below:.1f}%")
+                            elif coverage < warn_below:
+                                self._warn(summary + f" below warning threshold {warn_below:.1f}%")
+                            else:
+                                self._ok(summary)
+
+                    if {"livetv", "live tv"} & selected:
+                        live_payload = self.curl_json(
+                            "http://jellyfin:8096/LiveTv/Programs"
+                            f"?IsAiring=true&Limit={max_items}"
+                            "&Fields=ImageTags,PrimaryImageTag,PrimaryImageItemId,BackdropImageTags"
+                            f"&api_key={jellyfin_key}"
+                        )
+                        live_rows = (
+                            live_payload.get("Items")
+                            if isinstance(live_payload, dict) and isinstance(live_payload.get("Items"), list)
+                            else live_payload
+                            if isinstance(live_payload, list)
+                            else []
+                        )
+                        valid_live = [row for row in live_rows if isinstance(row, dict)]
+                        if not valid_live:
+                            self._warn("Jellyfin artwork health: Live TV has no sampled items")
+                        else:
+                            with_art = sum(
+                                1 for row in valid_live if self._jellyfin_item_has_artwork(row)
+                            )
+                            coverage = (with_art / len(valid_live)) * 100.0
+                            summary = (
+                                "Jellyfin artwork health: Live TV coverage "
+                                f"{coverage:.1f}% ({with_art}/{len(valid_live)})"
+                            )
+                            if coverage < fail_below and required:
+                                self._fail(
+                                    summary + f" below required threshold {fail_below:.1f}%"
+                                )
+                            elif coverage < warn_below:
+                                self._warn(summary + f" below warning threshold {warn_below:.1f}%")
+                            else:
+                                self._ok(summary)
+            except Exception as exc:
+                self._warn(f"Jellyfin artwork health verification failed: {exc}")
         else:
             self._warn("JELLYFIN_API_KEY missing in secret; skipping Jellyfin library verification")
 

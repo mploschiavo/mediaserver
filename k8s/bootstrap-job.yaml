@@ -126,8 +126,6 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            - name: BOOTSTRAP_ALT_CONFIG_ROOT
-              value: /srv-host-config
           command:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py
@@ -163,17 +161,12 @@ spec:
               mountPath: /srv-config/maintainerr
             - name: cfg-jellyfin-auto-collections
               mountPath: /srv-config/jellyfin-auto-collections
-            - name: host-config-fallback
-              mountPath: /srv-host-config
-              readOnly: false
             - name: stack-torrents
               mountPath: /srv-stack/data/torrents
             - name: stack-usenet
               mountPath: /srv-stack/data/usenet
             - name: stack-media
               mountPath: /srv-stack/media
-            - name: host-data-fallback
-              mountPath: /srv-host-stack
       volumes:
         - name: bootstrap-config
           configMap:
@@ -214,14 +207,6 @@ spec:
         - name: cfg-jellyfin-auto-collections
           persistentVolumeClaim:
             claimName: media-stack-config-jellyfin-auto-collections
-        - name: host-config-fallback
-          hostPath:
-            path: /srv/media-stack/config
-            type: DirectoryOrCreate
-        - name: host-data-fallback
-          hostPath:
-            path: /srv/media-stack
-            type: DirectoryOrCreate
         - name: stack-torrents
           persistentVolumeClaim:
             claimName: media-stack-data-torrents

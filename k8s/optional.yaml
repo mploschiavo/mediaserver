@@ -441,7 +441,7 @@ spec:
           containers:
             - name: bootstrap-reconcile
               image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               env:
                 - name: SABNZBD_API_KEY
                   valueFrom:
@@ -522,8 +522,6 @@ spec:
                   mountPath: /srv-stack/data/usenet
                 - name: stack-media
                   mountPath: /srv-stack/media
-                - name: host-data-fallback
-                  mountPath: /srv-host-stack
           volumes:
             - name: bootstrap-config
               configMap:
@@ -573,10 +571,6 @@ spec:
             - name: stack-media
               persistentVolumeClaim:
                 claimName: media-stack-media
-            - name: host-data-fallback
-              hostPath:
-                path: /srv/media-stack
-                type: DirectoryOrCreate
 
 ---
 apiVersion: batch/v1
@@ -603,7 +597,7 @@ spec:
           containers:
             - name: jellyfin-prewarm
               image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               env:
                 - name: JELLYFIN_API_KEY
                   valueFrom:
@@ -642,6 +636,8 @@ spec:
                   readOnly: true
                 - name: cfg-jellyfin
                   mountPath: /srv-config/jellyfin
+                - name: stack-media
+                  mountPath: /srv-stack/media
           volumes:
             - name: bootstrap-config
               configMap:
@@ -649,6 +645,9 @@ spec:
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin
+            - name: stack-media
+              persistentVolumeClaim:
+                claimName: media-stack-media
 
 ---
 apiVersion: batch/v1
@@ -675,7 +674,7 @@ spec:
           containers:
             - name: media-hygiene
               image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               env:
                 - name: STACK_ADMIN_USERNAME
                   valueFrom:
@@ -766,8 +765,6 @@ spec:
                   mountPath: /srv-stack/data/usenet
                 - name: stack-media
                   mountPath: /srv-stack/media
-                - name: host-data-fallback
-                  mountPath: /srv-host-stack
           volumes:
             - name: bootstrap-config
               configMap:
@@ -817,7 +814,3 @@ spec:
             - name: stack-media
               persistentVolumeClaim:
                 claimName: media-stack-media
-            - name: host-data-fallback
-              hostPath:
-                path: /srv/media-stack
-                type: DirectoryOrCreate

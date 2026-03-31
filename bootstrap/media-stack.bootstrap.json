@@ -783,12 +783,37 @@
       "enabled": true,
       "books_root_path": "/srv-stack/media/books",
       "books_root_paths": [
-        "/srv-stack/media/books",
-        "/srv-host-stack/media/books"
+        "/srv-stack/media/books"
+      ],
+      "output_filename": "folder.jpg",
+      "write_per_book_sidecars": true,
+      "per_book_output_extension": ".jpg",
+      "replace_existing": false,
+      "max_books_per_run": 500
+    },
+    "music_sidecar_artwork": {
+      "enabled": true,
+      "music_root_path": "/srv-stack/media/music",
+      "music_root_paths": [
+        "/srv-stack/media/music"
       ],
       "output_filename": "folder.jpg",
       "replace_existing": false,
-      "max_books_per_run": 500
+      "max_albums_per_run": 1200
+    },
+    "artwork_health_check": {
+      "enabled": true,
+      "required": false,
+      "libraries": [
+        "Movies",
+        "TV Shows",
+        "Music",
+        "Books",
+        "Live TV"
+      ],
+      "max_items_per_library": 400,
+      "warn_below_coverage_percent": 70,
+      "fail_below_coverage_percent": 30
     },
     "library_refresh_query": {
       "metadataRefreshMode": "FullRefresh",
@@ -1104,9 +1129,7 @@
       "url": "https://github.com/DavidMoore/ipfilter/releases/download/lists/ipfilter.dat",
       "fallback_urls": [],
       "target_path": "/srv-stack/data/torrents/ipfilter.dat",
-      "mirror_target_paths": [
-        "/srv-host-stack/data/torrents/ipfilter.dat"
-      ],
+      "mirror_target_paths": [],
       "qbit_filter_path": "/data/torrents/ipfilter.dat",
       "state_path": "/srv-stack/data/torrents/.ipfilter-refresh-state.json",
       "min_refresh_interval_hours": 24,
