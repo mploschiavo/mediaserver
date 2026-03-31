@@ -1,0 +1,41 @@
+# describe-ingress
+# command: kubectl -n media-stack describe ingress media-stack-ingress
+# captured_at_utc: 2026-03-31T16:47:22Z
+
+Name:             media-stack-ingress
+Labels:           <none>
+Namespace:        media-stack
+Address:          127.0.0.1
+Ingress Class:    public
+Default backend:  <default>
+Rules:
+  Host               Path  Backends
+  ----               ----  --------
+  homepage.local     
+                     /   homepage:3000 (10.1.55.128:3000)
+  jellyfin.local     
+                     /   jellyfin:8096 (10.1.55.159:8096)
+  jellyseerr.local   
+                     /   jellyseerr:5055 (10.1.55.163:5055)
+  sonarr.local       
+                     /   sonarr:8989 (10.1.55.142:8989)
+  radarr.local       
+                     /   radarr:7878 (10.1.55.183:7878)
+  lidarr.local       
+                     /   lidarr:8686 (10.1.55.139:8686)
+  readarr.local      
+                     /   readarr:8787 (10.1.55.137:8787)
+  bazarr.local       
+                     /   bazarr:6767 (10.1.55.140:6767)
+  prowlarr.local     
+                     /   prowlarr:9696 (10.1.55.166:9696)
+  qbittorrent.local  
+                     /   qbittorrent:8080 (10.1.55.162:8080)
+  sabnzbd.local      
+                     /   sabnzbd:8080 (10.1.55.179:8080)
+  maintainerr.local  
+                     /   maintainerr:6246 (10.1.55.132:6246)
+  tautulli.local     
+                     /   tautulli:8181 (10.1.55.147:8181)
+Annotations:         kubernetes.io/ingress.class: public
+Events:              <none>

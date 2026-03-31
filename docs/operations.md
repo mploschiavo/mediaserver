@@ -94,6 +94,8 @@ RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
 bash scripts/run-api-e2e.sh <NAMESPACE>
 bash scripts/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
 bash scripts/validate-bootstrap-config.sh
+bash scripts/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
+bash scripts/capture-k8s-snapshots.sh [NAMESPACE]
 ```
 
 ## Backup and Restore

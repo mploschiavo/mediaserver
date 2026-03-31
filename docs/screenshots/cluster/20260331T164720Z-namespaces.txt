@@ -1,0 +1,23 @@
+# namespaces
+# command: kubectl get namespaces
+# captured_at_utc: 2026-03-31T16:47:20Z
+
+NAME                  STATUS   AGE
+ai                    Active   25d
+before-you-buy-gpus   Active   9d
+bookstack             Active   29d
+cert-manager          Active   25d
+default               Active   31d
+docmost               Active   28d
+harbor                Active   31d
+ingress               Active   31d
+kettlelogic           Active   11d
+kube-node-lease       Active   31d
+kube-public           Active   31d
+kube-system           Active   31d
+matthewloschiavo      Active   10d
+media-stack           Active   38h
+metallb-system        Active   31d
+pelican38-site        Active   12d
+private-registry      Active   31d
+troylocklear          Active   30d

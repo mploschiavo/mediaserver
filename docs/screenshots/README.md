@@ -1,12 +1,56 @@
-# Screenshots
+# Screenshots and Runtime Evidence
 
-This folder is reserved for runtime screenshots captured from deployed environments.
+This directory stores reproducible runtime artifacts captured from a live namespace.
 
-Recommended capture set:
-- homepage dashboard
-- jellyfin home view
-- jellyseerr request page
-- sonarr/radarr download clients configuration screens
-- ingress smoke-test evidence
+## Folder Structure
+
+- `docs/screenshots/apps/`
+  - Playwright-captured UI screenshots for ingress-exposed apps.
+  - See `docs/screenshots/apps/README.md`.
+- `docs/screenshots/cluster/`
+  - Timestamped terminal snapshots (`kubectl` outputs for pods/services/ingress/PVC/events).
+  - See `docs/screenshots/cluster/README.md`.
+
+## Capture UI Screenshots
+
+```bash
+bash scripts/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE] [OUT_DIR]
+```
+
+Example:
+
+```bash
+bash scripts/run-playwright-screenshots.sh 192.168.1.60 media-stack
+```
+
+This runs `tests/e2e/playwright/tests/screenshot-capture.spec.ts` and writes one PNG per app host.
+
+## Capture Kubernetes Terminal Snapshots
+
+```bash
+bash scripts/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
+```
+
+Example:
+
+```bash
+bash scripts/capture-k8s-snapshots.sh media-stack
+```
+
+This writes timestamped `.txt` evidence files for:
+- namespaces, nodes
+- pods, services, ingress, PVCs, deployments, jobs
+- namespace events
+- ingress describe output
+
+## Recommended Baseline Set
+
+- homepage
+- jellyfin
+- jellyseerr
+- sonarr/radarr
+- qbittorrent/sabnzbd
+- maintainerr
+- one full cluster snapshot batch
 
 For architecture visuals, see `docs/diagrams/`.

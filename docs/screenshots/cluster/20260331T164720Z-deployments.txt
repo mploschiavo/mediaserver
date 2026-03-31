@@ -1,0 +1,22 @@
+# deployments
+# command: kubectl -n media-stack get deploy
+# captured_at_utc: 2026-03-31T16:47:21Z
+
+NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+bazarr                      1/1     1            1           38h
+flaresolverr                1/1     1            1           38h
+homepage                    1/1     1            1           38h
+jellyfin                    1/1     1            1           38h
+jellyfin-auto-collections   1/1     1            1           38h
+jellyseerr                  1/1     1            1           38h
+lidarr                      1/1     1            1           38h
+maintainerr                 1/1     1            1           3h17m
+plex                        1/1     1            1           38h
+prowlarr                    1/1     1            1           38h
+qbittorrent                 1/1     1            1           38h
+radarr                      1/1     1            1           38h
+readarr                     1/1     1            1           38h
+sabnzbd                     1/1     1            1           38h
+sonarr                      1/1     1            1           38h
+tautulli                    1/1     1            1           38h
+unpackerr                   1/1     1            1           38h

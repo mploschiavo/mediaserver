@@ -1,0 +1,6 @@
+# nodes
+# command: kubectl get nodes -o wide
+# captured_at_utc: 2026-03-31T16:47:20Z
+
+NAME   STATUS   ROLES    AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION      CONTAINER-RUNTIME
+yoda   Ready    <none>   31d   v1.33.9   192.168.1.60   <none>        Ubuntu 24.04.4 LTS   6.8.0-101-generic   containerd://1.7.27

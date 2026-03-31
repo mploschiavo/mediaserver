@@ -92,6 +92,30 @@ Optional defaults:
 
 Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 
+## Extend With a New Component (Developer Path)
+
+To add or replace one technology with minimal blast radius:
+
+1. Implement one app/client adapter module under:
+   - `scripts/bootstrap_services/apps/<app>/`
+   - `scripts/bootstrap_services/download_client_adapters/`
+   - `scripts/bootstrap_services/media_server_adapters/`
+2. Register the class path in bootstrap config under `adapter_hooks`.
+3. Bind runtime usage through `technology_bindings`.
+4. Keep policy/config in JSON under `bootstrap/` or `config/runtime/overlays/*`.
+5. Validate + reconcile:
+
+```bash
+bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+bash scripts/bootstrap-all.sh
+RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
+```
+
+Design constraints for maintainability:
+- avoid hardcoding app conditionals in shared runner/runtime modules
+- add app-specific behavior in app-specific adapter/service files
+- keep shell scripts as thin wrappers over Python modules for non-trivial logic
+
 ## Deployment Model
 
 Supported paths:
@@ -333,6 +357,16 @@ RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash scripts/test.sh
 bash scripts/run-playwright-smoke.sh <NODE_IP> [NAMESPACE]
 ```
 
+Capture app UI screenshots (Playwright):
+```bash
+bash scripts/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
+```
+
+Capture Kubernetes terminal evidence snapshots:
+```bash
+bash scripts/capture-k8s-snapshots.sh [NAMESPACE]
+```
+
 Run API-level relationship verification:
 ```bash
 RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
@@ -373,12 +407,14 @@ bash scripts/bootstrap-debug.sh
 - [docs/deployment-model.md](docs/deployment-model.md)
 - [docs/source-of-truth.md](docs/source-of-truth.md)
 - [docs/software-design-models.md](docs/software-design-models.md)
+- [docs/technology-swaps.md](docs/technology-swaps.md)
 - [docs/repo-layout.md](docs/repo-layout.md)
 - [docs/operational-principles.md](docs/operational-principles.md)
 - [docs/gitops.md](docs/gitops.md)
 - [docs/networking.md](docs/networking.md)
 - [docs/storage.md](docs/storage.md)
 - [docs/operations.md](docs/operations.md)
+- [docs/maintainerr-rules-library.md](docs/maintainerr-rules-library.md)
 - [docs/troubleshooting.md](docs/troubleshooting.md)
 - [docs/premium-ux.md](docs/premium-ux.md)
 - [docs/device-onboarding.md](docs/device-onboarding.md)

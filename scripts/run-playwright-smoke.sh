@@ -24,5 +24,6 @@ if [[ ! -d node_modules ]]; then
     npm install
   fi
 fi
-STACK_NODE_IP="$NODE_IP" STACK_HOSTS="$HOSTS_CSV" npx playwright test
+STACK_NODE_IP="$NODE_IP" STACK_HOSTS="$HOSTS_CSV" \
+  npx playwright test tests/ingress.spec.ts tests/ux-smoke.spec.ts
 popd >/dev/null

@@ -27,7 +27,14 @@ This directory intentionally contains both:
 - `sync-unpackerr-keys.sh`
 - `validate-bootstrap-config.sh`
 - `set-pvc-storage-class.sh`
+- `run-playwright-smoke.sh`
+- `run-playwright-screenshots.sh`
+- `capture-k8s-snapshots.sh`
 - `test.sh`
+
+Playwright split:
+- `run-playwright-smoke.sh` -> fast ingress/UX assertions only
+- `run-playwright-screenshots.sh` -> screenshot artifact generation
 
 ## Deprecated (Sunset Path)
 

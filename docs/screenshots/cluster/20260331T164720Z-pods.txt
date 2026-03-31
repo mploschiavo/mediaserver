@@ -1,0 +1,28 @@
+# pods
+# command: kubectl -n media-stack get pods -o wide
+# captured_at_utc: 2026-03-31T16:47:20Z
+
+NAME                                         READY   STATUS                   RESTARTS       AGE     IP            NODE   NOMINATED NODE   READINESS GATES
+bazarr-55fdf47788-grrc6                      1/1     Running                  0              4h13m   10.1.55.140   yoda   <none>           <none>
+flaresolverr-8497c74596-j7khl                0/1     ContainerStatusUnknown   1              38h     10.1.55.164   yoda   <none>           <none>
+flaresolverr-8497c74596-w4p4w                1/1     Running                  0              108m    10.1.55.136   yoda   <none>           <none>
+homepage-59b58c8596-zt26z                    1/1     Running                  0              3h11m   10.1.55.128   yoda   <none>           <none>
+host-srv-inspect                             0/1     Completed                0              3h42m   10.1.55.185   yoda   <none>           <none>
+hostpath-inspect                             0/1     Completed                0              3h42m   10.1.55.146   yoda   <none>           <none>
+jellyfin-5688f45f9-9d49f                     1/1     Running                  0              4h27m   10.1.55.159   yoda   <none>           <none>
+jellyfin-auto-collections-557bbd5679-s79fs   1/1     Running                  0              23h     10.1.55.174   yoda   <none>           <none>
+jellyseerr-584d6f694c-hdk4p                  1/1     Running                  0              6m36s   10.1.55.163   yoda   <none>           <none>
+lidarr-5bdb9b947d-dt64n                      1/1     Running                  2 (104m ago)   4h55m   10.1.55.139   yoda   <none>           <none>
+maintainerr-699f94bfd5-9bcrw                 1/1     Running                  0              119m    10.1.55.132   yoda   <none>           <none>
+media-migrate                                0/1     Completed                0              3h41m   10.1.55.138   yoda   <none>           <none>
+media-stack-bootstrap-wk5cf                  0/1     Completed                0              8m30s   10.1.55.152   yoda   <none>           <none>
+media-stack-prowlarr-auto-indexers-sfpmz     0/1     Completed                0              6m7s    10.1.55.182   yoda   <none>           <none>
+plex-5f85974cc9-7rhxg                        1/1     Running                  0              23h     10.1.55.176   yoda   <none>           <none>
+prowlarr-c6bd9d99-d2mr6                      1/1     Running                  0              108m    10.1.55.166   yoda   <none>           <none>
+qbittorrent-cc98fffcd-zfmtc                  1/1     Running                  0              4h55m   10.1.55.162   yoda   <none>           <none>
+radarr-565d6db67d-rcgcp                      1/1     Running                  2 (104m ago)   4h55m   10.1.55.183   yoda   <none>           <none>
+readarr-6d6dcf8fc8-dtrrq                     1/1     Running                  2 (104m ago)   4h55m   10.1.55.137   yoda   <none>           <none>
+sabnzbd-69687b65ff-xqsmt                     1/1     Running                  0              21h     10.1.55.179   yoda   <none>           <none>
+sonarr-656cf9667f-ttf9j                      1/1     Running                  0              4h55m   10.1.55.142   yoda   <none>           <none>
+tautulli-775b9c7768-drwc4                    1/1     Running                  0              23h     10.1.55.147   yoda   <none>           <none>
+unpackerr-58fcb5d599-blxf2                   1/1     Running                  0              5m41s   10.1.55.161   yoda   <none>           <none>

@@ -16,7 +16,8 @@ The repository keeps deployable runtime assets in existing stable paths while in
 - `apps/`: per-app ownership boundaries and future app-specific overlays
 - `config/`: default/profile/policy config domains
 - `examples/`: concrete operator examples and sample environment files
-- `diagrams/`: top-level entrypoint to architecture visuals
+- `docs/diagrams/`: architecture and software-design visual set (source `.mmd` + rendered `.svg/.png`)
+- `docs/screenshots/`: runtime UI and cluster evidence artifacts generated from automated capture flows
 
 These directories are intentionally introduced without breaking existing scripts.
 
