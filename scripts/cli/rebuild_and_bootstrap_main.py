@@ -364,18 +364,6 @@ class RebuildBootstrapRunner:
         if not handled:
             raise SkipPhase()
 
-    def wait_for_namespace_deleted(self, max_wait_seconds: int = 600) -> None:
-        try:
-            self._namespace_service().wait_for_namespace_deleted(max_wait_seconds=max_wait_seconds)
-        except RuntimeError as exc:
-            raise RebuildError(str(exc)) from exc
-
-    def _stream_with_manifest_overrides(self, text: str) -> str:
-        return self._manifest_overrides_service().stream_with_manifest_overrides(text)
-
-    def _inject_storage_class(self, text: str) -> str:
-        return self._manifest_overrides_service().inject_storage_class(text)
-
     def _apply_manifest_text_with_overrides(self, text: str) -> None:
         self._manifest_overrides_service().apply_manifest_text_with_overrides(text)
 

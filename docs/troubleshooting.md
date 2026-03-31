@@ -1,5 +1,75 @@
 # Troubleshooting
 
+## 0) Everything Is Running, but I Can’t Access It in My Browser
+
+This stack is exposed through Kubernetes Ingress. Browser access requires both:
+
+1. An Ingress Controller running in your cluster.
+2. DNS (or hosts-file) records that point your hostnames to your cluster node IP.
+
+Quick verification:
+```bash
+kubectl get ingressclass
+kubectl -n <NAMESPACE> get ingress media-stack-ingress -o wide
+kubectl -n ingress get pods
+kubectl -n <NAMESPACE> get svc
+```
+
+If Ingress Controller is missing:
+
+- MicroK8s:
+```bash
+microk8s enable ingress
+kubectl get ingressclass
+```
+
+- NGINX Ingress (generic clusters):
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller
+kubectl get ingressclass
+```
+
+Point hostnames to the node IP:
+
+- Generate entries:
+```bash
+bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+```
+
+- Linux/macOS (`/etc/hosts`):
+```bash
+sudo nano /etc/hosts
+# add lines from render-hosts-example output
+```
+
+- Windows (`C:\Windows\System32\drivers\etc\hosts`) using Admin editor:
+```text
+192.168.1.60 jellyfin.local jellyseerr.local sonarr.local radarr.local ...
+```
+
+- Local network DNS (router/dnsmasq/Pi-hole):
+  - map each `*.local` host used by this stack to `<NODE_IP>`, or
+  - use generated dnsmasq snippets:
+```bash
+bash scripts/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
+```
+
+Then validate from the same client machine:
+```bash
+nslookup jellyfin.local
+curl -I http://jellyfin.local
+curl -I http://homepage.local
+```
+
+If name resolution works but UI still fails:
+- hard refresh browser (`Ctrl+Shift+R`)
+- test from private/incognito window
+- run smoke test:
+```bash
+bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
+```
+
 ## 1) Bootstrap Job Fails
 
 Check:

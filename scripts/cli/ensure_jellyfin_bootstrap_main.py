@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-import argparse
 import json
-import os
 import sys
 import time
 from urllib import error, request
@@ -12,6 +10,7 @@ from cli.jellyfin_bootstrap_api_key_service import (
     validate_api_key,
 )
 from cli.jellyfin_bootstrap_auth_service import JellyfinBootstrapAuthService
+from cli.jellyfin_bootstrap_config_service import parse_jellyfin_bootstrap_config
 from cli.jellyfin_bootstrap_db_discovery_service import (
     discover_api_key_from_jellyfin_db,
 )
@@ -75,23 +74,13 @@ def http_request(base_url, path, method="GET", payload=None, headers=None, timeo
         return 0, None, str(exc)
 
 
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(
-        prog="scripts/ensure-jellyfin-bootstrap.sh",
-        description=(
-            "Completes Jellyfin first-run bootstrap and syncs API key/user id into media-stack secret."
-        ),
-    )
-    return parser.parse_args(argv)
-
-
 def main(argv=None):
-    parse_args(argv)
-    namespace = os.environ.get("NAMESPACE", "media-stack")
-    secret_name = os.environ.get("SECRET_NAME", "media-stack-secrets")
-    service_name = os.environ.get("JELLYFIN_SERVICE_NAME", "jellyfin")
-    wait_seconds = int(os.environ.get("JELLYFIN_BOOTSTRAP_WAIT_SECONDS", "180"))
-    app_name = os.environ.get("JELLYFIN_API_KEY_APP_NAME", "media-stack-bootstrap")
+    cfg = parse_jellyfin_bootstrap_config(argv)
+    namespace = cfg.namespace
+    secret_name = cfg.secret_name
+    service_name = cfg.service_name
+    wait_seconds = cfg.wait_seconds
+    app_name = cfg.app_name
 
     kubectl = choose_kubectl()
     info(f"Namespace: {namespace}")
@@ -99,12 +88,8 @@ def main(argv=None):
     info(f"Jellyfin service: {service_name}")
 
     secret = get_secret(kubectl, namespace, secret_name)
-    stack_user = secret.get("STACK_ADMIN_USERNAME") or os.environ.get(
-        "STACK_ADMIN_USERNAME", "mediaadmin"
-    )
-    stack_pass = secret.get("STACK_ADMIN_PASSWORD") or os.environ.get(
-        "STACK_ADMIN_PASSWORD", "media-stack-admin"
-    )
+    stack_user = secret.get("STACK_ADMIN_USERNAME") or cfg.stack_admin_username
+    stack_pass = secret.get("STACK_ADMIN_PASSWORD") or cfg.stack_admin_password
     existing_api_key = secret.get("JELLYFIN_API_KEY", "").strip()
     existing_user_id = secret.get("JELLYFIN_USER_ID", "").strip()
 

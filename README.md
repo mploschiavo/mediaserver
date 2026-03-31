@@ -336,6 +336,25 @@ Use your ingress domain suffix (default `.local`):
 - `maintainerr.<domain>`
 - `tautulli.<domain>`
 
+If everything is running but browser access fails, verify both Ingress + DNS/hosts:
+
+1. Ingress Controller exists and is healthy:
+```bash
+kubectl get ingressclass
+kubectl -n <NAMESPACE> get ingress media-stack-ingress -o wide
+```
+
+2. Your hostnames resolve to the node IP (`<NODE_IP>`):
+```bash
+nslookup jellyfin.local
+curl -I http://jellyfin.local
+```
+
+MicroK8s ingress enablement:
+```bash
+microk8s enable ingress
+```
+
 Render host entries:
 ```bash
 bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
@@ -345,6 +364,13 @@ Render router DNS snippets:
 ```bash
 bash scripts/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
+
+Manual hosts files:
+- Linux/macOS: `/etc/hosts`
+- Windows: `C:\\Windows\\System32\\drivers\\etc\\hosts`
+
+Detailed recovery flow:
+- [docs/troubleshooting.md](docs/troubleshooting.md) → `0) Everything Is Running, but I Can’t Access It in My Browser`
 
 TV/mobile onboarding guidance:
 - [docs/device-onboarding.md](docs/device-onboarding.md)

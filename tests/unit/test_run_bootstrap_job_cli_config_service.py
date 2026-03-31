@@ -1,0 +1,30 @@
+import os
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from scripts.cli.run_bootstrap_job_cli_config_service import parse_run_bootstrap_job_config
+
+
+class RunBootstrapJobCliConfigServiceTests(unittest.TestCase):
+    def test_parse_config_and_timeout_seconds(self):
+        root_dir = Path("/tmp/media-stack")
+        env = {
+            "NAMESPACE": "media-stack-dev",
+            "TIMEOUT": "90s",
+            "HEARTBEAT_INTERVAL": "20",
+            "JOB_LOG_TAIL_LINES": "200",
+            "BOOTSTRAP_RUNNER_IMAGE": "registry.local/bootstrap:dev",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            cfg = parse_run_bootstrap_job_config([], root_dir=root_dir)
+
+        self.assertEqual(cfg.namespace, "media-stack-dev")
+        self.assertEqual(cfg.timeout_seconds, 90)
+        self.assertEqual(cfg.heartbeat_interval, 20)
+        self.assertEqual(cfg.job_log_tail_lines, 200)
+        self.assertEqual(cfg.bootstrap_runner_image, "registry.local/bootstrap:dev")
+
+
+if __name__ == "__main__":
+    unittest.main()

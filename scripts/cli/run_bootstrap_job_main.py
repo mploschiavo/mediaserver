@@ -3,14 +3,10 @@
 
 from __future__ import annotations
 
-import argparse
-import os
-import re
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Callable
 
 from core.exceptions import ConfigError, MediaStackError
@@ -20,9 +16,17 @@ from cli.bootstrap_config_resolver_service import (
     BootstrapConfigResolverConfig,
     BootstrapConfigResolverService,
 )
+from cli.bootstrap_core_phases_service import (
+    BootstrapCorePhasesConfig,
+    BootstrapCorePhasesService,
+)
 from cli.bootstrap_deployment_ops_service import (
     BootstrapDeploymentOpsConfig,
     BootstrapDeploymentOpsService,
+)
+from cli.bootstrap_job_artifacts_service import (
+    BootstrapJobArtifacts,
+    BootstrapJobArtifactsService,
 )
 from cli.bootstrap_job_logs_service import (
     BootstrapJobLogsConfig,
@@ -51,6 +55,10 @@ from cli.jellyfin_plugin_activation_service import (
     JellyfinPluginActivationConfig,
     JellyfinPluginActivationService,
 )
+from cli.run_bootstrap_job_cli_config_service import (
+    RunBootstrapJobConfig,
+    parse_run_bootstrap_job_config,
+)
 
 
 def ts() -> str:
@@ -67,45 +75,6 @@ def warn(message: str) -> None:
 
 def err(message: str) -> None:
     print(f"[{ts()}] [ERR] {message}", file=sys.stderr, flush=True)
-
-
-def env_bool(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return str(raw).strip().lower() in ("1", "true", "yes", "on")
-
-
-@dataclass(frozen=True)
-class RunBootstrapJobConfig:
-    namespace: str
-    timeout_raw: str
-    heartbeat_interval: int
-    job_log_tail_lines: int
-    alert_webhook_url: str
-    prepare_host_root: str
-    ingress_name: str
-    bootstrap_runner_image: str
-    root_dir: Path
-    config_file: Path
-    skip_qbit_ensure: bool
-    skip_sab_ensure: bool
-
-    @property
-    def timeout_seconds(self) -> int:
-        raw = self.timeout_raw.strip()
-        match = re.match(r"^(\d+)([smh]?)$", raw)
-        if not match:
-            return 600
-        num = int(match.group(1))
-        unit = match.group(2)
-        if unit == "h":
-            return num * 3600
-        if unit in ("m", ""):
-            return num * 60
-        if unit == "s":
-            return num
-        return 600
 
 
 @dataclass
@@ -153,20 +122,8 @@ class RunBootstrapJobRunner:
         self.cfg = cfg
         self.kube = kube
         self.tracker = tracker
-        self.job_log_file = Path(
-            NamedTemporaryFile(
-                prefix="media-stack-bootstrap-log.",
-                suffix=".log",
-                delete=False,
-            ).name
-        )
-        self.job_config_file = Path(
-            NamedTemporaryFile(
-                prefix="media-stack-bootstrap-config.",
-                suffix=".json",
-                delete=False,
-            ).name
-        )
+        self.artifacts_service = BootstrapJobArtifactsService()
+        self.artifacts: BootstrapJobArtifacts = self.artifacts_service.create()
 
     def _job_wait_service(self) -> BootstrapJobWaitService:
         return BootstrapJobWaitService(
@@ -196,7 +153,7 @@ class RunBootstrapJobRunner:
                 root_dir=self.cfg.root_dir,
                 prepare_host_root=self.cfg.prepare_host_root,
                 bootstrap_runner_image=self.cfg.bootstrap_runner_image,
-                job_config_file=self.job_config_file,
+                job_config_file=self.artifacts.job_config_file,
             ),
             kube=self.kube,
             info=info,
@@ -209,7 +166,7 @@ class RunBootstrapJobRunner:
                 namespace=self.cfg.namespace,
                 ingress_name=self.cfg.ingress_name,
                 config_file=self.cfg.config_file,
-                job_config_file=self.job_config_file,
+                job_config_file=self.artifacts.job_config_file,
             ),
             kube=self.kube,
             info=info,
@@ -257,12 +214,22 @@ class RunBootstrapJobRunner:
     def _post_job_actions_service(self) -> BootstrapPostJobActionsService:
         return BootstrapPostJobActionsService()
 
+    def _core_phases_service(self) -> BootstrapCorePhasesService:
+        return BootstrapCorePhasesService(
+            BootstrapCorePhasesConfig(
+                namespace=self.cfg.namespace,
+                prepare_host_root=self.cfg.prepare_host_root,
+                skip_qbit_ensure=self.cfg.skip_qbit_ensure,
+                skip_sab_ensure=self.cfg.skip_sab_ensure,
+            )
+        )
+
     def _job_logs_service(self) -> BootstrapJobLogsService:
         return BootstrapJobLogsService(
             cfg=BootstrapJobLogsConfig(
                 namespace=self.cfg.namespace,
                 job_name="media-stack-bootstrap",
-                log_file=self.job_log_file,
+                log_file=self.artifacts.job_log_file,
                 tail_lines=self.cfg.job_log_tail_lines,
             ),
             kube=self.kube,
@@ -280,35 +247,20 @@ class RunBootstrapJobRunner:
         self.notify("info", f"media-stack bootstrap job started (namespace={self.cfg.namespace})")
 
         try:
-            self._run_phase(
-                "Ensure qBittorrent credentials",
-                lambda: self._run_script(
-                    "ensure-qbit-credentials.sh",
-                    env={
-                        "NAMESPACE": self.cfg.namespace,
-                        "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                    },
-                ),
-                enabled=not self.cfg.skip_qbit_ensure,
+            self._core_phases_service().run(
+                run_phase=self._run_phase,
+                run_script=self._run_script,
+                resolve_bootstrap_config=self.resolve_bootstrap_config,
+                ensure_bootstrap_pvc_prereqs=self.ensure_bootstrap_pvc_prereqs,
+                prime_servarr_api_keys_secret=self.prime_servarr_api_keys_secret,
+                prime_sab_api_key_secret=self.prime_sab_api_key_secret,
+                prime_jellyseerr_api_key_secret=self.prime_jellyseerr_api_key_secret,
+                prime_tautulli_api_key_secret=self.prime_tautulli_api_key_secret,
+                update_bootstrap_configmaps=self.update_bootstrap_configmaps,
+                recreate_bootstrap_job=self.recreate_bootstrap_job,
+                wait_for_bootstrap_job=self.wait_for_bootstrap_job,
+                print_bootstrap_job_logs=self.print_bootstrap_job_logs,
             )
-            self._run_phase(
-                "Ensure SABnzbd API access",
-                lambda: self._run_script(
-                    "ensure-sabnzbd-api-access.sh",
-                    env={"NAMESPACE": self.cfg.namespace},
-                ),
-                enabled=not self.cfg.skip_sab_ensure,
-            )
-            self._run_phase("Resolve bootstrap config", self.resolve_bootstrap_config)
-            self._run_phase("Ensure bootstrap PVC prerequisites", self.ensure_bootstrap_pvc_prereqs)
-            self._run_phase("Prime Arr API keys into secret", self.prime_servarr_api_keys_secret)
-            self._run_phase("Prime SAB API key into secret", self.prime_sab_api_key_secret)
-            self._run_phase("Prime Jellyseerr API key into secret", self.prime_jellyseerr_api_key_secret)
-            self._run_phase("Prime Tautulli API key into secret", self.prime_tautulli_api_key_secret)
-            self._run_phase("Update bootstrap ConfigMaps", self.update_bootstrap_configmaps)
-            self._run_phase("Recreate bootstrap Job", self.recreate_bootstrap_job)
-            self._run_phase("Wait for bootstrap Job completion", self.wait_for_bootstrap_job)
-            self._run_phase("Print bootstrap Job logs", self.print_bootstrap_job_logs)
 
             self._post_job_actions_service().run_actions(
                 log_contains=self._log_contains,
@@ -351,11 +303,7 @@ class RunBootstrapJobRunner:
             raise
 
     def cleanup(self) -> None:
-        for file_path in (self.job_log_file, self.job_config_file):
-            try:
-                file_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+        self.artifacts_service.cleanup(self.artifacts)
 
     def notify(self, status: str, message: str) -> None:
         self._notification_service().notify(status, message)
@@ -424,102 +372,9 @@ class RunBootstrapJobRunner:
         self._jellyfin_plugin_service().activate_plugins_if_needed()
 
 
-def build_parser(root_dir: Path) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Run media-stack bootstrap job.\n\n"
-            "Usage:\n"
-            "  scripts/run-bootstrap-job.sh [CONFIG_FILE]"
-        ),
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
-    parser.add_argument(
-        "config_file",
-        nargs="?",
-        default=str(root_dir / "bootstrap" / "media-stack.bootstrap.json"),
-        help="Bootstrap JSON file path.",
-    )
-    parser.add_argument(
-        "--namespace",
-        default=os.environ.get("NAMESPACE", "media-stack"),
-        help="Kubernetes namespace (env: NAMESPACE).",
-    )
-    parser.add_argument(
-        "--timeout",
-        default=os.environ.get("TIMEOUT", "10m"),
-        help="Wait timeout, e.g. 600s, 10m, 1h (env: TIMEOUT).",
-    )
-    parser.add_argument(
-        "--heartbeat-interval",
-        type=int,
-        default=max(1, int(os.environ.get("HEARTBEAT_INTERVAL", "15"))),
-        help="Heartbeat seconds while waiting for job completion.",
-    )
-    parser.add_argument(
-        "--job-log-tail-lines",
-        type=int,
-        default=max(1, int(os.environ.get("JOB_LOG_TAIL_LINES", "120"))),
-        help="Tail lines to print from bootstrap job logs.",
-    )
-    parser.add_argument(
-        "--prepare-host-root",
-        default=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
-        help="Host root used in manifest overrides.",
-    )
-    parser.add_argument(
-        "--ingress-name",
-        default=os.environ.get("INGRESS_NAME", "media-stack-ingress"),
-        help="Ingress to read hosts from.",
-    )
-    parser.add_argument(
-        "--bootstrap-runner-image",
-        default=os.environ.get(
-            "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
-        ),
-        help="Bootstrap runner container image.",
-    )
-    parser.add_argument(
-        "--alert-webhook-url",
-        default=os.environ.get("ALERT_WEBHOOK_URL", ""),
-        help="Optional webhook for status notifications.",
-    )
-    parser.add_argument(
-        "--skip-qbit-ensure",
-        action="store_true",
-        default=env_bool("SKIP_QBIT_ENSURE", False),
-        help="Skip qBittorrent ensure phase.",
-    )
-    parser.add_argument(
-        "--skip-sab-ensure",
-        action="store_true",
-        default=env_bool("SKIP_SAB_ENSURE", False),
-        help="Skip SABnzbd ensure phase.",
-    )
-    return parser
-
-
 def main(argv: list[str] | None = None) -> int:
     root_dir = Path(__file__).resolve().parents[2]
-    parser = build_parser(root_dir)
-    args = parser.parse_args(argv)
-
-    cfg = RunBootstrapJobConfig(
-        namespace=str(args.namespace).strip() or "media-stack",
-        timeout_raw=str(args.timeout).strip() or "10m",
-        heartbeat_interval=max(1, int(args.heartbeat_interval)),
-        job_log_tail_lines=max(1, int(args.job_log_tail_lines)),
-        alert_webhook_url=str(args.alert_webhook_url).strip(),
-        prepare_host_root=str(args.prepare_host_root).strip() or "/srv/media-stack",
-        ingress_name=str(args.ingress_name).strip() or "media-stack-ingress",
-        bootstrap_runner_image=str(args.bootstrap_runner_image).strip()
-        or "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
-        root_dir=root_dir,
-        config_file=Path(str(args.config_file)),
-        skip_qbit_ensure=bool(args.skip_qbit_ensure),
-        skip_sab_ensure=bool(args.skip_sab_ensure),
-    )
-
+    cfg = parse_run_bootstrap_job_config(argv, root_dir=root_dir)
     runner = RunBootstrapJobRunner(cfg=cfg, kube=KubectlClient.from_environment(), tracker=PhaseTracker())
     return runner.run()
 
