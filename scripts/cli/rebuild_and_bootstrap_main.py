@@ -25,11 +25,18 @@ from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
     BootstrapNotificationService,
 )
+from cli.rebuild_deployments_wait_service import (
+    RebuildDeploymentsWaitConfig,
+    RebuildDeploymentsWaitService,
+)
+from cli.rebuild_ingress_service import RebuildIngressConfig, RebuildIngressService
 from cli.rebuild_manifest_overrides_service import (
     RebuildManifestOverridesConfig,
     RebuildManifestOverridesService,
 )
 from cli.rebuild_namespace_service import RebuildNamespaceConfig, RebuildNamespaceService
+from cli.rebuild_pipeline_service import RebuildPipelineConfig, RebuildPipelineService
+from cli.rebuild_profile_defaults_service import RebuildProfileDefaultsService
 from cli.rebuild_script_runner_service import (
     RebuildScriptRunnerConfig,
     RebuildScriptRunnerService,
@@ -38,6 +45,7 @@ from cli.rebuild_secret_preservation_service import (
     RebuildSecretPreservationConfig,
     RebuildSecretPreservationService,
 )
+from cli.rebuild_smoke_test_service import RebuildSmokeTestService
 
 
 def ts() -> str:
@@ -143,6 +151,54 @@ class RebuildBootstrapRunner:
             run_kubectl=self._run_kubectl,
         )
 
+    def _profile_defaults_service(self) -> RebuildProfileDefaultsService:
+        return RebuildProfileDefaultsService()
+
+    def _ingress_service(self) -> RebuildIngressService:
+        return RebuildIngressService(
+            cfg=RebuildIngressConfig(
+                namespace=self.cfg.namespace,
+                ingress_class=self.cfg.ingress_class,
+                kubectl=self.kubectl,
+            ),
+            info=info,
+            warn=warn,
+            run_script=self._run_script,
+        )
+
+    def _deployments_wait_service(self) -> RebuildDeploymentsWaitService:
+        return RebuildDeploymentsWaitService(
+            cfg=RebuildDeploymentsWaitConfig(
+                namespace=self.cfg.namespace,
+                wait_timeout=self.cfg.wait_timeout,
+                kubectl=self.kubectl,
+            ),
+            info=info,
+            warn=warn,
+        )
+
+    def _pipeline_service(self) -> RebuildPipelineService:
+        return RebuildPipelineService(
+            cfg=RebuildPipelineConfig(
+                namespace=self.cfg.namespace,
+                root_dir=self.cfg.root_dir,
+                prepare_host_root=self.cfg.prepare_host_root,
+                enable_unpackerr=self.cfg.enable_unpackerr,
+                config_file=self.cfg.config_file,
+            ),
+            info=info,
+            run_script=self._run_script,
+        )
+
+    def _smoke_test_service(self) -> RebuildSmokeTestService:
+        return RebuildSmokeTestService(
+            namespace=self.cfg.namespace,
+            node_ip=self.cfg.node_ip,
+            info=info,
+            warn=warn,
+            run_script=self._run_script,
+        )
+
     def run(self) -> int:
         self._validate_inputs()
 
@@ -246,27 +302,18 @@ class RebuildBootstrapRunner:
             )
 
     def apply_profile_defaults(self) -> None:
-        if self.cfg.profile == "minimal":
-            self.cfg.include_optional = self.cfg.include_optional or "0"
-            self.cfg.enable_unpackerr = self.cfg.enable_unpackerr or "0"
-            self.cfg.run_bootstrap = self.cfg.run_bootstrap or "1"
-            return
-        if self.cfg.profile == "full":
-            self.cfg.include_optional = self.cfg.include_optional or "1"
-            self.cfg.enable_unpackerr = self.cfg.enable_unpackerr or "1"
-            self.cfg.run_bootstrap = self.cfg.run_bootstrap or "1"
-            return
-        if self.cfg.profile == "public-demo":
-            self.cfg.include_optional = self.cfg.include_optional or "1"
-            self.cfg.enable_unpackerr = self.cfg.enable_unpackerr or "0"
-            self.cfg.run_bootstrap = self.cfg.run_bootstrap or "0"
-            return
-        if self.cfg.profile == "power-user":
-            self.cfg.include_optional = self.cfg.include_optional or "1"
-            self.cfg.enable_unpackerr = self.cfg.enable_unpackerr or "1"
-            self.cfg.run_bootstrap = self.cfg.run_bootstrap or "1"
-            return
-        raise RebuildError(f"Unsupported profile: {self.cfg.profile}")
+        try:
+            resolved = self._profile_defaults_service().apply(
+                profile=self.cfg.profile,
+                include_optional=self.cfg.include_optional,
+                enable_unpackerr=self.cfg.enable_unpackerr,
+                run_bootstrap=self.cfg.run_bootstrap,
+            )
+        except RuntimeError as exc:
+            raise RebuildError(str(exc)) from exc
+        self.cfg.include_optional = resolved.include_optional
+        self.cfg.enable_unpackerr = resolved.enable_unpackerr
+        self.cfg.run_bootstrap = resolved.run_bootstrap
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
         try:
@@ -303,12 +350,9 @@ class RebuildBootstrapRunner:
         self._notification_service().notify(status, message)
 
     def prepare_host_directories(self) -> None:
-        if self.cfg.storage_mode == "legacy-hostpath":
-            info(f"Preparing host directories under {self.cfg.prepare_host_root}")
-            self._run_script("prepare-host.sh", self.cfg.prepare_host_root)
-            return
-        info(f"Skipping host directory prep (storage mode: {self.cfg.storage_mode})")
-        raise SkipPhase()
+        handled = self._pipeline_service().prepare_host_directories(self.cfg.storage_mode)
+        if not handled:
+            raise SkipPhase()
 
     def backup_existing_secret_values(self) -> None:
         self.backup_secret_values = self._secret_preservation_service().backup_existing_values(
@@ -461,191 +505,41 @@ class RebuildBootstrapRunner:
             )
 
     def generate_secrets(self) -> None:
-        info("Generating secure secrets in cluster before bootstrap")
-        self._run_script(
-            "generate-secrets.sh",
-            env={
-                "NAMESPACE": self.cfg.namespace,
-                "OUTPUT_FILE": str(self.cfg.root_dir / "secrets.generated.env"),
-            },
-        )
+        self._pipeline_service().generate_secrets()
 
     def pick_ingress_class(self) -> str:
-        if self.cfg.ingress_class != "auto":
-            return self.cfg.ingress_class
-
-        proc = subprocess.run(
-            [
-                *self.kubectl,
-                "get",
-                "ingressclass",
-                "-o",
-                "jsonpath={range .items[*]}{.metadata.name}{'\\n'}{end}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        classes = [x.strip() for x in (proc.stdout or "").splitlines() if x.strip()]
-        for target in ("public", "nginx"):
-            if target in classes:
-                return target
-        return classes[0] if classes else ""
+        return self._ingress_service().pick_ingress_class()
 
     def patch_ingress_class(self) -> None:
-        desired_class = self.pick_ingress_class()
-        if not desired_class:
-            warn("No ingress classes discovered; skipping ingress patch.")
+        handled = self._ingress_service().patch_ingress_class()
+        if not handled:
             raise SkipPhase()
 
-        current = subprocess.run(
-            [
-                *self.kubectl,
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "ingress",
-                "media-stack-ingress",
-                "-o",
-                "jsonpath={.spec.ingressClassName}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        current_class = (current.stdout or "").strip()
-        if current_class == desired_class:
-            info(f"Ingress class already set to '{desired_class}'")
-            return
-
-        info(
-            f"Patching ingress class to '{desired_class}' "
-            f"(current: '{current_class if current_class else '<empty>'}')"
-        )
-        self._run_script(
-            "microk8s-patch-ingress-class.sh",
-            desired_class,
-            env={"NAMESPACE": self.cfg.namespace},
-        )
-
     def wait_for_deployments(self) -> None:
-        proc = subprocess.run(
-            [
-                *self.kubectl,
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "deploy",
-                "-o",
-                "jsonpath={range .items[*]}{.metadata.name}{'\\n'}{end}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise RebuildError("Failed listing deployments.")
-
-        deploys = [x.strip() for x in (proc.stdout or "").splitlines() if x.strip()]
-        if not deploys:
-            raise RebuildError(f"No deployments found in namespace '{self.cfg.namespace}'.")
-
-        failures = 0
-        for deploy in deploys:
-            replica_probe = subprocess.run(
-                [
-                    *self.kubectl,
-                    "-n",
-                    self.cfg.namespace,
-                    "get",
-                    "deploy",
-                    deploy,
-                    "-o",
-                    "jsonpath={.spec.replicas}",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            replicas = (replica_probe.stdout or "1").strip() or "1"
-            if replicas == "0":
-                info(f"Skipping rollout wait for deploy/{deploy} (replicas=0)")
-                continue
-
-            info(f"Waiting for deploy/{deploy} rollout")
-            rollout = subprocess.run(
-                [
-                    *self.kubectl,
-                    "-n",
-                    self.cfg.namespace,
-                    "rollout",
-                    "status",
-                    f"deploy/{deploy}",
-                    f"--timeout={self.cfg.wait_timeout}",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if rollout.stdout.strip():
-                print(rollout.stdout.rstrip())
-            if rollout.stderr.strip():
-                print(rollout.stderr.rstrip(), file=sys.stderr)
-            if rollout.returncode != 0:
-                warn(f"deploy/{deploy} not ready within {self.cfg.wait_timeout}")
-                failures += 1
-
-        if failures:
-            subprocess.run(
-                [*self.kubectl, "-n", self.cfg.namespace, "get", "pods", "-o", "wide"],
-                check=False,
-            )
-            raise RebuildError(f"{failures} deployment(s) failed readiness checks.")
+        try:
+            self._deployments_wait_service().wait_for_deployments()
+        except RuntimeError as exc:
+            raise RebuildError(str(exc)) from exc
 
     def apply_scale_policy_guardrails(self) -> None:
-        info("Applying scale-policy guardrails")
-        self._run_script("apply-scale-policy.sh", env={"NAMESPACE": self.cfg.namespace})
+        self._pipeline_service().apply_scale_policy_guardrails()
 
     def skip_scale_policy_guardrails(self) -> None:
         info("Scale-policy guardrails skipped for non-bootstrap profile.")
         raise SkipPhase()
 
     def run_bootstrap_pipeline(self) -> None:
-        info("Running full bootstrap pipeline")
-        self._run_script(
-            "bootstrap-all.sh",
-            str(self.cfg.config_file),
-            env={
-                "NAMESPACE": self.cfg.namespace,
-                "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                "ENABLE_UNPACKERR": self.cfg.enable_unpackerr,
-            },
-        )
+        self._pipeline_service().run_bootstrap_pipeline()
 
     def skip_bootstrap_pipeline(self) -> None:
         info("Bootstrap skipped by profile/policy.")
         raise SkipPhase()
 
     def run_smoke_test(self) -> None:
-        if not self.cfg.node_ip:
-            probe = subprocess.run(
-                ["bash", "-lc", "hostname -I | awk '{print $1}'"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.cfg.node_ip = (probe.stdout or "").strip()
-
-        if not self.cfg.node_ip:
-            warn("Could not detect NODE_IP; skipping smoke test.")
+        resolved = self._smoke_test_service().run_smoke_test()
+        self.cfg.node_ip = resolved or self.cfg.node_ip
+        if not resolved:
             raise SkipPhase()
-
-        info(f"Running ingress smoke test against node IP {self.cfg.node_ip}")
-        self._run_script(
-            "microk8s-smoke-test.sh",
-            self.cfg.node_ip,
-            env={"NAMESPACE": self.cfg.namespace},
-        )
 
     def print_final_pod_status(self) -> None:
         info("Final pod status:")
