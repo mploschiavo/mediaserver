@@ -39,6 +39,8 @@ class BootstrapDefaultsTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[2]
         rules_dir = repo_root / "scripts" / "bootstrap_defaults" / "maintainerr_rules"
         files = sorted(rules_dir.glob("*.json"))
+        if not files:
+            files = sorted((rules_dir / "json").glob("*.json"))
         self.assertGreaterEqual(len(files), 5)
         for rule_file in files:
             raw = json.loads(rule_file.read_text(encoding="utf-8"))

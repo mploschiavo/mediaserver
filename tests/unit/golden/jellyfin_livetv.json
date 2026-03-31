@@ -11,6 +11,7 @@
   "fallback_enable_all_tuners_when_mapping_missing": true,
   "guides": [
     {
+      "default_program_icon_url": "https://raw.githubusercontent.com/iptv-org/logo/master/tv.png",
       "enable_all_tuners": false,
       "enabled_tuners": [
         "tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u"

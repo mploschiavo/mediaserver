@@ -100,22 +100,11 @@ class QBittorrentService:
             "torrent_changed_tmm_enabled": True,
         }
 
-        auth_bypass = config.auth_bypass if isinstance(config.auth_bypass, dict) else {}
-        bypass_local_auth = self.bool_cfg(auth_bypass, "localhost", True)
-        bypass_whitelist_enabled = self.bool_cfg(auth_bypass, "whitelist_enabled", True)
-        whitelist_subnets = self._normalize_subnet_list(
-            auth_bypass.get(
-                "whitelist_subnets",
-                [
-                    "10.0.0.0/8",
-                    "172.16.0.0/12",
-                    "192.168.0.0/16",
-                    "127.0.0.1/32",
-                    "::1/128",
-                ],
-            )
-        )
-        allow_open_world = self.bool_cfg(auth_bypass, "allow_open_world", False)
+        auth_bypass = config.auth_bypass_typed
+        bypass_local_auth = bool(auth_bypass.localhost)
+        bypass_whitelist_enabled = bool(auth_bypass.whitelist_enabled)
+        whitelist_subnets = self._normalize_subnet_list(auth_bypass.whitelist_subnets)
+        allow_open_world = bool(auth_bypass.allow_open_world)
         world_open_tokens = {"0.0.0.0", "0.0.0.0/0", "::/0"}
         if not allow_open_world:
             filtered = []
@@ -143,18 +132,11 @@ class QBittorrentService:
             ",".join(whitelist_subnets) if bypass_whitelist_enabled else ""
         )
 
-        seeding_policy = config.seeding_policy
-        if isinstance(seeding_policy, dict) and self.bool_cfg(seeding_policy, "enabled", False):
-            max_ratio = seeding_policy.get("max_ratio")
-            max_ratio_val = None
-            try:
-                if max_ratio is not None and str(max_ratio).strip() != "":
-                    max_ratio_val = float(max_ratio)
-            except Exception:
-                max_ratio_val = None
-
-            max_seed_minutes = self.to_int(seeding_policy.get("max_seeding_time_minutes"))
-            remove_on_limit = self.bool_cfg(seeding_policy, "remove_on_limit_reached", False)
+        seeding_policy = config.seeding_policy_typed
+        if seeding_policy.enabled:
+            max_ratio_val = seeding_policy.max_ratio
+            max_seed_minutes = seeding_policy.max_seeding_time_minutes
+            remove_on_limit = bool(seeding_policy.remove_on_limit_reached)
             if remove_on_limit:
                 self.log(
                     "[WARN] qBittorrent: seeding_policy.remove_on_limit_reached=true "
@@ -166,14 +148,14 @@ class QBittorrentService:
                 prefs["max_ratio_enabled"] = True
                 prefs["max_ratio"] = max_ratio_val
                 prefs["max_ratio_act"] = 1 if remove_on_limit else 0
-            elif self.bool_cfg(seeding_policy, "max_ratio_enabled", False):
+            elif seeding_policy.max_ratio_enabled:
                 prefs["max_ratio_enabled"] = False
 
             if max_seed_minutes is not None and max_seed_minutes > 0:
                 prefs["max_seeding_time_enabled"] = True
                 prefs["max_seeding_time"] = int(max_seed_minutes)
                 prefs["max_ratio_act"] = 1 if remove_on_limit else prefs.get("max_ratio_act", 0)
-            elif self.bool_cfg(seeding_policy, "max_seeding_time_enabled", False):
+            elif seeding_policy.max_seeding_time_enabled:
                 prefs["max_seeding_time_enabled"] = False
 
         set_prefs = set_preferences_fn or self.set_preferences

@@ -33,6 +33,18 @@
     "name": "qBittorrent",
     "port": 8080,
     "queue_guardrails": {
+      "budget_prune_states": [
+        "queuedDL",
+        "stalledDL",
+        "metaDL",
+        "pausedDL",
+        "error",
+        "missingFiles",
+        "uploading",
+        "stalledUP",
+        "queuedUP",
+        "pausedUP"
+      ],
       "count_states": [
         "downloading",
         "queuedDL",
@@ -44,16 +56,30 @@
         "allocating",
         "checkingResumeData"
       ],
-      "default_max_queued": 35,
+      "default_max_queued": 20,
       "dry_run": false,
       "enabled": true,
       "include_uncategorized": false,
       "max_queued_by_category": {
-        "books": 8,
-        "movies": 35,
-        "music": 10,
-        "tv": 50
+        "books": 4,
+        "movies": 12,
+        "music": 6,
+        "tv": 20
       },
+      "max_total_size_gib_by_category": {
+        "books": 12,
+        "movies": 180,
+        "music": 25,
+        "tv": 120
+      },
+      "max_weight_percent_by_category": {
+        "books": 5,
+        "movies": 35,
+        "music": 8,
+        "tv": 30
+      },
+      "over_budget_delete_files": true,
+      "over_budget_max_delete_per_category": 20,
       "over_limit_delete_files": true,
       "over_limit_max_delete_per_category": 15,
       "prune_states": [
@@ -68,11 +94,11 @@
       "stale_prune": {
         "delete_files": true,
         "enabled": true,
-        "max_age_hours": 168,
+        "max_age_hours": 96,
         "max_delete_per_run": 25,
         "max_download_speed_bps": 32768,
         "max_eta_seconds": 1209600,
-        "max_stalled_hours": 24,
+        "max_stalled_hours": 12,
         "min_progress": 0.98,
         "states": [
           "downloading",

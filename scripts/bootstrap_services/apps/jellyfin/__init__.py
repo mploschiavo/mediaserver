@@ -7,7 +7,6 @@ from .livetv_source_service import JellyfinLiveTvSourceService
 from .livetv_state_service import JellyfinLiveTvStateService
 from .playback_service import JellyfinPlaybackDependencies, JellyfinPlaybackService
 from .plugins_service import JellyfinPluginsDependencies, JellyfinPluginsService
-from .prewarm_service import JellyfinPrewarmDependencies, JellyfinPrewarmService
 
 __all__ = [
     "JellyfinLiveTvDependencies",
@@ -25,3 +24,14 @@ __all__ = [
     "JellyfinPrewarmDependencies",
     "JellyfinPrewarmService",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"JellyfinPrewarmDependencies", "JellyfinPrewarmService"}:
+        from .prewarm_service import JellyfinPrewarmDependencies, JellyfinPrewarmService
+
+        return {
+            "JellyfinPrewarmDependencies": JellyfinPrewarmDependencies,
+            "JellyfinPrewarmService": JellyfinPrewarmService,
+        }[name]
+    raise AttributeError(name)
