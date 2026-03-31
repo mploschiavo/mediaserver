@@ -1,5 +1,7 @@
-"""Maintainerr app services."""
+"""Maintainerr app package.
 
-from .service import MaintainerrService
+Imports are intentionally not re-exported here to avoid circular import
+issues when compatibility modules import back into top-level services.
+"""
 
-__all__ = ["MaintainerrService"]
+__all__: list[str] = []

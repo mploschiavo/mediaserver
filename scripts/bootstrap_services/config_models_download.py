@@ -252,9 +252,9 @@ class DownloadClientsConfig:
 
 @dataclass(frozen=True)
 class TechnologyBindingsConfig:
-    torrent_client: str = "qbittorrent"
-    usenet_client: str = "sabnzbd"
-    media_server: str = "jellyfin"
+    torrent_client: str = ""
+    usenet_client: str = ""
+    media_server: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -265,9 +265,9 @@ class TechnologyBindingsConfig:
     ) -> "TechnologyBindingsConfig":
         src = dict(data or {})
         default_src = dict(defaults or {})
-        default_torrent = str(default_src.get("torrent_client", "qbittorrent")).strip().lower() or "qbittorrent"
-        default_usenet = str(default_src.get("usenet_client", "sabnzbd")).strip().lower() or "sabnzbd"
-        default_media_server = str(default_src.get("media_server", "jellyfin")).strip().lower() or "jellyfin"
+        default_torrent = str(default_src.get("torrent_client", "")).strip().lower()
+        default_usenet = str(default_src.get("usenet_client", "")).strip().lower()
+        default_media_server = str(default_src.get("media_server", "")).strip().lower()
         return cls(
             torrent_client=str(src.get("torrent_client", default_torrent)).strip().lower() or default_torrent,
             usenet_client=str(src.get("usenet_client", default_usenet)).strip().lower() or default_usenet,
