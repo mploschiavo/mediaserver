@@ -248,6 +248,8 @@ spec:
                 path: bootstrap_services/media_server_adapters/jellyfin.py
               - key: bootstrap_services__media_server_adapters__plans.py
                 path: bootstrap_services/media_server_adapters/plans.py
+              - key: bootstrap_services__entrypoint_runtime.py
+                path: bootstrap_services/entrypoint_runtime.py
               - key: bootstrap_services__runtime_factory_service.py
                 path: bootstrap_services/runtime_factory_service.py
               - key: bootstrap_services__operation_wiring.py

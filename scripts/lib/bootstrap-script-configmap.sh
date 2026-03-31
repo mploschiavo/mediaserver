@@ -38,6 +38,7 @@ BOOTSTRAP_SCRIPT_CONFIGMAP_FILES=(
   "bootstrap_services__media_server_adapters__generic.py|scripts/bootstrap_services/media_server_adapters/generic.py"
   "bootstrap_services__media_server_adapters__jellyfin.py|scripts/bootstrap_services/media_server_adapters/jellyfin.py"
   "bootstrap_services__media_server_adapters__plans.py|scripts/bootstrap_services/media_server_adapters/plans.py"
+  "bootstrap_services__entrypoint_runtime.py|scripts/bootstrap_services/entrypoint_runtime.py"
   "bootstrap_services__runtime_factory_service.py|scripts/bootstrap_services/runtime_factory_service.py"
   "bootstrap_services__operation_wiring.py|scripts/bootstrap_services/operation_wiring.py"
   "bootstrap_services__runtime_helpers.py|scripts/bootstrap_services/runtime_helpers.py"
