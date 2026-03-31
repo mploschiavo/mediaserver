@@ -80,6 +80,24 @@ class MediaHygieneOpsService:
             if str(x).strip()
         } or {".part", ".tmp", ".temp", ".nzb", ".!qb"}
         remove_empty_dirs = self.bool_cfg(fs_cfg, "remove_empty_dirs", True)
+        default_preserve_empty_dirs = [
+            "/srv-stack/data/torrents/incomplete",
+            "/srv-stack/data/torrents/completed/tv",
+            "/srv-stack/data/torrents/completed/movies",
+            "/srv-stack/data/torrents/completed/music",
+            "/srv-stack/data/torrents/completed/books",
+            "/srv-stack/data/usenet/incomplete",
+            "/srv-stack/data/usenet/completed/tv",
+            "/srv-stack/data/usenet/completed/movies",
+            "/srv-stack/data/usenet/completed/music",
+            "/srv-stack/data/usenet/completed/books",
+        ]
+        raw_preserve_empty_dirs = (
+            self.coerce_list(fs_cfg.get("preserve_empty_dirs")) or default_preserve_empty_dirs
+        )
+        preserve_empty_dirs = {
+            Path(str(path)).resolve() for path in raw_preserve_empty_dirs if str(path).strip()
+        }
 
         dedupe_cfg = fs_cfg.get("dedupe") or {}
         dedupe_enabled = self.bool_cfg(dedupe_cfg, "enabled", True)
@@ -156,6 +174,8 @@ class MediaHygieneOpsService:
                         continue
                     p = Path(dirpath)
                     if p == root:
+                        continue
+                    if p.resolve() in preserve_empty_dirs:
                         continue
                     try:
                         p.rmdir()

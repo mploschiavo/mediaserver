@@ -304,6 +304,46 @@ class ProwlarrServiceTests(unittest.TestCase):
                 "quarantined indexer should not be re-tested before TTL expiry",
             )
 
+    def test_build_indexer_payload_sets_default_app_profile_id(self):
+        service = self._service_with_stub(
+            lambda *_args, **_kwargs: (500, {}, "unused")
+        )
+
+        payload = service.build_indexer_payload(
+            {
+                "name": "Example",
+                "implementation": "ExampleImpl",
+                "appProfileId": 0,
+                "fields": [],
+            }
+        )
+
+        self.assertEqual(payload.get("appProfileId"), 1)
+
+    def test_auto_add_tested_indexers_handles_test_timeout(self):
+        def stub(_base_url, path, _api_key, method, payload):
+            if path == "/api/v1/indexer/schema" and method == "GET":
+                return 200, [{"implementation": "X", "name": "TimeoutOne", "fields": []}], ""
+            if path == "/api/v1/indexer" and method == "GET":
+                return 200, [], ""
+            if path == "/api/v1/indexer/test" and method == "POST":
+                raise TimeoutError("timed out")
+            if path == "/api/v1/indexer" and method == "POST":
+                return 201, {}, ""
+            return 500, {}, f"unexpected {method} {path}"
+
+        service = self._service_with_stub(stub)
+        service.auto_add_tested_indexers(
+            prowlarr_url="http://prowlarr:9696",
+            prowlarr_key="key",
+            reputation_cfg={
+                "enabled": True,
+                "allow_untested_fallback": True,
+                "untested_fallback_max_add": 1,
+            },
+        )
+        self.assertTrue(any(line == "[ADD] TimeoutOne" for line in self.logs))
+
 
 if __name__ == "__main__":
     unittest.main()

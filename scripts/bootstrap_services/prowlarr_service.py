@@ -266,6 +266,13 @@ class ProwlarrService:
         payload.setdefault("priority", 25)
         payload.setdefault("tags", [])
         payload.setdefault("fields", [])
+        app_profile_id = payload.get("appProfileId")
+        try:
+            app_profile_id_int = int(app_profile_id)
+        except (TypeError, ValueError):
+            app_profile_id_int = 0
+        if app_profile_id_int <= 0:
+            payload["appProfileId"] = 1
         return payload
 
     @staticmethod
@@ -535,13 +542,16 @@ class ProwlarrService:
                         self.log(f"[SKIP] {name}: quarantined by reputation policy")
                     continue
 
-            status, _, body = self.http_request(
-                prowlarr_url,
-                "/api/v1/indexer/test",
-                api_key=prowlarr_key,
-                method="POST",
-                payload=payload,
-            )
+            try:
+                status, _, body = self.http_request(
+                    prowlarr_url,
+                    "/api/v1/indexer/test",
+                    api_key=prowlarr_key,
+                    method="POST",
+                    payload=payload,
+                )
+            except Exception as exc:
+                status, body = 599, str(exc)
             used_untested_fallback = False
             if status not in (200, 201, 202):
                 skipped_test += 1
@@ -569,13 +579,16 @@ class ProwlarrService:
                 )
                 used_untested_fallback = True
 
-            status, _, body = self.http_request(
-                prowlarr_url,
-                "/api/v1/indexer",
-                api_key=prowlarr_key,
-                method="POST",
-                payload=payload,
-            )
+            try:
+                status, _, body = self.http_request(
+                    prowlarr_url,
+                    "/api/v1/indexer",
+                    api_key=prowlarr_key,
+                    method="POST",
+                    payload=payload,
+                )
+            except Exception as exc:
+                status, body = 599, str(exc)
             if status in (200, 201, 202):
                 existing_keys.add(key)
                 existing_by_key[self._reputation_key(str(impl), str(name))] = {
