@@ -1,0 +1,88 @@
+flowchart TB
+  subgraph Z0["Zone 0: Client + LAN (example 192.168.1.0/24)"]
+    U["Users\nWeb / Mobile / TV"]
+    DNS["LAN DNS + host overrides\n*.local records"]
+    FW["Router / Firewall / NAT"]
+  end
+
+  subgraph Z1["Zone 1: Kubernetes Edge (node IPs, e.g. 192.168.1.60)"]
+    INGR["Ingress Controller\nTraefik or NGINX\nHTTP and HTTPS entrypoint"]
+    HOSTS["Ingress host rules\nhomepage.local, jellyfin.local,\njellyseerr.local, sonarr.local,\nradarr.local, lidarr.local, readarr.local,\nbazarr.local, prowlarr.local,\nqbittorrent.local, sabnzbd.local,\ntautulli.local, maintainerr.local"]
+  end
+
+  subgraph Z2["Zone 2: Service Network (Service CIDR, e.g. 10.152.183.0/24)"]
+    S_UI["ClusterIP services (UI/API)\nsvc/homepage:3000\nsvc/jellyfin:8096\nsvc/jellyseerr:5055\nsvc/tautulli:8181\nsvc/maintainerr:6246"]
+    S_STACK["ClusterIP services (automation)\nsvc/sonarr:8989\nsvc/radarr:7878\nsvc/lidarr:8686\nsvc/readarr:8787\nsvc/bazarr:6767\nsvc/prowlarr:9696"]
+    S_DL["ClusterIP services (download clients)\nsvc/qbittorrent:8080\nsvc/sabnzbd:8080\nsvc/flaresolverr:8191\nsvc/unpackerr:5656"]
+  end
+
+  subgraph Z3["Zone 3: Pod Network (Pod CIDR, e.g. 10.1.0.0/16)"]
+    P_UI["UI/Portal Deployments\nhomepage, jellyfin, jellyseerr\nreplicas: 1..N"]
+    P_ARR["ARR/Prowlarr Deployments\nsonarr, radarr, lidarr,\nreadarr, bazarr, prowlarr\nreplicas: 1..N"]
+    P_DL["Downloader/Support Deployments\nqbittorrent, sabnzbd,\nflaresolverr, unpackerr,\ntautulli, maintainerr\nreplicas: 0..N"]
+    P_JOB["Jobs/CronJobs\nbootstrap, prewarm,\nauto-indexer, hygiene"]
+  end
+
+  subgraph Z4["Zone 4: Storage/Data Plane (PVC-backed)"]
+    PVC_CFG["Config PVC set\nper app config volumes"]
+    PVC_DATA["Download PVC set\n/data/torrents + /data/usenet"]
+    PVC_MEDIA["Media PVC\n/media/movies + /media/tv\n/media/music + /media/books"]
+  end
+
+  subgraph Z5["Zone 5: External Providers (Internet)"]
+    IDX["Indexers / Trackers / NZB providers"]
+    META["Metadata + subtitle providers\nTMDB / TVDB / OpenSubtitles / etc"]
+    IPTV["M3U + XMLTV feeds"]
+    NTFY["Notifications\nWebhook / Discord / Telegram / Email"]
+  end
+
+  NOTE["Legend / scaling notes\n1) Pod IPs are dynamic per restart/scale event.\n2) Service ClusterIP + DNS names are stable in-cluster.\n3) Scaling changes pod count, not service hostname contract.\n4) CIDR values above are examples and may differ by cluster."]
+
+  U -->|HTTPS 443| DNS
+  DNS -->|A/hosts lookup| FW
+  FW -->|443 -> ingress entrypoint| INGR
+  HOSTS -. matched by hostname .-> INGR
+
+  INGR -->|HTTP/HTTPS| S_UI
+  INGR -->|HTTP/HTTPS| S_STACK
+  INGR -->|HTTP/HTTPS| S_DL
+
+  S_UI -->|service routing| P_UI
+  S_STACK -->|service routing| P_ARR
+  S_DL -->|service routing| P_DL
+
+  P_ARR -->|HTTP API| S_DL
+  P_ARR -->|HTTP API| S_STACK
+  P_ARR -->|HTTP API| S_UI
+  P_DL -->|HTTP API| S_STACK
+  P_DL -->|HTTP API| S_UI
+  P_JOB -->|HTTP API automation| S_UI
+  P_JOB -->|HTTP API automation| S_STACK
+  P_JOB -->|HTTP API automation| S_DL
+
+  P_UI -->|read/write| PVC_CFG
+  P_ARR -->|read/write| PVC_CFG
+  P_DL -->|read/write| PVC_CFG
+  P_JOB -->|read/write| PVC_CFG
+
+  P_DL -->|download payloads| PVC_DATA
+  P_ARR -->|import + hardlink/move| PVC_DATA
+  P_ARR -->|library manage| PVC_MEDIA
+  P_UI -->|library read| PVC_MEDIA
+  P_JOB -->|maintenance| PVC_DATA
+  P_JOB -->|maintenance| PVC_MEDIA
+
+  P_ARR -->|HTTPS| IDX
+  P_ARR -->|HTTPS| META
+  P_UI -->|HTTPS| META
+  P_UI -->|HTTP/HTTPS| IPTV
+  P_JOB -->|HTTPS| IPTV
+  P_JOB -->|HTTPS| NTFY
+  P_UI -->|HTTPS| NTFY
+
+  NOTE -. applies to all zones .- Z0
+  NOTE -. applies to all zones .- Z1
+  NOTE -. applies to all zones .- Z2
+  NOTE -. applies to all zones .- Z3
+  NOTE -. applies to all zones .- Z4
+  NOTE -. applies to all zones .- Z5

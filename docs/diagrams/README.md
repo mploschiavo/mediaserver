@@ -5,6 +5,7 @@ This folder contains multiple architecture views.
 ## Backend / Platform Views
 
 - `logical-topology.*`: service topology and ingress fan-out
+- `network-protocol-topology.*`: protocol-level network paths across clients, ingress, services, pods, storage, and external providers; includes zone/subnet examples and scaling notes
 - `media-data-pipeline.*`: request/download/import/playback data path
 - `bootstrap-sequence.*`: bootstrap job sequence
 - `deployment-model.*`: environment promotion and namespace deployment model
@@ -23,3 +24,9 @@ This folder contains multiple architecture views.
 ```bash
 bash scripts/render-architecture-diagrams.sh
 ```
+
+Render tuning is configurable via env vars:
+- `MMDC_WIDTH` (default `2200`)
+- `MMDC_HEIGHT` (default `1400`)
+- `MMDC_SCALE` (default `2`)
+- `MERMAID_CONFIG_FILE` (default `docs/diagrams/mermaid-render-config.json`, disables HTML labels for SVG viewer compatibility)

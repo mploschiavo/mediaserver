@@ -35,6 +35,18 @@ spec:
                   name: media-stack-secrets
                   key: JELLYFIN_USER_ID
                   optional: true
+            - name: JELLYSEERR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: JELLYSEERR_API_KEY
+                  optional: true
+            - name: TAUTULLI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: TAUTULLI_API_KEY
+                  optional: true
             - name: STACK_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:

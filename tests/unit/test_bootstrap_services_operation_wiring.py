@@ -37,16 +37,22 @@ class OperationWiringTests(unittest.TestCase):
             run_media_hygiene=_noop,
             ensure_jellyfin_prewarm=_noop,
             ensure_maintainerr_policy=_noop,
+            ensure_maintainerr_integrations=_noop,
             ensure_homepage_services_config=_noop,
+            ensure_prowlarr_ready=_noop,
+            ensure_prowlarr_flaresolverr_proxy=_noop,
             ensure_prowlarr_indexer=_noop,
             auto_add_tested_indexers=_noop,
             trigger_prowlarr_sync=_noop,
             sync_arr_indexers_from_prowlarr=_noop,
+            run_prowlarr_indexer_pipeline=_noop,
         )
 
     def test_build_registry_wires_default_operations(self):
         registry = build_runner_operation_registry(self._handlers())
         self.assertIsNone(registry.invoke("ensure_jellyfin_prewarm"))
+        self.assertIsNone(registry.invoke("ensure_maintainerr_integrations"))
+        self.assertIsNone(registry.invoke("ensure_prowlarr_flaresolverr_proxy"))
         self.assertIsNone(registry.invoke("run_servarr_pipeline"))
 
     def test_build_registry_accepts_reflection_overrides(self):

@@ -44,6 +44,9 @@ Primary binding points:
 - `adapter_hooks.download_client_adapter_classes` for download clients
 - `adapter_hooks.media_server_adapter_classes` for media server backends
 - `adapter_hooks.app_service_classes` for app-scoped service classes
+- `adapter_hooks.service_technology_map` for mapping service keys to lifecycle technology keys
+- `adapter_hooks.runner_operation_plans` for orchestration phase operations (precheck/post/indexers)
+- `adapter_hooks.media_server_operation_plans` for media-server orchestration phases
 
 Swap workflow:
 1. Add/replace app adapter/service module under `scripts/bootstrap_services/apps/<app>/...`
@@ -52,6 +55,17 @@ Swap workflow:
 4. Run unit tests + live bootstrap smoke
 
 Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
+
+### Non-Negotiable Isolation Rules
+- `scripts/bootstrap_services/bootstrap_runner_service.py` must remain orchestration-only.
+- App/technology-specific branching belongs in:
+  - `scripts/bootstrap_services/apps/<app>/**`
+  - adapter modules referenced by `adapter_hooks.*_classes`
+  - declarative phase plans under `adapter_hooks.runner_operation_plans` or `adapter_hooks.media_server_operation_plans`
+- Do not add new app-specific conditionals in `BootstrapRunnerService` for precheck/ensure/indexer flow; bind operations through phase plans instead.
+- If adding/swapping an app requires edits in runner orchestration logic, treat it as a design bug and refactor before merge.
+- Prefer adding a new adapter/service + config hook over adding conditionals in shared runtime modules.
+- Keep operation names stable; change bindings/hook paths for swaps, not runner internals.
 
 ## Design Rules
 - Prefer composition over inheritance.

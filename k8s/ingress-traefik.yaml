@@ -30,5 +30,7 @@ spec:
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: qbittorrent, port: {number: 8080}}}}]}
     - host: sabnzbd.local
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: sabnzbd, port: {number: 8080}}}}]}
+    - host: maintainerr.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: maintainerr, port: {number: 6246}}}}]}
     - host: tautulli.local
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: tautulli, port: {number: 8181}}}}]}

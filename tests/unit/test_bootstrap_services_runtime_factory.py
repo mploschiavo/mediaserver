@@ -252,6 +252,23 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
                 "qB",
             )
 
+    def test_maintainerr_integrations_default_to_enabled_when_maintainerr_enabled(self):
+        factory = self._factory()
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "maintainerr": {
+                "enabled": True,
+                "required": False,
+            },
+        }
+
+        result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertTrue(result.runtime.configure_maintainerr_policy)
+        self.assertTrue(result.runtime.configure_maintainerr_integrations)
+        self.assertFalse(result.runtime.maintainerr_integrations_required)
+
 
 if __name__ == "__main__":
     unittest.main()

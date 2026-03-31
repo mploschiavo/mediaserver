@@ -21,6 +21,7 @@ flowchart LR
     Prowlarr[Prowlarr]
     QB[qBittorrent]
     SAB[SABnzbd Optional]
+    Maintainerr[Maintainerr Optional]
     Unpackerr[Unpackerr Optional]
     Flare[FlareSolverr Optional]
   end
@@ -39,6 +40,7 @@ flowchart LR
   Ingress --> Prowlarr
   Ingress --> QB
   Ingress --> SAB
+  Ingress --> Maintainerr
   Ingress --> Plex
 
   Jellyseerr --> Sonarr
@@ -49,7 +51,10 @@ flowchart LR
   Prowlarr --> Radarr
   Prowlarr --> Lidarr
   Prowlarr --> Readarr
-  Flare --> Prowlarr
+  Flare -->|Indexer proxy| Prowlarr
+
+  Bazarr --> Sonarr
+  Bazarr --> Radarr
 
   Sonarr --> QB
   Radarr --> QB
@@ -61,6 +66,8 @@ flowchart LR
   Lidarr --> SAB
   Readarr --> SAB
 
+  Unpackerr --> QB
+  Unpackerr --> SAB
   Unpackerr --> Sonarr
   Unpackerr --> Radarr
   Unpackerr --> Lidarr

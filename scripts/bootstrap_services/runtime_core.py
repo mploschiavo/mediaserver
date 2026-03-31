@@ -99,6 +99,7 @@ from bootstrap_services.jellyfin_service import JellyfinLiveTvDependencies, Jell
 from bootstrap_services.jellyseerr_service import JellyseerrService
 from bootstrap_services.media_hygiene_ops_service import MediaHygieneOpsService
 from bootstrap_services.media_hygiene_service import MediaHygieneService
+from bootstrap_services.maintainerr_service import MaintainerrService
 from bootstrap_services.operation_wiring import (
     RunnerOperationHandlers,
     build_runner_operation_registry,
@@ -428,4 +429,3 @@ def get_arr_quality_profile(
     if not selected:
         raise RuntimeError(f"{app_name}: no quality profiles returned by API.")
     return selected
-

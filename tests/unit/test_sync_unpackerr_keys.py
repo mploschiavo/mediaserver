@@ -20,8 +20,9 @@ from core.subprocess_utils import CommandResult  # noqa: E402
 
 
 class FakeKube:
-    def __init__(self, keys: dict[str, str]) -> None:
+    def __init__(self, keys: dict[str, str], *, unpackerr_replicas: int | None = None) -> None:
         self.keys = keys
+        self.unpackerr_replicas = unpackerr_replicas
         self.calls: list[list[str]] = []
 
     def run(self, args, check=True, env=None, timeout=None):
@@ -43,6 +44,22 @@ class FakeKube:
                 stdout="secret/media-stack-secrets configured\n",
                 stderr="",
             )
+
+        if args[:5] == ["-n", "media-stack", "get", "deploy/unpackerr", "-o"]:
+            if self.unpackerr_replicas is None:
+                return CommandResult(args=args, returncode=1, stdout="", stderr="not found")
+            return CommandResult(
+                args=args,
+                returncode=0,
+                stdout=str(self.unpackerr_replicas),
+                stderr="",
+            )
+
+        if args[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]:
+            return CommandResult(args=args, returncode=0, stdout="", stderr="")
+
+        if args[:5] == ["-n", "media-stack", "rollout", "status", "deploy/unpackerr"]:
+            return CommandResult(args=args, returncode=0, stdout="", stderr="")
 
         raise AssertionError(f"Unexpected call: {args}")
 
@@ -73,6 +90,38 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         apply_calls = [call for call in kube.calls if call[:2] == ["apply", "-f"]]
         self.assertEqual(len(apply_calls), 1)
+        rollout_calls = [
+            call for call in kube.calls if call[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]
+        ]
+        self.assertEqual(len(rollout_calls), 0)
+
+    def test_service_restarts_unpackerr_when_deployed_and_active(self):
+        kube = FakeKube(
+            {
+                "sonarr": "S",
+                "radarr": "R",
+                "lidarr": "L",
+                "readarr": "B",
+                "prowlarr": "P",
+            },
+            unpackerr_replicas=1,
+        )
+        service = MODULE.SyncUnpackerrKeysService(
+            cfg=MODULE.SyncUnpackerrKeysConfig(namespace="media-stack"),
+            kube=kube,
+            logger=logging.getLogger("test.sync_unpackerr"),
+        )
+        with mock.patch("builtins.print"):
+            rc = service.run()
+        self.assertEqual(rc, 0)
+        rollout_restart = [
+            call for call in kube.calls if call[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]
+        ]
+        rollout_status = [
+            call for call in kube.calls if call[:5] == ["-n", "media-stack", "rollout", "status", "deploy/unpackerr"]
+        ]
+        self.assertEqual(len(rollout_restart), 1)
+        self.assertEqual(len(rollout_status), 1)
 
     def test_service_fails_when_key_missing(self):
         kube = FakeKube(

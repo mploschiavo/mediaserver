@@ -59,7 +59,8 @@
       "sabnzbd_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService",
       "bazarr_service": "bootstrap_services.apps.bazarr.service:BazarrService",
       "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
-      "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService"
+      "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService",
+      "maintainerr_service": "bootstrap_services.apps.maintainerr.service:MaintainerrService"
     }
   },
   "arr_download_handling": {
@@ -326,12 +327,12 @@
       "queue_guardrails": {
         "enabled": true,
         "dry_run": false,
-        "default_max_queued": 35,
+        "default_max_queued": 20,
         "max_queued_by_category": {
-          "tv": 50,
-          "movies": 35,
-          "music": 10,
-          "books": 8
+          "tv": 20,
+          "movies": 12,
+          "music": 6,
+          "books": 4
         },
         "include_uncategorized": false,
         "count_states": [
@@ -358,8 +359,8 @@
         "over_limit_delete_files": true,
         "stale_prune": {
           "enabled": true,
-          "max_age_hours": 168,
-          "max_stalled_hours": 24,
+          "max_age_hours": 96,
+          "max_stalled_hours": 12,
           "max_eta_seconds": 1209600,
           "min_progress": 0.98,
           "max_download_speed_bps": 32768,
@@ -376,16 +377,16 @@
           "delete_files": true
         },
         "max_total_size_gib_by_category": {
-          "tv": 350,
-          "movies": 700,
-          "music": 80,
-          "books": 40
+          "tv": 120,
+          "movies": 180,
+          "music": 25,
+          "books": 12
         },
         "max_weight_percent_by_category": {
-          "tv": 40,
-          "movies": 42,
-          "music": 12,
-          "books": 6
+          "tv": 30,
+          "movies": 35,
+          "music": 8,
+          "books": 5
         },
         "budget_prune_states": [
           "queuedDL",
@@ -487,6 +488,7 @@
       "prowlarr.local",
       "qbittorrent.local",
       "sabnzbd.local",
+      "maintainerr.local",
       "tautulli.local"
     ],
     "device_onboarding": {
@@ -1158,6 +1160,44 @@
   "maintainerr": {
     "enabled": true,
     "required": false,
+    "url": "http://maintainerr:6246",
+    "integrations": {
+      "enabled": true,
+      "required": false,
+      "test_connections": true,
+      "main": {
+        "enabled": true,
+        "application_url": "maintainerr.local",
+        "media_server_type": "jellyfin",
+        "jellyfin_url": "http://jellyfin:8096",
+        "jellyfin_server_name": "Jellyfin",
+        "jellyfin_api_key_env": "JELLYFIN_API_KEY",
+        "jellyfin_user_id_env": "JELLYFIN_USER_ID"
+      },
+      "radarr": {
+        "enabled": true,
+        "server_name": "Radarr",
+        "url": "http://radarr:7878",
+        "api_key_env": "RADARR_API_KEY"
+      },
+      "sonarr": {
+        "enabled": true,
+        "server_name": "Sonarr",
+        "url": "http://sonarr:8989",
+        "api_key_env": "SONARR_API_KEY"
+      },
+      "jellyseerr": {
+        "enabled": true,
+        "url": "http://jellyseerr:5055",
+        "api_key_env": "JELLYSEERR_API_KEY"
+      },
+      "tautulli": {
+        "enabled": true,
+        "url": "http://tautulli:8181",
+        "api_key_env": "TAUTULLI_API_KEY",
+        "api_key_config_path": "tautulli/config.ini"
+      }
+    },
     "policy_relative_path": "maintainerr/policy.json",
     "policy": {
       "retention": {
@@ -1167,6 +1207,15 @@
         "protect_unwatched_days": 30
       }
     }
+  },
+  "flaresolverr": {
+    "enabled": true,
+    "required": false,
+    "url": "http://flaresolverr:8191",
+    "proxy_name": "FlareSolverr",
+    "request_timeout_seconds": 60,
+    "test_connection": true,
+    "tags": []
   },
   "jellyfin_auto_collections": {
     "enabled": true,

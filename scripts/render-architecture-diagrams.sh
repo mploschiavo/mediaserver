@@ -3,6 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIAGRAM_DIR="${1:-$ROOT_DIR/docs/diagrams}"
+MERMAID_CONFIG_FILE="${MERMAID_CONFIG_FILE:-$ROOT_DIR/docs/diagrams/mermaid-render-config.json}"
+MMDC_WIDTH="${MMDC_WIDTH:-2200}"
+MMDC_HEIGHT="${MMDC_HEIGHT:-1400}"
+MMDC_SCALE="${MMDC_SCALE:-2}"
 
 usage() {
   cat <<'EOF'
@@ -39,8 +43,12 @@ render_with_mmdc() {
   local input="$1"
   local svg_out="${input%.mmd}.svg"
   local png_out="${input%.mmd}.png"
-  "${MMDC_CMD[@]}" -i "$input" -o "$svg_out" >/dev/null
-  "${MMDC_CMD[@]}" -i "$input" -o "$png_out" >/dev/null
+  local common_args=(-i "$input" -w "$MMDC_WIDTH" -H "$MMDC_HEIGHT" -s "$MMDC_SCALE")
+  if [[ -f "$MERMAID_CONFIG_FILE" ]]; then
+    common_args+=(-c "$MERMAID_CONFIG_FILE")
+  fi
+  "${MMDC_CMD[@]}" "${common_args[@]}" -o "$svg_out" >/dev/null
+  "${MMDC_CMD[@]}" "${common_args[@]}" -o "$png_out" >/dev/null
 }
 
 render_with_kroki() {
@@ -73,6 +81,8 @@ MMDC_CMD=()
 if command -v mmdc >/dev/null 2>&1; then
   MMDC_CMD=(mmdc)
   echo "[INFO] Using local renderer: mmdc"
+  echo "[INFO] Render dimensions: ${MMDC_WIDTH}x${MMDC_HEIGHT} @ scale ${MMDC_SCALE}"
+  [[ -f "$MERMAID_CONFIG_FILE" ]] && echo "[INFO] Mermaid config: $MERMAID_CONFIG_FILE"
   for file in "${mmd_files[@]}"; do
     echo "[INFO] Rendering $(basename "$file")"
     render_with_mmdc "$file"
@@ -80,6 +90,8 @@ if command -v mmdc >/dev/null 2>&1; then
 elif command -v npx >/dev/null 2>&1; then
   MMDC_CMD=(npx -y @mermaid-js/mermaid-cli@10.9.1)
   echo "[INFO] Using local renderer: npx @mermaid-js/mermaid-cli"
+  echo "[INFO] Render dimensions: ${MMDC_WIDTH}x${MMDC_HEIGHT} @ scale ${MMDC_SCALE}"
+  [[ -f "$MERMAID_CONFIG_FILE" ]] && echo "[INFO] Mermaid config: $MERMAID_CONFIG_FILE"
   for file in "${mmd_files[@]}"; do
     echo "[INFO] Rendering $(basename "$file")"
     render_with_mmdc "$file"

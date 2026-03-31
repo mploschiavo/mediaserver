@@ -1,0 +1,18 @@
+{
+  "securityLevel": "loose",
+  "theme": "neutral",
+  "flowchart": {
+    "htmlLabels": false,
+    "curve": "basis"
+  },
+  "themeVariables": {
+    "fontSize": "18px",
+    "lineColor": "#1f2937",
+    "primaryBorderColor": "#1f2937",
+    "primaryColor": "#eef2ff",
+    "clusterBkg": "#f8fafc",
+    "clusterBorder": "#334155",
+    "secondaryColor": "#ecfeff",
+    "tertiaryColor": "#fef9c3"
+  }
+}

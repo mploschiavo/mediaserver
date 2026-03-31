@@ -53,14 +53,18 @@ class SyncUnpackerrKeysService:
 
         secret_manifest = self._build_secret_manifest(keys)
         self._apply_manifest(secret_manifest)
+        restarted = self._restart_unpackerr_if_active()
 
         print(
             f"[OK] Updated secret {self.cfg.namespace}/{self.cfg.secret_name} "
             "with Arr/Prowlarr API keys."
         )
-        print("Enable/restart Unpackerr:")
-        print(f"  kubectl -n {self.cfg.namespace} apply -f k8s/unpackerr.yaml")
-        print(f"  kubectl -n {self.cfg.namespace} scale deploy/unpackerr --replicas=1")
+        if restarted:
+            print(f"[OK] Restarted deploy/unpackerr in namespace {self.cfg.namespace}.")
+        else:
+            print("Enable/restart Unpackerr:")
+            print(f"  kubectl -n {self.cfg.namespace} apply -f k8s/unpackerr.yaml")
+            print(f"  kubectl -n {self.cfg.namespace} scale deploy/unpackerr --replicas=1")
         return 0
 
     def _read_api_key(self, app: str) -> str:
@@ -128,6 +132,73 @@ class SyncUnpackerrKeysService:
             namespace=self.cfg.namespace,
             secret=self.cfg.secret_name,
         )
+
+    def _restart_unpackerr_if_active(self) -> bool:
+        result = self.kube.run(
+            [
+                "-n",
+                self.cfg.namespace,
+                "get",
+                "deploy/unpackerr",
+                "-o",
+                "jsonpath={.spec.replicas}",
+            ],
+            check=False,
+        )
+        if result.returncode != 0:
+            log_event(
+                self.logger,
+                logging.INFO,
+                "sync.unpackerr.deployment_missing",
+                namespace=self.cfg.namespace,
+            )
+            return False
+
+        replicas_text = str(result.stdout or "").strip()
+        try:
+            replicas = int(replicas_text or "0")
+        except ValueError:
+            replicas = 0
+        if replicas <= 0:
+            log_event(
+                self.logger,
+                logging.INFO,
+                "sync.unpackerr.deployment_scaled_zero",
+                namespace=self.cfg.namespace,
+                replicas=replicas,
+            )
+            return False
+
+        self.kube.run(
+            ["-n", self.cfg.namespace, "rollout", "restart", "deploy/unpackerr"]
+        )
+        rollout_result = self.kube.run(
+            [
+                "-n",
+                self.cfg.namespace,
+                "rollout",
+                "status",
+                "deploy/unpackerr",
+                "--timeout=90s",
+            ],
+            check=False,
+        )
+        if rollout_result.returncode != 0:
+            log_event(
+                self.logger,
+                logging.WARNING,
+                "sync.unpackerr.rollout_not_ready",
+                namespace=self.cfg.namespace,
+                stderr=(rollout_result.stderr or "").strip(),
+            )
+        log_event(
+            self.logger,
+            logging.INFO,
+            "sync.unpackerr.restarted",
+            namespace=self.cfg.namespace,
+            replicas=replicas,
+        )
+        return True
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

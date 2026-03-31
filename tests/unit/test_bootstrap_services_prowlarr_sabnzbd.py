@@ -196,6 +196,83 @@ class ProwlarrServiceTests(unittest.TestCase):
         self.assertNotIn("syncLevel", put_attempts[1])
         self.assertTrue(any("updated application link for Sonarr" in line for line in self.logs))
 
+    def test_ensure_flaresolverr_proxy_creates_and_tests(self):
+        calls = []
+
+        def stub(_base_url, path, _api_key, method, payload):
+            calls.append((path, method, payload))
+            if path == "/api/v1/indexerProxy/schema" and method == "GET":
+                return 200, [
+                    {
+                        "implementation": "FlareSolverr",
+                        "configContract": "FlareSolverrSettings",
+                        "fields": [
+                            {"name": "host", "value": "http://localhost:8191/"},
+                            {"name": "requestTimeout", "value": 60},
+                        ],
+                    }
+                ], ""
+            if path == "/api/v1/indexerProxy" and method == "GET":
+                return 200, [], ""
+            if path == "/api/v1/indexerProxy" and method == "POST":
+                return 201, {"id": 7, "name": "FlareSolverr", "fields": payload.get("fields", [])}, ""
+            if path == "/api/v1/indexerProxy/test" and method == "POST":
+                return 200, {}, ""
+            return 500, {}, f"unexpected {method} {path}"
+
+        service = self._service_with_stub(stub)
+        service.ensure_flaresolverr_proxy(
+            prowlarr_url="http://prowlarr:9696",
+            prowlarr_key="key",
+            flaresolverr_cfg={"enabled": True, "url": "http://flaresolverr:8191"},
+        )
+
+        post_payloads = [payload for path, method, payload in calls if path == "/api/v1/indexerProxy" and method == "POST"]
+        self.assertEqual(len(post_payloads), 1)
+        post_fields = _field_map(post_payloads[0].get("fields"))
+        self.assertEqual(post_fields.get("host"), "http://flaresolverr:8191/")
+        self.assertTrue(any("FlareSolverr proxy connection test passed" in line for line in self.logs))
+
+    def test_ensure_flaresolverr_proxy_updates_existing(self):
+        put_payloads = []
+
+        def stub(_base_url, path, _api_key, method, payload):
+            if path == "/api/v1/indexerProxy/schema" and method == "GET":
+                return 200, [
+                    {
+                        "implementation": "FlareSolverr",
+                        "configContract": "FlareSolverrSettings",
+                        "fields": [
+                            {"name": "host", "value": "http://localhost:8191/"},
+                            {"name": "requestTimeout", "value": 60},
+                        ],
+                    }
+                ], ""
+            if path == "/api/v1/indexerProxy" and method == "GET":
+                return 200, [{"id": 1, "name": "FlareSolverr", "implementation": "FlareSolverr"}], ""
+            if path == "/api/v1/indexerProxy/1" and method == "PUT":
+                put_payloads.append(payload)
+                return 202, payload, ""
+            if path == "/api/v1/indexerProxy/test" and method == "POST":
+                return 200, {}, ""
+            return 500, {}, f"unexpected {method} {path}"
+
+        service = self._service_with_stub(stub)
+        service.ensure_flaresolverr_proxy(
+            prowlarr_url="http://prowlarr:9696",
+            prowlarr_key="key",
+            flaresolverr_cfg={
+                "enabled": True,
+                "url": "http://flaresolverr:8191",
+                "request_timeout_seconds": 120,
+            },
+        )
+
+        self.assertEqual(len(put_payloads), 1)
+        fields = _field_map((put_payloads[0] or {}).get("fields"))
+        self.assertEqual(fields.get("requestTimeout"), 120)
+        self.assertTrue(any("updated FlareSolverr proxy" in line for line in self.logs))
+
     def test_auto_add_tested_indexers_skips_existing_and_adds_new(self):
         def stub(_base_url, path, _api_key, method, payload):
             if path == "/api/v1/indexer/schema" and method == "GET":

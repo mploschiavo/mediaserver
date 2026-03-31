@@ -32,11 +32,15 @@ class RunnerOperationHandlers:
     run_media_hygiene: OperationFn
     ensure_jellyfin_prewarm: OperationFn
     ensure_maintainerr_policy: OperationFn
+    ensure_maintainerr_integrations: OperationFn
     ensure_homepage_services_config: OperationFn
+    ensure_prowlarr_ready: OperationFn
+    ensure_prowlarr_flaresolverr_proxy: OperationFn
     ensure_prowlarr_indexer: OperationFn
     auto_add_tested_indexers: OperationFn
     trigger_prowlarr_sync: OperationFn
     sync_arr_indexers_from_prowlarr: OperationFn
+    run_prowlarr_indexer_pipeline: OperationFn
 
 
 def build_runner_operation_registry(
@@ -66,13 +70,21 @@ def build_runner_operation_registry(
         RunnerOperation.RUN_MEDIA_HYGIENE.value: handlers.run_media_hygiene,
         RunnerOperation.ENSURE_JELLYFIN_PREWARM.value: handlers.ensure_jellyfin_prewarm,
         RunnerOperation.ENSURE_MAINTAINERR_POLICY.value: handlers.ensure_maintainerr_policy,
+        RunnerOperation.ENSURE_MAINTAINERR_INTEGRATIONS.value: (
+            handlers.ensure_maintainerr_integrations
+        ),
         RunnerOperation.ENSURE_HOMEPAGE_SERVICES.value: handlers.ensure_homepage_services_config,
+        RunnerOperation.ENSURE_PROWLARR_READY.value: handlers.ensure_prowlarr_ready,
+        RunnerOperation.ENSURE_PROWLARR_FLARESOLVERR_PROXY.value: (
+            handlers.ensure_prowlarr_flaresolverr_proxy
+        ),
         RunnerOperation.ENSURE_PROWLARR_INDEXER.value: handlers.ensure_prowlarr_indexer,
         RunnerOperation.AUTO_ADD_TESTED_INDEXERS.value: handlers.auto_add_tested_indexers,
         RunnerOperation.TRIGGER_PROWLARR_SYNC.value: handlers.trigger_prowlarr_sync,
         RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value: (
             handlers.sync_arr_indexers_from_prowlarr
         ),
+        RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value: handlers.run_prowlarr_indexer_pipeline,
     }
     return RunnerOperationRegistry.from_maps(
         handlers=base_handlers,

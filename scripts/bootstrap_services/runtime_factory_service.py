@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from .bootstrap_runner_service import BootstrapRuntime
 from .config_models import (
     ArrDiscoveryListsConfig,
     ArrDownloadHandlingPolicy,
@@ -24,6 +23,7 @@ from .config_models import (
     TechnologyBindingsConfig,
 )
 from .enums import BootstrapMode
+from .runtime_models import BootstrapRuntime
 from .technology_catalog import default_servarr_catalog
 from .top_level_config_model import TopLevelBootstrapConfig
 
@@ -77,6 +77,7 @@ class BootstrapPlanSummary:
     configure_jellyfin_prewarm: bool
     configure_media_hygiene: bool
     configure_maintainerr_policy: bool
+    configure_maintainerr_integrations: bool
     jellyfin_livetv_tuners: int
     jellyfin_livetv_guides: int
     fully_preconfigured: bool
@@ -113,6 +114,7 @@ class BootstrapPlanSummary:
             f"configure_jellyfin_prewarm={self.configure_jellyfin_prewarm}, "
             f"configure_media_hygiene={self.configure_media_hygiene}, "
             f"configure_maintainerr_policy={self.configure_maintainerr_policy}, "
+            f"configure_maintainerr_integrations={self.configure_maintainerr_integrations}, "
             f"jellyfin_livetv_tuners={self.jellyfin_livetv_tuners}, "
             f"jellyfin_livetv_guides={self.jellyfin_livetv_guides}, "
             f"fully_preconfigured={self.fully_preconfigured}, "
@@ -225,13 +227,20 @@ class BootstrapRuntimeFactoryService:
             "media_server_operation_plans.json",
             {},
         )
+        default_runner_operation_plans = self.deps.load_bootstrap_default_json(
+            "runner_operation_plans.json",
+            {},
+        )
 
         adapter_hooks_cfg = self.deps.deep_merge_objects(
             self.deps.load_bootstrap_default_json(
                 "adapter_hooks.json",
                 {},
             ),
-            {"media_server_operation_plans": default_media_server_operation_plans},
+            {
+                "media_server_operation_plans": default_media_server_operation_plans,
+                "runner_operation_plans": default_runner_operation_plans,
+            },
         )
         adapter_hooks_cfg = self.deps.deep_merge_objects(
             adapter_hooks_cfg,
@@ -487,6 +496,19 @@ class BootstrapRuntimeFactoryService:
 
         configure_maintainerr_policy = self.deps.bool_cfg(maintainerr_cfg, "enabled", False)
         maintainerr_required = self.deps.bool_cfg(maintainerr_cfg, "required", False)
+        maintainerr_integrations_cfg = maintainerr_cfg.get("integrations") or {}
+        if not isinstance(maintainerr_integrations_cfg, dict):
+            maintainerr_integrations_cfg = {}
+        configure_maintainerr_integrations = self.deps.bool_cfg(
+            maintainerr_integrations_cfg,
+            "enabled",
+            configure_maintainerr_policy,
+        )
+        maintainerr_integrations_required = self.deps.bool_cfg(
+            maintainerr_integrations_cfg,
+            "required",
+            maintainerr_required,
+        )
 
         trigger_sync = bool(cfg.get("trigger_indexer_sync", True))
 
@@ -562,6 +584,8 @@ class BootstrapRuntimeFactoryService:
             refresh_health_after_bootstrap=refresh_health_after_bootstrap,
             configure_maintainerr_policy=configure_maintainerr_policy,
             maintainerr_required=maintainerr_required,
+            configure_maintainerr_integrations=configure_maintainerr_integrations,
+            maintainerr_integrations_required=maintainerr_integrations_required,
             configure_homepage_services=configure_homepage_services,
             homepage_required=homepage_required,
             configure_bazarr_integration=configure_bazarr_integration,
@@ -619,6 +643,7 @@ class BootstrapRuntimeFactoryService:
             configure_jellyfin_prewarm=configure_jellyfin_prewarm,
             configure_media_hygiene=configure_media_hygiene,
             configure_maintainerr_policy=configure_maintainerr_policy,
+            configure_maintainerr_integrations=configure_maintainerr_integrations,
             jellyfin_livetv_tuners=len(jellyfin_livetv_model.tuners),
             jellyfin_livetv_guides=len(jellyfin_livetv_model.guides),
             fully_preconfigured=fully_preconfigured,

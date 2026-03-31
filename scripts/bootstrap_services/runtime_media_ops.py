@@ -188,6 +188,20 @@ def _config_artifacts_service(cfg=None) -> ConfigArtifactsService:
         render_homepage_services_yaml=_lib_render_homepage_services_yaml,
     )
 
+def _maintainerr_service(cfg=None) -> MaintainerrService:
+    service_cls = resolve_app_service_class(cfg, "maintainerr_service", MaintainerrService)
+    return service_cls(
+        log=log,
+        bool_cfg=bool_cfg,
+        normalize_url=normalize_url,
+        wait_for_service=wait_for_service,
+        http_request=http_request,
+        read_api_key=read_api_key,
+        read_jellyseerr_api_key=read_jellyseerr_api_key,
+        get_arr_app=get_arr_app,
+        resolve_path=resolve_path,
+    )
+
 def jellyfin_request(base_url, path, api_key, method="GET", payload=None, timeout=30):
     if not api_key:
         raise RuntimeError("Jellyfin API key is required for authenticated requests.")
@@ -451,6 +465,14 @@ def deep_merge_objects(base_obj, override_obj):
 
 def ensure_maintainerr_policy(cfg, config_root):
     _config_artifacts_service(cfg).ensure_maintainerr_policy(cfg, config_root)
+
+def ensure_maintainerr_integrations(cfg, config_root, arr_apps, wait_timeout):
+    _maintainerr_service(cfg).ensure_integrations(
+        cfg=cfg,
+        config_root=config_root,
+        arr_apps=arr_apps,
+        wait_timeout=wait_timeout,
+    )
 
 def get_arr_root_folder_path(app_name, app_url, api_base, api_key, preferred_root):
     status, root_folders, body = http_request(app_url, f"{api_base}/rootfolder", api_key=api_key)

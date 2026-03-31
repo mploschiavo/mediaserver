@@ -244,6 +244,68 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: maintainerr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: maintainerr}
+  template:
+    metadata:
+      labels: {app: maintainerr}
+    spec:
+      containers:
+        - name: maintainerr
+          image: ghcr.io/maintainerr/maintainerr:3.3.0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: TZ
+              value: "America/Chicago"
+            - name: UI_HOSTNAME
+              value: "0.0.0.0"
+            - name: UI_PORT
+              value: "6246"
+          ports:
+            - containerPort: 6246
+          volumeMounts:
+            - {name: config, mountPath: /opt/data}
+          readinessProbe:
+            httpGet: {path: /, port: 6246}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /, port: 6246}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /, port: 6246}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-maintainerr}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maintainerr
+  namespace: media-stack
+spec:
+  selector: {app: maintainerr}
+  ports:
+    - port: 6246
+      targetPort: 6246
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: flaresolverr
   namespace: media-stack
 spec:

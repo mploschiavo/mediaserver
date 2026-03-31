@@ -177,11 +177,15 @@ def main():
             run_media_hygiene=run_media_hygiene,
             ensure_jellyfin_prewarm=ensure_jellyfin_prewarm,
             ensure_maintainerr_policy=ensure_maintainerr_policy,
+            ensure_maintainerr_integrations=ensure_maintainerr_integrations,
             ensure_homepage_services_config=ensure_homepage_services_config,
+            ensure_prowlarr_ready=ensure_prowlarr_ready,
+            ensure_prowlarr_flaresolverr_proxy=ensure_prowlarr_flaresolverr_proxy,
             ensure_prowlarr_indexer=ensure_prowlarr_indexer,
             auto_add_tested_indexers=auto_add_tested_indexers,
             trigger_prowlarr_sync=trigger_prowlarr_sync,
             sync_arr_indexers_from_prowlarr=sync_arr_indexers_from_prowlarr,
+            run_prowlarr_indexer_pipeline=run_prowlarr_indexer_pipeline,
         ),
         operation_handler_specs=(runtime.adapter_hooks_cfg or {}).get("operation_handlers"),
     )
@@ -192,7 +196,6 @@ def main():
             bool_cfg=bool_cfg,
             normalize_url=normalize_url,
             wait_for_service=wait_for_service,
-            detect_arr_api_base=detect_arr_api_base,
             operations=runner_operations,
         )
     )

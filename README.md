@@ -39,6 +39,7 @@ See [docs/why-this-exists.md](docs/why-this-exists.md).
 
 Diagram set:
 - [Logical topology](docs/diagrams/logical-topology.svg)
+- [Network and protocol topology](docs/diagrams/network-protocol-topology.svg)
 - [Media data pipeline](docs/diagrams/media-data-pipeline.svg)
 - [Bootstrap sequence](docs/diagrams/bootstrap-sequence.svg)
 - [Deployment model](docs/diagrams/deployment-model.svg)
@@ -222,7 +223,7 @@ The bootstrap pipeline configures these OTB when enabled:
 - Disk usage guardrails with qB cleanup policy (`disk_guardrails`, default max 65% used on `/srv-stack`)
 - qB category budget guardrails (queue count + optional per-category size and weighted-share pruning)
 - Global media hygiene (failed-queue cleanup + temp/zero-byte/orphan cleanup + dedupe pass + qB IP filter refresh/cache)
-- Maintainerr policy-as-code artifact generation (mounted at `/srv-config/maintainerr/policy.json` in bootstrap jobs)
+- Maintainerr app (`maintainerr.<domain>`) + policy-as-code artifact generation (`/srv-config/maintainerr/policy.json`)
 
 ## Service URLs
 
@@ -238,6 +239,7 @@ Use your ingress domain suffix (default `.local`):
 - `prowlarr.<domain>`
 - `qbittorrent.<domain>`
 - `sabnzbd.<domain>`
+- `maintainerr.<domain>`
 - `tautulli.<domain>`
 
 Render host entries:

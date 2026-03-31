@@ -173,6 +173,8 @@ class RunBootstrapJobRunner:
             self._run_phase("Ensure bootstrap PVC prerequisites", self.ensure_bootstrap_pvc_prereqs)
             self._run_phase("Prime Arr API keys into secret", self.prime_servarr_api_keys_secret)
             self._run_phase("Prime SAB API key into secret", self.prime_sab_api_key_secret)
+            self._run_phase("Prime Jellyseerr API key into secret", self.prime_jellyseerr_api_key_secret)
+            self._run_phase("Prime Tautulli API key into secret", self.prime_tautulli_api_key_secret)
             self._run_phase("Update bootstrap ConfigMaps", self.update_bootstrap_configmaps)
             self._run_phase("Recreate bootstrap Job", self.recreate_bootstrap_job)
             self._run_phase("Wait for bootstrap Job completion", self.wait_for_bootstrap_job)
@@ -417,6 +419,33 @@ class RunBootstrapJobRunner:
             return ""
         return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
 
+    def _read_jellyseerr_api_key_from_deploy(self) -> str:
+        command = (
+            "node -e \"const fs=require('fs'); "
+            "const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); "
+            "process.stdout.write(String(((d.main||{}).apiKey||'')).trim());\""
+        )
+        result = self.kube.run(
+            ["-n", self.cfg.namespace, "exec", "deploy/jellyseerr", "--", "sh", "-c", command],
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
+
+    def _read_tautulli_api_key_from_deploy(self) -> str:
+        command = (
+            "sed -n 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*//p' /config/config.ini "
+            "| head -n1"
+        )
+        result = self.kube.run(
+            ["-n", self.cfg.namespace, "exec", "deploy/tautulli", "--", "sh", "-c", command],
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return (result.stdout or "").replace("\r", "").replace("\n", "").strip()
+
     def _patch_secret_string(self, key_name: str, key_value: str) -> None:
         if not key_name or not key_value:
             return
@@ -490,6 +519,50 @@ class RunBootstrapJobRunner:
 
         self._patch_secret_string("SABNZBD_API_KEY", key)
         info("Seeded SABNZBD_API_KEY in media-stack-secrets.")
+
+    def prime_jellyseerr_api_key_secret(self) -> None:
+        secret_exists = self.kube.run(
+            ["-n", self.cfg.namespace, "get", "secret", "media-stack-secrets"],
+            check=False,
+        ).returncode == 0
+        if not secret_exists:
+            warn(
+                f"Secret {self.cfg.namespace}/media-stack-secrets not found; "
+                "skipping Jellyseerr API key priming."
+            )
+            return
+
+        key = os.environ.get("JELLYSEERR_API_KEY", "").strip()
+        if not key:
+            key = self._read_jellyseerr_api_key_from_deploy()
+        if not key:
+            warn("Could not discover Jellyseerr API key from env or deploy/jellyseerr; continuing.")
+            return
+
+        self._patch_secret_string("JELLYSEERR_API_KEY", key)
+        info("Seeded JELLYSEERR_API_KEY in media-stack-secrets.")
+
+    def prime_tautulli_api_key_secret(self) -> None:
+        secret_exists = self.kube.run(
+            ["-n", self.cfg.namespace, "get", "secret", "media-stack-secrets"],
+            check=False,
+        ).returncode == 0
+        if not secret_exists:
+            warn(
+                f"Secret {self.cfg.namespace}/media-stack-secrets not found; "
+                "skipping Tautulli API key priming."
+            )
+            return
+
+        key = os.environ.get("TAUTULLI_API_KEY", "").strip()
+        if not key:
+            key = self._read_tautulli_api_key_from_deploy()
+        if not key:
+            warn("Could not discover Tautulli API key from env or deploy/tautulli; continuing.")
+            return
+
+        self._patch_secret_string("TAUTULLI_API_KEY", key)
+        info("Seeded TAUTULLI_API_KEY in media-stack-secrets.")
 
     def _replace_or_create_yaml(self, yaml_path: Path, kind_name: str) -> None:
         replaced = self.kube.run(

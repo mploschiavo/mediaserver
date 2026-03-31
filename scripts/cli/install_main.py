@@ -99,6 +99,7 @@ class InstallRunner:
         print(f"  http://homepage.{self.cfg.ingress_domain}")
         print(f"  http://jellyfin.{self.cfg.ingress_domain}")
         print(f"  http://jellyseerr.{self.cfg.ingress_domain}")
+        print(f"  http://maintainerr.{self.cfg.ingress_domain}")
         print("[INFO] Host entries helper:")
         print(f"  bash scripts/render-hosts-example.sh {self.cfg.node_ip} {self.cfg.namespace}")
         print("[INFO] Generated secrets file:")

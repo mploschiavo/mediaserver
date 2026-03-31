@@ -4,14 +4,18 @@ flowchart LR
   PLAY[jellyfin.local\nPlayback UX]
   OPS[sonarr/radarr/lidarr/readarr/prowlarr\nOperator surface]
   DL[qbittorrent/sabnzbd\nTransport surface]
+  HYG[maintainerr.local\nRetention UX]
 
   HOME --> REQUEST
   HOME --> PLAY
   HOME --> OPS
+  HOME --> HYG
   REQUEST --> OPS
   OPS --> DL
   OPS --> PLAY
+  HYG --> PLAY
 
   style HOME fill:#fff2cc,stroke:#946200,stroke-width:2px
   style REQUEST fill:#ffe0f0,stroke:#8f2f5d,stroke-width:2px
   style PLAY fill:#dff7ff,stroke:#0b7285,stroke-width:2px
+  style HYG fill:#f3f0ff,stroke:#5f3dc4,stroke-width:2px

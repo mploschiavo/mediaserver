@@ -90,6 +90,7 @@ class TopLevelBootstrapConfig:
     bazarr: dict[str, Any]
     disk_guardrails: dict[str, Any]
     download_clients: dict[str, Any]
+    flaresolverr: dict[str, Any]
     homepage: dict[str, Any]
     jellyfin_auto_collections: dict[str, Any]
     jellyfin_home_rails: dict[str, Any]
@@ -140,6 +141,7 @@ class TopLevelBootstrapConfig:
             "bazarr",
             "disk_guardrails",
             "download_clients",
+            "flaresolverr",
             "homepage",
             "jellyfin_auto_collections",
             "jellyfin_home_rails",
@@ -187,6 +189,7 @@ class TopLevelBootstrapConfig:
             bazarr=_expect_dict(src, "bazarr", {}),
             disk_guardrails=_expect_dict(src, "disk_guardrails", {}),
             download_clients=_expect_dict(src, "download_clients", {}),
+            flaresolverr=_expect_dict(src, "flaresolverr", {}),
             homepage=_expect_dict(src, "homepage", {}),
             jellyfin_auto_collections=_expect_dict(src, "jellyfin_auto_collections", {}),
             jellyfin_home_rails=_expect_dict(src, "jellyfin_home_rails", {}),

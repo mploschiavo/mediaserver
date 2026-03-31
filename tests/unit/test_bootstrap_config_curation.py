@@ -81,8 +81,8 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertFalse(bool(queue_cfg.get("dry_run")))
 
         caps = queue_cfg.get("max_queued_by_category") or {}
-        self.assertEqual(int(caps.get("music", 0)), 10)
-        self.assertEqual(int(caps.get("books", 0)), 8)
+        self.assertEqual(int(caps.get("music", 0)), 6)
+        self.assertEqual(int(caps.get("books", 0)), 4)
         self.assertGreaterEqual(int(caps.get("tv", 0)), int(caps.get("music", 0)))
 
         stale = queue_cfg.get("stale_prune") or {}
@@ -150,10 +150,25 @@ class BootstrapConfigCurationTests(unittest.TestCase):
     def test_maintainerr_policy_defaults_are_declared(self):
         maintainerr = self.cfg.get("maintainerr") or {}
         self.assertTrue(bool(maintainerr.get("enabled")))
+        integrations = maintainerr.get("integrations") or {}
+        main_cfg = integrations.get("main") or {}
+        self.assertTrue(bool(main_cfg.get("enabled")))
+        self.assertEqual(str(main_cfg.get("media_server_type") or "").lower(), "jellyfin")
+        self.assertIn("maintainerr.local", str(main_cfg.get("application_url") or ""))
         policy = maintainerr.get("policy") or {}
         retention = policy.get("retention") or {}
         self.assertEqual(int(retention.get("max_disk_used_percent", 0)), 65)
         self.assertGreater(int(retention.get("target_disk_used_percent", 0)), 0)
+
+    def test_flaresolverr_proxy_defaults_are_declared(self):
+        flaresolverr = self.cfg.get("flaresolverr") or {}
+        self.assertTrue(bool(flaresolverr.get("enabled")))
+        self.assertEqual(
+            str(flaresolverr.get("url") or "").rstrip("/"),
+            "http://flaresolverr:8191",
+        )
+        self.assertEqual(int(flaresolverr.get("request_timeout_seconds", 0)), 60)
+        self.assertTrue(bool(flaresolverr.get("test_connection")))
 
 
 if __name__ == "__main__":

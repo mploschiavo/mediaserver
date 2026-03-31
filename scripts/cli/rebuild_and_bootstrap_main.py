@@ -586,6 +586,7 @@ class RebuildBootstrapRunner:
                                 "prowlarr.local",
                                 "qbittorrent.local",
                                 "sabnzbd.local",
+                                "maintainerr.local",
                                 "tautulli.local",
                             ],
                         }

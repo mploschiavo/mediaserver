@@ -28,7 +28,7 @@ fi
 hosts="$("${KUBECTL[@]}" -n "$NAMESPACE" get ingress "$INGRESS_NAME" -o jsonpath='{range .spec.rules[*]}{.host}{" "}{end}' 2>/dev/null || true)"
 
 if [[ -z "$hosts" ]]; then
-  hosts="homepage.local jellyfin.local jellyseerr.local sonarr.local radarr.local lidarr.local readarr.local bazarr.local prowlarr.local qbittorrent.local sabnzbd.local tautulli.local traefik.local"
+  hosts="homepage.local jellyfin.local jellyseerr.local sonarr.local radarr.local lidarr.local readarr.local bazarr.local prowlarr.local qbittorrent.local sabnzbd.local maintainerr.local tautulli.local traefik.local"
 fi
 
 clean_hosts="$(printf '%s\n' "$hosts" | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"

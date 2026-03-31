@@ -2,6 +2,9 @@
 """Servarr/download-client/runtime hygiene operations."""
 
 import bootstrap_services.runtime_core as _core
+from bootstrap_services.apps.prowlarr.flaresolverr_service import ProwlarrFlareSolverrService
+from bootstrap_services.apps.prowlarr.pipeline_service import ProwlarrIndexerPipelineService
+from bootstrap_services.apps.prowlarr.precheck_service import ProwlarrPrecheckService
 from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
 from bootstrap_services.runtime_core import *  # noqa: F401,F403
 
@@ -37,6 +40,40 @@ def _prowlarr_service(cfg=None) -> ProwlarrService:
         field_map=field_map,
         field_list=field_list,
         log=log,
+    )
+
+def _prowlarr_indexer_pipeline_service() -> ProwlarrIndexerPipelineService:
+    return ProwlarrIndexerPipelineService(
+        log=log,
+        bool_cfg=bool_cfg,
+        ensure_flaresolverr_proxy=ensure_prowlarr_flaresolverr_proxy,
+        ensure_indexer=ensure_prowlarr_indexer,
+        auto_add_tested_indexers=auto_add_tested_indexers,
+        trigger_sync=trigger_prowlarr_sync,
+        sync_arr_indexers_from_prowlarr=sync_arr_indexers_from_prowlarr,
+    )
+
+def _prowlarr_precheck_service() -> ProwlarrPrecheckService:
+    return ProwlarrPrecheckService(
+        log=log,
+        bool_cfg=bool_cfg,
+        wait_for_service=wait_for_service,
+        detect_arr_api_base=detect_arr_api_base,
+        ensure_app_auth_settings=ensure_app_auth_settings,
+    )
+
+def _prowlarr_flaresolverr_service() -> ProwlarrFlareSolverrService:
+    return ProwlarrFlareSolverrService(
+        bool_cfg=bool_cfg,
+        normalize_url=normalize_url,
+        wait_for_service=wait_for_service,
+        ensure_proxy=lambda prowlarr_url, prowlarr_key, flaresolverr_cfg: _prowlarr_service(
+            flaresolverr_cfg if isinstance(flaresolverr_cfg, dict) else None
+        ).ensure_flaresolverr_proxy(
+            prowlarr_url=prowlarr_url,
+            prowlarr_key=prowlarr_key,
+            flaresolverr_cfg=flaresolverr_cfg,
+        ),
     )
 
 def _arr_indexer_sync_service() -> ArrIndexerSyncService:
@@ -179,6 +216,38 @@ def _servarr_pipeline_service() -> ServarrPipelineService:
         trigger_arr_discovery_kickoff=trigger_arr_discovery_kickoff,
         trigger_health_check=trigger_health_check,
         adapter_deps=adapter_deps,
+    )
+
+def run_prowlarr_indexer_pipeline(
+    cfg,
+    prowlarr_url,
+    prowlarr_key,
+    wait_timeout,
+    prowlarr_indexers,
+    auto_indexers,
+    trigger_sync,
+    arr_apps_raw,
+    app_keys,
+):
+    return _prowlarr_indexer_pipeline_service().run(
+        cfg=cfg,
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        wait_timeout=wait_timeout,
+        prowlarr_indexers=prowlarr_indexers,
+        auto_indexers=bool(auto_indexers),
+        trigger_sync=bool(trigger_sync),
+        arr_apps_raw=arr_apps_raw,
+        app_keys=app_keys,
+    )
+
+def ensure_prowlarr_ready(cfg, prowlarr_url, prowlarr_key, app_auth_cfg, wait_timeout):
+    del cfg
+    return _prowlarr_precheck_service().ensure_ready(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        app_auth_cfg=app_auth_cfg,
+        wait_timeout=wait_timeout,
     )
 
 def read_sabnzbd_api_key(config_root, sab_cfg):
@@ -622,6 +691,14 @@ def trigger_prowlarr_sync(prowlarr_url, prowlarr_key):
     _prowlarr_service().trigger_sync(
         prowlarr_url=prowlarr_url,
         prowlarr_key=prowlarr_key,
+    )
+
+def ensure_prowlarr_flaresolverr_proxy(cfg, prowlarr_url, prowlarr_key, wait_timeout):
+    _prowlarr_flaresolverr_service().ensure_from_config(
+        cfg=cfg,
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        wait_timeout=wait_timeout,
     )
 
 def ensure_prowlarr_indexer(prowlarr_url, prowlarr_key, indexer_cfg):

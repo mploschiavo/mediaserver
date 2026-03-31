@@ -5,12 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .config_models import (
-    ArrDownloadHandlingPolicy,
-    ArrMediaManagementPolicy,
-    ArrQualityUpgradePolicy,
-    ServarrAppConfig,
-)
 from .download_client_pipeline_service import (
     DownloadClientPipelineInputs,
     DownloadClientPipelineResult,
@@ -18,6 +12,8 @@ from .download_client_pipeline_service import (
 )
 from .enums import BootstrapMode, RunnerOperation
 from .media_server_adapters import MediaServerAdapterContext, MediaServerAdapterFactory
+from .runtime_models import BootstrapRuntime
+from .runner_phase_plan_service import run_phase_plan as run_runner_phase_plan
 from .runner_operations_service import RunnerOperationRegistry
 from .servarr_pipeline_service import ServarrPipelineInputs
 from .servarr_types import ClientAuth, ServarrRunConfig
@@ -30,7 +26,6 @@ LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
-DetectArrApiBaseFn = Callable[[str, str, str], str]
 StepActionFn = Callable[[], None]
 
 
@@ -40,75 +35,7 @@ class BootstrapRunnerDependencies:
     bool_cfg: BoolCfgFn
     normalize_url: NormalizeUrlFn
     wait_for_service: WaitForServiceFn
-    detect_arr_api_base: DetectArrApiBaseFn
     operations: RunnerOperationRegistry
-
-
-@dataclass
-class BootstrapRuntime:
-    mode: BootstrapMode
-    cfg: dict[str, Any]
-    config_root: str
-    wait_timeout: int
-    arr_apps_raw: list[dict[str, Any]]
-    arr_apps: list[ServarrAppConfig]
-    app_keys: dict[str, str]
-    prowlarr_url: str
-    prowlarr_key: str
-    qbit_cfg: dict[str, Any]
-    sab_cfg: dict[str, Any]
-    torrent_client_key: str
-    usenet_client_key: str
-    arr_media_management_cfg: ArrMediaManagementPolicy
-    arr_download_handling_cfg: ArrDownloadHandlingPolicy
-    arr_quality_upgrade_cfg: ArrQualityUpgradePolicy
-    app_auth_cfg: dict[str, Any]
-    adapter_hooks_cfg: dict[str, Any]
-    prowlarr_indexers: list[dict[str, Any]]
-    sab_remote_path_mappings: list[dict[str, Any]]
-    qb_user: str
-    qb_pass: str
-    sab_username: str
-    sab_password: str
-    auto_indexers: bool
-    trigger_sync: bool
-    fully_preconfigured: bool
-    configure_qbit_arr_clients: bool
-    configure_sab_arr_clients: bool
-    configure_arr_media_management: bool
-    configure_arr_download_handling: bool
-    configure_arr_quality_upgrade: bool
-    configure_arr_discovery_lists: bool
-    set_qbit_categories: bool
-    qbit_login_required: bool
-    refresh_health_after_bootstrap: bool
-    configure_maintainerr_policy: bool
-    maintainerr_required: bool
-    configure_homepage_services: bool
-    homepage_required: bool
-    configure_bazarr_integration: bool
-    bazarr_required: bool
-    configure_jellyseerr_services: bool
-    jellyseerr_required: bool
-    configure_jellyfin_livetv: bool
-    jellyfin_livetv_required: bool
-    configure_jellyfin_libraries: bool
-    jellyfin_libraries_required: bool
-    configure_jellyfin_plugins: bool
-    jellyfin_plugins_required: bool
-    configure_jellyfin_playback: bool
-    jellyfin_playback_required: bool
-    configure_jellyfin_home_rails: bool
-    jellyfin_home_rails_required: bool
-    configure_auto_collections: bool
-    auto_collections_required: bool
-    configure_disk_guardrails: bool
-    disk_guardrails_required: bool
-    configure_media_hygiene: bool
-    media_hygiene_required: bool
-    configure_jellyfin_prewarm: bool
-    jellyfin_prewarm_required: bool
-    media_server_backend: str = "jellyfin"
 
 
 @dataclass
@@ -117,7 +44,7 @@ class BootstrapRunnerService:
     lifecycle_manager: TechnologyLifecycleManager | None = None
     _download_client_prepare_result: DownloadClientPipelineResult | None = None
 
-    def _invoke_operation(self, operation: RunnerOperation, *args: Any, **kwargs: Any) -> Any:
+    def _invoke_operation(self, operation: RunnerOperation | str, *args: Any, **kwargs: Any) -> Any:
         return self.deps.operations.invoke(operation, *args, **kwargs)
 
     def _technology_aliases(self, rt: BootstrapRuntime) -> dict[str, str]:
@@ -146,6 +73,16 @@ class BootstrapRunnerService:
         return tuple(dict.fromkeys([key for key in keys if key]))
 
     def _app_service_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
+        overrides_raw = (rt.adapter_hooks_cfg or {}).get("service_technology_map") or {}
+        overrides = (
+            {
+                str(key or "").strip().lower(): self._canonical_tech_key(str(value or ""), rt)
+                for key, value in overrides_raw.items()
+                if str(key or "").strip()
+            }
+            if isinstance(overrides_raw, dict)
+            else {}
+        )
         hook_map = (rt.adapter_hooks_cfg or {}).get("app_service_classes") or {}
         if not isinstance(hook_map, dict):
             return ()
@@ -154,11 +91,14 @@ class BootstrapRunnerService:
             key = str(service_key or "").strip().lower()
             if not key:
                 continue
-            if key.startswith("jellyfin_"):
-                tech_key = "jellyfin"
-            elif key.endswith("_service"):
-                tech_key = key[: -len("_service")]
-            else:
+            tech_key = overrides.get(key, "")
+            if not tech_key:
+                if key.endswith("_service"):
+                    stem = key[: -len("_service")]
+                else:
+                    stem = key
+                tech_key = stem.split("_", 1)[0]
+            if not tech_key:
                 continue
             canonical = self._canonical_tech_key(tech_key, rt)
             if canonical:
@@ -173,8 +113,6 @@ class BootstrapRunnerService:
         backend = self._canonical_tech_key(str(rt.media_server_backend or ""), rt)
         if backend:
             keys.append(backend)
-        if str(rt.prowlarr_url or "").strip():
-            keys.append("prowlarr")
         return tuple(dict.fromkeys([key for key in keys if key]))
 
     def _arr_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
@@ -213,11 +151,6 @@ class BootstrapRunnerService:
             )
         )
         lifecycles = {key: TechnologyLifecycle(key=key) for key in all_keys}
-
-        if "prowlarr" in lifecycles:
-            lifecycles["prowlarr"].precheck_fn = lambda runtime, state: state.details.update(
-                {"api_base": self._ensure_prowlarr_ready(runtime)}
-            )
         torrent_key = self._canonical_tech_key(rt.torrent_client_key, rt)
         usenet_key = self._canonical_tech_key(rt.usenet_client_key, rt)
         if torrent_key in lifecycles:
@@ -245,64 +178,19 @@ class BootstrapRunnerService:
             return
         self.lifecycle_manager.run_phase(phase, rt, keys=keys)
 
-    def _set_lifecycle_detail(self, key: str, **details: Any) -> None:
-        if not self.lifecycle_manager:
-            return
-        state = self.lifecycle_manager.state(key)
-        if not state:
-            return
-        state.details.update(details)
+    def _runner_operation_plans(self, rt: BootstrapRuntime) -> dict[str, Any]:
+        plans = (rt.adapter_hooks_cfg or {}).get("runner_operation_plans") or {}
+        return plans if isinstance(plans, dict) else {}
 
-    def _run_maintainerr_and_homepage_prechecks(self, rt: BootstrapRuntime) -> None:
-        self._run_optional_step(
-            enabled=rt.configure_maintainerr_policy,
-            required=rt.maintainerr_required,
-            action=lambda: self._invoke_operation(
-                RunnerOperation.ENSURE_MAINTAINERR_POLICY,
-                rt.cfg,
-                rt.config_root,
-            ),
-            warning_message=(
-                "[WARN] Maintainerr policy: automation skipped. "
-                "Set maintainerr.required=true to fail the bootstrap instead."
-            ),
+    def _run_runner_plan_phase(self, rt: BootstrapRuntime, phase_name: str) -> bool:
+        return run_runner_phase_plan(
+            runtime=rt,
+            plan_cfg=self._runner_operation_plans(rt),
+            phase_name=phase_name,
+            invoke_operation=self._invoke_operation,
+            run_optional_step=self._run_optional_step,
+            log=self.deps.log,
         )
-        self._run_optional_step(
-            enabled=rt.configure_homepage_services,
-            required=rt.homepage_required,
-            action=lambda: self._invoke_operation(
-                RunnerOperation.ENSURE_HOMEPAGE_SERVICES,
-                rt.cfg,
-                rt.config_root,
-            ),
-            warning_message=(
-                "[WARN] Homepage: config-as-code bootstrap skipped. "
-                "Set homepage.required=true to fail the bootstrap instead."
-            ),
-        )
-
-    def _ensure_prowlarr_ready(self, rt: BootstrapRuntime) -> str:
-        self.deps.wait_for_service("Prowlarr", rt.prowlarr_url, "/ping", rt.wait_timeout)
-        prowlarr_api_base = self.deps.detect_arr_api_base(
-            "Prowlarr",
-            rt.prowlarr_url,
-            rt.prowlarr_key,
-        )
-        try:
-            self._invoke_operation(
-                RunnerOperation.ENSURE_APP_AUTH_SETTINGS,
-                "Prowlarr",
-                "Prowlarr",
-                rt.prowlarr_url,
-                prowlarr_api_base,
-                rt.prowlarr_key,
-                rt.app_auth_cfg,
-            )
-        except Exception as exc:
-            if self.deps.bool_cfg(rt.app_auth_cfg, "fail_on_error", False):
-                raise
-            self.deps.log(f"[WARN] Prowlarr: auth bootstrap skipped ({exc})")
-        return prowlarr_api_base
 
     def _wait_for_servarr_services(self, rt: BootstrapRuntime) -> None:
         for app in rt.arr_apps:
@@ -362,13 +250,14 @@ class BootstrapRunnerService:
             ),
         )
 
-    def _run_jellyfin_prewarm_mode(self, rt: BootstrapRuntime) -> None:
+    def _run_media_server_prewarm_mode(self, rt: BootstrapRuntime) -> None:
         self._media_server_adapter(rt).run_prewarm_mode()
 
-    def _run_jellyfin_home_rails_mode(self, rt: BootstrapRuntime) -> None:
+    def _run_media_server_home_rails_mode(self, rt: BootstrapRuntime) -> None:
         self._media_server_adapter(rt).run_home_rails_mode()
 
     def _run_media_hygiene_mode(self, rt: BootstrapRuntime) -> None:
+        self._run_runner_plan_phase(rt, "precheck_steps")
         for app in rt.arr_apps:
             try:
                 self.deps.wait_for_service(app.name, app.url, "/ping", rt.wait_timeout)
@@ -383,22 +272,9 @@ class BootstrapRunnerService:
             rt.arr_apps_raw,
             rt.app_keys,
             rt.qbit_cfg,
-            rt.qb_user,
-            rt.qb_pass,
-        )
-        self._run_optional_step(
-            enabled=True,
-            required=rt.maintainerr_required,
-            action=lambda: self._invoke_operation(
-                RunnerOperation.ENSURE_MAINTAINERR_POLICY,
-                rt.cfg,
-                rt.config_root,
-            ),
-            warning_message=(
-                "[WARN] Maintainerr policy: automation skipped. "
-                "Set maintainerr.required=true to fail the bootstrap instead."
-            ),
-        )
+                rt.qb_user,
+                rt.qb_pass,
+            )
         self._run_lifecycle_phase(
             "clean_hygiene",
             rt,
@@ -408,10 +284,10 @@ class BootstrapRunnerService:
 
     def _run_mode_shortcuts(self, rt: BootstrapRuntime) -> bool:
         handlers: dict[BootstrapMode, Callable[[BootstrapRuntime], None]] = {
-            BootstrapMode.MEDIA_SERVER_PREWARM: self._run_jellyfin_prewarm_mode,
-            BootstrapMode.MEDIA_SERVER_HOME_RAILS: self._run_jellyfin_home_rails_mode,
-            BootstrapMode.JELLYFIN_PREWARM: self._run_jellyfin_prewarm_mode,
-            BootstrapMode.JELLYFIN_HOME_RAILS: self._run_jellyfin_home_rails_mode,
+            BootstrapMode.MEDIA_SERVER_PREWARM: self._run_media_server_prewarm_mode,
+            BootstrapMode.MEDIA_SERVER_HOME_RAILS: self._run_media_server_home_rails_mode,
+            BootstrapMode.JELLYFIN_PREWARM: self._run_media_server_prewarm_mode,
+            BootstrapMode.JELLYFIN_HOME_RAILS: self._run_media_server_home_rails_mode,
             BootstrapMode.MEDIA_HYGIENE: self._run_media_hygiene_mode,
         }
         handler = handlers.get(rt.mode)
@@ -438,8 +314,8 @@ class BootstrapRunnerService:
             self.deps.log(f"{warning_message} ({exc})")
 
     def _run_full_prechecks(self, rt: BootstrapRuntime) -> tuple[bool, str]:
-        self._run_maintainerr_and_homepage_prechecks(rt)
-        self._run_lifecycle_phase("precheck", rt, keys=("prowlarr",))
+        self._run_runner_plan_phase(rt, "precheck_steps")
+        self._run_lifecycle_phase("precheck", rt, keys=self._non_servarr_aux_lifecycle_keys(rt))
         self._wait_for_servarr_services(rt)
         self._run_lifecycle_phase("prepare", rt, keys=self._download_client_lifecycle_keys(rt))
         torrent_key = self._canonical_tech_key(rt.torrent_client_key, rt)
@@ -486,135 +362,13 @@ class BootstrapRunnerService:
         )
 
     def _run_post_servarr_steps(self, rt: BootstrapRuntime) -> None:
-        pre_steps: list[tuple[bool, bool, StepActionFn, str]] = [
-            (
-                rt.configure_bazarr_integration,
-                rt.bazarr_required,
-                lambda: self._invoke_operation(
-                    RunnerOperation.ENSURE_BAZARR_INTEGRATION,
-                    rt.cfg,
-                    rt.config_root,
-                    rt.arr_apps_raw,
-                    rt.app_keys,
-                    rt.wait_timeout,
-                ),
-                "[WARN] Bazarr: integration bootstrap skipped. Set bazarr.required=true to fail the bootstrap instead.",
-            ),
-            (
-                rt.configure_jellyseerr_services,
-                rt.jellyseerr_required,
-                lambda: self._invoke_operation(
-                    RunnerOperation.CONFIGURE_JELLYSEERR,
-                    rt.cfg,
-                    rt.arr_apps_raw,
-                    rt.app_keys,
-                    rt.config_root,
-                    rt.wait_timeout,
-                ),
-                "[WARN] Jellyseerr: automation skipped. Set jellyseerr.required=true to fail the bootstrap instead.",
-            ),
-        ]
-
-        for enabled, required, action, warning_message in pre_steps:
-            self._run_optional_step(
-                enabled=enabled,
-                required=required,
-                action=action,
-                warning_message=warning_message,
-            )
-
+        self._run_runner_plan_phase(rt, "post_servarr_pre_media_steps")
         self._media_server_adapter(rt).run_post_servarr_pre_hygiene_steps()
-
-        post_media_steps: list[tuple[bool, bool, StepActionFn, str]] = [
-            (
-                rt.configure_disk_guardrails,
-                rt.disk_guardrails_required,
-                lambda: self._invoke_operation(
-                    RunnerOperation.ENFORCE_DISK_GUARDRAILS,
-                    rt.cfg,
-                    rt.config_root,
-                    rt.qbit_cfg,
-                    rt.qb_user,
-                    rt.qb_pass,
-                ),
-                "[WARN] Disk guardrails: automation skipped. Set disk_guardrails.required=true to fail the bootstrap instead.",
-            ),
-            (
-                rt.configure_media_hygiene,
-                rt.media_hygiene_required,
-                lambda: self._invoke_operation(
-                    RunnerOperation.RUN_MEDIA_HYGIENE,
-                    rt.cfg,
-                    rt.config_root,
-                    rt.arr_apps_raw,
-                    rt.app_keys,
-                    rt.qbit_cfg,
-                    rt.qb_user,
-                    rt.qb_pass,
-                ),
-                "[WARN] Media hygiene: automation skipped. Set media_hygiene.required=true to fail the bootstrap instead.",
-            ),
-        ]
-        for enabled, required, action, warning_message in post_media_steps:
-            self._run_optional_step(
-                enabled=enabled,
-                required=required,
-                action=action,
-                warning_message=warning_message,
-            )
+        self._run_runner_plan_phase(rt, "post_servarr_post_media_steps")
         self._media_server_adapter(rt).run_post_servarr_post_hygiene_steps()
 
     def _run_indexers(self, rt: BootstrapRuntime) -> None:
-        indexer_failures = 0
-        for indexer in rt.prowlarr_indexers:
-            idx_name = indexer.get("name") or indexer.get("implementation") or "unnamed-indexer"
-            try:
-                self._invoke_operation(
-                    RunnerOperation.ENSURE_PROWLARR_INDEXER,
-                    rt.prowlarr_url,
-                    rt.prowlarr_key,
-                    indexer,
-                )
-            except Exception as exc:
-                indexer_failures += 1
-                self.deps.log(f"[WARN] Prowlarr: failed indexer '{idx_name}': {exc}")
-
-        if indexer_failures:
-            if bool(rt.cfg.get("fail_on_indexer_error", False)):
-                raise RuntimeError(
-                    f"Prowlarr: {indexer_failures} configured indexer(s) failed and fail_on_indexer_error=true."
-                )
-            self.deps.log(
-                f"[WARN] Prowlarr: {indexer_failures} configured indexer(s) failed; "
-                "continuing because fail_on_indexer_error is false."
-            )
-
-        if rt.auto_indexers:
-            self._invoke_operation(
-                RunnerOperation.AUTO_ADD_TESTED_INDEXERS,
-                rt.prowlarr_url,
-                rt.prowlarr_key,
-                rt.cfg.get("prowlarr_auto_indexer_exclude_name_tokens", []),
-                rt.cfg.get("prowlarr_indexer_reputation", {}),
-            )
-
-        if rt.trigger_sync:
-            self._invoke_operation(
-                RunnerOperation.TRIGGER_PROWLARR_SYNC,
-                rt.prowlarr_url,
-                rt.prowlarr_key,
-            )
-            prune_stale = bool(
-                (rt.cfg.get("arr_indexer_sync") or {}).get("prune_stale_indexers", True)
-            )
-            self._invoke_operation(
-                RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR,
-                rt.prowlarr_url,
-                rt.prowlarr_key,
-                rt.arr_apps_raw,
-                rt.app_keys,
-                prune_stale,
-            )
+        self._run_runner_plan_phase(rt, "indexer_steps")
 
     def run(self, rt: BootstrapRuntime) -> None:
         self._download_client_prepare_result = None

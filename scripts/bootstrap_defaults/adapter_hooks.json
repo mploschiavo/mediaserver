@@ -49,7 +49,25 @@
     "sabnzbd_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService",
     "bazarr_service": "bootstrap_services.apps.bazarr.service:BazarrService",
     "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
-    "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService"
+    "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService",
+    "maintainerr_service": "bootstrap_services.apps.maintainerr.service:MaintainerrService"
+  },
+  "service_technology_map": {
+    "jellyfin_livetv_service": "jellyfin",
+    "jellyfin_livetv_source_service": "jellyfin",
+    "jellyfin_livetv_state_service": "jellyfin",
+    "jellyfin_libraries_service": "jellyfin",
+    "jellyfin_home_rails_service": "jellyfin",
+    "jellyfin_playback_service": "jellyfin",
+    "jellyfin_plugins_service": "jellyfin",
+    "jellyfin_prewarm_service": "jellyfin",
+    "jellyseerr_service": "jellyseerr",
+    "prowlarr_service": "prowlarr",
+    "sabnzbd_service": "sabnzbd",
+    "bazarr_service": "bazarr",
+    "qbittorrent_service": "qbittorrent",
+    "tautulli_service": "tautulli",
+    "maintainerr_service": "maintainerr"
   },
   "operation_handlers": {}
 }

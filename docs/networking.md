@@ -16,6 +16,7 @@ Default hostnames (domain suffix is configurable):
 - `prowlarr.<domain>`
 - `qbittorrent.<domain>`
 - `sabnzbd.<domain>`
+- `maintainerr.<domain>`
 - `tautulli.<domain>`
 
 ## Namespace-Aware Domains
@@ -51,6 +52,9 @@ bash scripts/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
 - Internal service-to-service traffic should use cluster DNS (`service.namespace.svc` or short service names in namespace).
 - External user access should go through ingress host routes.
 - Downloader and control APIs should remain internal-only unless explicitly required.
+
+Reference diagram:
+- [`docs/diagrams/network-protocol-topology.svg`](diagrams/network-protocol-topology.svg)
 
 ## TLS
 

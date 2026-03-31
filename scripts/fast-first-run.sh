@@ -44,9 +44,10 @@ Use these URLs in your browser:
 - Jellyseerr: http://jellyseerr.local
 - Prowlarr:   http://prowlarr.local
 - qBittorrent:http://qbittorrent.local
+- Maintainerr:http://maintainerr.local
 
 If .local does not resolve on your device, add hosts entry:
-$NODE_IP homepage.local jellyfin.local jellyseerr.local sonarr.local radarr.local lidarr.local readarr.local bazarr.local prowlarr.local qbittorrent.local sabnzbd.local tautulli.local
+$NODE_IP homepage.local jellyfin.local jellyseerr.local sonarr.local radarr.local lidarr.local readarr.local bazarr.local prowlarr.local qbittorrent.local sabnzbd.local maintainerr.local tautulli.local
 
 Recommended fastest order (about 15-25 minutes):
 1) Full zero-to-usable run (recommended):

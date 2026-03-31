@@ -17,6 +17,7 @@ DEFAULT_HOSTS = [
     "prowlarr.local",
     "qbittorrent.local",
     "sabnzbd.local",
+    "maintainerr.local",
     "tautulli.local",
 ]
 
@@ -32,6 +33,7 @@ SERVICE_CATALOG: Dict[str, Tuple[str, str]] = {
     "prowlarr": ("Prowlarr", "Indexer manager"),
     "qbittorrent": ("qBittorrent", "Torrent downloader"),
     "sabnzbd": ("SABnzbd", "Usenet downloader"),
+    "maintainerr": ("Maintainerr", "Retention policy UI"),
     "tautulli": ("Tautulli", "Plex analytics"),
     "plex": ("Plex", "Optional media server"),
     "flaresolverr": ("FlareSolverr", "Indexer helper"),
@@ -50,6 +52,7 @@ PREFERRED_PREFIX_ORDER = [
     "prowlarr",
     "qbittorrent",
     "sabnzbd",
+    "maintainerr",
     "tautulli",
     "plex",
     "flaresolverr",

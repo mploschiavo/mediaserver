@@ -38,18 +38,21 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             RunnerOperation.RUN_MEDIA_HYGIENE.value: mock.Mock(),
             RunnerOperation.ENSURE_JELLYFIN_PREWARM.value: mock.Mock(),
             RunnerOperation.ENSURE_MAINTAINERR_POLICY.value: mock.Mock(),
+            RunnerOperation.ENSURE_MAINTAINERR_INTEGRATIONS.value: mock.Mock(),
             RunnerOperation.ENSURE_HOMEPAGE_SERVICES.value: mock.Mock(),
+            RunnerOperation.ENSURE_PROWLARR_READY.value: mock.Mock(return_value="/api/v1"),
+            RunnerOperation.ENSURE_PROWLARR_FLARESOLVERR_PROXY.value: mock.Mock(),
             RunnerOperation.ENSURE_PROWLARR_INDEXER.value: mock.Mock(),
             RunnerOperation.AUTO_ADD_TESTED_INDEXERS.value: mock.Mock(),
             RunnerOperation.TRIGGER_PROWLARR_SYNC.value: mock.Mock(),
             RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value: mock.Mock(),
+            RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value: mock.Mock(),
         }
         deps = BootstrapRunnerDependencies(
             log=mock.Mock(),
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
             normalize_url=lambda value: value.rstrip("/"),
             wait_for_service=mock.Mock(),
-            detect_arr_api_base=mock.Mock(return_value="/api/v1"),
             operations=RunnerOperationRegistry(handlers=operation_mocks),
         )
         deps.operation_mocks = operation_mocks  # type: ignore[attr-defined]
@@ -74,7 +77,117 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             arr_download_handling_cfg={},
             arr_quality_upgrade_cfg={},
             app_auth_cfg={},
-            adapter_hooks_cfg={},
+            adapter_hooks_cfg={
+                "app_service_classes": {
+                    "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService"
+                },
+                "service_technology_map": {"prowlarr_service": "prowlarr"},
+                "runner_operation_plans": {
+                    "precheck_steps": {
+                        "steps": [
+                            {
+                                "operation": "ensure_prowlarr_ready",
+                                "args": [
+                                    "cfg",
+                                    "prowlarr_url",
+                                    "prowlarr_key",
+                                    "app_auth_cfg",
+                                    "wait_timeout",
+                                ],
+                                "enabled_when_attr": "prowlarr_url",
+                            },
+                            {
+                                "operation": "ensure_maintainerr_policy",
+                                "args": ["cfg", "config_root"],
+                                "enabled_attr": "configure_maintainerr_policy",
+                                "required_attr": "maintainerr_required",
+                            },
+                            {
+                                "operation": "ensure_homepage_services_config",
+                                "args": ["cfg", "config_root"],
+                                "enabled_attr": "configure_homepage_services",
+                                "required_attr": "homepage_required",
+                            },
+                        ]
+                    },
+                    "post_servarr_pre_media_steps": {
+                        "steps": [
+                            {
+                                "operation": "ensure_bazarr_arr_integration",
+                                "args": [
+                                    "cfg",
+                                    "config_root",
+                                    "arr_apps_raw",
+                                    "app_keys",
+                                    "wait_timeout",
+                                ],
+                                "enabled_attr": "configure_bazarr_integration",
+                                "required_attr": "bazarr_required",
+                            },
+                            {
+                                "operation": "configure_jellyseerr",
+                                "args": [
+                                    "cfg",
+                                    "arr_apps_raw",
+                                    "app_keys",
+                                    "config_root",
+                                    "wait_timeout",
+                                ],
+                                "enabled_attr": "configure_jellyseerr_services",
+                                "required_attr": "jellyseerr_required",
+                            },
+                            {
+                                "operation": "ensure_maintainerr_integrations",
+                                "args": ["cfg", "config_root", "arr_apps_raw", "wait_timeout"],
+                                "enabled_attr": "configure_maintainerr_integrations",
+                                "required_attr": "maintainerr_integrations_required",
+                            },
+                        ]
+                    },
+                    "post_servarr_post_media_steps": {
+                        "steps": [
+                            {
+                                "operation": "enforce_disk_guardrails",
+                                "args": ["cfg", "config_root", "qbit_cfg", "qb_user", "qb_pass"],
+                                "enabled_attr": "configure_disk_guardrails",
+                                "required_attr": "disk_guardrails_required",
+                            },
+                            {
+                                "operation": "run_media_hygiene",
+                                "args": [
+                                    "cfg",
+                                    "config_root",
+                                    "arr_apps_raw",
+                                    "app_keys",
+                                    "qbit_cfg",
+                                    "qb_user",
+                                    "qb_pass",
+                                ],
+                                "enabled_attr": "configure_media_hygiene",
+                                "required_attr": "media_hygiene_required",
+                            },
+                        ]
+                    },
+                    "indexer_steps": {
+                        "steps": [
+                            {
+                                "operation": "run_prowlarr_indexer_pipeline",
+                                "args": [
+                                    "cfg",
+                                    "prowlarr_url",
+                                    "prowlarr_key",
+                                    "wait_timeout",
+                                    "prowlarr_indexers",
+                                    "auto_indexers",
+                                    "trigger_sync",
+                                    "arr_apps_raw",
+                                    "app_keys",
+                                ],
+                            }
+                        ]
+                    },
+                }
+            },
             prowlarr_indexers=[],
             sab_remote_path_mappings=[],
             qb_user="u",
@@ -95,6 +208,8 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             refresh_health_after_bootstrap=False,
             configure_maintainerr_policy=False,
             maintainerr_required=False,
+            configure_maintainerr_integrations=False,
+            maintainerr_integrations_required=False,
             configure_homepage_services=False,
             homepage_required=False,
             configure_bazarr_integration=False,
@@ -158,17 +273,24 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         runtime = self._runtime(trigger_sync=True)
         runner.run(runtime)
         deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_called_once()  # type: ignore[attr-defined]
-        deps.operation_mocks[RunnerOperation.TRIGGER_PROWLARR_SYNC.value].assert_called_once_with(  # type: ignore[attr-defined]
+        deps.operation_mocks[RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value].assert_called_once_with(  # type: ignore[attr-defined]
+            runtime.cfg,
             "http://prowlarr:9696",
             "key",
+            runtime.wait_timeout,
+            runtime.prowlarr_indexers,
+            runtime.auto_indexers,
+            True,
+            runtime.arr_apps_raw,
+            runtime.app_keys,
         )
-        deps.operation_mocks[RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value].assert_called_once()  # type: ignore[attr-defined]
 
     def test_runner_tracks_lifecycle_states(self):
         deps = self._deps()
         runner = BootstrapRunnerService(deps=deps)
         runtime = self._runtime()
         runner.run(runtime)
+        deps.operation_mocks[RunnerOperation.ENSURE_PROWLARR_READY.value].assert_called_once()  # type: ignore[attr-defined]
         self.assertIsNotNone(runner.lifecycle_manager)
         prowlarr_state = runner.lifecycle_manager.state("prowlarr")
         self.assertIsNotNone(prowlarr_state)
@@ -188,6 +310,52 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         )
         with self.assertRaises(RuntimeError):
             runner.run(runtime)
+
+    def test_runner_configures_maintainerr_integrations_when_enabled(self):
+        deps = self._deps()
+        runner = BootstrapRunnerService(deps=deps)
+        runtime = self._runtime(
+            configure_maintainerr_integrations=True,
+            arr_apps_raw=[{"implementation": "sonarr", "url": "http://sonarr:8989"}],
+        )
+
+        runner.run(runtime)
+
+        deps.operation_mocks[RunnerOperation.ENSURE_MAINTAINERR_INTEGRATIONS.value].assert_called_once_with(  # type: ignore[attr-defined]
+            runtime.cfg,
+            runtime.config_root,
+            runtime.arr_apps_raw,
+            runtime.wait_timeout,
+        )
+
+    def test_runner_configures_flaresolverr_proxy_when_enabled(self):
+        deps = self._deps()
+        runner = BootstrapRunnerService(deps=deps)
+        runtime = self._runtime(
+            cfg={
+                "flaresolverr": {
+                    "enabled": True,
+                    "required": False,
+                    "url": "http://flaresolverr:8191",
+                }
+            }
+        )
+
+        runner.run(runtime)
+
+        deps.operation_mocks[
+            RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value
+        ].assert_called_once_with(  # type: ignore[attr-defined]
+            runtime.cfg,
+            runtime.prowlarr_url,
+            runtime.prowlarr_key,
+            runtime.wait_timeout,
+            runtime.prowlarr_indexers,
+            runtime.auto_indexers,
+            runtime.trigger_sync,
+            runtime.arr_apps_raw,
+            runtime.app_keys,
+        )
 
     def test_runner_canonicalizes_lifecycle_keys_from_aliases(self):
         deps = self._deps()

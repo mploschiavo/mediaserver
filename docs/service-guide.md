@@ -20,6 +20,7 @@ They are not full library groomers for stale/old content; for deeper lifecycle p
 Subtitle automation.
 Bootstrap wires Bazarr to Sonarr and Radarr via Bazarr config-as-code.
 Bazarr does not integrate with Lidarr/Readarr (music/books) because subtitle automation is for movies/TV content.
+Bazarr also does not directly connect to qBittorrent or SABnzbd; download client wiring remains in the Arr apps.
 
 ## qBittorrent
 Torrent downloader. Receives jobs from Arr and stores into `/data/torrents/*`.
@@ -44,17 +45,26 @@ This stack ships:
 - disk-usage guardrails (`disk_guardrails` in `bootstrap/media-stack.bootstrap.json`, default max 65% used on `/srv-stack/media`)
 - scheduled media hygiene (`media_hygiene`) for failed queue cleanup + temp/orphan cleanup
 - Jellyfin prewarm schedule (`jellyfin_prewarm`) for recurring metadata/artwork + guide/channel refresh
-- Maintainerr policy-as-code file generation (`maintainerr` -> `/srv-config/maintainerr/policy.json` in bootstrap jobs)
+- Maintainerr app route (`maintainerr.<domain>`) with persistent config (`/opt/data`)
+- Maintainerr policy-as-code file generation (`maintainerr` -> `/srv-config/maintainerr/policy.json`)
 
 ## Unpackerr
 Watches completed download folders and unpacks for the arr apps.
+Bootstrap now syncs Arr API keys into secret config and restarts Unpackerr automatically when the deployment is active (replicas > 0).
 
 ## Homepage
 Single-pane dashboard.
 Bootstrap generates Homepage `services.yaml` from active ingress hosts so app links are auto-populated.
+
+## Maintainerr
+Retention policy UI and API for media lifecycle operations.
+Deployed in full/public-demo/power-user profiles and exposed at `maintainerr.<domain>`.
+Bootstrap now reconciles Maintainerr main settings (`applicationUrl`, media-server type, Jellyfin URL/API key/user, Seerr URL)
+plus integrations for Radarr, Sonarr, Jellyseerr, and Tautulli with API-level test calls.
 
 ## Traefik
 Reverse proxy for nice local hostnames.
 
 ## Plex / Tautulli / FlareSolverr
 Optional extras.
+When FlareSolverr is enabled in bootstrap config, bootstrap reconciles a Prowlarr FlareSolverr indexer proxy and runs a proxy connection test automatically.

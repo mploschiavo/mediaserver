@@ -11,6 +11,7 @@ Rendered diagram artifacts live in `docs/diagrams`.
 
 Core diagrams:
 - `logical-topology.*`
+- `network-protocol-topology.*`
 - `media-data-pipeline.*`
 - `bootstrap-sequence.*`
 
@@ -52,6 +53,7 @@ flowchart LR
     BAZ[Bazarr]
     QB[qBittorrent]
     SAB[SABnzbd]
+    MTR[Maintainerr]
   end
 
   TV --> ING
@@ -65,6 +67,7 @@ flowchart LR
   ING --> BAZ
   ING --> QB
   ING --> SAB
+  ING --> MTR
 
   JS --> ARR
   ARR --> PR
@@ -72,6 +75,11 @@ flowchart LR
   ARR --> SAB
   BAZ --> ARR
 ```
+
+## Network And Protocol Topology
+
+- See [`docs/diagrams/network-protocol-topology.svg`](diagrams/network-protocol-topology.svg)
+- Includes client-to-ingress routing, service/pod boundaries, protocol labels, and PVC data paths.
 
 ## Request-to-Playback Data Path
 

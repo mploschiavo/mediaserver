@@ -1,0 +1,43 @@
+"""Prowlarr FlareSolverr preflight/config service."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable
+
+BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
+NormalizeUrlFn = Callable[[str], str]
+WaitForServiceFn = Callable[[str, str, str, int], None]
+EnsureProxyFn = Callable[[str, str, dict[str, Any]], None]
+
+
+@dataclass
+class ProwlarrFlareSolverrService:
+    bool_cfg: BoolCfgFn
+    normalize_url: NormalizeUrlFn
+    wait_for_service: WaitForServiceFn
+    ensure_proxy: EnsureProxyFn
+
+    def ensure_from_config(
+        self,
+        *,
+        cfg: dict[str, Any],
+        prowlarr_url: str,
+        prowlarr_key: str,
+        wait_timeout: int,
+    ) -> None:
+        flaresolverr_cfg = cfg.get("flaresolverr") or {}
+        if not isinstance(flaresolverr_cfg, dict):
+            raise RuntimeError("flaresolverr config must be an object.")
+        if not self.bool_cfg(flaresolverr_cfg, "enabled", False):
+            return
+
+        flaresolverr_url = self.normalize_url(
+            str(flaresolverr_cfg.get("url") or "http://flaresolverr:8191")
+        )
+        self.wait_for_service("FlareSolverr", flaresolverr_url, "/", wait_timeout)
+
+        payload_cfg = dict(flaresolverr_cfg)
+        payload_cfg["url"] = flaresolverr_url
+        self.ensure_proxy(prowlarr_url, prowlarr_key, payload_cfg)
+
