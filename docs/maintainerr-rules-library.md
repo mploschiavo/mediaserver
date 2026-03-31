@@ -5,7 +5,7 @@ Maintainerr policy rules are now managed as individual JSON files and assembled 
 ## Source of Truth
 
 - Base policy scaffold: `scripts/bootstrap_defaults/maintainerr_policy.json`
-- Default rule library: `scripts/bootstrap_defaults/maintainerr_rules/*.json`
+- Default rule library: `scripts/bootstrap_defaults/maintainerr_rules/*.{json,yaml,yml}`
 - Rendered policy artifact (cluster): `/srv-config/maintainerr/policy.json`
 
 The bootstrap step `ensure_maintainerr_policy` composes the final policy in this order:
@@ -24,6 +24,7 @@ Supported file shapes:
 1. Direct API rule object
 2. Wrapped object with `enabled` + `rule` (or `payload`)
 3. Array of either of the above
+4. Native Maintainerr YAML export (`mediaType` + `rules` sections)
 
 Recommended wrapper:
 
@@ -73,6 +74,7 @@ Notes:
 - `customVal.value` supports relative time tokens: `days_ago:<n>`, `{{days_ago:<n>}}`, `now-<n>d`.
 - API export objects containing rule entries with `ruleJson` are also accepted and normalized during sync.
 - Legacy `conditions` + `actions` rules are still supported for backward compatibility.
+- `.yaml/.yml` files are supported directly in the rules library. For YAML exports from Maintainerr UI, the bootstrap sync calls Maintainerr's `/api/rules/yaml/decode` endpoint to translate them before upsert.
 
 ## Included Default Rules
 

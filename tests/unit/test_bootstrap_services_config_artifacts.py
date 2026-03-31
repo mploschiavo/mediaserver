@@ -292,6 +292,50 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             self.assertEqual("Native Payload Rule", rules[0].get("name"))
             self.assertEqual("Wrapper description", rules[0].get("description"))
 
+    def test_maintainerr_policy_can_load_yaml_export_rules(self):
+        svc = _service()
+        with tempfile.TemporaryDirectory() as tmp:
+            custom_rules_dir = Path(tmp) / "maintainerr" / "rules"
+            custom_rules_dir.mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "yaml-export.yaml").write_text(
+                "\n".join(
+                    [
+                        "mediaType: MOVIES",
+                        "rules:",
+                        "  - \"0\":",
+                        "      - firstValue: Jellyfin.viewCount",
+                        "        action: BIGGER",
+                        "        customValue:",
+                        "          type: number",
+                        "          value: 0",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = {
+                "maintainerr": {
+                    "enabled": True,
+                    "rules_library": {
+                        "enabled": True,
+                        "include_defaults": False,
+                        "relative_path": "maintainerr/rules",
+                        "merge_mode": "replace",
+                    },
+                    "policy": {},
+                }
+            }
+            svc.ensure_maintainerr_policy(cfg, tmp)
+            rendered = json.loads(
+                (Path(tmp) / "maintainerr" / "policy.json").read_text(encoding="utf-8")
+            )
+            rules = rendered.get("rules") or []
+            self.assertEqual(1, len(rules))
+            self.assertEqual("yaml-export", str(rules[0].get("name") or ""))
+            self.assertIn("yaml", rules[0])
+            self.assertIn("mediaType: MOVIES", str(rules[0].get("yaml") or ""))
+
 
 if __name__ == "__main__":
     unittest.main()

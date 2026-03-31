@@ -322,13 +322,28 @@ class ConfigArtifactsService:
             )
 
         loaded: list[dict[str, Any]] = []
-        for path in sorted(directory.glob("*.json")):
+        candidate_files = sorted(
+            [
+                *directory.glob("*.json"),
+                *directory.glob("*.yaml"),
+                *directory.glob("*.yml"),
+            ]
+        )
+        for path in candidate_files:
             filename = path.name
             if enabled_files and filename not in enabled_files:
                 continue
             try:
                 raw = path.read_text(encoding="utf-8")
-                payload = json.loads(raw)
+                if path.suffix.lower() == ".json":
+                    payload = json.loads(raw)
+                else:
+                    # Maintainerr UI exports rule snippets as YAML. Preserve raw YAML so
+                    # the sync phase can decode it using Maintainerr's native /rules/yaml/decode.
+                    payload = {
+                        "name": path.stem,
+                        "yaml": raw,
+                    }
             except Exception as exc:
                 raise RuntimeError(f"Maintainerr policy rules: failed parsing {path}: {exc}") from exc
             loaded.extend(self._load_rule_entries_from_document(str(path), payload))

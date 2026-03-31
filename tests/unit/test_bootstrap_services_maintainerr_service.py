@@ -407,6 +407,112 @@ class MaintainerrServiceTests(unittest.TestCase):
             val = str((payload["rules"][0].get("customVal") or {}).get("value") or "")
             self.assertRegex(val, re.compile(r"^\d{4}-\d{2}-\d{2}T"))
 
+    def test_ensure_integrations_decodes_maintainerr_yaml_rule_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_root = Path(tmp)
+            (cfg_root / "maintainerr").mkdir(parents=True, exist_ok=True)
+            policy = {
+                "version": 1,
+                "rules": [
+                    {
+                        "name": "YAML Export Rule",
+                        "mediaType": "MOVIES",
+                        "rules": [
+                            {
+                                "0": [
+                                    {
+                                        "firstValue": "Jellyfin.viewCount",
+                                        "action": "BIGGER",
+                                        "customValue": {"type": "number", "value": 0},
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                ],
+            }
+            (cfg_root / "maintainerr" / "policy.json").write_text(
+                json.dumps(policy), encoding="utf-8"
+            )
+
+            posted_rules: list[dict] = []
+
+            def http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=30):
+                del base_url, api_key, timeout
+                if (method, path) == ("GET", "/api/settings"):
+                    return 200, {}, "{}"
+                if (method, path) == ("GET", "/api/settings/radarr"):
+                    return 200, [], "[]"
+                if (method, path) == ("GET", "/api/settings/sonarr"):
+                    return 200, [], "[]"
+                if (method, path) == ("GET", "/api/settings/seerr"):
+                    return 200, {"url": "", "api_key": ""}, "{}"
+                if (method, path) == ("GET", "/api/settings/tautulli"):
+                    return 200, {"url": "", "api_key": ""}, "{}"
+                if (method, path) == ("GET", "/api/media-server/libraries"):
+                    return 200, [
+                        {"id": "lib-movies", "title": "Movies", "type": "movie"},
+                        {"id": "lib-tv", "title": "TV Shows", "type": "show"},
+                    ], "[]"
+                if (method, path) == ("POST", "/api/rules/yaml/decode"):
+                    result = {
+                        "mediaType": "movie",
+                        "rules": [
+                            {
+                                "firstVal": [6, 5],
+                                "operator": None,
+                                "action": 0,
+                                "customVal": {"ruleTypeId": 0, "value": "0"},
+                                "section": 0,
+                            }
+                        ],
+                    }
+                    return 200, {"code": 1, "result": json.dumps(result)}, "{}"
+                if (method, path) == ("GET", "/api/rules?activeOnly=false"):
+                    return 200, [], "[]"
+                if (method, path) == ("POST", "/api/rules"):
+                    posted_rules.append(payload)
+                    return 201, {"code": 1, "result": "Success"}, "{}"
+                if method == "POST":
+                    return 200, {"ok": True}, "{}"
+                raise AssertionError(f"unexpected request: {method} {path}")
+
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "TAUTULLI_API_KEY": "tautulli-key",
+                    "JELLYFIN_API_KEY": "jf-key",
+                    "JELLYFIN_USER_ID": "jf-user",
+                },
+                clear=False,
+            ):
+                service = self._service(http_request)
+                service.ensure_integrations(
+                    cfg={
+                        "maintainerr": {
+                            "enabled": True,
+                            "url": "http://maintainerr:6246",
+                            "policy_relative_path": "maintainerr/policy.json",
+                            "integrations": {
+                                "enabled": True,
+                                "test_connections": False,
+                                "sync_rules": True,
+                            },
+                        },
+                        "jellyseerr": {"url": "http://jellyseerr:5055"},
+                        "tautulli": {"url": "http://tautulli:8181"},
+                    },
+                    config_root=str(cfg_root),
+                    arr_apps=[],
+                    wait_timeout=30,
+                )
+
+            self.assertEqual(1, len(posted_rules))
+            payload = posted_rules[0]
+            self.assertEqual("YAML Export Rule", payload["name"])
+            self.assertEqual("movie", payload["dataType"])
+            self.assertEqual("lib-movies", payload["libraryId"])
+
 
 if __name__ == "__main__":
     unittest.main()

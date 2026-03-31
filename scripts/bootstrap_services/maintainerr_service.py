@@ -352,6 +352,113 @@ class MaintainerrService:
             return 0
         return 4
 
+    def _normalize_media_type(self, value: Any) -> str:
+        token = self._token(value)
+        if token in {"movie", "movies"}:
+            return "movie"
+        if token in {"show", "shows", "series", "tv", "tvshows", "tv_show", "tv-shows"}:
+            return "show"
+        return ""
+
+    @staticmethod
+    def _looks_like_yaml_rule_sections(value: Any) -> bool:
+        if not isinstance(value, list) or not value:
+            return False
+        first = value[0]
+        if not isinstance(first, dict):
+            return False
+        for key, entries in first.items():
+            if str(key).isdigit() and isinstance(entries, list):
+                return True
+        return False
+
+    def _decode_yaml_rule_payload(
+        self,
+        *,
+        maintainerr_url: str,
+        rule: dict[str, Any],
+        base_name: str,
+    ) -> dict[str, Any]:
+        yaml_blob = self._text(rule.get("yaml"))
+        decoded_source = dict(rule)
+        media_type = self._normalize_media_type(
+            rule.get("dataType") or rule.get("mediaType")
+        )
+
+        if yaml_blob:
+            if not media_type:
+                media_match = re.search(
+                    r"^\s*mediaType\s*:\s*([A-Za-z_ -]+)\s*$",
+                    yaml_blob,
+                    flags=re.IGNORECASE | re.MULTILINE,
+                )
+                if media_match:
+                    media_type = self._normalize_media_type(media_match.group(1))
+        elif self._looks_like_yaml_rule_sections(rule.get("rules")):
+            media_token = self._text(rule.get("mediaType")) or "MOVIES"
+            yaml_blob = json.dumps(
+                {
+                    "mediaType": media_token,
+                    "rules": rule.get("rules") or [],
+                },
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+        else:
+            return rule
+
+        if not media_type:
+            media_type = "movie"
+            self.log(
+                f"[WARN] Maintainerr: YAML rule '{base_name}' did not declare media type; "
+                "defaulting to movie."
+            )
+
+        status, data, body = self._request(
+            maintainerr_url,
+            "/api/rules/yaml/decode",
+            method="POST",
+            payload={
+                "yaml": yaml_blob,
+                "mediaType": media_type,
+            },
+        )
+        if status < 200 or status >= 300:
+            raise RuntimeError(
+                f"Maintainerr: failed decoding YAML rule '{base_name}' (HTTP {status}): {body}"
+            )
+        if not isinstance(data, dict) or int(data.get("code") or 0) != 1:
+            raise RuntimeError(
+                f"Maintainerr: YAML decode failed for '{base_name}': {data.get('message') if isinstance(data, dict) else body}"
+            )
+        result_raw = data.get("result")
+        if not isinstance(result_raw, str) or not result_raw.strip():
+            raise RuntimeError(
+                f"Maintainerr: YAML decode returned empty result for '{base_name}'."
+            )
+        try:
+            decoded = json.loads(result_raw)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Maintainerr: YAML decode returned invalid JSON for '{base_name}': {exc}"
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise RuntimeError(
+                f"Maintainerr: YAML decode result is not an object for '{base_name}'."
+            )
+
+        decoded_rules = decoded.get("rules")
+        if not isinstance(decoded_rules, list):
+            raise RuntimeError(
+                f"Maintainerr: YAML decode result missing rules list for '{base_name}'."
+            )
+
+        decoded_media_type = self._normalize_media_type(decoded.get("mediaType")) or media_type
+        decoded_source["rules"] = decoded_rules
+        decoded_source["dataType"] = decoded_media_type
+        decoded_source.pop("yaml", None)
+        return decoded_source
+
     def _resolve_target_libraries(
         self,
         *,
@@ -385,6 +492,13 @@ class MaintainerrService:
             if self._text(name)
         ]
         if not requested_libraries:
+            requested_media_type = self._normalize_media_type(
+                rule.get("dataType") or rule.get("mediaType")
+            )
+            if requested_media_type:
+                typed = [lib for lib in libraries if self._token(lib.get("type")) == requested_media_type]
+                if typed:
+                    return typed
             return libraries
 
         target_libraries: list[dict[str, str]] = []
@@ -519,6 +633,7 @@ class MaintainerrService:
     def _desired_rule_payloads(
         self,
         *,
+        maintainerr_url: str,
         policy_rules: list[dict[str, Any]],
         libraries: list[dict[str, str]],
     ) -> list[dict[str, Any]]:
@@ -531,9 +646,14 @@ class MaintainerrService:
             base_name = self._text(rule.get("name"))
             if not base_name:
                 continue
+            resolved_rule = self._decode_yaml_rule_payload(
+                maintainerr_url=maintainerr_url,
+                rule=rule,
+                base_name=base_name,
+            )
             description = self._text(rule.get("description")) or "Seeded by bootstrap policy"
             target_libraries = self._resolve_target_libraries(
-                rule=rule,
+                rule=resolved_rule,
                 libraries=libraries,
                 by_title=by_title,
                 rule_name=base_name,
@@ -542,10 +662,10 @@ class MaintainerrService:
                 self.log(f"[WARN] Maintainerr: no compatible libraries found for rule '{base_name}'.")
                 continue
 
-            if isinstance(rule.get("rules"), list):
+            if isinstance(resolved_rule.get("rules"), list):
                 desired.extend(
                     self._native_rule_payloads(
-                        rule=rule,
+                        rule=resolved_rule,
                         base_name=base_name,
                         description=description,
                         target_libraries=target_libraries,
@@ -553,8 +673,8 @@ class MaintainerrService:
                 )
                 continue
 
-            conditions = rule.get("conditions") or {}
-            actions = rule.get("actions") or {}
+            conditions = resolved_rule.get("conditions") or {}
+            actions = resolved_rule.get("actions") or {}
             if not isinstance(conditions, dict):
                 conditions = {}
             if not isinstance(actions, dict):
@@ -630,6 +750,7 @@ class MaintainerrService:
             raise RuntimeError("Maintainerr: no compatible media-server libraries available.")
 
         desired_rules = self._desired_rule_payloads(
+            maintainerr_url=maintainerr_url,
             policy_rules=policy_rules,
             libraries=libraries,
         )
