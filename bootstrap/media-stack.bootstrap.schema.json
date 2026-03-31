@@ -137,6 +137,23 @@
           "additionalProperties": true
         },
         "policy_relative_path": {"type": "string"},
+        "rules_library": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "include_defaults": {"type": "boolean"},
+            "relative_path": {"type": "string"},
+            "merge_mode": {
+              "type": "string",
+              "enum": ["append", "replace"]
+            },
+            "enabled_files": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          },
+          "additionalProperties": true
+        },
         "policy": {"type": "object"}
       },
       "additionalProperties": true

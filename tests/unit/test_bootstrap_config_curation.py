@@ -159,6 +159,11 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         retention = policy.get("retention") or {}
         self.assertEqual(int(retention.get("max_disk_used_percent", 0)), 65)
         self.assertGreater(int(retention.get("target_disk_used_percent", 0)), 0)
+        rules_library = maintainerr.get("rules_library") or {}
+        self.assertTrue(bool(rules_library.get("enabled")))
+        self.assertTrue(bool(rules_library.get("include_defaults")))
+        self.assertEqual(str(rules_library.get("merge_mode") or "").lower(), "append")
+        self.assertIn("maintainerr/rules", str(rules_library.get("relative_path") or ""))
 
     def test_flaresolverr_proxy_defaults_are_declared(self):
         flaresolverr = self.cfg.get("flaresolverr") or {}

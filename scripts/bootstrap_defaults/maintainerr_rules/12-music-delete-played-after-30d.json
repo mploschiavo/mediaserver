@@ -1,0 +1,18 @@
+{
+  "id": "music-delete-played-after-30d",
+  "enabled": true,
+  "description": "Delete played music that was added at least 30 days ago.",
+  "rule": {
+    "name": "Delete Played Music After 30 Days",
+    "libraries": [
+      "Music"
+    ],
+    "conditions": {
+      "watched": true,
+      "added_days_ago_gte": 30
+    },
+    "actions": {
+      "delete_item": true
+    }
+  }
+}

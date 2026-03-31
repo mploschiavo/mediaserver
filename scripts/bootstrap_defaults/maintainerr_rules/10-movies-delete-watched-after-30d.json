@@ -1,0 +1,19 @@
+{
+  "id": "movies-delete-watched-after-30d",
+  "enabled": true,
+  "description": "Delete watched movies that were added at least 30 days ago.",
+  "rule": {
+    "name": "Delete Watched Movies After 30 Days",
+    "libraries": [
+      "Movies"
+    ],
+    "conditions": {
+      "watched": true,
+      "added_days_ago_gte": 30
+    },
+    "actions": {
+      "delete_item": true,
+      "arr_delete_or_unmonitor": "delete"
+    }
+  }
+}

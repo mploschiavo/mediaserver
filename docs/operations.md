@@ -75,6 +75,8 @@ qB IP filter defaults are config-as-code under `media_hygiene.qbit_ipfilter` in
 Disk guardrails defaults are configured in `bootstrap/media-stack.bootstrap.json` under `disk_guardrails` (default max 65% used, target 58%, qB cleanup policy when over threshold, monitor path `/srv-stack/media`).
 Maintainerr is deployed as an optional app (`maintainerr.<domain>`) with persistent config at `/opt/data`.
 Maintainerr policy-as-code is also rendered to `/srv-config/maintainerr/policy.json` from the `maintainerr` section in bootstrap config.
+Rule definitions are managed as one-file-per-rule JSON under `scripts/bootstrap_defaults/maintainerr_rules/`
+with optional namespace-local overrides from `maintainerr.rules_library.relative_path`.
 
 qB queue and category-budget guardrails are configured under
 `download_clients.qbittorrent.queue_guardrails`:
@@ -123,4 +125,5 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 - [source-of-truth.md](source-of-truth.md)
 - [networking.md](networking.md)
 - [storage.md](storage.md)
+- [maintainerr-rules-library.md](maintainerr-rules-library.md)
 - [troubleshooting.md](troubleshooting.md)

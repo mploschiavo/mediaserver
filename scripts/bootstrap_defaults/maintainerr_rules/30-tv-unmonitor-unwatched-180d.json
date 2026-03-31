@@ -1,0 +1,18 @@
+{
+  "id": "tv-unmonitor-unwatched-180d",
+  "enabled": true,
+  "description": "Unmonitor TV series not watched in the last 6 months.",
+  "rule": {
+    "name": "Unmonitor Unwatched TV After 180 Days",
+    "libraries": [
+      "TV Shows"
+    ],
+    "conditions": {
+      "watched": false,
+      "last_watched_days_ago_gte": 180
+    },
+    "actions": {
+      "arr_unmonitor": true
+    }
+  }
+}

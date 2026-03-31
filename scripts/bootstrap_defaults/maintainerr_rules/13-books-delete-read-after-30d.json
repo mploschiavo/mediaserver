@@ -1,0 +1,18 @@
+{
+  "id": "books-delete-read-after-30d",
+  "enabled": true,
+  "description": "Delete read books that were added at least 30 days ago.",
+  "rule": {
+    "name": "Delete Read Books After 30 Days",
+    "libraries": [
+      "Books"
+    ],
+    "conditions": {
+      "watched": true,
+      "added_days_ago_gte": 30
+    },
+    "actions": {
+      "delete_item": true
+    }
+  }
+}

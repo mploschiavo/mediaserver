@@ -1,0 +1,27 @@
+{
+  "id": "leaving-soon-collection-5d",
+  "enabled": true,
+  "description": "Stage deletion candidates in a Jellyfin collection for 5 days before removal.",
+  "rule": {
+    "name": "Leaving Soon (5 Day Warning)",
+    "libraries": [
+      "Movies",
+      "TV Shows",
+      "Music",
+      "Books"
+    ],
+    "conditions": {
+      "matches_any_rule_ids": [
+        "movies-delete-watched-after-30d",
+        "tv-delete-watched-after-30d",
+        "music-delete-played-after-30d",
+        "books-delete-read-after-30d",
+        "remove-old-requested-unwatched-90d"
+      ]
+    },
+    "actions": {
+      "add_to_collection": "Leaving Soon",
+      "collection_days_before_delete": 5
+    }
+  }
+}

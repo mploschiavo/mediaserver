@@ -35,6 +35,18 @@ class BootstrapDefaultsTests(unittest.TestCase):
         self.assertEqual(loaded.get("version"), 1)
         self.assertIsInstance(loaded.get("rules"), list)
 
+    def test_repo_maintainerr_rule_library_defaults_are_valid(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        rules_dir = repo_root / "scripts" / "bootstrap_defaults" / "maintainerr_rules"
+        files = sorted(rules_dir.glob("*.json"))
+        self.assertGreaterEqual(len(files), 5)
+        for rule_file in files:
+            raw = json.loads(rule_file.read_text(encoding="utf-8"))
+            if "rule" in raw:
+                self.assertIsInstance(raw.get("rule"), dict, msg=f"invalid rule in {rule_file}")
+            else:
+                self.assertIsInstance(raw, dict, msg=f"invalid object in {rule_file}")
+
 
 if __name__ == "__main__":
     unittest.main()

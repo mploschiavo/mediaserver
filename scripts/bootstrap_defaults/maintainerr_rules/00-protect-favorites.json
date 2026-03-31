@@ -1,0 +1,21 @@
+{
+  "id": "protect-favorites",
+  "enabled": true,
+  "description": "Never auto-delete media users explicitly favorited.",
+  "rule": {
+    "name": "Protect Favorited Media",
+    "libraries": [
+      "Movies",
+      "TV Shows",
+      "Music",
+      "Books"
+    ],
+    "conditions": {
+      "favorited_by_any_user": true
+    },
+    "actions": {
+      "protect_item": true,
+      "exclude_from_deletion": true
+    }
+  }
+}

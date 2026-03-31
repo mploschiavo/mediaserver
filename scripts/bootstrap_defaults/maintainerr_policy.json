@@ -7,38 +7,5 @@
     "protect_unwatched_days": 30,
     "minimum_rating_to_keep": 6.5
   },
-  "rules": [
-    {
-      "name": "Purge watched movies after 120 days",
-      "libraries": ["Movies"],
-      "conditions": {
-        "watched": true,
-        "not_watched_for_days": 120
-      },
-      "actions": {
-        "delete_item": true
-      }
-    },
-    {
-      "name": "Purge watched episodes after 45 days",
-      "libraries": ["TV Shows"],
-      "conditions": {
-        "watched": true,
-        "not_watched_for_days": 45
-      },
-      "actions": {
-        "delete_item": true
-      }
-    },
-    {
-      "name": "Keep top-rated media",
-      "libraries": ["Movies", "TV Shows"],
-      "conditions": {
-        "community_rating_gte": 7.5
-      },
-      "actions": {
-        "protect_item": true
-      }
-    }
-  ]
+  "rules": []
 }

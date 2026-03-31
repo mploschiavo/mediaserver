@@ -223,7 +223,7 @@ The bootstrap pipeline configures these OTB when enabled:
 - Disk usage guardrails with qB cleanup policy (`disk_guardrails`, default max 65% used on `/srv-stack`)
 - qB category budget guardrails (queue count + optional per-category size and weighted-share pruning)
 - Global media hygiene (failed-queue cleanup + temp/zero-byte/orphan cleanup + dedupe pass + qB IP filter refresh/cache)
-- Maintainerr app (`maintainerr.<domain>`) + policy-as-code artifact generation (`/srv-config/maintainerr/policy.json`)
+- Maintainerr app (`maintainerr.<domain>`) + policy-as-code artifact generation (`/srv-config/maintainerr/policy.json`) from per-rule JSON library (`scripts/bootstrap_defaults/maintainerr_rules/*.json`)
 
 ## Service URLs
 
@@ -280,6 +280,7 @@ For retention and grooming policy:
 Deep guidance:
 - [docs/premium-ux.md](docs/premium-ux.md)
 - [docs/troubleshooting.md](docs/troubleshooting.md)
+- [docs/maintainerr-rules-library.md](docs/maintainerr-rules-library.md)
 
 ## Repo Layout
 

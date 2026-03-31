@@ -1199,6 +1199,13 @@
       }
     },
     "policy_relative_path": "maintainerr/policy.json",
+    "rules_library": {
+      "enabled": true,
+      "include_defaults": true,
+      "relative_path": "maintainerr/rules",
+      "merge_mode": "append",
+      "enabled_files": []
+    },
     "policy": {
       "retention": {
         "max_disk_used_percent": 65,
