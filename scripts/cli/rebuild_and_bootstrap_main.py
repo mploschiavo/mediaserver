@@ -8,10 +8,8 @@ https://matthewloschiavo.com
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
-import re
 import shlex
 import subprocess
 import sys
@@ -19,10 +17,27 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
-from urllib import request
 
 from core.kube import resolve_kubectl_binary
 from core.phase_tracker import PhaseTracker
+
+from cli.bootstrap_notification_service import (
+    BootstrapNotificationConfig,
+    BootstrapNotificationService,
+)
+from cli.rebuild_manifest_overrides_service import (
+    RebuildManifestOverridesConfig,
+    RebuildManifestOverridesService,
+)
+from cli.rebuild_namespace_service import RebuildNamespaceConfig, RebuildNamespaceService
+from cli.rebuild_script_runner_service import (
+    RebuildScriptRunnerConfig,
+    RebuildScriptRunnerService,
+)
+from cli.rebuild_secret_preservation_service import (
+    RebuildSecretPreservationConfig,
+    RebuildSecretPreservationService,
+)
 
 
 def ts() -> str:
@@ -80,6 +95,53 @@ class RebuildBootstrapRunner:
     kubectl: list[str]
     tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
     backup_secret_values: dict[str, str] = field(default_factory=dict)
+
+    def _notification_service(self) -> BootstrapNotificationService:
+        return BootstrapNotificationService(
+            cfg=BootstrapNotificationConfig(
+                alert_webhook_url=self.cfg.alert_webhook_url,
+            )
+        )
+
+    def _script_runner_service(self) -> RebuildScriptRunnerService:
+        return RebuildScriptRunnerService(
+            cfg=RebuildScriptRunnerConfig(
+                root_dir=self.cfg.root_dir,
+                namespace=self.cfg.namespace,
+            )
+        )
+
+    def _secret_preservation_service(self) -> RebuildSecretPreservationService:
+        return RebuildSecretPreservationService(
+            cfg=RebuildSecretPreservationConfig(
+                namespace=self.cfg.namespace,
+                secret_name=self.cfg.secret_name,
+                kubectl=self.kubectl,
+            ),
+            info=info,
+            run_kubectl=self._run_kubectl,
+        )
+
+    def _namespace_service(self) -> RebuildNamespaceService:
+        return RebuildNamespaceService(
+            cfg=RebuildNamespaceConfig(
+                namespace=self.cfg.namespace,
+                kubectl=self.kubectl,
+            ),
+            info=info,
+            run_kubectl=self._run_kubectl,
+        )
+
+    def _manifest_overrides_service(self) -> RebuildManifestOverridesService:
+        return RebuildManifestOverridesService(
+            cfg=RebuildManifestOverridesConfig(
+                namespace=self.cfg.namespace,
+                prepare_host_root=self.cfg.prepare_host_root,
+                ingress_domain=self.cfg.ingress_domain,
+                pvc_storage_class=self.cfg.pvc_storage_class,
+            ),
+            run_kubectl=self._run_kubectl,
+        )
 
     def run(self) -> int:
         self._validate_inputs()
@@ -207,29 +269,10 @@ class RebuildBootstrapRunner:
         raise RebuildError(f"Unsupported profile: {self.cfg.profile}")
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
-        script_path = self.cfg.root_dir / "scripts" / script_name
-        merged_env = dict(os.environ)
-        merged_env.update({"NAMESPACE": self.cfg.namespace})
-        if env:
-            merged_env.update({k: str(v) for k, v in env.items()})
-
-        proc = subprocess.run(
-            ["bash", str(script_path), *args],
-            cwd=str(self.cfg.root_dir),
-            env=merged_env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if proc.stdout.strip():
-            print(proc.stdout.rstrip())
-        if proc.stderr.strip():
-            print(proc.stderr.rstrip(), file=sys.stderr)
-        if proc.returncode != 0:
-            raise RebuildError(
-                f"{script_name} failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in [str(script_path), *args])}"
-            )
+        try:
+            self._script_runner_service().run_script(script_name, *args, env=env)
+        except RuntimeError as exc:
+            raise RebuildError(str(exc)) from exc
 
     def _run_kubectl(
         self,
@@ -257,20 +300,7 @@ class RebuildBootstrapRunner:
         return proc
 
     def notify(self, status: str, message: str) -> None:
-        if not self.cfg.alert_webhook_url:
-            return
-        payload = json.dumps({"status": status, "message": message}).encode("utf-8")
-        req = request.Request(
-            self.cfg.alert_webhook_url,
-            data=payload,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            with request.urlopen(req, timeout=8):
-                return
-        except Exception:
-            return
+        self._notification_service().notify(status, message)
 
     def prepare_host_directories(self) -> None:
         if self.cfg.storage_mode == "legacy-hostpath":
@@ -281,217 +311,35 @@ class RebuildBootstrapRunner:
         raise SkipPhase()
 
     def backup_existing_secret_values(self) -> None:
-        if self.cfg.preserve_secret_on_rebuild != "1":
-            info("Secret preservation disabled (PRESERVE_SECRET_ON_REBUILD=0).")
-            return
-
-        proc = subprocess.run(
-            [*self.kubectl, "-n", self.cfg.namespace, "get", "secret", self.cfg.secret_name, "-o", "json"],
-            capture_output=True,
-            text=True,
-            check=False,
+        self.backup_secret_values = self._secret_preservation_service().backup_existing_values(
+            self.cfg.preserve_secret_on_rebuild,
         )
-        if proc.returncode != 0:
-            info(f"No existing secret {self.cfg.namespace}/{self.cfg.secret_name} found to preserve.")
-            return
-
-        payload = json.loads(proc.stdout or "{}")
-        data = payload.get("data") or {}
-        if not isinstance(data, dict):
-            data = {}
-
-        keys = [
-            "QBITTORRENT_USERNAME",
-            "QBITTORRENT_PASSWORD",
-            "SABNZBD_API_KEY",
-            "STACK_ADMIN_USERNAME",
-            "STACK_ADMIN_PASSWORD",
-            "JELLYFIN_API_KEY",
-            "JELLYFIN_USER_ID",
-            "UNPACKERR_SONARR_API_KEY",
-            "UNPACKERR_RADARR_API_KEY",
-            "UNPACKERR_LIDARR_API_KEY",
-            "UNPACKERR_READARR_API_KEY",
-        ]
-
-        restored: dict[str, str] = {}
-        for key in keys:
-            encoded = str(data.get(key) or "").strip()
-            if not encoded:
-                continue
-            try:
-                decoded = base64.b64decode(encoded).decode("utf-8")
-            except Exception:
-                continue
-            if decoded:
-                restored[key] = decoded
-
-        self.backup_secret_values = restored
-        if restored:
-            info(
-                f"Backed up {len(restored)} secret key(s) from "
-                f"{self.cfg.namespace}/{self.cfg.secret_name}."
-            )
-        else:
-            info(
-                f"Secret {self.cfg.namespace}/{self.cfg.secret_name} exists but has no matching keys to preserve."
-            )
 
     def restore_secret_values_from_backup(self) -> None:
-        if not self.backup_secret_values:
-            info("No preserved secret values to restore.")
-            return
-
-        exists = subprocess.run(
-            [*self.kubectl, "-n", self.cfg.namespace, "get", "secret", self.cfg.secret_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if exists.returncode != 0:
-            info(
-                f"Secret {self.cfg.namespace}/{self.cfg.secret_name} missing after apply; "
-                "creating it before restore."
-            )
-            manifest = (
-                "apiVersion: v1\n"
-                "kind: Secret\n"
-                "metadata:\n"
-                f"  name: {self.cfg.secret_name}\n"
-                f"  namespace: {self.cfg.namespace}\n"
-                "type: Opaque\n"
-                "stringData: {}\n"
-            )
-            self._run_kubectl(["apply", "-f", "-"], input_text=manifest)
-
-        patch_payload = json.dumps({"stringData": self.backup_secret_values})
-        self._run_kubectl(
-            [
-                "-n",
-                self.cfg.namespace,
-                "patch",
-                "secret",
-                self.cfg.secret_name,
-                "--type",
-                "merge",
-                "-p",
-                patch_payload,
-            ]
-        )
-        info(f"Restored preserved values into {self.cfg.namespace}/{self.cfg.secret_name}.")
+        self._secret_preservation_service().restore_values(self.backup_secret_values)
 
     def delete_namespace_optional(self) -> None:
-        if self.cfg.delete_namespace != "1":
+        handled = self._namespace_service().delete_namespace_optional(self.cfg.delete_namespace)
+        if not handled:
             raise SkipPhase()
 
-        exists = subprocess.run(
-            [*self.kubectl, "get", "namespace", self.cfg.namespace],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if exists.returncode != 0:
-            info(f"Namespace/{self.cfg.namespace} does not exist; continuing")
-            return
-
-        info(f"Deleting namespace/{self.cfg.namespace}")
-        self._run_kubectl(["delete", "namespace", self.cfg.namespace, "--wait=false"])
-        self.wait_for_namespace_deleted()
-
     def wait_for_namespace_deleted(self, max_wait_seconds: int = 600) -> None:
-        waited = 0
-        while True:
-            probe = subprocess.run(
-                [*self.kubectl, "get", "namespace", self.cfg.namespace],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if probe.returncode != 0:
-                return
-            if waited >= max_wait_seconds:
-                raise RebuildError(
-                    f"Namespace '{self.cfg.namespace}' is still terminating after {max_wait_seconds}s."
-                )
-            info(f"Waiting for namespace/{self.cfg.namespace} deletion (elapsed {waited}s)")
-            time.sleep(5)
-            waited += 5
+        try:
+            self._namespace_service().wait_for_namespace_deleted(max_wait_seconds=max_wait_seconds)
+        except RuntimeError as exc:
+            raise RebuildError(str(exc)) from exc
 
     def _stream_with_manifest_overrides(self, text: str) -> str:
-        out = re.sub(
-            r"namespace:[ \t]*media-stack\b",
-            f"namespace: {self.cfg.namespace}",
-            text,
-        )
-        out = re.sub(
-            r"(?m)^name:[ \t]*media-stack$",
-            f"name: {self.cfg.namespace}",
-            out,
-        )
-        out = out.replace("/srv/media-stack", self.cfg.prepare_host_root)
-        out = re.sub(
-            r"([A-Za-z0-9-]+)\.local",
-            rf"\1.{self.cfg.ingress_domain}",
-            out,
-        )
-        return out
+        return self._manifest_overrides_service().stream_with_manifest_overrides(text)
 
     def _inject_storage_class(self, text: str) -> str:
-        storage_class = self.cfg.pvc_storage_class.strip()
-        if not storage_class:
-            return text
-
-        lines = text.splitlines()
-        out: list[str] = []
-        in_pvc = False
-        in_spec = False
-        inserted = False
-
-        for line in lines:
-            if re.match(r"^kind:[ \t]*PersistentVolumeClaim[ \t]*$", line):
-                in_pvc = True
-                in_spec = False
-                inserted = False
-                out.append(line)
-                continue
-
-            if re.match(r"^---[ \t]*$", line):
-                if in_pvc and in_spec and not inserted:
-                    out.append(f"  storageClassName: {storage_class}")
-                in_pvc = False
-                in_spec = False
-                inserted = False
-                out.append(line)
-                continue
-
-            if in_pvc and re.match(r"^[ \t]*spec:[ \t]*$", line):
-                in_spec = True
-                out.append(line)
-                continue
-
-            if in_pvc and in_spec and re.match(r"^[ \t]*storageClassName:[ \t]*", line):
-                out.append(f"  storageClassName: {storage_class}")
-                inserted = True
-                continue
-
-            if in_pvc and in_spec and not inserted and re.match(r"^[ \t]*resources:[ \t]*$", line):
-                out.append(f"  storageClassName: {storage_class}")
-                inserted = True
-
-            out.append(line)
-
-        if in_pvc and in_spec and not inserted:
-            out.append(f"  storageClassName: {storage_class}")
-
-        suffix = "\n" if text.endswith("\n") else ""
-        return "\n".join(out) + suffix
+        return self._manifest_overrides_service().inject_storage_class(text)
 
     def _apply_manifest_text_with_overrides(self, text: str) -> None:
-        patched = self._inject_storage_class(self._stream_with_manifest_overrides(text))
-        self._run_kubectl(["apply", "-f", "-"], input_text=patched)
+        self._manifest_overrides_service().apply_manifest_text_with_overrides(text)
 
     def _apply_manifest_file_with_overrides(self, file_path: Path) -> None:
-        self._apply_manifest_text_with_overrides(file_path.read_text(encoding="utf-8"))
+        self._manifest_overrides_service().apply_manifest_file_with_overrides(file_path)
 
     def apply_manifests_for_profile(self) -> None:
         profile_dir = self.cfg.root_dir / "k8s" / "profiles" / self.cfg.profile
