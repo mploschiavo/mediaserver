@@ -27,6 +27,16 @@ This runs `tests/e2e/playwright/tests/screenshot-capture.spec.ts` and writes one
 The capture flow now attempts app login first (using credentials from env/Kubernetes secret),
 so screenshots reflect authenticated dashboards rather than pre-login shells.
 
+Sample authenticated captures:
+
+![Homepage](apps/homepage_local.png)
+
+![Jellyfin](apps/jellyfin_local.png)
+
+![Jellyseerr](apps/jellyseerr_local.png)
+
+![Maintainerr](apps/maintainerr_local.png)
+
 ## Capture Kubernetes Terminal Snapshots
 
 ```bash
@@ -56,3 +66,8 @@ This writes timestamped `.txt` evidence files for:
 - one full cluster snapshot batch
 
 For architecture visuals, see `docs/diagrams/`.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

@@ -126,3 +126,8 @@ bash scripts/stack-status.sh
 bash scripts/verify-flow.sh
 ```
 `scripts/verify-flow.sh` now includes writable-path checks to catch permission/path mismatches early.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

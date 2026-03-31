@@ -3,6 +3,11 @@ kind: Job
 metadata:
   name: media-stack-prowlarr-auto-indexers
   namespace: media-stack
+  annotations:
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 600

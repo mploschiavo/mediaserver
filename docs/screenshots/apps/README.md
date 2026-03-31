@@ -23,3 +23,8 @@ Current host coverage:
 - `sabnzbd_local.png`
 - `maintainerr_local.png`
 - `tautulli_local.png`
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

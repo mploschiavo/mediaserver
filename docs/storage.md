@@ -113,3 +113,8 @@ This enables host folder prep helpers (`prepare-host.sh`, `fix-media-perms.sh`) 
 bash scripts/backup-stack.sh
 bash scripts/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

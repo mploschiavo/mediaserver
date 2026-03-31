@@ -24,3 +24,8 @@ docker exec -it jellyfin ls /dev/dri
 
 ## Jellyfin settings
 Enable Intel Quick Sync in Playback / Transcoding.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

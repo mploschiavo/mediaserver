@@ -1,5 +1,7 @@
 # Operations Runbook
 
+![Operating loop](diagrams/operating-loop.png)
+
 ## Day 0: Install
 
 ```bash
@@ -41,6 +43,8 @@ bash scripts/bootstrap-all.sh
 bash scripts/run-bootstrap-job.sh
 bash scripts/verify-flow.sh [NAMESPACE]
 ```
+
+![Bootstrap runtime model](diagrams/bootstrap-runtime-model.png)
 
 Checkpoint/resume controls:
 ```bash
@@ -129,3 +133,8 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 - [storage.md](storage.md)
 - [maintainerr-rules-library.md](maintainerr-rules-library.md)
 - [troubleshooting.md](troubleshooting.md)
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

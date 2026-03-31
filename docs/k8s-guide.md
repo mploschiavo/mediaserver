@@ -237,3 +237,8 @@ If PVCs are stuck `Pending`, inspect claim events and storage class:
 kubectl -n media-stack describe pvc
 kubectl get storageclass
 ```
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

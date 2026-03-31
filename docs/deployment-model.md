@@ -4,6 +4,8 @@
 
 The stack is deployed into a Kubernetes namespace and converged by a bootstrap pipeline.
 
+![Deployment model](diagrams/deployment-model.png)
+
 Flow:
 1. Apply profile manifests.
 2. Generate or reconcile secrets.
@@ -64,3 +66,8 @@ bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 
 Default mode is StorageClass/PVC-driven, so remote operators can apply manifests from any machine with cluster access.
 If you intentionally run `--storage-mode legacy-hostpath`, run host prep helpers on the target node hosting `/srv/media-stack`.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

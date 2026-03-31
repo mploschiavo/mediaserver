@@ -39,3 +39,8 @@ If production diverges from Git-defined state:
 - rerun bootstrap/reconcile scripts
 - capture the drift cause
 - either promote intended change to Git or remove runtime-only change
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

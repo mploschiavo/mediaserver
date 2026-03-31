@@ -33,6 +33,8 @@ bash scripts/render-architecture-diagrams.sh
 
 ## Logical Topology
 
+![Logical topology](diagrams/logical-topology.png)
+
 ```mermaid
 flowchart LR
   subgraph Clients[Client Surface]
@@ -81,6 +83,8 @@ flowchart LR
 - See [`docs/diagrams/network-protocol-topology.svg`](diagrams/network-protocol-topology.svg)
 - Includes client-to-ingress routing, service/pod boundaries, protocol labels, and PVC data paths.
 
+![Network and protocol topology](diagrams/network-protocol-topology.png)
+
 ## Request-to-Playback Data Path
 
 ```mermaid
@@ -116,9 +120,20 @@ Key rendered artifacts:
 - [Technology adapter model](diagrams/technology-adapter-model.svg)
 - [Bootstrap runtime model](diagrams/bootstrap-runtime-model.svg)
 
+![Software component model](diagrams/software-component-model.png)
+
+![Technology adapter model](diagrams/technology-adapter-model.png)
+
+![Bootstrap runtime model](diagrams/bootstrap-runtime-model.png)
+
 ## Architectural Guarantees
 
 - Rerunning deployment and bootstrap is expected and supported.
 - Downloader/import path conventions are explicit and codified.
 - Namespace-scoped deployments allow side-by-side validation.
 - Drift is reduced through periodic reconcile and explicit verification.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

@@ -8,6 +8,7 @@ Maintainer:
 - Matthew Loschiavo
 - matthewloschiavo.com
 - mploschiavo@gmail.com
+- www.linkedin.com/in/matthewloschiavo
 
 ## Why This Exists
 
@@ -49,6 +50,14 @@ Diagram set:
 - [Software component model](docs/diagrams/software-component-model.svg)
 - [Technology adapter model](docs/diagrams/technology-adapter-model.svg)
 - [Bootstrap runtime model](docs/diagrams/bootstrap-runtime-model.svg)
+
+Architecture previews:
+
+![Logical topology](docs/diagrams/logical-topology.png)
+
+![Network and protocol topology](docs/diagrams/network-protocol-topology.png)
+
+![Software component model](docs/diagrams/software-component-model.png)
 
 Regenerate diagrams:
 ```bash

@@ -22,3 +22,8 @@ Each run emits a UTC timestamp prefix:
 - `<timestamp>-describe-ingress.txt`
 
 Use these as reproducible operational evidence artifacts in PRs, release notes, or incident timelines.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

@@ -2,6 +2,8 @@
 
 This platform follows a strict desired-state hierarchy.
 
+![Source-of-truth flow](diagrams/source-of-truth-flow.png)
+
 ## Canonical Sources
 
 1. **Git-tracked manifests and configs**
@@ -45,3 +47,8 @@ Not allowed for long-term operation:
 4. Run verification scripts.
 
 See [docs/gitops.md](gitops.md).
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

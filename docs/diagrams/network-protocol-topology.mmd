@@ -1,88 +1,86 @@
-flowchart TB
-  subgraph Z0["Zone 0: Client + LAN (example 192.168.1.0/24)"]
+flowchart TD
+  subgraph Z0["Zone 0: Clients + LAN (example 192.168.1.0/24)"]
     U["Users\nWeb / Mobile / TV"]
-    DNS["LAN DNS + host overrides\n*.local records"]
+    DNS["LAN DNS + hosts overrides\n*.local"]
     FW["Router / Firewall / NAT"]
   end
 
   subgraph Z1["Zone 1: Kubernetes Edge (node IPs, e.g. 192.168.1.60)"]
-    INGR["Ingress Controller\nTraefik or NGINX\nHTTP and HTTPS entrypoint"]
-    HOSTS["Ingress host rules\nhomepage.local, jellyfin.local,\njellyseerr.local, sonarr.local,\nradarr.local, lidarr.local, readarr.local,\nbazarr.local, prowlarr.local,\nqbittorrent.local, sabnzbd.local,\ntautulli.local, maintainerr.local"]
+    INGR["Ingress Controller\nTraefik/NGINX\n443/80 entrypoint"]
+    HOSTS["Ingress host routes\nhomepage.local, jellyfin.local,\n*jellyseerr/arr/qb/sab*\nmaintainerr.local, tautulli.local"]
   end
 
-  subgraph Z2["Zone 2: Service Network (Service CIDR, e.g. 10.152.183.0/24)"]
-    S_UI["ClusterIP services (UI/API)\nsvc/homepage:3000\nsvc/jellyfin:8096\nsvc/jellyseerr:5055\nsvc/tautulli:8181\nsvc/maintainerr:6246"]
-    S_STACK["ClusterIP services (automation)\nsvc/sonarr:8989\nsvc/radarr:7878\nsvc/lidarr:8686\nsvc/readarr:8787\nsvc/bazarr:6767\nsvc/prowlarr:9696"]
-    S_DL["ClusterIP services (download clients)\nsvc/qbittorrent:8080\nsvc/sabnzbd:8080\nsvc/flaresolverr:8191\nsvc/unpackerr:5656"]
+  subgraph Z2["Zone 2: Service CIDR (example 10.152.183.0/24)"]
+    S_UI["UI/API Services\nhomepage:3000 jellyfin:8096\njellyseerr:5055 maintainerr:6246\ntautulli:8181"]
+    S_AUT["Automation Services\nsonarr:8989 radarr:7878\nlidarr:8686 readarr:8787\nbazarr:6767 prowlarr:9696"]
+    S_DL["Download Services\nqbittorrent:8080 sabnzbd:8080\nflaresolverr:8191 unpackerr:5656"]
   end
 
-  subgraph Z3["Zone 3: Pod Network (Pod CIDR, e.g. 10.1.0.0/16)"]
-    P_UI["UI/Portal Deployments\nhomepage, jellyfin, jellyseerr\nreplicas: 1..N"]
-    P_ARR["ARR/Prowlarr Deployments\nsonarr, radarr, lidarr,\nreadarr, bazarr, prowlarr\nreplicas: 1..N"]
-    P_DL["Downloader/Support Deployments\nqbittorrent, sabnzbd,\nflaresolverr, unpackerr,\ntautulli, maintainerr\nreplicas: 0..N"]
-    P_JOB["Jobs/CronJobs\nbootstrap, prewarm,\nauto-indexer, hygiene"]
+  subgraph Z3["Zone 3: Pod CIDR (example 10.1.0.0/16)"]
+    P_UI["UI Pods\nhomepage jellyfin jellyseerr"]
+    P_AUT["Automation Pods\narr + bazarr + prowlarr"]
+    P_DL["Downloader Pods\nqB sab flaresolverr unpackerr\ntautulli maintainerr"]
+    P_JOB["Job/Cron Pods\nbootstrap prewarm hygiene indexers"]
   end
 
   subgraph Z4["Zone 4: Storage/Data Plane (PVC-backed)"]
-    PVC_CFG["Config PVC set\nper app config volumes"]
-    PVC_DATA["Download PVC set\n/data/torrents + /data/usenet"]
-    PVC_MEDIA["Media PVC\n/media/movies + /media/tv\n/media/music + /media/books"]
+    PVC_CFG["Config PVCs\nper app state"]
+    PVC_DATA["Download PVCs\n/data/torrents + /data/usenet"]
+    PVC_MEDIA["Media PVC\n/media/movies /tv /music /books"]
   end
 
-  subgraph Z5["Zone 5: External Providers (Internet)"]
-    IDX["Indexers / Trackers / NZB providers"]
-    META["Metadata + subtitle providers\nTMDB / TVDB / OpenSubtitles / etc"]
+  subgraph Z5["Zone 5: External Providers"]
+    IDX["Indexers / Trackers / NZB"]
+    META["Metadata + Subtitles\nTMDB TVDB OpenSubtitles"]
     IPTV["M3U + XMLTV feeds"]
-    NTFY["Notifications\nWebhook / Discord / Telegram / Email"]
+    NTFY["Notification targets"]
   end
 
-  NOTE["Legend / scaling notes\n1) Pod IPs are dynamic per restart/scale event.\n2) Service ClusterIP + DNS names are stable in-cluster.\n3) Scaling changes pod count, not service hostname contract.\n4) CIDR values above are examples and may differ by cluster."]
+  LEG["Legend\nPod IPs are dynamic.\nService DNS and ports are stable.\nScaling changes replicas, not service contracts.\nCIDRs shown are examples."]
 
-  U -->|HTTPS 443| DNS
-  DNS -->|A/hosts lookup| FW
-  FW -->|443 -> ingress entrypoint| INGR
-  HOSTS -. matched by hostname .-> INGR
+  U -->|HTTPS| DNS --> FW -->|443/80| INGR
+  HOSTS -. hostname match .-> INGR
 
-  INGR -->|HTTP/HTTPS| S_UI
-  INGR -->|HTTP/HTTPS| S_STACK
-  INGR -->|HTTP/HTTPS| S_DL
+  INGR --> S_UI
+  INGR --> S_AUT
+  INGR --> S_DL
 
-  S_UI -->|service routing| P_UI
-  S_STACK -->|service routing| P_ARR
-  S_DL -->|service routing| P_DL
+  S_UI --> P_UI
+  S_AUT --> P_AUT
+  S_DL --> P_DL
 
-  P_ARR -->|HTTP API| S_DL
-  P_ARR -->|HTTP API| S_STACK
-  P_ARR -->|HTTP API| S_UI
-  P_DL -->|HTTP API| S_STACK
+  P_AUT -->|HTTP API| S_DL
+  P_AUT -->|HTTP API| S_AUT
+  P_AUT -->|HTTP API| S_UI
+  P_DL -->|HTTP API| S_AUT
   P_DL -->|HTTP API| S_UI
-  P_JOB -->|HTTP API automation| S_UI
-  P_JOB -->|HTTP API automation| S_STACK
-  P_JOB -->|HTTP API automation| S_DL
+  P_JOB -->|API automation| S_UI
+  P_JOB -->|API automation| S_AUT
+  P_JOB -->|API automation| S_DL
 
-  P_UI -->|read/write| PVC_CFG
-  P_ARR -->|read/write| PVC_CFG
-  P_DL -->|read/write| PVC_CFG
-  P_JOB -->|read/write| PVC_CFG
+  P_UI --> PVC_CFG
+  P_AUT --> PVC_CFG
+  P_DL --> PVC_CFG
+  P_JOB --> PVC_CFG
 
-  P_DL -->|download payloads| PVC_DATA
-  P_ARR -->|import + hardlink/move| PVC_DATA
-  P_ARR -->|library manage| PVC_MEDIA
+  P_DL -->|downloads| PVC_DATA
+  P_AUT -->|import/hardlink| PVC_DATA
+  P_AUT -->|library mgmt| PVC_MEDIA
   P_UI -->|library read| PVC_MEDIA
-  P_JOB -->|maintenance| PVC_DATA
-  P_JOB -->|maintenance| PVC_MEDIA
+  P_JOB -->|cleanup| PVC_DATA
+  P_JOB -->|cleanup| PVC_MEDIA
 
-  P_ARR -->|HTTPS| IDX
-  P_ARR -->|HTTPS| META
-  P_UI -->|HTTPS| META
-  P_UI -->|HTTP/HTTPS| IPTV
-  P_JOB -->|HTTPS| IPTV
-  P_JOB -->|HTTPS| NTFY
-  P_UI -->|HTTPS| NTFY
+  P_AUT --> IDX
+  P_AUT --> META
+  P_UI --> META
+  P_UI --> IPTV
+  P_JOB --> IPTV
+  P_JOB --> NTFY
+  P_UI --> NTFY
 
-  NOTE -. applies to all zones .- Z0
-  NOTE -. applies to all zones .- Z1
-  NOTE -. applies to all zones .- Z2
-  NOTE -. applies to all zones .- Z3
-  NOTE -. applies to all zones .- Z4
-  NOTE -. applies to all zones .- Z5
+  LEG -. applies .- Z0
+  LEG -. applies .- Z1
+  LEG -. applies .- Z2
+  LEG -. applies .- Z3
+  LEG -. applies .- Z4
+  LEG -. applies .- Z5

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Python bootstrap-all orchestration entrypoint."""
+"""Python bootstrap-all orchestration entrypoint.
+
+Media Automation Stack by Matthew Loschiavo:
+https://matthewloschiavo.com
+"""
 
 from __future__ import annotations
 
@@ -411,4 +415,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

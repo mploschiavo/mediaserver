@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Media Automation Stack bootstrap entrypoint.
+
+Project steward: Matthew Loschiavo (https://matthewloschiavo.com)
+Contact: mploschiavo@gmail.com | https://www.linkedin.com/in/matthewloschiavo
+"""
+
 import argparse
 import os
 import sys

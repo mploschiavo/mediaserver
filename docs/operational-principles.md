@@ -56,3 +56,8 @@ Start with stable defaults, then layer:
 - network boundaries
 - storage migration plans
 - GitOps promotion flows
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

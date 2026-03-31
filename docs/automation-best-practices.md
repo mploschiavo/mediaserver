@@ -37,3 +37,8 @@ This stack now supports end-to-end bootstrap automation, but these community pat
 2. Add Recyclarr for quality profile consistency.
 3. Introduce Buildarr only when you need full declarative lifecycle management for additional apps.
 4. Test any scale-to-zero strategy on non-critical services first.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

@@ -158,3 +158,8 @@ By default this stack now runs in native-first Jellyfin mode:
 - `jellyfin_home_rails.cleanup_collections_when_disabled=true`
 
 Then hard-refresh Jellyfin (`Ctrl+Shift+R`) and reopen Movies/Home.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

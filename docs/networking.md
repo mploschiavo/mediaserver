@@ -56,9 +56,16 @@ bash scripts/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
 Reference diagram:
 - [`docs/diagrams/network-protocol-topology.svg`](diagrams/network-protocol-topology.svg)
 
+![Network and protocol topology](diagrams/network-protocol-topology.png)
+
 ## TLS
 
 Optional LAN TLS helper:
 ```bash
 bash scripts/setup-lan-tls.sh
 ```
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

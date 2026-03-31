@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Python CLI for rebuild-and-bootstrap orchestration."""
+"""Python CLI for rebuild-and-bootstrap orchestration.
+
+Media Automation Stack by Matthew Loschiavo:
+https://matthewloschiavo.com
+"""
 
 from __future__ import annotations
 

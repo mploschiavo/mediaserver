@@ -64,3 +64,8 @@ Then in Jellyfin:
 ## Product Mindset
 
 Treat UX defaults as part of platform engineering, not a post-install cosmetic task.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

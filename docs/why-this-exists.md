@@ -31,3 +31,8 @@ This project exists to provide a declarative reference architecture where:
 - Explicit deployment profiles and namespace isolation.
 - Built-in verification scripts to confirm route health and service integrations.
 - Architecture/operations documentation suitable for handoff and long-term maintenance.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

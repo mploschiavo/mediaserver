@@ -44,3 +44,8 @@ Playwright split:
   - Deprecated in favor of `docs/first-run-wiring.md` and `docs/operations.md`.
 
 These scripts remain for backward compatibility and emit deprecation warnings.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

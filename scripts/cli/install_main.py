@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Python CLI for one-command install orchestration."""
+"""Python CLI for one-command install orchestration.
+
+Media Automation Stack by Matthew Loschiavo:
+https://matthewloschiavo.com
+"""
 
 from __future__ import annotations
 

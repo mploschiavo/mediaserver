@@ -5,6 +5,10 @@ metadata:
   namespace: media-stack
   annotations:
     kubernetes.io/ingress.class: public
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
 spec:
   ingressClassName: public
   rules:

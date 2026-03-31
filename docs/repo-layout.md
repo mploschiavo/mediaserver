@@ -34,3 +34,8 @@ These directories are intentionally introduced without breaking existing scripts
 - Keeps existing automation stable.
 - Makes migration to stronger GitOps patterns straightforward.
 - Improves onboarding for contributors by separating runtime assets from design/docs concerns.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

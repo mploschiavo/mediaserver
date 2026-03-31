@@ -1,5 +1,13 @@
 # Service Guide
 
+![UI surface map](diagrams/ui-surface-map.png)
+
+Reference authenticated screenshots:
+- [Homepage](screenshots/apps/homepage_local.png)
+- [Jellyfin](screenshots/apps/jellyfin_local.png)
+- [Jellyseerr](screenshots/apps/jellyseerr_local.png)
+- [Maintainerr](screenshots/apps/maintainerr_local.png)
+
 ## Jellyfin
 Primary media server. Reads finalized media from `/media/*` and renders it to clients.
 
@@ -70,3 +78,8 @@ Reverse proxy for nice local hostnames.
 ## Plex / Tautulli / FlareSolverr
 Optional extras.
 When FlareSolverr is enabled in bootstrap config, bootstrap reconciles a Prowlarr FlareSolverr indexer proxy and runs a proxy connection test automatically.
+
+---
+
+**Project Steward**
+Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)
