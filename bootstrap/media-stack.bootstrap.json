@@ -978,9 +978,9 @@
         "enableThemeVideos": true,
         "homesection0": "smalllibrarytiles",
         "homesection1": "resume",
-        "homesection2": "nextup",
-        "homesection3": "latestmedia",
-        "homesection4": "livetv",
+        "homesection2": "livetv",
+        "homesection3": "nextup",
+        "homesection4": "latestmedia",
         "homesection5": "none",
         "homesection6": "none",
         "homesection7": "none",
@@ -993,6 +993,9 @@
       "enabled": true,
       "exclude_collections": true,
       "exclude_playlists": true,
+      "additional_excluded_collection_types": [
+        "livetv"
+      ],
       "cleanup_managed_exclusions": true
     }
   },

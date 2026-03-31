@@ -146,6 +146,19 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertTrue(bool(custom.get("enableBackdrops")))
         self.assertTrue(bool(custom.get("enableLibraryBackdrops")))
 
+    def test_jellyfin_home_hides_static_livetv_tile_and_promotes_dynamic_livetv_row(self):
+        playback = self.cfg.get("jellyfin_playback") or {}
+        home_media = playback.get("home_media") or {}
+        excluded_types = {
+            str(item).strip().lower()
+            for item in (home_media.get("additional_excluded_collection_types") or [])
+            if str(item).strip()
+        }
+        self.assertIn("livetv", excluded_types)
+
+        custom = (playback.get("display_preferences") or {}).get("custom_prefs") or {}
+        self.assertEqual(str(custom.get("homesection2") or "").lower(), "livetv")
+
     def test_jellyfin_livetv_self_healing_defaults_are_enabled(self):
         live_tv = self.cfg.get("jellyfin_livetv") or {}
         self.assertTrue(bool(live_tv.get("enabled")))
