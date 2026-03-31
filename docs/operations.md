@@ -42,6 +42,23 @@ bash scripts/run-bootstrap-job.sh
 bash scripts/verify-flow.sh [NAMESPACE]
 ```
 
+Checkpoint/resume controls:
+```bash
+# default resume enabled
+bash scripts/bootstrap-all.sh
+
+# disable resume and force full phase rerun
+bash scripts/bootstrap-all.sh --no-resume
+
+# custom checkpoint state file
+bash scripts/bootstrap-all.sh --state-file .state/bootstrap-all-media-stack.json
+```
+
+Runtime overlays:
+- base + env overlays live under `config/runtime/`.
+- enable with `config_overlays.enabled=true` in your bootstrap config.
+- select env with `config_overlays.env` (`dev`, `stage`, `prod`).
+
 Optional periodic reconcile is available through Kubernetes CronJob manifests.
 Default scheduled jobs in `full` profile:
 - `media-stack-bootstrap-reconcile`: full idempotent reconcile loop

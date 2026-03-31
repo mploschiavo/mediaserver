@@ -23,6 +23,7 @@ from .config_models import (
 )
 from .enums import BootstrapMode
 from .technology_catalog import default_servarr_catalog
+from .top_level_config_model import TopLevelBootstrapConfig
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 CoerceListFn = Callable[[Any], list[Any]]
@@ -40,6 +41,7 @@ class BootstrapCliArgs:
     config_root: str
     wait_timeout: int
     auto_prowlarr_indexers: bool
+    runtime_env: str = "prod"
 
 
 @dataclass(frozen=True)
@@ -138,13 +140,62 @@ class BootstrapRuntimeFactoryDependencies:
 class BootstrapRuntimeFactoryService:
     deps: BootstrapRuntimeFactoryDependencies
 
-    def load_config(self, config_path: str) -> dict[str, Any]:
-        return json.loads(Path(config_path).read_text(encoding="utf-8"))
+    def _find_repo_root(self, start_path: Path) -> Path:
+        for candidate in [start_path, *start_path.parents]:
+            if (candidate / "bootstrap").is_dir() and (candidate / "scripts").is_dir():
+                return candidate
+        return start_path.parent
+
+    def _resolve_path(self, root_dir: Path, raw_path: str) -> Path:
+        candidate = Path(str(raw_path or "").strip())
+        if candidate.is_absolute():
+            return candidate
+        return (root_dir / candidate).resolve()
+
+    def load_config(self, config_path: str, runtime_env: str = "prod") -> dict[str, Any]:
+        config_file = Path(config_path).resolve()
+        loaded = json.loads(config_file.read_text(encoding="utf-8"))
+        model = TopLevelBootstrapConfig.from_dict(loaded)
+
+        overlay_cfg = model.config_overlays
+        selected_env = (
+            str(runtime_env or "").strip().lower()
+            or str(overlay_cfg.env or "").strip().lower()
+            or str(os.environ.get("MEDIA_STACK_ENV", "")).strip().lower()
+            or "prod"
+        )
+
+        root_dir = self._find_repo_root(config_file.parent)
+
+        if not overlay_cfg.enabled:
+            return model.to_dict()
+
+        merged: dict[str, Any] = {}
+        base_path = self._resolve_path(root_dir, overlay_cfg.base_path)
+        if base_path.exists():
+            base_cfg = json.loads(base_path.read_text(encoding="utf-8"))
+            merged = self.deps.deep_merge_objects(merged, TopLevelBootstrapConfig.from_dict(base_cfg).to_dict())
+
+        overlay_filename = overlay_cfg.env_overlays.get(selected_env, f"{selected_env}.json")
+        overlay_path = self._resolve_path(
+            root_dir,
+            str(Path(overlay_cfg.overlay_dir) / overlay_filename),
+        )
+        if overlay_path.exists():
+            overlay_cfg_data = json.loads(overlay_path.read_text(encoding="utf-8"))
+            merged = self.deps.deep_merge_objects(
+                merged,
+                TopLevelBootstrapConfig.from_dict(overlay_cfg_data).to_dict(),
+            )
+
+        merged = self.deps.deep_merge_objects(merged, model.to_dict())
+        return TopLevelBootstrapConfig.from_dict(merged).to_dict()
 
     def build_from_cli(self, args: BootstrapCliArgs) -> BootstrapRuntimeBuildResult:
-        return self.build(args, self.load_config(args.config_path))
+        return self.build(args, self.load_config(args.config_path, runtime_env=args.runtime_env))
 
     def build(self, args: BootstrapCliArgs, cfg: dict[str, Any]) -> BootstrapRuntimeBuildResult:
+        cfg = TopLevelBootstrapConfig.from_dict(cfg).to_dict()
         prowlarr_url = str(cfg.get("prowlarr_url") or "").strip().rstrip("/")
         arr_apps_raw = cfg.get("arr_apps", [])
 

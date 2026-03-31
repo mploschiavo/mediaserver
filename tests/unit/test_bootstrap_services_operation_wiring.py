@@ -41,6 +41,7 @@ class OperationWiringTests(unittest.TestCase):
             ensure_prowlarr_indexer=_noop,
             auto_add_tested_indexers=_noop,
             trigger_prowlarr_sync=_noop,
+            sync_arr_indexers_from_prowlarr=_noop,
         )
 
     def test_build_registry_wires_default_operations(self):

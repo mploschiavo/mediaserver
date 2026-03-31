@@ -65,3 +65,4 @@ class RunnerOperation(str, Enum):
     ENSURE_PROWLARR_INDEXER = "ensure_prowlarr_indexer"
     AUTO_ADD_TESTED_INDEXERS = "auto_add_tested_indexers"
     TRIGGER_PROWLARR_SYNC = "trigger_prowlarr_sync"
+    SYNC_ARR_INDEXERS_FROM_PROWLARR = "sync_arr_indexers_from_prowlarr"

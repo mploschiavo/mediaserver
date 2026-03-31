@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -214,6 +215,42 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         self.assertEqual(result.runtime.torrent_client_key, "transmission")
         self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
         self.assertEqual(result.runtime.media_server_backend, "emby")
+
+    def test_load_config_merges_base_and_env_overlay_when_enabled(self):
+        factory = self._factory()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "scripts").mkdir(parents=True)
+            (root / "bootstrap").mkdir(parents=True)
+            (root / "config" / "runtime" / "overlays").mkdir(parents=True)
+
+            (root / "config" / "runtime" / "base.json").write_text(
+                '{"trigger_indexer_sync": false, "prowlarr_url": "http://base:9696"}\n',
+                encoding="utf-8",
+            )
+            (root / "config" / "runtime" / "overlays" / "dev.json").write_text(
+                '{"trigger_indexer_sync": true, "download_clients": {"qbittorrent": {"name": "qB"}}}\n',
+                encoding="utf-8",
+            )
+            config_path = root / "bootstrap" / "config.json"
+            config_path.write_text(
+                (
+                    "{"
+                    '"config_overlays":{"enabled":true,"env":"prod",'
+                    '"base_path":"config/runtime/base.json","overlay_dir":"config/runtime/overlays"},'
+                    '"arr_apps":[],"prowlarr_url":"http://override:9696"'
+                    "}\n"
+                ),
+                encoding="utf-8",
+            )
+
+            merged = factory.load_config(str(config_path), runtime_env="dev")
+            self.assertTrue(bool(merged.get("trigger_indexer_sync")))
+            self.assertEqual(str(merged.get("prowlarr_url")), "http://override:9696")
+            self.assertEqual(
+                str((((merged.get("download_clients") or {}).get("qbittorrent") or {}).get("name") or "")),
+                "qB",
+            )
 
 
 if __name__ == "__main__":

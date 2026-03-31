@@ -119,6 +119,17 @@ class Runner:
         return key
 
     def detect_arr_api_base(self, service: str, port: int, api_key: str) -> str:
+        # Prefer system/status probes since Prowlarr does not expose /api/*/ping
+        # consistently across versions.
+        for base in ("/api/v3", "/api/v1", "/api"):
+            url = f"http://{service}:{port}{base}/system/status?apikey={api_key}"
+            try:
+                body = self.curl_text(url)
+                if body is not None:
+                    return base
+            except Exception:
+                continue
+        # Last-resort ping fallback for older servarr variants.
         for base in ("/api/v3", "/api/v1", "/api"):
             url = f"http://{service}:{port}{base}/ping?apikey={api_key}"
             try:
@@ -233,6 +244,24 @@ class Runner:
             else:
                 self._warn(f"{impl}: queue API returned unexpected payload shape")
 
+            indexers = self.curl_json(f"http://{service}:{port}{base}/indexer?apikey={key}")
+            if isinstance(indexers, list):
+                has_prowlarr = False
+                for item in indexers:
+                    if not isinstance(item, dict):
+                        continue
+                    impl_name = str(item.get("implementationName") or "").lower()
+                    impl_token = str(item.get("implementation") or "").lower()
+                    if "prowlarr" in impl_name or "prowlarr" in impl_token:
+                        has_prowlarr = True
+                        break
+                if has_prowlarr:
+                    self._ok(f"{impl}: Prowlarr-linked indexers present")
+                else:
+                    self._warn(f"{impl}: no Prowlarr-linked indexers found")
+            else:
+                self._warn(f"{impl}: indexer API returned unexpected payload")
+
             if impl in {"Lidarr", "Readarr"}:
                 import_lists = self.curl_json(
                     f"http://{service}:{port}{base}/importlist?apikey={key}"
@@ -299,15 +328,95 @@ class Runner:
                 self._ok("Jellyseerr API: Radarr mapping present")
             else:
                 self._fail("Jellyseerr API: Radarr mapping missing")
-            if isinstance(jellyfin_settings, dict) and jellyfin_settings.get("hostname"):
+
+            def has_jellyfin_mapping(payload: Any) -> bool:
+                if not isinstance(payload, dict):
+                    return False
+                if any(
+                    str(payload.get(key) or "").strip()
+                    for key in ("hostname", "ip", "name", "externalHostname", "serverId")
+                ):
+                    return True
+                if isinstance(payload.get("server"), dict):
+                    server = payload.get("server") or {}
+                    return any(
+                        str(server.get(key) or "").strip()
+                        for key in ("hostname", "ip", "name", "externalHostname", "serverId")
+                    )
+                return False
+
+            # API payload shape varies by Jellyseerr version; fall back to on-disk
+            # settings when API response omits legacy fields.
+            has_jellyfin = has_jellyfin_mapping(jellyfin_settings) or has_jellyfin_mapping(
+                settings.get("jellyfin")
+            )
+            if has_jellyfin:
                 self._ok("Jellyseerr API: Jellyfin mapping present")
             else:
                 self._fail("Jellyseerr API: Jellyfin mapping missing")
         else:
             self._fail("Jellyseerr API key missing in settings.json")
 
-        # qBittorrent + SAB API checks
         secret = self.get_secret("media-stack-secrets")
+
+        # Jellyfin library verification
+        jellyfin_key = self.secret_value(secret, "JELLYFIN_API_KEY")
+        if jellyfin_key:
+            try:
+                libraries = self.curl_json(
+                    f"http://jellyfin:8096/Library/VirtualFolders?api_key={jellyfin_key}"
+                )
+                if isinstance(libraries, list):
+                    paths: set[str] = set()
+                    for lib in libraries:
+                        if not isinstance(lib, dict):
+                            continue
+                        locations = lib.get("Locations") or []
+                        if isinstance(locations, list):
+                            for item in locations:
+                                if isinstance(item, str):
+                                    paths.add(item)
+                    expected_paths = {"/media/movies", "/media/tv", "/media/music", "/media/books"}
+                    missing_paths = sorted([p for p in expected_paths if p not in paths])
+                    if missing_paths:
+                        self._warn(
+                            "Jellyfin libraries missing expected media roots: "
+                            + ", ".join(missing_paths)
+                        )
+                    else:
+                        self._ok("Jellyfin libraries include movies/tv/music/books roots")
+                else:
+                    self._warn("Jellyfin virtual folders API returned unexpected payload")
+            except Exception as exc:
+                self._warn(f"Jellyfin library verification failed: {exc}")
+        else:
+            self._warn("JELLYFIN_API_KEY missing in secret; skipping Jellyfin library verification")
+
+        # Homepage API verification
+        try:
+            homepage_services = self.curl_json(
+                "http://homepage:3000/api/services",
+                headers={"Host": "homepage.local"},
+            )
+            if isinstance(homepage_services, list):
+                names = set()
+                for group in homepage_services:
+                    if not isinstance(group, dict):
+                        continue
+                    for service in group.get("services") or []:
+                        if isinstance(service, dict) and service.get("name"):
+                            names.add(str(service.get("name")))
+                for required in ("Jellyfin", "Jellyseerr", "Sonarr", "Radarr", "qBittorrent"):
+                    if required in names:
+                        self._ok(f"Homepage API includes service: {required}")
+                    else:
+                        self._warn(f"Homepage API missing service entry: {required}")
+            else:
+                self._warn("Homepage /api/services returned unexpected payload")
+        except Exception as exc:
+            self._warn(f"Homepage API verification failed: {exc}")
+
+        # qBittorrent + SAB API checks
         qbit_user = self.secret_value(secret, "STACK_ADMIN_USERNAME") or self.secret_value(
             secret, "QBITTORRENT_USERNAME"
         )

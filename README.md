@@ -162,6 +162,39 @@ The same `BOOTSTRAP_RUNNER_IMAGE` env var is respected by:
 - `scripts/run-bootstrap-job.sh`
 - `scripts/run-prowlarr-auto-indexers.sh`
 
+## Runtime Config Overlays and Resume
+
+Runtime config is now layered:
+- `config/runtime/base.json`
+- `config/runtime/overlays/dev.json`
+- `config/runtime/overlays/stage.json`
+- `config/runtime/overlays/prod.json`
+
+Enable overlays in bootstrap config:
+```json
+{
+  "config_overlays": {
+    "enabled": true,
+    "env": "prod"
+  }
+}
+```
+
+Checkpoint-resume is enabled by default for `bootstrap-all`:
+```bash
+# default checkpoint file: .state/bootstrap-all-<namespace>.json
+bash scripts/bootstrap-all.sh
+
+# force a full rerun
+bash scripts/bootstrap-all.sh --no-resume
+
+# explicit checkpoint path
+bash scripts/bootstrap-all.sh --state-file .state/bootstrap-all-media-stack.json
+```
+
+Overlay details:
+- [config/runtime/README.md](config/runtime/README.md)
+
 ## Quick Start (Docker Compose)
 
 ```bash

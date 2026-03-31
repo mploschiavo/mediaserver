@@ -1,0 +1,13 @@
+{
+  "prowlarr_auto_add_tested_indexers": true,
+  "refresh_health_after_bootstrap": true,
+  "media_hygiene": {
+    "enabled": true,
+    "required": true
+  },
+  "disk_guardrails": {
+    "enabled": true,
+    "required": true
+  }
+}
+

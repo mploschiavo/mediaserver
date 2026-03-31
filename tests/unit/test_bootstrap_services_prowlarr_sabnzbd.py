@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -250,6 +251,58 @@ class ProwlarrServiceTests(unittest.TestCase):
         self.assertEqual(create_calls, 1)
         self.assertTrue(any(line == "[ADD] SafeIndexer" for line in self.logs))
         self.assertFalse(any("[ADD] LimeTorrents" in line for line in self.logs))
+
+    def test_auto_add_tested_indexers_reputation_quarantines_persistent_failures(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "rep.json"
+            test_calls = 0
+
+            def stub(_base_url, path, _api_key, method, payload):
+                nonlocal test_calls
+                if path == "/api/v1/indexer/schema" and method == "GET":
+                    return 200, [{"implementation": "X", "name": "FailingOne", "fields": []}], ""
+                if path == "/api/v1/indexer" and method == "GET":
+                    return 200, [], ""
+                if path == "/api/v1/indexer/test" and method == "POST":
+                    test_calls += 1
+                    return 400, {}, "boom"
+                return 500, {}, f"unexpected {method} {path}"
+
+            service = self._service_with_stub(stub)
+            service.auto_add_tested_indexers(
+                prowlarr_url="http://prowlarr:9696",
+                prowlarr_key="key",
+                reputation_cfg={
+                    "enabled": True,
+                    "state_path": str(state_path),
+                    "quarantine_score_threshold": -1,
+                    "quarantine_failure_threshold": 1,
+                    "quarantine_ttl_hours": 999,
+                },
+            )
+            self.assertEqual(test_calls, 1)
+            self.assertTrue(state_path.exists())
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            key = "x::failingone"
+            self.assertIn(key, (data.get("indexers") or {}))
+            self.assertTrue(bool(data["indexers"][key].get("quarantined", False)))
+
+            service.auto_add_tested_indexers(
+                prowlarr_url="http://prowlarr:9696",
+                prowlarr_key="key",
+                reputation_cfg={
+                    "enabled": True,
+                    "state_path": str(state_path),
+                    "quarantine_score_threshold": -1,
+                    "quarantine_failure_threshold": 1,
+                    "quarantine_ttl_hours": 999,
+                },
+            )
+            self.assertEqual(
+                test_calls,
+                1,
+                "quarantined indexer should not be re-tested before TTL expiry",
+            )
 
 
 if __name__ == "__main__":

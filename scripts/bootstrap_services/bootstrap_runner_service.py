@@ -595,6 +595,7 @@ class BootstrapRunnerService:
                 rt.prowlarr_url,
                 rt.prowlarr_key,
                 rt.cfg.get("prowlarr_auto_indexer_exclude_name_tokens", []),
+                rt.cfg.get("prowlarr_indexer_reputation", {}),
             )
 
         if rt.trigger_sync:
@@ -602,6 +603,17 @@ class BootstrapRunnerService:
                 RunnerOperation.TRIGGER_PROWLARR_SYNC,
                 rt.prowlarr_url,
                 rt.prowlarr_key,
+            )
+            prune_stale = bool(
+                (rt.cfg.get("arr_indexer_sync") or {}).get("prune_stale_indexers", True)
+            )
+            self._invoke_operation(
+                RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR,
+                rt.prowlarr_url,
+                rt.prowlarr_key,
+                rt.arr_apps_raw,
+                rt.app_keys,
+                prune_stale,
             )
 
     def run(self, rt: BootstrapRuntime) -> None:

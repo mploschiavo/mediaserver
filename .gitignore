@@ -6,3 +6,4 @@ tests/e2e/playwright/playwright-report/
 tests/e2e/playwright/test-results/
 
 secrets.generated.env
+.state/

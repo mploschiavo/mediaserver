@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import sys
 import traceback
 
@@ -121,6 +122,14 @@ def main():
             "(legacy jellyfin-* aliases still supported)"
         ),
     )
+    parser.add_argument(
+        "--env",
+        default=(os.environ.get("MEDIA_STACK_ENV", "prod") or "prod"),
+        help=(
+            "Runtime environment overlay key (used when config_overlays.enabled=true), "
+            "for example: dev|stage|prod"
+        ),
+    )
     args = parser.parse_args()
 
     runtime_factory = BootstrapRuntimeFactoryService(
@@ -141,6 +150,7 @@ def main():
             config_root=args.config_root,
             wait_timeout=args.wait_timeout,
             auto_prowlarr_indexers=args.auto_prowlarr_indexers,
+            runtime_env=str(args.env or "prod"),
         )
     )
     runtime = build_result.runtime
@@ -171,6 +181,7 @@ def main():
             ensure_prowlarr_indexer=ensure_prowlarr_indexer,
             auto_add_tested_indexers=auto_add_tested_indexers,
             trigger_prowlarr_sync=trigger_prowlarr_sync,
+            sync_arr_indexers_from_prowlarr=sync_arr_indexers_from_prowlarr,
         ),
         operation_handler_specs=(runtime.adapter_hooks_cfg or {}).get("operation_handlers"),
     )

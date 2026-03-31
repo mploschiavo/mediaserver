@@ -2,6 +2,7 @@
 """Servarr/download-client/runtime hygiene operations."""
 
 import bootstrap_services.runtime_core as _core
+from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
 from bootstrap_services.runtime_core import *  # noqa: F401,F403
 
 _disk_usage_percent = _core._disk_usage_percent
@@ -35,6 +36,13 @@ def _prowlarr_service(cfg=None) -> ProwlarrService:
         http_request=http_request,
         field_map=field_map,
         field_list=field_list,
+        log=log,
+    )
+
+def _arr_indexer_sync_service() -> ArrIndexerSyncService:
+    return ArrIndexerSyncService(
+        http_request=http_request,
+        detect_arr_api_base=detect_arr_api_base,
         log=log,
     )
 
@@ -628,9 +636,30 @@ def build_indexer_payload(template):
         template
     )
 
-def auto_add_tested_indexers(prowlarr_url, prowlarr_key, exclude_name_tokens=None):
+def auto_add_tested_indexers(
+    prowlarr_url,
+    prowlarr_key,
+    exclude_name_tokens=None,
+    reputation_cfg=None,
+):
     _prowlarr_service().auto_add_tested_indexers(
         prowlarr_url=prowlarr_url,
         prowlarr_key=prowlarr_key,
         exclude_name_tokens=exclude_name_tokens,
+        reputation_cfg=reputation_cfg,
+    )
+
+def sync_arr_indexers_from_prowlarr(
+    prowlarr_url,
+    prowlarr_key,
+    arr_apps,
+    app_keys,
+    prune_stale=True,
+):
+    return _arr_indexer_sync_service().reconcile(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        arr_apps=arr_apps,
+        app_keys=app_keys,
+        prune_stale=bool(prune_stale),
     )

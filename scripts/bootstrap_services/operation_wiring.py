@@ -36,6 +36,7 @@ class RunnerOperationHandlers:
     ensure_prowlarr_indexer: OperationFn
     auto_add_tested_indexers: OperationFn
     trigger_prowlarr_sync: OperationFn
+    sync_arr_indexers_from_prowlarr: OperationFn
 
 
 def build_runner_operation_registry(
@@ -69,6 +70,9 @@ def build_runner_operation_registry(
         RunnerOperation.ENSURE_PROWLARR_INDEXER.value: handlers.ensure_prowlarr_indexer,
         RunnerOperation.AUTO_ADD_TESTED_INDEXERS.value: handlers.auto_add_tested_indexers,
         RunnerOperation.TRIGGER_PROWLARR_SYNC.value: handlers.trigger_prowlarr_sync,
+        RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value: (
+            handlers.sync_arr_indexers_from_prowlarr
+        ),
     }
     return RunnerOperationRegistry.from_maps(
         handlers=base_handlers,

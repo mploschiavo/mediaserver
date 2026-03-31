@@ -42,6 +42,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             RunnerOperation.ENSURE_PROWLARR_INDEXER.value: mock.Mock(),
             RunnerOperation.AUTO_ADD_TESTED_INDEXERS.value: mock.Mock(),
             RunnerOperation.TRIGGER_PROWLARR_SYNC.value: mock.Mock(),
+            RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value: mock.Mock(),
         }
         deps = BootstrapRunnerDependencies(
             log=mock.Mock(),
@@ -161,6 +162,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             "http://prowlarr:9696",
             "key",
         )
+        deps.operation_mocks[RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value].assert_called_once()  # type: ignore[attr-defined]
 
     def test_runner_tracks_lifecycle_states(self):
         deps = self._deps()

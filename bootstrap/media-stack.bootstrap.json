@@ -1154,5 +1154,19 @@
         "list_ids": []
       }
     }
+  },
+  "prowlarr_indexer_reputation": {
+    "enabled": true,
+    "state_path": "/srv-config/prowlarr/indexer-reputation-state.json",
+    "quarantine_score_threshold": -10,
+    "quarantine_failure_threshold": 3,
+    "quarantine_ttl_hours": 72,
+    "success_score_delta": 2,
+    "test_failure_score_delta": -4,
+    "create_failure_score_delta": -3
+  },
+  "arr_indexer_sync": {
+    "enabled": true,
+    "prune_stale_indexers": true
   }
 }

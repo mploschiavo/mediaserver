@@ -145,6 +145,28 @@ def basic_checks(cfg):
             errors,
         )
 
+    if "prowlarr_indexer_reputation" in cfg and not isinstance(
+        cfg.get("prowlarr_indexer_reputation"),
+        dict,
+    ):
+        errors.append("$.prowlarr_indexer_reputation: must be an object")
+    if "arr_indexer_sync" in cfg and not isinstance(cfg.get("arr_indexer_sync"), dict):
+        errors.append("$.arr_indexer_sync: must be an object")
+
+    overlays = cfg.get("config_overlays")
+    if overlays is not None:
+        if not isinstance(overlays, dict):
+            errors.append("$.config_overlays: must be an object")
+        else:
+            for key in ("enabled",):
+                if key in overlays and not isinstance(overlays.get(key), bool):
+                    errors.append(f"$.config_overlays.{key}: must be a boolean")
+            for key in ("env", "base_path", "overlay_dir"):
+                if key in overlays and not isinstance(overlays.get(key), str):
+                    errors.append(f"$.config_overlays.{key}: must be a string")
+            if "env_overlays" in overlays and not isinstance(overlays.get("env_overlays"), dict):
+                errors.append("$.config_overlays.env_overlays: must be an object")
+
     return errors
 
 

@@ -42,6 +42,7 @@ class AutoIndexerConfig:
     prepare_host_root: str
     bootstrap_runner_image: str
     exclude_name_tokens: list[str]
+    reputation_cfg: dict[str, Any]
     root_dir: Path
 
     @property
@@ -197,6 +198,7 @@ class ProwlarrAutoIndexerRunner:
             "trigger_indexer_sync": True,
             "arr_apps": [],
             "prowlarr_auto_indexer_exclude_name_tokens": list(self.cfg.exclude_name_tokens),
+            "prowlarr_indexer_reputation": dict(self.cfg.reputation_cfg),
         }
         with TemporaryDirectory(prefix="media-stack-bootstrap-auto-config-") as tmpdir:
             config_json = Path(tmpdir) / "config.json"
@@ -521,6 +523,32 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Can be passed multiple times."
         ),
     )
+    parser.add_argument(
+        "--reputation-state-path",
+        default=os.getenv(
+            "AUTO_INDEXER_REPUTATION_STATE_PATH",
+            "/srv-config/prowlarr/indexer-reputation-state.json",
+        ),
+        help="State file path for indexer reputation scoring and quarantine.",
+    )
+    parser.add_argument(
+        "--quarantine-score-threshold",
+        type=int,
+        default=int(os.getenv("AUTO_INDEXER_QUARANTINE_SCORE_THRESHOLD", "-10")),
+        help="Quarantine an indexer when score <= threshold.",
+    )
+    parser.add_argument(
+        "--quarantine-failure-threshold",
+        type=int,
+        default=int(os.getenv("AUTO_INDEXER_QUARANTINE_FAILURE_THRESHOLD", "3")),
+        help="Quarantine an indexer when failure count >= threshold.",
+    )
+    parser.add_argument(
+        "--quarantine-ttl-hours",
+        type=int,
+        default=int(os.getenv("AUTO_INDEXER_QUARANTINE_TTL_HOURS", "72")),
+        help="Auto-unquarantine after this TTL (hours).",
+    )
     return parser
 
 
@@ -562,6 +590,13 @@ def parse_config(argv: list[str] | None = None) -> AutoIndexerConfig:
         prepare_host_root=prepare_host_root,
         bootstrap_runner_image=bootstrap_runner_image,
         exclude_name_tokens=exclude_name_tokens,
+        reputation_cfg={
+            "enabled": True,
+            "state_path": str(args.reputation_state_path or "").strip(),
+            "quarantine_score_threshold": int(args.quarantine_score_threshold),
+            "quarantine_failure_threshold": int(args.quarantine_failure_threshold),
+            "quarantine_ttl_hours": int(args.quarantine_ttl_hours),
+        },
         root_dir=Path(__file__).resolve().parents[2],
     )
 
