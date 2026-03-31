@@ -1,17 +1,19 @@
 # Maintainerr Rules Library (Config-as-Code)
 
-Maintainerr policy rules are now managed as individual JSON files and assembled during bootstrap.
+Maintainerr policy rules are managed as individual JSON/YAML files and assembled during bootstrap.
 
 ## Source of Truth
 
 - Base policy scaffold: `scripts/bootstrap_defaults/maintainerr_policy.json`
-- Default rule library: `scripts/bootstrap_defaults/maintainerr_rules/*.{json,yaml,yml}`
+- Default rule library:
+  - `scripts/bootstrap_defaults/maintainerr_rules/json/*.json`
+  - `scripts/bootstrap_defaults/maintainerr_rules/yaml/*.{yaml,yml}`
 - Rendered policy artifact (cluster): `/srv-config/maintainerr/policy.json`
 
 The bootstrap step `ensure_maintainerr_policy` composes the final policy in this order:
 
 1. Base policy defaults
-2. Rule files from default library (`scripts/bootstrap_defaults/maintainerr_rules`)
+2. Rule files from default library (`scripts/bootstrap_defaults/maintainerr_rules/**`)
 3. Optional namespace/local overrides (`maintainerr.rules_library.relative_path`)
 4. Inline `maintainerr.policy` overrides from bootstrap JSON
 
@@ -74,20 +76,21 @@ Notes:
 - `customVal.value` supports relative time tokens: `days_ago:<n>`, `{{days_ago:<n>}}`, `now-<n>d`.
 - API export objects containing rule entries with `ruleJson` are also accepted and normalized during sync.
 - Legacy `conditions` + `actions` rules are still supported for backward compatibility.
-- `.yaml/.yml` files are supported directly in the rules library. For YAML exports from Maintainerr UI, the bootstrap sync calls Maintainerr's `/api/rules/yaml/decode` endpoint to translate them before upsert.
+- `.yaml/.yml` files are supported directly in the rules library (including nested subdirectories).
+  For YAML exports from Maintainerr UI, the bootstrap sync calls Maintainerr's `/api/rules/yaml/decode` endpoint to translate them before upsert.
 
 ## Included Default Rules
 
-The default library includes:
+The default JSON rule library includes:
 
-- `00-protect-favorites.json`
-- `10-movies-delete-watched-after-30d.json`
-- `11-tv-delete-watched-after-30d.json`
-- `12-music-delete-played-after-30d.json`
-- `13-books-delete-read-after-30d.json`
-- `20-remove-old-requested-unwatched-90d.json`
-- `30-tv-unmonitor-unwatched-180d.json`
-- `40-leaving-soon-collection-5d.json`
+- `json/00-protect-favorites.json`
+- `json/10-movies-delete-watched-after-30d.json`
+- `json/11-tv-delete-watched-after-30d.json`
+- `json/12-music-delete-played-after-30d.json`
+- `json/13-books-delete-read-after-30d.json`
+- `json/20-remove-old-requested-unwatched-90d.json`
+- `json/30-tv-unmonitor-unwatched-180d.json`
+- `json/40-leaving-soon-collection-5d.json`
 
 These cover:
 
@@ -117,11 +120,13 @@ Behavior:
 
 - `merge_mode: append`: custom rules override same-name defaults and add new ones
 - `merge_mode: replace`: only custom library rules are used (if present)
-- `enabled_files`: optional filename allowlist
+- `enabled_files`: optional allowlist by basename or relative path (for example `json/40-leaving-soon-collection-5d.json`)
 
 ## Add a New Rule
 
-1. Add file under `scripts/bootstrap_defaults/maintainerr_rules/<nn>-<name>.json`
+1. Add file under either:
+   - `scripts/bootstrap_defaults/maintainerr_rules/json/<nn>-<name>.json`
+   - `scripts/bootstrap_defaults/maintainerr_rules/yaml/<nn>-<name>.yaml`
 2. Keep a unique `rule.name` (used for merge/override)
 3. Run bootstrap:
 

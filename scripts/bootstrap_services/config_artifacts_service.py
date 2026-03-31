@@ -324,14 +324,15 @@ class ConfigArtifactsService:
         loaded: list[dict[str, Any]] = []
         candidate_files = sorted(
             [
-                *directory.glob("*.json"),
-                *directory.glob("*.yaml"),
-                *directory.glob("*.yml"),
+                *directory.rglob("*.json"),
+                *directory.rglob("*.yaml"),
+                *directory.rglob("*.yml"),
             ]
         )
         for path in candidate_files:
             filename = path.name
-            if enabled_files and filename not in enabled_files:
+            relpath = path.relative_to(directory).as_posix()
+            if enabled_files and filename not in enabled_files and relpath not in enabled_files:
                 continue
             try:
                 raw = path.read_text(encoding="utf-8")
@@ -347,7 +348,9 @@ class ConfigArtifactsService:
             except Exception as exc:
                 raise RuntimeError(f"Maintainerr policy rules: failed parsing {path}: {exc}") from exc
             loaded.extend(self._load_rule_entries_from_document(str(path), payload))
-        return loaded
+        # Collapse accidental duplicates (for example, when both JSON and YAML versions
+        # of the same named rule are present in the rules library).
+        return self._merge_rules_by_name([], loaded)
 
     @staticmethod
     def _merge_rules_by_name(

@@ -61,8 +61,8 @@ Retention policy UI and API for media lifecycle operations.
 Deployed in full/public-demo/power-user profiles and exposed at `maintainerr.<domain>`.
 Bootstrap now reconciles Maintainerr main settings (`applicationUrl`, media-server type, Jellyfin URL/API key/user, Seerr URL)
 plus integrations for Radarr, Sonarr, Jellyseerr, and Tautulli with API-level test calls.
-Policy rules are maintained as a config-as-code library (one JSON file per rule) under
-`scripts/bootstrap_defaults/maintainerr_rules/` and rendered to `/srv-config/maintainerr/policy.json`.
+Policy rules are maintained as a config-as-code library (one file per rule) under
+`scripts/bootstrap_defaults/maintainerr_rules/{json,yaml}/` and rendered to `/srv-config/maintainerr/policy.json`.
 
 ## Traefik
 Reverse proxy for nice local hostnames.

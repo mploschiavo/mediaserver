@@ -336,6 +336,119 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             self.assertIn("yaml", rules[0])
             self.assertIn("mediaType: MOVIES", str(rules[0].get("yaml") or ""))
 
+    def test_maintainerr_policy_loads_nested_rule_directories(self):
+        svc = _service()
+        with tempfile.TemporaryDirectory() as tmp:
+            custom_rules_dir = Path(tmp) / "maintainerr" / "rules"
+            (custom_rules_dir / "json").mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "yaml").mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "json" / "nested-a.json").write_text(
+                json.dumps(
+                    {
+                        "enabled": True,
+                        "rule": {
+                            "name": "Nested JSON Rule",
+                            "library_titles": ["Movies"],
+                            "conditions": {"watched": False},
+                            "actions": {"protect_item": True},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (custom_rules_dir / "yaml" / "nested-b.yaml").write_text(
+                "\n".join(
+                    [
+                        "mediaType: MOVIES",
+                        "rules:",
+                        "  - \"0\":",
+                        "      - firstValue: Jellyfin.viewCount",
+                        "        action: BIGGER",
+                        "        customValue:",
+                        "          type: number",
+                        "          value: 0",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cfg = {
+                "maintainerr": {
+                    "enabled": True,
+                    "rules_library": {
+                        "enabled": True,
+                        "include_defaults": False,
+                        "relative_path": "maintainerr/rules",
+                        "merge_mode": "replace",
+                    },
+                    "policy": {},
+                }
+            }
+            svc.ensure_maintainerr_policy(cfg, tmp)
+            rendered = json.loads(
+                (Path(tmp) / "maintainerr" / "policy.json").read_text(encoding="utf-8")
+            )
+            by_name = {str(rule.get("name") or ""): rule for rule in (rendered.get("rules") or [])}
+            self.assertIn("Nested JSON Rule", by_name)
+            self.assertIn("nested-b", by_name)
+
+    def test_maintainerr_policy_enabled_files_accepts_relative_paths(self):
+        svc = _service()
+        with tempfile.TemporaryDirectory() as tmp:
+            custom_rules_dir = Path(tmp) / "maintainerr" / "rules"
+            (custom_rules_dir / "json").mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "yaml").mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "json" / "keep.json").write_text(
+                json.dumps(
+                    {
+                        "enabled": True,
+                        "rule": {
+                            "name": "Keep JSON Rule",
+                            "library_titles": ["Movies"],
+                            "conditions": {"watched": False},
+                            "actions": {"protect_item": True},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (custom_rules_dir / "yaml" / "drop.yaml").write_text(
+                "\n".join(
+                    [
+                        "mediaType: MOVIES",
+                        "rules:",
+                        "  - \"0\":",
+                        "      - firstValue: Jellyfin.viewCount",
+                        "        action: BIGGER",
+                        "        customValue:",
+                        "          type: number",
+                        "          value: 0",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cfg = {
+                "maintainerr": {
+                    "enabled": True,
+                    "rules_library": {
+                        "enabled": True,
+                        "include_defaults": False,
+                        "relative_path": "maintainerr/rules",
+                        "merge_mode": "replace",
+                        "enabled_files": ["json/keep.json"],
+                    },
+                    "policy": {},
+                }
+            }
+            svc.ensure_maintainerr_policy(cfg, tmp)
+            rendered = json.loads(
+                (Path(tmp) / "maintainerr" / "policy.json").read_text(encoding="utf-8")
+            )
+            rules = rendered.get("rules") or []
+            self.assertEqual(1, len(rules))
+            self.assertEqual("Keep JSON Rule", str(rules[0].get("name") or ""))
+
 
 if __name__ == "__main__":
     unittest.main()
