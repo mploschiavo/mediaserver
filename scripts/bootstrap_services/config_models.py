@@ -7,6 +7,104 @@ from typing import Any, Callable
 
 
 @dataclass(frozen=True)
+class QbitQueueGuardrailsConfig:
+    enabled: bool
+    dry_run: bool
+    default_max_queued: int | None
+    max_queued_by_category: dict[str, int] = field(default_factory=dict)
+    max_total_size_gib_by_category: dict[str, float] = field(default_factory=dict)
+    max_weight_percent_by_category: dict[str, float] = field(default_factory=dict)
+    over_limit_max_delete_per_category: int = 15
+    over_budget_max_delete_per_category: int = 20
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "QbitQueueGuardrailsConfig":
+        src = dict(data or {})
+
+        def _int_map(value: Any) -> dict[str, int]:
+            out: dict[str, int] = {}
+            if not isinstance(value, dict):
+                return out
+            for key, raw in value.items():
+                token = str(key or "").strip().lower()
+                if not token:
+                    continue
+                parsed = _to_int(raw)
+                if parsed is None or parsed < 0:
+                    continue
+                out[token] = int(parsed)
+            return out
+
+        def _float_map(value: Any) -> dict[str, float]:
+            out: dict[str, float] = {}
+            if not isinstance(value, dict):
+                return out
+            for key, raw in value.items():
+                token = str(key or "").strip().lower()
+                if not token:
+                    continue
+                try:
+                    parsed = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                if parsed < 0:
+                    continue
+                out[token] = parsed
+            return out
+
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            dry_run=bool(src.get("dry_run", False)),
+            default_max_queued=_to_int(src.get("default_max_queued")),
+            max_queued_by_category=_int_map(src.get("max_queued_by_category")),
+            max_total_size_gib_by_category=_float_map(src.get("max_total_size_gib_by_category")),
+            max_weight_percent_by_category=_float_map(src.get("max_weight_percent_by_category")),
+            over_limit_max_delete_per_category=_to_int(
+                src.get("over_limit_max_delete_per_category"), 15
+            )
+            or 15,
+            over_budget_max_delete_per_category=_to_int(
+                src.get("over_budget_max_delete_per_category"), 20
+            )
+            or 20,
+            raw=src,
+        )
+
+
+@dataclass(frozen=True)
+class DiskGuardrailsConfig:
+    enabled: bool
+    required: bool
+    monitor_path: str
+    max_used_percent: float
+    target_used_percent: float
+    qbit_cleanup: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "DiskGuardrailsConfig":
+        src = dict(data or {})
+        try:
+            max_used = float(src.get("max_used_percent", 65))
+        except (TypeError, ValueError):
+            max_used = 65.0
+        try:
+            target_used = float(src.get("target_used_percent", 58))
+        except (TypeError, ValueError):
+            target_used = 58.0
+        return cls(
+            enabled=bool(src.get("enabled", False)),
+            required=bool(src.get("required", False)),
+            monitor_path=str(src.get("monitor_path", "")).strip(),
+            max_used_percent=max_used,
+            target_used_percent=target_used,
+            qbit_cleanup=dict(src.get("qbit_cleanup") or {}),
+            raw=src,
+        )
+
+
+@dataclass(frozen=True)
 class DownloadClientConfig:
     url: str
     host: str
@@ -30,6 +128,8 @@ class DownloadClientConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "DownloadClientConfig":
         src = dict(data or {})
+        # Validate nested queue guardrails shape through typed model.
+        QbitQueueGuardrailsConfig.from_dict(src.get("queue_guardrails") or {})
         return cls(
             url=str(src.get("url", "")).strip(),
             host=str(src.get("host", "")).strip(),

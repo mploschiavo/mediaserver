@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .config_models import ArrDiscoveryListsConfig, DownloadClientsConfig, JellyfinLiveTvConfig
+from .config_models import (
+    ArrDiscoveryListsConfig,
+    DiskGuardrailsConfig,
+    DownloadClientsConfig,
+    JellyfinLiveTvConfig,
+)
 
 
 def _expect_dict(data: dict[str, Any], key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -122,6 +127,7 @@ class TopLevelBootstrapConfig:
         DownloadClientsConfig.from_dict(_expect_dict(src, "download_clients", {}))
         ArrDiscoveryListsConfig.from_dict(_expect_dict(src, "arr_discovery_lists", {}))
         JellyfinLiveTvConfig.from_dict(_expect_dict(src, "jellyfin_livetv", {}))
+        DiskGuardrailsConfig.from_dict(_expect_dict(src, "disk_guardrails", {}))
 
         known_keys = {
             "adapter_hooks",

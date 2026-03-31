@@ -216,9 +216,11 @@ The bootstrap pipeline configures these OTB when enabled:
 - Lidarr/Readarr curated auto-subscribe discovery lists (music/books)
 - Jellyseerr to Jellyfin/Sonarr/Radarr mappings
 - Jellyfin libraries, Live TV tuners/guides, plugins, playback defaults, and curated rails
+- Jellyfin home-section defaults tuned for a Netflix-like flow (`resume`, `nextup`, `latestmedia`, `livetv`)
 - Jellyfin prewarm pipeline (scheduled metadata/artwork + guide/channel refresh)
 - Homepage service cards and device onboarding links
 - Disk usage guardrails with qB cleanup policy (`disk_guardrails`, default max 65% used on `/srv-stack`)
+- qB category budget guardrails (queue count + optional per-category size and weighted-share pruning)
 - Global media hygiene (failed-queue cleanup + temp/zero-byte/orphan cleanup + dedupe pass + qB IP filter refresh/cache)
 - Maintainerr policy-as-code artifact generation (mounted at `/srv-config/maintainerr/policy.json` in bootstrap jobs)
 

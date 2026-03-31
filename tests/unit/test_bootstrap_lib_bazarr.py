@@ -89,6 +89,28 @@ class BazarrConfigTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertIn("  enabled_providers: []", rendered)
 
+    def test_apply_rewrites_indentless_sequence_style(self):
+        current = """general:
+  enabled_providers:
+  - opensubtitlescom
+  - podnapisi
+  minimum_score: 70
+"""
+        rendered, changed = apply_scalar_updates(
+            current,
+            {
+                "general": {
+                    "enabled_providers": ["addic7ed"],
+                }
+            },
+        )
+        self.assertTrue(changed)
+        self.assertIn("  enabled_providers:", rendered)
+        self.assertIn("    - addic7ed", rendered)
+        self.assertNotIn("  - opensubtitlescom", rendered)
+        self.assertNotIn("  - podnapisi", rendered)
+        self.assertIn("  minimum_score: 70", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

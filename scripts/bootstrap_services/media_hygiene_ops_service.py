@@ -555,9 +555,12 @@ class MediaHygieneOpsService:
             "total": 0,
             "over_limit_candidates": 0,
             "stale_candidates": 0,
+            "over_budget_candidates": 0,
             "over_limit_deleted": 0,
             "stale_deleted": 0,
+            "over_budget_deleted": 0,
             "by_category": {},
+            "by_category_budget": {},
         }
         if not enabled:
             return summary
@@ -625,6 +628,56 @@ class MediaHygieneOpsService:
                     continue
                 max_by_category[norm_key] = int(parsed)
 
+        max_size_gib_raw = queue_cfg.get("max_total_size_gib_by_category") or {}
+        max_size_bytes_by_category: dict[str, int] = {}
+        if isinstance(max_size_gib_raw, dict):
+            for key, value in max_size_gib_raw.items():
+                norm_key = str(key or "").strip().lower()
+                if not norm_key:
+                    continue
+                parsed = self.to_float(value)
+                if parsed is None or parsed <= 0:
+                    continue
+                max_size_bytes_by_category[norm_key] = int(float(parsed) * (1024**3))
+
+        max_weight_percent_raw = queue_cfg.get("max_weight_percent_by_category") or {}
+        max_weight_percent_by_category: dict[str, float] = {}
+        if isinstance(max_weight_percent_raw, dict):
+            for key, value in max_weight_percent_raw.items():
+                norm_key = str(key or "").strip().lower()
+                if not norm_key:
+                    continue
+                parsed = self.to_float(value)
+                if parsed is None:
+                    continue
+                percent = max(0.0, min(float(parsed), 100.0))
+                if percent <= 0:
+                    continue
+                max_weight_percent_by_category[norm_key] = percent
+
+        over_budget_max_delete_per_category = self.to_int(
+            queue_cfg.get("over_budget_max_delete_per_category"), 20
+        )
+        if over_budget_max_delete_per_category is None or over_budget_max_delete_per_category <= 0:
+            over_budget_max_delete_per_category = 20
+        over_budget_delete_files = self.bool_cfg(queue_cfg, "over_budget_delete_files", True)
+        budget_prune_states = {
+            str(x).strip().lower()
+            for x in self.coerce_list(queue_cfg.get("budget_prune_states"))
+            if str(x).strip()
+        } or {
+            "queueddl",
+            "stalleddl",
+            "metadl",
+            "pauseddl",
+            "error",
+            "missingfiles",
+            "uploading",
+            "stalledup",
+            "queuedup",
+            "pausedup",
+        }
+
         stale_cfg = queue_cfg.get("stale_prune") or {}
         stale_enabled = self.bool_cfg(stale_cfg, "enabled", True)
         stale_max_age_hours = self.to_float(stale_cfg.get("max_age_hours"), 168.0) or 168.0
@@ -675,6 +728,7 @@ class MediaHygieneOpsService:
                 "name": str(item.get("name") or "").strip(),
                 "category": category,
                 "state": state,
+                "size": self.to_int(item.get("size"), 0) or 0,
                 "progress": progress,
                 "added_on": added_on,
                 "completion_on": completion_on,
@@ -754,6 +808,80 @@ class MediaHygieneOpsService:
                     "selected": len(chosen),
                 }
 
+        over_budget_hashes: list[str] = []
+        over_budget_seen: set[str] = set()
+        if max_size_bytes_by_category or max_weight_percent_by_category:
+            category_size_bytes: dict[str, int] = defaultdict(int)
+            category_records: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for rec in records:
+                category = str(rec.get("category") or "uncategorized")
+                if category == "uncategorized" and not include_uncategorized:
+                    continue
+                size_bytes = int(rec.get("size") or 0)
+                if size_bytes <= 0:
+                    continue
+                category_size_bytes[category] += size_bytes
+                category_records[category].append(rec)
+
+            managed_total_bytes = sum(category_size_bytes.values())
+
+            for category, current_size_bytes in category_size_bytes.items():
+                max_by_size = max_size_bytes_by_category.get(category)
+                max_by_weight = max_weight_percent_by_category.get(category)
+                target_weight_bytes: int | None = None
+                if max_by_weight is not None and managed_total_bytes > 0:
+                    target_weight_bytes = int((float(max_by_weight) / 100.0) * managed_total_bytes)
+                over_by_size = max(0, current_size_bytes - (max_by_size or current_size_bytes))
+                over_by_weight = (
+                    max(0, current_size_bytes - target_weight_bytes)
+                    if target_weight_bytes is not None
+                    else 0
+                )
+                bytes_to_free = max(over_by_size, over_by_weight)
+                if bytes_to_free <= 0:
+                    continue
+
+                prune_pool = [
+                    item
+                    for item in category_records.get(category) or []
+                    if str(item.get("state") or "").lower() in budget_prune_states
+                ]
+                prune_pool.sort(
+                    key=lambda x: (
+                        x.get("completion_on") or x.get("added_on") or 0,
+                        x.get("size") or 0,
+                    ),
+                    reverse=False,
+                )
+
+                chosen_hashes: list[str] = []
+                reclaimed_bytes = 0
+                for rec in prune_pool:
+                    if len(chosen_hashes) >= over_budget_max_delete_per_category:
+                        break
+                    if reclaimed_bytes >= bytes_to_free:
+                        break
+                    thash = str(rec.get("hash") or "").strip()
+                    if not thash or thash in over_budget_seen:
+                        continue
+                    size_bytes = int(rec.get("size") or 0)
+                    if size_bytes <= 0:
+                        continue
+                    chosen_hashes.append(thash)
+                    over_budget_seen.add(thash)
+                    over_budget_hashes.append(thash)
+                    reclaimed_bytes += size_bytes
+
+                summary["by_category_budget"][category] = {
+                    "size_bytes": int(current_size_bytes),
+                    "managed_total_bytes": int(managed_total_bytes),
+                    "max_size_bytes": int(max_by_size) if max_by_size is not None else None,
+                    "max_weight_percent": float(max_by_weight) if max_by_weight is not None else None,
+                    "bytes_to_free": int(bytes_to_free),
+                    "selected": len(chosen_hashes),
+                    "selected_bytes": int(reclaimed_bytes),
+                }
+
         stale_hashes: list[str] = []
         stale_seen: set[str] = set()
         if stale_enabled:
@@ -803,17 +931,38 @@ class MediaHygieneOpsService:
 
         summary["over_limit_candidates"] = len(over_limit_hashes)
         summary["stale_candidates"] = len(stale_hashes)
+        summary["over_budget_candidates"] = len(over_budget_hashes)
 
         if dry_run:
             for thash in over_limit_hashes:
                 self.log(f"[INFO] qB queue guardrails over-limit candidate (dry-run): {thash}")
+            for thash in over_budget_hashes:
+                self.log(f"[INFO] qB queue guardrails over-budget candidate (dry-run): {thash}")
             for thash in stale_hashes:
                 self.log(f"[INFO] qB queue guardrails stale candidate (dry-run): {thash}")
             self.log(
                 "[OK] qB queue guardrails: dry-run complete "
-                f"(over_limit_candidates={len(over_limit_hashes)}, stale_candidates={len(stale_hashes)})."
+                f"(over_limit_candidates={len(over_limit_hashes)}, "
+                f"over_budget_candidates={len(over_budget_hashes)}, "
+                f"stale_candidates={len(stale_hashes)})."
             )
             return summary
+
+        budget_to_delete = [x for x in over_budget_hashes if x not in set(over_limit_hashes)]
+        if budget_to_delete:
+            self.qbit_delete_torrents(
+                opener,
+                qbit_url,
+                budget_to_delete,
+                delete_files=over_budget_delete_files,
+            )
+            summary["over_budget_deleted"] = len(budget_to_delete)
+            self.log(
+                "[OK] qB queue guardrails: pruned over-budget category torrents "
+                f"(deleted={len(budget_to_delete)}, delete_files={over_budget_delete_files})."
+            )
+        else:
+            self.log("[OK] qB queue guardrails: no over-budget category pruning required.")
 
         if over_limit_hashes:
             self.qbit_delete_torrents(
@@ -830,7 +979,9 @@ class MediaHygieneOpsService:
         else:
             self.log("[OK] qB queue guardrails: no over-limit queue pruning required.")
 
-        stale_to_delete = [x for x in stale_hashes if x not in set(over_limit_hashes)]
+        stale_to_delete = [
+            x for x in stale_hashes if x not in set(over_limit_hashes) and x not in set(budget_to_delete)
+        ]
         if stale_to_delete:
             self.qbit_delete_torrents(
                 opener,

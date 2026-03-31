@@ -181,6 +181,90 @@ def wait_for_jellyfin(base_url, timeout_seconds=180):
     fail(f"Timed out waiting for Jellyfin at {base_url}/System/Info/Public")
 
 
+def can_authenticate_jellyfin(base_url, username, password):
+    headers = {
+        "X-Emby-Authorization": (
+            'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
+            'DeviceId="media-stack-bootstrap", Version="1.0.0"'
+        )
+    }
+    payload = {"Username": username, "Pw": password}
+    status, data, _ = http_request(
+        base_url,
+        "/Users/AuthenticateByName",
+        method="POST",
+        payload=payload,
+        headers=headers,
+    )
+    return bool(
+        status == 200 and isinstance(data, dict) and str(data.get("AccessToken") or "").strip()
+    )
+
+
+def authenticate_with_credentials(base_url, username, password):
+    headers = {
+        "X-Emby-Authorization": (
+            'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
+            'DeviceId="media-stack-bootstrap", Version="1.0.0"'
+        )
+    }
+    payload = {"Username": username, "Pw": password}
+    status, data, body = http_request(
+        base_url,
+        "/Users/AuthenticateByName",
+        method="POST",
+        payload=payload,
+        headers=headers,
+    )
+    if status != 200 or not isinstance(data, dict):
+        return None, status, body
+    token = str(data.get("AccessToken") or "").strip()
+    user = data.get("User") or {}
+    user_id = str(user.get("Id") or "").strip()
+    if not token:
+        return None, status, "Authentication succeeded without access token."
+    return {"token": token, "user_id": user_id, "username": str(username)}, status, body
+
+
+def resolve_startup_username(base_url):
+    for path in ("/Startup/FirstUser", "/Startup/User"):
+        status, data, _ = http_request(base_url, path)
+        if status == 200 and isinstance(data, dict):
+            name = str(data.get("Name") or "").strip()
+            if name:
+                return name
+    return ""
+
+
+def try_authenticate_startup_user(base_url, preferred_password):
+    startup_username = resolve_startup_username(base_url)
+    if not startup_username:
+        return None
+    attempted_passwords = []
+    for candidate in (preferred_password, ""):
+        if candidate in attempted_passwords:
+            continue
+        attempted_passwords.append(candidate)
+        auth, _, _ = authenticate_with_credentials(base_url, startup_username, candidate)
+        if auth:
+            auth["password_used"] = candidate
+            return auth
+    return None
+
+
+def update_user_password(base_url, session_token, user_id, current_pw, new_pw):
+    headers = {"X-Emby-Authorization": f'MediaBrowser Token="{session_token}"'}
+    status, _, body = http_request(
+        base_url,
+        f"/Users/Password?userId={parse.quote(user_id, safe='')}",
+        method="POST",
+        payload={"CurrentPw": current_pw, "NewPw": new_pw},
+        headers=headers,
+    )
+    if status not in (200, 201, 202, 204):
+        raise RuntimeError(f"Jellyfin password update failed (HTTP {status}): {body}")
+
+
 def startup_wizard_if_needed(base_url, username, password):
     info_public = wait_for_jellyfin(base_url)
     if bool(info_public.get("StartupWizardCompleted", False)):
@@ -198,7 +282,7 @@ def startup_wizard_if_needed(base_url, username, password):
         base_url, "/Startup/Configuration", method="POST", payload=config_payload
     )
     if status not in (200, 201, 202, 204):
-        fail(f"Jellyfin startup config failed (HTTP {status}): {body}")
+        warn(f"Jellyfin startup config step returned HTTP {status}: {body}")
 
     status, _, body = http_request(
         base_url,
@@ -207,7 +291,17 @@ def startup_wizard_if_needed(base_url, username, password):
         payload={"Name": username, "Password": password},
     )
     if status not in (200, 201, 202, 204):
-        fail(f"Jellyfin startup user setup failed (HTTP {status}): {body}")
+        if can_authenticate_jellyfin(base_url, username, password):
+            warn(
+                f"Jellyfin startup user step returned HTTP {status}, but admin login works; "
+                "continuing startup bootstrap."
+            )
+        else:
+            warn(
+                f"Jellyfin startup user setup failed (HTTP {status}) and stack-admin auth did not "
+                "succeed. Continuing with API key discovery/recovery flow."
+            )
+            return
 
     status, _, body = http_request(
         base_url,
@@ -220,7 +314,7 @@ def startup_wizard_if_needed(base_url, username, password):
 
     status, _, body = http_request(base_url, "/Startup/Complete", method="POST")
     if status not in (200, 201, 202, 204):
-        fail(f"Jellyfin startup completion failed (HTTP {status}): {body}")
+        warn(f"Jellyfin startup completion step returned HTTP {status}: {body}")
 
     for _ in range(30):
         info_public = wait_for_jellyfin(base_url, timeout_seconds=15)
@@ -229,7 +323,18 @@ def startup_wizard_if_needed(base_url, username, password):
             return
         time.sleep(1)
 
-    fail("Jellyfin startup wizard still not completed after automation.")
+    if can_authenticate_jellyfin(base_url, username, password):
+        warn(
+            "Jellyfin startup wizard flag is still false, but admin authentication works. "
+            "Proceeding with API key reconciliation."
+        )
+        return
+
+    warn(
+        "Jellyfin startup wizard still not completed after automation and stack-admin auth failed. "
+        "Continuing with API key discovery/recovery flow."
+    )
+    return
 
 
 def authenticate_jellyfin(base_url, username, password):
@@ -333,10 +438,8 @@ def ensure_api_key(base_url, session_token, app_name):
 
 
 def validate_api_key(base_url, api_key):
-    status, data, _ = http_request(
-        base_url, f"/System/Info?api_key={parse.quote(api_key, safe='')}"
-    )
-    return status == 200 and isinstance(data, dict)
+    status, data, _ = http_request(base_url, f"/Users?api_key={parse.quote(api_key, safe='')}")
+    return status == 200 and isinstance(data, list)
 
 
 def lookup_user_id_with_api_key(base_url, api_key, preferred_username):
@@ -533,6 +636,60 @@ def main(argv=None):
 
         auth_result = try_authenticate_jellyfin(base_url, stack_user, stack_pass)
         if auth_result is None:
+            startup_auth = try_authenticate_startup_user(base_url, stack_pass)
+            if startup_auth:
+                startup_user = startup_auth.get("username", "root")
+                startup_user_id = startup_auth.get("user_id", "")
+                startup_password_used = startup_auth.get("password_used", "")
+                startup_token = startup_auth.get("token", "")
+                info(
+                    "Authenticated using Jellyfin startup user fallback "
+                    f"(username={startup_user})."
+                )
+                if (
+                    startup_token
+                    and startup_user_id
+                    and stack_pass
+                    and startup_password_used != stack_pass
+                ):
+                    try:
+                        update_user_password(
+                            base_url,
+                            startup_token,
+                            startup_user_id,
+                            startup_password_used,
+                            stack_pass,
+                        )
+                        info(
+                            "Updated Jellyfin startup-user password to match STACK_ADMIN_PASSWORD."
+                        )
+                        upgraded, _, _ = authenticate_with_credentials(
+                            base_url, startup_user, stack_pass
+                        )
+                        if upgraded:
+                            startup_token = upgraded["token"]
+                            startup_user_id = upgraded["user_id"]
+                    except Exception as exc:
+                        warn(f"Could not rotate Jellyfin startup-user password: {exc}")
+
+                api_key = ensure_api_key(base_url, startup_token, app_name)
+                if not validate_api_key(base_url, api_key):
+                    fail("Generated Jellyfin API key failed validation against /Users.")
+                patch_secret(
+                    kubectl,
+                    namespace,
+                    secret_name,
+                    {"JELLYFIN_API_KEY": api_key, "JELLYFIN_USER_ID": startup_user_id},
+                )
+                if str(startup_user).strip().lower() != str(stack_user).strip().lower():
+                    warn(
+                        "Jellyfin fallback authenticated a different username "
+                        f"('{startup_user}') than STACK_ADMIN_USERNAME ('{stack_user}'). "
+                        "If desired, align STACK_ADMIN_USERNAME to avoid future auth warnings."
+                    )
+                info("Updated media-stack secret with recovered Jellyfin API key and user id.")
+                return
+
             if existing_api_key and validate_api_key(base_url, existing_api_key):
                 warn(
                     "Stack admin login failed, but existing Jellyfin API key is valid. "

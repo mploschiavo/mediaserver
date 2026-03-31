@@ -406,6 +406,20 @@ class ProwlarrService:
         success_delta = int(reputation_cfg.get("success_score_delta", 2))
         test_fail_delta = int(reputation_cfg.get("test_failure_score_delta", -4))
         create_fail_delta = int(reputation_cfg.get("create_failure_score_delta", -3))
+        allow_untested_fallback = bool(reputation_cfg.get("allow_untested_fallback", False))
+        untested_fallback_max_add = int(reputation_cfg.get("untested_fallback_max_add", 5))
+        if untested_fallback_max_add <= 0:
+            untested_fallback_max_add = 5
+        configured_untested_tokens = self._coerce_exclude_name_tokens(
+            reputation_cfg.get("untested_fallback_name_tokens")
+        )
+        env_untested_tokens = self._coerce_exclude_name_tokens(
+            os.environ.get("AUTO_INDEXER_UNTESTED_FALLBACK_NAME_TOKENS", "")
+        )
+        untested_name_tokens = list(
+            dict.fromkeys(configured_untested_tokens + env_untested_tokens)
+        )
+        untested_fallback_added = 0
 
         reputation_state = self._load_reputation_state(reputation_state_path)
         if not isinstance(reputation_state.get("indexers"), dict):
@@ -528,6 +542,7 @@ class ProwlarrService:
                 method="POST",
                 payload=payload,
             )
+            used_untested_fallback = False
             if status not in (200, 201, 202):
                 skipped_test += 1
                 if reputation_enabled:
@@ -535,9 +550,24 @@ class ProwlarrService:
                     rep["failures"] = int(rep.get("failures") or 0) + 1
                     rep["last_failure_epoch"] = now_epoch
                     maybe_quarantine(str(impl), str(name), rep)
-                if log_skip_details:
-                    self.log(f"[SKIP] {name}: test failed (HTTP {status})")
-                continue
+                allow_fallback_for_name = (
+                    not untested_name_tokens
+                    or any(token in str(name).lower() for token in untested_name_tokens)
+                )
+                allow_fallback = (
+                    allow_untested_fallback
+                    and untested_fallback_added < untested_fallback_max_add
+                    and allow_fallback_for_name
+                )
+                if not allow_fallback:
+                    if log_skip_details:
+                        self.log(f"[SKIP] {name}: test failed (HTTP {status})")
+                    continue
+                self.log(
+                    f"[WARN] Auto indexer: adding untested fallback indexer {name} "
+                    f"(test HTTP {status}, fallback_slot={untested_fallback_added + 1}/{untested_fallback_max_add})"
+                )
+                used_untested_fallback = True
 
             status, _, body = self.http_request(
                 prowlarr_url,
@@ -554,6 +584,8 @@ class ProwlarrService:
                     "enable": True,
                 }
                 added += 1
+                if used_untested_fallback:
+                    untested_fallback_added += 1
                 if reputation_enabled:
                     rep["score"] = int(rep.get("score") or 0) + success_delta
                     rep["successes"] = int(rep.get("successes") or 0) + 1
@@ -589,5 +621,6 @@ class ProwlarrService:
             f"scanned={scanned}/{len(candidates)}, attempted={attempted}, added={added}, "
             f"skipped_existing={skipped_existing}, skipped_excluded={skipped_excluded}, skipped_test={skipped_test}, "
             f"skipped_quarantined={skipped_quarantined}, failed_create={failed_create}, "
+            f"untested_fallback_added={untested_fallback_added}, "
             f"quarantined_now={quarantined_now}"
         )

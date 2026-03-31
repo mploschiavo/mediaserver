@@ -25,6 +25,25 @@ bash scripts/bootstrap-all.sh
 bash scripts/verify-flow.sh <NAMESPACE>
 ```
 
+## 2b) Sonarr/Radarr Show 0 Downloads
+
+Most often this is an indexer availability issue (not a Sonarr/Radarr path issue).
+
+Checklist:
+- confirm Prowlarr has active indexers (`/api/v1/indexer` not empty)
+- run auto-indexer reconcile and Arr indexer sync
+- if strict tested-indexer mode yields zero adds, enable limited untested fallback
+  (`prowlarr_indexer_reputation.allow_untested_fallback=true`) and keep a small
+  fallback cap (`untested_fallback_max_add`)
+- re-run bootstrap with `--no-resume` after changing config
+
+Commands:
+```bash
+bash scripts/run-prowlarr-auto-indexers.sh
+bash scripts/bootstrap-all.sh --no-resume
+bash scripts/verify-flow.sh <NAMESPACE>
+```
+
 ## 3) Arr Imports Fail (Remote Path Mapping)
 
 Symptoms:

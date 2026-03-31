@@ -75,6 +75,13 @@ qB IP filter defaults are config-as-code under `media_hygiene.qbit_ipfilter` in
 Disk guardrails defaults are configured in `bootstrap/media-stack.bootstrap.json` under `disk_guardrails` (default max 65% used, target 58%, qB cleanup policy when over threshold, monitor path `/srv-stack/media`).
 Maintainerr policy-as-code is rendered to `/srv-config/maintainerr/policy.json` from the `maintainerr` section in bootstrap config.
 
+qB queue and category-budget guardrails are configured under
+`download_clients.qbittorrent.queue_guardrails`:
+- `max_queued_by_category`: hard cap on queued/downloading items per category
+- `max_total_size_gib_by_category`: optional size cap per category (GiB)
+- `max_weight_percent_by_category`: optional weighted-share cap per category (% of managed qB payload)
+- `budget_prune_states`: which torrent states are eligible when reducing category budget
+
 ## Validation and Tests
 
 ```bash

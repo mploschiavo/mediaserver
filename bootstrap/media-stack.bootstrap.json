@@ -259,7 +259,7 @@
   },
   "sonarr_seed_series": {
     "enabled": true,
-    "max_series": 10,
+    "max_series": 15,
     "monitor": "firstSeason",
     "season_folder": true,
     "search_for_missing_episodes": true,
@@ -374,7 +374,33 @@
           ],
           "max_delete_per_run": 25,
           "delete_files": true
-        }
+        },
+        "max_total_size_gib_by_category": {
+          "tv": 350,
+          "movies": 700,
+          "music": 80,
+          "books": 40
+        },
+        "max_weight_percent_by_category": {
+          "tv": 40,
+          "movies": 42,
+          "music": 12,
+          "books": 6
+        },
+        "budget_prune_states": [
+          "queuedDL",
+          "stalledDL",
+          "metaDL",
+          "pausedDL",
+          "error",
+          "missingFiles",
+          "uploading",
+          "stalledUP",
+          "queuedUP",
+          "pausedUP"
+        ],
+        "over_budget_max_delete_per_category": 20,
+        "over_budget_delete_files": true
       },
       "categories": {
         "Sonarr": "tv",
@@ -876,7 +902,17 @@
       "custom_prefs": {
         "enableNextVideoInfoOverlay": true,
         "enableBackdrops": true,
-        "enableThemeVideos": true
+        "enableThemeVideos": true,
+        "homesection0": "smalllibrarytiles",
+        "homesection1": "resume",
+        "homesection2": "nextup",
+        "homesection3": "latestmedia",
+        "homesection4": "livetv",
+        "homesection5": "none",
+        "homesection6": "none",
+        "homesection7": "none",
+        "homesection8": "none",
+        "homesection9": "none"
       },
       "update_existing_custom_prefs_only": false
     },
@@ -1163,7 +1199,15 @@
     "quarantine_ttl_hours": 72,
     "success_score_delta": 2,
     "test_failure_score_delta": -4,
-    "create_failure_score_delta": -3
+    "create_failure_score_delta": -3,
+    "allow_untested_fallback": true,
+    "untested_fallback_max_add": 6,
+    "untested_fallback_name_tokens": [
+      "1337x",
+      "nyaa",
+      "eztv",
+      "torrentdownloads"
+    ]
   },
   "arr_indexer_sync": {
     "enabled": true,

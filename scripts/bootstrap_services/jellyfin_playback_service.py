@@ -255,6 +255,16 @@ class JellyfinPlaybackService:
                     "enableNextVideoInfoOverlay": True,
                     "enableBackdrops": True,
                     "enableThemeVideos": True,
+                    "homesection0": "smalllibrarytiles",
+                    "homesection1": "resume",
+                    "homesection2": "nextup",
+                    "homesection3": "latestmedia",
+                    "homesection4": "livetv",
+                    "homesection5": "none",
+                    "homesection6": "none",
+                    "homesection7": "none",
+                    "homesection8": "none",
+                    "homesection9": "none",
                 }
             update_existing_only = d.bool_cfg(display_cfg, "update_existing_custom_prefs_only", False)
 
