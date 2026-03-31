@@ -94,30 +94,6 @@ spec:
                   name: media-stack-secrets
                   key: PROWLARR_API_KEY
                   optional: true
-            - name: UNPACKERR_SONARR_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: media-stack-secrets
-                  key: UNPACKERR_SONARR_API_KEY
-                  optional: true
-            - name: UNPACKERR_RADARR_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: media-stack-secrets
-                  key: UNPACKERR_RADARR_API_KEY
-                  optional: true
-            - name: UNPACKERR_LIDARR_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: media-stack-secrets
-                  key: UNPACKERR_LIDARR_API_KEY
-                  optional: true
-            - name: UNPACKERR_READARR_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: media-stack-secrets
-                  key: UNPACKERR_READARR_API_KEY
-                  optional: true
             - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS

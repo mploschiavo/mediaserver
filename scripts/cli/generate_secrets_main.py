@@ -20,6 +20,21 @@ from pathlib import Path
 from core.exceptions import ConfigError, MediaStackError
 from core.kube import resolve_kubectl_binary
 
+SECRET_KEY_DEFAULTS: dict[str, str] = {
+    "STACK_ADMIN_USERNAME": "admin",
+    "STACK_ADMIN_PASSWORD": "change-me",
+    "SABNZBD_API_KEY": "",
+    "JELLYFIN_API_KEY": "",
+    "JELLYFIN_USER_ID": "",
+    "JELLYSEERR_API_KEY": "",
+    "TAUTULLI_API_KEY": "",
+    "SONARR_API_KEY": "",
+    "RADARR_API_KEY": "",
+    "LIDARR_API_KEY": "",
+    "READARR_API_KEY": "",
+    "PROWLARR_API_KEY": "",
+}
+
 
 def _env_truthy(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
@@ -126,26 +141,43 @@ def _apply_secret(
     secret_name: str,
     values: dict[str, str],
 ) -> None:
-    manifest = f"""apiVersion: v1
-kind: Secret
-metadata:
-  name: {secret_name}
-  namespace: {namespace}
-type: Opaque
-stringData:
-  STACK_ADMIN_USERNAME: "{values['STACK_ADMIN_USERNAME']}"
-  STACK_ADMIN_PASSWORD: "{values['STACK_ADMIN_PASSWORD']}"
-  SABNZBD_API_KEY: "{values['SABNZBD_API_KEY']}"
-  JELLYFIN_API_KEY: "{values['JELLYFIN_API_KEY']}"
-  JELLYFIN_USER_ID: "{values['JELLYFIN_USER_ID']}"
-  UNPACKERR_SONARR_API_KEY: "{values['UNPACKERR_SONARR_API_KEY']}"
-  UNPACKERR_RADARR_API_KEY: "{values['UNPACKERR_RADARR_API_KEY']}"
-  UNPACKERR_LIDARR_API_KEY: "{values['UNPACKERR_LIDARR_API_KEY']}"
-  UNPACKERR_READARR_API_KEY: "{values['UNPACKERR_READARR_API_KEY']}"
-"""
+    ordered_keys = [*SECRET_KEY_DEFAULTS.keys(), *sorted(k for k in values.keys() if k not in SECRET_KEY_DEFAULTS)]
+    lines = [
+        "apiVersion: v1",
+        "kind: Secret",
+        "metadata:",
+        f"  name: {secret_name}",
+        f"  namespace: {namespace}",
+        "type: Opaque",
+        "stringData:",
+    ]
+    for key in ordered_keys:
+        lines.append(f"  {key}: {json.dumps(str(values.get(key, '')))}")
+    manifest = "\n".join(lines) + "\n"
     proc = _run([*kubectl, "apply", "-f", "-"], input_text=manifest)
     if proc.stdout.strip():
         print(proc.stdout.strip())
+
+
+def build_secret_values(
+    *,
+    current: dict[str, str],
+    stack_admin_user: str,
+    pass_length: int,
+    rotate_existing: bool,
+) -> dict[str, str]:
+    values = {**SECRET_KEY_DEFAULTS, **{str(k): str(v) for k, v in current.items()}}
+
+    stack_user = str(values.get("STACK_ADMIN_USERNAME", "")).strip()
+    stack_pass = str(values.get("STACK_ADMIN_PASSWORD", "")).strip()
+    if not stack_user or rotate_existing:
+        stack_user = stack_admin_user
+    if not stack_pass or rotate_existing or stack_pass == "change-me":
+        stack_pass = _rand_secret(pass_length)
+    values["STACK_ADMIN_USERNAME"] = stack_user
+    values["STACK_ADMIN_PASSWORD"] = stack_pass
+
+    return values
 
 
 def _write_output(path: Path, values: dict[str, str], namespace: str, secret_name: str) -> None:
@@ -160,6 +192,13 @@ def _write_output(path: Path, values: dict[str, str], namespace: str, secret_nam
         f"SABNZBD_API_KEY={values['SABNZBD_API_KEY']}\n"
         f"JELLYFIN_API_KEY={values['JELLYFIN_API_KEY']}\n"
         f"JELLYFIN_USER_ID={values['JELLYFIN_USER_ID']}\n"
+        f"JELLYSEERR_API_KEY={values['JELLYSEERR_API_KEY']}\n"
+        f"TAUTULLI_API_KEY={values['TAUTULLI_API_KEY']}\n"
+        f"SONARR_API_KEY={values['SONARR_API_KEY']}\n"
+        f"RADARR_API_KEY={values['RADARR_API_KEY']}\n"
+        f"LIDARR_API_KEY={values['LIDARR_API_KEY']}\n"
+        f"READARR_API_KEY={values['READARR_API_KEY']}\n"
+        f"PROWLARR_API_KEY={values['PROWLARR_API_KEY']}\n"
     )
     path.write_text(content, encoding="utf-8")
     os.chmod(path, 0o600)
@@ -170,28 +209,12 @@ def run(cfg: GenerateSecretsConfig) -> int:
     current = _get_secret_payload(kubectl, cfg.namespace, cfg.secret_name)
     existed = bool(current)
 
-    stack_user = current.get("STACK_ADMIN_USERNAME", "").strip()
-    stack_pass = current.get("STACK_ADMIN_PASSWORD", "").strip()
-    if not stack_user or cfg.rotate_existing:
-        stack_user = cfg.stack_admin_user
-    if not stack_pass or cfg.rotate_existing or stack_pass == "change-me":
-        stack_pass = _rand_secret(cfg.pass_length)
-
-    values = {
-        "STACK_ADMIN_USERNAME": stack_user,
-        "STACK_ADMIN_PASSWORD": stack_pass,
-        "SABNZBD_API_KEY": current.get("SABNZBD_API_KEY", ""),
-        "JELLYFIN_API_KEY": current.get("JELLYFIN_API_KEY", ""),
-        "JELLYFIN_USER_ID": current.get("JELLYFIN_USER_ID", ""),
-        "UNPACKERR_SONARR_API_KEY": current.get("UNPACKERR_SONARR_API_KEY", "replace-after-first-boot")
-        or "replace-after-first-boot",
-        "UNPACKERR_RADARR_API_KEY": current.get("UNPACKERR_RADARR_API_KEY", "replace-after-first-boot")
-        or "replace-after-first-boot",
-        "UNPACKERR_LIDARR_API_KEY": current.get("UNPACKERR_LIDARR_API_KEY", "replace-after-first-boot")
-        or "replace-after-first-boot",
-        "UNPACKERR_READARR_API_KEY": current.get("UNPACKERR_READARR_API_KEY", "replace-after-first-boot")
-        or "replace-after-first-boot",
-    }
+    values = build_secret_values(
+        current=current,
+        stack_admin_user=cfg.stack_admin_user,
+        pass_length=cfg.pass_length,
+        rotate_existing=cfg.rotate_existing,
+    )
 
     _apply_secret(kubectl, cfg.namespace, cfg.secret_name, values)
     _write_output(cfg.output_file, values, cfg.namespace, cfg.secret_name)

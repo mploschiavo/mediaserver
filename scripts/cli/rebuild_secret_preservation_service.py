@@ -62,10 +62,6 @@ class RebuildSecretPreservationService:
             "STACK_ADMIN_PASSWORD",
             "JELLYFIN_API_KEY",
             "JELLYFIN_USER_ID",
-            "UNPACKERR_SONARR_API_KEY",
-            "UNPACKERR_RADARR_API_KEY",
-            "UNPACKERR_LIDARR_API_KEY",
-            "UNPACKERR_READARR_API_KEY",
         ]
 
         restored: dict[str, str] = {}

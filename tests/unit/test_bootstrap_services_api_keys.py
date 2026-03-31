@@ -29,17 +29,16 @@ class ApiKeysServiceTests(unittest.TestCase):
             resolve_path=lambda root, rel: Path(root) / Path(str(rel)),
         )
 
-    def test_read_api_key_prefers_env_and_ignores_placeholder(self):
+    def test_read_api_key_ignores_placeholder_value(self):
         svc = self._svc()
         with mock.patch.dict(
             os.environ,
             {
                 "SONARR_API_KEY": "replace-after-first-boot",
-                "UNPACKERR_SONARR_API_KEY": "from-unpackerr",
             },
             clear=False,
         ):
-            self.assertEqual(svc.read_api_key_from_env("sonarr"), "from-unpackerr")
+            self.assertEqual(svc.read_api_key_from_env("sonarr"), "")
 
     def test_read_api_key_from_config_xml(self):
         svc = self._svc()
