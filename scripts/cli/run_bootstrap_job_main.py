@@ -34,6 +34,7 @@ from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
     BootstrapNotificationService,
 )
+from cli.bootstrap_post_job_actions_service import BootstrapPostJobActionsService
 from cli.bootstrap_script_runner_service import (
     BootstrapScriptRunnerConfig,
     BootstrapScriptRunnerService,
@@ -253,6 +254,9 @@ class RunBootstrapJobRunner:
             kube=self.kube,
         )
 
+    def _post_job_actions_service(self) -> BootstrapPostJobActionsService:
+        return BootstrapPostJobActionsService()
+
     def _job_logs_service(self) -> BootstrapJobLogsService:
         return BootstrapJobLogsService(
             cfg=BootstrapJobLogsConfig(
@@ -306,23 +310,18 @@ class RunBootstrapJobRunner:
             self._run_phase("Wait for bootstrap Job completion", self.wait_for_bootstrap_job)
             self._run_phase("Print bootstrap Job logs", self.print_bootstrap_job_logs)
 
-            if self._log_contains("Jellyseerr: settings file bootstrap applied"):
-                self._run_phase(
-                    "Restart Jellyseerr after file bootstrap",
-                    lambda: self.restart_deployment("jellyseerr", timeout_seconds=180),
-                )
-
-            if self._log_contains("Homepage: wrote services config"):
-                self._run_phase(
-                    "Restart Homepage after config sync",
-                    lambda: self.restart_deployment_if_exists("homepage", timeout_seconds=180),
-                )
-
-            if self._log_contains("Bazarr: wrote integration config"):
-                self._run_phase(
-                    "Restart Bazarr after config sync",
-                    lambda: self.restart_deployment_if_exists("bazarr", timeout_seconds=180),
-                )
+            self._post_job_actions_service().run_actions(
+                log_contains=self._log_contains,
+                run_phase=self._run_phase,
+                restart_deployment=lambda deployment: self.restart_deployment(
+                    deployment,
+                    timeout_seconds=180,
+                ),
+                restart_deployment_if_exists=lambda deployment: self.restart_deployment_if_exists(
+                    deployment,
+                    timeout_seconds=180,
+                ),
+            )
 
             self._run_phase(
                 "Activate Jellyfin plugins (restart if needed)",

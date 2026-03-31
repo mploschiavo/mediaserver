@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 import argparse
-import base64
 import json
 import os
-import shutil
-import signal
-import socket
-import sqlite3
-import subprocess
 import sys
-import tempfile
 import time
 from urllib import error, parse, request
+
+from cli.jellyfin_bootstrap_db_discovery_service import (
+    discover_api_key_from_jellyfin_db,
+)
+from cli.jellyfin_bootstrap_kube_service import (
+    PortForward,
+    choose_kubectl,
+    get_secret,
+    patch_secret,
+    pick_free_local_port,
+)
 
 
 def log(level, message):
@@ -30,112 +34,6 @@ def warn(message):
 def fail(message):
     log("ERR", message)
     raise RuntimeError(message)
-
-
-def choose_kubectl():
-    if shutil.which("microk8s"):
-        return ["microk8s", "kubectl"]
-    if shutil.which("kubectl"):
-        return ["kubectl"]
-    fail("Neither 'microk8s' nor 'kubectl' is available in PATH.")
-
-
-def run_cmd(cmd, check=True):
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if check and proc.returncode != 0:
-        raise RuntimeError(
-            f"Command failed ({proc.returncode}): {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
-        )
-    return proc
-
-
-def get_secret(kubectl, namespace, secret_name):
-    proc = run_cmd(
-        kubectl + ["-n", namespace, "get", "secret", secret_name, "-o", "json"], check=False
-    )
-    if proc.returncode != 0:
-        return {}
-    raw = json.loads(proc.stdout)
-    data = raw.get("data") or {}
-    decoded = {}
-    for key, value in data.items():
-        try:
-            decoded[key] = base64.b64decode(value).decode("utf-8")
-        except Exception:
-            decoded[key] = ""
-    return decoded
-
-
-def patch_secret(kubectl, namespace, secret_name, values):
-    patch = {"stringData": values}
-    run_cmd(
-        kubectl
-        + [
-            "-n",
-            namespace,
-            "patch",
-            "secret",
-            secret_name,
-            "--type",
-            "merge",
-            "-p",
-            json.dumps(patch),
-        ]
-    )
-
-
-def pick_free_local_port():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
-class PortForward:
-    def __init__(self, cmd):
-        self.cmd = cmd
-        self.proc = None
-
-    def __enter__(self):
-        self.proc = subprocess.Popen(
-            self.cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            preexec_fn=os.setsid,
-        )
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        if self.proc and self.proc.poll() is None:
-            try:
-                os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
-            except Exception:
-                pass
-            try:
-                self.proc.wait(timeout=5)
-            except Exception:
-                try:
-                    os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
-                except Exception:
-                    pass
-
-    def ensure_alive(self):
-        if self.proc and self.proc.poll() is not None:
-            out = ""
-            err = ""
-            try:
-                out = self.proc.stdout.read() if self.proc.stdout else ""
-            except Exception:
-                pass
-            try:
-                err = self.proc.stderr.read() if self.proc.stderr else ""
-            except Exception:
-                pass
-            raise RuntimeError(
-                f"kubectl port-forward exited early (code={self.proc.returncode}). stdout={out} stderr={err}"
-            )
 
 
 def http_request(base_url, path, method="GET", payload=None, headers=None, timeout=20):
@@ -337,7 +235,7 @@ def startup_wizard_if_needed(base_url, username, password):
     return
 
 
-def authenticate_jellyfin(base_url, username, password):
+def _authenticate_jellyfin(base_url, username, password):
     headers = {
         "X-Emby-Authorization": (
             'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
@@ -353,41 +251,27 @@ def authenticate_jellyfin(base_url, username, password):
         headers=headers,
     )
     if status != 200 or not isinstance(data, dict):
-        fail(f"Jellyfin authentication failed (HTTP {status}): {body}")
-
+        return None, None, status, body
     token = str(data.get("AccessToken") or "").strip()
     user = data.get("User") or {}
     user_id = str(user.get("Id") or "").strip()
     if not token:
-        fail("Jellyfin authentication succeeded but no AccessToken was returned.")
+        return None, None, status, "Authentication succeeded without access token."
+    return token, user_id, status, body
+
+
+def authenticate_jellyfin(base_url, username, password):
+    token, user_id, status, body = _authenticate_jellyfin(base_url, username, password)
+    if not token:
+        fail(f"Jellyfin authentication failed (HTTP {status}): {body}")
     info("Jellyfin authentication succeeded with stack admin credentials.")
     return token, user_id
 
 
 def try_authenticate_jellyfin(base_url, username, password):
-    headers = {
-        "X-Emby-Authorization": (
-            'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
-            'DeviceId="media-stack-bootstrap", Version="1.0.0"'
-        )
-    }
-    payload = {"Username": username, "Pw": password}
-    status, data, body = http_request(
-        base_url,
-        "/Users/AuthenticateByName",
-        method="POST",
-        payload=payload,
-        headers=headers,
-    )
-    if status != 200 or not isinstance(data, dict):
-        warn(f"Jellyfin authentication with stack admin credentials failed (HTTP {status}).")
-        return None
-
-    token = str(data.get("AccessToken") or "").strip()
-    user = data.get("User") or {}
-    user_id = str(user.get("Id") or "").strip()
+    token, user_id, status, body = _authenticate_jellyfin(base_url, username, password)
     if not token:
-        warn("Jellyfin authentication returned no token.")
+        warn(f"Jellyfin authentication with stack admin credentials failed (HTTP {status}).")
         return None
     info("Jellyfin authentication succeeded with stack admin credentials.")
     return token, user_id
@@ -462,95 +346,6 @@ def lookup_user_id_with_api_key(base_url, api_key, preferred_username):
             if uid:
                 return uid
     return ""
-
-
-def discover_api_key_from_jellyfin_db(
-    kubectl, namespace, service_name, preferred_app_names, preferred_username
-):
-    pod_proc = run_cmd(
-        kubectl
-        + [
-            "-n",
-            namespace,
-            "get",
-            "pods",
-            "-l",
-            f"app={service_name}",
-            "-o",
-            "jsonpath={.items[0].metadata.name}",
-        ],
-        check=False,
-    )
-    pod_name = str(pod_proc.stdout or "").strip()
-    if pod_proc.returncode != 0 or not pod_name:
-        warn("Could not resolve Jellyfin pod for DB key discovery.")
-        return "", ""
-
-    fd, local_db = tempfile.mkstemp(prefix="jellyfin-db-", suffix=".sqlite")
-    os.close(fd)
-    try:
-        cp_proc = run_cmd(
-            kubectl
-            + [
-                "-n",
-                namespace,
-                "cp",
-                f"{pod_name}:/config/data/jellyfin.db",
-                local_db,
-            ],
-            check=False,
-        )
-        if cp_proc.returncode != 0:
-            warn("Failed copying jellyfin.db from pod for key discovery.")
-            return "", ""
-
-        con = sqlite3.connect(local_db)
-        cur = con.cursor()
-        preferred = [str(x).strip().lower() for x in preferred_app_names if str(x).strip()]
-        discovered_key = ""
-        for app_name in preferred:
-            cur.execute(
-                "SELECT AccessToken FROM ApiKeys WHERE lower(Name)=? ORDER BY Id DESC LIMIT 1",
-                (app_name,),
-            )
-            row = cur.fetchone()
-            if row and str(row[0] or "").strip():
-                discovered_key = str(row[0]).strip()
-                break
-        if not discovered_key:
-            cur.execute(
-                "SELECT AccessToken FROM ApiKeys WHERE AccessToken IS NOT NULL AND AccessToken != '' ORDER BY Id DESC LIMIT 1"
-            )
-            row = cur.fetchone()
-            if row and str(row[0] or "").strip():
-                discovered_key = str(row[0]).strip()
-
-        discovered_user_id = ""
-        preferred_user = str(preferred_username or "").strip().lower()
-        if preferred_user:
-            cur.execute(
-                "SELECT Id FROM Users WHERE lower(Username)=? ORDER BY Id LIMIT 1",
-                (preferred_user,),
-            )
-            row = cur.fetchone()
-            if row and str(row[0] or "").strip():
-                discovered_user_id = str(row[0]).strip()
-        if not discovered_user_id:
-            cur.execute("SELECT Id FROM Users ORDER BY Id LIMIT 1")
-            row = cur.fetchone()
-            if row and str(row[0] or "").strip():
-                discovered_user_id = str(row[0]).strip()
-
-        con.close()
-        return discovered_key, discovered_user_id
-    except Exception as exc:
-        warn(f"Jellyfin DB key discovery failed: {exc}")
-        return "", ""
-    finally:
-        try:
-            os.remove(local_db)
-        except Exception:
-            pass
 
 
 def parse_args(argv=None):
@@ -713,6 +508,7 @@ def main(argv=None):
                 service_name,
                 [app_name, "Jellyfin", "Jellyseerr", "media-stack-bootstrap"],
                 stack_user,
+                warn=warn,
             )
             if discovered_key and validate_api_key(base_url, discovered_key):
                 patch_payload = {"JELLYFIN_API_KEY": discovered_key}

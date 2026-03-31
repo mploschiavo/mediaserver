@@ -8,7 +8,6 @@ https://matthewloschiavo.com
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shlex
 import subprocess
@@ -30,6 +29,10 @@ from cli.rebuild_deployments_wait_service import (
     RebuildDeploymentsWaitService,
 )
 from cli.rebuild_ingress_service import RebuildIngressConfig, RebuildIngressService
+from cli.rebuild_manifest_apply_service import (
+    RebuildManifestApplyConfig,
+    RebuildManifestApplyService,
+)
 from cli.rebuild_manifest_overrides_service import (
     RebuildManifestOverridesConfig,
     RebuildManifestOverridesService,
@@ -149,6 +152,23 @@ class RebuildBootstrapRunner:
                 pvc_storage_class=self.cfg.pvc_storage_class,
             ),
             run_kubectl=self._run_kubectl,
+        )
+
+    def _manifest_apply_service(self) -> RebuildManifestApplyService:
+        return RebuildManifestApplyService(
+            cfg=RebuildManifestApplyConfig(
+                root_dir=self.cfg.root_dir,
+                namespace=self.cfg.namespace,
+                profile=self.cfg.profile,
+                include_optional=self.cfg.include_optional,
+                enable_unpackerr=self.cfg.enable_unpackerr,
+                kubectl=self.kubectl,
+            ),
+            info=info,
+            warn=warn,
+            run_kubectl=self._run_kubectl,
+            apply_manifest_text_with_overrides=self._apply_manifest_text_with_overrides,
+            apply_manifest_file_with_overrides=self._apply_manifest_file_with_overrides,
         )
 
     def _profile_defaults_service(self) -> RebuildProfileDefaultsService:
@@ -386,123 +406,7 @@ class RebuildBootstrapRunner:
         self._manifest_overrides_service().apply_manifest_file_with_overrides(file_path)
 
     def apply_manifests_for_profile(self) -> None:
-        profile_dir = self.cfg.root_dir / "k8s" / "profiles" / self.cfg.profile
-        build_failed = False
-
-        if profile_dir.is_dir():
-            info(
-                f"Applying manifests for profile '{self.cfg.profile}' via {profile_dir} "
-                "(namespace/path overrides enabled)"
-            )
-            proc = subprocess.run(
-                [*self.kubectl, "kustomize", "--load-restrictor=LoadRestrictionsNone", str(profile_dir)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if proc.returncode == 0:
-                self._apply_manifest_text_with_overrides(proc.stdout)
-                return
-            message = (proc.stderr or proc.stdout or "").strip().splitlines()
-            warn(
-                "Profile kustomize build failed: "
-                f"{message[-1] if message else 'unknown error'}"
-            )
-            build_failed = True
-
-        if build_failed:
-            warn("Profile kustomize build failed (possibly load restrictions or invalid profile resources).")
-            warn(f"Falling back to direct manifest apply for profile '{self.cfg.profile}'.")
-        else:
-            warn(f"Profile directory not found for '{self.cfg.profile}'; falling back to direct manifest apply.")
-
-        proc = subprocess.run(
-            [*self.kubectl, "kustomize", "--load-restrictor=LoadRestrictionsNone", str(self.cfg.root_dir / "k8s")],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if proc.returncode == 0:
-            self._apply_manifest_text_with_overrides(proc.stdout)
-        else:
-            message = (proc.stderr or proc.stdout or "").strip().splitlines()
-            warn(f"Base kustomize build failed: {message[-1] if message else 'unknown error'}")
-            ordered_files = [
-                "namespace.yaml",
-                "hardening.yaml",
-                "secrets.example.yaml",
-                "storage-pvc.yaml",
-                "core.yaml",
-                "ingress-traefik.yaml",
-                "scale-policy.yaml",
-            ]
-            for name in ordered_files:
-                self._apply_manifest_file_with_overrides(self.cfg.root_dir / "k8s" / name)
-
-        if self.cfg.profile in {"full", "public-demo", "power-user"} or self.cfg.include_optional == "1":
-            self._apply_manifest_file_with_overrides(self.cfg.root_dir / "k8s" / "optional.yaml")
-
-        if self.cfg.profile in {"full", "power-user"} or self.cfg.enable_unpackerr == "1":
-            self._apply_manifest_file_with_overrides(self.cfg.root_dir / "k8s" / "unpackerr.yaml")
-
-        if self.cfg.profile == "public-demo":
-            for app in ["qbittorrent", "sonarr", "radarr", "lidarr", "readarr", "bazarr", "sabnzbd"]:
-                exists = subprocess.run(
-                    [*self.kubectl, "-n", self.cfg.namespace, "get", "deploy", app],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if exists.returncode == 0:
-                    info(f"public-demo profile: scaling deploy/{app} to 0")
-                    self._run_kubectl(
-                        ["-n", self.cfg.namespace, "scale", f"deploy/{app}", "--replicas=0"]
-                    )
-                else:
-                    info(
-                        f"public-demo profile: deploy/{app} not installed; "
-                        "skipping scale-to-zero patch"
-                    )
-
-        if self.cfg.profile == "power-user":
-            tls_patch = {
-                "spec": {
-                    "tls": [
-                        {
-                            "secretName": "media-stack-tls",
-                            "hosts": [
-                                "homepage.local",
-                                "jellyfin.local",
-                                "jellyseerr.local",
-                                "sonarr.local",
-                                "radarr.local",
-                                "lidarr.local",
-                                "readarr.local",
-                                "bazarr.local",
-                                "prowlarr.local",
-                                "qbittorrent.local",
-                                "sabnzbd.local",
-                                "maintainerr.local",
-                                "tautulli.local",
-                            ],
-                        }
-                    ]
-                }
-            }
-            info("power-user profile: applying TLS hosts patch to ingress/media-stack-ingress")
-            self._run_kubectl(
-                [
-                    "-n",
-                    self.cfg.namespace,
-                    "patch",
-                    "ingress",
-                    "media-stack-ingress",
-                    "--type",
-                    "merge",
-                    "-p",
-                    json.dumps(tls_patch),
-                ]
-            )
+        self._manifest_apply_service().apply_manifests_for_profile()
 
     def generate_secrets(self) -> None:
         self._pipeline_service().generate_secrets()
