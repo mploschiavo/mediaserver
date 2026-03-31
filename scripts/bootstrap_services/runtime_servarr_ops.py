@@ -12,8 +12,9 @@ _disk_usage_percent = _core._disk_usage_percent
 _fmt_bytes = _core._fmt_bytes
 _to_float = _core._to_float
 
-def _arr_service() -> ArrService:
-    return ArrService(
+def _arr_service(cfg=None) -> ArrService:
+    service_cls = resolve_app_service_class(cfg, "arr_service", ArrService)
+    return service_cls(
         http_request=http_request,
         log=log,
         field_map=field_map,
@@ -42,8 +43,13 @@ def _prowlarr_service(cfg=None) -> ProwlarrService:
         log=log,
     )
 
-def _prowlarr_indexer_pipeline_service() -> ProwlarrIndexerPipelineService:
-    return ProwlarrIndexerPipelineService(
+def _prowlarr_indexer_pipeline_service(cfg=None) -> ProwlarrIndexerPipelineService:
+    service_cls = resolve_app_service_class(
+        cfg,
+        "prowlarr_indexer_pipeline_service",
+        ProwlarrIndexerPipelineService,
+    )
+    return service_cls(
         log=log,
         bool_cfg=bool_cfg,
         ensure_flaresolverr_proxy=ensure_prowlarr_flaresolverr_proxy,
@@ -53,8 +59,9 @@ def _prowlarr_indexer_pipeline_service() -> ProwlarrIndexerPipelineService:
         sync_arr_indexers_from_prowlarr=sync_arr_indexers_from_prowlarr,
     )
 
-def _prowlarr_precheck_service() -> ProwlarrPrecheckService:
-    return ProwlarrPrecheckService(
+def _prowlarr_precheck_service(cfg=None) -> ProwlarrPrecheckService:
+    service_cls = resolve_app_service_class(cfg, "prowlarr_precheck_service", ProwlarrPrecheckService)
+    return service_cls(
         log=log,
         bool_cfg=bool_cfg,
         wait_for_service=wait_for_service,
@@ -62,8 +69,13 @@ def _prowlarr_precheck_service() -> ProwlarrPrecheckService:
         ensure_app_auth_settings=ensure_app_auth_settings,
     )
 
-def _prowlarr_flaresolverr_service() -> ProwlarrFlareSolverrService:
-    return ProwlarrFlareSolverrService(
+def _prowlarr_flaresolverr_service(cfg=None) -> ProwlarrFlareSolverrService:
+    service_cls = resolve_app_service_class(
+        cfg,
+        "prowlarr_flaresolverr_service",
+        ProwlarrFlareSolverrService,
+    )
+    return service_cls(
         bool_cfg=bool_cfg,
         normalize_url=normalize_url,
         wait_for_service=wait_for_service,
@@ -76,8 +88,9 @@ def _prowlarr_flaresolverr_service() -> ProwlarrFlareSolverrService:
         ),
     )
 
-def _arr_indexer_sync_service() -> ArrIndexerSyncService:
-    return ArrIndexerSyncService(
+def _arr_indexer_sync_service(cfg=None) -> ArrIndexerSyncService:
+    service_cls = resolve_app_service_class(cfg, "arr_indexer_sync_service", ArrIndexerSyncService)
+    return service_cls(
         http_request=http_request,
         detect_arr_api_base=detect_arr_api_base,
         log=log,
@@ -95,8 +108,9 @@ def _sabnzbd_service(cfg=None) -> SabnzbdService:
         log=log,
     )
 
-def _arr_queue_cleanup_service() -> ArrQueueCleanupService:
-    return ArrQueueCleanupService(
+def _arr_queue_cleanup_service(cfg=None) -> ArrQueueCleanupService:
+    service_cls = resolve_app_service_class(cfg, "arr_queue_cleanup_service", ArrQueueCleanupService)
+    return service_cls(
         http_request=http_request,
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
@@ -106,8 +120,9 @@ def _arr_queue_cleanup_service() -> ArrQueueCleanupService:
         log=log,
     )
 
-def _servarr_policy_service() -> ServarrPolicyService:
-    return ServarrPolicyService(
+def _servarr_policy_service(cfg=None) -> ServarrPolicyService:
+    service_cls = resolve_app_service_class(cfg, "servarr_policy_service", ServarrPolicyService)
+    return service_cls(
         http_request=http_request,
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
@@ -118,14 +133,16 @@ def _servarr_policy_service() -> ServarrPolicyService:
         log=log,
     )
 
-def _health_service() -> HealthService:
-    return HealthService(
+def _health_service(cfg=None) -> HealthService:
+    service_cls = resolve_app_service_class(cfg, "health_service", HealthService)
+    return service_cls(
         http_request=http_request,
         log=log,
     )
 
-def _media_hygiene_service() -> MediaHygieneService:
-    return MediaHygieneService(
+def _media_hygiene_service(cfg=None) -> MediaHygieneService:
+    service_cls = resolve_app_service_class(cfg, "media_hygiene_service", MediaHygieneService)
+    return service_cls(
         log=log,
         bool_cfg=bool_cfg,
         normalize_url=normalize_url,
@@ -137,8 +154,9 @@ def _media_hygiene_service() -> MediaHygieneService:
         run_qbit_duplicate_prune=run_qbit_duplicate_prune,
     )
 
-def _media_hygiene_ops_service() -> MediaHygieneOpsService:
-    return MediaHygieneOpsService(
+def _media_hygiene_ops_service(cfg=None) -> MediaHygieneOpsService:
+    service_cls = resolve_app_service_class(cfg, "media_hygiene_ops_service", MediaHygieneOpsService)
+    return service_cls(
         log=log,
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
@@ -153,8 +171,9 @@ def _media_hygiene_ops_service() -> MediaHygieneOpsService:
         qbit_set_preferences=qbit_set_preferences,
     )
 
-def _disk_guardrails_service() -> DiskGuardrailsService:
-    return DiskGuardrailsService(
+def _disk_guardrails_service(cfg=None) -> DiskGuardrailsService:
+    service_cls = resolve_app_service_class(cfg, "disk_guardrails_service", DiskGuardrailsService)
+    return service_cls(
         log=log,
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
@@ -176,8 +195,9 @@ def _auth_service(cfg=None) -> AuthService:
         bool_cfg=bool_cfg,
     )
 
-def _discovery_service() -> DiscoveryListsService:
-    return DiscoveryListsService(
+def _discovery_service(cfg=None) -> DiscoveryListsService:
+    service_cls = resolve_app_service_class(cfg, "discovery_lists_service", DiscoveryListsService)
+    return service_cls(
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
         log=log,
@@ -194,13 +214,14 @@ def _discovery_service() -> DiscoveryListsService:
         trigger_arr_command=_health_service().trigger_arr_command,
     )
 
-def _servarr_pipeline_service() -> ServarrPipelineService:
+def _servarr_pipeline_service(cfg=None) -> ServarrPipelineService:
     adapter_deps = AdapterDependencies(
         bool_cfg=bool_cfg,
         log=log,
         ensure_readarr_metadata_source=ensure_readarr_metadata_source,
     )
-    return ServarrPipelineService(
+    service_cls = resolve_app_service_class(cfg, "servarr_pipeline_service", ServarrPipelineService)
+    return service_cls(
         log=log,
         normalize_url=normalize_url,
         detect_arr_api_base=detect_arr_api_base,

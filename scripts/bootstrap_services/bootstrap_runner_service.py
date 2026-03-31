@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -27,6 +29,43 @@ BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
 StepActionFn = Callable[[], None]
+
+
+def _resolve_service_class(cfg: dict[str, Any], service_key: str, default_cls: type[Any]) -> type[Any]:
+    key = str(service_key or "").strip()
+    if not key:
+        return default_cls
+    hooks = (cfg.get("adapter_hooks") or {}) if isinstance(cfg, dict) else {}
+    if not isinstance(hooks, dict):
+        raise RuntimeError("adapter_hooks must be an object/map.")
+    service_map = hooks.get("app_service_classes") or {}
+    if not isinstance(service_map, dict):
+        raise RuntimeError("adapter_hooks.app_service_classes must be an object/map.")
+    raw_spec = service_map.get(key)
+    if raw_spec is None or str(raw_spec).strip() == "":
+        return default_cls
+
+    spec = str(raw_spec).strip()
+    if ":" not in spec:
+        raise RuntimeError(
+            f"adapter_hooks.app_service_classes.{key}: invalid class spec '{spec}' "
+            "(expected 'module.submodule:ClassName')."
+        )
+    module_name, class_name = spec.rsplit(":", 1)
+    module_name = module_name.strip()
+    class_name = class_name.strip()
+    if not module_name or not class_name:
+        raise RuntimeError(
+            f"adapter_hooks.app_service_classes.{key}: invalid class spec '{spec}' "
+            "(expected 'module.submodule:ClassName')."
+        )
+    module = importlib.import_module(module_name)
+    cls = getattr(module, class_name, None)
+    if not inspect.isclass(cls):
+        raise RuntimeError(
+            f"adapter_hooks.app_service_classes.{key}: '{spec}' does not resolve to a class."
+        )
+    return cls
 
 
 @dataclass
@@ -166,7 +205,12 @@ class BootstrapRunnerService:
                 lambda runtime, state: state.details.update({"ran": True})
             )
 
-        return TechnologyLifecycleManager(lifecycles=lifecycles)
+        manager_cls = _resolve_service_class(
+            rt.cfg,
+            "technology_lifecycle_manager",
+            TechnologyLifecycleManager,
+        )
+        return manager_cls(lifecycles=lifecycles)
 
     def _run_lifecycle_phase(
         self,
@@ -196,8 +240,13 @@ class BootstrapRunnerService:
         for app in rt.arr_apps:
             self.deps.wait_for_service(app.name, app.url, "/ping", rt.wait_timeout)
 
-    def _download_client_pipeline_service(self) -> DownloadClientPipelineService:
-        return DownloadClientPipelineService(
+    def _download_client_pipeline_service(self, rt: BootstrapRuntime) -> DownloadClientPipelineService:
+        service_cls = _resolve_service_class(
+            rt.cfg,
+            "download_client_pipeline_service",
+            DownloadClientPipelineService,
+        )
+        return service_cls(
             log=self.deps.log,
             normalize_url=self.deps.normalize_url,
             wait_for_service=self.deps.wait_for_service,
@@ -208,7 +257,7 @@ class BootstrapRunnerService:
     def _prepare_download_clients(self, rt: BootstrapRuntime) -> DownloadClientPipelineResult:
         if self._download_client_prepare_result is not None:
             return self._download_client_prepare_result
-        self._download_client_prepare_result = self._download_client_pipeline_service().run_prepare(
+        self._download_client_prepare_result = self._download_client_pipeline_service(rt).run_prepare(
             DownloadClientPipelineInputs(
                 config_root=rt.config_root,
                 arr_apps_raw=rt.arr_apps_raw,
@@ -230,7 +279,12 @@ class BootstrapRunnerService:
         return self._download_client_prepare_result
 
     def _media_server_adapter(self, rt: BootstrapRuntime) -> Any:
-        factory = MediaServerAdapterFactory(
+        factory_cls = _resolve_service_class(
+            rt.cfg,
+            "media_server_adapter_factory",
+            MediaServerAdapterFactory,
+        )
+        factory = factory_cls(
             adapter_class_specs=(rt.adapter_hooks_cfg or {}).get("media_server_adapter_classes"),
         )
         backend = self._canonical_tech_key(str(rt.media_server_backend or ""), rt)

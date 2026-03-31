@@ -6,10 +6,19 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config_models import (
+    ArrDownloadHandlingPolicy,
     ArrDiscoveryListsConfig,
+    ArrMediaManagementPolicy,
+    ArrQualityUpgradePolicy,
     DiskGuardrailsConfig,
     DownloadClientsConfig,
+    JellyfinLibrariesConfig,
     JellyfinLiveTvConfig,
+    JellyfinPlaybackConfig,
+    JellyfinPluginsConfig,
+    JellyfinPrewarmConfig,
+    ServarrAppConfig,
+    TechnologyBindingsConfig,
 )
 
 
@@ -127,7 +136,16 @@ class TopLevelBootstrapConfig:
         # Validate key nested sections through typed models so invalid shapes fail fast.
         DownloadClientsConfig.from_dict(_expect_dict(src, "download_clients", {}))
         ArrDiscoveryListsConfig.from_dict(_expect_dict(src, "arr_discovery_lists", {}))
+        ArrMediaManagementPolicy.from_dict(_expect_dict(src, "arr_media_management", {}))
+        ArrDownloadHandlingPolicy.from_dict(_expect_dict(src, "arr_download_handling", {}))
+        ArrQualityUpgradePolicy.from_dict(_expect_dict(src, "arr_quality_upgrade", {}))
+        ServarrAppConfig.from_list(_expect_list(src, "arr_apps", []))
+        TechnologyBindingsConfig.from_dict(_expect_dict(src, "technology_bindings", {}))
         JellyfinLiveTvConfig.from_dict(_expect_dict(src, "jellyfin_livetv", {}))
+        JellyfinLibrariesConfig.from_dict(_expect_dict(src, "jellyfin_libraries", {}))
+        JellyfinPluginsConfig.from_dict(_expect_dict(src, "jellyfin_plugins", {}))
+        JellyfinPlaybackConfig.from_dict(_expect_dict(src, "jellyfin_playback", {}))
+        JellyfinPrewarmConfig.from_dict(_expect_dict(src, "jellyfin_prewarm", {}))
         DiskGuardrailsConfig.from_dict(_expect_dict(src, "disk_guardrails", {}))
 
         known_keys = {

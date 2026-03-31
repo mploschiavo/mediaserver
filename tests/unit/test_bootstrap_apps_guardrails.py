@@ -671,6 +671,8 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             if path == "/LiveTv/TunerHosts" and method == "POST":
                 created_tuner_payloads.append(payload or {})
                 return 200, {"Id": "new-managed-tuner"}, ""
+            if path == "/LiveTv/ListingProviders" and method == "POST":
+                return 200, {}, ""
             if path in ("/LiveTv/RefreshChannels", "/LiveTv/RefreshGuide"):
                 return 204, {}, ""
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
