@@ -1,4 +1,6 @@
 import unittest
+import json
+import tempfile
 from pathlib import Path
 import sys
 
@@ -9,9 +11,22 @@ from cli.bootstrap_core_phases_service import (
     BootstrapCorePhasesConfig,
     BootstrapCorePhasesService,
 )
+from core.exceptions import ConfigError
 
 
 class BootstrapCorePhasesServiceTests(unittest.TestCase):
+    def _base_config(self) -> dict:
+        return json.loads(
+            (ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text(encoding="utf-8")
+        )
+
+    def _write_config(self, payload: dict) -> Path:
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        path = Path(tmpdir.name) / "bootstrap.json"
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path
+
     def test_run_executes_expected_phases_and_respects_skip_flags(self):
         svc = BootstrapCorePhasesService(
             BootstrapCorePhasesConfig(
@@ -62,6 +77,60 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
             ("Ensure usenet client API access (sabnzbd)", True),
         )
         self.assertTrue(any(s[0] == "ensure-sabnzbd-api-access.sh" for s in called["scripts"]))
+
+    def test_run_component_script_requires_non_empty_phase_name(self):
+        cfg = self._base_config()
+        steps = ((cfg.get("adapter_hooks") or {}).get("bootstrap_job") or {}).get("phase_plan")
+        self.assertIsInstance(steps, list)
+        self.assertGreater(len(steps), 0)
+        steps[0]["phase_name"] = ""
+
+        svc = BootstrapCorePhasesService(
+            BootstrapCorePhasesConfig(
+                config_file=self._write_config(cfg),
+                namespace="media-stack",
+                prepare_host_root="/srv/media-stack",
+                phase_skip_flags={},
+            )
+        )
+
+        with self.assertRaises(ConfigError):
+            svc.run(
+                run_phase=lambda *_args, **_kwargs: None,
+                run_script=lambda *_args, **_kwargs: None,
+                operation_handlers={},
+            )
+
+    def test_enabled_component_script_requires_resolved_script_mapping(self):
+        cfg = self._base_config()
+        hooks = cfg.get("adapter_hooks") or {}
+        runner_phase_scripts = hooks.get("runner_phase_scripts") or {}
+        runner_phase_scripts["torrent_client_credentials"] = {}
+        bootstrap_job = hooks.get("bootstrap_job") or {}
+        phase_plan = bootstrap_job.get("phase_plan") or []
+        self.assertIsInstance(phase_plan, list)
+        self.assertGreater(len(phase_plan), 0)
+        phase_plan[0]["when"] = None
+        hooks["runner_phase_scripts"] = runner_phase_scripts
+        bootstrap_job["phase_plan"] = phase_plan
+        hooks["bootstrap_job"] = bootstrap_job
+        cfg["adapter_hooks"] = hooks
+
+        svc = BootstrapCorePhasesService(
+            BootstrapCorePhasesConfig(
+                config_file=self._write_config(cfg),
+                namespace="media-stack",
+                prepare_host_root="/srv/media-stack",
+                phase_skip_flags={},
+            )
+        )
+
+        with self.assertRaises(ConfigError):
+            svc.run(
+                run_phase=lambda *_args, **_kwargs: None,
+                run_script=lambda *_args, **_kwargs: None,
+                operation_handlers={},
+            )
 
 
 if __name__ == "__main__":

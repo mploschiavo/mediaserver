@@ -70,9 +70,8 @@ class BootstrapCorePhasesService:
         *,
         component_key: str = "",
         component_technology: str = "",
-        fallback: str = "",
     ) -> str:
-        raw = str(template or "").strip() or str(fallback or "").strip()
+        raw = str(template or "").strip()
         if not raw:
             return ""
         out = raw.replace("{component_key}", component_key)
@@ -155,11 +154,9 @@ class BootstrapCorePhasesService:
             "components": component_context,
         }
 
-        def _phase_enabled(step: BootstrapPhasePlanStep, default_enabled: bool) -> bool:
-            enabled = (
-                bool(step.enabled)
-                and bool(default_enabled)
-                and evaluate_phase_condition(step.when, context=phase_context)
+        def _phase_enabled(step: BootstrapPhasePlanStep) -> bool:
+            enabled = bool(step.enabled) and evaluate_phase_condition(
+                step.when, context=phase_context
             )
             if enabled and step.skip_flag and self._skip_phase(step.skip_flag):
                 enabled = False
@@ -176,8 +173,6 @@ class BootstrapCorePhasesService:
                         "bootstrap_job phase operation 'run_component_script' requires "
                         "params.component, params.binding, or params.technology."
                     )
-                component = component_context.get(component_key) or {}
-                scripts = component.get("scripts")
                 script_phase = str(params.get("script_phase") or "").strip()
                 if not script_phase:
                     raise ConfigError(
@@ -185,11 +180,17 @@ class BootstrapCorePhasesService:
                         "params.script_phase."
                     )
 
-                script_name = ""
-                if isinstance(scripts, dict):
-                    script_name = str(scripts.get(script_phase) or "").strip()
-                if not script_name:
-                    script_name = self._phase_script(script_phase, component_technology)
+                enabled = _phase_enabled(step)
+                script_name = self._phase_script(script_phase, component_technology)
+                if enabled and not script_name:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' could not resolve "
+                        f"script for component '{component_key or component_technology}' "
+                        f"(technology='{component_technology or 'unbound'}', "
+                        f"script_phase='{script_phase}'). "
+                        "Declare adapter_hooks.runner_phase_scripts.<script_phase> mapping "
+                        "for the bound technology."
+                    )
 
                 env: dict[str, str] = {}
                 raw_env = params.get("env")
@@ -216,13 +217,16 @@ class BootstrapCorePhasesService:
                             )
                         )
 
-                fallback_name = f"Run component script ({component_key}:{script_phase})"
                 phase_name = self._format_phase_name(
                     step.phase_name,
                     component_key=component_key,
                     component_technology=component_technology,
-                    fallback=fallback_name,
                 )
+                if not phase_name:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' requires "
+                        "non-empty phase_name."
+                    )
                 run_phase(
                     phase_name,
                     lambda script=script_name, script_args=tuple(args), script_env=dict(
@@ -232,7 +236,7 @@ class BootstrapCorePhasesService:
                         *script_args,
                         env=script_env,
                     ),
-                    enabled=_phase_enabled(step, bool(script_name)),
+                    enabled=enabled,
                 )
                 continue
 
@@ -254,12 +258,16 @@ class BootstrapCorePhasesService:
                     step.phase_name,
                     component_key=component_key,
                     component_technology=component_technology,
-                    fallback=f"Run handler ({handler_key})",
                 )
+                if not phase_name:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'call_handler' requires "
+                        "non-empty phase_name."
+                    )
                 run_phase(
                     phase_name,
                     handler,
-                    enabled=_phase_enabled(step, True),
+                    enabled=_phase_enabled(step),
                 )
                 continue
 
