@@ -456,8 +456,15 @@
         },
         "scale_policy": {
           "type": "object",
-          "required": ["core_apps", "worker_apps"],
           "properties": {
+            "apps": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "scale_to_zero_apps": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "core_apps": {
               "type": "array",
               "items": {"type": "string"}
@@ -467,6 +474,10 @@
               "items": {"type": "string"}
             }
           },
+          "oneOf": [
+            {"required": ["apps"]},
+            {"required": ["core_apps", "worker_apps"]}
+          ],
           "additionalProperties": true
         }
       },
