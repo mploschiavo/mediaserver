@@ -129,7 +129,7 @@ def normalize_flag_token(value: Any) -> str:
     return token
 
 
-def _resolve_phase_plan(
+def resolve_pipeline_phase_plan(
     cfg: dict[str, Any],
     *,
     pipeline: str,
@@ -357,7 +357,7 @@ def resolve_component_deployment_name(
     return canonical_component
 
 
-def _resolve_pipeline_components(
+def resolve_pipeline_components(
     cfg: dict[str, Any],
     *,
     pipeline: str,
@@ -394,50 +394,6 @@ def _resolve_pipeline_components(
         if key and token:
             resolved[key] = token
     return resolved
-
-
-def resolve_bootstrap_all_components(
-    cfg: dict[str, Any],
-    *,
-    aliases: dict[str, str],
-    role_bindings: dict[str, str],
-) -> dict[str, str]:
-    return _resolve_pipeline_components(
-        cfg,
-        pipeline="bootstrap_all",
-        aliases=aliases,
-        role_bindings=role_bindings,
-    )
-
-
-def resolve_bootstrap_job_components(
-    cfg: dict[str, Any],
-    *,
-    aliases: dict[str, str],
-    role_bindings: dict[str, str],
-) -> dict[str, str]:
-    return _resolve_pipeline_components(
-        cfg,
-        pipeline="bootstrap_job",
-        aliases=aliases,
-        role_bindings=role_bindings,
-    )
-
-
-def resolve_bootstrap_all_phase_plan(cfg: dict[str, Any]) -> tuple[BootstrapPhasePlanStep, ...]:
-    return _resolve_phase_plan(
-        cfg,
-        pipeline="bootstrap_all",
-        allow_empty=False,
-    )
-
-
-def resolve_bootstrap_job_phase_plan(cfg: dict[str, Any]) -> tuple[BootstrapPhasePlanStep, ...]:
-    return _resolve_phase_plan(
-        cfg,
-        pipeline="bootstrap_job",
-        allow_empty=False,
-    )
 
 
 def _lookup_path(context: dict[str, Any], path: str) -> tuple[bool, Any]:
@@ -523,11 +479,8 @@ def resolve_phase_skip_flag_specs(
     *,
     pipeline: str,
 ) -> tuple[PhaseSkipFlagSpec, ...]:
-    if pipeline == "bootstrap_all":
-        plan = _resolve_phase_plan(cfg, pipeline="bootstrap_all", allow_empty=True)
-    elif pipeline == "bootstrap_job":
-        plan = _resolve_phase_plan(cfg, pipeline="bootstrap_job", allow_empty=True)
-    else:
+    plan = resolve_pipeline_phase_plan(cfg, pipeline=pipeline, allow_empty=True)
+    if not plan:
         return ()
 
     configured_aliases = _resolve_skip_flag_aliases(cfg)

@@ -12,8 +12,8 @@ from cli.bootstrap_component_resolver import (
     evaluate_phase_condition,
     normalize_flag_token,
     resolve_bootstrap_component_plan,
-    resolve_bootstrap_job_components,
-    resolve_bootstrap_job_phase_plan,
+    resolve_pipeline_components,
+    resolve_pipeline_phase_plan,
     resolve_runner_phase_script,
 )
 
@@ -87,7 +87,10 @@ class BootstrapCorePhasesService:
         run_script: Callable[..., None],
         operation_handlers: dict[str, Callable[[], None]],
     ) -> None:
-        phase_plan = resolve_bootstrap_job_phase_plan(self.plan.config)
+        phase_plan = resolve_pipeline_phase_plan(
+            self.plan.config,
+            pipeline="bootstrap_job",
+        )
         adapter_hooks = self.plan.config.get("adapter_hooks")
         runner_phase_scripts = (
             (adapter_hooks or {}).get("runner_phase_scripts")
@@ -100,8 +103,9 @@ class BootstrapCorePhasesService:
             else ()
         )
 
-        components: dict[str, str] = resolve_bootstrap_job_components(
+        components: dict[str, str] = resolve_pipeline_components(
             self.plan.config,
+            pipeline="bootstrap_job",
             aliases=self.plan.aliases,
             role_bindings=self.plan.role_bindings,
         )
