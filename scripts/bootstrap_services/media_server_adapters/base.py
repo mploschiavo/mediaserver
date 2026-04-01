@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ..enums import RunnerOperation
+from ..enums import RunnerEvent
 
 InvokeOperationFn = Callable[..., Any]
 RunOptionalStepFn = Callable[..., None]
@@ -16,12 +16,25 @@ LogFn = Callable[[str], None]
 class MediaServerAdapterContext:
     backend: str
     runtime: Any
-    invoke_operation: InvokeOperationFn
     run_optional_step: RunOptionalStepFn
     log: LogFn
+    invoke_event: InvokeOperationFn | None = None
+    invoke_operation: InvokeOperationFn | None = None
 
-    def invoke(self, operation: RunnerOperation | str, *args: Any, **kwargs: Any) -> Any:
-        return self.invoke_operation(operation, *args, **kwargs)
+    def invoke(
+        self,
+        event: RunnerEvent | str,
+        handler: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        if callable(self.invoke_event):
+            return self.invoke_event(event, handler, *args, **kwargs)
+        if callable(self.invoke_operation):
+            return self.invoke_operation(handler, *args, **kwargs)
+        raise ValueError(
+            "MediaServerAdapterContext requires invoke_event (or legacy invoke_operation)."
+        )
 
     def run_optional(
         self,

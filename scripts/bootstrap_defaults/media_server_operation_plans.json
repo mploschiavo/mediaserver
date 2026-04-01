@@ -4,7 +4,8 @@
       "complete_message": "[OK] Jellyfin prewarm mode complete.",
       "steps": [
         {
-          "operation": "ensure_jellyfin_prewarm",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_prewarm",
           "args": [
             "cfg",
             "config_root",
@@ -17,7 +18,8 @@
       "complete_message": "[OK] Jellyfin home rails mode complete.",
       "steps": [
         {
-          "operation": "ensure_jellyfin_home_rails",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_home_rails",
           "args": [
             "cfg",
             "config_root",
@@ -29,7 +31,8 @@
     "post_servarr_pre_hygiene_steps": {
       "steps": [
         {
-          "operation": "ensure_jellyfin_livetv",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_livetv",
           "args": [
             "cfg",
             "config_root",
@@ -40,7 +43,8 @@
           "warning_message": "[WARN] Jellyfin Live TV: automation skipped. Set jellyfin_livetv.required=true to fail the bootstrap instead."
         },
         {
-          "operation": "ensure_jellyfin_libraries",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_libraries",
           "args": [
             "cfg",
             "config_root",
@@ -51,7 +55,8 @@
           "warning_message": "[WARN] Jellyfin libraries: automation skipped. Set jellyfin_libraries.required=true to fail the bootstrap instead."
         },
         {
-          "operation": "ensure_jellyfin_plugins",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_plugins",
           "args": [
             "cfg",
             "config_root",
@@ -62,7 +67,8 @@
           "warning_message": "[WARN] Jellyfin plugins: automation skipped. Set jellyfin_plugins.required=true to fail the bootstrap instead."
         },
         {
-          "operation": "ensure_jellyfin_playback_defaults",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_playback_defaults",
           "args": [
             "cfg",
             "config_root",
@@ -73,7 +79,8 @@
           "warning_message": "[WARN] Jellyfin playback: automation skipped. Set jellyfin_playback.required=true to fail the bootstrap instead."
         },
         {
-          "operation": "ensure_jellyfin_home_rails",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_home_rails",
           "args": [
             "cfg",
             "config_root",
@@ -84,7 +91,8 @@
           "warning_message": "[WARN] Jellyfin home rails: automation skipped. Set jellyfin_home_rails.required=true to fail the bootstrap instead."
         },
         {
-          "operation": "ensure_jellyfin_auto_collections_config",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_auto_collections_config",
           "args": [
             "cfg",
             "config_root",
@@ -99,7 +107,8 @@
     "post_servarr_post_hygiene_steps": {
       "steps": [
         {
-          "operation": "ensure_jellyfin_prewarm",
+          "event": "ENSURE",
+          "handler": "ensure_jellyfin_prewarm",
           "args": [
             "cfg",
             "config_root",

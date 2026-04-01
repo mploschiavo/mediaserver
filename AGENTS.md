@@ -46,8 +46,11 @@ Primary binding points:
   - `app_service_classes`
   - `service_technology_map`
 - optional runtime-only hooks in config:
-  - `adapter_hooks.operation_handlers`
+  - `adapter_hooks.event_handlers`
+  - `adapter_hooks.operation_handlers` (legacy compatibility only)
+  - `adapter_hooks.runner_event_plans`
   - `adapter_hooks.runner_operation_plans`
+  - `adapter_hooks.media_server_event_plans`
   - `adapter_hooks.media_server_operation_plans`
 
 Swap workflow:
@@ -64,12 +67,20 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - App/technology-specific branching belongs in:
   - `scripts/bootstrap_services/apps/<app>/**`
   - adapter modules referenced by plugin manifests
-  - declarative phase plans under `adapter_hooks.runner_operation_plans` or `adapter_hooks.media_server_operation_plans`
+  - declarative phase plans under `adapter_hooks.runner_event_plans` /
+    `adapter_hooks.media_server_event_plans` (or legacy `*_operation_plans`)
 - Do not add new app-specific conditionals in `BootstrapRunnerService` for precheck/ensure/indexer flow; bind operations through phase plans instead.
 - If adding/swapping an app requires edits in runner orchestration logic, treat it as a design bug and refactor before merge.
 - Prefer adding a new adapter/service + config hook over adding conditionals in shared runtime modules.
 - Keep operation names stable; change bindings/hook paths for swaps, not runner internals.
 - Do not place app-specific implementation files at `scripts/bootstrap_services/*` root when an app package exists.
+
+### Event Contract (Required)
+- Runtime handlers are lifecycle-event driven.
+- Use `RunnerEvent` values (in `scripts/bootstrap_services/enums.py`) for all plugin handler registration.
+- Plugin manifests register handlers under `event_handlers.<EVENT>.<handler_key>`.
+- Runner/media-server phase plans must declare `event` + `handler` (legacy `operation` is compatibility-only).
+- Do not re-introduce bespoke per-operation wiring classes in orchestration layers.
 
 ## Design Rules
 - Prefer composition over inheritance.
@@ -88,6 +99,11 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 ## Bash vs Python Policy
 Keep Bash when it is a tiny, stable wrapper.
 Migrate Bash to Python when logic includes non-trivial branching, loops, parsing, retries, JSON/YAML transforms, or needs tests.
+
+## Kubernetes Client Policy
+- Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `scripts/core/kube.py`.
+- Avoid new Python code that shells out to `kubectl` for operations already supported by the API adapter.
+- Keep shell-based `kubectl` usage confined to operator-facing Bash wrappers unless explicitly justified.
 
 ## Bootstrap Image Packaging Contract
 Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).

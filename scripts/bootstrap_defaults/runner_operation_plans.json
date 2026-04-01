@@ -2,12 +2,14 @@
   "precheck_steps": {
     "steps": [
       {
-        "operation": "ensure_prowlarr_ready",
+        "event": "VALIDATE",
+        "handler": "ensure_prowlarr_ready",
         "args": ["cfg", "prowlarr_url", "prowlarr_key", "app_auth_cfg", "wait_timeout"],
         "enabled_when_attr": "prowlarr_url"
       },
       {
-        "operation": "ensure_maintainerr_policy",
+        "event": "ENSURE",
+        "handler": "ensure_maintainerr_policy",
         "args": ["cfg", "config_root"],
         "enabled_attr": "configure_maintainerr_policy",
         "required_attr": "maintainerr_required",
@@ -18,21 +20,24 @@
   "post_servarr_pre_media_steps": {
     "steps": [
       {
-        "operation": "ensure_bazarr_arr_integration",
+        "event": "ENSURE",
+        "handler": "ensure_bazarr_arr_integration",
         "args": ["cfg", "config_root", "arr_apps_raw", "app_keys", "wait_timeout"],
         "enabled_attr": "configure_bazarr_integration",
         "required_attr": "bazarr_required",
         "warning_message": "[WARN] Bazarr: integration bootstrap skipped. Set bazarr.required=true to fail the bootstrap instead."
       },
       {
-        "operation": "configure_jellyseerr",
+        "event": "RUN",
+        "handler": "configure_jellyseerr",
         "args": ["cfg", "arr_apps_raw", "app_keys", "config_root", "wait_timeout"],
         "enabled_attr": "configure_jellyseerr_services",
         "required_attr": "jellyseerr_required",
         "warning_message": "[WARN] Jellyseerr: automation skipped. Set jellyseerr.required=true to fail the bootstrap instead."
       },
       {
-        "operation": "ensure_maintainerr_integrations",
+        "event": "ENSURE",
+        "handler": "ensure_maintainerr_integrations",
         "args": ["cfg", "config_root", "arr_apps_raw", "wait_timeout"],
         "enabled_attr": "configure_maintainerr_integrations",
         "required_attr": "maintainerr_integrations_required",
@@ -43,7 +48,8 @@
   "post_servarr_post_media_steps": {
     "steps": [
       {
-        "operation": "enforce_disk_guardrails",
+        "event": "ENSURE",
+        "handler": "enforce_disk_guardrails",
         "args": [
           "cfg",
           "config_root",
@@ -56,7 +62,8 @@
         "warning_message": "[WARN] Disk guardrails: automation skipped. Set disk_guardrails.required=true to fail the bootstrap instead."
       },
       {
-        "operation": "run_media_hygiene",
+        "event": "RUN",
+        "handler": "run_media_hygiene",
         "args": [
           "cfg",
           "config_root",
@@ -71,7 +78,8 @@
         "warning_message": "[WARN] Media hygiene: automation skipped. Set media_hygiene.required=true to fail the bootstrap instead."
       },
       {
-        "operation": "ensure_homepage_services_config",
+        "event": "ENSURE",
+        "handler": "ensure_homepage_services_config",
         "args": ["cfg", "config_root"],
         "enabled_attr": "configure_homepage_services",
         "required_attr": "homepage_required",
@@ -82,7 +90,8 @@
   "indexer_steps": {
     "steps": [
       {
-        "operation": "run_prowlarr_indexer_pipeline",
+        "event": "RUN",
+        "handler": "run_prowlarr_indexer_pipeline",
         "args": [
           "cfg",
           "prowlarr_url",

@@ -120,6 +120,8 @@ class BootstrapRuntimeBuilder:
             {
                 "media_server_operation_plans": default_media_server_operation_plans,
                 "runner_operation_plans": default_runner_operation_plans,
+                "media_server_event_plans": default_media_server_operation_plans,
+                "runner_event_plans": default_runner_operation_plans,
             },
         )
 
@@ -129,7 +131,13 @@ class BootstrapRuntimeBuilder:
         self._validate_adapter_registration_overrides(raw_cfg_hooks)
 
         allowed_runtime_overrides: dict[str, Any] = {}
-        for key in ("operation_handlers", "runner_operation_plans", "media_server_operation_plans"):
+        for key in (
+            "event_handlers",
+            "runner_event_plans",
+            "runner_operation_plans",
+            "media_server_event_plans",
+            "media_server_operation_plans",
+        ):
             value = raw_cfg_hooks.get(key)
             if value is None:
                 continue
@@ -137,13 +145,33 @@ class BootstrapRuntimeBuilder:
                 raise ValueError(f"adapter_hooks.{key} must be an object/map.")
             allowed_runtime_overrides[key] = value
 
+        legacy_operation_handlers = raw_cfg_hooks.get("operation_handlers")
+        if legacy_operation_handlers is not None:
+            if not isinstance(legacy_operation_handlers, dict):
+                raise ValueError("adapter_hooks.operation_handlers must be an object/map.")
+            event_overrides = allowed_runtime_overrides.setdefault("event_handlers", {})
+            if not isinstance(event_overrides, dict):
+                raise ValueError("adapter_hooks.event_handlers must be an object/map.")
+            run_event = event_overrides.setdefault("RUN", {})
+            if not isinstance(run_event, dict):
+                raise ValueError(
+                    "adapter_hooks.event_handlers.RUN must be an object/map when provided."
+                )
+            run_event.update(legacy_operation_handlers)
+
         adapter_hooks_cfg = self.deps.deep_merge_objects(merged_defaults, allowed_runtime_overrides)
         adapter_hooks_cfg = self.deps.deep_merge_objects(
             adapter_hooks_cfg,
             {
+                "media_server_event_plans": media_server_cfg.get("operation_plans") or {},
                 "media_server_operation_plans": media_server_cfg.get("operation_plans") or {},
             },
         )
+        event_handlers_cfg = adapter_hooks_cfg.get("event_handlers")
+        if isinstance(event_handlers_cfg, dict):
+            run_handlers = event_handlers_cfg.get("RUN")
+            if isinstance(run_handlers, dict):
+                adapter_hooks_cfg["operation_handlers"] = dict(run_handlers)
         return adapter_hooks_cfg
 
     def build(self, args: BootstrapCliArgs, cfg: dict[str, Any]) -> BootstrapRuntimeBuildResult:

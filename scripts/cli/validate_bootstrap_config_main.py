@@ -108,24 +108,53 @@ def basic_checks(cfg):
                 errors.append(f"$.download_clients: missing active client section '{name}'")
 
     if isinstance(adapter_hooks, dict):
-        for hook_key in ("operation_handlers",):
-            hook_map = adapter_hooks.get(hook_key)
-            if hook_map is None:
-                continue
-            if not isinstance(hook_map, dict):
-                errors.append(f"$.adapter_hooks.{hook_key}: must be an object")
-                continue
-            for impl, spec in hook_map.items():
-                path = f"$.adapter_hooks.{hook_key}.{impl}"
-                if spec in (None, ""):
-                    continue
-                if ":" not in str(spec):
-                    errors.append(
-                        f"{path}: invalid hook spec '{spec}' (expected module.submodule:Symbol)"
-                    )
+        legacy_hook_map = adapter_hooks.get("operation_handlers")
+        if legacy_hook_map is not None:
+            if not isinstance(legacy_hook_map, dict):
+                errors.append("$.adapter_hooks.operation_handlers: must be an object")
+            else:
+                for impl, spec in legacy_hook_map.items():
+                    path = f"$.adapter_hooks.operation_handlers.{impl}"
+                    if spec in (None, ""):
+                        continue
+                    if ":" not in str(spec):
+                        errors.append(
+                            f"{path}: invalid hook spec '{spec}' (expected module.submodule:Symbol)"
+                        )
+
+        event_hook_map = adapter_hooks.get("event_handlers")
+        if event_hook_map is not None:
+            if not isinstance(event_hook_map, dict):
+                errors.append("$.adapter_hooks.event_handlers: must be an object")
+            else:
+                from bootstrap_services.enums import RunnerEvent
+
+                for event_name, event_handlers in event_hook_map.items():
+                    event_path = f"$.adapter_hooks.event_handlers.{event_name}"
+                    try:
+                        RunnerEvent.from_value(str(event_name))
+                    except ValueError:
+                        errors.append(
+                            f"{event_path}: unsupported event; expected one of "
+                            f"{', '.join(RunnerEvent.choices())}"
+                        )
+                        continue
+                    if not isinstance(event_handlers, dict):
+                        errors.append(f"{event_path}: must be an object")
+                        continue
+                    for impl, spec in event_handlers.items():
+                        path = f"{event_path}.{impl}"
+                        if spec in (None, ""):
+                            continue
+                        if ":" not in str(spec):
+                            errors.append(
+                                f"{path}: invalid hook spec '{spec}' "
+                                "(expected module.submodule:Symbol)"
+                            )
 
         _validate_media_server_operation_plans(
-            adapter_hooks.get("media_server_operation_plans"),
+            adapter_hooks.get("media_server_event_plans")
+            or adapter_hooks.get("media_server_operation_plans"),
             "$.adapter_hooks.media_server_operation_plans",
             errors,
         )
@@ -191,9 +220,26 @@ def _validate_media_server_operation_plans(plans, path_prefix, errors):
                 if not isinstance(step, dict):
                     errors.append(f"{step_path}: must be an object")
                     continue
+                event_name = str(step.get("event") or "").strip()
+                handler = str(step.get("handler") or "").strip()
                 operation = str(step.get("operation") or "").strip()
-                if not operation:
+                if not handler and operation:
+                    handler = operation
+                if not event_name and operation:
+                    event_name = "RUN"
+                if not handler:
+                    errors.append(f"{step_path}.handler: required non-empty string")
                     errors.append(f"{step_path}.operation: required non-empty string")
+                if event_name:
+                    from bootstrap_services.enums import RunnerEvent
+
+                    try:
+                        RunnerEvent.from_value(event_name)
+                    except ValueError:
+                        errors.append(
+                            f"{step_path}.event: unsupported event '{event_name}' "
+                            f"(expected one of {', '.join(RunnerEvent.choices())})"
+                        )
 
 
 def main() -> int:

@@ -24,7 +24,8 @@ Per-technology manifests support these keys:
 - `before_common_steps`
 - `app_service_classes`
 - `service_technology_map`
-- `operation_handlers`
+- `event_handlers`
+- `operation_handlers` (legacy compatibility only)
 - `capability_defaults`
 
 Role-specific class contracts:
@@ -32,17 +33,31 @@ Role-specific class contracts:
 - `adapter_classes.download_client`
 - `adapter_classes.media_server`
 
-Shared runtime operation contracts are generic and technology-neutral:
-- `torrent_client_login`
-- `setup_torrent_categories`
-- `read_sabnzbd_api_key`
-- `ensure_sabnzbd_defaults`
-- `ensure_sabnzbd_categories`
+Shared runtime lifecycle contracts are concrete and technology-neutral:
+- `INIT`
+- `VALIDATE`
+- `PLAN`
+- `ACQUIRE`
+- `RUN`
+- `POST`
+- `ENSURE`
+- `CHECK_STATUS`
+- `REPORT`
+- `CANCEL`
+- `RETRY`
+- `RECOVER`
+- `RELEASE`
+- `CLEANUP`
+- `FINALIZE`
+- `SHUTDOWN`
 
 `adapter_hooks` is no longer used for adapter/service registration overrides.  
 Registration is manifest-only. Runtime-only hooks still supported:
+- `adapter_hooks.event_handlers`
 - `adapter_hooks.operation_handlers`
+- `adapter_hooks.runner_event_plans`
 - `adapter_hooks.runner_operation_plans`
+- `adapter_hooks.media_server_event_plans`
 - `adapter_hooks.media_server_operation_plans`
 - `adapter_hooks.runner_phase_scripts`
 - `adapter_hooks.bootstrap_all`
@@ -174,7 +189,7 @@ Legacy flag aliases remain supported (`--skip-qbit-ensure`, `--skip-sab-ensure`,
 ```
 
 2. Keep `scripts/bootstrap_defaults/plugins/plex/manifest.json` present.
-3. Add/update `adapter_hooks.media_server_operation_plans.plex` only if you want Plex-specific runtime operations.
+3. Add/update `adapter_hooks.media_server_event_plans.plex` (or legacy `media_server_operation_plans`) only if you want Plex-specific runtime operations.
 4. Reconcile; Jellyfin-specific operations are not executed when `media_server=plex`.
 
 ## Prove Isolation and Removability
@@ -208,14 +223,14 @@ Expected result:
 4. Add config block and switch binding key.
 5. Validate + run bootstrap.
 
-If you need custom behavior hooks, add only operation hooks/plans in `adapter_hooks` (not class registration).
+If you need custom behavior hooks, add only event hooks/plans in `adapter_hooks` (not class registration).
 
 ## Compatibility Notes
 
 - Non-Jellyfin media servers currently run through plan-driven adapters.  
   If a backend has no operation plan, media-server phases are skipped with warnings instead of hard-failing.
 - Request manager defaults to `jellyseerr` when `technology_bindings.request_manager` is omitted.
-- Legacy operation names `qbit_login` and `setup_qbit_categories` remain supported for compatibility, but new manifests should use generic names.
+- Legacy flat operation maps remain supported for compatibility, but new manifests should register under `event_handlers`.
 
 ---
 

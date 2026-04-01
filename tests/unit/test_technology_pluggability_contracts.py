@@ -1,7 +1,6 @@
 import ast
 import importlib
 import json
-import re
 import sys
 import unittest
 from pathlib import Path
@@ -33,24 +32,24 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "jellyfin": {
         "adapter_classes": {"media_server"},
         "app_service_classes": {"jellyfin_livetv_service"},
-        "operation_handlers": {"ensure_jellyfin_livetv"},
+        "event_handlers": {"ensure_jellyfin_livetv"},
     },
     "jellyseerr": {
         "app_service_classes": {"request_manager_service"},
-        "operation_handlers": {"configure_jellyseerr"},
+        "event_handlers": {"configure_jellyseerr"},
     },
     "bazarr": {
         "app_service_classes": {"bazarr_service"},
-        "operation_handlers": {"ensure_bazarr_arr_integration"},
+        "event_handlers": {"ensure_bazarr_arr_integration"},
     },
     "prowlarr": {
         "app_service_classes": {"prowlarr_service"},
-        "operation_handlers": {"ensure_prowlarr_ready"},
+        "event_handlers": {"ensure_prowlarr_ready"},
     },
     "qbittorrent": {
         "adapter_classes": {"download_client"},
         "app_service_classes": {"torrent_client_service"},
-        "operation_handlers": {"torrent_client_login", "setup_torrent_categories"},
+        "event_handlers": {"torrent_client_login", "setup_torrent_categories"},
     },
     "sonarr": {"adapter_classes": {"servarr"}},
     "radarr": {"adapter_classes": {"servarr"}},
@@ -59,7 +58,7 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "sabnzbd": {
         "adapter_classes": {"download_client"},
         "app_service_classes": {"usenet_client_service"},
-        "operation_handlers": {
+        "event_handlers": {
             "read_sabnzbd_api_key",
             "ensure_sabnzbd_defaults",
             "ensure_sabnzbd_categories",
@@ -69,11 +68,11 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "flaresolverr": {},
     "maintainerr": {
         "app_service_classes": {"maintainerr_service"},
-        "operation_handlers": {"ensure_maintainerr_policy", "ensure_maintainerr_integrations"},
+        "event_handlers": {"ensure_maintainerr_policy", "ensure_maintainerr_integrations"},
     },
     "homepage": {
         "app_service_classes": {"homepage_service"},
-        "operation_handlers": {"ensure_homepage_services_config"},
+        "event_handlers": {"ensure_homepage_services_config"},
     },
 }
 
@@ -106,7 +105,6 @@ def _iter_specs(manifest: dict) -> list[str]:
     for section_key in (
         "adapter_classes",
         "app_service_classes",
-        "operation_handlers",
         "before_common_steps",
     ):
         section = manifest.get(section_key) or {}
@@ -116,7 +114,29 @@ def _iter_specs(manifest: dict) -> list[str]:
             token = str(value or "").strip()
             if token:
                 specs.append(token)
+
+    event_handlers = manifest.get("event_handlers") or {}
+    if isinstance(event_handlers, dict):
+        for handler_map in event_handlers.values():
+            if not isinstance(handler_map, dict):
+                continue
+            for value in handler_map.values():
+                token = str(value or "").strip()
+                if token:
+                    specs.append(token)
     return specs
+
+
+def _event_handler_names(manifest: dict) -> set[str]:
+    names: set[str] = set()
+    event_handlers = manifest.get("event_handlers") or {}
+    if not isinstance(event_handlers, dict):
+        return names
+    for handler_map in event_handlers.values():
+        if not isinstance(handler_map, dict):
+            continue
+        names.update(str(key or "").strip() for key in handler_map.keys())
+    return {name for name in names if name}
 
 
 def _assert_import_spec_resolves(spec: str):
@@ -143,6 +163,15 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             manifest = _load_manifest(tech)
             expected = MIN_REGISTRATION_REQUIREMENTS.get(tech) or {}
             for section_key, required_keys in expected.items():
+                if section_key == "event_handlers":
+                    section_keys = _event_handler_names(manifest)
+                    missing = set(required_keys) - set(section_keys)
+                    self.assertFalse(
+                        missing,
+                        msg=f"{tech}: missing required {section_key} keys: {sorted(missing)}",
+                    )
+                    continue
+
                 section = manifest.get(section_key) or {}
                 self.assertIsInstance(
                     section,
@@ -168,25 +197,12 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         operation_names: set[str] = set()
         for tech in TECHNOLOGIES:
             manifest = _load_manifest(tech)
-            handlers = manifest.get("operation_handlers") or {}
-            if isinstance(handlers, dict):
-                operation_names.update(str(name or "").strip() for name in handlers.keys())
+            operation_names.update(_event_handler_names(manifest))
 
         operation_names = {name for name in operation_names if name}
-        self.assertTrue(operation_names, "No operation handlers discovered from manifests.")
-        for op_name in sorted(operation_names):
-            pattern = re.compile(
-                rf"{re.escape(op_name)}\s*=\s*_missing_op_handler\(\s*\"{re.escape(op_name)}\"\s*\)",
-                re.MULTILINE,
-            )
-            self.assertRegex(
-                entrypoint,
-                pattern,
-                msg=(
-                    f"bootstrap-apps.py must keep operation '{op_name}' manifest-driven via "
-                    "_missing_op_handler(...) in wiring."
-                ),
-            )
+        self.assertTrue(operation_names, "No event handlers discovered from manifests.")
+        self.assertIn("build_runner_event_registry(", entrypoint)
+        self.assertNotIn("_missing_op_handler(", entrypoint)
 
     def test_shared_runtime_entry_modules_have_no_direct_app_imports(self):
         for module_path in SHARED_RUNTIME_ENTRY_MODULES:

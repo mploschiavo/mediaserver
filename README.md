@@ -84,12 +84,16 @@ Manifest contract keys:
 - `adapter_classes`
 - `app_service_classes`
 - `service_technology_map`
-- `operation_handlers`
+- `event_handlers` (`<EVENT> -> <handler_key> -> module:callable`)
+- `operation_handlers` (legacy compatibility only)
 - optional `capability_defaults` and `aliases`
 
 Runtime override scope is intentionally narrow:
-- `adapter_hooks.operation_handlers`
+- `adapter_hooks.event_handlers`
+- `adapter_hooks.operation_handlers` (legacy compatibility only)
+- `adapter_hooks.runner_event_plans`
 - `adapter_hooks.runner_operation_plans`
+- `adapter_hooks.media_server_event_plans`
 - `adapter_hooks.media_server_operation_plans`
 - `adapter_hooks.runner_phase_scripts` (bootstrap wrapper phase->script mapping)
 - `adapter_hooks.bootstrap_all` (ordered phase plan + component wiring for bootstrap-all)
@@ -103,9 +107,13 @@ Registration overrides are intentionally blocked in runtime config:
 - `adapter_hooks.app_service_classes`
 - `adapter_hooks.service_technology_map`
 
-Shared runner operation names are generic (technology-neutral):
-- `torrent_client_login`
-- `setup_torrent_categories`
+Shared lifecycle events are concrete and technology-neutral (`RunnerEvent`):
+- `INIT`, `VALIDATE`, `PLAN`, `ACQUIRE`, `RUN`, `POST`, `ENSURE`
+- `CHECK_STATUS`, `REPORT`, `CANCEL`, `RETRY`, `RECOVER`, `RELEASE`, `CLEANUP`, `FINALIZE`, `SHUTDOWN`
+
+Runner/media-server phase plans are event-driven:
+- each step declares `event` + `handler`
+- legacy `operation` is supported for compatibility during migration
 
 Supported binding roles:
 - `torrent_client`
@@ -180,7 +188,7 @@ To add or replace one technology with minimal blast radius:
    - `scripts/bootstrap_services/media_server_adapters/`
 2. Register the class path in plugin manifest:
    - `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
-3. Expose only technology-local operations through manifest `operation_handlers`.
+3. Expose only technology-local handlers through manifest `event_handlers`.
 4. Bind runtime usage through `technology_bindings`.
 5. Keep policy/config in JSON under `bootstrap/` or `config/runtime/overlays/*`.
 6. Validate + reconcile:

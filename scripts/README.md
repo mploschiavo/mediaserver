@@ -18,8 +18,8 @@ This directory intentionally contains both:
 
 - Technology registration is manifest-driven under `scripts/bootstrap_defaults/plugins/*/manifest.json`.
 - Shared orchestration scripts must remain technology-neutral.
-- Runtime hook overrides are limited to operation handlers, phase plans, bootstrap wrapper phase-script maps, and scale-policy/worker lists in `adapter_hooks`.
-- Generic operation names are used in base orchestration (for example `torrent_client_login`).
+- Runtime hook overrides are limited to event handlers, phase plans, bootstrap wrapper phase-script maps, and scale-policy/worker lists in `adapter_hooks`.
+- Concrete lifecycle events (`RunnerEvent`) drive orchestration; technologies provide handler bindings per event.
 - Legacy qB helper/CLI names remain for backward compatibility (`ensure-qbit-credentials.sh`, etc.).
 
 ## Stable Operator Entrypoints

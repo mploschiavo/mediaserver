@@ -7,9 +7,13 @@
   "app_service_classes": {
     "torrent_client_service": "bootstrap_services.apps.transmission.service:TransmissionService"
   },
-  "operation_handlers": {
-    "torrent_client_login": "bootstrap_services.apps.transmission.runtime_ops:torrent_client_login",
-    "setup_torrent_categories": "bootstrap_services.apps.transmission.runtime_ops:setup_torrent_categories"
+  "event_handlers": {
+    "ACQUIRE": {
+      "torrent_client_login": "bootstrap_services.apps.transmission.runtime_ops:torrent_client_login"
+    },
+    "ENSURE": {
+      "setup_torrent_categories": "bootstrap_services.apps.transmission.runtime_ops:setup_torrent_categories"
+    }
   },
   "service_technology_map": {
     "torrent_client_service": "transmission"

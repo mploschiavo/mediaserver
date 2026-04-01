@@ -5,8 +5,10 @@
     "openseerr_service": "bootstrap_services.apps.openseerr.service:OpenSeerrService",
     "request_manager_service": "bootstrap_services.apps.openseerr.service:OpenSeerrService"
   },
-  "operation_handlers": {
-    "configure_jellyseerr": "bootstrap_services.apps.openseerr.runtime_ops:configure_jellyseerr"
+  "event_handlers": {
+    "RUN": {
+      "configure_jellyseerr": "bootstrap_services.apps.openseerr.runtime_ops:configure_jellyseerr"
+    }
   },
   "service_technology_map": {
     "openseerr_service": "openseerr",

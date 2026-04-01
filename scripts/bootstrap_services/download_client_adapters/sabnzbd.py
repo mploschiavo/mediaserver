@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..enums import RunnerOperation
+from ..enums import RunnerEvent
 from .base import DownloadClientAdapterBase
 
 
@@ -24,21 +24,24 @@ class SabnzbdDownloadClientAdapter(DownloadClientAdapterBase):
             self.context.status["api_key"] = ""
             return
 
-        sab_api_key = self.deps.invoke_operation(
-            RunnerOperation.READ_SABNZBD_API_KEY,
+        sab_api_key = self.deps.invoke_handler(
+            RunnerEvent.ACQUIRE,
+            "read_sabnzbd_api_key",
             self.context.config_root,
             self.context.cfg,
         )
         if sab_api_key:
             self.deps.log("[OK] SABnzbd: resolved API key for bootstrap automation")
-            self.deps.invoke_operation(
-                RunnerOperation.ENSURE_SABNZBD_DEFAULTS,
+            self.deps.invoke_handler(
+                RunnerEvent.ENSURE,
+                "ensure_sabnzbd_defaults",
                 self.context.cfg,
                 sab_api_key,
             )
             if self.deps.bool_cfg(self.context.cfg, "set_categories_in_sab", True):
-                self.deps.invoke_operation(
-                    RunnerOperation.ENSURE_SABNZBD_CATEGORIES,
+                self.deps.invoke_handler(
+                    RunnerEvent.ENSURE,
+                    "ensure_sabnzbd_categories",
                     self.context.arr_apps_raw,
                     self.context.cfg,
                     sab_api_key,

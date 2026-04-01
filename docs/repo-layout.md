@@ -14,6 +14,7 @@ Manifest-driven pluggability paths inside `scripts/`:
 - `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`: technology registration contract
 - `scripts/bootstrap_defaults/runner_operation_plans.json`: shared runner phase contract
 - `scripts/bootstrap_defaults/media_server_operation_plans.json`: media-server phase contract
+- Event-driven handler registration in plugin manifests: `event_handlers.<EVENT>.<handler_key>`
 - `scripts/bootstrap_services/apps/<app>/`: app-local implementations
 - `scripts/bootstrap_services/download_client_adapters/`: torrent/usenet adapters
 - `scripts/bootstrap_services/media_server_adapters/`: media server adapters

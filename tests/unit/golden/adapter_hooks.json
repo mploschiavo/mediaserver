@@ -1,5 +1,5 @@
 {
-  "operation_handlers": {},
+  "event_handlers": {},
   "scale_policy": {
     "apps": [
       "jellyfin",
