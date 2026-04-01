@@ -1,0 +1,13 @@
+{
+  "technology": "homepage",
+  "aliases": [],
+  "app_service_classes": {
+    "homepage_service": "bootstrap_services.apps.homepage.service:HomepageService"
+  },
+  "operation_handlers": {
+    "ensure_homepage_services_config": "bootstrap_services.apps.homepage.runtime_ops:ensure_homepage_services_config"
+  },
+  "service_technology_map": {
+    "homepage_service": "homepage"
+  }
+}

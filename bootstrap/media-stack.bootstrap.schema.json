@@ -381,6 +381,26 @@
           "type": "object",
           "required": ["phase_plan"],
           "properties": {
+            "config_resolver": {
+              "type": "object",
+              "properties": {
+                "ingress_host_targets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["hosts_path"],
+                    "properties": {
+                      "name": {"type": "string", "minLength": 1},
+                      "hosts_path": {"type": "string", "minLength": 1},
+                      "enable_path": {"type": "string", "minLength": 1},
+                      "enable_value": {"type": "boolean"}
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
             "components": {
               "type": "object",
               "additionalProperties": {

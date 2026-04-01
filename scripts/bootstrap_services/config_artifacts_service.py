@@ -79,47 +79,18 @@ class ConfigArtifactsService:
         return lines
 
     def ensure_homepage_services_config(self, cfg: dict[str, Any], config_root: str) -> bool:
-        homepage_cfg = cfg.get("homepage") or {}
-        hosts = [
-            str(h).strip().lower()
-            for h in self.coerce_list(homepage_cfg.get("hosts"))
-            if str(h).strip()
-        ]
-        enabled = self.bool_cfg(homepage_cfg, "enabled", False) or bool(hosts)
-        if not enabled:
-            return False
+        # Keep compatibility for existing callers while delegating the
+        # Homepage implementation to the app-scoped service boundary.
+        from bootstrap_services.apps.homepage.service import HomepageService
 
-        scheme = str(homepage_cfg.get("scheme", "http")).strip().lower() or "http"
-        services_rel_path = str(
-            homepage_cfg.get("services_relative_path") or "homepage/services.yaml"
-        ).strip()
-        services_path = self.resolve_path(config_root, services_rel_path)
-        services_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if not hosts:
-            hosts = list(self.default_homepage_hosts)
-
-        onboarding_cfg = homepage_cfg.get("device_onboarding")
-        if not isinstance(onboarding_cfg, dict):
-            onboarding_cfg = {}
-        rendered = self.render_homepage_services_yaml(
-            hosts,
-            scheme=scheme,
-            onboarding=onboarding_cfg,
-        )
-        current = (
-            services_path.read_text(encoding="utf-8", errors="replace")
-            if services_path.exists()
-            else ""
-        )
-        if current == rendered:
-            self.log(f"[OK] Homepage: services config already up-to-date at {services_path}")
-            return False
-
-        services_path.write_text(rendered, encoding="utf-8")
-        self.log(f"[OK] Homepage: wrote services config {services_path} (hosts={len(hosts)})")
-        self.log("[INFO] Homepage: restart recommended to pick up updated services config.")
-        return True
+        return HomepageService(
+            bool_cfg=self.bool_cfg,
+            coerce_list=self.coerce_list,
+            resolve_path=self.resolve_path,
+            log=self.log,
+            default_hosts=list(self.default_homepage_hosts),
+            render_services_yaml=self.render_homepage_services_yaml,
+        ).ensure_services_config(cfg, config_root)
 
     def detect_jellyfin_user_id(
         self,
@@ -314,7 +285,9 @@ class ConfigArtifactsService:
                 raise RuntimeError(
                     f"Maintainerr policy rules: {source_label} directory not found: {directory}"
                 )
-            self.log(f"[INFO] Maintainerr policy rules: {source_label} directory missing: {directory}")
+            self.log(
+                f"[INFO] Maintainerr policy rules: {source_label} directory missing: {directory}"
+            )
             return []
         if not directory.is_dir():
             raise RuntimeError(
@@ -346,7 +319,9 @@ class ConfigArtifactsService:
                         "yaml": raw,
                     }
             except Exception as exc:
-                raise RuntimeError(f"Maintainerr policy rules: failed parsing {path}: {exc}") from exc
+                raise RuntimeError(
+                    f"Maintainerr policy rules: failed parsing {path}: {exc}"
+                ) from exc
             loaded.extend(self._load_rule_entries_from_document(str(path), payload))
         # Collapse accidental duplicates (for example, when both JSON and YAML versions
         # of the same named rule are present in the rules library).
@@ -447,9 +422,7 @@ class ConfigArtifactsService:
             final_rules = self._merge_rules_by_name(fallback_rules, inline_rules)
 
         inline_policy_without_rules = {
-            k: json.loads(json.dumps(v))
-            for k, v in inline_policy.items()
-            if k != "rules"
+            k: json.loads(json.dumps(v)) for k, v in inline_policy.items() if k != "rules"
         }
         desired = self.deep_merge_objects(default_policy, inline_policy_without_rules)
         desired["rules"] = final_rules
