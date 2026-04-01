@@ -12,6 +12,7 @@ from cli.bootstrap_config_resolver_service import (  # noqa: E402
     BootstrapConfigResolverConfig,
     BootstrapConfigResolverService,
 )
+from core.exceptions import ConfigError
 
 
 class _Result:
@@ -50,6 +51,7 @@ class BootstrapConfigResolverServiceTests(unittest.TestCase):
                         "adapter_hooks": {
                             "bootstrap_job": {
                                 "config_resolver": {
+                                    "operations": ["inject_homepage_ingress_hosts"],
                                     "ingress_host_targets": [
                                         {
                                             "name": "homepage",
@@ -57,7 +59,7 @@ class BootstrapConfigResolverServiceTests(unittest.TestCase):
                                             "enable_path": "homepage.enabled",
                                             "enable_value": True,
                                         }
-                                    ]
+                                    ],
                                 }
                             }
                         },
@@ -161,6 +163,65 @@ class BootstrapConfigResolverServiceTests(unittest.TestCase):
             written = json.loads(job_config_path.read_text(encoding="utf-8"))
             self.assertEqual(written["homepage"], {"enabled": False})
             self.assertEqual(kube.calls, [])
+
+    def test_unknown_config_resolver_operation_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = base / "bootstrap.json"
+            job_config_path = base / "job-config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "config_version": 2,
+                        "prowlarr_url": "http://prowlarr:9696",
+                        "adapter_hooks": {
+                            "bootstrap_job": {
+                                "config_resolver": {
+                                    "operations": ["missing_operation"],
+                                }
+                            }
+                        },
+                        "arr_apps": [],
+                        "download_clients": {
+                            "qbittorrent": {
+                                "url": "http://qbittorrent:8080",
+                                "host": "qbittorrent",
+                                "port": 8080,
+                                "name": "qBittorrent",
+                                "implementation": "qBittorrent",
+                            },
+                            "sabnzbd": {
+                                "url": "http://sabnzbd:8080",
+                                "host": "sabnzbd",
+                                "port": 8080,
+                                "name": "SABnzbd",
+                                "implementation": "SABnzbd",
+                            },
+                        },
+                        "technology_bindings": {
+                            "torrent_client": "qbittorrent",
+                            "usenet_client": "sabnzbd",
+                            "media_server": "jellyfin",
+                        },
+                        "homepage": {"enabled": False},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            kube = _Kube("jellyfin.local\nsonarr.local\n")
+            svc = BootstrapConfigResolverService(
+                cfg=BootstrapConfigResolverConfig(
+                    namespace="media-stack",
+                    ingress_name="media-stack-ingress",
+                    config_file=config_path,
+                    job_config_file=job_config_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+            )
+
+            with self.assertRaises(ConfigError):
+                svc.resolve_bootstrap_config()
 
 
 if __name__ == "__main__":

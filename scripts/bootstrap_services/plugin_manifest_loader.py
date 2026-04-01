@@ -21,6 +21,7 @@ class PluginManifest:
     app_service_classes: dict[str, str] = field(default_factory=dict)
     service_technology_map: dict[str, str] = field(default_factory=dict)
     operation_handlers: dict[str, str] = field(default_factory=dict)
+    config_resolver_handlers: dict[str, str] = field(default_factory=dict)
     capability_defaults: dict[str, Any] = field(default_factory=dict)
     source_path: Path | None = None
 
@@ -107,6 +108,7 @@ def _load_manifest(path: Path) -> PluginManifest:
         app_service_classes=_coerce_str_map(payload.get("app_service_classes")),
         service_technology_map=_coerce_str_map(payload.get("service_technology_map")),
         operation_handlers=_coerce_str_map(payload.get("operation_handlers")),
+        config_resolver_handlers=_coerce_str_map(payload.get("config_resolver_handlers")),
         capability_defaults=dict(payload.get("capability_defaults") or {}),
         source_path=path,
     )
@@ -181,4 +183,18 @@ def collect_capability_defaults(manifests: list[PluginManifest]) -> dict[str, di
         if not isinstance(defaults, dict) or not defaults:
             continue
         merged[manifest.technology] = dict(defaults)
+    return merged
+
+
+def collect_config_resolver_handlers(manifests: list[PluginManifest]) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for manifest in manifests:
+        handlers = manifest.config_resolver_handlers
+        if not isinstance(handlers, dict):
+            continue
+        for operation_name, spec in handlers.items():
+            op = _to_non_empty_str(operation_name)
+            handler_spec = _to_non_empty_str(spec)
+            if op and handler_spec:
+                merged[op] = handler_spec
     return merged

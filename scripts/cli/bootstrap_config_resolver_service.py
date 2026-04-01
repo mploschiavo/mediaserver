@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from bootstrap_services.plugin_manifest_loader import (
+    collect_config_resolver_handlers,
+    load_plugin_manifests,
+)
 from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError
 from core.kube import KubectlClient
@@ -28,96 +34,89 @@ class BootstrapConfigResolverService:
     kube: KubectlClient
     info: LogFn
 
-    def _set_nested_value(self, cfg: dict[str, Any], path: str, value: Any) -> None:
-        parts = [str(part).strip() for part in str(path or "").split(".") if str(part).strip()]
-        if not parts:
-            raise ConfigError("bootstrap_job.config_resolver target path must be non-empty.")
-
-        cursor: dict[str, Any] = cfg
-        for segment in parts[:-1]:
-            existing = cursor.get(segment)
-            if existing is None:
-                next_cursor: dict[str, Any] = {}
-                cursor[segment] = next_cursor
-                cursor = next_cursor
-                continue
-            if not isinstance(existing, dict):
-                raise ConfigError(
-                    f"Cannot set '{path}': segment '{segment}' is not an object in bootstrap config."
-                )
-            cursor = existing
-        cursor[parts[-1]] = value
-
-    def _resolve_ingress_host_targets(self, cfg: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    def _resolve_resolver_cfg(self, cfg: dict[str, Any]) -> dict[str, Any] | None:
         adapter_hooks = cfg.get("adapter_hooks")
         if not isinstance(adapter_hooks, dict):
-            return ()
+            return None
         bootstrap_job = adapter_hooks.get("bootstrap_job")
         if not isinstance(bootstrap_job, dict):
-            return ()
+            return None
         resolver_cfg = bootstrap_job.get("config_resolver")
+        if resolver_cfg is None:
+            return None
         if not isinstance(resolver_cfg, dict):
-            return ()
+            raise ConfigError("adapter_hooks.bootstrap_job.config_resolver must be an object.")
+        return resolver_cfg
 
-        raw_targets = resolver_cfg.get("ingress_host_targets")
-        if raw_targets is None:
-            return ()
-        if not isinstance(raw_targets, list):
+    @staticmethod
+    def _load_handler_from_spec(operation_name: str, spec: str) -> Callable[..., Any]:
+        raw = str(spec or "").strip()
+        if ":" not in raw:
             raise ConfigError(
-                "adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets must be an array."
+                "bootstrap_job config resolver handler spec for "
+                f"'{operation_name}' is invalid: expected 'module.path:callable_name'."
             )
-
-        targets: list[dict[str, Any]] = []
-        for index, raw_target in enumerate(raw_targets):
-            if not isinstance(raw_target, dict):
-                raise ConfigError(
-                    "adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets"
-                    f"[{index}] must be an object."
-                )
-            hosts_path = str(raw_target.get("hosts_path") or "").strip()
-            if not hosts_path:
-                raise ConfigError(
-                    "adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets"
-                    f"[{index}].hosts_path must be non-empty."
-                )
-            enable_path = str(raw_target.get("enable_path") or "").strip()
-            enable_value = raw_target.get("enable_value", True)
-            if not isinstance(enable_value, bool):
-                raise ConfigError(
-                    "adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets"
-                    f"[{index}].enable_value must be a boolean."
-                )
-            label = str(raw_target.get("name") or hosts_path).strip() or hosts_path
-            targets.append(
-                {
-                    "name": label,
-                    "hosts_path": hosts_path,
-                    "enable_path": enable_path,
-                    "enable_value": enable_value,
-                }
+        module_name, attr_name = raw.rsplit(":", 1)
+        module_name = module_name.strip()
+        attr_name = attr_name.strip()
+        if not module_name or not attr_name:
+            raise ConfigError(
+                "bootstrap_job config resolver handler spec for "
+                f"'{operation_name}' is invalid: expected 'module.path:callable_name'."
             )
-        return tuple(targets)
+        module = importlib.import_module(module_name)
+        handler = getattr(module, attr_name, None)
+        if handler is None or not callable(handler) or not inspect.isroutine(handler):
+            raise ConfigError(
+                "bootstrap_job config resolver handler spec for "
+                f"'{operation_name}' does not resolve to a callable: {raw}"
+            )
+        return handler
 
-    def _resolve_ingress_hosts(self) -> list[str]:
-        hosts_result = self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "ingress",
-                self.cfg.ingress_name,
-                "-o",
-                "jsonpath={range .spec.rules[*]}{.host}{'\\n'}{end}",
-            ],
-            check=False,
-        )
-        hosts: list[str] = []
-        if hosts_result.returncode == 0:
-            for line in (hosts_result.stdout or "").splitlines():
-                host = line.strip()
-                if host:
-                    hosts.append(host)
-        return sorted(set(hosts))
+    @staticmethod
+    def _resolve_operations(resolver_cfg: dict[str, Any]) -> tuple[str, ...]:
+        raw_operations = resolver_cfg.get("operations")
+        if not isinstance(raw_operations, list):
+            raise ConfigError(
+                "adapter_hooks.bootstrap_job.config_resolver.operations must be a non-empty array."
+            )
+        operations: list[str] = []
+        for index, raw in enumerate(raw_operations):
+            op = str(raw or "").strip()
+            if not op:
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.config_resolver.operations"
+                    f"[{index}] must be a non-empty string."
+                )
+            operations.append(op)
+        if not operations:
+            raise ConfigError(
+                "adapter_hooks.bootstrap_job.config_resolver.operations must be non-empty."
+            )
+        return tuple(operations)
+
+    @staticmethod
+    def _resolve_handler_overrides(resolver_cfg: dict[str, Any]) -> dict[str, str]:
+        raw_overrides = resolver_cfg.get("handler_specs")
+        if raw_overrides is None:
+            return {}
+        if not isinstance(raw_overrides, dict):
+            raise ConfigError(
+                "adapter_hooks.bootstrap_job.config_resolver.handler_specs must be an object/map."
+            )
+        overrides: dict[str, str] = {}
+        for raw_name, raw_spec in raw_overrides.items():
+            operation_name = str(raw_name or "").strip()
+            if not operation_name:
+                continue
+            spec = str(raw_spec or "").strip()
+            if not spec:
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.config_resolver.handler_specs."
+                    f"{operation_name} must be a non-empty handler spec string."
+                )
+            overrides[operation_name] = spec
+        return overrides
 
     def _load_json(self, path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -130,38 +129,50 @@ class BootstrapConfigResolverService:
 
     def resolve_bootstrap_config(self) -> None:
         cfg = self._load_json(self.cfg.config_file)
-        host_targets = self._resolve_ingress_host_targets(cfg)
-        if not host_targets:
+        resolver_cfg = self._resolve_resolver_cfg(cfg)
+        if resolver_cfg is None:
             self.info(
-                "No ingress host injection targets configured at "
-                "adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets; "
+                "No bootstrap config resolver declared at "
+                "adapter_hooks.bootstrap_job.config_resolver; "
                 "using bootstrap config as-is."
             )
             self.cfg.job_config_file.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
             self.info(f"Resolved job config: {self.cfg.job_config_file}")
             return
 
-        hosts = self._resolve_ingress_hosts()
-        hosts_csv = ",".join(hosts)
-        if hosts_csv:
-            self.info(f"Discovered ingress hosts from ingress/{self.cfg.ingress_name}: {hosts_csv}")
-            for target in host_targets:
-                hosts_path = str(target.get("hosts_path") or "").strip()
-                if not hosts_path:
-                    continue
-                self._set_nested_value(cfg, hosts_path, list(hosts))
-                enable_path = str(target.get("enable_path") or "").strip()
-                if enable_path:
-                    self._set_nested_value(cfg, enable_path, bool(target.get("enable_value", True)))
-                self.info(
-                    f"Injected ingress hosts into config target '{target.get('name')}' "
-                    f"(hosts_path={hosts_path})."
+        operations = self._resolve_operations(resolver_cfg)
+        handler_specs = collect_config_resolver_handlers(load_plugin_manifests())
+        handler_specs.update(self._resolve_handler_overrides(resolver_cfg))
+
+        for operation_name in operations:
+            spec = str(handler_specs.get(operation_name) or "").strip()
+            if not spec:
+                available = ", ".join(sorted(handler_specs.keys())) or "<none>"
+                raise ConfigError(
+                    "No bootstrap config resolver handler is registered for "
+                    f"operation '{operation_name}'. "
+                    "Register it in plugin manifest config_resolver_handlers or in "
+                    "adapter_hooks.bootstrap_job.config_resolver.handler_specs. "
+                    f"Available operations: {available}."
                 )
-        else:
-            self.info(
-                f"No ingress hosts discovered from ingress/{self.cfg.ingress_name}; "
-                "using bootstrap config defaults."
+            handler = self._load_handler_from_spec(operation_name, spec)
+            result = handler(
+                cfg,
+                resolver_cfg=resolver_cfg,
+                kube=self.kube,
+                namespace=self.cfg.namespace,
+                ingress_name=self.cfg.ingress_name,
+                info=self.info,
             )
+            if result is None:
+                continue
+            if not isinstance(result, dict):
+                raise ConfigError(
+                    "bootstrap config resolver handler "
+                    f"'{operation_name}' returned unsupported type "
+                    f"'{type(result).__name__}' (expected dict or None)."
+                )
+            cfg = result
 
         self.cfg.job_config_file.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
         self.info(f"Resolved job config: {self.cfg.job_config_file}")
