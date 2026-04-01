@@ -23,7 +23,6 @@ flowchart TD
     CFGM["config_models.py"]
     CORE_RT["runtime_platform.py"]
     CORE_SEC["runtime_secrets.py"]
-    MED["runtime_media_ops.py"]
     ARR["apps/servarr/runtime/__init__.py"]
     LIB["core/* helpers"]
   end
@@ -57,7 +56,6 @@ flowchart TD
   RUN --> CFGM
   RUN --> CORE_RT
   RUN --> CORE_SEC
-  RUN --> MED
   RUN --> ARR
   RUN --> LIB
 

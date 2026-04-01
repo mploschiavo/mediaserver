@@ -80,7 +80,6 @@ SHARED_RUNTIME_ENTRY_MODULES = [
     ROOT / "scripts" / "bootstrap-apps.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_platform.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_secrets.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_media_ops.py",
     ROOT / "scripts" / "bootstrap_services" / "bootstrap_runner_service.py",
     ROOT / "scripts" / "bootstrap_services" / "download_client_pipeline_service.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_factory" / "runtime_builder.py",
@@ -304,7 +303,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
     def test_missing_maintainerr_manifest_does_not_break_shared_runtime_import_init(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.runtime_media_ops as runtime_media_ops
+        import bootstrap_services.apps.maintainerr.runtime_ops as maintainerr_runtime_ops
         import bootstrap_services.runtime_service_registry as registry
         import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
@@ -337,7 +336,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
                 # The removed technology should fail only when invoked.
                 with self.assertRaises(RuntimeError):
-                    runtime_media_ops._maintainerr_service({})
+                    maintainerr_runtime_ops._maintainerr_service({})
         finally:
             registry.set_runtime_context_cfg(prior_context)
 
@@ -419,7 +418,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
     def test_runtime_maintainerr_binding_removal_is_lazy_until_technology_path_invoked(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.runtime_media_ops as runtime_media_ops
+        import bootstrap_services.apps.maintainerr.runtime_ops as maintainerr_runtime_ops
         import bootstrap_services.runtime_service_registry as registry
         import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
@@ -452,30 +451,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
             # Failure is deferred until we invoke the removed technology path.
             with self.assertRaises(RuntimeError):
-                runtime_media_ops._maintainerr_service({})
+                maintainerr_runtime_ops._maintainerr_service({})
         finally:
             registry.set_runtime_context_cfg(prior_context)
-
-    def test_missing_jellyfin_module_only_fails_when_jellyfin_path_is_invoked(self):
-        import bootstrap_services.runtime_media_ops as runtime_media_ops
-
-        original_import_module = importlib.import_module
-
-        def _patched_import_module(name: str, package=None):
-            if name == "bootstrap_services.apps.jellyfin.runtime_ops":
-                raise ModuleNotFoundError(name)
-            return original_import_module(name, package)
-
-        # Shared runtime module is importable and basic symbols are available.
-        self.assertTrue(hasattr(runtime_media_ops, "ensure_maintainerr_policy"))
-        self.assertTrue(hasattr(runtime_media_ops, "_jellyfin_runtime_ops"))
-
-        with mock.patch.object(
-            runtime_media_ops.importlib, "import_module", side_effect=_patched_import_module
-        ):
-            # Should fail only once jellyfin-specific lazy path is explicitly invoked.
-            with self.assertRaises(ModuleNotFoundError):
-                runtime_media_ops._jellyfin_runtime_ops()
 
 
 if __name__ == "__main__":
