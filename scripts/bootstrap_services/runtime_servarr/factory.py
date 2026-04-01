@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
+from bootstrap_services.apps.prowlarr.service import ProwlarrService
 from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
 from bootstrap_services.runtime_core import (
     ArrQueueCleanupService,
     ArrService,
     AuthService,
     HealthService,
-    ProwlarrService,
     QBittorrentService,
     SabnzbdService,
     ServarrPolicyService,

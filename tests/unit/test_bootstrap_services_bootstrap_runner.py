@@ -79,7 +79,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             app_auth_cfg={},
             adapter_hooks_cfg={
                 "app_service_classes": {
-                    "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService",
+                    "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService",
                     "technology_lifecycle_manager": (
                         "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
                     ),

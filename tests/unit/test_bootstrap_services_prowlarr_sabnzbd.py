@@ -10,7 +10,7 @@ from urllib import parse
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.prowlarr_service import ProwlarrService  # noqa: E402
+from bootstrap_services.apps.prowlarr.service import ProwlarrService  # noqa: E402
 from bootstrap_services.sabnzbd_service import SabnzbdService  # noqa: E402
 
 
