@@ -6,6 +6,19 @@ live in focused modules by domain.
 
 from __future__ import annotations
 
+from .apps.jellyfin.config_models import (
+    JellyfinArtworkHealthCheckConfig,
+    JellyfinBookSidecarArtworkConfig,
+    JellyfinLibrariesConfig,
+    JellyfinLiveTvConfig,
+    JellyfinLiveTvGuideConfig,
+    JellyfinLiveTvTunerConfig,
+    JellyfinMetadataBackfillConfig,
+    JellyfinMusicSidecarArtworkConfig,
+    JellyfinPlaybackConfig,
+    JellyfinPluginsConfig,
+    JellyfinPrewarmConfig,
+)
 from .config_models_discovery import (
     DiscoveryListContract,
     DiscoveryProviderOptions,
@@ -37,19 +50,6 @@ from .config_models_integrations import (
     MaintainerrConfig,
     MaintainerrIntegrationsConfig,
     MediaHygieneConfig,
-)
-from .config_models_jellyfin import (
-    JellyfinArtworkHealthCheckConfig,
-    JellyfinBookSidecarArtworkConfig,
-    JellyfinLibrariesConfig,
-    JellyfinLiveTvConfig,
-    JellyfinLiveTvGuideConfig,
-    JellyfinLiveTvTunerConfig,
-    JellyfinMetadataBackfillConfig,
-    JellyfinMusicSidecarArtworkConfig,
-    JellyfinPlaybackConfig,
-    JellyfinPluginsConfig,
-    JellyfinPrewarmConfig,
 )
 from .config_models_servarr import (
     AppCapabilities,

@@ -6,7 +6,8 @@
   "technology_bindings": {
     "torrent_client": "qbittorrent",
     "usenet_client": "sabnzbd",
-    "media_server": "jellyfin"
+    "media_server": "jellyfin",
+    "request_manager": "jellyseerr"
   },
   "adapter_hooks": {
     "operation_handlers": {}

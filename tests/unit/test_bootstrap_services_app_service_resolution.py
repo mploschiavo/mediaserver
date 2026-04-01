@@ -31,6 +31,34 @@ class AppServiceResolutionTests(unittest.TestCase):
         cls = resolve_app_service_class("jellyseerr_service", JellyseerrService)
         self.assertIs(cls, JellyseerrService)
 
+    def test_resolve_app_service_class_prefers_technology_binding(self):
+        set_runtime_context_cfg(
+            {
+                "technology_aliases": {"openseer": "openseerr"},
+                "app_service_classes": {
+                    "request_manager_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+                },
+                "app_service_classes_by_technology": {
+                    "jellyseerr": {
+                        "request_manager_service": (
+                            "bootstrap_services.jellyseerr_service:JellyseerrService"
+                        )
+                    },
+                    "openseerr": {
+                        "request_manager_service": (
+                            "bootstrap_services.apps.openseerr.service:OpenSeerrService"
+                        )
+                    },
+                },
+            },
+        )
+        cls = resolve_app_service_class(
+            "request_manager_service",
+            JellyseerrService,
+            technology="openseer",
+        )
+        self.assertEqual(cls.__name__, "OpenSeerrService")
+
     def test_resolve_app_service_class_rejects_invalid_spec(self):
         set_runtime_context_cfg(
             {

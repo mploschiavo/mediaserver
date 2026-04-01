@@ -162,9 +162,11 @@ class TopLevelBootstrapConfig:
         ArrDownloadHandlingPolicy.from_dict(_expect_dict(src, "arr_download_handling", {}))
         ArrQualityUpgradePolicy.from_dict(_expect_dict(src, "arr_quality_upgrade", {}))
         ServarrAppConfig.from_list(_expect_list(src, "arr_apps", []))
-        technology_bindings_typed = TechnologyBindingsConfig.from_dict(
-            _expect_dict(src, "technology_bindings", {})
-        )
+        technology_bindings_raw = _expect_dict(src, "technology_bindings", {})
+        request_manager_value = technology_bindings_raw.get("request_manager")
+        if request_manager_value is not None and not isinstance(request_manager_value, str):
+            raise ValueError("$.technology_bindings.request_manager must be a string")
+        technology_bindings_typed = TechnologyBindingsConfig.from_dict(technology_bindings_raw)
         if not technology_bindings_typed.torrent_client:
             raise ValueError("$.technology_bindings.torrent_client must be a non-empty string")
         if not technology_bindings_typed.usenet_client:

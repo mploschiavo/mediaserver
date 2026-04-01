@@ -69,8 +69,12 @@ class BootstrapConfigGoldenTests(unittest.TestCase):
             set(defaults.adapter_classes.keys()),
         )
         self.assertEqual(
-            {"qbittorrent", "sabnzbd", "transmission"},
+            {"grabit", "jdownloader", "nzbget", "qbittorrent", "sabnzbd", "transmission"},
             set(defaults.download_client_adapter_classes.keys()),
+        )
+        self.assertEqual(
+            {"emby", "jellyfin", "mythtv", "plex"},
+            set(defaults.media_server_adapter_classes.keys()),
         )
 
 

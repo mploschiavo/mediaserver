@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.jellyfin_livetv_state_service import (  # noqa: E402
+from bootstrap_services.apps.jellyfin.livetv_state_service import (  # noqa: E402
     JellyfinLiveTvStateService,
 )
 

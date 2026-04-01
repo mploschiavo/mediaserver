@@ -14,6 +14,7 @@ class RuntimeBindingResolution:
     torrent_client_key: str = ""
     usenet_client_key: str = ""
     media_server_backend: str = ""
+    request_manager_key: str = ""
     torrent_client_cfg: dict[str, Any] = field(default_factory=dict)
     usenet_client_cfg: dict[str, Any] = field(default_factory=dict)
 
@@ -86,11 +87,19 @@ class RuntimeBindingResolver:
                 "or media_server.backend in bootstrap config."
             )
 
+        request_manager_key = self._canonical(
+            technology_bindings.request_manager,
+            aliases,
+        )
+        if not request_manager_key:
+            request_manager_key = "jellyseerr"
+
         return RuntimeBindingResolution(
             technology_aliases=aliases,
             torrent_client_key=torrent_client_key,
             usenet_client_key=usenet_client_key,
             media_server_backend=media_server_backend,
+            request_manager_key=request_manager_key,
             torrent_client_cfg=torrent_client_cfg,
             usenet_client_cfg=usenet_client_cfg,
         )

@@ -1,0 +1,7 @@
+{
+  "technology": "emby",
+  "aliases": ["embyserver"],
+  "adapter_classes": {
+    "media_server": "bootstrap_services.media_server_adapters.emby:EmbyMediaServerAdapter"
+  }
+}

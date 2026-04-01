@@ -275,6 +275,7 @@ class TechnologyBindingsConfig:
     torrent_client: str = ""
     usenet_client: str = ""
     media_server: str = ""
+    request_manager: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -287,5 +288,6 @@ class TechnologyBindingsConfig:
             torrent_client=str(src.get("torrent_client", "")).strip().lower(),
             usenet_client=str(src.get("usenet_client", "")).strip().lower(),
             media_server=str(src.get("media_server", "")).strip().lower(),
+            request_manager=str(src.get("request_manager", "")).strip().lower(),
             raw=src,
         )

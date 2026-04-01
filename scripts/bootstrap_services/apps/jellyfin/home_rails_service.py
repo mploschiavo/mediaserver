@@ -41,7 +41,7 @@ class JellyfinHomeRailsService:
     deps: JellyfinHomeRailsDependencies
 
     def default_rails(self) -> list[dict[str, Any]]:
-        defaults_dir = Path(__file__).resolve().parents[1] / "bootstrap_defaults"
+        defaults_dir = Path(__file__).resolve().parents[3] / "bootstrap_defaults"
         loaded = load_json_default(
             defaults_dir,
             "jellyfin_home_rails.json",

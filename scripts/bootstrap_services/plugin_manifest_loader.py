@@ -33,6 +33,7 @@ class AdapterHookDefaults:
     media_server_adapter_classes: dict[str, str] = field(default_factory=dict)
     before_common_steps: dict[str, str] = field(default_factory=dict)
     app_service_classes: dict[str, str] = field(default_factory=dict)
+    app_service_classes_by_technology: dict[str, dict[str, str]] = field(default_factory=dict)
     service_technology_map: dict[str, str] = field(default_factory=dict)
     operation_handlers: dict[str, str] = field(default_factory=dict)
 
@@ -44,6 +45,11 @@ class AdapterHookDefaults:
             "media_server_adapter_classes": dict(self.media_server_adapter_classes),
             "before_common_steps": dict(self.before_common_steps),
             "app_service_classes": dict(self.app_service_classes),
+            "app_service_classes_by_technology": {
+                str(technology): dict(service_map)
+                for technology, service_map in self.app_service_classes_by_technology.items()
+                if isinstance(service_map, dict)
+            },
             "service_technology_map": dict(self.service_technology_map),
             "operation_handlers": dict(self.operation_handlers),
         }
@@ -121,6 +127,7 @@ def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookD
     media_server_adapter_classes: dict[str, str] = {}
     before_common_steps: dict[str, str] = {}
     app_service_classes: dict[str, str] = {}
+    app_service_classes_by_technology: dict[str, dict[str, str]] = {}
     service_technology_map: dict[str, str] = {}
     operation_handlers: dict[str, str] = {}
 
@@ -143,7 +150,14 @@ def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookD
             media_server_adapter_classes[technology] = media_server_spec
 
         before_common_steps.update(manifest.before_common_steps)
-        app_service_classes.update(manifest.app_service_classes)
+        manifest_services = {
+            str(key): str(value)
+            for key, value in (manifest.app_service_classes or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
+        if manifest_services:
+            app_service_classes.update(manifest_services)
+            app_service_classes_by_technology.setdefault(technology, {}).update(manifest_services)
         service_technology_map.update(manifest.service_technology_map)
         operation_handlers.update(manifest.operation_handlers)
 
@@ -154,6 +168,7 @@ def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookD
         media_server_adapter_classes=media_server_adapter_classes,
         before_common_steps=before_common_steps,
         app_service_classes=app_service_classes,
+        app_service_classes_by_technology=app_service_classes_by_technology,
         service_technology_map=service_technology_map,
         operation_handlers=operation_handlers,
     )

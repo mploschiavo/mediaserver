@@ -2,9 +2,11 @@
   "technology": "jellyseerr",
   "aliases": ["seerr"],
   "app_service_classes": {
-    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService",
+    "request_manager_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
   },
   "service_technology_map": {
-    "jellyseerr_service": "jellyseerr"
+    "jellyseerr_service": "jellyseerr",
+    "request_manager_service": "jellyseerr"
   }
 }

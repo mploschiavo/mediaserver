@@ -78,7 +78,19 @@ See [docs/source-of-truth.md](docs/source-of-truth.md).
 
 Technology backends are selected declaratively via:
 - `technology_bindings` (active backend per role)
-- `adapter_hooks` (reflection mapping key -> adapter class + optional operation handler hooks)
+- plugin manifests (`scripts/bootstrap_defaults/plugins/<technology>/manifest.json`)
+
+Supported binding roles:
+- `torrent_client`
+- `usenet_client`
+- `media_server`
+- `request_manager`
+
+Current built-in swap families:
+- media server: `jellyfin`, `emby`, `plex`, `mythtv`
+- request manager: `jellyseerr`, `openseerr` (`openseer` alias)
+- usenet client: `sabnzbd`, `nzbget`, `jdownloader`, `grabit`
+- torrent client: `qbittorrent`, `transmission`
 
 ## Swap One Technology (Quick Path)
 
@@ -86,7 +98,7 @@ Use this path when replacing one component (for example qBittorrent -> Transmiss
 
 1. Add/update the app/client config block in `bootstrap/media-stack.bootstrap.json`.
 2. Add or update one adapter module under `scripts/bootstrap_services/...`.
-3. Register the adapter class path in `bootstrap/media-stack.bootstrap.json` under `adapter_hooks`.
+3. Register the adapter in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`.
 4. Change the active binding in `technology_bindings`.
 5. Validate and reconcile:
 
@@ -95,9 +107,10 @@ bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstr
 bash scripts/bootstrap-all.sh
 ```
 
-Optional defaults:
-- `adapter_hooks.default_bindings` sets default `torrent_client`, `usenet_client`, and `media_server`.
-- `adapter_hooks.technology_aliases` maps shorthand keys (`qbit`, `sab`, `jf`) to canonical keys.
+Optional runtime hook overrides:
+- `adapter_hooks.operation_handlers`
+- `adapter_hooks.runner_operation_plans`
+- `adapter_hooks.media_server_operation_plans`
 
 Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 
@@ -109,7 +122,8 @@ To add or replace one technology with minimal blast radius:
    - `scripts/bootstrap_services/apps/<app>/`
    - `scripts/bootstrap_services/download_client_adapters/`
    - `scripts/bootstrap_services/media_server_adapters/`
-2. Register the class path in bootstrap config under `adapter_hooks`.
+2. Register the class path in plugin manifest:
+   - `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
 3. Bind runtime usage through `technology_bindings`.
 4. Keep policy/config in JSON under `bootstrap/` or `config/runtime/overlays/*`.
 5. Validate + reconcile:
@@ -124,6 +138,9 @@ Design constraints for maintainability:
 - avoid hardcoding app conditionals in shared runner/runtime modules
 - add app-specific behavior in app-specific adapter/service files
 - keep shell scripts as thin wrappers over Python modules for non-trivial logic
+
+Jellyfin-specific bootstrap logic is isolated under `scripts/bootstrap_services/apps/jellyfin/` (including app runtime orchestration in `runtime_ops.py`);  
+root-level `jellyfin_*` modules are retired.
 
 ## Deployment Model
 

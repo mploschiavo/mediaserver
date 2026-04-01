@@ -229,6 +229,7 @@ class BootstrapRuntimeBuilder:
         maintainerr_model = MaintainerrConfig.from_dict(cfg.get("maintainerr") or {})
 
         media_server_backend = binding_resolution.media_server_backend
+        request_manager_backend = binding_resolution.request_manager_key
 
         app_auth_model = AppAuthConfig.from_dict(cfg.get("app_auth") or {})
         app_auth_cfg = dict(app_auth_model.raw)
@@ -408,6 +409,7 @@ class BootstrapRuntimeBuilder:
             configure_jellyfin_prewarm=configure_jellyfin_prewarm,
             jellyfin_prewarm_required=jellyfin_prewarm_required,
             media_server_backend=media_server_backend,
+            request_manager_backend=request_manager_backend,
         )
 
         plan = build_plan_summary(runtime)

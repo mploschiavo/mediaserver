@@ -7,7 +7,7 @@ from zipfile import ZipFile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.jellyfin_prewarm_service import (  # noqa: E402
+from bootstrap_services.apps.jellyfin.prewarm_service import (  # noqa: E402
     JellyfinPrewarmDependencies,
     JellyfinPrewarmService,
 )

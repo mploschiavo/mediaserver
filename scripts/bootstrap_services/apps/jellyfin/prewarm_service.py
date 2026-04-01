@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from .apps.jellyfin.prewarm.metadata_ops import (
+from .prewarm.metadata_ops import (
     item_has_artwork,
     item_has_overview,
     run_artwork_health_check,
     run_metadata_backfill,
 )
-from .apps.jellyfin.prewarm.sidecar_ops import (
+from .prewarm.sidecar_ops import (
     candidate_image_paths,
     ensure_book_sidecar_artwork,
     ensure_music_sidecar_artwork,
@@ -203,4 +203,3 @@ class JellyfinPrewarmService:
         self._run_artwork_health_check(prewarm_cfg, jellyfin_url, jellyfin_api_key)
 
         d.log("[OK] Jellyfin prewarm: reconcile complete")
-

@@ -40,17 +40,20 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 Swapping a technology should be app-local and config-driven.
 
 Primary binding points:
-- `adapter_hooks.adapter_classes` for Servarr technologies
-- `adapter_hooks.download_client_adapter_classes` for download clients
-- `adapter_hooks.media_server_adapter_classes` for media server backends
-- `adapter_hooks.app_service_classes` for app-scoped service classes
-- `adapter_hooks.service_technology_map` for mapping service keys to lifecycle technology keys
-- `adapter_hooks.runner_operation_plans` for orchestration phase operations (precheck/post/indexers)
-- `adapter_hooks.media_server_operation_plans` for media-server orchestration phases
+- `technology_bindings` in `bootstrap/media-stack.bootstrap.json`
+- plugin manifests in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
+  - `adapter_classes` (servarr/download_client/media_server)
+  - `app_service_classes`
+  - `service_technology_map`
+- optional runtime-only hooks in config:
+  - `adapter_hooks.operation_handlers`
+  - `adapter_hooks.runner_operation_plans`
+  - `adapter_hooks.media_server_operation_plans`
 
 Swap workflow:
 1. Add/replace app adapter/service module under `scripts/bootstrap_services/apps/<app>/...`
-2. Update the matching hook key in bootstrap config (or defaults) to the new import path
+2. Register the technology in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
+3. Bind the role in `technology_bindings`
 3. Rebuild and push the bootstrap runner image (`scripts/build-bootstrap-runner-image.sh`)
 4. Run unit tests + live bootstrap smoke
 
@@ -60,12 +63,13 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - `scripts/bootstrap_services/bootstrap_runner_service.py` must remain orchestration-only.
 - App/technology-specific branching belongs in:
   - `scripts/bootstrap_services/apps/<app>/**`
-  - adapter modules referenced by `adapter_hooks.*_classes`
+  - adapter modules referenced by plugin manifests
   - declarative phase plans under `adapter_hooks.runner_operation_plans` or `adapter_hooks.media_server_operation_plans`
 - Do not add new app-specific conditionals in `BootstrapRunnerService` for precheck/ensure/indexer flow; bind operations through phase plans instead.
 - If adding/swapping an app requires edits in runner orchestration logic, treat it as a design bug and refactor before merge.
 - Prefer adding a new adapter/service + config hook over adding conditionals in shared runtime modules.
 - Keep operation names stable; change bindings/hook paths for swaps, not runner internals.
+- Do not place app-specific implementation files at `scripts/bootstrap_services/*` root when an app package exists.
 
 ## Design Rules
 - Prefer composition over inheritance.

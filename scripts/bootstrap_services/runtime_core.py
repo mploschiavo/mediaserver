@@ -39,12 +39,6 @@ from bootstrap_lib.homepage import (
     render_services_yaml as _lib_render_homepage_services_yaml,
 )
 from bootstrap_lib.http_client import http_request as _lib_http_request
-from bootstrap_lib.jellyfin import (
-    apply_artwork_profile as _lib_jellyfin_apply_artwork_profile,
-)
-from bootstrap_lib.jellyfin import (
-    reorder_provider_names as _lib_jellyfin_reorder_provider_names,
-)
 from bootstrap_lib.servarr import (
     choose_profile as _lib_choose_profile,
 )
@@ -72,29 +66,6 @@ from bootstrap_services.discovery_lists_service import DiscoveryListsService
 from bootstrap_services.disk_guardrails_service import DiskGuardrailsService
 from bootstrap_services.enums import BootstrapMode
 from bootstrap_services.health_service import HealthService
-from bootstrap_services.jellyfin_home_rails_service import (
-    JellyfinHomeRailsDependencies,
-    JellyfinHomeRailsService,
-)
-from bootstrap_services.jellyfin_libraries_service import (
-    JellyfinLibrariesDependencies,
-    JellyfinLibrariesService,
-)
-from bootstrap_services.jellyfin_livetv_source_service import JellyfinLiveTvSourceService
-from bootstrap_services.jellyfin_livetv_state_service import JellyfinLiveTvStateService
-from bootstrap_services.jellyfin_playback_service import (
-    JellyfinPlaybackDependencies,
-    JellyfinPlaybackService,
-)
-from bootstrap_services.jellyfin_plugins_service import (
-    JellyfinPluginsDependencies,
-    JellyfinPluginsService,
-)
-from bootstrap_services.jellyfin_prewarm_service import (
-    JellyfinPrewarmDependencies,
-    JellyfinPrewarmService,
-)
-from bootstrap_services.jellyfin_service import JellyfinLiveTvDependencies, JellyfinService
 from bootstrap_services.jellyseerr_service import JellyseerrService
 from bootstrap_services.maintainerr_service import MaintainerrService
 from bootstrap_services.media_hygiene_ops_service import MediaHygieneOpsService

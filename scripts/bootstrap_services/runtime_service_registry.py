@@ -32,6 +32,18 @@ def _active_adapter_hooks() -> dict[str, object]:
     return _manifest_adapter_hooks()
 
 
+def _canonical_technology_key(technology: str, hooks: dict[str, object]) -> str:
+    token = str(technology or "").strip().lower()
+    if not token:
+        return ""
+    aliases = hooks.get("technology_aliases") or {}
+    if isinstance(aliases, dict):
+        alias_value = aliases.get(token)
+        if alias_value is not None and str(alias_value).strip():
+            return str(alias_value).strip().lower()
+    return token
+
+
 def _load_class_from_spec(spec, *, path_label):
     raw = str(spec or "").strip()
     if ":" not in raw:
@@ -54,7 +66,7 @@ def _load_class_from_spec(spec, *, path_label):
     return cls
 
 
-def resolve_app_service_class(service_key, default_cls):
+def resolve_app_service_class(service_key, default_cls, technology: str = ""):
     key = str(service_key or "").strip()
     if not key:
         return default_cls
@@ -67,12 +79,35 @@ def resolve_app_service_class(service_key, default_cls):
     if not isinstance(service_map, dict):
         raise RuntimeError("adapter_hooks.app_service_classes must be an object/map.")
 
-    spec = service_map.get(key)
+    spec = None
+    if str(technology or "").strip():
+        by_technology_map = hooks.get("app_service_classes_by_technology") or {}
+        if by_technology_map is not None and not isinstance(by_technology_map, dict):
+            raise RuntimeError(
+                "adapter_hooks.app_service_classes_by_technology must be an object/map."
+            )
+        if isinstance(by_technology_map, dict):
+            canonical_technology = _canonical_technology_key(technology, hooks)
+            technology_map = by_technology_map.get(canonical_technology) or {}
+            if technology_map is not None and not isinstance(technology_map, dict):
+                raise RuntimeError(
+                    "adapter_hooks.app_service_classes_by_technology."
+                    f"{canonical_technology} must be an object/map."
+                )
+            if isinstance(technology_map, dict):
+                spec = technology_map.get(key)
+
+    if spec is None:
+        spec = service_map.get(key)
+
     if spec is None or str(spec).strip() == "":
         available = ", ".join(sorted(str(name) for name in service_map.keys())) or "<none>"
+        tech_fragment = ""
+        if str(technology or "").strip():
+            tech_fragment = f" for technology '{technology}'"
         raise RuntimeError(
             "No app service class binding found for "
-            f"'{key}' in plugin manifests app_service_classes. "
+            f"'{key}'{tech_fragment} in plugin manifests app_service_classes. "
             "Register it in scripts/bootstrap_defaults/plugins/<technology>/manifest.json. "
             f"Available bindings: {available}."
         )
