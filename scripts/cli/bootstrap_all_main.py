@@ -349,7 +349,7 @@ class BootstrapAllRunner:
             script_map: dict[str, str] = {}
             for phase_key in configured_phase_keys:
                 script_map[phase_key] = self._phase_script(phase_key, technology)
-            selected_client = plan.download_clients.get(technology)
+            selected_client = plan.technology_settings.get(technology)
             component_context[component_key] = {
                 "technology": str(technology or "").strip(),
                 "scripts": script_map,

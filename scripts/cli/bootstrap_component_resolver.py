@@ -91,6 +91,7 @@ def _phase_plan_steps(
 @dataclass(frozen=True)
 class ManifestCatalog:
     aliases: dict[str, str] = field(default_factory=dict)
+    technologies: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -100,7 +101,7 @@ class BootstrapComponentPlan:
     role_bindings: dict[str, str]
     managed_apps: tuple[str, ...]
     scale_to_zero_apps: tuple[str, ...]
-    download_clients: dict[str, dict[str, Any]]
+    technology_settings: dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -196,18 +197,24 @@ def load_bootstrap_config(config_file: Path) -> dict[str, Any]:
 
 def build_manifest_catalog() -> ManifestCatalog:
     aliases: dict[str, str] = {}
+    technologies: list[str] = []
 
     for manifest in load_plugin_manifests():
         technology = normalize_technology_token(manifest.technology)
         if not technology:
             continue
         aliases[technology] = technology
+        if technology not in technologies:
+            technologies.append(technology)
         for alias in manifest.aliases:
             token = normalize_technology_token(alias)
             if token and token not in aliases:
                 aliases[token] = technology
 
-    return ManifestCatalog(aliases=aliases)
+    return ManifestCatalog(
+        aliases=aliases,
+        technologies=tuple(technologies),
+    )
 
 
 def resolve_role_bindings(
@@ -229,19 +236,41 @@ def resolve_role_bindings(
     return resolved
 
 
-def resolve_download_clients(
+def resolve_technology_settings(
     cfg: dict[str, Any],
     *,
     aliases: dict[str, str],
+    technologies: tuple[str, ...] = (),
+    role_bindings: dict[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    raw_clients = cfg.get("download_clients")
-    if not isinstance(raw_clients, dict):
-        return {}
+    discovered_tokens: list[str] = []
+    for token in technologies:
+        value = canonicalize_technology(token, aliases)
+        if value and value not in discovered_tokens:
+            discovered_tokens.append(value)
+    for value in (role_bindings or {}).values():
+        token = canonicalize_technology(value, aliases)
+        if token and token not in discovered_tokens:
+            discovered_tokens.append(token)
+
     out: dict[str, dict[str, Any]] = {}
-    for key, value in raw_clients.items():
-        token = canonicalize_technology(key, aliases)
-        if token and isinstance(value, dict):
-            out[token] = dict(value)
+    raw_clients = cfg.get("download_clients")
+    if isinstance(raw_clients, dict):
+        for key, value in raw_clients.items():
+            token = canonicalize_technology(key, aliases)
+            if token and token not in discovered_tokens:
+                discovered_tokens.append(token)
+            if token and isinstance(value, dict):
+                out[token] = dict(value)
+
+    for token in discovered_tokens:
+        section = cfg.get(token)
+        if not isinstance(section, dict):
+            continue
+        merged = dict(out.get(token) or {})
+        merged.update(dict(section))
+        out[token] = merged
+
     return out
 
 
@@ -584,7 +613,12 @@ def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPla
     cfg = load_bootstrap_config(config_file)
     catalog = build_manifest_catalog()
     role_bindings = resolve_role_bindings(cfg, aliases=catalog.aliases)
-    download_clients = resolve_download_clients(cfg, aliases=catalog.aliases)
+    technology_settings = resolve_technology_settings(
+        cfg,
+        aliases=catalog.aliases,
+        technologies=catalog.technologies,
+        role_bindings=role_bindings,
+    )
     managed_apps, scale_to_zero_apps = _resolve_scale_policy_lists(
         cfg,
         aliases=catalog.aliases,
@@ -596,5 +630,5 @@ def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPla
         role_bindings=role_bindings,
         managed_apps=managed_apps or (),
         scale_to_zero_apps=scale_to_zero_apps or (),
-        download_clients=download_clients,
+        technology_settings=technology_settings,
     )

@@ -81,6 +81,10 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             ),
         )
         self.assertEqual(plan.scale_to_zero_apps, ("unpackerr",))
+        self.assertIn("qbittorrent", plan.technology_settings)
+        self.assertTrue(
+            bool((plan.technology_settings.get("qbittorrent") or {}).get("configure_arr_clients"))
+        )
 
     def test_legacy_scale_policy_keys_remain_supported(self):
         cfg = self._base_config()
