@@ -12,9 +12,6 @@ from bootstrap_services.runtime_core import (
     log,
     normalize_token,
     normalize_url,
-    qbit_delete_torrents,
-    qbit_list_completed_torrents,
-    qbit_list_torrents,
     resolve_app_service_class,
     to_int,
 )
@@ -30,7 +27,13 @@ from bootstrap_services.runtime_helpers import (
 
 from .arr_ops import detect_arr_api_base
 from .factory import _arr_queue_cleanup_service
-from .qbit_ops import qbit_login, qbit_set_preferences
+from .qbit_ops import (
+    qbit_delete_torrents,
+    qbit_list_completed_torrents,
+    qbit_list_torrents,
+    qbit_login,
+    qbit_set_preferences,
+)
 
 
 def _media_hygiene_ops_service(cfg=None) -> MediaHygieneOpsService:

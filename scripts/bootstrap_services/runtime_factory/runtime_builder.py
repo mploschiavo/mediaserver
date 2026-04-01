@@ -189,6 +189,8 @@ class BootstrapRuntimeBuilder:
         usenet_client_key = binding_resolution.usenet_client_key
         qbit_cfg = dict(binding_resolution.torrent_client_cfg)
         sab_cfg = dict(binding_resolution.usenet_client_cfg)
+        qbit_cfg.setdefault("_technology_key", torrent_client_key)
+        sab_cfg.setdefault("_technology_key", usenet_client_key)
 
         arr_download_handling_cfg = ArrDownloadHandlingPolicy.from_dict(
             cfg.get("arr_download_handling") or {},

@@ -5,13 +5,15 @@
     "download_client": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter"
   },
   "app_service_classes": {
-    "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService"
+    "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
+    "torrent_client_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService"
   },
   "operation_handlers": {
     "qbit_login": "bootstrap_services.apps.qbittorrent.runtime_ops:qbit_login",
     "setup_qbit_categories": "bootstrap_services.apps.qbittorrent.runtime_ops:setup_qbit_categories"
   },
   "service_technology_map": {
-    "qbittorrent_service": "qbittorrent"
+    "qbittorrent_service": "qbittorrent",
+    "torrent_client_service": "qbittorrent"
   }
 }

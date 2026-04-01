@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from bootstrap_services.apps.prowlarr.service import ProwlarrService
-from bootstrap_services.apps.qbittorrent.service import QBittorrentService
+from typing import Any
+
 from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
 from bootstrap_services.runtime_core import (
     ArrQueueCleanupService,
@@ -28,6 +28,7 @@ from bootstrap_services.runtime_core import (
     resolve_path,
     to_int,
 )
+from bootstrap_services.runtime_service_registry import get_runtime_binding
 
 
 def _detect_arr_api_base(app_name, app_url, api_key):
@@ -60,8 +61,50 @@ def _arr_service(cfg=None) -> ArrService:
     )
 
 
-def _qbit_service(cfg=None) -> QBittorrentService:
-    service_cls = resolve_app_service_class("qbittorrent_service", QBittorrentService)
+def _normalize_torrent_technology(token: str) -> str:
+    raw = str(token or "").strip().lower()
+    if not raw:
+        return ""
+    if raw in {"qbit", "qb"}:
+        return "qbittorrent"
+    return raw
+
+
+def _infer_torrent_client_technology(cfg=None) -> str:
+    if isinstance(cfg, dict):
+        for key in ("_technology_key", "_technology", "technology", "client_key"):
+            value = _normalize_torrent_technology(str(cfg.get(key) or ""))
+            if value:
+                return value
+        impl = _normalize_torrent_technology(str(cfg.get("implementation") or ""))
+        if impl:
+            return impl
+        name = _normalize_torrent_technology(str(cfg.get("name") or ""))
+        if name in {"qbittorrent", "transmission"}:
+            return name
+        url_token = str(cfg.get("url") or "").strip().lower()
+        if "qbittorrent" in url_token or "qbit" in url_token:
+            return "qbittorrent"
+        if "transmission" in url_token:
+            return "transmission"
+    runtime_bound = _normalize_torrent_technology(get_runtime_binding("torrent_client"))
+    if runtime_bound:
+        return runtime_bound
+    return ""
+
+
+def _torrent_client_service(cfg=None) -> Any:
+    technology = _infer_torrent_client_technology(cfg)
+    if not technology:
+        raise RuntimeError(
+            "Unable to resolve active torrent client technology for runtime operation. "
+            "Set technology_bindings.torrent_client and ensure runtime context is initialized."
+        )
+    service_cls = resolve_app_service_class(
+        "torrent_client_service",
+        object,
+        technology=technology,
+    )
     return service_cls(
         log=log,
         normalize_url=normalize_url,
@@ -71,8 +114,13 @@ def _qbit_service(cfg=None) -> QBittorrentService:
     )
 
 
-def _prowlarr_service(cfg=None) -> ProwlarrService:
-    service_cls = resolve_app_service_class("prowlarr_service", ProwlarrService)
+def _qbit_service(cfg=None) -> Any:
+    """Compatibility alias retained while runtime code migrates to generic naming."""
+    return _torrent_client_service(cfg)
+
+
+def _prowlarr_service(cfg=None) -> Any:
+    service_cls = resolve_app_service_class("prowlarr_service", object, technology="prowlarr")
     return service_cls(
         http_request=http_request,
         field_map=field_map,

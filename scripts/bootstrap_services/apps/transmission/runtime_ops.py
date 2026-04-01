@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""qBittorrent runtime operations."""
+"""Transmission runtime operations bound to generic torrent-client wrappers."""
 
 from __future__ import annotations
 

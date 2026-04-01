@@ -21,6 +21,21 @@ def get_runtime_context_cfg() -> dict[str, object]:
     return dict(_RUNTIME_CONTEXT_ADAPTER_HOOKS)
 
 
+def get_runtime_binding(binding_key: str, default: str = "") -> str:
+    key = str(binding_key or "").strip()
+    if not key:
+        return str(default or "")
+    ctx = get_runtime_context_cfg()
+    raw_bindings = ctx.get("runtime_bindings") or {}
+    if not isinstance(raw_bindings, dict):
+        return str(default or "")
+    value = raw_bindings.get(key)
+    token = str(value or "").strip()
+    if token:
+        return token
+    return str(default or "")
+
+
 def _manifest_adapter_hooks() -> dict[str, object]:
     defaults = build_adapter_hook_defaults(load_plugin_manifests())
     return defaults.to_dict()

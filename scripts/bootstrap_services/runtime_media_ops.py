@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Media-server and UI-facing runtime operations (Jellyfin/Homepage/Maintainerr)."""
 
-import bootstrap_services.apps.jellyfin.runtime_ops as jellyfin_runtime_ops
+import importlib
+
 import bootstrap_services.runtime_core as _core
 
 log = _core.log
@@ -22,7 +23,14 @@ MaintainerrService = _core.MaintainerrService
 _lib_default_homepage_hosts = _core._lib_default_homepage_hosts
 _lib_render_homepage_services_yaml = _core._lib_render_homepage_services_yaml
 
+
+def _jellyfin_runtime_ops():
+    """Lazy import to keep shared runtime modules technology-pluggable at import time."""
+    return importlib.import_module("bootstrap_services.apps.jellyfin.runtime_ops")
+
+
 def _config_artifacts_service(cfg=None) -> ConfigArtifactsService:
+    jellyfin_runtime_ops = _jellyfin_runtime_ops()
     service_cls = resolve_app_service_class("config_artifacts_service", ConfigArtifactsService)
     return service_cls(
         bool_cfg=bool_cfg,

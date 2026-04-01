@@ -79,6 +79,50 @@ class QBittorrentService:
                 f"qBittorrent: failed updating preferences (HTTP {exc.code}): {body}"
             ) from exc
 
+    def list_torrents(self, opener, base_url: str, filter_value: str = "all") -> list[dict[str, Any]]:
+        req = request.Request(
+            f"{self.normalize_url(base_url)}/api/v2/torrents/info?"
+            f"{parse.urlencode({'filter': str(filter_value or 'all')})}",
+            method="GET",
+        )
+        with opener.open(req, timeout=25) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(body)
+        except Exception as exc:
+            raise RuntimeError(f"qBittorrent: failed parsing torrents payload: {exc}") from exc
+        if isinstance(payload, list):
+            return payload
+        raise RuntimeError("qBittorrent: torrents payload was not a list.")
+
+    def list_completed_torrents(self, opener, base_url: str) -> list[dict[str, Any]]:
+        return self.list_torrents(opener, base_url, filter_value="completed")
+
+    def delete_torrents(
+        self,
+        opener,
+        base_url: str,
+        hashes: list[str],
+        delete_files: bool = True,
+    ) -> None:
+        hash_tokens = [str(value or "").strip() for value in hashes if str(value or "").strip()]
+        if not hash_tokens:
+            return
+        data = parse.urlencode(
+            {
+                "hashes": "|".join(hash_tokens),
+                "deleteFiles": "true" if delete_files else "false",
+            }
+        ).encode("utf-8")
+        req = request.Request(
+            f"{self.normalize_url(base_url)}/api/v2/torrents/delete",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with opener.open(req, timeout=30):
+            pass
+
     def setup_storage_defaults(
         self,
         opener,
