@@ -9,15 +9,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from cli.bootstrap_component_resolver import (  # noqa: E402
     evaluate_phase_condition,
+    resolve_bootstrap_enable_components,
+    resolve_component_deployment_name,
+    resolve_component_manifest_path,
     resolve_bootstrap_all_components,
     resolve_bootstrap_all_phase_plan,
     resolve_bootstrap_job_phase_plan,
     resolve_bootstrap_component_plan,
-    resolve_bootstrap_enable_workers,
     resolve_phase_skip_flag_specs,
     resolve_runner_phase_script,
-    resolve_worker_deployment_name,
-    resolve_worker_manifest_path,
 )
 from core.exceptions import ConfigError  # noqa: E402
 
@@ -51,7 +51,7 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             ],
             "scale_to_zero_apps": ["unpackerr"],
         }
-        hooks["bootstrap_all"] = {"enable_workers": ["unpackerr"]}
+        hooks["bootstrap_all"] = {"enable_components": ["unpackerr"]}
         cfg["adapter_hooks"] = hooks
         cfg["technology_bindings"] = {
             "torrent_client": "qbit",
@@ -85,19 +85,6 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         self.assertTrue(
             bool((plan.technology_settings.get("qbittorrent") or {}).get("configure_arr_clients"))
         )
-
-    def test_legacy_scale_policy_keys_remain_supported(self):
-        cfg = self._base_config()
-        hooks = dict(cfg.get("adapter_hooks") or {})
-        hooks["scale_policy"] = {
-            "core_apps": ["radarr", "Custom Core"],
-            "worker_apps": ["Worker-X"],
-        }
-        cfg["adapter_hooks"] = hooks
-
-        plan = resolve_bootstrap_component_plan(self._write_config(cfg))
-        self.assertEqual(plan.managed_apps, ("radarr", "custom-core", "worker-x"))
-        self.assertEqual(plan.scale_to_zero_apps, ("worker-x",))
 
     def test_missing_scale_policy_lists_raise_config_error(self):
         cfg = self._base_config()
@@ -137,41 +124,37 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         self.assertEqual(direct, "ensure-qbit-credentials.sh")
         self.assertEqual(fallback, "fallback.sh")
 
-    def test_bootstrap_enable_workers_explicit_or_fallback(self):
+    def test_bootstrap_enable_components_reads_config_list(self):
         aliases = {"unpackerr": "unpackerr", "x": "x"}
-        explicit_cfg = {"adapter_hooks": {"bootstrap_all": {"enable_workers": ["X"]}}}
+        explicit_cfg = {"adapter_hooks": {"bootstrap_all": {"enable_components": ["X"]}}}
         fallback_cfg = {"adapter_hooks": {}}
 
         self.assertEqual(
-            resolve_bootstrap_enable_workers(
-                explicit_cfg, aliases=aliases, fallback_workers=("unpackerr",)
-            ),
+            resolve_bootstrap_enable_components(explicit_cfg, aliases=aliases),
             ("x",),
         )
         self.assertEqual(
-            resolve_bootstrap_enable_workers(
-                fallback_cfg, aliases=aliases, fallback_workers=("unpackerr",)
-            ),
-            ("unpackerr",),
+            resolve_bootstrap_enable_components(fallback_cfg, aliases=aliases),
+            (),
         )
 
-    def test_worker_manifest_and_deployment_mappings_allow_overrides(self):
+    def test_component_manifest_and_deployment_mappings_allow_overrides(self):
         cfg = {
             "adapter_hooks": {
                 "bootstrap_all": {
-                    "worker_manifests": {"unpackerr": "k8s/custom-unpackerr.yaml"},
-                    "worker_deployments": {"unpackerr": "unpackerr-worker"},
+                    "component_manifests": {"unpackerr": "k8s/custom-unpackerr.yaml"},
+                    "component_deployments": {"unpackerr": "unpackerr-worker"},
                 }
             }
         }
         aliases = {"unpackerr": "unpackerr"}
 
         self.assertEqual(
-            resolve_worker_manifest_path(cfg, worker="unpackerr", aliases=aliases),
+            resolve_component_manifest_path(cfg, component="unpackerr", aliases=aliases),
             "k8s/custom-unpackerr.yaml",
         )
         self.assertEqual(
-            resolve_worker_deployment_name(cfg, worker="unpackerr", aliases=aliases),
+            resolve_component_deployment_name(cfg, component="unpackerr", aliases=aliases),
             "unpackerr-worker",
         )
 

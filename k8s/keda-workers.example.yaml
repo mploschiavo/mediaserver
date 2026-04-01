@@ -1,11 +1,11 @@
-# Example KEDA ScaledObjects for non-interactive workers only.
+# Example KEDA ScaledObjects for non-interactive/background components only.
 # Do NOT apply scale-to-zero to interactive apps (Jellyfin/Jellyseerr/Arr/qBittorrent)
 # unless you accept cold-start UX impact.
 #
 # Requires KEDA installed in cluster:
 #   https://keda.sh/docs/
 #
-# This example keeps worker apps active during daytime and scales to zero off-hours.
+# This example keeps background components active during daytime and scales to zero off-hours.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:

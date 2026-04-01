@@ -216,9 +216,9 @@ bash scripts/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.g
 ## Scale policy
 ```bash
 bash scripts/apply-scale-policy.sh
-SCALE_WORKERS_TO_ZERO=1 bash scripts/apply-scale-policy.sh
+SCALE_TO_ZERO=1 bash scripts/apply-scale-policy.sh
 ```
-KEDA worker examples:
+KEDA background component examples:
 ```bash
 kubectl apply -f k8s/keda-workers.example.yaml
 ```
