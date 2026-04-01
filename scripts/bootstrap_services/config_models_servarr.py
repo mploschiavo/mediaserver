@@ -10,6 +10,7 @@ from .config_models_discovery import (
     DiscoveryListContract,
     DiscoveryProviderOptions,
     GenericDiscoveryProviderOptions,
+    TraktPopularImportOptions,
     parse_discovery_provider_options,
     resolve_discovery_list_contract,
 )
@@ -127,6 +128,87 @@ class ArrDiscoveryListEntry:
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.raw)
+
+    @staticmethod
+    def _is_present(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        return True
+
+    def resolved_payload_overrides(
+        self,
+        resolve_env_placeholder: Callable[[Any], Any],
+    ) -> dict[str, Any]:
+        overrides: dict[str, Any] = {}
+        scalar_map = {
+            "enabled": self.enabled,
+            "enableAuto": self.enable_auto,
+            "monitor": self.monitor,
+            "qualityProfileId": self.quality_profile_id,
+            "metadataProfileId": self.metadata_profile_id,
+            "searchOnAdd": self.search_on_add,
+            "minimumAvailability": self.minimum_availability,
+            "listType": self.list_type,
+            "listOrder": self.list_order,
+            "minRefreshInterval": self.min_refresh_interval,
+            "enableAutomaticAdd": self.enable_automatic_add,
+            "searchForMissingEpisodes": self.search_for_missing_episodes,
+            "shouldMonitor": self.should_monitor,
+            "monitorNewItems": self.monitor_new_items,
+            "seriesType": self.series_type,
+            "seasonFolder": self.season_folder,
+            "shouldSearch": self.should_search,
+            "rootFolderPath": self.root_folder_path,
+        }
+        for key, value in scalar_map.items():
+            if not self._is_present(value):
+                continue
+            overrides[key] = resolve_env_placeholder(value)
+
+        # Keep semantic aliases synchronized across Arr variants.
+        if "enableAuto" in overrides and "enableAutomaticAdd" not in overrides:
+            overrides["enableAutomaticAdd"] = overrides["enableAuto"]
+        if "enableAutomaticAdd" in overrides and "enableAuto" not in overrides:
+            overrides["enableAuto"] = overrides["enableAutomaticAdd"]
+        if "monitor" in overrides and "shouldMonitor" not in overrides:
+            overrides["shouldMonitor"] = overrides["monitor"]
+        if "shouldMonitor" in overrides and "monitor" not in overrides:
+            overrides["monitor"] = overrides["shouldMonitor"]
+        if "searchOnAdd" in overrides and "shouldSearch" not in overrides:
+            overrides["shouldSearch"] = overrides["searchOnAdd"]
+        if "shouldSearch" in overrides and "searchOnAdd" not in overrides:
+            overrides["searchOnAdd"] = overrides["shouldSearch"]
+
+        return overrides
+
+    def resolved_field_override(
+        self,
+        field_name: str,
+        resolve_env_placeholder: Callable[[Any], Any],
+    ) -> Any:
+        key = str(field_name or "").strip()
+        if not key:
+            return ""
+        if key in self.field_overrides:
+            return resolve_env_placeholder(self.field_overrides.get(key))
+        if isinstance(self.provider_options, TraktPopularImportOptions):
+            if key == "accessToken":
+                return resolve_env_placeholder(self.provider_options.access_token)
+            if key == "refreshToken":
+                return resolve_env_placeholder(self.provider_options.refresh_token)
+        return ""
+
+    def has_provider_auth_token(
+        self,
+        resolve_env_placeholder: Callable[[Any], Any],
+    ) -> bool:
+        token = str(
+            self.resolved_field_override("accessToken", resolve_env_placeholder)
+            or ""
+        ).strip()
+        return bool(token)
 
 
 @dataclass(frozen=True)

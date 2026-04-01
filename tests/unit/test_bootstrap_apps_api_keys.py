@@ -7,7 +7,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_core as MODULE
 
 
 class ApiKeyReadTests(unittest.TestCase):

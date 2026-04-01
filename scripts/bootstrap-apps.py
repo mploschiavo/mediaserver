@@ -10,7 +10,23 @@ import os
 import sys
 import traceback
 
-import bootstrap_services.entrypoint_runtime as runtime
+import bootstrap_services.runtime_core as runtime_core
+import bootstrap_services.runtime_media_ops as runtime_media_ops
+import bootstrap_services.runtime_servarr.service_ops as runtime_servarr_ops
+from bootstrap_services.bootstrap_runner_service import (
+    BootstrapRunnerDependencies,
+    BootstrapRunnerService,
+)
+from bootstrap_services.enums import BootstrapMode
+from bootstrap_services.operation_wiring import (
+    RunnerOperationHandlers,
+    build_runner_operation_registry,
+)
+from bootstrap_services.runtime_factory import (
+    BootstrapCliArgs,
+    BootstrapRuntimeFactoryDependencies,
+    BootstrapRuntimeFactoryService,
+)
 
 
 def main():
@@ -38,12 +54,12 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        default=runtime.BootstrapMode.FULL.value,
-        choices=runtime.BootstrapMode.choices(),
+        default=BootstrapMode.FULL.value,
+        choices=BootstrapMode.choices(),
         help=(
             "Execution mode: full bootstrap, media-server prewarm-only, "
             "media-server home-rails-only, or media-hygiene-only "
-            "(legacy jellyfin-* aliases still supported)"
+            "(canonical modes only)"
         ),
     )
     parser.add_argument(
@@ -56,20 +72,20 @@ def main():
     )
     args = parser.parse_args()
 
-    runtime_factory = runtime.BootstrapRuntimeFactoryService(
-        deps=runtime.BootstrapRuntimeFactoryDependencies(
-            load_bootstrap_default_json=runtime.load_bootstrap_default_json,
-            deep_merge_objects=runtime.deep_merge_objects,
-            bool_cfg=runtime.bool_cfg,
-            coerce_list=runtime.coerce_list,
-            env_truthy=runtime.env_truthy,
-            read_api_key=runtime.read_api_key,
-            build_sab_remote_path_mappings=runtime.build_sab_remote_path_mappings,
+    runtime_factory = BootstrapRuntimeFactoryService(
+        deps=BootstrapRuntimeFactoryDependencies(
+            load_bootstrap_default_json=runtime_core.load_bootstrap_default_json,
+            deep_merge_objects=runtime_media_ops.deep_merge_objects,
+            bool_cfg=runtime_core.bool_cfg,
+            coerce_list=runtime_core.coerce_list,
+            env_truthy=runtime_core.env_truthy,
+            read_api_key=runtime_core.read_api_key,
+            build_sab_remote_path_mappings=runtime_servarr_ops.build_sab_remote_path_mappings,
         )
     )
     build_result = runtime_factory.build_from_cli(
-        runtime.BootstrapCliArgs(
-            mode=runtime.BootstrapMode.from_cli(args.mode),
+        BootstrapCliArgs(
+            mode=BootstrapMode.from_cli(args.mode),
             config_path=args.config,
             config_root=args.config_root,
             wait_timeout=args.wait_timeout,
@@ -78,48 +94,48 @@ def main():
         )
     )
     runtime_state = build_result.runtime
-    runtime.set_runtime_context_cfg(runtime_state.cfg, runtime_state.adapter_hooks_cfg)
-    runtime.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
-    runner_operations = runtime.build_runner_operation_registry(
-        runtime.RunnerOperationHandlers(
-            ensure_app_auth_settings=runtime.ensure_app_auth_settings,
-            qbit_login=runtime.qbit_login,
-            read_sabnzbd_api_key=runtime.read_sabnzbd_api_key,
-            ensure_sabnzbd_defaults=runtime.ensure_sabnzbd_defaults,
-            ensure_sabnzbd_categories=runtime.ensure_sabnzbd_categories,
-            setup_qbit_categories=runtime.setup_qbit_categories,
-            run_servarr_pipeline=runtime._servarr_pipeline_service().run,
-            ensure_bazarr_arr_integration=runtime.ensure_bazarr_arr_integration,
-            configure_jellyseerr=runtime.configure_jellyseerr,
-            ensure_jellyfin_livetv=runtime.ensure_jellyfin_livetv,
-            ensure_jellyfin_libraries=runtime.ensure_jellyfin_libraries,
-            ensure_jellyfin_plugins=runtime.ensure_jellyfin_plugins,
-            ensure_jellyfin_playback_defaults=runtime.ensure_jellyfin_playback_defaults,
-            ensure_jellyfin_home_rails=runtime.ensure_jellyfin_home_rails,
-            ensure_jellyfin_auto_collections_config=runtime.ensure_jellyfin_auto_collections_config,
-            enforce_disk_guardrails=runtime.enforce_disk_guardrails,
-            run_media_hygiene=runtime.run_media_hygiene,
-            ensure_jellyfin_prewarm=runtime.ensure_jellyfin_prewarm,
-            ensure_maintainerr_policy=runtime.ensure_maintainerr_policy,
-            ensure_maintainerr_integrations=runtime.ensure_maintainerr_integrations,
-            ensure_homepage_services_config=runtime.ensure_homepage_services_config,
-            ensure_prowlarr_ready=runtime.ensure_prowlarr_ready,
-            ensure_prowlarr_flaresolverr_proxy=runtime.ensure_prowlarr_flaresolverr_proxy,
-            ensure_prowlarr_indexer=runtime.ensure_prowlarr_indexer,
-            auto_add_tested_indexers=runtime.auto_add_tested_indexers,
-            trigger_prowlarr_sync=runtime.trigger_prowlarr_sync,
-            sync_arr_indexers_from_prowlarr=runtime.sync_arr_indexers_from_prowlarr,
-            run_prowlarr_indexer_pipeline=runtime.run_prowlarr_indexer_pipeline,
+    runtime_core.set_runtime_context_cfg(runtime_state.adapter_hooks_cfg)
+    runtime_core.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
+    runner_operations = build_runner_operation_registry(
+        RunnerOperationHandlers(
+            ensure_app_auth_settings=runtime_servarr_ops.ensure_app_auth_settings,
+            qbit_login=runtime_servarr_ops.qbit_login,
+            read_sabnzbd_api_key=runtime_servarr_ops.read_sabnzbd_api_key,
+            ensure_sabnzbd_defaults=runtime_servarr_ops.ensure_sabnzbd_defaults,
+            ensure_sabnzbd_categories=runtime_servarr_ops.ensure_sabnzbd_categories,
+            setup_qbit_categories=runtime_servarr_ops.setup_qbit_categories,
+            run_servarr_pipeline=runtime_servarr_ops._servarr_pipeline_service().run,
+            ensure_bazarr_arr_integration=runtime_media_ops.ensure_bazarr_arr_integration,
+            configure_jellyseerr=runtime_media_ops.configure_jellyseerr,
+            ensure_jellyfin_livetv=runtime_media_ops.ensure_jellyfin_livetv,
+            ensure_jellyfin_libraries=runtime_media_ops.ensure_jellyfin_libraries,
+            ensure_jellyfin_plugins=runtime_media_ops.ensure_jellyfin_plugins,
+            ensure_jellyfin_playback_defaults=runtime_media_ops.ensure_jellyfin_playback_defaults,
+            ensure_jellyfin_home_rails=runtime_media_ops.ensure_jellyfin_home_rails,
+            ensure_jellyfin_auto_collections_config=runtime_media_ops.ensure_jellyfin_auto_collections_config,
+            enforce_disk_guardrails=runtime_servarr_ops.enforce_disk_guardrails,
+            run_media_hygiene=runtime_servarr_ops.run_media_hygiene,
+            ensure_jellyfin_prewarm=runtime_media_ops.ensure_jellyfin_prewarm,
+            ensure_maintainerr_policy=runtime_media_ops.ensure_maintainerr_policy,
+            ensure_maintainerr_integrations=runtime_media_ops.ensure_maintainerr_integrations,
+            ensure_homepage_services_config=runtime_media_ops.ensure_homepage_services_config,
+            ensure_prowlarr_ready=runtime_servarr_ops.ensure_prowlarr_ready,
+            ensure_prowlarr_flaresolverr_proxy=runtime_servarr_ops.ensure_prowlarr_flaresolverr_proxy,
+            ensure_prowlarr_indexer=runtime_servarr_ops.ensure_prowlarr_indexer,
+            auto_add_tested_indexers=runtime_servarr_ops.auto_add_tested_indexers,
+            trigger_prowlarr_sync=runtime_servarr_ops.trigger_prowlarr_sync,
+            sync_arr_indexers_from_prowlarr=runtime_servarr_ops.sync_arr_indexers_from_prowlarr,
+            run_prowlarr_indexer_pipeline=runtime_servarr_ops.run_prowlarr_indexer_pipeline,
         ),
         operation_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("operation_handlers"),
     )
 
-    runner = runtime.BootstrapRunnerService(
-        deps=runtime.BootstrapRunnerDependencies(
-            log=runtime.log,
-            bool_cfg=runtime.bool_cfg,
-            normalize_url=runtime.normalize_url,
-            wait_for_service=runtime.wait_for_service,
+    runner = BootstrapRunnerService(
+        deps=BootstrapRunnerDependencies(
+            log=runtime_core.log,
+            bool_cfg=runtime_core.bool_cfg,
+            normalize_url=runtime_core.normalize_url,
+            wait_for_service=runtime_core.wait_for_service,
             operations=runner_operations,
         )
     )
@@ -130,9 +146,9 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        runtime.log(f"[ERR] {exc}")
+        runtime_core.log(f"[ERR] {exc}")
         trace = traceback.format_exc().strip()
         if trace:
             for line in trace.splitlines():
-                runtime.log(f"[TRACE] {line}")
+                runtime_core.log(f"[TRACE] {line}")
         sys.exit(1)

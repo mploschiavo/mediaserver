@@ -8,7 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_servarr.service_ops as MODULE
 import bootstrap_services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
 import bootstrap_services.jellyfin_livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
 import bootstrap_services.media_hygiene_ops.duplicate_prune as DUPLICATE_PRUNE
@@ -448,7 +448,7 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
             mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
-            MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+            MEDIA_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         called_paths = [item[0] for item in calls]
         self.assertIn("/LiveTv/RefreshChannels", called_paths)
@@ -558,7 +558,7 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
             mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
-            MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+            MEDIA_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         called_paths = [item[0] for item in calls]
         self.assertIn("/LiveTv/TunerHosts?id=tuner-dup", called_paths)
@@ -584,7 +584,7 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key") as api_key_mock,
             mock.patch.object(MEDIA_OPS, "jellyfin_request") as request_mock,
         ):
-            MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+            MEDIA_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         wait_mock.assert_not_called()
         api_key_mock.assert_not_called()
@@ -729,7 +729,7 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                 JELLYFIN_LIVETV_SOURCE_SERVICE.request, "urlopen", side_effect=fake_urlopen
             ),
         ):
-            MODULE.ensure_jellyfin_livetv(cfg, tmp, 30)
+            MEDIA_OPS.ensure_jellyfin_livetv(cfg, tmp, 30)
 
             rendered = (Path(tmp) / "jellyfin" / "livetv-tuners" / "iptv-org-us-epg.m3u").read_text(
                 encoding="utf-8"

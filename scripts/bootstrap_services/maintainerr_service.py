@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from bootstrap_services.maintainerr_rule_sync_service import (
+from bootstrap_services.apps.maintainerr.rule_sync_service import (
     MaintainerrRuleSyncDependencies,
     MaintainerrRuleSyncService,
 )

@@ -57,11 +57,10 @@ def _run(
 class EnsureQbitCredentialsConfig:
     namespace: str
     secret_name: str
-    default_stack_admin_user: str
-    default_stack_admin_pass: str
     rollout_timeout: str
     qbit_wait_seconds: int
     qbit_deployment: str
+    qbit_startup_username: str
     force_reset_on_auth_failure: bool
     qbit_force_config_sync: bool
     qbit_strict_login_check: bool
@@ -124,19 +123,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def parse_config(argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
     _build_parser().parse_args(argv)
 
-    default_stack_admin_user = os.environ.get("DEFAULT_STACK_ADMIN_USER", "admin").strip() or "admin"
-    default_stack_admin_pass = (
-        os.environ.get("DEFAULT_STACK_ADMIN_PASS", "media-stack-admin").strip() or "media-stack-admin"
-    )
-
     return EnsureQbitCredentialsConfig(
         namespace=os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack",
         secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets").strip() or "media-stack-secrets",
-        default_stack_admin_user=default_stack_admin_user,
-        default_stack_admin_pass=default_stack_admin_pass,
         rollout_timeout=os.environ.get("ROLL_OUT_TIMEOUT", "5m").strip() or "5m",
         qbit_wait_seconds=max(1, int(os.environ.get("QBIT_WAIT_SECONDS", "120"))),
         qbit_deployment=os.environ.get("QBIT_DEPLOYMENT", "qbittorrent").strip() or "qbittorrent",
+        qbit_startup_username=str(os.environ.get("QBIT_STARTUP_USERNAME") or "").strip(),
         force_reset_on_auth_failure=_truthy(os.environ.get("FORCE_RESET_ON_AUTH_FAILURE", "1"), default=True),
         qbit_force_config_sync=_truthy(os.environ.get("QBIT_FORCE_CONFIG_SYNC", "1"), default=True),
         qbit_strict_login_check=_truthy(os.environ.get("QBIT_STRICT_LOGIN_CHECK", "0"), default=False),
@@ -144,35 +137,30 @@ def parse_config(argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
     )
 
 
-def ensure_secret_exists(kube: KubeClient, cfg: EnsureQbitCredentialsConfig) -> None:
+def ensure_secret_present(kube: KubeClient, cfg: EnsureQbitCredentialsConfig) -> None:
     proc = kube.run_ns(["get", "secret", cfg.secret_name], check=False)
     if proc.returncode == 0:
         return
-
-    manifest = f"""apiVersion: v1
-kind: Secret
-metadata:
-  name: {cfg.secret_name}
-  namespace: {cfg.namespace}
-type: Opaque
-stringData:
-  STACK_ADMIN_USERNAME: "{cfg.default_stack_admin_user}"
-  STACK_ADMIN_PASSWORD: "{cfg.default_stack_admin_pass}"
-  JELLYFIN_API_KEY: ""
-  JELLYFIN_USER_ID: ""
-"""
-    kube.run(["apply", "-f", "-"], input_text=manifest)
-    print(f"[OK] Created {cfg.namespace}/{cfg.secret_name} with default stack admin credentials.")
+    raise ConfigError(
+        f"Secret {cfg.namespace}/{cfg.secret_name} not found. "
+        "Create it first (for example: scripts/generate-secrets.sh)."
+    )
 
 
 def resolve_target_credentials(
-    cfg: EnsureQbitCredentialsConfig,
-    *,
     stack_admin_user: str,
     stack_admin_pass: str,
 ) -> CredentialResolution:
-    resolved_stack_user = stack_admin_user or cfg.default_stack_admin_user
-    resolved_stack_pass = stack_admin_pass if stack_admin_pass and stack_admin_pass != "change-me" else cfg.default_stack_admin_pass
+    resolved_stack_user = str(stack_admin_user or "").strip()
+    resolved_stack_pass = str(stack_admin_pass or "").strip()
+    if not resolved_stack_user:
+        raise ConfigError("Missing STACK_ADMIN_USERNAME in media-stack secret.")
+    if not resolved_stack_pass:
+        raise ConfigError("Missing STACK_ADMIN_PASSWORD in media-stack secret.")
+    if resolved_stack_pass == "change-me":
+        raise ConfigError(
+            "STACK_ADMIN_PASSWORD is still 'change-me'. Set a real password in the secret."
+        )
 
     return CredentialResolution(
         stack_admin_user=resolved_stack_user,
@@ -461,13 +449,12 @@ def wait_for_temp_password(
 def run(cfg: EnsureQbitCredentialsConfig) -> int:
     kube = KubeClient(resolve_kubectl_binary(), cfg.namespace)
 
-    ensure_secret_exists(kube, cfg)
+    ensure_secret_present(kube, cfg)
 
     stack_admin_user = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_USERNAME")
     stack_admin_pass = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_PASSWORD")
 
     creds = resolve_target_credentials(
-        cfg,
         stack_admin_user=stack_admin_user,
         stack_admin_pass=stack_admin_pass,
     )
@@ -486,55 +473,44 @@ def run(cfg: EnsureQbitCredentialsConfig) -> int:
 
     print("[WARN] In-pod qB credential check failed; continuing with recovery flow.")
 
-    if try_inpod_reconcile_with_auth(
-        kube,
-        cfg,
-        source_label="admin/adminadmin fallback",
-        auth_user="admin",
-        auth_pass="adminadmin",
-        target_user=creds.qb_user,
-        target_pass=creds.qb_pass,
-    ):
-        return 0
-
-    stack_auth_user = creds.stack_admin_user or creds.qb_user
-    if creds.stack_admin_pass and try_inpod_reconcile_with_auth(
-        kube,
-        cfg,
-        source_label="stack-admin fallback credentials",
-        auth_user=stack_auth_user,
-        auth_pass=creds.stack_admin_pass,
-        target_user=creds.qb_user,
-        target_pass=creds.qb_pass,
-    ):
-        return 0
-
     temp_pass = wait_for_temp_password(kube, cfg, pod_name=None, max_wait_seconds=30)
-    if temp_pass and try_inpod_reconcile_with_auth(
-        kube,
-        cfg,
-        source_label="temporary startup password",
-        auth_user="admin",
-        auth_pass=temp_pass,
-        target_user=creds.qb_user,
-        target_pass=creds.qb_pass,
-    ):
-        return 0
+    if temp_pass:
+        if not cfg.qbit_startup_username:
+            print(
+                "[WARN] QBIT_STARTUP_USERNAME is not set; skipping startup-password "
+                "reconcile path to avoid implicit username fallback.",
+            )
+        elif try_inpod_reconcile_with_auth(
+            kube,
+            cfg,
+            source_label="temporary startup password",
+            auth_user=cfg.qbit_startup_username,
+            auth_pass=temp_pass,
+            target_user=creds.qb_user,
+            target_pass=creds.qb_pass,
+        ):
+            return 0
 
     if cfg.force_reset_on_auth_failure:
         print("[WARN] In-pod fallback auth did not work; forcing qB auth reset and retrying once.")
         if force_reset_qbit_auth(kube, cfg):
             temp_pass = wait_for_temp_password(kube, cfg, pod_name=None, max_wait_seconds=90)
-            if temp_pass and try_inpod_reconcile_with_auth(
-                kube,
-                cfg,
-                source_label="temporary password after reset",
-                auth_user="admin",
-                auth_pass=temp_pass,
-                target_user=creds.qb_user,
-                target_pass=creds.qb_pass,
-            ):
-                return 0
+            if temp_pass:
+                if not cfg.qbit_startup_username:
+                    print(
+                        "[WARN] QBIT_STARTUP_USERNAME is not set; skipping reset-password "
+                        "reconcile path to avoid implicit username fallback.",
+                    )
+                elif try_inpod_reconcile_with_auth(
+                    kube,
+                    cfg,
+                    source_label="temporary password after reset",
+                    auth_user=cfg.qbit_startup_username,
+                    auth_pass=temp_pass,
+                    target_user=creds.qb_user,
+                    target_pass=creds.qb_pass,
+                ):
+                    return 0
 
     config_sync_done = False
     if cfg.qbit_force_config_sync:
@@ -568,7 +544,7 @@ def run(cfg: EnsureQbitCredentialsConfig) -> int:
         return 0
 
     print(
-        "[ERR] Could not authenticate to qBittorrent with secret creds, admin/adminadmin, temporary startup password, or forced auth reset.",
+        "[ERR] Could not authenticate to qBittorrent with secret credentials, temporary startup password, or forced auth reset.",
         file=sys.stderr,
     )
     print("[ERR] Manual recovery:", file=sys.stderr)

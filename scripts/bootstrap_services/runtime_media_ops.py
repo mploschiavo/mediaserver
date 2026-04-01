@@ -1,9 +1,51 @@
 #!/usr/bin/env python3
 """Media-server and UI-facing runtime operations (Jellyfin/Bazarr/Jellyseerr/Homepage)."""
 
+import os
+import re
+from urllib import parse
+
 import bootstrap_services.runtime_core as _core
 import bootstrap_services.runtime_servarr.arr_ops as _servarr_arr_ops
-from bootstrap_services.runtime_core import *  # noqa: F401,F403
+
+log = _core.log
+bool_cfg = _core.bool_cfg
+coerce_list = _core.coerce_list
+to_int = _core.to_int
+normalize_url = _core.normalize_url
+wait_for_service = _core.wait_for_service
+get_arr_app = _core.get_arr_app
+parse_service_url = _core.parse_service_url
+resolve_path = _core.resolve_path
+read_json_file = _core.read_json_file
+read_api_key = _core.read_api_key
+load_bootstrap_default_json = _core.load_bootstrap_default_json
+choose_profile = _core.choose_profile
+choose_root_folder = _core.choose_root_folder
+normalize_base_path = _core.normalize_base_path
+find_existing_servarr = _core.find_existing_servarr
+get_arr_quality_profile = _core.get_arr_quality_profile
+read_jellyseerr_api_key = _core.read_jellyseerr_api_key
+http_request = _core.http_request
+resolve_app_service_class = _core.resolve_app_service_class
+JellyfinLiveTvDependencies = _core.JellyfinLiveTvDependencies
+JellyfinService = _core.JellyfinService
+JellyfinLiveTvSourceService = _core.JellyfinLiveTvSourceService
+JellyfinLiveTvStateService = _core.JellyfinLiveTvStateService
+JellyfinHomeRailsDependencies = _core.JellyfinHomeRailsDependencies
+JellyfinHomeRailsService = _core.JellyfinHomeRailsService
+JellyfinLibrariesDependencies = _core.JellyfinLibrariesDependencies
+JellyfinLibrariesService = _core.JellyfinLibrariesService
+JellyfinPluginsDependencies = _core.JellyfinPluginsDependencies
+JellyfinPluginsService = _core.JellyfinPluginsService
+JellyfinPlaybackDependencies = _core.JellyfinPlaybackDependencies
+JellyfinPlaybackService = _core.JellyfinPlaybackService
+JellyfinPrewarmDependencies = _core.JellyfinPrewarmDependencies
+JellyfinPrewarmService = _core.JellyfinPrewarmService
+BazarrService = _core.BazarrService
+JellyseerrService = _core.JellyseerrService
+ConfigArtifactsService = _core.ConfigArtifactsService
+MaintainerrService = _core.MaintainerrService
 
 _api_keys_service = _core._api_keys_service
 _candidate_config_roots = _core._candidate_config_roots
@@ -33,13 +75,12 @@ def _jellyfin_service(cfg=None) -> JellyfinService:
         delete_entity=delete_jellyfin_livetv_entity,
         trigger_refresh=trigger_jellyfin_livetv_refresh,
     )
-    service_cls = resolve_app_service_class(cfg, "jellyfin_livetv_service", JellyfinService)
+    service_cls = resolve_app_service_class("jellyfin_livetv_service", JellyfinService)
     return service_cls(deps=deps)
 
 
 def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
-    service_cls = resolve_app_service_class(
-        cfg, "jellyfin_livetv_source_service", JellyfinLiveTvSourceService
+    service_cls = resolve_app_service_class("jellyfin_livetv_source_service", JellyfinLiveTvSourceService
     )
     return service_cls(
         coerce_list=coerce_list,
@@ -50,8 +91,7 @@ def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
 
 
 def _jellyfin_livetv_state_service(cfg=None) -> JellyfinLiveTvStateService:
-    service_cls = resolve_app_service_class(
-        cfg, "jellyfin_livetv_state_service", JellyfinLiveTvStateService
+    service_cls = resolve_app_service_class("jellyfin_livetv_state_service", JellyfinLiveTvStateService
     )
     return service_cls(
         coerce_list=coerce_list,
@@ -75,8 +115,7 @@ def _jellyfin_home_rails_service(cfg=None) -> JellyfinHomeRailsService:
         chunked=chunked,
         resolve_jellyfin_user_id_value=resolve_jellyfin_user_id_value,
     )
-    service_cls = resolve_app_service_class(
-        cfg, "jellyfin_home_rails_service", JellyfinHomeRailsService
+    service_cls = resolve_app_service_class("jellyfin_home_rails_service", JellyfinHomeRailsService
     )
     return service_cls(deps=deps)
 
@@ -94,8 +133,7 @@ def _jellyfin_libraries_service(cfg=None) -> JellyfinLibrariesService:
         reorder_provider_names=_lib_jellyfin_reorder_provider_names,
         apply_artwork_profile=_lib_jellyfin_apply_artwork_profile,
     )
-    service_cls = resolve_app_service_class(
-        cfg, "jellyfin_libraries_service", JellyfinLibrariesService
+    service_cls = resolve_app_service_class("jellyfin_libraries_service", JellyfinLibrariesService
     )
     return service_cls(deps=deps)
 
@@ -110,7 +148,7 @@ def _jellyfin_plugins_service(cfg=None) -> JellyfinPluginsService:
         resolve_api_key=resolve_jellyfin_api_key,
         jellyfin_request=jellyfin_request,
     )
-    service_cls = resolve_app_service_class(cfg, "jellyfin_plugins_service", JellyfinPluginsService)
+    service_cls = resolve_app_service_class("jellyfin_plugins_service", JellyfinPluginsService)
     return service_cls(deps=deps)
 
 
@@ -127,8 +165,7 @@ def _jellyfin_playback_service(cfg=None) -> JellyfinPlaybackService:
         resolve_user_id=resolve_jellyfin_user_id_value,
         normalize_plugin_name=normalize_plugin_name,
     )
-    service_cls = resolve_app_service_class(
-        cfg, "jellyfin_playback_service", JellyfinPlaybackService
+    service_cls = resolve_app_service_class("jellyfin_playback_service", JellyfinPlaybackService
     )
     return service_cls(deps=deps)
 
@@ -144,12 +181,12 @@ def _jellyfin_prewarm_service(cfg=None) -> JellyfinPrewarmService:
         build_query_path=jellyfin_build_query_path,
         trigger_livetv_refresh=trigger_jellyfin_livetv_refresh,
     )
-    service_cls = resolve_app_service_class(cfg, "jellyfin_prewarm_service", JellyfinPrewarmService)
+    service_cls = resolve_app_service_class("jellyfin_prewarm_service", JellyfinPrewarmService)
     return service_cls(deps=deps)
 
 
 def _bazarr_service(cfg=None) -> BazarrService:
-    service_cls = resolve_app_service_class(cfg, "bazarr_service", BazarrService)
+    service_cls = resolve_app_service_class("bazarr_service", BazarrService)
     return service_cls(
         log=log,
         bool_cfg=bool_cfg,
@@ -164,7 +201,7 @@ def _bazarr_service(cfg=None) -> BazarrService:
 
 
 def _jellyseerr_service(cfg=None) -> JellyseerrService:
-    service_cls = resolve_app_service_class(cfg, "jellyseerr_service", JellyseerrService)
+    service_cls = resolve_app_service_class("jellyseerr_service", JellyseerrService)
     return service_cls(
         log=log,
         bool_cfg=bool_cfg,
@@ -190,7 +227,7 @@ def _jellyseerr_service(cfg=None) -> JellyseerrService:
 
 
 def _config_artifacts_service(cfg=None) -> ConfigArtifactsService:
-    service_cls = resolve_app_service_class(cfg, "config_artifacts_service", ConfigArtifactsService)
+    service_cls = resolve_app_service_class("config_artifacts_service", ConfigArtifactsService)
     return service_cls(
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
@@ -207,7 +244,7 @@ def _config_artifacts_service(cfg=None) -> ConfigArtifactsService:
 
 
 def _maintainerr_service(cfg=None) -> MaintainerrService:
-    service_cls = resolve_app_service_class(cfg, "maintainerr_service", MaintainerrService)
+    service_cls = resolve_app_service_class("maintainerr_service", MaintainerrService)
     return service_cls(
         log=log,
         bool_cfg=bool_cfg,

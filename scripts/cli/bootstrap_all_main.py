@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, KubernetesError
 from core.kube import KubectlClient
 from core.state_store import CheckpointStateStore
@@ -127,7 +128,13 @@ class BootstrapAllRunner:
             )
 
     def _config_probe(self, probe: str) -> bool:
-        cfg = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
+        raw_cfg = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
+        if not isinstance(raw_cfg, dict):
+            raise ConfigError("Bootstrap config root must be an object.")
+        try:
+            cfg = TopLevelBootstrapConfig.from_dict(raw_cfg).to_dict()
+        except ValueError as exc:
+            raise ConfigError(f"Invalid bootstrap config: {exc}") from exc
         bindings = cfg.get("technology_bindings") or {}
         clients = cfg.get("download_clients") or {}
         if not isinstance(bindings, dict):

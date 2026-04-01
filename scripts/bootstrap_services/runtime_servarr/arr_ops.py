@@ -5,7 +5,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bootstrap_services.runtime_core import *  # noqa: F401,F403
+from bootstrap_services.runtime_core import (
+    DiscoveryListsService,
+    ServarrPipelineService,
+    bool_cfg,
+    coerce_list,
+    env_truthy,
+    field_list,
+    field_map,
+    get_arr_quality_profile,
+    http_request,
+    log,
+    normalize_token,
+    normalize_url,
+    resolve_app_service_class,
+    resolve_arr_quality_preferences,
+    resolve_env_placeholder,
+    to_int,
+)
+from bootstrap_services.servarr_adapters import AdapterDependencies
 
 from .factory import (
     _arr_service,
@@ -18,8 +36,28 @@ from .factory import (
 # These are implemented below and intentionally referenced by callables in services.
 
 
+def ensure_prowlarr_application(
+    prowlarr_url,
+    prowlarr_key,
+    app_name,
+    implementation,
+    app_url,
+    app_key,
+):
+    from . import prowlarr_ops as _prowlarr_ops
+
+    return _prowlarr_ops.ensure_prowlarr_application(
+        prowlarr_url=prowlarr_url,
+        prowlarr_key=prowlarr_key,
+        app_name=app_name,
+        implementation=implementation,
+        app_url=app_url,
+        app_key=app_key,
+    )
+
+
 def _discovery_service(cfg=None) -> DiscoveryListsService:
-    service_cls = resolve_app_service_class(cfg, "discovery_lists_service", DiscoveryListsService)
+    service_cls = resolve_app_service_class("discovery_lists_service", DiscoveryListsService)
     return service_cls(
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
@@ -44,7 +82,7 @@ def _servarr_pipeline_service(cfg=None) -> ServarrPipelineService:
         log=log,
         ensure_readarr_metadata_source=ensure_readarr_metadata_source,
     )
-    service_cls = resolve_app_service_class(cfg, "servarr_pipeline_service", ServarrPipelineService)
+    service_cls = resolve_app_service_class("servarr_pipeline_service", ServarrPipelineService)
     return service_cls(
         log=log,
         normalize_url=normalize_url,

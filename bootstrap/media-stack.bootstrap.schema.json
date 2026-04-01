@@ -78,6 +78,26 @@
       },
       "additionalProperties": true
     },
+    "app_auth": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "arr_discovery_lists": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "arr_download_handling": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "arr_media_management": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "arr_indexer_sync": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "jellyfin_prewarm": {
       "type": "object",
       "properties": {
@@ -178,6 +198,79 @@
       },
       "additionalProperties": true
     },
+    "jellyseerr": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "bazarr": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "homepage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "jellyfin_libraries": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "jellyfin_plugins": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "jellyfin_playback": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "jellyfin_home_rails": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "jellyfin_auto_collections": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "quality_profiles": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "readarr": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "sonarr_seed_series": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "prowlarr_indexers": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "prowlarr_auto_add_tested_indexers": {
+      "type": "boolean"
+    },
+    "prowlarr_auto_indexer_exclude_name_tokens": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "refresh_health_after_bootstrap": {
+      "type": "boolean"
+    },
+    "trigger_indexer_sync": {
+      "type": "boolean"
+    },
+    "media_server": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "config_overlays": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "flaresolverr": {
       "type": "object",
       "properties": {
@@ -207,5 +300,5 @@
       "additionalProperties": false
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

@@ -24,14 +24,12 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = _load_module()
 
-    def test_parse_config_reads_env_defaults(self):
+    def test_parse_config_reads_env(self):
         with mock.patch.dict(
             os.environ,
             {
                 "NAMESPACE": "media-stack-dev",
                 "SECRET_NAME": "secret-x",
-                "DEFAULT_STACK_ADMIN_USER": "u1",
-                "DEFAULT_STACK_ADMIN_PASS": "p1",
             },
             clear=False,
         ):
@@ -39,32 +37,36 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
 
         self.assertEqual(cfg.namespace, "media-stack-dev")
         self.assertEqual(cfg.secret_name, "secret-x")
-        self.assertEqual(cfg.default_stack_admin_user, "u1")
-        self.assertEqual(cfg.default_stack_admin_pass, "p1")
 
     def test_resolve_target_credentials_prefers_stack_admin_when_enabled(self):
         cfg = self.mod.EnsureQbitCredentialsConfig(
             namespace="media-stack",
             secret_name="media-stack-secrets",
-            default_stack_admin_user="admin",
-            default_stack_admin_pass="stack-pass",
             rollout_timeout="5m",
             qbit_wait_seconds=120,
             qbit_deployment="qbittorrent",
+            qbit_startup_username="bootstrap-admin",
             force_reset_on_auth_failure=True,
             qbit_force_config_sync=True,
             qbit_strict_login_check=False,
             qbit_api_validation=False,
         )
+        self.assertEqual(cfg.qbit_startup_username, "bootstrap-admin")
 
         resolved = self.mod.resolve_target_credentials(
-            cfg,
             stack_admin_user="stack-user",
             stack_admin_pass="stack-pass",
         )
 
         self.assertEqual(resolved.qb_user, "stack-user")
         self.assertEqual(resolved.qb_pass, "stack-pass")
+
+    def test_resolve_target_credentials_fails_when_stack_secret_missing(self):
+        with self.assertRaises(self.mod.ConfigError):
+            self.mod.resolve_target_credentials(
+                stack_admin_user="",
+                stack_admin_pass="stack-pass",
+            )
 
     def test_build_secret_patch_writes_stack_admin_only(self):
         creds = self.mod.CredentialResolution(

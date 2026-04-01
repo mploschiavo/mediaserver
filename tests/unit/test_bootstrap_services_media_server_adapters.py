@@ -10,7 +10,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_services.enums import RunnerOperation  # noqa: E402
 from bootstrap_services.media_server_adapters import (  # noqa: E402
-    GenericMediaServerAdapter,
     JellyfinMediaServerAdapter,
     MediaServerAdapterBase,
     MediaServerAdapterContext,
@@ -24,7 +23,78 @@ class MediaServerAdaptersTests(unittest.TestCase):
             cfg={},
             config_root="/srv-config",
             wait_timeout=30,
-            adapter_hooks_cfg={},
+            adapter_hooks_cfg={
+                "media_server_operation_plans": {
+                    "jellyfin": {
+                        "prewarm_mode": {
+                            "steps": [
+                                {
+                                    "operation": "ensure_jellyfin_prewarm",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                }
+                            ]
+                        },
+                        "home_rails_mode": {
+                            "steps": [
+                                {
+                                    "operation": "ensure_jellyfin_home_rails",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                }
+                            ]
+                        },
+                        "post_servarr_pre_hygiene_steps": {
+                            "steps": [
+                                {
+                                    "operation": "ensure_jellyfin_livetv",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_jellyfin_livetv",
+                                    "required_attr": "jellyfin_livetv_required",
+                                },
+                                {
+                                    "operation": "ensure_jellyfin_libraries",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_jellyfin_libraries",
+                                    "required_attr": "jellyfin_libraries_required",
+                                },
+                                {
+                                    "operation": "ensure_jellyfin_plugins",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_jellyfin_plugins",
+                                    "required_attr": "jellyfin_plugins_required",
+                                },
+                                {
+                                    "operation": "ensure_jellyfin_playback_defaults",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_jellyfin_playback",
+                                    "required_attr": "jellyfin_playback_required",
+                                },
+                                {
+                                    "operation": "ensure_jellyfin_home_rails",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_jellyfin_home_rails",
+                                    "required_attr": "jellyfin_home_rails_required",
+                                },
+                                {
+                                    "operation": "ensure_jellyfin_auto_collections_config",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_auto_collections",
+                                    "required_attr": "auto_collections_required",
+                                },
+                            ]
+                        },
+                        "post_servarr_post_hygiene_steps": {
+                            "steps": [
+                                {
+                                    "operation": "ensure_jellyfin_prewarm",
+                                    "args": ["cfg", "config_root", "wait_timeout"],
+                                    "enabled_attr": "configure_jellyfin_prewarm",
+                                    "required_attr": "jellyfin_prewarm_required",
+                                }
+                            ]
+                        },
+                    }
+                }
+            },
             configure_jellyfin_livetv=True,
             jellyfin_livetv_required=False,
             configure_jellyfin_libraries=True,
@@ -70,12 +140,10 @@ class MediaServerAdaptersTests(unittest.TestCase):
         adapter = MediaServerAdapterFactory().create("jellyfin", ctx)
         self.assertIsInstance(adapter, JellyfinMediaServerAdapter)
 
-    def test_factory_can_disable_mapping(self):
+    def test_factory_rejects_unregistered_backend(self):
         ctx, _calls = self._context()
-        adapter = MediaServerAdapterFactory(adapter_class_specs={"jellyfin": ""}).create(
-            "jellyfin", ctx
-        )
-        self.assertIsInstance(adapter, GenericMediaServerAdapter)
+        with self.assertRaises(ValueError):
+            MediaServerAdapterFactory(adapter_class_specs={"jellyfin": ""}).create("jellyfin", ctx)
 
     def test_factory_supports_custom_backend_key_via_reflection_mapping(self):
         ctx, _calls = self._context()
@@ -86,7 +154,7 @@ class MediaServerAdaptersTests(unittest.TestCase):
         ).create("my-media", ctx)
         self.assertIsInstance(adapter, JellyfinMediaServerAdapter)
 
-    def test_factory_supports_convention_discovery_for_custom_backend_module(self):
+    def test_factory_requires_explicit_mapping_for_custom_backend(self):
         module_name = "bootstrap_services.media_server_adapters.my_media"
         fake_module = types.ModuleType(module_name)
 
@@ -97,7 +165,13 @@ class MediaServerAdaptersTests(unittest.TestCase):
         ctx, _calls = self._context()
 
         with mock.patch.dict(sys.modules, {module_name: fake_module}):
-            adapter = MediaServerAdapterFactory().create("my-media", ctx)
+            adapter = MediaServerAdapterFactory(
+                adapter_class_specs={
+                    "my-media": (
+                        "bootstrap_services.media_server_adapters.my_media:MyMediaServerAdapter"
+                    )
+                }
+            ).create("my-media", ctx)
 
         self.assertIsInstance(adapter, MyMediaServerAdapter)
 

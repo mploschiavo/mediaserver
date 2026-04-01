@@ -13,8 +13,6 @@ class JellyfinBootstrapConfigServiceTests(unittest.TestCase):
             "JELLYFIN_SERVICE_NAME": "jf",
             "JELLYFIN_BOOTSTRAP_WAIT_SECONDS": "240",
             "JELLYFIN_API_KEY_APP_NAME": "bootstrap-app",
-            "STACK_ADMIN_USERNAME": "admin",
-            "STACK_ADMIN_PASSWORD": "pw",
         }
         with patch.dict(os.environ, env, clear=False):
             cfg = parse_jellyfin_bootstrap_config([])
@@ -23,8 +21,6 @@ class JellyfinBootstrapConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.service_name, "jf")
         self.assertEqual(cfg.wait_seconds, 240)
         self.assertEqual(cfg.app_name, "bootstrap-app")
-        self.assertEqual(cfg.stack_admin_username, "admin")
-        self.assertEqual(cfg.stack_admin_password, "pw")
 
 
 if __name__ == "__main__":

@@ -211,6 +211,26 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/restore-stack.sh", proc.stdout)
 
+    def test_apply_scale_policy_wrapper_help_contract(self):
+        proc = run_wrapper("apply-scale-policy.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/apply-scale-policy.sh", proc.stdout)
+
+    def test_bootstrap_debug_wrapper_help_contract(self):
+        proc = run_wrapper("bootstrap-debug.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/bootstrap-debug.sh", proc.stdout)
+
+    def test_rebuild_verify_wrapper_help_contract(self):
+        proc = run_wrapper("rebuild-verify.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/rebuild-verify.sh", proc.stdout)
+
+    def test_run_playwright_screenshots_wrapper_help_contract(self):
+        proc = run_wrapper("run-playwright-screenshots.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/run-playwright-screenshots.sh", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

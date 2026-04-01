@@ -4,11 +4,51 @@
 from __future__ import annotations
 
 from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
-from bootstrap_services.runtime_core import *  # noqa: F401,F403
+from bootstrap_services.runtime_core import (
+    ArrQueueCleanupService,
+    ArrService,
+    AuthService,
+    HealthService,
+    ProwlarrService,
+    QBittorrentService,
+    SabnzbdService,
+    ServarrPolicyService,
+    bool_cfg,
+    coerce_list,
+    field_list,
+    field_map,
+    get_arr_quality_profile,
+    http_request,
+    log,
+    normalize_remote_path_mappings,
+    normalize_token,
+    normalize_url,
+    resolve_app_service_class,
+    resolve_arr_quality_preferences,
+    resolve_path,
+    to_int,
+)
+
+
+def _detect_arr_api_base(app_name, app_url, api_key):
+    for version in ("v3", "v1"):
+        status, _, _ = http_request(app_url, f"/api/{version}/system/status", api_key=api_key)
+        if status == 200:
+            return f"/api/{version}"
+
+    raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
+
+
+def _choose_category(app_cfg, client_cfg):
+    return _arr_service().choose_category(app_cfg, client_cfg)
+
+
+def _normalize_mapping_path(path_value):
+    return _arr_service().normalize_mapping_path(path_value)
 
 
 def _arr_service(cfg=None) -> ArrService:
-    service_cls = resolve_app_service_class(cfg, "arr_service", ArrService)
+    service_cls = resolve_app_service_class("arr_service", ArrService)
     return service_cls(
         http_request=http_request,
         log=log,
@@ -21,7 +61,7 @@ def _arr_service(cfg=None) -> ArrService:
 
 
 def _qbit_service(cfg=None) -> QBittorrentService:
-    service_cls = resolve_app_service_class(cfg, "qbittorrent_service", QBittorrentService)
+    service_cls = resolve_app_service_class("qbittorrent_service", QBittorrentService)
     return service_cls(
         log=log,
         normalize_url=normalize_url,
@@ -32,7 +72,7 @@ def _qbit_service(cfg=None) -> QBittorrentService:
 
 
 def _prowlarr_service(cfg=None) -> ProwlarrService:
-    service_cls = resolve_app_service_class(cfg, "prowlarr_service", ProwlarrService)
+    service_cls = resolve_app_service_class("prowlarr_service", ProwlarrService)
     return service_cls(
         http_request=http_request,
         field_map=field_map,
@@ -42,21 +82,21 @@ def _prowlarr_service(cfg=None) -> ProwlarrService:
 
 
 def _arr_indexer_sync_service(cfg=None) -> ArrIndexerSyncService:
-    service_cls = resolve_app_service_class(cfg, "arr_indexer_sync_service", ArrIndexerSyncService)
+    service_cls = resolve_app_service_class("arr_indexer_sync_service", ArrIndexerSyncService)
     return service_cls(
         http_request=http_request,
-        detect_arr_api_base=detect_arr_api_base,
+        detect_arr_api_base=_detect_arr_api_base,
         log=log,
     )
 
 
 def _sabnzbd_service(cfg=None) -> SabnzbdService:
-    service_cls = resolve_app_service_class(cfg, "sabnzbd_service", SabnzbdService)
+    service_cls = resolve_app_service_class("sabnzbd_service", SabnzbdService)
     return service_cls(
         http_request=http_request,
         normalize_url=normalize_url,
-        normalize_mapping_path=normalize_mapping_path,
-        choose_category=choose_category,
+        normalize_mapping_path=_normalize_mapping_path,
+        choose_category=_choose_category,
         coerce_list=coerce_list,
         resolve_path=resolve_path,
         log=log,
@@ -64,7 +104,7 @@ def _sabnzbd_service(cfg=None) -> SabnzbdService:
 
 
 def _servarr_policy_service(cfg=None) -> ServarrPolicyService:
-    service_cls = resolve_app_service_class(cfg, "servarr_policy_service", ServarrPolicyService)
+    service_cls = resolve_app_service_class("servarr_policy_service", ServarrPolicyService)
     return service_cls(
         http_request=http_request,
         bool_cfg=bool_cfg,
@@ -79,7 +119,7 @@ def _servarr_policy_service(cfg=None) -> ServarrPolicyService:
 
 def _arr_queue_cleanup_service(cfg=None) -> ArrQueueCleanupService:
     service_cls = resolve_app_service_class(
-        cfg, "arr_queue_cleanup_service", ArrQueueCleanupService
+        "arr_queue_cleanup_service", ArrQueueCleanupService
     )
     return service_cls(
         http_request=http_request,
@@ -98,7 +138,7 @@ def _arr_queue_cleanup_service(cfg=None) -> ArrQueueCleanupService:
 
 
 def _health_service(cfg=None) -> HealthService:
-    service_cls = resolve_app_service_class(cfg, "health_service", HealthService)
+    service_cls = resolve_app_service_class("health_service", HealthService)
     return service_cls(
         http_request=http_request,
         log=log,
@@ -106,7 +146,7 @@ def _health_service(cfg=None) -> HealthService:
 
 
 def _auth_service(cfg=None) -> AuthService:
-    service_cls = resolve_app_service_class(cfg, "auth_service", AuthService)
+    service_cls = resolve_app_service_class("auth_service", AuthService)
     return service_cls(
         http_request=http_request,
         log=log,

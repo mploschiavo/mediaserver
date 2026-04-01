@@ -7,7 +7,7 @@ flowchart TD
 
   subgraph Entry[Composition Root]
     MAIN["bootstrap-apps.py"]
-    RF["runtime_factory_service.py"]
+    RF["runtime_factory/*"]
     RUN["bootstrap_runner_service.py"]
     WIRE["operation_wiring.py"]
   end

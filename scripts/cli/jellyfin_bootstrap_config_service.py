@@ -12,8 +12,6 @@ class JellyfinBootstrapConfig:
     service_name: str
     wait_seconds: int
     app_name: str
-    stack_admin_username: str
-    stack_admin_password: str
 
 
 def parse_jellyfin_bootstrap_config(argv=None) -> JellyfinBootstrapConfig:
@@ -31,6 +29,4 @@ def parse_jellyfin_bootstrap_config(argv=None) -> JellyfinBootstrapConfig:
         service_name=os.environ.get("JELLYFIN_SERVICE_NAME", "jellyfin"),
         wait_seconds=int(os.environ.get("JELLYFIN_BOOTSTRAP_WAIT_SECONDS", "180")),
         app_name=os.environ.get("JELLYFIN_API_KEY_APP_NAME", "media-stack-bootstrap"),
-        stack_admin_username=os.environ.get("STACK_ADMIN_USERNAME", "mediaadmin"),
-        stack_admin_password=os.environ.get("STACK_ADMIN_PASSWORD", "media-stack-admin"),
     )
