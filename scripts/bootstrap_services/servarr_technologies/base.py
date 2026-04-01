@@ -173,22 +173,23 @@ class ServarrAdapterBase:
 
         if (
             run_cfg.configure_sab_arr_clients
-            and run_cfg.sab_api_key
             and self.context.app_caps.supports_download_clients
         ):
+            usenet_auth = {
+                "username": self.context.sab_auth.username,
+                "password": self.context.sab_auth.password,
+            }
+            if run_cfg.sab_api_key:
+                usenet_auth["api_key"] = run_cfg.sab_api_key
             self.deps.ensure_arr_download_client(
                 self.context.app_payload,
                 self.context.app_url,
                 self.context.api_base,
                 self.context.app_key,
                 self.context.sab_cfg,
-                {
-                    "username": self.context.sab_auth.username,
-                    "password": self.context.sab_auth.password,
-                    "api_key": run_cfg.sab_api_key,
-                },
+                usenet_auth,
             )
-            if self.context.app_caps.supports_remote_path_mappings:
+            if self.context.app_caps.supports_remote_path_mappings and self.context.sab_remote_path_mappings:
                 self.deps.ensure_arr_remote_path_mappings(
                     self.context.app_payload,
                     self.context.app_url,

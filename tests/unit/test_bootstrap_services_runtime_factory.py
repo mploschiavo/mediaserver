@@ -220,6 +220,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
                 "torrent_client": "qbit",
                 "usenet_client": "sab",
                 "media_server": "jf",
+                "request_manager": "openseer",
             },
             "download_clients": {
                 "qbittorrent": {
@@ -243,6 +244,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         self.assertEqual(result.runtime.torrent_client_key, "qbittorrent")
         self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
         self.assertEqual(result.runtime.media_server_backend, "jellyfin")
+        self.assertEqual(result.runtime.request_manager_backend, "openseerr")
 
     def test_missing_required_bindings_raise(self):
         factory = self._factory()

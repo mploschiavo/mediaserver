@@ -235,6 +235,38 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
         invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
         invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
 
+    def test_pipeline_supports_nzbget_as_active_usenet_client(self):
+        invoke = self._invoke()
+        service = self._service(invoke)
+        result = service.run_prepare(
+            self._inputs(
+                usenet_client_key="nzbget",
+                sab_cfg={
+                    "url": "http://nzbget:6789",
+                    "name": "NZBGet",
+                    "configure_arr_clients": True,
+                    "implementation": "Nzbget",
+                },
+                adapter_hooks_cfg={
+                    "download_client_adapter_classes": {
+                        "qbittorrent": (
+                            "bootstrap_services.download_client_adapters.qbittorrent:"
+                            "QbittorrentDownloadClientAdapter"
+                        ),
+                        "nzbget": (
+                            "bootstrap_services.download_client_adapters.nzbget:"
+                            "NzbgetDownloadClientAdapter"
+                        ),
+                    }
+                },
+            )
+        )
+        self.assertTrue(result.qbit_login_ok)
+        self.assertEqual(result.sab_api_key, "")
+        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_called_once()
+        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_called_once()
+        invoke.handlers[RunnerOperation.READ_SABNZBD_API_KEY.value].assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

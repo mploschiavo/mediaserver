@@ -10,10 +10,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_services.enums import RunnerOperation  # noqa: E402
 from bootstrap_services.media_server_adapters import (  # noqa: E402
+    EmbyMediaServerAdapter,
     JellyfinMediaServerAdapter,
     MediaServerAdapterBase,
     MediaServerAdapterContext,
     MediaServerAdapterFactory,
+    MythTvMediaServerAdapter,
+    PlexMediaServerAdapter,
 )
 
 
@@ -139,6 +142,15 @@ class MediaServerAdaptersTests(unittest.TestCase):
         ctx, _calls = self._context()
         adapter = MediaServerAdapterFactory().create("jellyfin", ctx)
         self.assertIsInstance(adapter, JellyfinMediaServerAdapter)
+
+    def test_factory_maps_alt_media_server_adapters_from_manifests(self):
+        ctx, _calls = self._context()
+        self.assertIsInstance(MediaServerAdapterFactory().create("emby", ctx), EmbyMediaServerAdapter)
+        self.assertIsInstance(MediaServerAdapterFactory().create("plex", ctx), PlexMediaServerAdapter)
+        self.assertIsInstance(
+            MediaServerAdapterFactory().create("mythtv", ctx),
+            MythTvMediaServerAdapter,
+        )
 
     def test_factory_rejects_unregistered_backend(self):
         ctx, _calls = self._context()

@@ -89,12 +89,18 @@ def basic_checks(cfg):
     torrent_client_key = _bound_key("torrent_client")
     usenet_client_key = _bound_key("usenet_client")
     media_server_key = _bound_key("media_server")
+    request_manager_key = _bound_key("request_manager")
     if not torrent_client_key:
         errors.append("$.technology_bindings.torrent_client: required non-empty string")
     if not usenet_client_key:
         errors.append("$.technology_bindings.usenet_client: required non-empty string")
     if not media_server_key:
         errors.append("$.technology_bindings.media_server: required non-empty string")
+    if "request_manager" in bindings:
+        if not isinstance(bindings.get("request_manager"), str):
+            errors.append("$.technology_bindings.request_manager: must be a string")
+        elif not request_manager_key:
+            errors.append("$.technology_bindings.request_manager: required non-empty string when set")
 
     if isinstance(clients, dict):
         for name in (torrent_client_key, usenet_client_key):

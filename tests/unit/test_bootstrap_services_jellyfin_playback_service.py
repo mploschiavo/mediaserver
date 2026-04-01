@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.jellyfin_playback_service import (  # noqa: E402
+from bootstrap_services.apps.jellyfin.playback_service import (  # noqa: E402
     JellyfinPlaybackDependencies,
     JellyfinPlaybackService,
 )
@@ -97,4 +97,3 @@ class JellyfinPlaybackServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

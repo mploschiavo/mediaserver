@@ -29,6 +29,16 @@ from bootstrap_services.runtime_factory import (
 )
 
 
+def _missing_op_handler(operation_name: str):
+    def _missing(*_args, **_kwargs):
+        raise RuntimeError(
+            f"Operation handler for '{operation_name}' is not bound. "
+            "Provide adapter_hooks.operation_handlers (plugin manifest) for this operation."
+        )
+
+    return _missing
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Idempotent bootstrap for Arr + Prowlarr + Jellyseerr integration."
@@ -107,15 +117,17 @@ def main():
             run_servarr_pipeline=runtime_servarr_ops._servarr_pipeline_service().run,
             ensure_bazarr_arr_integration=runtime_media_ops.ensure_bazarr_arr_integration,
             configure_jellyseerr=runtime_media_ops.configure_jellyseerr,
-            ensure_jellyfin_livetv=runtime_media_ops.ensure_jellyfin_livetv,
-            ensure_jellyfin_libraries=runtime_media_ops.ensure_jellyfin_libraries,
-            ensure_jellyfin_plugins=runtime_media_ops.ensure_jellyfin_plugins,
-            ensure_jellyfin_playback_defaults=runtime_media_ops.ensure_jellyfin_playback_defaults,
-            ensure_jellyfin_home_rails=runtime_media_ops.ensure_jellyfin_home_rails,
-            ensure_jellyfin_auto_collections_config=runtime_media_ops.ensure_jellyfin_auto_collections_config,
+            ensure_jellyfin_livetv=_missing_op_handler("ensure_jellyfin_livetv"),
+            ensure_jellyfin_libraries=_missing_op_handler("ensure_jellyfin_libraries"),
+            ensure_jellyfin_plugins=_missing_op_handler("ensure_jellyfin_plugins"),
+            ensure_jellyfin_playback_defaults=_missing_op_handler("ensure_jellyfin_playback_defaults"),
+            ensure_jellyfin_home_rails=_missing_op_handler("ensure_jellyfin_home_rails"),
+            ensure_jellyfin_auto_collections_config=_missing_op_handler(
+                "ensure_jellyfin_auto_collections_config"
+            ),
             enforce_disk_guardrails=runtime_servarr_ops.enforce_disk_guardrails,
             run_media_hygiene=runtime_servarr_ops.run_media_hygiene,
-            ensure_jellyfin_prewarm=runtime_media_ops.ensure_jellyfin_prewarm,
+            ensure_jellyfin_prewarm=_missing_op_handler("ensure_jellyfin_prewarm"),
             ensure_maintainerr_policy=runtime_media_ops.ensure_maintainerr_policy,
             ensure_maintainerr_integrations=runtime_media_ops.ensure_maintainerr_integrations,
             ensure_homepage_services_config=runtime_media_ops.ensure_homepage_services_config,

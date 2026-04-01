@@ -10,11 +10,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import bootstrap_services.runtime_servarr.service_ops as MODULE
 import bootstrap_services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
-import bootstrap_services.jellyfin_livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
+import bootstrap_services.apps.jellyfin.livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
+import bootstrap_services.apps.jellyfin.runtime_ops as JELLYFIN_OPS
 import bootstrap_services.media_hygiene_ops.duplicate_prune as DUPLICATE_PRUNE
 import bootstrap_services.media_hygiene_ops.ipfilter as IPFILTER
 import bootstrap_services.media_hygiene_ops.queue_guardrails as QUEUE_GUARDRAILS
-import bootstrap_services.runtime_media_ops as MEDIA_OPS
 import bootstrap_services.runtime_servarr.hygiene_ops as HYGIENE_OPS
 
 
@@ -442,13 +442,13 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             raise AssertionError(f"Unexpected Live TV API call: {path}")
 
         with (
-            mock.patch.object(MEDIA_OPS, "wait_for_service"),
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
-            mock.patch.object(MEDIA_OPS, "load_jellyfin_livetv_state", return_value=existing_state),
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(JELLYFIN_OPS, "load_jellyfin_livetv_state", return_value=existing_state),
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(JELLYFIN_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
-            MEDIA_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+            JELLYFIN_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         called_paths = [item[0] for item in calls]
         self.assertIn("/LiveTv/RefreshChannels", called_paths)
@@ -548,17 +548,17 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
 
         with (
-            mock.patch.object(MEDIA_OPS, "wait_for_service"),
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
             mock.patch.object(
-                MEDIA_OPS,
+                JELLYFIN_OPS,
                 "load_jellyfin_livetv_state",
                 side_effect=[existing_state, refreshed_state, refreshed_state],
             ),
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(JELLYFIN_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
-            MEDIA_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+            JELLYFIN_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         called_paths = [item[0] for item in calls]
         self.assertIn("/LiveTv/TunerHosts?id=tuner-dup", called_paths)
@@ -580,11 +580,11 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
         }
 
         with (
-            mock.patch.object(MEDIA_OPS, "wait_for_service") as wait_mock,
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key") as api_key_mock,
-            mock.patch.object(MEDIA_OPS, "jellyfin_request") as request_mock,
+            mock.patch.object(JELLYFIN_OPS, "wait_for_service") as wait_mock,
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key") as api_key_mock,
+            mock.patch.object(JELLYFIN_OPS, "jellyfin_request") as request_mock,
         ):
-            MEDIA_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+            JELLYFIN_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
         wait_mock.assert_not_called()
         api_key_mock.assert_not_called()
@@ -716,20 +716,20 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(MEDIA_OPS, "wait_for_service"),
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
             mock.patch.object(
-                MEDIA_OPS,
+                JELLYFIN_OPS,
                 "load_jellyfin_livetv_state",
                 side_effect=[existing_state, refreshed_state, refreshed_state],
             ),
-            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(JELLYFIN_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
             mock.patch.object(
                 JELLYFIN_LIVETV_SOURCE_SERVICE.request, "urlopen", side_effect=fake_urlopen
             ),
         ):
-            MEDIA_OPS.ensure_jellyfin_livetv(cfg, tmp, 30)
+            JELLYFIN_OPS.ensure_jellyfin_livetv(cfg, tmp, 30)
 
             rendered = (Path(tmp) / "jellyfin" / "livetv-tuners" / "iptv-org-us-epg.m3u").read_text(
                 encoding="utf-8"

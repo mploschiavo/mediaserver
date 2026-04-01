@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import importlib.util
 import json
 import os
 import shutil
@@ -108,17 +107,11 @@ def _wait_http_ok(url: str, timeout_seconds: int = 30) -> bool:
     return False
 
 
-def _load_bootstrap_module(root_dir: Path):
+def _load_jellyfin_runtime_module(root_dir: Path):
     sys.path.insert(0, str(root_dir / "scripts"))
-    spec = importlib.util.spec_from_file_location(
-        "bootstrap_apps",
-        root_dir / "scripts" / "bootstrap-apps.py",
-    )
-    if not spec or not spec.loader:
-        raise RuntimeError("Could not load scripts/bootstrap-apps.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    import bootstrap_services.apps.jellyfin.runtime_ops as runtime_ops
+
+    return runtime_ops
 
 
 def main() -> int:
@@ -195,7 +188,7 @@ def main() -> int:
         rails_cfg["auto_discover_user_id"] = True
         cfg["jellyfin_home_rails"] = rails_cfg
 
-        module = _load_bootstrap_module(root_dir)
+        module = _load_jellyfin_runtime_module(root_dir)
         module.ensure_jellyfin_home_rails(cfg, str(root_dir), 180)
         print("Jellyfin home rails reconcile complete.")
     finally:
