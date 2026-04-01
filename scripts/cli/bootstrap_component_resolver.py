@@ -226,14 +226,6 @@ def resolve_role_bindings(
             continue
         resolved[key] = canonicalize_technology(value, aliases)
 
-    request_manager = str(resolved.get("request_manager") or "").strip()
-    if not request_manager:
-        request_manager = canonicalize_technology("jellyseerr", aliases) or "jellyseerr"
-    resolved["request_manager"] = request_manager
-
-    for required_role in ("torrent_client", "usenet_client", "media_server"):
-        resolved.setdefault(required_role, "")
-
     return resolved
 
 
