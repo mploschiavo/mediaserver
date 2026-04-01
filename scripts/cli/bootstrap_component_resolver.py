@@ -67,6 +67,7 @@ def _phase_plan_steps(
         phase_name = ""
         enabled = True
         when: Any = True
+        params: dict[str, Any] = {}
         if isinstance(item, str):
             operation = str(item).strip()
         elif isinstance(item, dict):
@@ -77,6 +78,8 @@ def _phase_plan_steps(
                 enabled = bool(item.get("enabled"))
             if "when" in item:
                 when = item.get("when")
+            if isinstance(item.get("params"), dict):
+                params = dict(item.get("params") or {})
         if not operation:
             continue
         out.append(
@@ -86,6 +89,7 @@ def _phase_plan_steps(
                 phase_name=phase_name,
                 enabled=enabled,
                 when=when,
+                params=params,
             )
         )
     if not out:
@@ -123,6 +127,7 @@ class BootstrapPhasePlanStep:
     phase_name: str = ""
     enabled: bool = True
     when: Any = True
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -142,48 +147,15 @@ def normalize_flag_token(value: Any) -> str:
 
 _DEFAULT_BOOTSTRAP_ALL_PHASE_PLAN: tuple[BootstrapPhasePlanStep, ...] = (
     BootstrapPhasePlanStep(
-        operation="ensure_torrent_client_access",
-        skip_flag="skip_torrent_client_ensure",
-        when={
-            "all_of": [
-                {
-                    "any_of": [
-                        {"var": "selected.torrent_client.configure_arr_clients", "truthy": True},
-                        {"var": "selected.torrent_client.set_categories_in_qbit", "truthy": True},
-                        {"var": "selected.torrent_client.set_categories", "truthy": True},
-                    ]
-                },
-                {"var": "scripts.torrent_client_credentials", "truthy": True},
-            ]
-        },
-    ),
-    BootstrapPhasePlanStep(
-        operation="ensure_media_server_access",
-        skip_flag="skip_media_server_bootstrap",
-        when={"var": "scripts.media_server_bootstrap", "truthy": True},
-    ),
-    BootstrapPhasePlanStep(
-        operation="ensure_usenet_client_access",
-        skip_flag="skip_usenet_client_ensure",
-        when={
-            "all_of": [
-                {"var": "selected.usenet_client.configure_arr_clients", "truthy": True},
-                {"var": "scripts.usenet_client_api_access", "truthy": True},
-            ]
-        },
-    ),
-    BootstrapPhasePlanStep(operation="run_bootstrap_job"),
-    BootstrapPhasePlanStep(
-        operation="seed_request_manager_local_admin",
-        when={"var": "scripts.request_manager_seed_local_admin", "truthy": True},
-    ),
-    BootstrapPhasePlanStep(
-        operation="run_indexer_auto_discovery",
-        when={
-            "all_of": [
-                {"var": "config.prowlarr_url", "truthy": True},
-                {"var": "scripts.indexer_auto_discovery", "truthy": True},
-            ]
+        operation="run_script",
+        phase_name="Run bootstrap job",
+        params={
+            "script": "run-bootstrap-job.sh",
+            "args": ["$config_file"],
+            "env": {
+                "NAMESPACE": "$namespace",
+                "PREPARE_HOST_ROOT": "$prepare_host_root",
+            },
         },
     ),
     BootstrapPhasePlanStep(
@@ -310,16 +282,22 @@ def resolve_role_bindings(
     if not isinstance(bindings, dict):
         bindings = {}
 
-    request_manager = canonicalize_technology(bindings.get("request_manager"), aliases)
+    resolved: dict[str, str] = {}
+    for role_key, value in bindings.items():
+        key = str(role_key or "").strip()
+        if not key:
+            continue
+        resolved[key] = canonicalize_technology(value, aliases)
+
+    request_manager = str(resolved.get("request_manager") or "").strip()
     if not request_manager:
         request_manager = canonicalize_technology("jellyseerr", aliases) or "jellyseerr"
+    resolved["request_manager"] = request_manager
 
-    return {
-        "torrent_client": canonicalize_technology(bindings.get("torrent_client"), aliases),
-        "usenet_client": canonicalize_technology(bindings.get("usenet_client"), aliases),
-        "media_server": canonicalize_technology(bindings.get("media_server"), aliases),
-        "request_manager": request_manager,
-    }
+    for required_role in ("torrent_client", "usenet_client", "media_server"):
+        resolved.setdefault(required_role, "")
+
+    return resolved
 
 
 def resolve_download_clients(
@@ -427,6 +405,44 @@ def resolve_worker_deployment_name(
         if explicit:
             return explicit
     return canonical_worker
+
+
+def resolve_bootstrap_all_components(
+    cfg: dict[str, Any],
+    *,
+    aliases: dict[str, str],
+    role_bindings: dict[str, str],
+) -> dict[str, str]:
+    hooks = _adapter_hooks(cfg)
+    bootstrap_all = hooks.get("bootstrap_all")
+
+    resolved: dict[str, str] = {}
+    if isinstance(bootstrap_all, dict):
+        components = bootstrap_all.get("components")
+        if isinstance(components, dict):
+            for key, value in components.items():
+                component_key = str(key or "").strip()
+                if not component_key:
+                    continue
+                technology = ""
+                if isinstance(value, dict):
+                    binding_key = str(value.get("binding") or "").strip()
+                    if binding_key:
+                        technology = str(role_bindings.get(binding_key) or "").strip()
+                    if not technology:
+                        technology = canonicalize_technology(value.get("technology"), aliases)
+                else:
+                    technology = canonicalize_technology(value, aliases)
+                resolved[component_key] = str(technology or "").strip()
+            if resolved:
+                return resolved
+
+    for role_key, technology in role_bindings.items():
+        key = str(role_key or "").strip()
+        token = str(technology or "").strip()
+        if key and token:
+            resolved[key] = token
+    return resolved
 
 
 def resolve_bootstrap_all_phase_plan(cfg: dict[str, Any]) -> tuple[BootstrapPhasePlanStep, ...]:
