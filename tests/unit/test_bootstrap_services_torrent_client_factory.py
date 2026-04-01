@@ -41,9 +41,9 @@ class TorrentClientServiceFactoryTests(unittest.TestCase):
         service = _torrent_client_service()
         self.assertEqual(service.__class__.__name__, "TransmissionService")
 
-    def test_factory_resolves_qbittorrent_from_url_hint_when_binding_missing(self):
+    def test_factory_resolves_qbittorrent_from_explicit_technology_when_binding_missing(self):
         set_runtime_context_cfg(self._context(""))
-        service = _torrent_client_service({"url": "http://qbittorrent:8080"})
+        service = _torrent_client_service({"technology": "qbittorrent"})
         self.assertEqual(service.__class__.__name__, "QBittorrentService")
 
     def test_factory_requires_bindable_technology_when_no_hints_present(self):

@@ -263,7 +263,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
                 # The removed technology should fail only when invoked.
                 with self.assertRaises(RuntimeError):
-                    runtime_factory._torrent_client_service({"url": "http://qbittorrent:8080"})
+                    runtime_factory._torrent_client_service({"technology": "qbittorrent"})
         finally:
             registry.set_runtime_context_cfg(prior_context)
 
@@ -301,7 +301,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
                 # The removed technology should fail only when invoked.
                 with self.assertRaises(RuntimeError):
-                    runtime_factory._usenet_client_service({"url": "http://sabnzbd:8080"})
+                    runtime_factory._usenet_client_service({"technology": "sabnzbd"})
         finally:
             registry.set_runtime_context_cfg(prior_context)
 
