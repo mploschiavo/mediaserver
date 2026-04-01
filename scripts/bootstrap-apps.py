@@ -10,8 +10,9 @@ import os
 import sys
 import traceback
 
-import bootstrap_services.runtime_core as runtime_core
 import bootstrap_services.runtime_media_ops as runtime_media_ops
+import bootstrap_services.runtime_platform as runtime_platform
+import bootstrap_services.runtime_secrets as runtime_secrets
 import bootstrap_services.runtime_servarr.arr_ops as runtime_servarr_arr_ops
 from bootstrap_services.bootstrap_runner_service import (
     BootstrapRunnerDependencies,
@@ -71,12 +72,12 @@ def main():
 
     runtime_factory = BootstrapRuntimeFactoryService(
         deps=BootstrapRuntimeFactoryDependencies(
-            load_bootstrap_default_json=runtime_core.load_bootstrap_default_json,
+            load_bootstrap_default_json=runtime_platform.load_bootstrap_default_json,
             deep_merge_objects=runtime_media_ops.deep_merge_objects,
-            bool_cfg=runtime_core.bool_cfg,
-            coerce_list=runtime_core.coerce_list,
-            env_truthy=runtime_core.env_truthy,
-            read_api_key=runtime_core.read_api_key,
+            bool_cfg=runtime_platform.bool_cfg,
+            coerce_list=runtime_platform.coerce_list,
+            env_truthy=runtime_platform.env_truthy,
+            read_api_key=runtime_secrets.read_api_key,
             build_sab_remote_path_mappings=runtime_servarr_arr_ops.build_sab_remote_path_mappings,
         )
     )
@@ -91,17 +92,17 @@ def main():
         )
     )
     runtime_state = build_result.runtime
-    runtime_core.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
+    runtime_platform.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
     runner_operations = build_runner_event_registry(
         event_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("event_handlers"),
     )
 
     runner = BootstrapRunnerService(
         deps=BootstrapRunnerDependencies(
-            log=runtime_core.log,
-            bool_cfg=runtime_core.bool_cfg,
-            normalize_url=runtime_core.normalize_url,
-            wait_for_service=runtime_core.wait_for_service,
+            log=runtime_platform.log,
+            bool_cfg=runtime_platform.bool_cfg,
+            normalize_url=runtime_platform.normalize_url,
+            wait_for_service=runtime_platform.wait_for_service,
             operations=runner_operations,
         )
     )
@@ -112,9 +113,9 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        runtime_core.log(f"[ERR] {exc}")
+        runtime_platform.log(f"[ERR] {exc}")
         trace = traceback.format_exc().strip()
         if trace:
             for line in trace.splitlines():
-                runtime_core.log(f"[TRACE] {line}")
+                runtime_platform.log(f"[TRACE] {line}")
         sys.exit(1)

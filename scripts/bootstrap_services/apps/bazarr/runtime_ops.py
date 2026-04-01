@@ -3,21 +3,21 @@
 
 from __future__ import annotations
 
-import bootstrap_services.runtime_core as _core
+from bootstrap_lib.bazarr import apply_scalar_updates as _lib_bazarr_apply_scalar_updates
+
+from bootstrap_services.runtime_platform import (
+    bool_cfg,
+    coerce_list,
+    log,
+    normalize_url,
+    parse_service_url,
+    resolve_app_service_class,
+    resolve_path,
+    wait_for_service,
+)
+from bootstrap_services.runtime_servarr.common import get_arr_app
 
 from .service import BazarrService
-
-log = _core.log
-bool_cfg = _core.bool_cfg
-coerce_list = _core.coerce_list
-normalize_url = _core.normalize_url
-wait_for_service = _core.wait_for_service
-get_arr_app = _core.get_arr_app
-parse_service_url = _core.parse_service_url
-resolve_path = _core.resolve_path
-resolve_app_service_class = _core.resolve_app_service_class
-
-_lib_bazarr_apply_scalar_updates = _core._lib_bazarr_apply_scalar_updates
 
 
 def _bazarr_service(cfg=None) -> BazarrService:

@@ -10,20 +10,22 @@ from bootstrap_services.arr_queue_cleanup_service import ArrQueueCleanupService
 from bootstrap_services.arr_service import ArrService
 from bootstrap_services.auth_service import AuthService
 from bootstrap_services.health_service import HealthService
-from bootstrap_services.runtime_core import (
+from bootstrap_services.runtime_platform import (
     bool_cfg,
     coerce_list,
     field_list,
     field_map,
-    get_arr_quality_profile,
     http_request,
     log,
-    normalize_remote_path_mappings,
     normalize_token,
     normalize_url,
-    resolve_arr_quality_preferences,
     resolve_path,
     to_int,
+)
+from bootstrap_services.runtime_servarr.common import (
+    get_arr_quality_profile,
+    normalize_remote_path_mappings,
+    resolve_arr_quality_preferences,
 )
 from bootstrap_services.runtime_service_registry import (
     get_runtime_binding,

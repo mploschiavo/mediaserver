@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -7,14 +8,14 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_core as MODULE
+import bootstrap_services.runtime_secrets as MODULE
 
 
 class ApiKeyReadTests(unittest.TestCase):
     def test_read_api_key_prefers_env_when_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(
-                MODULE.os.environ,
+                os.environ,
                 {
                     "SONARR_API_KEY": "from-env",
                     "BOOTSTRAP_APIKEY_FILE_TIMEOUT_SECONDS": "1",
@@ -33,7 +34,7 @@ class ApiKeyReadTests(unittest.TestCase):
                 "<Config><ApiKey>abc123</ApiKey></Config>", encoding="utf-8"
             )
             with mock.patch.dict(
-                MODULE.os.environ,
+                os.environ,
                 {"SONARR_API_KEY": "replace-after-first-boot"},
                 clear=False,
             ):
@@ -44,7 +45,7 @@ class ApiKeyReadTests(unittest.TestCase):
     def test_read_api_key_times_out_when_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(
-                MODULE.os.environ,
+                os.environ,
                 {
                     "BOOTSTRAP_APIKEY_FILE_TIMEOUT_SECONDS": "1",
                     "BOOTSTRAP_APIKEY_FILE_HEARTBEAT_SECONDS": "1",
@@ -64,7 +65,7 @@ class ApiKeyReadTests(unittest.TestCase):
             )
 
             with mock.patch.dict(
-                MODULE.os.environ,
+                os.environ,
                 {"BOOTSTRAP_ALT_CONFIG_ROOT": alt_tmp},
                 clear=False,
             ):
@@ -81,11 +82,13 @@ class ApiKeyReadTests(unittest.TestCase):
             )
 
             with mock.patch.dict(
-                MODULE.os.environ,
+                os.environ,
                 {"BOOTSTRAP_ALT_CONFIG_ROOT": alt_tmp},
                 clear=False,
             ):
-                key = MODULE.read_jellyseerr_api_key(primary_tmp, timeout_seconds=1)
+                key = MODULE.api_keys_service().read_jellyseerr_api_key(
+                    primary_tmp, timeout_seconds=1
+                )
 
         self.assertEqual(key, "jellyseerr-alt-key")
 

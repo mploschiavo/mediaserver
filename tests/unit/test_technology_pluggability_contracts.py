@@ -78,7 +78,8 @@ MIN_REGISTRATION_REQUIREMENTS = {
 
 SHARED_RUNTIME_ENTRY_MODULES = [
     ROOT / "scripts" / "bootstrap-apps.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_core.py",
+    ROOT / "scripts" / "bootstrap_services" / "runtime_platform.py",
+    ROOT / "scripts" / "bootstrap_services" / "runtime_secrets.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_media_ops.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "__init__.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "factory.py",

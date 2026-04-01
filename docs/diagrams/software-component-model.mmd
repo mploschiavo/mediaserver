@@ -21,7 +21,8 @@ flowchart TD
 
   subgraph Core[Shared Runtime Core]
     CFGM["config_models.py"]
-    CORE_RT["runtime_core.py"]
+    CORE_RT["runtime_platform.py"]
+    CORE_SEC["runtime_secrets.py"]
     MED["runtime_media_ops.py"]
     ARR["runtime_servarr/__init__.py"]
     LIB["core/* helpers"]
@@ -55,6 +56,7 @@ flowchart TD
 
   RUN --> CFGM
   RUN --> CORE_RT
+  RUN --> CORE_SEC
   RUN --> MED
   RUN --> ARR
   RUN --> LIB
