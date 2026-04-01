@@ -79,7 +79,16 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             app_auth_cfg={},
             adapter_hooks_cfg={
                 "app_service_classes": {
-                    "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService"
+                    "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService",
+                    "technology_lifecycle_manager": (
+                        "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
+                    ),
+                    "download_client_pipeline_service": (
+                        "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService"
+                    ),
+                    "media_server_adapter_factory": (
+                        "bootstrap_services.media_server_adapters.factory:MediaServerAdapterFactory"
+                    ),
                 },
                 "service_technology_map": {"prowlarr_service": "prowlarr"},
                 "media_server_operation_plans": {
@@ -396,7 +405,16 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                     "sab": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
                 },
                 "app_service_classes": {
-                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService",
+                    "technology_lifecycle_manager": (
+                        "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
+                    ),
+                    "download_client_pipeline_service": (
+                        "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService"
+                    ),
+                    "media_server_adapter_factory": (
+                        "bootstrap_services.media_server_adapters.factory:MediaServerAdapterFactory"
+                    ),
                 },
                 "media_server_operation_plans": {
                     "jellyfin": {

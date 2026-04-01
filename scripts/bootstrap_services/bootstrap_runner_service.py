@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import inspect
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -17,6 +15,11 @@ from .media_server_adapters import MediaServerAdapterContext, MediaServerAdapter
 from .runner_operations_service import RunnerOperationRegistry
 from .runner_phase_plan_service import run_phase_plan as run_runner_phase_plan
 from .runtime_models import BootstrapRuntime
+from .runtime_service_registry import (
+    get_runtime_context_cfg,
+    resolve_app_service_class,
+    set_runtime_context_cfg,
+)
 from .servarr_pipeline_service import ServarrPipelineInputs
 from .servarr_types import ClientAuth, ServarrRunConfig
 from .technology_lifecycle_service import (
@@ -29,43 +32,6 @@ BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
 StepActionFn = Callable[[], None]
-
-
-def _resolve_service_class(cfg: dict[str, Any], service_key: str, default_cls: type[Any]) -> type[Any]:
-    key = str(service_key or "").strip()
-    if not key:
-        return default_cls
-    hooks = (cfg.get("adapter_hooks") or {}) if isinstance(cfg, dict) else {}
-    if not isinstance(hooks, dict):
-        raise RuntimeError("adapter_hooks must be an object/map.")
-    service_map = hooks.get("app_service_classes") or {}
-    if not isinstance(service_map, dict):
-        raise RuntimeError("adapter_hooks.app_service_classes must be an object/map.")
-    raw_spec = service_map.get(key)
-    if raw_spec is None or str(raw_spec).strip() == "":
-        return default_cls
-
-    spec = str(raw_spec).strip()
-    if ":" not in spec:
-        raise RuntimeError(
-            f"adapter_hooks.app_service_classes.{key}: invalid class spec '{spec}' "
-            "(expected 'module.submodule:ClassName')."
-        )
-    module_name, class_name = spec.rsplit(":", 1)
-    module_name = module_name.strip()
-    class_name = class_name.strip()
-    if not module_name or not class_name:
-        raise RuntimeError(
-            f"adapter_hooks.app_service_classes.{key}: invalid class spec '{spec}' "
-            "(expected 'module.submodule:ClassName')."
-        )
-    module = importlib.import_module(module_name)
-    cls = getattr(module, class_name, None)
-    if not inspect.isclass(cls):
-        raise RuntimeError(
-            f"adapter_hooks.app_service_classes.{key}: '{spec}' does not resolve to a class."
-        )
-    return cls
 
 
 @dataclass
@@ -205,8 +171,7 @@ class BootstrapRunnerService:
                 lambda runtime, state: state.details.update({"ran": True})
             )
 
-        manager_cls = _resolve_service_class(
-            rt.cfg,
+        manager_cls = resolve_app_service_class(
             "technology_lifecycle_manager",
             TechnologyLifecycleManager,
         )
@@ -241,8 +206,7 @@ class BootstrapRunnerService:
             self.deps.wait_for_service(app.name, app.url, "/ping", rt.wait_timeout)
 
     def _download_client_pipeline_service(self, rt: BootstrapRuntime) -> DownloadClientPipelineService:
-        service_cls = _resolve_service_class(
-            rt.cfg,
+        service_cls = resolve_app_service_class(
             "download_client_pipeline_service",
             DownloadClientPipelineService,
         )
@@ -279,8 +243,7 @@ class BootstrapRunnerService:
         return self._download_client_prepare_result
 
     def _media_server_adapter(self, rt: BootstrapRuntime) -> Any:
-        factory_cls = _resolve_service_class(
-            rt.cfg,
+        factory_cls = resolve_app_service_class(
             "media_server_adapter_factory",
             MediaServerAdapterFactory,
         )
@@ -289,10 +252,11 @@ class BootstrapRunnerService:
         )
         backend = self._canonical_tech_key(str(rt.media_server_backend or ""), rt)
         if not backend:
-            media_keys = self._technology_keys_from_hook_map(rt, "media_server_adapter_classes")
-            backend = media_keys[0] if media_keys else str(rt.media_server_backend or "").strip()
-        if not backend:
-            backend = "generic"
+            raise RuntimeError(
+                "Missing media_server backend binding. "
+                "Set technology_bindings.media_server and provide a matching "
+                "media_server adapter in plugin manifests."
+            )
         return factory.create(
             backend,
             MediaServerAdapterContext(
@@ -326,9 +290,9 @@ class BootstrapRunnerService:
             rt.arr_apps_raw,
             rt.app_keys,
             rt.qbit_cfg,
-                rt.qb_user,
-                rt.qb_pass,
-            )
+            rt.qb_user,
+            rt.qb_pass,
+        )
         self._run_lifecycle_phase(
             "clean_hygiene",
             rt,
@@ -423,25 +387,30 @@ class BootstrapRunnerService:
         self._run_runner_plan_phase(rt, "indexer_steps")
 
     def run(self, rt: BootstrapRuntime) -> None:
-        self._download_client_prepare_result = None
-        self.lifecycle_manager = self._build_lifecycle_manager(rt)
-        self._run_lifecycle_phase("load", rt)
+        prior_hooks = get_runtime_context_cfg()
+        set_runtime_context_cfg(rt.adapter_hooks_cfg)
+        try:
+            self._download_client_prepare_result = None
+            self.lifecycle_manager = self._build_lifecycle_manager(rt)
+            self._run_lifecycle_phase("load", rt)
 
-        if self._run_mode_shortcuts(rt):
+            if self._run_mode_shortcuts(rt):
+                self._run_lifecycle_phase("status", rt)
+                return
+
+            qbit_login_ok, sab_api_key = self._run_full_prechecks(rt)
+            self._run_servarr_pipeline(rt, qbit_login_ok=qbit_login_ok, sab_api_key=sab_api_key)
+            self._run_lifecycle_phase("configure", rt, keys=self._arr_lifecycle_keys(rt))
+            self._run_post_servarr_steps(rt)
+            self._run_lifecycle_phase(
+                "ensure",
+                rt,
+                keys=self._arr_lifecycle_keys(rt)
+                + self._non_servarr_aux_lifecycle_keys(rt)
+                + self._download_client_lifecycle_keys(rt),
+            )
+            self._run_indexers(rt)
             self._run_lifecycle_phase("status", rt)
-            return
-
-        qbit_login_ok, sab_api_key = self._run_full_prechecks(rt)
-        self._run_servarr_pipeline(rt, qbit_login_ok=qbit_login_ok, sab_api_key=sab_api_key)
-        self._run_lifecycle_phase("configure", rt, keys=self._arr_lifecycle_keys(rt))
-        self._run_post_servarr_steps(rt)
-        self._run_lifecycle_phase(
-            "ensure",
-            rt,
-            keys=self._arr_lifecycle_keys(rt)
-            + self._non_servarr_aux_lifecycle_keys(rt)
-            + self._download_client_lifecycle_keys(rt),
-        )
-        self._run_indexers(rt)
-        self._run_lifecycle_phase("status", rt)
-        self.deps.log("[OK] Bootstrap complete.")
+            self.deps.log("[OK] Bootstrap complete.")
+        finally:
+            set_runtime_context_cfg(prior_hooks)

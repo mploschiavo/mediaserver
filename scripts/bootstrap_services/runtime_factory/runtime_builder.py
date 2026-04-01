@@ -234,13 +234,17 @@ class BootstrapRuntimeBuilder:
         app_auth_cfg = dict(app_auth_model.raw)
         fully_preconfigured = self.deps.env_truthy("FULLY_PRECONFIGURED", False)
         if fully_preconfigured and not app_auth_cfg:
+            include_apps = [str(app.name or app.implementation).strip() for app in arr_apps]
+            include_apps = [name for name in include_apps if name]
+            if prowlarr_url and "Prowlarr" not in include_apps:
+                include_apps.append("Prowlarr")
             app_auth_cfg = {
                 "enabled": True,
                 "method": "Forms",
                 "required": "Enabled",
                 "username_env": "STACK_ADMIN_USERNAME",
                 "password_env": "STACK_ADMIN_PASSWORD",
-                "include": ["Sonarr", "Radarr", "Lidarr", "Readarr", "Prowlarr"],
+                "include": include_apps,
             }
         app_auth_model = AppAuthConfig.from_dict(app_auth_cfg)
 
@@ -260,7 +264,7 @@ class BootstrapRuntimeBuilder:
         configure_arr_download_handling = arr_download_handling_cfg.enabled
         configure_arr_discovery_lists = arr_discovery_lists_cfg.enabled
         set_qbit_categories = bool(
-            qbit_cfg.get("set_categories_in_qbit", qbit_cfg.get("set_categories", False))
+            qbit_cfg.get("set_categories", qbit_cfg.get("set_categories_in_qbit", False))
         )
         qbit_login_required = bool(qbit_cfg.get("login_required", fully_preconfigured))
         refresh_health_after_bootstrap = bool(cfg.get("refresh_health_after_bootstrap", True))
@@ -311,22 +315,32 @@ class BootstrapRuntimeBuilder:
         if args.mode == BootstrapMode.FULL:
             prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
 
-        qb_user = ""
-        qb_pass = ""
-        if torrent_client_key == "qbittorrent":
-            qb_user = self._resolve_required_env_value(
-                qbit_cfg,
-                env_key_name="username_env",
-                binding_label=torrent_client_key,
-            )
-            qb_pass = self._resolve_required_env_value(
-                qbit_cfg,
-                env_key_name="password_env",
-                binding_label=torrent_client_key,
+        qb_user = self._resolve_optional_env_value(qbit_cfg, "username_env")
+        qb_pass = self._resolve_optional_env_value(qbit_cfg, "password_env")
+        if qbit_login_required and (not qb_user or not qb_pass):
+            missing = []
+            if not qb_user:
+                missing.append("username_env")
+            if not qb_pass:
+                missing.append("password_env")
+            raise ValueError(
+                "Missing required torrent client credential binding(s): "
+                f"{', '.join(missing)} for technology '{torrent_client_key}'."
             )
 
         sab_username = self._resolve_optional_env_value(sab_cfg, "username_env")
         sab_password = self._resolve_optional_env_value(sab_cfg, "password_env")
+        sab_login_required = bool(sab_cfg.get("login_required", False))
+        if sab_login_required and (not sab_username or not sab_password):
+            missing = []
+            if not sab_username:
+                missing.append("username_env")
+            if not sab_password:
+                missing.append("password_env")
+            raise ValueError(
+                "Missing required usenet client credential binding(s): "
+                f"{', '.join(missing)} for technology '{usenet_client_key}'."
+            )
 
         runtime = BootstrapRuntime(
             mode=args.mode,

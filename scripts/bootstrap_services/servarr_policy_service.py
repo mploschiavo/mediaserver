@@ -43,11 +43,7 @@ class ServarrPolicyService:
         if isinstance(app_cfg, ServarrAppConfig):
             return app_cfg
         if isinstance(app_cfg, dict):
-            src = dict(app_cfg)
-            impl = str(src.get("implementation") or "").strip().lower()
-            if "capabilities" not in src and impl == "sonarr":
-                src["capabilities"] = {"supports_series_folder_management": True}
-            return ServarrAppConfig.from_dict(src)
+            return ServarrAppConfig.from_dict(dict(app_cfg))
         token = str(app_cfg or "").strip()
         return ServarrAppConfig.from_dict({"name": token, "implementation": token})
 

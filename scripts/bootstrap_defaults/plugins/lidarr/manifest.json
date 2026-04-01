@@ -4,5 +4,7 @@
   "adapter_classes": {
     "servarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter"
   },
-  "capability_defaults": {}
+  "capability_defaults": {
+    "monitor_scope_all_value": "entireArtist"
+  }
 }

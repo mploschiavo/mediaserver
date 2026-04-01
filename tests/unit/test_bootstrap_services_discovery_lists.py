@@ -60,6 +60,7 @@ class DiscoveryListsServiceTests(unittest.TestCase):
             "name": "Sonarr",
             "implementation": "Sonarr",
             "root_folder": "/media/tv",
+            "capabilities": {"supports_seed_series": True},
         }
 
         svc.ensure_arr_discovery_lists_for_app(
@@ -81,4 +82,3 @@ class DiscoveryListsServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

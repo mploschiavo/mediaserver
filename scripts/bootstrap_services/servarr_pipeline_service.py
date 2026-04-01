@@ -103,15 +103,32 @@ class ServarrPipelineService:
 
     @staticmethod
     def _raw_app_dict(app: ServarrAppConfig) -> dict[str, Any]:
-        if app.raw:
-            return dict(app.raw)
-        return {
+        base = dict(app.raw) if app.raw else {
             "name": app.name,
             "implementation": app.implementation,
             "url": app.url,
             "root_folder": app.root_folder,
             "category": app.category,
         }
+        base_caps = dict(base.get("capabilities") or {})
+        caps = {
+            "supports_auth": app.capabilities.supports_auth,
+            "supports_media_management": app.capabilities.supports_media_management,
+            "supports_root_folder": app.capabilities.supports_root_folder,
+            "supports_download_handling": app.capabilities.supports_download_handling,
+            "supports_quality_upgrade": app.capabilities.supports_quality_upgrade,
+            "supports_prowlarr_application": app.capabilities.supports_prowlarr_application,
+            "supports_download_clients": app.capabilities.supports_download_clients,
+            "supports_remote_path_mappings": app.capabilities.supports_remote_path_mappings,
+            "supports_discovery_lists": app.capabilities.supports_discovery_lists,
+            "supports_health_check": app.capabilities.supports_health_check,
+            "supports_series_folder_management": app.capabilities.supports_series_folder_management,
+            "supports_seed_series": app.capabilities.supports_seed_series,
+            "monitor_scope_all_value": app.capabilities.monitor_scope_all_value,
+        }
+        base_caps.update(caps)
+        base["capabilities"] = base_caps
+        return base
 
     @staticmethod
     def _lookup_api_key(app_keys: dict[str, str], implementation: str) -> str:

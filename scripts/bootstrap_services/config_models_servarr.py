@@ -573,6 +573,8 @@ class AppCapabilities:
     supports_discovery_lists: bool = True
     supports_health_check: bool = True
     supports_series_folder_management: bool = False
+    supports_seed_series: bool = False
+    monitor_scope_all_value: str = ""
 
     @classmethod
     def from_dict(
@@ -596,6 +598,8 @@ class AppCapabilities:
             supports_series_folder_management=bool(
                 merged.get("supports_series_folder_management", False)
             ),
+            supports_seed_series=bool(merged.get("supports_seed_series", False)),
+            monitor_scope_all_value=str(merged.get("monitor_scope_all_value", "")).strip(),
         )
 
 

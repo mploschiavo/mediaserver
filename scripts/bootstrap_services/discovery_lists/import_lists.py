@@ -134,13 +134,12 @@ def build_arr_import_list_payload(
     if (metadata_profile_id is None or metadata_profile_id <= 0) and default_metadata_profile_id:
         payload["metadataProfileId"] = int(default_metadata_profile_id)
 
-    app_impl = str(app_cfg.get("implementation") or "").strip().lower()
+    app_caps = app_cfg.get("capabilities") if isinstance(app_cfg.get("capabilities"), dict) else {}
     monitor_value = str(payload.get("shouldMonitor") or "").strip().lower()
     if monitor_value == "all":
-        if app_impl == "readarr":
-            payload["shouldMonitor"] = "entireAuthor"
-        elif app_impl == "lidarr":
-            payload["shouldMonitor"] = "entireArtist"
+        monitor_scope_all_value = str(app_caps.get("monitor_scope_all_value") or "").strip()
+        if monitor_scope_all_value:
+            payload["shouldMonitor"] = monitor_scope_all_value
 
     root_folder_path = str(payload.get("rootFolderPath") or "").strip()
     if not root_folder_path:
@@ -166,8 +165,9 @@ def ensure_arr_discovery_lists_for_app(
     app_name = str(app_cfg.get("name") or app_cfg.get("implementation") or "Arr")
     list_defs = resolve_import_list_definitions(service, arr_discovery_cfg, app_cfg)
     app_impl = str(app_cfg.get("implementation") or "").strip().lower()
+    app_caps = app_cfg.get("capabilities") if isinstance(app_cfg.get("capabilities"), dict) else {}
     has_seed_cfg = (
-        app_impl == "sonarr"
+        bool(app_caps.get("supports_seed_series", False))
         and isinstance(cfg.get("sonarr_seed_series"), dict)
         and service.bool_cfg(cfg.get("sonarr_seed_series") or {}, "enabled", True)
     )
@@ -393,7 +393,7 @@ def ensure_arr_discovery_lists_for_app(
         f"(created={created}, updated={updated}, deleted={deleted}, skipped={skipped})"
     )
 
-    if app_impl == "sonarr":
+    if bool(app_caps.get("supports_seed_series", False)):
         ensure_sonarr_seed_series(
             service=service,
             cfg=cfg,

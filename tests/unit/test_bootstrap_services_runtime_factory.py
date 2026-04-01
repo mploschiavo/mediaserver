@@ -175,7 +175,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         app_auth = result.runtime.app_auth_cfg
         self.assertTrue(app_auth.get("enabled"))
         self.assertEqual(app_auth.get("method"), "Forms")
-        self.assertIn("Sonarr", app_auth.get("include", []))
+        self.assertEqual(app_auth.get("include", []), ["Prowlarr"])
 
     def test_technology_bindings_select_active_clients_and_media_backend(self):
         factory = self._factory()

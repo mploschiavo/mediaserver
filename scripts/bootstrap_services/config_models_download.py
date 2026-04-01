@@ -183,6 +183,7 @@ class DownloadClientConfig:
     password_env: str = ""
     api_key_env: str = ""
     api_key_required: bool = False
+    login_required: bool = False
     categories: dict[str, str] = field(default_factory=dict)
     completed_paths: dict[str, str] = field(default_factory=dict)
     default_save_path: str = "/data/torrents/completed"
@@ -224,6 +225,7 @@ class DownloadClientConfig:
             password_env=str(src.get("password_env", "")).strip(),
             api_key_env=str(src.get("api_key_env", "")).strip(),
             api_key_required=bool(src.get("api_key_required", False)),
+            login_required=bool(src.get("login_required", False)),
             categories=dict(src.get("categories") or {}),
             completed_paths=dict(src.get("completed_paths") or {}),
             default_save_path=str(src.get("default_save_path", "/data/torrents/completed")),
