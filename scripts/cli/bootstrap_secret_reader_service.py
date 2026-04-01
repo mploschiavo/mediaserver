@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,7 @@ class BootstrapSecretReaderConfig:
 @dataclass
 class BootstrapSecretReaderService:
     cfg: BootstrapSecretReaderConfig
-    kube: KubectlClient
+    kube: KubernetesClient
 
     def read_secret_key(self, secret: str, key_name: str) -> str:
         result = self.kube.run(

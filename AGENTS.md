@@ -74,6 +74,8 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - Prefer adding a new adapter/service + config hook over adding conditionals in shared runtime modules.
 - Keep operation names stable; change bindings/hook paths for swaps, not runner internals.
 - Do not place app-specific implementation files at `scripts/bootstrap_services/*` root when an app package exists.
+- App-specific types/policies/pipelines must live under `scripts/bootstrap_services/apps/<app>/`.
+- If a root-level shared module becomes app-specific during refactor, move it (do not leave duplicate logic in root).
 
 ### Event Contract (Required)
 - Runtime handlers are lifecycle-event driven.
@@ -84,6 +86,7 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - `scripts/bootstrap-apps.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
 - Runtime binding context must be sourced from `technology_bindings` (config/manifests), not hard-coded role maps in entrypoints.
 - Keep shared runtime modules (`runtime_servarr/*`) focused on concrete operations; pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) and declarative RunnerEvent config.
+- `TechnologyLifecycle*` orchestration classes are obsolete in this repo; lifecycle flow must be expressed through `RunnerEvent` plans and handlers.
 
 ## Design Rules
 - Prefer composition over inheritance.
@@ -105,8 +108,13 @@ Migrate Bash to Python when logic includes non-trivial branching, loops, parsing
 
 ## Kubernetes Client Policy
 - Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `scripts/core/kube.py`.
+- Use `KubernetesClient` naming in Python code; do not add new `KubectlClient` imports/usages.
 - Avoid new Python code that shells out to `kubectl` for operations already supported by the API adapter.
 - Keep shell-based `kubectl` usage confined to operator-facing Bash wrappers unless explicitly justified.
+
+## Debug Artifact Policy
+- Do not add tracked `*debug*` wrapper/entrypoint files for bootstrap flows.
+- Use runtime log levels (`MEDIA_STACK_LOG_LEVEL`) and structured logs instead of dedicated debug scripts.
 
 ## Bootstrap Image Packaging Contract
 Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
@@ -152,7 +160,9 @@ Current key test suites:
 3. `ruff check scripts tests`
 4. `black --check scripts tests`
 5. `python3 -m unittest discover -s tests/unit -p 'test_*.py'`
-6. Live bootstrap smoke in cluster:
+6. `rg -n "from core.kube import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
+7. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
+8. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 

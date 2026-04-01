@@ -121,7 +121,7 @@ Then retry in a private/incognito browser session to avoid stale local UI state.
 ## Troubleshooting
 If bootstrap appears stuck or partially applied:
 ```bash
-bash scripts/bootstrap-debug.sh
+MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
 bash scripts/stack-status.sh
 bash scripts/verify-flow.sh
 ```

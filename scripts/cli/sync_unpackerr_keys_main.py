@@ -14,7 +14,7 @@ from pathlib import Path
 
 from bootstrap_services.plugin_manifest_loader import load_plugin_manifests
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 from core.logging_utils import configure_logging, log_event
 
 API_KEY_RE = re.compile(r"<ApiKey>(.*?)</ApiKey>")
@@ -31,7 +31,7 @@ class SyncUnpackerrKeysService:
     def __init__(
         self,
         cfg: SyncUnpackerrKeysConfig,
-        kube: KubectlClient,
+        kube: KubernetesClient,
         logger: logging.Logger,
     ) -> None:
         self.cfg = cfg
@@ -302,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg = parse_config(argv)
         service = SyncUnpackerrKeysService(
             cfg=cfg,
-            kube=KubectlClient.from_environment(),
+            kube=KubernetesClient.from_environment(),
             logger=logger,
         )
         return service.run()

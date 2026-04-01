@@ -82,9 +82,6 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             adapter_hooks_cfg={
                 "app_service_classes": {
                     "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService",
-                    "technology_lifecycle_manager": (
-                        "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
-                    ),
                     "download_client_pipeline_service": (
                         "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService"
                     ),
@@ -325,18 +322,12 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             runtime.app_keys,
         )
 
-    def test_runner_tracks_lifecycle_states(self):
+    def test_runner_executes_precheck_phase_plan(self):
         deps = self._deps()
         runner = BootstrapRunnerService(deps=deps)
         runtime = self._runtime()
         runner.run(runtime)
         deps.operation_mocks[RunnerOperation.ENSURE_PROWLARR_READY.value].assert_called_once()  # type: ignore[attr-defined]
-        self.assertIsNotNone(runner.lifecycle_manager)
-        prowlarr_state = runner.lifecycle_manager.state("prowlarr")
-        self.assertIsNotNone(prowlarr_state)
-        self.assertTrue(prowlarr_state.loaded)
-        self.assertTrue(prowlarr_state.prechecked)
-        self.assertEqual(prowlarr_state.status, "ok")
 
     def test_required_optional_step_still_fails_hard(self):
         deps = self._deps()
@@ -416,9 +407,6 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                     "jellyseerr_service": (
                         "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
                     ),
-                    "technology_lifecycle_manager": (
-                        "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
-                    ),
                     "download_client_pipeline_service": (
                         "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService"
                     ),
@@ -438,11 +426,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             },
         )
         runner.run(runtime)
-        self.assertIsNotNone(runner.lifecycle_manager)
-        self.assertIsNotNone(runner.lifecycle_manager.state("qbittorrent"))
-        self.assertIsNotNone(runner.lifecycle_manager.state("sabnzbd"))
-        self.assertIsNone(runner.lifecycle_manager.state("qbit"))
-        self.assertIsNone(runner.lifecycle_manager.state("sab"))
+        deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_called_once()  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.exceptions import KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class BootstrapJobLogsConfig:
 @dataclass
 class BootstrapJobLogsService:
     cfg: BootstrapJobLogsConfig
-    kube: KubectlClient
+    kube: KubernetesClient
 
     def capture_logs(self) -> None:
         result = self.kube.run(

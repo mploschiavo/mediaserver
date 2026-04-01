@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 from typing import Callable
 
 from core.exceptions import ConfigError, KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 LogFn = Callable[[str], None]
 
@@ -27,7 +27,7 @@ class BootstrapManifestConfig:
 @dataclass
 class BootstrapManifestService:
     cfg: BootstrapManifestConfig
-    kube: KubectlClient
+    kube: KubernetesClient
     info: LogFn
     warn: LogFn
 

@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .config_models import (
+from ...config_models import (
     ArrDownloadHandlingPolicy,
     ArrDownloadHandlingResolvedPolicy,
     ArrMediaManagementPolicy,

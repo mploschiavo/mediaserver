@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.exceptions import ConfigError, KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 from core.state_store import CheckpointStateStore
 
 from cli.bootstrap_component_resolver import (
@@ -111,7 +111,7 @@ class BootstrapAllConfig:
 class BootstrapAllRunner:
     def __init__(self, cfg: BootstrapAllConfig) -> None:
         self.cfg = cfg
-        self.kube = KubectlClient.from_environment()
+        self.kube = KubernetesClient.from_environment()
         self.tracker = PhaseTracker()
         self.state = CheckpointStateStore(cfg.state_file)
         self._plan: BootstrapComponentPlan | None = None

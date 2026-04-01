@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .apps.servarr.pipeline_service import ServarrPipelineInputs
+from .apps.servarr.types import ClientAuth, ServarrRunConfig
 from .download_client_pipeline_service import (
     DownloadClientPipelineInputs,
     DownloadClientPipelineResult,
@@ -19,12 +21,6 @@ from .runtime_service_registry import (
     get_runtime_context_cfg,
     resolve_app_service_class,
     set_runtime_context_cfg,
-)
-from .servarr_pipeline_service import ServarrPipelineInputs
-from .servarr_types import ClientAuth, ServarrRunConfig
-from .technology_lifecycle_service import (
-    TechnologyLifecycle,
-    TechnologyLifecycleManager,
 )
 
 LogFn = Callable[[str], None]
@@ -46,7 +42,6 @@ class BootstrapRunnerDependencies:
 @dataclass
 class BootstrapRunnerService:
     deps: BootstrapRunnerDependencies
-    lifecycle_manager: TechnologyLifecycleManager | None = None
     _download_client_prepare_result: DownloadClientPipelineResult | None = None
 
     def _invoke_handler(
@@ -75,125 +70,6 @@ class BootstrapRunnerService:
         if not token:
             return ""
         return self._technology_aliases(rt).get(token, token)
-
-    def _technology_keys_from_hook_map(
-        self, rt: BootstrapRuntime, hook_key: str
-    ) -> tuple[str, ...]:
-        hook_map = (rt.adapter_hooks_cfg or {}).get(hook_key) or {}
-        if not isinstance(hook_map, dict):
-            return ()
-        keys = [self._canonical_tech_key(str(key), rt) for key in hook_map.keys()]
-        return tuple(dict.fromkeys([key for key in keys if key]))
-
-    def _app_service_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
-        overrides_raw = (rt.adapter_hooks_cfg or {}).get("service_technology_map") or {}
-        overrides = (
-            {
-                str(key or "").strip().lower(): self._canonical_tech_key(str(value or ""), rt)
-                for key, value in overrides_raw.items()
-                if str(key or "").strip()
-            }
-            if isinstance(overrides_raw, dict)
-            else {}
-        )
-        hook_map = (rt.adapter_hooks_cfg or {}).get("app_service_classes") or {}
-        if not isinstance(hook_map, dict):
-            return ()
-        keys: list[str] = []
-        for service_key in hook_map.keys():
-            key = str(service_key or "").strip().lower()
-            if not key:
-                continue
-            tech_key = overrides.get(key, "")
-            if not tech_key:
-                if key.endswith("_service"):
-                    stem = key[: -len("_service")]
-                else:
-                    stem = key
-                tech_key = stem.split("_", 1)[0]
-            if not tech_key:
-                continue
-            canonical = self._canonical_tech_key(tech_key, rt)
-            if canonical:
-                keys.append(canonical)
-        return tuple(dict.fromkeys(keys))
-
-    def _baseline_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
-        keys = list(self._technology_keys_from_hook_map(rt, "adapter_classes"))
-        keys += list(self._technology_keys_from_hook_map(rt, "download_client_adapter_classes"))
-        keys += list(self._technology_keys_from_hook_map(rt, "media_server_adapter_classes"))
-        keys += list(self._app_service_lifecycle_keys(rt))
-        backend = self._canonical_tech_key(str(rt.media_server_backend or ""), rt)
-        if backend:
-            keys.append(backend)
-        return tuple(dict.fromkeys([key for key in keys if key]))
-
-    def _arr_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
-        keys = [
-            self._canonical_tech_key(app.implementation, rt)
-            for app in rt.arr_apps
-            if str(app.implementation or "").strip()
-        ]
-        if not keys:
-            keys = list(self._technology_keys_from_hook_map(rt, "adapter_classes"))
-        return tuple(dict.fromkeys(keys))
-
-    def _download_client_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
-        keys = [
-            self._canonical_tech_key(rt.torrent_client_key, rt),
-            self._canonical_tech_key(rt.usenet_client_key, rt),
-        ]
-        return tuple(dict.fromkeys([k for k in keys if k]))
-
-    def _non_servarr_aux_lifecycle_keys(self, rt: BootstrapRuntime) -> tuple[str, ...]:
-        arr_keys = set(self._arr_lifecycle_keys(rt))
-        download_keys = set(self._download_client_lifecycle_keys(rt))
-        keys = [
-            key
-            for key in self._baseline_lifecycle_keys(rt)
-            if key not in arr_keys and key not in download_keys
-        ]
-        return tuple(dict.fromkeys(keys))
-
-    def _build_lifecycle_manager(self, rt: BootstrapRuntime) -> TechnologyLifecycleManager:
-        all_keys = list(
-            dict.fromkeys(
-                list(self._baseline_lifecycle_keys(rt))
-                + list(self._arr_lifecycle_keys(rt))
-                + list(self._download_client_lifecycle_keys(rt))
-            )
-        )
-        lifecycles = {key: TechnologyLifecycle(key=key) for key in all_keys}
-        torrent_key = self._canonical_tech_key(rt.torrent_client_key, rt)
-        usenet_key = self._canonical_tech_key(rt.usenet_client_key, rt)
-        if torrent_key in lifecycles:
-            lifecycles[torrent_key].prepare_fn = lambda runtime, state: state.details.update(
-                {"login_ok": self._prepare_download_clients(runtime).qbit_login_ok}
-            )
-        if usenet_key in lifecycles:
-            lifecycles[usenet_key].prepare_fn = lambda runtime, state: state.details.update(
-                {"api_key": self._prepare_download_clients(runtime).sab_api_key}
-            )
-        if "media_hygiene" in lifecycles:
-            lifecycles["media_hygiene"].clean_hygiene_fn = (
-                lambda runtime, state: state.details.update({"ran": True})
-            )
-
-        manager_cls = resolve_app_service_class(
-            "technology_lifecycle_manager",
-            TechnologyLifecycleManager,
-        )
-        return manager_cls(lifecycles=lifecycles)
-
-    def _run_lifecycle_phase(
-        self,
-        phase: str,
-        rt: BootstrapRuntime,
-        keys: list[str] | tuple[str, ...] | None = None,
-    ) -> None:
-        if not self.lifecycle_manager:
-            return
-        self.lifecycle_manager.run_phase(phase, rt, keys=keys)
 
     def _runner_operation_plans(self, rt: BootstrapRuntime) -> dict[str, Any]:
         hooks = rt.adapter_hooks_cfg or {}
@@ -307,11 +183,6 @@ class BootstrapRunnerService:
             rt.qb_user,
             rt.qb_pass,
         )
-        self._run_lifecycle_phase(
-            "clean_hygiene",
-            rt,
-            keys=self._arr_lifecycle_keys(rt) + self._download_client_lifecycle_keys(rt),
-        )
         self.deps.log("[OK] Media hygiene mode complete.")
 
     def _run_mode_shortcuts(self, rt: BootstrapRuntime) -> bool:
@@ -345,16 +216,9 @@ class BootstrapRunnerService:
 
     def _run_full_prechecks(self, rt: BootstrapRuntime) -> tuple[bool, str]:
         self._run_runner_plan_phase(rt, "precheck_steps")
-        self._run_lifecycle_phase("precheck", rt, keys=self._non_servarr_aux_lifecycle_keys(rt))
         self._wait_for_servarr_services(rt)
-        self._run_lifecycle_phase("prepare", rt, keys=self._download_client_lifecycle_keys(rt))
-        torrent_key = self._canonical_tech_key(rt.torrent_client_key, rt)
-        usenet_key = self._canonical_tech_key(rt.usenet_client_key, rt)
-        qbit_state = self.lifecycle_manager.state(torrent_key) if self.lifecycle_manager else None
-        sab_state = self.lifecycle_manager.state(usenet_key) if self.lifecycle_manager else None
-        qbit_login_ok = bool((qbit_state.details if qbit_state else {}).get("login_ok", False))
-        sab_api_key = str((sab_state.details if sab_state else {}).get("api_key") or "")
-        return qbit_login_ok, sab_api_key
+        pipeline_prepare = self._prepare_download_clients(rt)
+        return pipeline_prepare.qbit_login_ok, pipeline_prepare.sab_api_key
 
     def _run_servarr_pipeline(
         self, rt: BootstrapRuntime, qbit_login_ok: bool, sab_api_key: str
@@ -411,26 +275,14 @@ class BootstrapRunnerService:
         set_runtime_context_cfg(runtime_context_cfg)
         try:
             self._download_client_prepare_result = None
-            self.lifecycle_manager = self._build_lifecycle_manager(rt)
-            self._run_lifecycle_phase("load", rt)
 
             if self._run_mode_shortcuts(rt):
-                self._run_lifecycle_phase("status", rt)
                 return
 
             qbit_login_ok, sab_api_key = self._run_full_prechecks(rt)
             self._run_servarr_pipeline(rt, qbit_login_ok=qbit_login_ok, sab_api_key=sab_api_key)
-            self._run_lifecycle_phase("configure", rt, keys=self._arr_lifecycle_keys(rt))
             self._run_post_servarr_steps(rt)
-            self._run_lifecycle_phase(
-                "ensure",
-                rt,
-                keys=self._arr_lifecycle_keys(rt)
-                + self._non_servarr_aux_lifecycle_keys(rt)
-                + self._download_client_lifecycle_keys(rt),
-            )
             self._run_indexers(rt)
-            self._run_lifecycle_phase("status", rt)
             self.deps.log("[OK] Bootstrap complete.")
         finally:
             set_runtime_context_cfg(prior_hooks)

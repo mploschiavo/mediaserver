@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from core.exceptions import KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 LogFn = Callable[[str], None]
 NowFn = Callable[[], int]
@@ -27,7 +27,7 @@ class BootstrapJobWaitConfig:
 @dataclass
 class BootstrapJobWaitService:
     cfg: BootstrapJobWaitConfig
-    kube: KubectlClient
+    kube: KubernetesClient
     info: LogFn
     warn: LogFn
     now: NowFn = lambda: int(time.time())

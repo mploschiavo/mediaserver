@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 from cli.prowlarr_auto_indexers_runtime import (
     AutoIndexerConfig,
@@ -133,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg = parse_config(argv)
         runner = ProwlarrAutoIndexerRunner(
             cfg=cfg,
-            kube=KubectlClient.from_environment(),
+            kube=KubernetesClient.from_environment(),
             tracker=tracker,
         )
         return runner.run()
