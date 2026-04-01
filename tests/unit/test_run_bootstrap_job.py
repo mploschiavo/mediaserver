@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -168,6 +169,59 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 patch_payloads.append(json.loads(call[-1]))
         self.assertIn({"stringData": {"JELLYSEERR_API_KEY": "jellyseerr-key"}}, patch_payloads)
         self.assertIn({"stringData": {"TAUTULLI_API_KEY": "tautulli-key"}}, patch_payloads)
+
+    def test_prepare_bootstrap_job_config_writes_validated_json(self):
+        cfg = MODULE.RunBootstrapJobConfig(
+            namespace="media-stack",
+            timeout_raw="10m",
+            heartbeat_interval=15,
+            job_log_tail_lines=120,
+            alert_webhook_url="",
+            prepare_host_root="/srv/media-stack",
+            ingress_name="media-stack-ingress",
+            bootstrap_runner_image="registry.example/bootstrap:latest",
+            root_dir=ROOT,
+            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            skip_qbit_ensure=False,
+            skip_sab_ensure=False,
+        )
+        runner = MODULE.RunBootstrapJobRunner(
+            cfg=cfg,
+            kube=_FakeKube(),
+            tracker=MODULE.PhaseTracker(),
+        )
+
+        runner.prepare_bootstrap_job_config()
+
+        written = json.loads(runner.artifacts.job_config_file.read_text(encoding="utf-8"))
+        self.assertEqual(written.get("config_version"), 2)
+        self.assertIsInstance(written.get("adapter_hooks"), dict)
+
+    def test_prepare_bootstrap_job_config_rejects_non_object_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "bad.json"
+            config_file.write_text("[]", encoding="utf-8")
+            cfg = MODULE.RunBootstrapJobConfig(
+                namespace="media-stack",
+                timeout_raw="10m",
+                heartbeat_interval=15,
+                job_log_tail_lines=120,
+                alert_webhook_url="",
+                prepare_host_root="/srv/media-stack",
+                ingress_name="media-stack-ingress",
+                bootstrap_runner_image="registry.example/bootstrap:latest",
+                root_dir=ROOT,
+                config_file=config_file,
+                skip_qbit_ensure=False,
+                skip_sab_ensure=False,
+            )
+            runner = MODULE.RunBootstrapJobRunner(
+                cfg=cfg,
+                kube=_FakeKube(),
+                tracker=MODULE.PhaseTracker(),
+            )
+            with self.assertRaises(MODULE.ConfigError):
+                runner.prepare_bootstrap_job_config()
 
 
 if __name__ == "__main__":

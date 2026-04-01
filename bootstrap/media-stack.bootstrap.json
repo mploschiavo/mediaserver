@@ -259,19 +259,6 @@
       }
     },
     "bootstrap_job": {
-      "config_resolver": {
-        "operations": [
-          "inject_homepage_ingress_hosts"
-        ],
-        "ingress_host_targets": [
-          {
-            "name": "homepage",
-            "hosts_path": "homepage.hosts",
-            "enable_path": "homepage.enabled",
-            "enable_value": true
-          }
-        ]
-      },
       "components": {
         "torrent_client": {
           "binding": "torrent_client"
@@ -349,9 +336,9 @@
         },
         {
           "operation": "call_handler",
-          "phase_name": "Resolve bootstrap config",
+          "phase_name": "Prepare bootstrap job config",
           "params": {
-            "handler": "resolve_bootstrap_config"
+            "handler": "prepare_bootstrap_job_config"
           }
         },
         {

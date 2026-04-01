@@ -55,7 +55,7 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
             run_phase=_run_phase,
             run_script=_run_script,
             operation_handlers={
-                "resolve_bootstrap_config": noop,
+                "prepare_bootstrap_job_config": noop,
                 "ensure_bootstrap_pvc_prereqs": noop,
                 "prime_servarr_api_keys_secret": noop,
                 "prime_usenet_client_api_key_secret": noop,

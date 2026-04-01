@@ -12,13 +12,6 @@
         "enabled_attr": "configure_maintainerr_policy",
         "required_attr": "maintainerr_required",
         "warning_message": "[WARN] Maintainerr policy: automation skipped. Set maintainerr.required=true to fail the bootstrap instead."
-      },
-      {
-        "operation": "ensure_homepage_services_config",
-        "args": ["cfg", "config_root"],
-        "enabled_attr": "configure_homepage_services",
-        "required_attr": "homepage_required",
-        "warning_message": "[WARN] Homepage: config-as-code bootstrap skipped. Set homepage.required=true to fail the bootstrap instead."
       }
     ]
   },
@@ -76,6 +69,13 @@
         "enabled_attr": "configure_media_hygiene",
         "required_attr": "media_hygiene_required",
         "warning_message": "[WARN] Media hygiene: automation skipped. Set media_hygiene.required=true to fail the bootstrap instead."
+      },
+      {
+        "operation": "ensure_homepage_services_config",
+        "args": ["cfg", "config_root"],
+        "enabled_attr": "configure_homepage_services",
+        "required_attr": "homepage_required",
+        "warning_message": "[WARN] Homepage: config-as-code bootstrap skipped. Set homepage.required=true to fail the bootstrap instead."
       }
     ]
   },

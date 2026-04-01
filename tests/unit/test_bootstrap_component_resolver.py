@@ -177,7 +177,7 @@ class BootstrapComponentResolverTests(unittest.TestCase):
                 },
                 "bootstrap_job": {
                     "phase_plan": [
-                        {"operation": "resolve_bootstrap_config"},
+                        {"operation": "prepare_bootstrap_job_config"},
                         {"operation": "ensure_bootstrap_pvc_prereqs"},
                     ]
                 },
@@ -196,7 +196,7 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         )
         self.assertEqual(
             [step.operation for step in job_plan],
-            ["resolve_bootstrap_config", "ensure_bootstrap_pvc_prereqs"],
+            ["prepare_bootstrap_job_config", "ensure_bootstrap_pvc_prereqs"],
         )
 
     def test_resolve_bootstrap_all_components_prefers_declared_components_map(self):

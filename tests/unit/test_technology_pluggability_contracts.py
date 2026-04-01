@@ -74,7 +74,6 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "homepage": {
         "app_service_classes": {"homepage_service"},
         "operation_handlers": {"ensure_homepage_services_config"},
-        "config_resolver_handlers": {"inject_homepage_ingress_hosts"},
     },
 }
 
@@ -108,7 +107,6 @@ def _iter_specs(manifest: dict) -> list[str]:
         "adapter_classes",
         "app_service_classes",
         "operation_handlers",
-        "config_resolver_handlers",
         "before_common_steps",
     ):
         section = manifest.get(section_key) or {}
