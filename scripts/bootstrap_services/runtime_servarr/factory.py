@@ -27,6 +27,7 @@ from bootstrap_services.runtime_core import (
 )
 from bootstrap_services.runtime_service_registry import (
     get_runtime_binding,
+    get_runtime_context_cfg,
     resolve_app_service_class,
 )
 
@@ -61,44 +62,27 @@ def _arr_service(cfg=None) -> ArrService:
     )
 
 
-def _normalize_torrent_technology(token: str) -> str:
+def _canonicalize_technology(token: str) -> str:
     raw = str(token or "").strip().lower()
     if not raw:
         return ""
-    if raw in {"qbit", "qb"}:
-        return "qbittorrent"
-    return raw
-
-
-def _normalize_usenet_technology(token: str) -> str:
-    raw = str(token or "").strip().lower()
-    if not raw:
-        return ""
-    if raw in {"sab"}:
-        return "sabnzbd"
-    if raw in {"nzb"}:
-        return "nzbget"
+    runtime_context = get_runtime_context_cfg()
+    aliases = runtime_context.get("technology_aliases") if isinstance(runtime_context, dict) else {}
+    if isinstance(aliases, dict):
+        alias_value = aliases.get(raw)
+        alias_token = str(alias_value or "").strip().lower()
+        if alias_token:
+            return alias_token
     return raw
 
 
 def _infer_torrent_client_technology(cfg=None) -> str:
     if isinstance(cfg, dict):
         for key in ("_technology_key", "_technology", "technology", "client_key"):
-            value = _normalize_torrent_technology(str(cfg.get(key) or ""))
+            value = _canonicalize_technology(str(cfg.get(key) or ""))
             if value:
                 return value
-        impl = _normalize_torrent_technology(str(cfg.get("implementation") or ""))
-        if impl:
-            return impl
-        name = _normalize_torrent_technology(str(cfg.get("name") or ""))
-        if name in {"qbittorrent", "transmission"}:
-            return name
-        url_token = str(cfg.get("url") or "").strip().lower()
-        if "qbittorrent" in url_token or "qbit" in url_token:
-            return "qbittorrent"
-        if "transmission" in url_token:
-            return "transmission"
-    runtime_bound = _normalize_torrent_technology(get_runtime_binding("torrent_client"))
+    runtime_bound = _canonicalize_technology(get_runtime_binding("torrent_client"))
     if runtime_bound:
         return runtime_bound
     return ""
@@ -107,25 +91,10 @@ def _infer_torrent_client_technology(cfg=None) -> str:
 def _infer_usenet_client_technology(cfg=None) -> str:
     if isinstance(cfg, dict):
         for key in ("_technology_key", "_technology", "technology", "client_key"):
-            value = _normalize_usenet_technology(str(cfg.get(key) or ""))
+            value = _canonicalize_technology(str(cfg.get(key) or ""))
             if value:
                 return value
-        impl = _normalize_usenet_technology(str(cfg.get("implementation") or ""))
-        if impl:
-            return impl
-        name = _normalize_usenet_technology(str(cfg.get("name") or ""))
-        if name in {"sabnzbd", "nzbget", "jdownloader", "grabit"}:
-            return name
-        url_token = str(cfg.get("url") or "").strip().lower()
-        if "sabnzbd" in url_token or "sab" in url_token:
-            return "sabnzbd"
-        if "nzbget" in url_token:
-            return "nzbget"
-        if "jdownloader" in url_token:
-            return "jdownloader"
-        if "grabit" in url_token:
-            return "grabit"
-    runtime_bound = _normalize_usenet_technology(get_runtime_binding("usenet_client"))
+    runtime_bound = _canonicalize_technology(get_runtime_binding("usenet_client"))
     if runtime_bound:
         return runtime_bound
     return ""
@@ -153,7 +122,12 @@ def _torrent_client_service(cfg=None) -> Any:
 
 
 def _usenet_client_service(cfg=None) -> Any:
-    technology = _infer_usenet_client_technology(cfg) or "sabnzbd"
+    technology = _infer_usenet_client_technology(cfg)
+    if not technology:
+        raise RuntimeError(
+            "Unable to resolve active usenet client technology for runtime operation. "
+            "Set technology_bindings.usenet_client and ensure runtime context is initialized."
+        )
     service_cls = resolve_app_service_class(
         "usenet_client_service",
         object,
@@ -168,12 +142,6 @@ def _usenet_client_service(cfg=None) -> Any:
         resolve_path=resolve_path,
         log=log,
     )
-
-
-def _qbit_service(cfg=None) -> Any:
-    """Compatibility alias retained while runtime code migrates to generic naming."""
-    return _torrent_client_service(cfg)
-
 
 def _prowlarr_service(cfg=None) -> Any:
     service_cls = resolve_app_service_class("prowlarr_service", object, technology="prowlarr")
@@ -192,12 +160,6 @@ def _arr_indexer_sync_service(cfg=None) -> ArrIndexerSyncService:
         detect_arr_api_base=_detect_arr_api_base,
         log=log,
     )
-
-
-def _sabnzbd_service(cfg=None) -> Any:
-    """Compatibility alias retained while runtime code migrates to generic naming."""
-    return _usenet_client_service(cfg)
-
 
 def _servarr_policy_service(cfg=None) -> Any:
     service_cls = resolve_app_service_class("servarr_policy_service", object)
