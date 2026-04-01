@@ -14,6 +14,7 @@ import bootstrap_services.entrypoint_runtime as _rt
 import bootstrap_services.runtime_core as _rt_core
 import bootstrap_services.runtime_media_ops as _rt_media
 import bootstrap_services.runtime_servarr_ops as _rt_servarr
+import bootstrap_services.runtime_servarr.service_ops as _rt_servarr_service_ops
 from bootstrap_services.entrypoint_runtime import *  # noqa: F401,F403
 
 _disk_usage_percent = _rt._disk_usage_percent
@@ -26,6 +27,7 @@ _RUNTIME_SYNC_MODULES = [
     _rt_core,
     _rt_media,
     _rt_servarr,
+    _rt_servarr_service_ops,
 ]
 
 

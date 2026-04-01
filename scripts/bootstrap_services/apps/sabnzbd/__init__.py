@@ -1,5 +1,5 @@
-"""SABnzbd app services."""
+"""SABnzbd app package."""
 
-from .service import SabnzbdService
+from bootstrap_services.sabnzbd_service import SabnzbdService
 
 __all__ = ["SabnzbdService"]

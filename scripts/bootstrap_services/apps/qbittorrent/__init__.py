@@ -1,5 +1,5 @@
-"""qBittorrent app services."""
+"""qBittorrent app package."""
 
-from .service import QBittorrentService
+from bootstrap_services.qbit_service import QBittorrentService
 
 __all__ = ["QBittorrentService"]

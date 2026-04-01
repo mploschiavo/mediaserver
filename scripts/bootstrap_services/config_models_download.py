@@ -261,16 +261,11 @@ class TechnologyBindingsConfig:
     def from_dict(
         cls,
         data: dict[str, Any] | None,
-        defaults: dict[str, Any] | None = None,
     ) -> "TechnologyBindingsConfig":
         src = dict(data or {})
-        default_src = dict(defaults or {})
-        default_torrent = str(default_src.get("torrent_client", "")).strip().lower()
-        default_usenet = str(default_src.get("usenet_client", "")).strip().lower()
-        default_media_server = str(default_src.get("media_server", "")).strip().lower()
         return cls(
-            torrent_client=str(src.get("torrent_client", default_torrent)).strip().lower() or default_torrent,
-            usenet_client=str(src.get("usenet_client", default_usenet)).strip().lower() or default_usenet,
-            media_server=str(src.get("media_server", default_media_server)).strip().lower() or default_media_server,
+            torrent_client=str(src.get("torrent_client", "")).strip().lower(),
+            usenet_client=str(src.get("usenet_client", "")).strip().lower(),
+            media_server=str(src.get("media_server", "")).strip().lower(),
             raw=src,
         )

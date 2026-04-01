@@ -75,20 +75,19 @@ def basic_checks(cfg):
                     continue
                 aliases[src_key] = dst_key
 
-    default_bindings = adapter_hooks.get("default_bindings")
-    if default_bindings is not None and not isinstance(default_bindings, dict):
-        errors.append("$.adapter_hooks.default_bindings: must be an object")
-        default_bindings = {}
-    if not isinstance(default_bindings, dict):
-        default_bindings = {}
-
-    def _bound_key(name: str, default: str) -> str:
-        default_value = str(default_bindings.get(name, default) or "").strip().lower() or default
-        value = str(bindings.get(name, default_value) or "").strip().lower() or default_value
+    def _bound_key(name: str) -> str:
+        value = str(bindings.get(name, "") or "").strip().lower()
         return aliases.get(value, value)
 
-    torrent_client_key = _bound_key("torrent_client", "qbittorrent")
-    usenet_client_key = _bound_key("usenet_client", "sabnzbd")
+    torrent_client_key = _bound_key("torrent_client")
+    usenet_client_key = _bound_key("usenet_client")
+    media_server_key = _bound_key("media_server")
+    if not torrent_client_key:
+        errors.append("$.technology_bindings.torrent_client: required non-empty string")
+    if not usenet_client_key:
+        errors.append("$.technology_bindings.usenet_client: required non-empty string")
+    if not media_server_key:
+        errors.append("$.technology_bindings.media_server: required non-empty string")
 
     if isinstance(clients, dict):
         for name in (torrent_client_key, usenet_client_key):
@@ -117,16 +116,6 @@ def basic_checks(cfg):
                 if ":" not in str(spec):
                     errors.append(
                         f"{path}: invalid hook spec '{spec}' (expected module.submodule:Symbol)"
-                    )
-
-        if isinstance(default_bindings, dict):
-            for role in ("torrent_client", "usenet_client", "media_server"):
-                if role not in default_bindings:
-                    continue
-                token = str(default_bindings.get(role) or "").strip()
-                if not token:
-                    errors.append(
-                        f"$.adapter_hooks.default_bindings.{role}: required non-empty string"
                     )
 
         _validate_media_server_operation_plans(

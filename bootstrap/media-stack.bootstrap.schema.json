@@ -6,7 +6,8 @@
   "required": [
     "prowlarr_url",
     "arr_apps",
-    "download_clients"
+    "download_clients",
+    "technology_bindings"
   ],
   "properties": {
     "prowlarr_url": {
@@ -44,6 +45,16 @@
         },
         "additionalProperties": true
       }
+    },
+    "technology_bindings": {
+      "type": "object",
+      "required": ["torrent_client", "usenet_client", "media_server"],
+      "properties": {
+        "torrent_client": {"type": "string", "minLength": 1},
+        "usenet_client": {"type": "string", "minLength": 1},
+        "media_server": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
     },
     "arr_quality_upgrade": {
       "type": "object",
@@ -181,15 +192,6 @@
     "adapter_hooks": {
       "type": "object",
       "properties": {
-        "default_bindings": {
-          "type": "object",
-          "properties": {
-            "torrent_client": {"type": "string"},
-            "usenet_client": {"type": "string"},
-            "media_server": {"type": "string"}
-          },
-          "additionalProperties": true
-        },
         "before_common_steps": {
           "type": "object",
           "additionalProperties": {"type": "string"}

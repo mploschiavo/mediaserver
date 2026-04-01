@@ -32,8 +32,6 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
                 "SECRET_NAME": "secret-x",
                 "DEFAULT_STACK_ADMIN_USER": "u1",
                 "DEFAULT_STACK_ADMIN_PASS": "p1",
-                "QBIT_USE_STACK_ADMIN": "0",
-                "QBIT_WRITE_LEGACY_SECRET_KEYS": "1",
             },
             clear=False,
         ):
@@ -43,8 +41,6 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
         self.assertEqual(cfg.secret_name, "secret-x")
         self.assertEqual(cfg.default_stack_admin_user, "u1")
         self.assertEqual(cfg.default_stack_admin_pass, "p1")
-        self.assertFalse(cfg.qbit_use_stack_admin)
-        self.assertTrue(cfg.qbit_write_legacy_secret_keys)
 
     def test_resolve_target_credentials_prefers_stack_admin_when_enabled(self):
         cfg = self.mod.EnsureQbitCredentialsConfig(
@@ -52,8 +48,6 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
             secret_name="media-stack-secrets",
             default_stack_admin_user="admin",
             default_stack_admin_pass="stack-pass",
-            default_qbit_user="qb-user",
-            default_qbit_pass="qb-pass",
             rollout_timeout="5m",
             qbit_wait_seconds=120,
             qbit_deployment="qbittorrent",
@@ -61,39 +55,18 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
             qbit_force_config_sync=True,
             qbit_strict_login_check=False,
             qbit_api_validation=False,
-            qbit_use_stack_admin=True,
-            qbit_write_legacy_secret_keys=False,
         )
 
         resolved = self.mod.resolve_target_credentials(
             cfg,
             stack_admin_user="stack-user",
             stack_admin_pass="stack-pass",
-            legacy_qb_user="legacy-user",
-            legacy_qb_pass="legacy-pass",
         )
 
         self.assertEqual(resolved.qb_user, "stack-user")
         self.assertEqual(resolved.qb_pass, "stack-pass")
 
-    def test_build_secret_patch_includes_legacy_when_stack_admin_disabled(self):
-        cfg = self.mod.EnsureQbitCredentialsConfig(
-            namespace="media-stack",
-            secret_name="media-stack-secrets",
-            default_stack_admin_user="admin",
-            default_stack_admin_pass="stack-pass",
-            default_qbit_user="qb-user",
-            default_qbit_pass="qb-pass",
-            rollout_timeout="5m",
-            qbit_wait_seconds=120,
-            qbit_deployment="qbittorrent",
-            force_reset_on_auth_failure=True,
-            qbit_force_config_sync=True,
-            qbit_strict_login_check=False,
-            qbit_api_validation=False,
-            qbit_use_stack_admin=False,
-            qbit_write_legacy_secret_keys=False,
-        )
+    def test_build_secret_patch_writes_stack_admin_only(self):
         creds = self.mod.CredentialResolution(
             stack_admin_user="admin",
             stack_admin_pass="stack-pass",
@@ -101,9 +74,9 @@ class EnsureQbitCredentialsCliTests(unittest.TestCase):
             qb_pass="qb-pass",
         )
 
-        patch = self.mod.build_secret_patch(cfg, creds)
-        self.assertIn("QBITTORRENT_USERNAME", patch["stringData"])
-        self.assertIn("QBITTORRENT_PASSWORD", patch["stringData"])
+        patch = self.mod.build_secret_patch(creds)
+        self.assertNotIn("QBITTORRENT_USERNAME", patch["stringData"])
+        self.assertNotIn("QBITTORRENT_PASSWORD", patch["stringData"])
 
 
 if __name__ == "__main__":

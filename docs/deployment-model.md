@@ -25,8 +25,7 @@ Profile manifests live in `k8s/profiles/*`.
 
 ## Storage Modes
 
-- `dynamic-pvc` (default): StorageClass/PVC-driven and portable across clusters.
-- `legacy-hostpath`: keeps node-local host directory prep flow for single-node setups.
+- `dynamic-pvc` (required): StorageClass/PVC-driven and portable across clusters.
 
 Example:
 ```bash
@@ -65,7 +64,6 @@ bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ## Multi-Node / Remote Operator Note
 
 Default mode is StorageClass/PVC-driven, so remote operators can apply manifests from any machine with cluster access.
-If you intentionally run `--storage-mode legacy-hostpath`, run host prep helpers on the target node hosting `/srv/media-stack`.
 
 ---
 

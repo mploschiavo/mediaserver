@@ -61,6 +61,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             fully_preconfigured=True,
             wait_timeout=30,
             adapter_hooks_cfg={},
+            torrent_client_key="qbittorrent",
+            usenet_client_key="sabnzbd",
         )
         base.update(overrides)
         return DownloadClientPipelineInputs(**base)

@@ -31,7 +31,6 @@ class SetQbitSecretCliTests(unittest.TestCase):
                 "NAMESPACE": "media-stack-dev",
                 "DEFAULT_STACK_ADMIN_USER": "adminx",
                 "DEFAULT_STACK_ADMIN_PASS": "passx",
-                "WRITE_LEGACY_QBIT_KEYS": "1",
             },
             clear=False,
         ):
@@ -39,7 +38,6 @@ class SetQbitSecretCliTests(unittest.TestCase):
         self.assertEqual(cfg.namespace, "media-stack-dev")
         self.assertEqual(cfg.username, "adminx")
         self.assertEqual(cfg.password, "passx")
-        self.assertTrue(cfg.write_legacy_qbit_keys)
 
     def test_parse_config_rejects_partial_credentials(self):
         with self.assertRaises(self.mod.ConfigError):
@@ -50,7 +48,6 @@ class SetQbitSecretCliTests(unittest.TestCase):
             namespace="media-stack",
             username="admin",
             password="secret",
-            write_legacy_qbit_keys=False,
         )
         with mock.patch.object(self.mod, "resolve_kubectl_binary", return_value=["kubectl"]):
             with mock.patch.object(self.mod, "_secret_exists", return_value=True):

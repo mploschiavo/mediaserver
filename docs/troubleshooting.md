@@ -123,8 +123,6 @@ Symptoms:
 Actions:
 ```bash
 bash scripts/bootstrap-all.sh
-# legacy-hostpath mode only:
-sudo PUID=911 PGID=911 bash scripts/fix-media-perms.sh /srv/media-stack
 ```
 
 ## 4) Jellyfin Shows Wizard Again

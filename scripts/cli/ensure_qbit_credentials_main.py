@@ -60,8 +60,6 @@ class EnsureQbitCredentialsConfig:
     secret_name: str
     default_stack_admin_user: str
     default_stack_admin_pass: str
-    default_qbit_user: str
-    default_qbit_pass: str
     rollout_timeout: str
     qbit_wait_seconds: int
     qbit_deployment: str
@@ -69,8 +67,6 @@ class EnsureQbitCredentialsConfig:
     qbit_force_config_sync: bool
     qbit_strict_login_check: bool
     qbit_api_validation: bool
-    qbit_use_stack_admin: bool
-    qbit_write_legacy_secret_keys: bool
 
 
 @dataclass(frozen=True)
@@ -139,8 +135,6 @@ def parse_config(argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
         secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets").strip() or "media-stack-secrets",
         default_stack_admin_user=default_stack_admin_user,
         default_stack_admin_pass=default_stack_admin_pass,
-        default_qbit_user=(os.environ.get("DEFAULT_QBIT_USER", default_stack_admin_user).strip() or default_stack_admin_user),
-        default_qbit_pass=(os.environ.get("DEFAULT_QBIT_PASS", default_stack_admin_pass).strip() or default_stack_admin_pass),
         rollout_timeout=os.environ.get("ROLL_OUT_TIMEOUT", "5m").strip() or "5m",
         qbit_wait_seconds=max(1, int(os.environ.get("QBIT_WAIT_SECONDS", "120"))),
         qbit_deployment=os.environ.get("QBIT_DEPLOYMENT", "qbittorrent").strip() or "qbittorrent",
@@ -148,8 +142,6 @@ def parse_config(argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
         qbit_force_config_sync=_truthy(os.environ.get("QBIT_FORCE_CONFIG_SYNC", "1"), default=True),
         qbit_strict_login_check=_truthy(os.environ.get("QBIT_STRICT_LOGIN_CHECK", "0"), default=False),
         qbit_api_validation=_truthy(os.environ.get("QBIT_API_VALIDATION", "0"), default=False),
-        qbit_use_stack_admin=_truthy(os.environ.get("QBIT_USE_STACK_ADMIN", "1"), default=True),
-        qbit_write_legacy_secret_keys=_truthy(os.environ.get("QBIT_WRITE_LEGACY_SECRET_KEYS", "0"), default=False),
     )
 
 
@@ -179,40 +171,23 @@ def resolve_target_credentials(
     *,
     stack_admin_user: str,
     stack_admin_pass: str,
-    legacy_qb_user: str,
-    legacy_qb_pass: str,
 ) -> CredentialResolution:
     resolved_stack_user = stack_admin_user or cfg.default_stack_admin_user
     resolved_stack_pass = stack_admin_pass if stack_admin_pass and stack_admin_pass != "change-me" else cfg.default_stack_admin_pass
 
-    qb_user = resolved_stack_user
-    qb_pass = resolved_stack_pass
-
-    if not cfg.qbit_use_stack_admin:
-        qb_user = legacy_qb_user or cfg.default_qbit_user
-        qb_pass = (
-            legacy_qb_pass
-            if legacy_qb_pass and legacy_qb_pass != "change-me"
-            else cfg.default_qbit_pass
-        )
-
     return CredentialResolution(
         stack_admin_user=resolved_stack_user,
         stack_admin_pass=resolved_stack_pass,
-        qb_user=qb_user,
-        qb_pass=qb_pass,
+        qb_user=resolved_stack_user,
+        qb_pass=resolved_stack_pass,
     )
 
 
-def build_secret_patch(cfg: EnsureQbitCredentialsConfig, creds: CredentialResolution) -> dict[str, dict[str, str]]:
-    write_legacy = cfg.qbit_write_legacy_secret_keys or not cfg.qbit_use_stack_admin
+def build_secret_patch(creds: CredentialResolution) -> dict[str, dict[str, str]]:
     string_data: dict[str, str] = {
         "STACK_ADMIN_USERNAME": creds.stack_admin_user,
         "STACK_ADMIN_PASSWORD": creds.stack_admin_pass,
     }
-    if write_legacy:
-        string_data["QBITTORRENT_USERNAME"] = creds.qb_user
-        string_data["QBITTORRENT_PASSWORD"] = creds.qb_pass
     return {"stringData": string_data}
 
 
@@ -491,18 +466,14 @@ def run(cfg: EnsureQbitCredentialsConfig) -> int:
 
     stack_admin_user = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_USERNAME")
     stack_admin_pass = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_PASSWORD")
-    legacy_qb_user = kube.get_secret_value(cfg.secret_name, "QBITTORRENT_USERNAME")
-    legacy_qb_pass = kube.get_secret_value(cfg.secret_name, "QBITTORRENT_PASSWORD")
 
     creds = resolve_target_credentials(
         cfg,
         stack_admin_user=stack_admin_user,
         stack_admin_pass=stack_admin_pass,
-        legacy_qb_user=legacy_qb_user,
-        legacy_qb_pass=legacy_qb_pass,
     )
 
-    patch_secret(kube, cfg, build_secret_patch(cfg, creds))
+    patch_secret(kube, cfg, build_secret_patch(creds))
     print(
         f"[OK] Secret {cfg.namespace}/{cfg.secret_name} now has qBittorrent credentials for user '{creds.qb_user}'."
     )

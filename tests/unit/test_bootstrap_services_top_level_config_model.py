@@ -15,6 +15,11 @@ class TopLevelBootstrapConfigModelTests(unittest.TestCase):
                 "prowlarr_url": "http://prowlarr:9696",
                 "arr_apps": [],
                 "download_clients": {},
+                "technology_bindings": {
+                    "torrent_client": "qbittorrent",
+                    "usenet_client": "sabnzbd",
+                    "media_server": "jellyfin",
+                },
                 "prowlarr_indexer_reputation": {"enabled": True},
                 "arr_indexer_sync": {"prune_stale_indexers": True},
                 "unknown_key": {"value": 1},

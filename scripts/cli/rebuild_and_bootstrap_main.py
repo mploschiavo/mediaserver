@@ -289,9 +289,10 @@ class RebuildBootstrapRunner:
         self.cfg.ingress_domain = self.cfg.ingress_domain.lstrip(".").strip()
         if not self.cfg.ingress_domain:
             raise RebuildError("INGRESS_DOMAIN cannot be empty.")
-        if self.cfg.storage_mode not in {"dynamic-pvc", "legacy-hostpath"}:
+        if self.cfg.storage_mode != "dynamic-pvc":
             raise RebuildError(
-                f"Unsupported STORAGE_MODE '{self.cfg.storage_mode}'. Use dynamic-pvc|legacy-hostpath."
+                f"Unsupported STORAGE_MODE '{self.cfg.storage_mode}'. "
+                "legacy-hostpath was removed; use dynamic-pvc."
             )
         if self.cfg.profile not in {"minimal", "full", "public-demo", "power-user"}:
             raise RebuildError(

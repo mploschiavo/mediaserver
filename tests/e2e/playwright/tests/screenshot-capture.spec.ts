@@ -26,8 +26,8 @@ const screenshotDir =
 const strictMode = (process.env.STACK_SCREENSHOT_STRICT || '0') === '1';
 const stackAdminUsername = process.env.STACK_ADMIN_USERNAME || 'admin';
 const stackAdminPassword = process.env.STACK_ADMIN_PASSWORD || 'media-stack-admin';
-const qbUsername = process.env.QBITTORRENT_USERNAME || stackAdminUsername;
-const qbPassword = process.env.QBITTORRENT_PASSWORD || stackAdminPassword;
+const qbUsername = stackAdminUsername;
+const qbPassword = stackAdminPassword;
 const jellyseerrUsername = process.env.JELLYSEERR_USERNAME || stackAdminUsername;
 const jellyseerrPassword = process.env.JELLYSEERR_PASSWORD || stackAdminPassword;
 const sabUsername = process.env.SABNZBD_USERNAME || stackAdminUsername;

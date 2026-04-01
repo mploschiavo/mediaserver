@@ -26,12 +26,11 @@ class RebuildPipelineService:
     run_script: RunScriptFn
 
     def prepare_host_directories(self, storage_mode: str) -> bool:
-        if storage_mode != "legacy-hostpath":
-            self.info(f"Skipping host directory prep (storage mode: {storage_mode})")
-            return False
-        self.info(f"Preparing host directories under {self.cfg.prepare_host_root}")
-        self.run_script("prepare-host.sh", self.cfg.prepare_host_root)
-        return True
+        self.info(
+            "Skipping host directory prep (dynamic PVC mode only; "
+            f"requested storage mode: {storage_mode})."
+        )
+        return False
 
     def generate_secrets(self) -> None:
         self.info("Generating secure secrets in cluster before bootstrap")

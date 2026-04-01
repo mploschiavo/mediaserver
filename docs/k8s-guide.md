@@ -63,7 +63,6 @@ bash scripts/test.sh
 # installer wizard with profile selection
 bash scripts/install.sh --profile full --node-ip <NODE_IP>
 bash scripts/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
-bash scripts/install.sh --profile full --storage-mode legacy-hostpath --node-ip <NODE_IP>
 
 # deterministic rebuild + verification (recommended for DR confidence)
 bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
@@ -275,8 +274,6 @@ bash scripts/microk8s-reconcile.sh --include-optional
 
 If Arr apps fail to add root folders with `Folder '/media/' is not writable by user 'abc'`:
 ```bash
-# legacy-hostpath mode only:
-sudo PUID=911 PGID=911 bash scripts/fix-media-perms.sh /srv/media-stack
 kubectl -n media-stack rollout restart deploy/sonarr deploy/radarr deploy/lidarr deploy/readarr deploy/bazarr deploy/prowlarr deploy/qbittorrent
 ```
 
