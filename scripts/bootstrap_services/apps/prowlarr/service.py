@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from .apps.prowlarr.application_ops import (
+from .application_ops import (
     ensure_application,
     find_existing_application,
     resolve_schema_contract,
     trigger_sync,
 )
-from .apps.prowlarr.indexer_ops import build_indexer_payload, ensure_indexer
-from .apps.prowlarr.proxy_ops import ensure_flaresolverr_proxy
-from .apps.prowlarr.reputation_ops import (
+from .indexer_ops import build_indexer_payload, ensure_indexer
+from .proxy_ops import ensure_flaresolverr_proxy
+from .reputation_ops import (
     auto_add_tested_indexers,
     coerce_exclude_name_tokens,
     load_reputation_state,
@@ -122,4 +122,3 @@ class ProwlarrService:
         reputation_cfg: dict[str, Any] | None = None,
     ) -> None:
         auto_add_tested_indexers(self, prowlarr_url, prowlarr_key, exclude_name_tokens, reputation_cfg)
-

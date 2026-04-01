@@ -131,13 +131,17 @@ def main():
             ensure_maintainerr_policy=runtime_media_ops.ensure_maintainerr_policy,
             ensure_maintainerr_integrations=runtime_media_ops.ensure_maintainerr_integrations,
             ensure_homepage_services_config=runtime_media_ops.ensure_homepage_services_config,
-            ensure_prowlarr_ready=runtime_servarr_ops.ensure_prowlarr_ready,
-            ensure_prowlarr_flaresolverr_proxy=runtime_servarr_ops.ensure_prowlarr_flaresolverr_proxy,
-            ensure_prowlarr_indexer=runtime_servarr_ops.ensure_prowlarr_indexer,
-            auto_add_tested_indexers=runtime_servarr_ops.auto_add_tested_indexers,
-            trigger_prowlarr_sync=runtime_servarr_ops.trigger_prowlarr_sync,
-            sync_arr_indexers_from_prowlarr=runtime_servarr_ops.sync_arr_indexers_from_prowlarr,
-            run_prowlarr_indexer_pipeline=runtime_servarr_ops.run_prowlarr_indexer_pipeline,
+            ensure_prowlarr_ready=_missing_op_handler("ensure_prowlarr_ready"),
+            ensure_prowlarr_flaresolverr_proxy=_missing_op_handler(
+                "ensure_prowlarr_flaresolverr_proxy"
+            ),
+            ensure_prowlarr_indexer=_missing_op_handler("ensure_prowlarr_indexer"),
+            auto_add_tested_indexers=_missing_op_handler("auto_add_tested_indexers"),
+            trigger_prowlarr_sync=_missing_op_handler("trigger_prowlarr_sync"),
+            sync_arr_indexers_from_prowlarr=_missing_op_handler(
+                "sync_arr_indexers_from_prowlarr"
+            ),
+            run_prowlarr_indexer_pipeline=_missing_op_handler("run_prowlarr_indexer_pipeline"),
         ),
         operation_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("operation_handlers"),
     )
