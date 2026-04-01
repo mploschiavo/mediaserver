@@ -3,19 +3,17 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, MediaStackError
 from core.kube import KubectlClient
 
-from cli.bootstrap_config_resolver_service import (
-    BootstrapConfigResolverConfig,
-    BootstrapConfigResolverService,
-)
 from cli.bootstrap_core_phases_service import (
     BootstrapCorePhasesConfig,
     BootstrapCorePhasesService,
@@ -165,18 +163,6 @@ class RunBootstrapJobRunner:
             warn=warn,
         )
 
-    def _config_resolver_service(self) -> BootstrapConfigResolverService:
-        return BootstrapConfigResolverService(
-            cfg=BootstrapConfigResolverConfig(
-                namespace=self.cfg.namespace,
-                ingress_name=self.cfg.ingress_name,
-                config_file=self.cfg.config_file,
-                job_config_file=self.artifacts.job_config_file,
-            ),
-            kube=self.kube,
-            info=info,
-        )
-
     def _jellyfin_plugin_service(self) -> JellyfinPluginActivationService:
         return JellyfinPluginActivationService(
             cfg=JellyfinPluginActivationConfig(namespace=self.cfg.namespace),
@@ -256,7 +242,7 @@ class RunBootstrapJobRunner:
                 run_phase=self._run_phase,
                 run_script=self._run_script,
                 operation_handlers={
-                    "resolve_bootstrap_config": self.resolve_bootstrap_config,
+                    "prepare_bootstrap_job_config": self.prepare_bootstrap_job_config,
                     "ensure_bootstrap_pvc_prereqs": self.ensure_bootstrap_pvc_prereqs,
                     "prime_servarr_api_keys_secret": self.prime_servarr_api_keys_secret,
                     "prime_usenet_client_api_key_secret": self.prime_usenet_client_api_key_secret,
@@ -328,8 +314,19 @@ class RunBootstrapJobRunner:
     def ensure_bootstrap_pvc_prereqs(self) -> None:
         self._manifest_service().ensure_bootstrap_pvc_prereqs()
 
-    def resolve_bootstrap_config(self) -> None:
-        self._config_resolver_service().resolve_bootstrap_config()
+    def prepare_bootstrap_job_config(self) -> None:
+        payload = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ConfigError(f"Expected JSON object in {self.cfg.config_file}")
+        try:
+            cfg = TopLevelBootstrapConfig.from_dict(payload).to_dict()
+        except ValueError as exc:
+            raise ConfigError(f"Invalid bootstrap config at {self.cfg.config_file}: {exc}") from exc
+        self.artifacts.job_config_file.write_text(
+            json.dumps(cfg, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        info(f"Prepared bootstrap job config: {self.artifacts.job_config_file}")
 
     def prime_servarr_api_keys_secret(self) -> None:
         self._secret_priming_service().prime_servarr_api_keys()

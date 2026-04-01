@@ -7,9 +7,6 @@
   "operation_handlers": {
     "ensure_homepage_services_config": "bootstrap_services.apps.homepage.runtime_ops:ensure_homepage_services_config"
   },
-  "config_resolver_handlers": {
-    "inject_homepage_ingress_hosts": "bootstrap_services.apps.homepage.config_resolver_service:inject_ingress_hosts"
-  },
   "service_technology_map": {
     "homepage_service": "homepage"
   }
