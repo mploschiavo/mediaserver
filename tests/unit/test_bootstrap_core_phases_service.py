@@ -18,8 +18,7 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
                 namespace="media-stack",
                 prepare_host_root="/srv/media-stack",
-                skip_qbit_ensure=True,
-                skip_sab_ensure=False,
+                phase_skip_flags={"skip_torrent_client_ensure": True},
             )
         )
         phases: list[tuple[str, bool]] = []

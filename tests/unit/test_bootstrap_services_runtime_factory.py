@@ -210,6 +210,33 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         self.assertEqual(result.runtime.qbit_cfg.get("name"), "Transmission")
         self.assertEqual(result.runtime.media_server_backend, "emby")
 
+    def test_runtime_factory_allows_missing_optional_usenet_binding(self):
+        factory = self._factory()
+        cfg = {
+            "config_version": 2,
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "transmission",
+                "media_server": "emby",
+            },
+            "download_clients": {
+                "transmission": {
+                    "url": "http://transmission:9091",
+                    "name": "Transmission",
+                    "configure_arr_clients": True,
+                }
+            },
+        }
+
+        with self._qbit_env():
+            result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertEqual(result.runtime.torrent_client_key, "transmission")
+        self.assertEqual(result.runtime.usenet_client_key, "")
+        self.assertEqual(result.runtime.sab_cfg, {})
+        self.assertFalse(result.runtime.configure_sab_arr_clients)
+
     def test_technology_bindings_apply_aliases_from_plugin_manifests(self):
         factory = self._factory()
         cfg = {

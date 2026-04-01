@@ -271,6 +271,21 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
         invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_called_once()
         invoke.handlers[RunnerOperation.READ_SABNZBD_API_KEY.value].assert_not_called()
 
+    def test_pipeline_allows_missing_usenet_binding(self):
+        invoke = self._invoke()
+        service = self._service(invoke)
+        result = service.run_prepare(
+            self._inputs(
+                usenet_client_key="",
+                sab_cfg={},
+                configure_sab_arr_clients=False,
+            )
+        )
+        self.assertTrue(result.qbit_login_ok)
+        self.assertEqual(result.sab_api_key, "")
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_called_once()
+        invoke.handlers[RunnerOperation.READ_SABNZBD_API_KEY.value].assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -38,8 +38,188 @@
       }
     },
     "bootstrap_all": {
+      "phase_plan": [
+        {
+          "operation": "ensure_torrent_client_access",
+          "skip_flag": "skip_torrent_client_ensure",
+          "when": {
+            "all_of": [
+              {
+                "any_of": [
+                  {
+                    "var": "selected.torrent_client.configure_arr_clients",
+                    "truthy": true
+                  },
+                  {
+                    "var": "selected.torrent_client.set_categories_in_qbit",
+                    "truthy": true
+                  },
+                  {
+                    "var": "selected.torrent_client.set_categories",
+                    "truthy": true
+                  }
+                ]
+              },
+              {
+                "var": "scripts.torrent_client_credentials",
+                "truthy": true
+              }
+            ]
+          }
+        },
+        {
+          "operation": "ensure_media_server_access",
+          "skip_flag": "skip_media_server_bootstrap",
+          "when": {
+            "var": "scripts.media_server_bootstrap",
+            "truthy": true
+          }
+        },
+        {
+          "operation": "ensure_usenet_client_access",
+          "skip_flag": "skip_usenet_client_ensure",
+          "when": {
+            "all_of": [
+              {
+                "var": "selected.usenet_client.configure_arr_clients",
+                "truthy": true
+              },
+              {
+                "var": "scripts.usenet_client_api_access",
+                "truthy": true
+              }
+            ]
+          }
+        },
+        {
+          "operation": "run_bootstrap_job"
+        },
+        {
+          "operation": "seed_request_manager_local_admin",
+          "when": {
+            "var": "scripts.request_manager_seed_local_admin",
+            "truthy": true
+          }
+        },
+        {
+          "operation": "run_indexer_auto_discovery",
+          "when": {
+            "all_of": [
+              {
+                "var": "config.prowlarr_url",
+                "truthy": true
+              },
+              {
+                "var": "scripts.indexer_auto_discovery",
+                "truthy": true
+              }
+            ]
+          }
+        },
+        {
+          "operation": "enable_workers",
+          "when": {
+            "var": "flags.enable_workers",
+            "equals": true
+          }
+        }
+      ],
       "enable_workers": [
         "unpackerr"
+      ]
+    },
+    "bootstrap_job": {
+      "phase_plan": [
+        {
+          "operation": "ensure_torrent_client_access",
+          "skip_flag": "skip_torrent_client_ensure",
+          "when": {
+            "all_of": [
+              {
+                "any_of": [
+                  {
+                    "var": "selected.torrent_client.configure_arr_clients",
+                    "truthy": true
+                  },
+                  {
+                    "var": "selected.torrent_client.set_categories_in_qbit",
+                    "truthy": true
+                  },
+                  {
+                    "var": "selected.torrent_client.set_categories",
+                    "truthy": true
+                  }
+                ]
+              },
+              {
+                "var": "scripts.torrent_client_credentials",
+                "truthy": true
+              }
+            ]
+          }
+        },
+        {
+          "operation": "ensure_usenet_client_access",
+          "skip_flag": "skip_usenet_client_ensure",
+          "when": {
+            "all_of": [
+              {
+                "var": "selected.usenet_client.configure_arr_clients",
+                "truthy": true
+              },
+              {
+                "var": "scripts.usenet_client_api_access",
+                "truthy": true
+              }
+            ]
+          }
+        },
+        {
+          "operation": "resolve_bootstrap_config"
+        },
+        {
+          "operation": "ensure_bootstrap_pvc_prereqs"
+        },
+        {
+          "operation": "prime_servarr_api_keys_secret"
+        },
+        {
+          "operation": "prime_usenet_client_api_key_secret",
+          "when": {
+            "var": "bindings.usenet_client",
+            "in": [
+              "sabnzbd"
+            ]
+          }
+        },
+        {
+          "operation": "prime_request_manager_api_key_secret",
+          "when": {
+            "var": "bindings.request_manager",
+            "in": [
+              "jellyseerr"
+            ]
+          }
+        },
+        {
+          "operation": "prime_tautulli_api_key_secret",
+          "when": {
+            "var": "config.maintainerr.integrations.tautulli.enabled",
+            "truthy": true
+          }
+        },
+        {
+          "operation": "update_bootstrap_configmaps"
+        },
+        {
+          "operation": "recreate_bootstrap_job"
+        },
+        {
+          "operation": "wait_for_bootstrap_job"
+        },
+        {
+          "operation": "print_bootstrap_job_logs"
+        }
       ]
     }
   },

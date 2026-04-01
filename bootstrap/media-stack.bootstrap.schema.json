@@ -53,7 +53,7 @@
     },
     "technology_bindings": {
       "type": "object",
-      "required": ["torrent_client", "usenet_client", "media_server"],
+      "required": ["media_server"],
       "properties": {
         "torrent_client": {"type": "string", "minLength": 1},
         "usenet_client": {"type": "string", "minLength": 1},
@@ -319,6 +319,32 @@
               "type": "array",
               "items": {"type": "string"}
             },
+            "phase_plan": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {"type": "string"},
+                  {
+                    "type": "object",
+                    "required": ["operation"],
+                    "properties": {
+                      "operation": {"type": "string", "minLength": 1},
+                      "skip_flag": {"type": "string", "minLength": 1},
+                      "phase_name": {"type": "string", "minLength": 1},
+                      "enabled": {"type": "boolean"},
+                      "when": {
+                        "oneOf": [
+                          {"type": "boolean"},
+                          {"type": "object"},
+                          {"type": "array"}
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
             "worker_manifests": {
               "type": "object",
               "additionalProperties": {"type": "string"}
@@ -326,6 +352,45 @@
             "worker_deployments": {
               "type": "object",
               "additionalProperties": {"type": "string"}
+            }
+          },
+          "additionalProperties": true
+        },
+        "bootstrap_job": {
+          "type": "object",
+          "properties": {
+            "phase_plan": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {"type": "string"},
+                  {
+                    "type": "object",
+                    "required": ["operation"],
+                    "properties": {
+                      "operation": {"type": "string", "minLength": 1},
+                      "skip_flag": {"type": "string", "minLength": 1},
+                      "phase_name": {"type": "string", "minLength": 1},
+                      "enabled": {"type": "boolean"},
+                      "when": {
+                        "oneOf": [
+                          {"type": "boolean"},
+                          {"type": "object"},
+                          {"type": "array"}
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "supports_phase_bindings": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
             }
           },
           "additionalProperties": true

@@ -167,10 +167,6 @@ class TopLevelBootstrapConfig:
         if request_manager_value is not None and not isinstance(request_manager_value, str):
             raise ValueError("$.technology_bindings.request_manager must be a string")
         technology_bindings_typed = TechnologyBindingsConfig.from_dict(technology_bindings_raw)
-        if not technology_bindings_typed.torrent_client:
-            raise ValueError("$.technology_bindings.torrent_client must be a non-empty string")
-        if not technology_bindings_typed.usenet_client:
-            raise ValueError("$.technology_bindings.usenet_client must be a non-empty string")
         if not technology_bindings_typed.media_server:
             raise ValueError("$.technology_bindings.media_server must be a non-empty string")
         JellyfinLiveTvConfig.from_dict(_expect_dict(src, "jellyfin_livetv", {}))

@@ -50,15 +50,12 @@ class RuntimeBindingResolver:
         aliases = self._aliases(adapter_hooks_cfg)
         configured_download_client_keys = download_clients.configured_keys()
 
-        def _resolve_required_download_client(
+        def _resolve_optional_download_client(
             binding_value: str, binding_name: str
         ) -> tuple[str, dict[str, Any]]:
             canonical = self._canonical(binding_value, aliases)
             if not canonical:
-                raise ValueError(
-                    "Missing technology_bindings."
-                    f"{binding_name}; set it to one of: {', '.join(configured_download_client_keys) or '<none>'}"
-                )
+                return "", {}
             selected = download_clients.get(canonical)
             if not selected:
                 raise ValueError(
@@ -68,11 +65,11 @@ class RuntimeBindingResolver:
                 )
             return canonical, selected.raw
 
-        torrent_client_key, torrent_client_cfg = _resolve_required_download_client(
+        torrent_client_key, torrent_client_cfg = _resolve_optional_download_client(
             technology_bindings.torrent_client,
             "torrent_client",
         )
-        usenet_client_key, usenet_client_cfg = _resolve_required_download_client(
+        usenet_client_key, usenet_client_cfg = _resolve_optional_download_client(
             technology_bindings.usenet_client,
             "usenet_client",
         )

@@ -3,8 +3,21 @@ from __future__ import annotations
 import argparse
 import os
 import re
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+
+SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_ROOT) not in sys.path:  # pragma: no cover - import compatibility shim.
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from core.exceptions import ConfigError  # noqa: E402
+
+from cli.bootstrap_component_resolver import (  # noqa: E402
+    PhaseSkipFlagSpec,
+    resolve_bootstrap_component_plan,
+    resolve_phase_skip_flag_specs,
+)
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -12,6 +25,16 @@ def env_bool(name: str, default: bool = False) -> bool:
     if raw is None:
         return default
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def env_bool_candidates(names: tuple[str, ...], default: bool = False) -> bool:
+    for name in names:
+        token = str(name).strip()
+        if not token:
+            continue
+        if token in os.environ:
+            return env_bool(token, default)
+    return default
 
 
 @dataclass(frozen=True)
@@ -26,8 +49,9 @@ class RunBootstrapJobConfig:
     bootstrap_runner_image: str
     root_dir: Path
     config_file: Path
-    skip_qbit_ensure: bool
-    skip_sab_ensure: bool
+    skip_qbit_ensure: bool = False
+    skip_sab_ensure: bool = False
+    phase_skip_flags: dict[str, bool] = field(default_factory=dict)
 
     @property
     def timeout_seconds(self) -> int:
@@ -45,8 +69,25 @@ class RunBootstrapJobConfig:
             return num
         return 600
 
+    @property
+    def effective_phase_skip_flags(self) -> dict[str, bool]:
+        out = {
+            str(key).strip().lower(): bool(value)
+            for key, value in (self.phase_skip_flags or {}).items()
+            if str(key).strip()
+        }
+        if self.skip_qbit_ensure:
+            out["skip_torrent_client_ensure"] = True
+        if self.skip_sab_ensure:
+            out["skip_usenet_client_ensure"] = True
+        return out
 
-def build_parser(root_dir: Path) -> argparse.ArgumentParser:
+
+def build_parser(
+    root_dir: Path,
+    *,
+    skip_specs: tuple[PhaseSkipFlagSpec, ...] = (),
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run media-stack bootstrap job.\n\n"
@@ -106,26 +147,40 @@ def build_parser(root_dir: Path) -> argparse.ArgumentParser:
         default=os.environ.get("ALERT_WEBHOOK_URL", ""),
         help="Optional webhook for status notifications.",
     )
-    parser.add_argument(
-        "--skip-qbit-ensure",
-        action="store_true",
-        default=env_bool("SKIP_QBIT_ENSURE", False),
-        help="Skip torrent client credential ensure phase (legacy flag name).",
-    )
-    parser.add_argument(
-        "--skip-sab-ensure",
-        action="store_true",
-        default=env_bool("SKIP_SAB_ENSURE", False),
-        help="Skip usenet client API-access ensure phase (legacy flag name).",
-    )
+    for spec in skip_specs:
+        parser.add_argument(
+            *spec.option_strings,
+            dest=f"phase_skip_{spec.key}",
+            action="store_true",
+            default=env_bool_candidates(spec.env_vars, False),
+            help=spec.help,
+        )
     return parser
 
 
 def parse_run_bootstrap_job_config(
     argv: list[str] | None, *, root_dir: Path
 ) -> RunBootstrapJobConfig:
-    parser = build_parser(root_dir)
+    default_config = str(root_dir / "bootstrap" / "media-stack.bootstrap.json")
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("config_file", nargs="?", default=default_config)
+    pre_args, _ = pre_parser.parse_known_args(argv)
+    config_file = Path(str(pre_args.config_file))
+    loaded_cfg: dict[str, object] = {}
+    if config_file.exists():
+        try:
+            loaded_cfg = resolve_bootstrap_component_plan(config_file).config
+        except ConfigError:
+            loaded_cfg = {}
+    skip_specs = resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_job")
+
+    parser = build_parser(root_dir, skip_specs=skip_specs)
     args = parser.parse_args(argv)
+    phase_skip_flags = {
+        spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
+    }
+    skip_qbit_ensure = bool(phase_skip_flags.get("skip_torrent_client_ensure", False))
+    skip_sab_ensure = bool(phase_skip_flags.get("skip_usenet_client_ensure", False))
     return RunBootstrapJobConfig(
         namespace=str(args.namespace).strip() or "media-stack",
         timeout_raw=str(args.timeout).strip() or "10m",
@@ -138,6 +193,7 @@ def parse_run_bootstrap_job_config(
         or "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
         root_dir=root_dir,
         config_file=Path(str(args.config_file)),
-        skip_qbit_ensure=bool(args.skip_qbit_ensure),
-        skip_sab_ensure=bool(args.skip_sab_ensure),
+        skip_qbit_ensure=skip_qbit_ensure,
+        skip_sab_ensure=skip_sab_ensure,
+        phase_skip_flags=phase_skip_flags,
     )

@@ -46,6 +46,20 @@ class TopLevelBootstrapConfigModelTests(unittest.TestCase):
                 }
             )
 
+    def test_from_dict_allows_optional_download_bindings_when_media_server_set(self):
+        model = TopLevelBootstrapConfig.from_dict(
+            {
+                "config_version": 2,
+                "prowlarr_url": "http://prowlarr:9696",
+                "arr_apps": [],
+                "download_clients": {},
+                "technology_bindings": {
+                    "media_server": "jellyfin",
+                },
+            }
+        )
+        self.assertEqual(model.technology_bindings.get("media_server"), "jellyfin")
+
     def test_from_dict_rejects_wrong_top_level_types(self):
         with self.assertRaises(ValueError):
             TopLevelBootstrapConfig.from_dict(

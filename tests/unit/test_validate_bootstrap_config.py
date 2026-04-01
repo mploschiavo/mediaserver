@@ -182,14 +182,14 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         }
         self.assertEqual(self.mod.basic_checks(cfg), [])
 
-    def test_basic_checks_reject_missing_binding_values(self):
+    def test_basic_checks_allow_missing_optional_download_client_bindings(self):
         cfg = {
             "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
                 "torrent_client": "",
-                "usenet_client": "sabnzbd",
+                "usenet_client": "",
                 "media_server": "jellyfin",
             },
             "download_clients": {
@@ -198,8 +198,12 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             },
         }
         errors = self.mod.basic_checks(cfg)
-        self.assertTrue(
+        self.assertFalse(
             any("technology_bindings.torrent_client" in err for err in errors),
+            errors,
+        )
+        self.assertFalse(
+            any("technology_bindings.usenet_client" in err for err in errors),
             errors,
         )
 

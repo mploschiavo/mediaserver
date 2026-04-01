@@ -24,9 +24,15 @@ from core.state_store import CheckpointStateStore
 
 from cli.bootstrap_component_resolver import (
     BootstrapComponentPlan,
+    BootstrapPhasePlanStep,
+    PhaseSkipFlagSpec,
     canonicalize_technology,
+    evaluate_phase_condition,
+    normalize_flag_token,
+    resolve_bootstrap_all_phase_plan,
     resolve_bootstrap_component_plan,
     resolve_bootstrap_enable_workers,
+    resolve_phase_skip_flag_specs,
     resolve_runner_phase_script,
     resolve_worker_deployment_name,
     resolve_worker_manifest_path,
@@ -94,12 +100,10 @@ class BootstrapAllConfig:
     root_dir: Path
     config_file: Path
     namespace: str
-    enable_unpackerr: bool
+    enable_workers: bool
     secret_name: str
     prepare_host_root: str
-    skip_qbit_ensure: bool
-    skip_sab_ensure: bool
-    skip_jellyfin_bootstrap: bool
+    phase_skip_flags: dict[str, bool]
     resume: bool
     state_file: Path
 
@@ -151,18 +155,6 @@ class BootstrapAllRunner:
             return selected
         return {}
 
-    def _should_run_torrent_client_ensure(self) -> bool:
-        selected = self._selected_download_client("torrent_client")
-        return bool(
-            selected.get("configure_arr_clients")
-            or selected.get("set_categories_in_qbit")
-            or selected.get("set_categories")
-        )
-
-    def _should_run_usenet_client_ensure(self) -> bool:
-        selected = self._selected_download_client("usenet_client")
-        return bool(selected.get("configure_arr_clients"))
-
     def _phase_script(self, phase_key: str, technology: str) -> str:
         return resolve_runner_phase_script(
             self._component_plan().config,
@@ -170,6 +162,12 @@ class BootstrapAllRunner:
             technology=technology,
             aliases=self._component_plan().aliases,
         )
+
+    def _skip_phase(self, flag_key: str) -> bool:
+        token = normalize_flag_token(flag_key)
+        if not token:
+            return False
+        return bool(self.cfg.phase_skip_flags.get(token, False))
 
     def _manifest_overrides(self, text: str) -> str:
         out = re.sub(
@@ -289,125 +287,185 @@ class BootstrapAllRunner:
         )
         indexer_script = self._phase_script("indexer_auto_discovery", prowlarr_key)
 
-        should_run_torrent_ensure = self._should_run_torrent_client_ensure()
-        should_run_usenet_ensure = self._should_run_usenet_client_ensure()
-        should_run_indexer_discovery = bool(str(plan.config.get("prowlarr_url") or "").strip())
+        phase_plan = resolve_bootstrap_all_phase_plan(plan.config)
+        phase_context: dict[str, object] = {
+            "config": plan.config,
+            "bindings": {
+                "torrent_client": torrent_client,
+                "usenet_client": usenet_client,
+                "media_server": media_server,
+                "request_manager": request_manager,
+            },
+            "scripts": {
+                "torrent_client_credentials": torrent_script,
+                "usenet_client_api_access": usenet_script,
+                "media_server_bootstrap": media_server_script,
+                "request_manager_seed_local_admin": request_seed_script,
+                "indexer_auto_discovery": indexer_script,
+            },
+            "selected": {
+                "torrent_client": self._selected_download_client("torrent_client"),
+                "usenet_client": self._selected_download_client("usenet_client"),
+            },
+            "flags": {
+                "enable_workers": self.cfg.enable_workers,
+            },
+        }
 
-        if should_run_torrent_ensure and not torrent_script:
-            warn(
-                f"No runner phase script configured for torrent_client_credentials/{torrent_client}; "
-                "skipping torrent-client ensure."
+        def _phase_enabled(step: BootstrapPhasePlanStep, default_enabled: bool) -> bool:
+            enabled = (
+                bool(step.enabled)
+                and bool(default_enabled)
+                and evaluate_phase_condition(step.when, context=phase_context)
             )
-        if should_run_usenet_ensure and not usenet_script:
-            warn(
-                f"No runner phase script configured for usenet_client_api_access/{usenet_client}; "
-                "skipping usenet-client ensure."
-            )
-        if media_server and not media_server_script:
-            warn(
-                f"No runner phase script configured for media_server_bootstrap/{media_server}; "
-                "skipping media-server bootstrap ensure."
-            )
+            if enabled and step.skip_flag and self._skip_phase(step.skip_flag):
+                enabled = False
+            return enabled
 
-        self._run_phase(
-            f"Ensure torrent client bootstrap access ({torrent_client or 'unbound'})",
-            lambda: self._run_script(
-                torrent_script,
-                env={
-                    "NAMESPACE": self.cfg.namespace,
-                    "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                },
-            ),
-            enabled=(
-                not self.cfg.skip_qbit_ensure and should_run_torrent_ensure and bool(torrent_script)
-            ),
-        )
+        def _phase_name(default_name: str, step: BootstrapPhasePlanStep) -> str:
+            return step.phase_name or default_name
 
-        self._run_phase(
-            f"Ensure media server bootstrap access ({media_server or 'unbound'})",
-            lambda: self._run_script(
-                media_server_script,
-                env={
-                    "NAMESPACE": self.cfg.namespace,
-                    "SECRET_NAME": self.cfg.secret_name,
-                },
-            ),
-            enabled=(not self.cfg.skip_jellyfin_bootstrap and bool(media_server_script)),
-        )
+        for step in phase_plan:
+            operation = step.operation
 
-        self._run_phase(
-            f"Ensure usenet client API access ({usenet_client or 'unbound'})",
-            lambda: self._run_script(
-                usenet_script,
-                env={"NAMESPACE": self.cfg.namespace},
-            ),
-            enabled=(
-                not self.cfg.skip_sab_ensure and should_run_usenet_ensure and bool(usenet_script)
-            ),
-        )
-
-        self._run_phase(
-            "Run bootstrap job",
-            lambda: self._run_script(
-                "run-bootstrap-job.sh",
-                str(self.cfg.config_file),
-                env={
-                    "NAMESPACE": self.cfg.namespace,
-                    "SKIP_QBIT_ENSURE": "1",
-                    "SKIP_SAB_ENSURE": "1",
-                    "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                },
-            ),
-        )
-
-        self._run_phase(
-            f"Seed request manager local admin ({request_manager or 'unbound'})",
-            lambda: self._run_script(
-                request_seed_script,
-                env={"NAMESPACE": self.cfg.namespace},
-            ),
-            enabled=bool(request_seed_script),
-        )
-
-        self._run_phase(
-            "Run indexer auto-discovery",
-            lambda: self._run_script(
-                indexer_script,
-                env={
-                    "NAMESPACE": self.cfg.namespace,
-                    "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                },
-            ),
-            enabled=(should_run_indexer_discovery and bool(indexer_script)),
-        )
-
-        workers_to_enable: tuple[str, ...] = ()
-        if self.cfg.enable_unpackerr:
-            workers_to_enable = resolve_bootstrap_enable_workers(
-                plan.config,
-                aliases=plan.aliases,
-                fallback_workers=plan.worker_apps,
-            )
-            if not workers_to_enable:
-                warn(
-                    "No bootstrap workers configured in adapter_hooks.bootstrap_all.enable_workers; "
-                    "worker enable phase skipped."
+            if operation == "ensure_torrent_client_access":
+                self._run_phase(
+                    _phase_name(
+                        f"Ensure torrent client bootstrap access ({torrent_client or 'unbound'})",
+                        step,
+                    ),
+                    lambda: self._run_script(
+                        torrent_script,
+                        env={
+                            "NAMESPACE": self.cfg.namespace,
+                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
+                        },
+                    ),
+                    enabled=_phase_enabled(
+                        step,
+                        bool(torrent_script),
+                    ),
                 )
+                continue
 
-        for worker in workers_to_enable:
-            worker_key_sync_script = self._phase_script("worker_key_sync", worker)
-            self._run_phase(
-                f"Sync worker integration keys ({worker})",
-                lambda script=worker_key_sync_script: self._run_script(
-                    script,
-                    env={"NAMESPACE": self.cfg.namespace},
-                ),
-                enabled=bool(worker_key_sync_script),
-            )
-            self._run_phase(
-                f"Enable worker deployment ({worker})",
-                lambda app=worker: self._enable_worker_deployment(app),
-                enabled=True,
+            if operation == "ensure_media_server_access":
+                self._run_phase(
+                    _phase_name(
+                        f"Ensure media server bootstrap access ({media_server or 'unbound'})",
+                        step,
+                    ),
+                    lambda: self._run_script(
+                        media_server_script,
+                        env={
+                            "NAMESPACE": self.cfg.namespace,
+                            "SECRET_NAME": self.cfg.secret_name,
+                        },
+                    ),
+                    enabled=_phase_enabled(step, bool(media_server_script)),
+                )
+                continue
+
+            if operation == "ensure_usenet_client_access":
+                self._run_phase(
+                    _phase_name(
+                        f"Ensure usenet client API access ({usenet_client or 'unbound'})",
+                        step,
+                    ),
+                    lambda: self._run_script(
+                        usenet_script,
+                        env={"NAMESPACE": self.cfg.namespace},
+                    ),
+                    enabled=_phase_enabled(
+                        step,
+                        bool(usenet_script),
+                    ),
+                )
+                continue
+
+            if operation == "run_bootstrap_job":
+                self._run_phase(
+                    _phase_name("Run bootstrap job", step),
+                    lambda: self._run_script(
+                        "run-bootstrap-job.sh",
+                        str(self.cfg.config_file),
+                        env={
+                            "NAMESPACE": self.cfg.namespace,
+                            "SKIP_QBIT_ENSURE": "1",
+                            "SKIP_SAB_ENSURE": "1",
+                            "SKIP_TORRENT_CLIENT_ENSURE": "1",
+                            "SKIP_USENET_CLIENT_ENSURE": "1",
+                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
+                        },
+                    ),
+                    enabled=_phase_enabled(step, True),
+                )
+                continue
+
+            if operation == "seed_request_manager_local_admin":
+                self._run_phase(
+                    _phase_name(
+                        f"Seed request manager local admin ({request_manager or 'unbound'})",
+                        step,
+                    ),
+                    lambda: self._run_script(
+                        request_seed_script,
+                        env={"NAMESPACE": self.cfg.namespace},
+                    ),
+                    enabled=_phase_enabled(step, bool(request_seed_script)),
+                )
+                continue
+
+            if operation == "run_indexer_auto_discovery":
+                self._run_phase(
+                    _phase_name("Run indexer auto-discovery", step),
+                    lambda: self._run_script(
+                        indexer_script,
+                        env={
+                            "NAMESPACE": self.cfg.namespace,
+                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
+                        },
+                    ),
+                    enabled=_phase_enabled(
+                        step,
+                        bool(indexer_script),
+                    ),
+                )
+                continue
+
+            if operation == "enable_workers":
+                if not _phase_enabled(step, True):
+                    continue
+                workers_to_enable = resolve_bootstrap_enable_workers(
+                    plan.config,
+                    aliases=plan.aliases,
+                    fallback_workers=plan.worker_apps,
+                )
+                if not workers_to_enable:
+                    warn(
+                        "No bootstrap workers configured in adapter_hooks.bootstrap_all.enable_workers; "
+                        "worker enable phase skipped."
+                    )
+                    continue
+                for worker in workers_to_enable:
+                    worker_key_sync_script = self._phase_script("worker_key_sync", worker)
+                    self._run_phase(
+                        f"Sync worker integration keys ({worker})",
+                        lambda script=worker_key_sync_script: self._run_script(
+                            script,
+                            env={"NAMESPACE": self.cfg.namespace},
+                        ),
+                        enabled=bool(worker_key_sync_script),
+                    )
+                    self._run_phase(
+                        f"Enable worker deployment ({worker})",
+                        lambda app=worker: self._enable_worker_deployment(app),
+                        enabled=True,
+                    )
+                continue
+
+            raise ConfigError(
+                "Unknown bootstrap-all phase operation "
+                f"'{operation}' in adapter_hooks.bootstrap_all.phase_plan."
             )
 
         info("Full bootstrap complete.")
@@ -415,8 +473,42 @@ class BootstrapAllRunner:
         return 0
 
 
-def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_bool_candidates(candidates: tuple[str, ...], default: bool = False) -> bool:
+    for name in candidates:
+        if not str(name).strip():
+            continue
+        if name in os.environ:
+            return _env_bool(name, default)
+    return default
+
+
+def _parse_args(
+    argv: list[str] | None = None,
+) -> tuple[argparse.Namespace, tuple[PhaseSkipFlagSpec, ...]]:
     root_dir = Path(__file__).resolve().parents[2]
+    default_config = str(root_dir / "bootstrap" / "media-stack.bootstrap.json")
+
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("config_file", nargs="?", default=default_config)
+    pre_args, _ = pre_parser.parse_known_args(argv)
+
+    config_file = Path(str(pre_args.config_file)).resolve()
+    loaded_cfg: dict[str, object] = {}
+    if config_file.exists():
+        try:
+            loaded_cfg = resolve_bootstrap_component_plan(config_file).config
+        except ConfigError:
+            loaded_cfg = {}
+
+    skip_specs = resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_all")
+
     parser = argparse.ArgumentParser(
         prog="scripts/bootstrap-all.sh",
         description="Python bootstrap-all orchestration runner",
@@ -424,7 +516,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "config_file",
         nargs="?",
-        default=str(root_dir / "bootstrap" / "media-stack.bootstrap.json"),
+        default=default_config,
         help="Bootstrap config JSON path",
     )
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
@@ -437,29 +529,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
     )
     parser.add_argument(
+        "--enable-workers",
         "--enable-unpackerr",
+        dest="enable_workers",
         action="store_true",
-        default=str(os.environ.get("ENABLE_UNPACKERR", "1")).strip() == "1",
-        help="Enable configured bootstrap worker deployments (legacy flag name).",
+        default=_env_bool_candidates(("ENABLE_WORKERS", "ENABLE_UNPACKERR"), True),
+        help="Enable configured bootstrap worker deployments.",
     )
-    parser.add_argument(
-        "--skip-qbit-ensure",
-        action="store_true",
-        default=str(os.environ.get("SKIP_QBIT_ENSURE", "0")).strip() == "1",
-        help="Skip torrent client credential ensure phase (legacy flag name).",
-    )
-    parser.add_argument(
-        "--skip-sab-ensure",
-        action="store_true",
-        default=str(os.environ.get("SKIP_SAB_ENSURE", "0")).strip() == "1",
-        help="Skip usenet client API-access ensure phase (legacy flag name).",
-    )
-    parser.add_argument(
-        "--skip-jellyfin-bootstrap",
-        action="store_true",
-        default=str(os.environ.get("SKIP_JELLYFIN_BOOTSTRAP", "0")).strip() == "1",
-        help="Skip media-server bootstrap ensure phase (legacy flag name).",
-    )
+    for spec in skip_specs:
+        parser.add_argument(
+            *spec.option_strings,
+            dest=f"phase_skip_{spec.key}",
+            action="store_true",
+            default=_env_bool_candidates(spec.env_vars, False),
+            help=spec.help,
+        )
     parser.add_argument(
         "--resume",
         dest="resume",
@@ -479,11 +563,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("BOOTSTRAP_STATE_FILE", ""),
         help="Checkpoint state file path (default: .state/bootstrap-all-<namespace>.json).",
     )
-    return parser.parse_args(argv)
+    return parser.parse_args(argv), skip_specs
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
+    args, skip_specs = _parse_args(argv)
     root_dir = Path(__file__).resolve().parents[2]
     config_file = Path(str(args.config_file)).resolve()
     state_file = (
@@ -495,12 +579,12 @@ def main(argv: list[str] | None = None) -> int:
         root_dir=root_dir,
         config_file=config_file,
         namespace=str(args.namespace).strip(),
-        enable_unpackerr=bool(args.enable_unpackerr),
+        enable_workers=bool(args.enable_workers),
         secret_name=str(args.secret_name).strip(),
         prepare_host_root=str(args.prepare_host_root).strip(),
-        skip_qbit_ensure=bool(args.skip_qbit_ensure),
-        skip_sab_ensure=bool(args.skip_sab_ensure),
-        skip_jellyfin_bootstrap=bool(args.skip_jellyfin_bootstrap),
+        phase_skip_flags={
+            spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
+        },
         resume=bool(args.resume),
         state_file=state_file,
     )
