@@ -85,7 +85,7 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - Do not re-introduce bespoke per-operation wiring classes in orchestration layers.
 - `scripts/bootstrap-apps.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
 - Runtime binding context must be sourced from `technology_bindings` (config/manifests), not hard-coded role maps in entrypoints.
-- Keep shared runtime modules (`runtime_servarr/*`) focused on concrete operations; pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) and declarative RunnerEvent config.
+- Keep app-specific runtime modules under `scripts/bootstrap_services/apps/<app>/runtime/*`; shared runtime modules must stay technology-neutral, and pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) plus declarative RunnerEvent config.
 - `TechnologyLifecycle*` orchestration classes are obsolete in this repo; lifecycle flow must be expressed through `RunnerEvent` plans and handlers.
 
 ## Design Rules

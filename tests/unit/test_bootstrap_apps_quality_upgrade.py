@@ -8,9 +8,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.arr_ops as ARR_MODULE
-import bootstrap_services.runtime_servarr.factory as SERVARR_FACTORY
-import bootstrap_services.runtime_servarr.hygiene_ops as HYGIENE_MODULE
+import bootstrap_services.apps.servarr.runtime.arr_ops as ARR_MODULE
+import bootstrap_services.apps.servarr.runtime.factory as SERVARR_FACTORY
+import bootstrap_services.apps.servarr.runtime.hygiene_ops as HYGIENE_MODULE
 
 
 class ArrQualityUpgradePolicyTests(unittest.TestCase):

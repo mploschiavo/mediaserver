@@ -8,14 +8,14 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.hygiene_ops as MODULE
+import bootstrap_services.apps.servarr.runtime.hygiene_ops as MODULE
 import bootstrap_services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
 import bootstrap_services.apps.jellyfin.livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
 import bootstrap_services.apps.jellyfin.runtime_ops as JELLYFIN_OPS
 import bootstrap_services.media_hygiene_ops.duplicate_prune as DUPLICATE_PRUNE
 import bootstrap_services.media_hygiene_ops.ipfilter as IPFILTER
 import bootstrap_services.media_hygiene_ops.queue_guardrails as QUEUE_GUARDRAILS
-import bootstrap_services.runtime_servarr.hygiene_ops as HYGIENE_OPS
+import bootstrap_services.apps.servarr.runtime.hygiene_ops as HYGIENE_OPS
 
 
 class DiskGuardrailsTests(unittest.TestCase):

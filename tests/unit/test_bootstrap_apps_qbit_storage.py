@@ -6,9 +6,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.qbit_ops as MODULE
-import bootstrap_services.runtime_servarr.factory as SERVARR_FACTORY
-import bootstrap_services.runtime_servarr.qbit_ops as QB_OPS
+import bootstrap_services.apps.servarr.runtime.qbit_ops as MODULE
+import bootstrap_services.apps.servarr.runtime.factory as SERVARR_FACTORY
+import bootstrap_services.apps.servarr.runtime.qbit_ops as QB_OPS
 
 
 class QBittorrentStorageDefaultsTests(unittest.TestCase):

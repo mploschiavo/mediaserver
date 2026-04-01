@@ -81,10 +81,6 @@ SHARED_RUNTIME_ENTRY_MODULES = [
     ROOT / "scripts" / "bootstrap_services" / "runtime_platform.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_secrets.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_media_ops.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "__init__.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "factory.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "prowlarr_ops.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "qbit_ops.py",
     ROOT / "scripts" / "bootstrap_services" / "bootstrap_runner_service.py",
     ROOT / "scripts" / "bootstrap_services" / "download_client_pipeline_service.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_factory" / "runtime_builder.py",
@@ -233,7 +229,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
     def test_missing_qbittorrent_manifest_does_not_break_shared_runtime_import_init(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.runtime_servarr.factory as runtime_factory
+        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         all_manifests = manifest_loader.load_plugin_manifests()
@@ -271,7 +267,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
     def test_missing_sabnzbd_manifest_does_not_break_shared_runtime_import_init(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.runtime_servarr.factory as runtime_factory
+        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         all_manifests = manifest_loader.load_plugin_manifests()
@@ -310,7 +306,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_media_ops as runtime_media_ops
         import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.runtime_servarr.factory as runtime_factory
+        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         all_manifests = manifest_loader.load_plugin_manifests()
@@ -348,7 +344,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
     def test_runtime_binding_removal_is_lazy_until_technology_path_invoked(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.runtime_servarr.factory as runtime_factory
+        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         manifests = manifest_loader.load_plugin_manifests()
@@ -387,7 +383,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
     def test_runtime_usenet_binding_removal_is_lazy_until_technology_path_invoked(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.runtime_servarr.factory as runtime_factory
+        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         manifests = manifest_loader.load_plugin_manifests()
@@ -425,7 +421,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_media_ops as runtime_media_ops
         import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.runtime_servarr.factory as runtime_factory
+        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         manifests = manifest_loader.load_plugin_manifests()

@@ -5,7 +5,14 @@ from __future__ import annotations
 
 from typing import Any
 
-import bootstrap_services.runtime_servarr.arr_ops as _servarr_arr_ops
+import bootstrap_services.apps.servarr.runtime.arr_ops as _servarr_arr_ops
+from bootstrap_services.apps.servarr.runtime.common import (
+    choose_profile,
+    choose_root_folder,
+    find_existing_servarr,
+    get_arr_app,
+    get_arr_quality_profile,
+)
 from bootstrap_services.runtime_platform import (
     bool_cfg,
     coerce_list,
@@ -19,13 +26,6 @@ from bootstrap_services.runtime_platform import (
     wait_for_service,
 )
 from bootstrap_services.runtime_secrets import api_keys_service, read_json_file
-from bootstrap_services.runtime_servarr.common import (
-    choose_profile,
-    choose_root_folder,
-    find_existing_servarr,
-    get_arr_app,
-    get_arr_quality_profile,
-)
 
 from .service import OpenSeerrService
 

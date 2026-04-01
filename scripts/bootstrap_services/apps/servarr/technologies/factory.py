@@ -7,8 +7,8 @@ import inspect
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..plugin_manifest_loader import build_adapter_hook_defaults, load_plugin_manifests
-from ..servarr_adapters import AdapterDependencies, HookFn
+from ....plugin_manifest_loader import build_adapter_hook_defaults, load_plugin_manifests
+from ....servarr_adapters import AdapterDependencies, HookFn
 from .base import ServarrAdapterBase, ServarrAdapterContext, ServarrAdapterDependencies
 
 AdapterClass = type[ServarrAdapterBase]
@@ -33,9 +33,7 @@ def _load_adapter_class_from_spec(spec: str) -> AdapterClass:
     if not inspect.isclass(adapter_cls):
         raise TypeError(f"Adapter class spec '{raw}' does not resolve to a class.")
     if not issubclass(adapter_cls, ServarrAdapterBase):
-        raise TypeError(
-            f"Adapter class '{raw}' must inherit from ServarrAdapterBase."
-        )
+        raise TypeError(f"Adapter class '{raw}' must inherit from ServarrAdapterBase.")
     return adapter_cls
 
 

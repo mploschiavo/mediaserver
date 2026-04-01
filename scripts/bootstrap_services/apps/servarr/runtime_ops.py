@@ -4,6 +4,24 @@ from __future__ import annotations
 
 from bootstrap_services.apps.prowlarr.runtime_ops import ensure_prowlarr_application
 from bootstrap_services.apps.servarr.pipeline_service import ServarrPipelineService
+from bootstrap_services.apps.servarr.runtime.arr_ops import (
+    detect_arr_api_base,
+    ensure_app_auth_settings,
+    ensure_arr_download_client,
+    ensure_arr_download_handling,
+    ensure_arr_media_management,
+    ensure_arr_quality_upgrade_policy,
+    ensure_arr_remote_path_mappings,
+    ensure_readarr_metadata_source,
+    ensure_root_folder,
+    pick_first_profile_id,
+    trigger_health_check,
+)
+from bootstrap_services.apps.servarr.runtime.common import (
+    get_arr_quality_profile,
+    resolve_arr_quality_preferences,
+)
+from bootstrap_services.apps.servarr.runtime.factory import _health_service
 from bootstrap_services.discovery_lists_service import DiscoveryListsService
 from bootstrap_services.runtime_platform import (
     bool_cfg,
@@ -19,24 +37,6 @@ from bootstrap_services.runtime_platform import (
     resolve_env_placeholder,
     to_int,
 )
-from bootstrap_services.runtime_servarr.arr_ops import (
-    detect_arr_api_base,
-    ensure_app_auth_settings,
-    ensure_arr_download_client,
-    ensure_arr_download_handling,
-    ensure_arr_media_management,
-    ensure_arr_quality_upgrade_policy,
-    ensure_arr_remote_path_mappings,
-    ensure_readarr_metadata_source,
-    ensure_root_folder,
-    pick_first_profile_id,
-    trigger_health_check,
-)
-from bootstrap_services.runtime_servarr.common import (
-    get_arr_quality_profile,
-    resolve_arr_quality_preferences,
-)
-from bootstrap_services.runtime_servarr.factory import _health_service
 from bootstrap_services.servarr_adapters import AdapterDependencies
 
 

@@ -16,7 +16,7 @@ from bootstrap_services.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
     noop_before_common_steps,
 )
-from bootstrap_services.servarr_technologies import (  # noqa: E402
+from bootstrap_services.apps.servarr.technologies import (  # noqa: E402
     GenericServarrAdapter,
     LidarrAdapter,
     RadarrAdapter,
@@ -138,7 +138,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             deps=self._deps(),
             adapter_deps=self._adapter_deps(),
             adapter_class_specs={
-                "sonarr": "bootstrap_services.servarr_technologies.generic:GenericServarrAdapter"
+                "sonarr": "bootstrap_services.apps.servarr.technologies.generic:GenericServarrAdapter"
             },
         )
         adapter = factory.create(self._context("sonarr"), noop_before_common_steps)
@@ -154,7 +154,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             factory.create(self._context("sonarr"), noop_before_common_steps)
 
     def test_factory_requires_explicit_mapping_for_custom_impl_module(self):
-        module_name = "bootstrap_services.servarr_technologies.custom_arr"
+        module_name = "bootstrap_services.apps.servarr.technologies.custom_arr"
         fake_module = types.ModuleType(module_name)
 
         class CustomArrAdapter(GenericServarrAdapter):
@@ -167,7 +167,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
                 deps=self._deps(),
                 adapter_deps=self._adapter_deps(),
                 adapter_class_specs={
-                    "custom-arr": "bootstrap_services.servarr_technologies.custom_arr:CustomArrAdapter"
+                    "custom-arr": "bootstrap_services.apps.servarr.technologies.custom_arr:CustomArrAdapter"
                 },
             ).create(self._context("custom-arr"), noop_before_common_steps)
 

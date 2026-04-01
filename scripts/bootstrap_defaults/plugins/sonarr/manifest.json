@@ -2,7 +2,7 @@
   "technology": "sonarr",
   "aliases": ["sarr"],
   "adapter_classes": {
-    "servarr": "bootstrap_services.servarr_technologies.sonarr:SonarrAdapter"
+    "servarr": "bootstrap_services.apps.servarr.technologies.sonarr:SonarrAdapter"
   },
   "capability_defaults": {
     "default_download_category": "tv",

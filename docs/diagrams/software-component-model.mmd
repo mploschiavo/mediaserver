@@ -24,14 +24,14 @@ flowchart TD
     CORE_RT["runtime_platform.py"]
     CORE_SEC["runtime_secrets.py"]
     MED["runtime_media_ops.py"]
-    ARR["runtime_servarr/__init__.py"]
+    ARR["apps/servarr/runtime/__init__.py"]
     LIB["core/* helpers"]
   end
 
   subgraph Adapters[Technology Adapters]
     DL["download_client_adapters/*"]
     MS["media_server_adapters/*"]
-    SA["servarr_technologies/*"]
+    SA["apps/servarr/technologies/*"]
   end
 
   subgraph AppSvc[App Services]

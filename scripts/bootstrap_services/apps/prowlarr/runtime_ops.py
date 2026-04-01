@@ -3,20 +3,20 @@
 
 from __future__ import annotations
 
+from bootstrap_services.apps.servarr.runtime.arr_ops import (
+    detect_arr_api_base,
+    ensure_app_auth_settings,
+)
+from bootstrap_services.apps.servarr.runtime.factory import (
+    _arr_indexer_sync_service,
+    _prowlarr_service,
+)
 from bootstrap_services.runtime_platform import (
     bool_cfg,
     log,
     normalize_url,
     resolve_app_service_class,
     wait_for_service,
-)
-from bootstrap_services.runtime_servarr.arr_ops import (
-    detect_arr_api_base,
-    ensure_app_auth_settings,
-)
-from bootstrap_services.runtime_servarr.factory import (
-    _arr_indexer_sync_service,
-    _prowlarr_service,
 )
 
 from .flaresolverr_service import ProwlarrFlareSolverrService

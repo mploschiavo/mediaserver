@@ -6,6 +6,7 @@ Contact: mploschiavo@gmail.com | https://www.linkedin.com/in/matthewloschiavo
 """
 
 import argparse
+import importlib
 import os
 import sys
 import traceback
@@ -13,7 +14,6 @@ import traceback
 import bootstrap_services.runtime_media_ops as runtime_media_ops
 import bootstrap_services.runtime_platform as runtime_platform
 import bootstrap_services.runtime_secrets as runtime_secrets
-import bootstrap_services.runtime_servarr.arr_ops as runtime_servarr_arr_ops
 from bootstrap_services.bootstrap_runner_service import (
     BootstrapRunnerDependencies,
     BootstrapRunnerService,
@@ -69,6 +69,13 @@ def main():
         ),
     )
     args = parser.parse_args()
+    servarr_runtime_arr_ops = importlib.import_module(
+        "bootstrap_services.apps.servarr.runtime.arr_ops"
+    )
+    build_sab_remote_path_mappings = getattr(
+        servarr_runtime_arr_ops,
+        "build_sab_remote_path_mappings",
+    )
 
     runtime_factory = BootstrapRuntimeFactoryService(
         deps=BootstrapRuntimeFactoryDependencies(
@@ -78,7 +85,7 @@ def main():
             coerce_list=runtime_platform.coerce_list,
             env_truthy=runtime_platform.env_truthy,
             read_api_key=runtime_secrets.read_api_key,
-            build_sab_remote_path_mappings=runtime_servarr_arr_ops.build_sab_remote_path_mappings,
+            build_sab_remote_path_mappings=build_sab_remote_path_mappings,
         )
     )
     build_result = runtime_factory.build_from_cli(

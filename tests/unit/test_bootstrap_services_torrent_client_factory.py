@@ -5,8 +5,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.runtime_service_registry import get_runtime_context_cfg, set_runtime_context_cfg
-from bootstrap_services.runtime_servarr.factory import _torrent_client_service
+from bootstrap_services.runtime_service_registry import (
+    get_runtime_context_cfg,
+    set_runtime_context_cfg,
+)
+from bootstrap_services.apps.servarr.runtime.factory import _torrent_client_service
 
 
 class TorrentClientServiceFactoryTests(unittest.TestCase):

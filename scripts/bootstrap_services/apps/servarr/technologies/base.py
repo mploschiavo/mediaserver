@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ..apps.servarr.types import ClientAuth, ServarrRunConfig
-from ..config_models import (
+from ....config_models import (
     AppCapabilities,
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,
     ServarrAppConfig,
 )
-from ..servarr_adapters import AdapterDependencies, AppBootstrapContext, HookFn
+from ....servarr_adapters import AdapterDependencies, AppBootstrapContext, HookFn
+from ..types import ClientAuth, ServarrRunConfig
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
@@ -171,10 +171,7 @@ class ServarrAdapterBase:
                 },
             )
 
-        if (
-            run_cfg.configure_sab_arr_clients
-            and self.context.app_caps.supports_download_clients
-        ):
+        if run_cfg.configure_sab_arr_clients and self.context.app_caps.supports_download_clients:
             usenet_auth = {
                 "username": self.context.sab_auth.username,
                 "password": self.context.sab_auth.password,
@@ -189,7 +186,10 @@ class ServarrAdapterBase:
                 self.context.sab_cfg,
                 usenet_auth,
             )
-            if self.context.app_caps.supports_remote_path_mappings and self.context.sab_remote_path_mappings:
+            if (
+                self.context.app_caps.supports_remote_path_mappings
+                and self.context.sab_remote_path_mappings
+            ):
                 self.deps.ensure_arr_remote_path_mappings(
                     self.context.app_payload,
                     self.context.app_url,
@@ -201,7 +201,10 @@ class ServarrAdapterBase:
     def configure(self) -> None:
         run_cfg = self.context.run_cfg
 
-        if run_cfg.configure_arr_media_management and self.context.app_caps.supports_media_management:
+        if (
+            run_cfg.configure_arr_media_management
+            and self.context.app_caps.supports_media_management
+        ):
             self.deps.ensure_arr_media_management(
                 self.context.app_model,
                 self.context.app_url,

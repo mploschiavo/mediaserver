@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from bootstrap_services.runtime_servarr.sab_ops import (
+from bootstrap_services.apps.servarr.runtime.sab_ops import (
     ensure_sabnzbd_categories,
     ensure_sabnzbd_defaults,
     read_sabnzbd_api_key,
