@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from cli.jellyfin_plugin_activation_service import (  # noqa: E402
+from bootstrap_services.apps.jellyfin.cli.jellyfin_plugin_activation_service import (  # noqa: E402
     JellyfinPluginActivationConfig,
     JellyfinPluginActivationService,
 )

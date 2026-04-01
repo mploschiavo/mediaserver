@@ -1,4 +1,4 @@
-import importlib.util
+import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -6,14 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "run_prowlarr_auto_indexers",
-    ROOT / "scripts" / "cli" / "run_prowlarr_auto_indexers_main.py",
+MODULE = importlib.import_module(
+    "bootstrap_services.apps.prowlarr.cli.run_prowlarr_auto_indexers_main"
 )
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-sys.modules[SPEC.name] = MODULE
-SPEC.loader.exec_module(MODULE)
 
 
 class _FakeKube:

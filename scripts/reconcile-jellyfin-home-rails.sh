@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec python3 "$ROOT_DIR/scripts/cli/reconcile_jellyfin_home_rails_main.py" "$@"
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/lib/run-python-cli.sh" reconcile_jellyfin_home_rails_main.py "$@"

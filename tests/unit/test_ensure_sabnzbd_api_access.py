@@ -10,7 +10,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 SPEC = importlib.util.spec_from_file_location(
     "ensure_sabnzbd_api_access",
-    ROOT / "scripts" / "cli" / "ensure_sabnzbd_api_access_main.py",
+    ROOT
+    / "scripts"
+    / "bootstrap_services"
+    / "apps"
+    / "sabnzbd"
+    / "cli"
+    / "ensure_sabnzbd_api_access_main.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
