@@ -12,7 +12,7 @@
   "adapter_hooks": {
     "operation_handlers": {},
     "scale_policy": {
-      "core_apps": [
+      "apps": [
         "jellyfin",
         "jellyseerr",
         "qbittorrent",
@@ -23,9 +23,11 @@
         "readarr",
         "prowlarr",
         "bazarr",
-        "maintainerr"
+        "maintainerr",
+        "unpackerr",
+        "flaresolverr"
       ],
-      "worker_apps": [
+      "scale_to_zero_apps": [
         "unpackerr",
         "flaresolverr"
       ]

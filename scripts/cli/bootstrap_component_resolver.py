@@ -91,8 +91,6 @@ def _phase_plan_steps(
 @dataclass(frozen=True)
 class ManifestCatalog:
     aliases: dict[str, str] = field(default_factory=dict)
-    runtime_technologies: tuple[str, ...] = field(default_factory=tuple)
-    auxiliary_technologies: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -100,8 +98,8 @@ class BootstrapComponentPlan:
     config: dict[str, Any]
     aliases: dict[str, str]
     role_bindings: dict[str, str]
-    core_apps: tuple[str, ...]
-    worker_apps: tuple[str, ...]
+    managed_apps: tuple[str, ...]
+    scale_to_zero_apps: tuple[str, ...]
     download_clients: dict[str, dict[str, Any]]
 
 
@@ -198,8 +196,6 @@ def load_bootstrap_config(config_file: Path) -> dict[str, Any]:
 
 def build_manifest_catalog() -> ManifestCatalog:
     aliases: dict[str, str] = {}
-    runtime_technologies: list[str] = []
-    auxiliary_technologies: list[str] = []
 
     for manifest in load_plugin_manifests():
         technology = normalize_technology_token(manifest.technology)
@@ -211,16 +207,7 @@ def build_manifest_catalog() -> ManifestCatalog:
             if token and token not in aliases:
                 aliases[token] = technology
 
-        has_runtime_contract = bool(manifest.adapter_classes) or bool(manifest.app_service_classes)
-        target = runtime_technologies if has_runtime_contract else auxiliary_technologies
-        if technology not in target:
-            target.append(technology)
-
-    return ManifestCatalog(
-        aliases=aliases,
-        runtime_technologies=tuple(runtime_technologies),
-        auxiliary_technologies=tuple(auxiliary_technologies),
-    )
+    return ManifestCatalog(aliases=aliases)
 
 
 def resolve_role_bindings(
@@ -564,26 +551,41 @@ def resolve_phase_skip_flag_specs(
     return tuple(out)
 
 
-def _resolve_scale_policy_list(
+def _resolve_scale_policy_lists(
     cfg: dict[str, Any],
     *,
-    list_key: str,
     aliases: dict[str, str],
-    required: bool = False,
-) -> tuple[str, ...]:
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     hooks = _adapter_hooks(cfg)
     scale_policy = hooks.get("scale_policy")
     if not isinstance(scale_policy, dict):
-        if required:
-            raise ConfigError(
-                "adapter_hooks.scale_policy must be defined as an object with core_apps/worker_apps lists."
-            )
-        return ()
-    if list_key not in scale_policy:
-        if required:
-            raise ConfigError(f"adapter_hooks.scale_policy.{list_key} must be defined.")
-        return ()
-    return _coerce_technology_list(scale_policy.get(list_key), aliases)
+        raise ConfigError(
+            "adapter_hooks.scale_policy must be defined as an object with "
+            "'apps' (or legacy core_apps/worker_apps) lists."
+        )
+
+    managed_apps = _coerce_technology_list(scale_policy.get("apps"), aliases)
+    if not managed_apps:
+        legacy_core = _coerce_technology_list(scale_policy.get("core_apps"), aliases)
+        legacy_worker = _coerce_technology_list(scale_policy.get("worker_apps"), aliases)
+        merged: list[str] = []
+        for token in (*legacy_core, *legacy_worker):
+            if token and token not in merged:
+                merged.append(token)
+        managed_apps = tuple(merged)
+
+    if not managed_apps:
+        raise ConfigError(
+            "adapter_hooks.scale_policy.apps must be defined and non-empty "
+            "(or legacy core_apps/worker_apps lists must be provided)."
+        )
+
+    scale_to_zero_apps = _coerce_technology_list(scale_policy.get("scale_to_zero_apps"), aliases)
+    if not scale_to_zero_apps and "scale_to_zero_apps" not in scale_policy:
+        scale_to_zero_apps = _coerce_technology_list(scale_policy.get("worker_apps"), aliases)
+
+    filtered_scale_to_zero = tuple(token for token in scale_to_zero_apps if token in managed_apps)
+    return managed_apps, filtered_scale_to_zero
 
 
 def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPlan:
@@ -591,24 +593,16 @@ def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPla
     catalog = build_manifest_catalog()
     role_bindings = resolve_role_bindings(cfg, aliases=catalog.aliases)
     download_clients = resolve_download_clients(cfg, aliases=catalog.aliases)
-    core_apps = _resolve_scale_policy_list(
+    managed_apps, scale_to_zero_apps = _resolve_scale_policy_lists(
         cfg,
-        list_key="core_apps",
         aliases=catalog.aliases,
-        required=True,
-    )
-    worker_apps = _resolve_scale_policy_list(
-        cfg,
-        list_key="worker_apps",
-        aliases=catalog.aliases,
-        required=True,
     )
 
     return BootstrapComponentPlan(
         config=cfg,
         aliases=catalog.aliases,
         role_bindings=role_bindings,
-        core_apps=core_apps or (),
-        worker_apps=worker_apps or (),
+        managed_apps=managed_apps or (),
+        scale_to_zero_apps=scale_to_zero_apps or (),
         download_clients=download_clients,
     )

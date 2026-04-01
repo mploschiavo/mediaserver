@@ -39,8 +39,17 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         cfg = self._base_config()
         hooks = dict(cfg.get("adapter_hooks") or {})
         hooks["scale_policy"] = {
-            "core_apps": ["jf", "seerr", "qbit", "sab", "prowlarr", "bazarr", "maintainerr"],
-            "worker_apps": ["unpackerr"],
+            "apps": [
+                "jf",
+                "seerr",
+                "qbit",
+                "sab",
+                "prowlarr",
+                "bazarr",
+                "maintainerr",
+                "unpackerr",
+            ],
+            "scale_to_zero_apps": ["unpackerr"],
         }
         hooks["bootstrap_all"] = {"enable_workers": ["unpackerr"]}
         cfg["adapter_hooks"] = hooks
@@ -59,7 +68,7 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         self.assertEqual(plan.role_bindings["request_manager"], "jellyseerr")
 
         self.assertEqual(
-            plan.core_apps,
+            plan.managed_apps,
             (
                 "jellyfin",
                 "jellyseerr",
@@ -68,11 +77,12 @@ class BootstrapComponentResolverTests(unittest.TestCase):
                 "prowlarr",
                 "bazarr",
                 "maintainerr",
+                "unpackerr",
             ),
         )
-        self.assertEqual(plan.worker_apps, ("unpackerr",))
+        self.assertEqual(plan.scale_to_zero_apps, ("unpackerr",))
 
-    def test_explicit_scale_policy_overrides_core_and_worker_sets(self):
+    def test_legacy_scale_policy_keys_remain_supported(self):
         cfg = self._base_config()
         hooks = dict(cfg.get("adapter_hooks") or {})
         hooks["scale_policy"] = {
@@ -82,8 +92,8 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         cfg["adapter_hooks"] = hooks
 
         plan = resolve_bootstrap_component_plan(self._write_config(cfg))
-        self.assertEqual(plan.core_apps, ("radarr", "custom-core"))
-        self.assertEqual(plan.worker_apps, ("worker-x",))
+        self.assertEqual(plan.managed_apps, ("radarr", "custom-core", "worker-x"))
+        self.assertEqual(plan.scale_to_zero_apps, ("worker-x",))
 
     def test_missing_scale_policy_lists_raise_config_error(self):
         cfg = self._base_config()

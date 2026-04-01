@@ -491,7 +491,7 @@ class BootstrapAllRunner:
                 workers_to_enable = resolve_bootstrap_enable_workers(
                     plan.config,
                     aliases=plan.aliases,
-                    fallback_workers=plan.worker_apps,
+                    fallback_workers=plan.scale_to_zero_apps,
                 )
                 if not workers_to_enable:
                     warn(

@@ -104,10 +104,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--scale-to-zero",
         "--scale-workers-to-zero",
+        dest="scale_to_zero",
         action="store_true",
-        default=_env_truthy(os.environ.get("SCALE_WORKERS_TO_ZERO")),
-        help="Scale worker-like apps from bootstrap config/manifest policy to 0 replicas.",
+        default=_env_truthy(os.environ.get("SCALE_TO_ZERO"))
+        or _env_truthy(os.environ.get("SCALE_WORKERS_TO_ZERO")),
+        help="Scale apps listed in adapter_hooks.scale_policy.scale_to_zero_apps to 0 replicas.",
     )
     return parser
 
@@ -120,14 +123,14 @@ def main(argv: list[str] | None = None) -> int:
         raise MediaStackError("NAMESPACE must be non-empty")
 
     plan = resolve_bootstrap_component_plan(config_file)
-    core_apps = tuple(plan.core_apps)
-    worker_apps = tuple(app for app in plan.worker_apps if app not in core_apps)
+    managed_apps = tuple(plan.managed_apps)
+    scale_to_zero_apps = tuple(app for app in plan.scale_to_zero_apps if app in managed_apps)
 
     kubectl = kube_cmd()
 
-    if core_apps:
-        print(f"[INFO] Core apps from config/manifest: {', '.join(core_apps)}")
-    for app in core_apps:
+    if managed_apps:
+        print(f"[INFO] Managed apps from config: {', '.join(managed_apps)}")
+    for app in managed_apps:
         if not _deployment_exists(kubectl, namespace, app):
             continue
         replicas = _current_replicas(kubectl, namespace, app)
@@ -140,10 +143,10 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=bool(args.dry_run),
             )
 
-    if bool(args.scale_workers_to_zero):
-        if worker_apps:
-            print(f"[INFO] Worker apps from config/manifest: {', '.join(worker_apps)}")
-        for app in worker_apps:
+    if bool(args.scale_to_zero):
+        if scale_to_zero_apps:
+            print(f"[INFO] Scale-to-zero apps from config: {', '.join(scale_to_zero_apps)}")
+        for app in scale_to_zero_apps:
             _scale_deployment(
                 kubectl,
                 namespace=namespace,
