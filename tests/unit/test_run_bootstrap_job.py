@@ -159,7 +159,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             tracker=MODULE.PhaseTracker(),
         )
 
-        runner.prime_jellyseerr_api_key_secret()
+        runner.prime_request_manager_api_key_secret()
         runner.prime_tautulli_api_key_secret()
 
         patch_payloads = []
