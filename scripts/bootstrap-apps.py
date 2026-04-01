@@ -115,7 +115,7 @@ def main():
             ensure_sabnzbd_categories=runtime_servarr_ops.ensure_sabnzbd_categories,
             setup_qbit_categories=runtime_servarr_ops.setup_qbit_categories,
             run_servarr_pipeline=runtime_servarr_ops._servarr_pipeline_service().run,
-            ensure_bazarr_arr_integration=runtime_media_ops.ensure_bazarr_arr_integration,
+            ensure_bazarr_arr_integration=_missing_op_handler("ensure_bazarr_arr_integration"),
             configure_jellyseerr=_missing_op_handler("configure_jellyseerr"),
             ensure_jellyfin_livetv=_missing_op_handler("ensure_jellyfin_livetv"),
             ensure_jellyfin_libraries=_missing_op_handler("ensure_jellyfin_libraries"),

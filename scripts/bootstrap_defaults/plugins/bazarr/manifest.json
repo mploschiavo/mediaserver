@@ -2,7 +2,10 @@
   "technology": "bazarr",
   "aliases": ["barr"],
   "app_service_classes": {
-    "bazarr_service": "bootstrap_services.bazarr_service:BazarrService"
+    "bazarr_service": "bootstrap_services.apps.bazarr.service:BazarrService"
+  },
+  "operation_handlers": {
+    "ensure_bazarr_arr_integration": "bootstrap_services.apps.bazarr.runtime_ops:ensure_bazarr_arr_integration"
   },
   "service_technology_map": {
     "bazarr_service": "bazarr"
