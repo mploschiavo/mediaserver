@@ -1,5 +1,5 @@
 """Bazarr app package."""
 
-from bootstrap_services.bazarr_service import BazarrService
+from .service import BazarrService
 
 __all__ = ["BazarrService"]

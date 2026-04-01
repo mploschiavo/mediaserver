@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.bazarr_service import BazarrService  # noqa: E402
+from bootstrap_services.apps.bazarr.service import BazarrService  # noqa: E402
 from bootstrap_services.apps.jellyseerr.service import JellyseerrService  # noqa: E402
 from bootstrap_services.media_hygiene_service import MediaHygieneService  # noqa: E402
 

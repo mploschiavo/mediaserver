@@ -56,7 +56,6 @@ from bootstrap_services.api_keys_service import ApiKeysService
 from bootstrap_services.arr_queue_cleanup_service import ArrQueueCleanupService
 from bootstrap_services.arr_service import ArrService
 from bootstrap_services.auth_service import AuthService
-from bootstrap_services.bazarr_service import BazarrService
 from bootstrap_services.bootstrap_runner_service import (
     BootstrapRunnerDependencies,
     BootstrapRunnerService,
