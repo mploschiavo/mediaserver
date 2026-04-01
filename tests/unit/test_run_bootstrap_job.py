@@ -66,8 +66,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
-                skip_qbit_ensure=False,
-                skip_sab_ensure=False,
             ).timeout_seconds,
             600,
         )
@@ -83,8 +81,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
-                skip_qbit_ensure=False,
-                skip_sab_ensure=False,
             ).timeout_seconds,
             90,
         )
@@ -100,8 +96,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
-                skip_qbit_ensure=False,
-                skip_sab_ensure=False,
             ).timeout_seconds,
             7200,
         )
@@ -118,8 +112,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             bootstrap_runner_image="registry.example/custom/bootstrap:dev",
             root_dir=ROOT,
             config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
-            skip_qbit_ensure=False,
-            skip_sab_ensure=False,
         )
         runner = MODULE.RunBootstrapJobRunner(
             cfg=cfg,
@@ -150,8 +142,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
             config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
-            skip_qbit_ensure=False,
-            skip_sab_ensure=False,
         )
         kube = _RecordingKube()
         runner = MODULE.RunBootstrapJobRunner(
@@ -160,8 +150,9 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             tracker=MODULE.PhaseTracker(),
         )
 
+        runner.prepare_bootstrap_job_config()
         runner.prime_request_manager_api_key_secret()
-        runner.prime_tautulli_api_key_secret()
+        runner.prime_analytics_api_key_secret()
 
         patch_payloads = []
         for call in kube.calls:
@@ -182,8 +173,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
             config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
-            skip_qbit_ensure=False,
-            skip_sab_ensure=False,
         )
         runner = MODULE.RunBootstrapJobRunner(
             cfg=cfg,
@@ -212,8 +201,6 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
                 config_file=config_file,
-                skip_qbit_ensure=False,
-                skip_sab_ensure=False,
             )
             runner = MODULE.RunBootstrapJobRunner(
                 cfg=cfg,

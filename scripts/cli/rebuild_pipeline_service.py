@@ -15,7 +15,7 @@ class RebuildPipelineConfig:
     namespace: str
     root_dir: Path
     prepare_host_root: str
-    enable_unpackerr: str
+    enable_components: str
     config_file: Path
 
 
@@ -58,6 +58,6 @@ class RebuildPipelineService:
             env={
                 "NAMESPACE": self.cfg.namespace,
                 "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                "ENABLE_UNPACKERR": self.cfg.enable_unpackerr,
+                "ENABLE_COMPONENTS": self.cfg.enable_components,
             },
         )

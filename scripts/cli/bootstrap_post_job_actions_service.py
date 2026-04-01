@@ -17,26 +17,7 @@ class BootstrapPostJobActionsService:
     """Apply post-job restart actions when bootstrap logs indicate config writes."""
 
     def __init__(self, actions: list[BootstrapPostJobAction] | None = None) -> None:
-        self._actions = actions or [
-            BootstrapPostJobAction(
-                marker="Jellyseerr: settings file bootstrap applied",
-                phase_name="Restart Jellyseerr after file bootstrap",
-                deployment="jellyseerr",
-                restart_if_exists=False,
-            ),
-            BootstrapPostJobAction(
-                marker="Homepage: wrote services config",
-                phase_name="Restart Homepage after config sync",
-                deployment="homepage",
-                restart_if_exists=True,
-            ),
-            BootstrapPostJobAction(
-                marker="Bazarr: wrote integration config",
-                phase_name="Restart Bazarr after config sync",
-                deployment="bazarr",
-                restart_if_exists=True,
-            ),
-        ]
+        self._actions = list(actions or [])
 
     def run_actions(
         self,

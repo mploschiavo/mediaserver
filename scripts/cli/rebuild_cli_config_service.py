@@ -14,7 +14,7 @@ class RebuildBootstrapConfig:
     wait_timeout: str = "20m"
     delete_namespace: str = "1"
     include_optional: str = ""
-    enable_unpackerr: str = ""
+    enable_components: str = ""
     run_bootstrap: str = ""
     run_smoke_test: str = "1"
     skip_prepare_host: str = "0"
@@ -49,7 +49,7 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
         wait_timeout=os.environ.get("WAIT_TIMEOUT", "20m"),
         delete_namespace=os.environ.get("DELETE_NAMESPACE", "1"),
         include_optional=os.environ.get("INCLUDE_OPTIONAL", ""),
-        enable_unpackerr=os.environ.get("ENABLE_UNPACKERR", ""),
+        enable_components=os.environ.get("ENABLE_COMPONENTS", ""),
         run_bootstrap=os.environ.get("RUN_BOOTSTRAP", ""),
         run_smoke_test=os.environ.get("RUN_SMOKE_TEST", "1"),
         skip_prepare_host=os.environ.get("SKIP_PREPARE_HOST", "0"),
@@ -58,7 +58,9 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
         pvc_storage_class=parsed.storage_class,
         ingress_domain=parsed.ingress_domain,
         config_file=Path(
-            os.environ.get("CONFIG_FILE", str(root_dir / "bootstrap" / "media-stack.bootstrap.json"))
+            os.environ.get(
+                "CONFIG_FILE", str(root_dir / "bootstrap" / "media-stack.bootstrap.json")
+            )
         ),
         ingress_class=os.environ.get("INGRESS_CLASS", "auto"),
         profile=os.environ.get("PROFILE", "full"),

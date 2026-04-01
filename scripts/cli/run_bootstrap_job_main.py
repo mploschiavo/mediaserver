@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
 import sys
 import time
@@ -10,14 +12,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from bootstrap_services.apps.jellyfin.cli.jellyfin_plugin_activation_service import (
-    JellyfinPluginActivationConfig,
-    JellyfinPluginActivationService,
-)
 from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, MediaStackError
 from core.kube import KubernetesClient
 
+from cli.bootstrap_component_resolver import resolve_bootstrap_component_plan
 from cli.bootstrap_core_phases_service import (
     BootstrapCorePhasesConfig,
     BootstrapCorePhasesService,
@@ -40,7 +39,10 @@ from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
     BootstrapNotificationService,
 )
-from cli.bootstrap_post_job_actions_service import BootstrapPostJobActionsService
+from cli.bootstrap_post_job_actions_service import (
+    BootstrapPostJobAction,
+    BootstrapPostJobActionsService,
+)
 from cli.bootstrap_script_runner_service import (
     BootstrapScriptRunnerConfig,
     BootstrapScriptRunnerService,
@@ -124,6 +126,7 @@ class RunBootstrapJobRunner:
         self.tracker = tracker
         self.artifacts_service = BootstrapJobArtifactsService()
         self.artifacts: BootstrapJobArtifacts = self.artifacts_service.create()
+        self._resolved_cfg_cache: dict[str, object] | None = None
 
     def _job_wait_service(self) -> BootstrapJobWaitService:
         return BootstrapJobWaitService(
@@ -163,20 +166,6 @@ class RunBootstrapJobRunner:
             warn=warn,
         )
 
-    def _jellyfin_plugin_service(self) -> JellyfinPluginActivationService:
-        return JellyfinPluginActivationService(
-            cfg=JellyfinPluginActivationConfig(namespace=self.cfg.namespace),
-            kube=self.kube,
-            info=info,
-            warn=warn,
-            deployment_exists=self.deployment_exists,
-            restart_deployment=lambda deployment, timeout_seconds: self.restart_deployment(
-                deployment,
-                timeout_seconds=timeout_seconds,
-            ),
-            read_secret_key=self._read_secret_key,
-        )
-
     def _notification_service(self) -> BootstrapNotificationService:
         return BootstrapNotificationService(
             cfg=BootstrapNotificationConfig(
@@ -203,7 +192,7 @@ class RunBootstrapJobRunner:
         )
 
     def _post_job_actions_service(self) -> BootstrapPostJobActionsService:
-        return BootstrapPostJobActionsService()
+        return BootstrapPostJobActionsService(actions=self._resolve_post_job_actions())
 
     def _core_phases_service(self) -> BootstrapCorePhasesService:
         return BootstrapCorePhasesService(
@@ -226,6 +215,133 @@ class RunBootstrapJobRunner:
             kube=self.kube,
         )
 
+    def _resolved_cfg(self) -> dict[str, object]:
+        if self._resolved_cfg_cache is None:
+            self._resolved_cfg_cache = resolve_bootstrap_component_plan(self.cfg.config_file).config
+        return self._resolved_cfg_cache
+
+    def _bootstrap_job_hooks(self) -> dict[str, object]:
+        adapter_hooks = self._resolved_cfg().get("adapter_hooks")
+        if not isinstance(adapter_hooks, dict):
+            return {}
+        bootstrap_job = adapter_hooks.get("bootstrap_job")
+        if not isinstance(bootstrap_job, dict):
+            return {}
+        return bootstrap_job
+
+    def _resolve_post_job_actions(self) -> list[BootstrapPostJobAction]:
+        hooks = self._bootstrap_job_hooks()
+        raw_actions = hooks.get("post_job_actions")
+        if raw_actions is None:
+            return []
+        if not isinstance(raw_actions, list):
+            raise ConfigError("adapter_hooks.bootstrap_job.post_job_actions must be an array")
+
+        actions: list[BootstrapPostJobAction] = []
+        for idx, item in enumerate(raw_actions):
+            if not isinstance(item, dict):
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.post_job_actions" f"[{idx}] must be an object"
+                )
+            marker = str(item.get("marker") or "").strip()
+            phase_name = str(item.get("phase_name") or "").strip()
+            deployment = str(item.get("deployment") or "").strip()
+            if not marker or not phase_name or not deployment:
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.post_job_actions"
+                    f"[{idx}] requires marker, phase_name, and deployment"
+                )
+            timeout_seconds = int(item.get("timeout_seconds") or 180)
+            restart_if_exists = bool(item.get("restart_if_exists", True))
+            actions.append(
+                BootstrapPostJobAction(
+                    marker=marker,
+                    phase_name=phase_name,
+                    deployment=deployment,
+                    timeout_seconds=timeout_seconds,
+                    restart_if_exists=restart_if_exists,
+                )
+            )
+        return actions
+
+    def _resolve_call_handler_specs(self) -> dict[str, str]:
+        hooks = self._bootstrap_job_hooks()
+        raw_map = hooks.get("call_handlers")
+        if raw_map is None:
+            return {}
+        if not isinstance(raw_map, dict):
+            raise ConfigError("adapter_hooks.bootstrap_job.call_handlers must be an object")
+        out: dict[str, str] = {}
+        for key, spec in raw_map.items():
+            handler_key = str(key or "").strip()
+            hook_spec = str(spec or "").strip()
+            if not handler_key or not hook_spec:
+                continue
+            if ":" not in hook_spec:
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.call_handlers"
+                    f".{handler_key} must be module.path:Symbol"
+                )
+            out[handler_key] = hook_spec
+        return out
+
+    @staticmethod
+    def _import_hook(spec: str) -> Callable[..., None]:
+        module_name, symbol_name = spec.split(":", 1)
+        module = importlib.import_module(module_name)
+        hook = getattr(module, symbol_name, None)
+        if not callable(hook):
+            raise ConfigError(f"Hook '{spec}' did not resolve to a callable")
+        return hook
+
+    def _hook_context(self) -> dict[str, object]:
+        return {
+            "namespace": self.cfg.namespace,
+            "kube": self.kube,
+            "info": info,
+            "warn": warn,
+            "deployment_exists": self.deployment_exists,
+            "restart_deployment": (
+                lambda deployment, timeout_seconds=180: self.restart_deployment(
+                    deployment,
+                    timeout_seconds=int(timeout_seconds),
+                )
+            ),
+            "restart_deployment_if_exists": (
+                lambda deployment, timeout_seconds=180: self.restart_deployment_if_exists(
+                    deployment,
+                    timeout_seconds=int(timeout_seconds),
+                )
+            ),
+            "read_secret_key": self._read_secret_key,
+            "log_contains": self._log_contains,
+        }
+
+    def _invoke_hook(self, hook: Callable[..., None], *, hook_name: str) -> None:
+        context = self._hook_context()
+        signature = inspect.signature(hook)
+        accepts_kwargs = any(
+            param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
+        )
+        if accepts_kwargs:
+            hook(**context)
+            return
+
+        accepted = {key: value for key, value in context.items() if key in signature.parameters}
+        required_missing = [
+            name
+            for name, param in signature.parameters.items()
+            if param.default is inspect.Parameter.empty
+            and param.kind
+            in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            and name not in accepted
+        ]
+        if required_missing:
+            raise ConfigError(
+                f"Hook '{hook_name}' requires unsupported parameters: {', '.join(required_missing)}"
+            )
+        hook(**accepted)
+
     def run(self) -> int:
         if not self.cfg.config_file.exists():
             raise ConfigError(f"Config file not found: {self.cfg.config_file}")
@@ -238,21 +354,32 @@ class RunBootstrapJobRunner:
         self.notify("info", f"media-stack bootstrap job started (namespace={self.cfg.namespace})")
 
         try:
+            operation_handlers: dict[str, Callable[[], None]] = {
+                "prepare_bootstrap_job_config": self.prepare_bootstrap_job_config,
+                "ensure_bootstrap_pvc_prereqs": self.ensure_bootstrap_pvc_prereqs,
+                "prime_servarr_api_keys_secret": self.prime_servarr_api_keys_secret,
+                "prime_usenet_client_api_key_secret": self.prime_usenet_client_api_key_secret,
+                "prime_request_manager_api_key_secret": self.prime_request_manager_api_key_secret,
+                "prime_analytics_api_key_secret": self.prime_analytics_api_key_secret,
+                "update_bootstrap_configmaps": self.update_bootstrap_configmaps,
+                "recreate_bootstrap_job": self.recreate_bootstrap_job,
+                "wait_for_bootstrap_job": self.wait_for_bootstrap_job,
+                "print_bootstrap_job_logs": self.print_bootstrap_job_logs,
+            }
+
+            for handler_key, spec in self._resolve_call_handler_specs().items():
+                hook = self._import_hook(spec)
+                operation_handlers[handler_key] = (
+                    lambda imported=hook, name=handler_key: self._invoke_hook(
+                        imported,
+                        hook_name=name,
+                    )
+                )
+
             self._core_phases_service().run(
                 run_phase=self._run_phase,
                 run_script=self._run_script,
-                operation_handlers={
-                    "prepare_bootstrap_job_config": self.prepare_bootstrap_job_config,
-                    "ensure_bootstrap_pvc_prereqs": self.ensure_bootstrap_pvc_prereqs,
-                    "prime_servarr_api_keys_secret": self.prime_servarr_api_keys_secret,
-                    "prime_usenet_client_api_key_secret": self.prime_usenet_client_api_key_secret,
-                    "prime_request_manager_api_key_secret": self.prime_request_manager_api_key_secret,
-                    "prime_tautulli_api_key_secret": self.prime_tautulli_api_key_secret,
-                    "update_bootstrap_configmaps": self.update_bootstrap_configmaps,
-                    "recreate_bootstrap_job": self.recreate_bootstrap_job,
-                    "wait_for_bootstrap_job": self.wait_for_bootstrap_job,
-                    "print_bootstrap_job_logs": self.print_bootstrap_job_logs,
-                },
+                operation_handlers=operation_handlers,
             )
 
             self._post_job_actions_service().run_actions(
@@ -266,11 +393,6 @@ class RunBootstrapJobRunner:
                     deployment,
                     timeout_seconds=180,
                 ),
-            )
-
-            self._run_phase(
-                "Activate Jellyfin plugins (restart if needed)",
-                self.activate_jellyfin_plugins,
             )
 
             info("Bootstrap job completed.")
@@ -332,13 +454,13 @@ class RunBootstrapJobRunner:
         self._secret_priming_service().prime_servarr_api_keys()
 
     def prime_usenet_client_api_key_secret(self) -> None:
-        self._secret_priming_service().prime_sab_api_key()
+        self._secret_priming_service().prime_usenet_client_api_key()
 
     def prime_request_manager_api_key_secret(self) -> None:
-        self._secret_priming_service().prime_jellyseerr_api_key()
+        self._secret_priming_service().prime_request_manager_api_key()
 
-    def prime_tautulli_api_key_secret(self) -> None:
-        self._secret_priming_service().prime_tautulli_api_key()
+    def prime_analytics_api_key_secret(self) -> None:
+        self._secret_priming_service().prime_analytics_api_key()
 
     def update_bootstrap_configmaps(self) -> None:
         self._manifest_service().update_bootstrap_configmaps()
@@ -375,9 +497,6 @@ class RunBootstrapJobRunner:
 
     def _read_secret_key(self, secret: str, key_name: str) -> str:
         return self._secret_reader_service().read_secret_key(secret, key_name)
-
-    def activate_jellyfin_plugins(self) -> None:
-        self._jellyfin_plugin_service().activate_plugins_if_needed()
 
 
 def main(argv: list[str] | None = None) -> int:

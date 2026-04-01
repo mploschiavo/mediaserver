@@ -19,7 +19,7 @@ class RebuildPipelineServiceTests(unittest.TestCase):
                 namespace="media-stack",
                 root_dir=ROOT,
                 prepare_host_root="/srv/media-stack",
-                enable_unpackerr="1",
+                enable_components="1",
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
             ),
             info=mock.Mock(),

@@ -16,11 +16,11 @@ class RebuildProfileDefaultsServiceTests(unittest.TestCase):
         resolved = svc.apply(
             profile="full",
             include_optional="",
-            enable_unpackerr="",
+            enable_components="",
             run_bootstrap="",
         )
         self.assertEqual(resolved.include_optional, "1")
-        self.assertEqual(resolved.enable_unpackerr, "1")
+        self.assertEqual(resolved.enable_components, "1")
         self.assertEqual(resolved.run_bootstrap, "1")
 
     def test_public_demo_defaults(self):
@@ -28,11 +28,11 @@ class RebuildProfileDefaultsServiceTests(unittest.TestCase):
         resolved = svc.apply(
             profile="public-demo",
             include_optional="",
-            enable_unpackerr="",
+            enable_components="",
             run_bootstrap="",
         )
         self.assertEqual(resolved.include_optional, "1")
-        self.assertEqual(resolved.enable_unpackerr, "0")
+        self.assertEqual(resolved.enable_components, "0")
         self.assertEqual(resolved.run_bootstrap, "0")
 
 

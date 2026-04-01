@@ -7,6 +7,7 @@ https://matthewloschiavo.com
 
 from __future__ import annotations
 
+import json
 import shlex
 import subprocess
 import sys
@@ -83,6 +84,135 @@ class RebuildBootstrapRunner:
     kubectl: list[str]
     tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
     backup_secret_values: dict[str, str] = field(default_factory=dict)
+    _resolved_config_cache: dict[str, object] | None = field(default=None, init=False, repr=False)
+
+    def _resolved_bootstrap_config(self) -> dict[str, object]:
+        if self._resolved_config_cache is None:
+            payload = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise RebuildError(
+                    f"Expected JSON object in bootstrap config file: {self.cfg.config_file}"
+                )
+            self._resolved_config_cache = payload
+        return self._resolved_config_cache
+
+    def _rebuild_profile_actions(
+        self,
+    ) -> tuple[
+        dict[str, tuple[str, ...]],
+        dict[str, tuple[str, ...]],
+        dict[str, str],
+        dict[str, tuple[str, ...]],
+        tuple[str, ...],
+        tuple[str, ...],
+    ]:
+        cfg = self._resolved_bootstrap_config()
+        adapter_hooks = cfg.get("adapter_hooks")
+        if not isinstance(adapter_hooks, dict):
+            return {}, {}, {}, {}, (), ()
+        rebuild_hooks = adapter_hooks.get("rebuild")
+        if not isinstance(rebuild_hooks, dict):
+            return {}, {}, {}, {}, (), ()
+
+        scale_to_zero: dict[str, tuple[str, ...]] = {}
+        raw_scale_to_zero = rebuild_hooks.get("profile_scale_to_zero_apps")
+        if raw_scale_to_zero is not None:
+            if not isinstance(raw_scale_to_zero, dict):
+                raise RebuildError(
+                    "adapter_hooks.rebuild.profile_scale_to_zero_apps must be an object"
+                )
+            for profile, apps in raw_scale_to_zero.items():
+                profile_key = str(profile or "").strip()
+                if not profile_key:
+                    continue
+                if not isinstance(apps, list):
+                    raise RebuildError(
+                        "adapter_hooks.rebuild.profile_scale_to_zero_apps."
+                        f"{profile_key} must be an array"
+                    )
+                resolved_apps = tuple(
+                    str(app or "").strip() for app in apps if str(app or "").strip()
+                )
+                scale_to_zero[profile_key] = resolved_apps
+
+        tls_hosts: dict[str, tuple[str, ...]] = {}
+        tls_secret_names: dict[str, str] = {}
+        raw_tls_profiles = rebuild_hooks.get("profile_tls")
+        if raw_tls_profiles is not None:
+            if not isinstance(raw_tls_profiles, dict):
+                raise RebuildError("adapter_hooks.rebuild.profile_tls must be an object")
+            for profile, spec in raw_tls_profiles.items():
+                profile_key = str(profile or "").strip()
+                if not profile_key:
+                    continue
+                if not isinstance(spec, dict):
+                    raise RebuildError(
+                        f"adapter_hooks.rebuild.profile_tls.{profile_key} must be an object"
+                    )
+                raw_hosts = spec.get("hosts")
+                if raw_hosts is not None:
+                    if not isinstance(raw_hosts, list):
+                        raise RebuildError(
+                            f"adapter_hooks.rebuild.profile_tls.{profile_key}.hosts must be an array"
+                        )
+                    hosts = tuple(
+                        str(host or "").strip() for host in raw_hosts if str(host or "").strip()
+                    )
+                    tls_hosts[profile_key] = hosts
+                secret_name = str(spec.get("secret_name") or "").strip()
+                if secret_name:
+                    tls_secret_names[profile_key] = secret_name
+
+        profile_manifest_paths: dict[str, tuple[str, ...]] = {}
+        raw_profile_manifest_paths = rebuild_hooks.get("profile_manifest_paths")
+        if raw_profile_manifest_paths is not None:
+            if not isinstance(raw_profile_manifest_paths, dict):
+                raise RebuildError("adapter_hooks.rebuild.profile_manifest_paths must be an object")
+            for profile, manifests in raw_profile_manifest_paths.items():
+                profile_key = str(profile or "").strip()
+                if not profile_key:
+                    continue
+                if not isinstance(manifests, list):
+                    raise RebuildError(
+                        "adapter_hooks.rebuild.profile_manifest_paths."
+                        f"{profile_key} must be an array"
+                    )
+                profile_manifest_paths[profile_key] = tuple(
+                    str(item or "").strip() for item in manifests if str(item or "").strip()
+                )
+
+        component_enable_manifest_paths: tuple[str, ...] = ()
+        raw_component_manifest_paths = rebuild_hooks.get("component_enable_manifest_paths")
+        if raw_component_manifest_paths is not None:
+            if not isinstance(raw_component_manifest_paths, list):
+                raise RebuildError(
+                    "adapter_hooks.rebuild.component_enable_manifest_paths must be an array"
+                )
+            component_enable_manifest_paths = tuple(
+                str(item or "").strip()
+                for item in raw_component_manifest_paths
+                if str(item or "").strip()
+            )
+
+        preserve_secret_keys: tuple[str, ...] = ()
+        raw_preserve_secret_keys = rebuild_hooks.get("preserve_secret_keys")
+        if raw_preserve_secret_keys is not None:
+            if not isinstance(raw_preserve_secret_keys, list):
+                raise RebuildError("adapter_hooks.rebuild.preserve_secret_keys must be an array")
+            preserve_secret_keys = tuple(
+                str(item or "").strip()
+                for item in raw_preserve_secret_keys
+                if str(item or "").strip()
+            )
+
+        return (
+            scale_to_zero,
+            tls_hosts,
+            tls_secret_names,
+            profile_manifest_paths,
+            component_enable_manifest_paths,
+            preserve_secret_keys,
+        )
 
     def _notification_service(self) -> BootstrapNotificationService:
         return BootstrapNotificationService(
@@ -100,11 +230,13 @@ class RebuildBootstrapRunner:
         )
 
     def _secret_preservation_service(self) -> RebuildSecretPreservationService:
+        _, _, _, _, _, preserve_secret_keys = self._rebuild_profile_actions()
         return RebuildSecretPreservationService(
             cfg=RebuildSecretPreservationConfig(
                 namespace=self.cfg.namespace,
                 secret_name=self.cfg.secret_name,
                 kubectl=self.kubectl,
+                preserve_keys=preserve_secret_keys,
             ),
             info=info,
             run_kubectl=self._run_kubectl,
@@ -132,14 +264,27 @@ class RebuildBootstrapRunner:
         )
 
     def _manifest_apply_service(self) -> RebuildManifestApplyService:
+        (
+            profile_scale_to_zero_apps,
+            profile_tls_hosts,
+            profile_tls_secret_names,
+            profile_manifest_paths,
+            component_enable_manifest_paths,
+            _preserve_secret_keys,
+        ) = self._rebuild_profile_actions()
         return RebuildManifestApplyService(
             cfg=RebuildManifestApplyConfig(
                 root_dir=self.cfg.root_dir,
                 namespace=self.cfg.namespace,
                 profile=self.cfg.profile,
                 include_optional=self.cfg.include_optional,
-                enable_unpackerr=self.cfg.enable_unpackerr,
+                enable_components=self.cfg.enable_components,
                 kubectl=self.kubectl,
+                profile_scale_to_zero_apps=profile_scale_to_zero_apps,
+                profile_tls_hosts=profile_tls_hosts,
+                profile_tls_secret_names=profile_tls_secret_names,
+                profile_manifest_paths=profile_manifest_paths,
+                component_enable_manifest_paths=component_enable_manifest_paths,
             ),
             info=info,
             warn=warn,
@@ -180,7 +325,7 @@ class RebuildBootstrapRunner:
                 namespace=self.cfg.namespace,
                 root_dir=self.cfg.root_dir,
                 prepare_host_root=self.cfg.prepare_host_root,
-                enable_unpackerr=self.cfg.enable_unpackerr,
+                enable_components=self.cfg.enable_components,
                 config_file=self.cfg.config_file,
             ),
             info=info,
@@ -212,7 +357,7 @@ class RebuildBootstrapRunner:
         else:
             info("PVC storage class override: <cluster default>")
         info(f"Include optional: {self.cfg.include_optional}")
-        info(f"Enable Unpackerr: {self.cfg.enable_unpackerr}")
+        info(f"Enable components: {self.cfg.enable_components}")
         info(f"Run bootstrap: {self.cfg.run_bootstrap}")
         info(f"Generate secrets on rebuild: {self.cfg.generate_secrets_on_rebuild}")
         info(f"Preserve secret on rebuild: {self.cfg.preserve_secret_on_rebuild}")
@@ -224,7 +369,9 @@ class RebuildBootstrapRunner:
 
         self._run_phase(
             "Validate bootstrap config schema",
-            lambda: self._run_script("validate-bootstrap-config.sh", "--config", str(self.cfg.config_file)),
+            lambda: self._run_script(
+                "validate-bootstrap-config.sh", "--config", str(self.cfg.config_file)
+            ),
         )
 
         if self.cfg.skip_prepare_host != "1":
@@ -249,7 +396,9 @@ class RebuildBootstrapRunner:
             self._run_phase("Apply scale-policy guardrails", self.apply_scale_policy_guardrails)
             self._run_phase("Run bootstrap pipeline", self.run_bootstrap_pipeline)
         else:
-            self._run_phase("Apply scale-policy guardrails", self.skip_scale_policy_guardrails, enabled=True)
+            self._run_phase(
+                "Apply scale-policy guardrails", self.skip_scale_policy_guardrails, enabled=True
+            )
             self._run_phase("Run bootstrap pipeline", self.skip_bootstrap_pipeline, enabled=True)
 
         if self.cfg.run_smoke_test == "1":
@@ -304,13 +453,13 @@ class RebuildBootstrapRunner:
             resolved = self._profile_defaults_service().apply(
                 profile=self.cfg.profile,
                 include_optional=self.cfg.include_optional,
-                enable_unpackerr=self.cfg.enable_unpackerr,
+                enable_components=self.cfg.enable_components,
                 run_bootstrap=self.cfg.run_bootstrap,
             )
         except RuntimeError as exc:
             raise RebuildError(str(exc)) from exc
         self.cfg.include_optional = resolved.include_optional
-        self.cfg.enable_unpackerr = resolved.enable_unpackerr
+        self.cfg.enable_components = resolved.enable_components
         self.cfg.run_bootstrap = resolved.run_bootstrap
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
@@ -414,6 +563,7 @@ class RebuildBootstrapRunner:
     def print_final_pod_status(self) -> None:
         info("Final pod status:")
         self._run_kubectl(["-n", self.cfg.namespace, "get", "pods"])
+
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
