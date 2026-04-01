@@ -1,6 +1,8 @@
 import importlib.util
+import json
 import logging
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -31,7 +33,7 @@ class FakeKube:
         self.calls.append(args)
 
         joined = " ".join(args)
-        for app in ("sonarr", "radarr", "lidarr", "readarr", "prowlarr"):
+        for app in self.keys.keys():
             if f"deploy/{app}" in joined:
                 key = self.keys.get(app, "")
                 xml = f"<Config><ApiKey>{key}</ApiKey></Config>"
@@ -69,6 +71,9 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
         cfg = MODULE.parse_config([])
         self.assertEqual(cfg.namespace, "media-stack")
         self.assertEqual(cfg.secret_name, "media-stack-secrets")
+        self.assertTrue(
+            str(cfg.bootstrap_config_file or "").endswith("bootstrap/media-stack.bootstrap.json")
+        )
 
     def test_service_updates_secret_with_all_keys(self):
         kube = FakeKube(
@@ -91,9 +96,56 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
         apply_calls = [call for call in kube.calls if call[:2] == ["apply", "-f"]]
         self.assertEqual(len(apply_calls), 1)
         rollout_calls = [
-            call for call in kube.calls if call[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]
+            call
+            for call in kube.calls
+            if call[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]
         ]
         self.assertEqual(len(rollout_calls), 0)
+
+    def test_service_targets_only_apps_from_bootstrap_config_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "bootstrap.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "arr_apps": [
+                            {"name": "Sonarr", "implementation": "sonarr"},
+                            {"name": "Lidarr", "implementation": "lidarr"},
+                        ],
+                        "prowlarr_url": "http://prowlarr:9696",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            kube = FakeKube(
+                {
+                    "sonarr": "S",
+                    "lidarr": "L",
+                    "prowlarr": "P",
+                }
+            )
+            service = MODULE.SyncUnpackerrKeysService(
+                cfg=MODULE.SyncUnpackerrKeysConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=config_path,
+                ),
+                kube=kube,
+                logger=logging.getLogger("test.sync_unpackerr"),
+            )
+            with mock.patch("builtins.print"):
+                rc = service.run()
+            self.assertEqual(rc, 0)
+
+            read_calls = [
+                call[3]
+                for call in kube.calls
+                if len(call) >= 4 and call[:3] == ["-n", "media-stack", "exec"]
+            ]
+            self.assertIn("deploy/sonarr", read_calls)
+            self.assertIn("deploy/lidarr", read_calls)
+            self.assertIn("deploy/prowlarr", read_calls)
+            self.assertNotIn("deploy/radarr", read_calls)
+            self.assertNotIn("deploy/readarr", read_calls)
 
     def test_service_restarts_unpackerr_when_deployed_and_active(self):
         kube = FakeKube(
@@ -115,10 +167,14 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
             rc = service.run()
         self.assertEqual(rc, 0)
         rollout_restart = [
-            call for call in kube.calls if call[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]
+            call
+            for call in kube.calls
+            if call[:5] == ["-n", "media-stack", "rollout", "restart", "deploy/unpackerr"]
         ]
         rollout_status = [
-            call for call in kube.calls if call[:5] == ["-n", "media-stack", "rollout", "status", "deploy/unpackerr"]
+            call
+            for call in kube.calls
+            if call[:5] == ["-n", "media-stack", "rollout", "status", "deploy/unpackerr"]
         ]
         self.assertEqual(len(rollout_restart), 1)
         self.assertEqual(len(rollout_status), 1)

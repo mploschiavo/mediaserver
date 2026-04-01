@@ -110,7 +110,7 @@ def build_parser(root_dir: Path) -> argparse.ArgumentParser:
         "--skip-qbit-ensure",
         action="store_true",
         default=env_bool("SKIP_QBIT_ENSURE", False),
-        help="Skip qBittorrent ensure phase.",
+        help="Skip torrent client credential ensure phase (qBittorrent wrapper).",
     )
     parser.add_argument(
         "--skip-sab-ensure",
@@ -121,7 +121,9 @@ def build_parser(root_dir: Path) -> argparse.ArgumentParser:
     return parser
 
 
-def parse_run_bootstrap_job_config(argv: list[str] | None, *, root_dir: Path) -> RunBootstrapJobConfig:
+def parse_run_bootstrap_job_config(
+    argv: list[str] | None, *, root_dir: Path
+) -> RunBootstrapJobConfig:
     parser = build_parser(root_dir)
     args = parser.parse_args(argv)
     return RunBootstrapJobConfig(

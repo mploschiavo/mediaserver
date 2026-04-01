@@ -168,7 +168,9 @@ class BootstrapAllRunner:
             f"namespace: {self.cfg.namespace}",
             text,
         )
-        out = re.sub(r"name:\s*media-stack\s*$", f"name: {self.cfg.namespace}", out, flags=re.MULTILINE)
+        out = re.sub(
+            r"name:\s*media-stack\s*$", f"name: {self.cfg.namespace}", out, flags=re.MULTILINE
+        )
         out = out.replace("/srv/media-stack", self.cfg.prepare_host_root)
         return out
 
@@ -221,7 +223,7 @@ class BootstrapAllRunner:
         should_run_sab = self._config_probe("usenet-ensure")
 
         self._run_phase(
-            "Ensure qBittorrent credentials",
+            "Ensure torrent client credentials",
             lambda: self._run_script(
                 "ensure-qbit-credentials.sh",
                 env={
@@ -372,7 +374,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--resume",
         dest="resume",
         action="store_true",
-        default=str(os.environ.get("BOOTSTRAP_RESUME", "1")).strip().lower() in {"1", "true", "yes", "on"},
+        default=str(os.environ.get("BOOTSTRAP_RESUME", "1")).strip().lower()
+        in {"1", "true", "yes", "on"},
         help="Resume from completed phase checkpoints (default: enabled).",
     )
     parser.add_argument(

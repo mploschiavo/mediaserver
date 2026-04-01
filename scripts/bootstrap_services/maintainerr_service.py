@@ -130,6 +130,25 @@ class MaintainerrService:
             raise RuntimeError("Maintainerr: integration URL is missing.")
         return self.normalize_url(url)
 
+    def _require_or_skip_missing_arr_app(
+        self,
+        *,
+        section_cfg: dict[str, Any],
+        app_name: str,
+        integration_name: str,
+    ) -> bool:
+        required = self._ensure_enabled(section_cfg, "required", False)
+        if required:
+            raise RuntimeError(
+                f"Maintainerr: {app_name} integration is enabled and required, but "
+                f"{app_name} app config was not found in arr_apps."
+            )
+        self.log(
+            f"[WARN] Maintainerr: {app_name} app config not found; "
+            f"skipping {integration_name} integration."
+        )
+        return False
+
     def _rule_sync_service(self) -> MaintainerrRuleSyncService:
         return MaintainerrRuleSyncService(
             deps=MaintainerrRuleSyncDependencies(
@@ -299,9 +318,7 @@ class MaintainerrService:
 
         status, current, body = self._request(maintainerr_url, "/api/settings")
         if status != 200 or not isinstance(current, dict):
-            raise RuntimeError(
-                f"Maintainerr: failed reading main settings (HTTP {status}): {body}"
-            )
+            raise RuntimeError(f"Maintainerr: failed reading main settings (HTTP {status}): {body}")
 
         desired = dict(current)
 
@@ -316,9 +333,7 @@ class MaintainerrService:
             desired["applicationUrl"] = application_url
 
         media_server_type = self._text(
-            main_section.get("media_server_type")
-            or desired.get("media_server_type")
-            or "jellyfin"
+            main_section.get("media_server_type") or desired.get("media_server_type") or "jellyfin"
         ).lower()
         if media_server_type:
             desired["media_server_type"] = media_server_type
@@ -339,7 +354,11 @@ class MaintainerrService:
         jellyfin_cfg = cfg.get("jellyfin") or {}
         desired["jellyfin_url"] = self._resolve_url(
             main_section,
-            self._text(main_section.get("jellyfin_url") or jellyfin_cfg.get("url") or "http://jellyfin:8096"),
+            self._text(
+                main_section.get("jellyfin_url")
+                or jellyfin_cfg.get("url")
+                or "http://jellyfin:8096"
+            ),
         )
         desired["jellyfin_server_name"] = self._text(
             main_section.get("jellyfin_server_name")
@@ -347,12 +366,16 @@ class MaintainerrService:
             or "Jellyfin"
         )
 
-        jellyfin_api_env = self._text(main_section.get("jellyfin_api_key_env") or "JELLYFIN_API_KEY")
+        jellyfin_api_env = self._text(
+            main_section.get("jellyfin_api_key_env") or "JELLYFIN_API_KEY"
+        )
         jellyfin_api_key = self._text(os.environ.get(jellyfin_api_env))
         if jellyfin_api_key:
             desired["jellyfin_api_key"] = jellyfin_api_key
 
-        jellyfin_user_env = self._text(main_section.get("jellyfin_user_id_env") or "JELLYFIN_USER_ID")
+        jellyfin_user_env = self._text(
+            main_section.get("jellyfin_user_id_env") or "JELLYFIN_USER_ID"
+        )
         jellyfin_user_id = self._text(os.environ.get(jellyfin_user_env))
         if jellyfin_user_id:
             desired["jellyfin_user_id"] = jellyfin_user_id
@@ -361,9 +384,7 @@ class MaintainerrService:
         if self._ensure_enabled(tautulli_section, "enabled", True):
             desired["tautulli_url"] = self._resolve_url(
                 tautulli_section,
-                self._text(
-                    (cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"
-                ),
+                self._text((cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"),
             )
             desired["tautulli_api_key"] = self._resolve_tautulli_key(
                 config_root=config_root,
@@ -382,7 +403,10 @@ class MaintainerrService:
             "tautulli_url",
             "tautulli_api_key",
         ]
-        needs_update = any(self._text(current.get(field)) != self._text(desired.get(field)) for field in watched_fields)
+        needs_update = any(
+            self._text(current.get(field)) != self._text(desired.get(field))
+            for field in watched_fields
+        )
         if not needs_update:
             self.log("[OK] Maintainerr: main settings already configured")
             return
@@ -394,9 +418,7 @@ class MaintainerrService:
             payload=desired,
         )
         if status < 200 or status >= 300:
-            raise RuntimeError(
-                f"Maintainerr: failed saving main settings (HTTP {status}): {body}"
-            )
+            raise RuntimeError(f"Maintainerr: failed saving main settings (HTTP {status}): {body}")
         self.log("[OK] Maintainerr: configured main settings")
 
     def ensure_integrations(
@@ -435,58 +457,74 @@ class MaintainerrService:
         radarr_section = self._service_section(integrations_cfg, "radarr")
         if self._ensure_enabled(radarr_section, "enabled", True):
             radarr_app = self.get_arr_app(arr_apps, "radarr")
-            radarr_url = self._resolve_url(
-                radarr_section,
-                self._text((radarr_app or {}).get("url") or "http://radarr:7878"),
-            )
-            radarr_payload = {
-                "serverName": self._text(
-                    radarr_section.get("server_name")
-                    or (radarr_app or {}).get("name")
-                    or "Radarr"
-                ),
-                "url": radarr_url,
-                "apiKey": self._resolve_servarr_key(
-                    config_root=config_root,
-                    app_name="radarr",
+            if not isinstance(radarr_app, dict):
+                if not self._require_or_skip_missing_arr_app(
                     section_cfg=radarr_section,
-                    default_env="RADARR_API_KEY",
-                ),
-            }
-            self._ensure_servarr_integration(
-                maintainerr_url,
-                "radarr",
-                radarr_payload,
-                test_connections=test_connections,
-            )
+                    app_name="Radarr",
+                    integration_name="radarr",
+                ):
+                    radarr_app = None
+            if isinstance(radarr_app, dict):
+                radarr_url = self._resolve_url(
+                    radarr_section,
+                    self._text((radarr_app or {}).get("url") or "http://radarr:7878"),
+                )
+                radarr_payload = {
+                    "serverName": self._text(
+                        radarr_section.get("server_name")
+                        or (radarr_app or {}).get("name")
+                        or "Radarr"
+                    ),
+                    "url": radarr_url,
+                    "apiKey": self._resolve_servarr_key(
+                        config_root=config_root,
+                        app_name="radarr",
+                        section_cfg=radarr_section,
+                        default_env="RADARR_API_KEY",
+                    ),
+                }
+                self._ensure_servarr_integration(
+                    maintainerr_url,
+                    "radarr",
+                    radarr_payload,
+                    test_connections=test_connections,
+                )
 
         sonarr_section = self._service_section(integrations_cfg, "sonarr")
         if self._ensure_enabled(sonarr_section, "enabled", True):
             sonarr_app = self.get_arr_app(arr_apps, "sonarr")
-            sonarr_url = self._resolve_url(
-                sonarr_section,
-                self._text((sonarr_app or {}).get("url") or "http://sonarr:8989"),
-            )
-            sonarr_payload = {
-                "serverName": self._text(
-                    sonarr_section.get("server_name")
-                    or (sonarr_app or {}).get("name")
-                    or "Sonarr"
-                ),
-                "url": sonarr_url,
-                "apiKey": self._resolve_servarr_key(
-                    config_root=config_root,
-                    app_name="sonarr",
+            if not isinstance(sonarr_app, dict):
+                if not self._require_or_skip_missing_arr_app(
                     section_cfg=sonarr_section,
-                    default_env="SONARR_API_KEY",
-                ),
-            }
-            self._ensure_servarr_integration(
-                maintainerr_url,
-                "sonarr",
-                sonarr_payload,
-                test_connections=test_connections,
-            )
+                    app_name="Sonarr",
+                    integration_name="sonarr",
+                ):
+                    sonarr_app = None
+            if isinstance(sonarr_app, dict):
+                sonarr_url = self._resolve_url(
+                    sonarr_section,
+                    self._text((sonarr_app or {}).get("url") or "http://sonarr:8989"),
+                )
+                sonarr_payload = {
+                    "serverName": self._text(
+                        sonarr_section.get("server_name")
+                        or (sonarr_app or {}).get("name")
+                        or "Sonarr"
+                    ),
+                    "url": sonarr_url,
+                    "apiKey": self._resolve_servarr_key(
+                        config_root=config_root,
+                        app_name="sonarr",
+                        section_cfg=sonarr_section,
+                        default_env="SONARR_API_KEY",
+                    ),
+                }
+                self._ensure_servarr_integration(
+                    maintainerr_url,
+                    "sonarr",
+                    sonarr_payload,
+                    test_connections=test_connections,
+                )
 
         jellyseerr_section = self._service_section(integrations_cfg, "jellyseerr")
         if self._ensure_enabled(jellyseerr_section, "enabled", True):
@@ -514,9 +552,7 @@ class MaintainerrService:
             tautulli_payload = {
                 "url": self._resolve_url(
                     tautulli_section,
-                    self._text(
-                        (cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"
-                    ),
+                    self._text((cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"),
                 ),
                 "api_key": self._resolve_tautulli_key(
                     config_root=config_root,

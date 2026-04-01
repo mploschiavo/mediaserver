@@ -33,7 +33,7 @@ class BootstrapCorePhasesService:
         print_bootstrap_job_logs: Callable[[], None],
     ) -> None:
         run_phase(
-            "Ensure qBittorrent credentials",
+            "Ensure torrent client credentials",
             lambda: run_script(
                 "ensure-qbit-credentials.sh",
                 env={

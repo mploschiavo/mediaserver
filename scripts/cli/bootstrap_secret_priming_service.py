@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from bootstrap_services.plugin_manifest_loader import load_plugin_manifests
 from core.exceptions import KubernetesError
 from core.kube import KubectlClient
 
@@ -29,7 +30,7 @@ class BootstrapSecretPrimingService:
     info: LogFn
     warn: LogFn
 
-    DEFAULT_API_KEY_APPS = ("sonarr", "radarr", "lidarr", "readarr", "prowlarr")
+    FALLBACK_API_KEY_APPS = ("sonarr", "radarr", "lidarr", "readarr", "prowlarr")
 
     @staticmethod
     def _clean(value: str | None) -> str:
@@ -158,7 +159,25 @@ class BootstrapSecretPrimingService:
                 if apps:
                     return apps
 
-        return list(self.DEFAULT_API_KEY_APPS)
+        try:
+            apps: list[str] = []
+            for manifest in load_plugin_manifests():
+                technology = self._normalize_deploy_token(manifest.technology)
+                if not technology:
+                    continue
+                is_servarr = bool((manifest.adapter_classes or {}).get("servarr"))
+                if technology == "prowlarr" or is_servarr:
+                    if technology not in apps:
+                        apps.append(technology)
+            if apps:
+                return apps
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            self.warn(
+                "Could not resolve fallback API-key app list from plugin manifests; "
+                f"using static fallback ({exc})."
+            )
+
+        return list(self.FALLBACK_API_KEY_APPS)
 
     def prime_servarr_api_keys(self) -> None:
         if not self._secret_exists():
