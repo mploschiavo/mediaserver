@@ -6,8 +6,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.arr_ops as MODULE
-import bootstrap_services.runtime_servarr.arr_ops as SERVARR_ARR_OPS
+import bootstrap_services.apps.servarr.runtime.arr_ops as MODULE
+import bootstrap_services.apps.servarr.runtime.arr_ops as SERVARR_ARR_OPS
 
 
 class ReadarrMetadataSourceTests(unittest.TestCase):

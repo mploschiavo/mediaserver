@@ -5,6 +5,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from bootstrap_services.apps.servarr.runtime.common import (
+    get_arr_quality_profile,
+    normalize_remote_path_mappings,
+    resolve_arr_quality_preferences,
+)
 from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
 from bootstrap_services.arr_queue_cleanup_service import ArrQueueCleanupService
 from bootstrap_services.arr_service import ArrService
@@ -21,11 +26,6 @@ from bootstrap_services.runtime_platform import (
     normalize_url,
     resolve_path,
     to_int,
-)
-from bootstrap_services.runtime_servarr.common import (
-    get_arr_quality_profile,
-    normalize_remote_path_mappings,
-    resolve_arr_quality_preferences,
 )
 from bootstrap_services.runtime_service_registry import (
     get_runtime_binding,
@@ -145,6 +145,7 @@ def _usenet_client_service(cfg=None) -> Any:
         log=log,
     )
 
+
 def _prowlarr_service(cfg=None) -> Any:
     service_cls = resolve_app_service_class("prowlarr_service", object, technology="prowlarr")
     return service_cls(
@@ -162,6 +163,7 @@ def _arr_indexer_sync_service(cfg=None) -> ArrIndexerSyncService:
         detect_arr_api_base=_detect_arr_api_base,
         log=log,
     )
+
 
 def _servarr_policy_service(cfg=None) -> Any:
     service_cls = resolve_app_service_class("servarr_policy_service", object)

@@ -12,7 +12,7 @@ from ...config_models import (
     ServarrAppConfig,
 )
 from ...servarr_adapters import AdapterDependencies, AdapterRegistry
-from ...servarr_technologies import (
+from .technologies import (
     ServarrAdapterContext,
     ServarrAdapterDependencies,
     ServarrAdapterFactory,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from bootstrap_lib.bazarr import apply_scalar_updates as _lib_bazarr_apply_scalar_updates
 
+from bootstrap_services.apps.servarr.runtime.common import get_arr_app
 from bootstrap_services.runtime_platform import (
     bool_cfg,
     coerce_list,
@@ -15,7 +16,6 @@ from bootstrap_services.runtime_platform import (
     resolve_path,
     wait_for_service,
 )
-from bootstrap_services.runtime_servarr.common import get_arr_app
 
 from .service import BazarrService
 

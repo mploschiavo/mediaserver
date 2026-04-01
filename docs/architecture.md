@@ -14,7 +14,7 @@ The runtime is intentionally layered so technologies can be swapped locally with
 2. **Manifest registration layer**
    `scripts/bootstrap_defaults/plugins/<technology>/manifest.json` declares adapter classes, service classes, operation handlers, and aliases.
 3. **App/technology implementation layer**
-   `scripts/bootstrap_services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `servarr_technologies/`.
+   `scripts/bootstrap_services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `apps/servarr/technologies/`.
 4. **Shared orchestration layer**
    `bootstrap-apps.py`, `runtime_factory/*`, and `bootstrap_runner_service.py` stay technology-neutral.
 

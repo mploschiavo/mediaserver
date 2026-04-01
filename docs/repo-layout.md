@@ -18,7 +18,7 @@ Manifest-driven pluggability paths inside `scripts/`:
 - `scripts/bootstrap_services/apps/<app>/`: app-local implementations
 - `scripts/bootstrap_services/download_client_adapters/`: torrent/usenet adapters
 - `scripts/bootstrap_services/media_server_adapters/`: media server adapters
-- `scripts/bootstrap_services/servarr_technologies/`: Servarr adapters
+- `scripts/bootstrap_services/apps/servarr/technologies/`: Servarr adapters
 
 ## Product-Oriented Structure Scaffolding
 

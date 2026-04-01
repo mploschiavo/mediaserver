@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from bootstrap_services.runtime_servarr.qbit_ops import (
+from bootstrap_services.apps.servarr.runtime.qbit_ops import (
     qbit_create_category,
     qbit_delete_torrents,
     qbit_list_completed_torrents,
