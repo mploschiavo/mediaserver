@@ -81,6 +81,9 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - Plugin manifests register handlers under `event_handlers.<EVENT>.<handler_key>`.
 - Runner/media-server phase plans must declare `event` + `handler` (legacy `operation` is compatibility-only).
 - Do not re-introduce bespoke per-operation wiring classes in orchestration layers.
+- `scripts/bootstrap-apps.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
+- Runtime binding context must be sourced from `technology_bindings` (config/manifests), not hard-coded role maps in entrypoints.
+- Keep shared runtime modules (`runtime_servarr/*`) focused on concrete operations; pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) and declarative RunnerEvent config.
 
 ## Design Rules
 - Prefer composition over inheritance.

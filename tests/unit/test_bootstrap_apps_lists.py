@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.service_ops as MODULE
+import bootstrap_services.apps.servarr.runtime_ops as MODULE
 
 
 class BootstrapAppImportListPayloadTests(unittest.TestCase):

@@ -8,8 +8,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.service_ops as MODULE
+import bootstrap_services.runtime_servarr.arr_ops as ARR_MODULE
 import bootstrap_services.runtime_servarr.factory as SERVARR_FACTORY
+import bootstrap_services.runtime_servarr.hygiene_ops as HYGIENE_MODULE
 
 
 class ArrQualityUpgradePolicyTests(unittest.TestCase):
@@ -49,7 +50,7 @@ class ArrQualityUpgradePolicyTests(unittest.TestCase):
             ),
             mock.patch.object(SERVARR_FACTORY, "http_request", side_effect=fake_http_request),
         ):
-            MODULE.ensure_arr_quality_upgrade_policy(
+            ARR_MODULE.ensure_arr_quality_upgrade_policy(
                 cfg,
                 app_cfg,
                 "http://radarr:7878",
@@ -95,7 +96,7 @@ class ArrQualityUpgradePolicyTests(unittest.TestCase):
             ),
             mock.patch.object(SERVARR_FACTORY, "http_request") as request_mock,
         ):
-            MODULE.ensure_arr_quality_upgrade_policy(
+            ARR_MODULE.ensure_arr_quality_upgrade_policy(
                 cfg,
                 app_cfg,
                 "http://radarr:7878",
@@ -115,10 +116,10 @@ class MediaHygieneHelperTests(unittest.TestCase):
             "statusMessages": [{"title": "Import failed", "messages": ["permission denied"]}],
         }
         tokens = ["failed", "error", "importfailed"]
-        self.assertTrue(MODULE.queue_item_is_failed(item, tokens))
+        self.assertTrue(HYGIENE_MODULE.queue_item_is_failed(item, tokens))
 
         healthy = {"status": "completed", "trackedDownloadStatus": "ok"}
-        self.assertFalse(MODULE.queue_item_is_failed(healthy, tokens))
+        self.assertFalse(HYGIENE_MODULE.queue_item_is_failed(healthy, tokens))
 
     def test_filesystem_hygiene_removes_temp_zero_and_duplicate_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -158,7 +159,7 @@ class MediaHygieneHelperTests(unittest.TestCase):
                 }
             }
 
-            result = MODULE.run_filesystem_hygiene(cfg)
+            result = HYGIENE_MODULE.run_filesystem_hygiene(cfg)
 
             self.assertGreaterEqual(result.get("removed_zero", 0), 1)
             self.assertGreaterEqual(result.get("removed_temp", 0), 1)

@@ -1,1 +1,1 @@
-"""Runtime Servarr operation modules package."""
+"""Runtime Servarr package."""
