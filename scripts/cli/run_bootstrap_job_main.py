@@ -10,6 +10,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from bootstrap_services.apps.jellyfin.cli.jellyfin_plugin_activation_service import (
+    JellyfinPluginActivationConfig,
+    JellyfinPluginActivationService,
+)
 from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, MediaStackError
 from core.kube import KubernetesClient
@@ -48,10 +52,6 @@ from cli.bootstrap_secret_priming_service import (
 from cli.bootstrap_secret_reader_service import (
     BootstrapSecretReaderConfig,
     BootstrapSecretReaderService,
-)
-from cli.jellyfin_plugin_activation_service import (
-    JellyfinPluginActivationConfig,
-    JellyfinPluginActivationService,
 )
 from cli.run_bootstrap_job_cli_config_service import (
     RunBootstrapJobConfig,

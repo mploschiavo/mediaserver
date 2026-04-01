@@ -130,6 +130,7 @@ Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
 - Keep `scripts/*.sh` as user/operator entrypoints and small compatibility wrappers.
 - Keep `scripts/*.py` limited to CLI entrypoints and intentionally shared tooling.
 - Put domain behavior in `scripts/bootstrap_services/**` rather than root `scripts/` where possible.
+- App-specific Python implementation must not live under `scripts/cli/`; keep only thin compatibility wrappers there and place implementation under `scripts/bootstrap_services/apps/<app>/**`.
 
 ## Logging, Errors, and Secrets
 - Use structured logging via `scripts/core/logging_utils.py`.

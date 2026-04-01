@@ -38,4 +38,13 @@ def kube_cmd() -> list[str]:
 
 
 def repo_root_from_script_file(script_file: str) -> Path:
-    return Path(script_file).resolve().parents[2]
+    resolved = Path(script_file).resolve()
+    for candidate in (resolved.parent, *resolved.parents):
+        if (candidate / "bootstrap" / "media-stack.bootstrap.json").exists() and (
+            candidate / "scripts"
+        ).exists():
+            return candidate
+    # Backward-compatible fallback for expected scripts/cli/<name>.py paths.
+    if len(resolved.parents) >= 3:
+        return resolved.parents[2]
+    return resolved.parent

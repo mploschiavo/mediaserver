@@ -7,7 +7,15 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-SCRIPT_PATH = ROOT / "scripts" / "cli" / "set_qbit_secret_main.py"
+SCRIPT_PATH = (
+    ROOT
+    / "scripts"
+    / "bootstrap_services"
+    / "apps"
+    / "qbittorrent"
+    / "cli"
+    / "set_qbit_secret_main.py"
+)
 
 
 def _load_module():
