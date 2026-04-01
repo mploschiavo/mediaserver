@@ -575,6 +575,7 @@ class AppCapabilities:
     supports_seed_series: bool = False
     monitor_scope_all_value: str = ""
     default_download_category: str = ""
+    download_client_dual_priority_fields: bool = False
 
     @classmethod
     def from_dict(
@@ -601,6 +602,9 @@ class AppCapabilities:
             supports_seed_series=bool(merged.get("supports_seed_series", False)),
             monitor_scope_all_value=str(merged.get("monitor_scope_all_value", "")).strip(),
             default_download_category=str(merged.get("default_download_category", "")).strip(),
+            download_client_dual_priority_fields=bool(
+                merged.get("download_client_dual_priority_fields", False)
+            ),
         )
 
 

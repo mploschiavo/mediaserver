@@ -217,6 +217,28 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             factory.create(self._context("radarr"), noop_before_common_steps)
 
+    def test_removing_readarr_mapping_keeps_other_technologies_functional(self):
+        defaults = build_adapter_hook_defaults(load_plugin_manifests())
+        filtered_specs = {
+            key: value
+            for key, value in (defaults.adapter_classes or {}).items()
+            if str(key).strip().lower() != "readarr"
+        }
+        self.assertNotIn("readarr", filtered_specs)
+
+        factory = ServarrAdapterFactory(
+            deps=self._deps(),
+            adapter_deps=self._adapter_deps(),
+            adapter_class_specs=filtered_specs,
+        )
+
+        self.assertIsInstance(
+            factory.create(self._context("sonarr"), noop_before_common_steps),
+            SonarrAdapter,
+        )
+        with self.assertRaises(ValueError):
+            factory.create(self._context("readarr"), noop_before_common_steps)
+
 
 if __name__ == "__main__":
     unittest.main()
