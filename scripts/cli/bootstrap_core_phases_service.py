@@ -44,7 +44,7 @@ class BootstrapCorePhasesService:
             enabled=not self.cfg.skip_qbit_ensure,
         )
         run_phase(
-            "Ensure SABnzbd API access",
+            "Ensure usenet client API access",
             lambda: run_script(
                 "ensure-sabnzbd-api-access.sh",
                 env={"NAMESPACE": self.cfg.namespace},
@@ -54,7 +54,7 @@ class BootstrapCorePhasesService:
         run_phase("Resolve bootstrap config", resolve_bootstrap_config)
         run_phase("Ensure bootstrap PVC prerequisites", ensure_bootstrap_pvc_prereqs)
         run_phase("Prime Arr API keys into secret", prime_servarr_api_keys_secret)
-        run_phase("Prime SAB API key into secret", prime_sab_api_key_secret)
+        run_phase("Prime usenet API key into secret", prime_sab_api_key_secret)
         run_phase("Prime Jellyseerr API key into secret", prime_jellyseerr_api_key_secret)
         run_phase("Prime Tautulli API key into secret", prime_tautulli_api_key_secret)
         run_phase("Update bootstrap ConfigMaps", update_bootstrap_configmaps)

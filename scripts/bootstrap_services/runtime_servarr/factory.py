@@ -70,6 +70,17 @@ def _normalize_torrent_technology(token: str) -> str:
     return raw
 
 
+def _normalize_usenet_technology(token: str) -> str:
+    raw = str(token or "").strip().lower()
+    if not raw:
+        return ""
+    if raw in {"sab"}:
+        return "sabnzbd"
+    if raw in {"nzb"}:
+        return "nzbget"
+    return raw
+
+
 def _infer_torrent_client_technology(cfg=None) -> str:
     if isinstance(cfg, dict):
         for key in ("_technology_key", "_technology", "technology", "client_key"):
@@ -93,6 +104,33 @@ def _infer_torrent_client_technology(cfg=None) -> str:
     return ""
 
 
+def _infer_usenet_client_technology(cfg=None) -> str:
+    if isinstance(cfg, dict):
+        for key in ("_technology_key", "_technology", "technology", "client_key"):
+            value = _normalize_usenet_technology(str(cfg.get(key) or ""))
+            if value:
+                return value
+        impl = _normalize_usenet_technology(str(cfg.get("implementation") or ""))
+        if impl:
+            return impl
+        name = _normalize_usenet_technology(str(cfg.get("name") or ""))
+        if name in {"sabnzbd", "nzbget", "jdownloader", "grabit"}:
+            return name
+        url_token = str(cfg.get("url") or "").strip().lower()
+        if "sabnzbd" in url_token or "sab" in url_token:
+            return "sabnzbd"
+        if "nzbget" in url_token:
+            return "nzbget"
+        if "jdownloader" in url_token:
+            return "jdownloader"
+        if "grabit" in url_token:
+            return "grabit"
+    runtime_bound = _normalize_usenet_technology(get_runtime_binding("usenet_client"))
+    if runtime_bound:
+        return runtime_bound
+    return ""
+
+
 def _torrent_client_service(cfg=None) -> Any:
     technology = _infer_torrent_client_technology(cfg)
     if not technology:
@@ -111,6 +149,24 @@ def _torrent_client_service(cfg=None) -> Any:
         bool_cfg=bool_cfg,
         to_int=to_int,
         coerce_list=coerce_list,
+    )
+
+
+def _usenet_client_service(cfg=None) -> SabnzbdService:
+    technology = _infer_usenet_client_technology(cfg) or "sabnzbd"
+    service_cls = resolve_app_service_class(
+        "usenet_client_service",
+        SabnzbdService,
+        technology=technology,
+    )
+    return service_cls(
+        http_request=http_request,
+        normalize_url=normalize_url,
+        normalize_mapping_path=_normalize_mapping_path,
+        choose_category=_choose_category,
+        coerce_list=coerce_list,
+        resolve_path=resolve_path,
+        log=log,
     )
 
 
@@ -139,16 +195,8 @@ def _arr_indexer_sync_service(cfg=None) -> ArrIndexerSyncService:
 
 
 def _sabnzbd_service(cfg=None) -> SabnzbdService:
-    service_cls = resolve_app_service_class("sabnzbd_service", SabnzbdService)
-    return service_cls(
-        http_request=http_request,
-        normalize_url=normalize_url,
-        normalize_mapping_path=_normalize_mapping_path,
-        choose_category=_choose_category,
-        coerce_list=coerce_list,
-        resolve_path=resolve_path,
-        log=log,
-    )
+    """Compatibility alias retained while runtime code migrates to generic naming."""
+    return _usenet_client_service(cfg)
 
 
 def _servarr_policy_service(cfg=None) -> ServarrPolicyService:
@@ -166,9 +214,7 @@ def _servarr_policy_service(cfg=None) -> ServarrPolicyService:
 
 
 def _arr_queue_cleanup_service(cfg=None) -> ArrQueueCleanupService:
-    service_cls = resolve_app_service_class(
-        "arr_queue_cleanup_service", ArrQueueCleanupService
-    )
+    service_cls = resolve_app_service_class("arr_queue_cleanup_service", ArrQueueCleanupService)
     return service_cls(
         http_request=http_request,
         bool_cfg=bool_cfg,

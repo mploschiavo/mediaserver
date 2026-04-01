@@ -247,7 +247,7 @@ class BootstrapAllRunner:
         )
 
         self._run_phase(
-            "Ensure SABnzbd API access",
+            "Ensure usenet client API access",
             lambda: self._run_script(
                 "ensure-sabnzbd-api-access.sh",
                 env={"NAMESPACE": self.cfg.namespace},
@@ -365,6 +365,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--skip-sab-ensure",
         action="store_true",
         default=str(os.environ.get("SKIP_SAB_ENSURE", "0")).strip() == "1",
+        help="Skip usenet client API-access ensure phase (legacy flag name).",
     )
     parser.add_argument(
         "--skip-jellyfin-bootstrap",
