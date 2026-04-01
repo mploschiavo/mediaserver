@@ -7,7 +7,7 @@ import shlex
 from dataclasses import dataclass
 from typing import Callable
 
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 LogFn = Callable[[str], None]
 DeploymentExistsFn = Callable[[str], bool]
@@ -25,7 +25,7 @@ class JellyfinPluginActivationConfig:
 @dataclass
 class JellyfinPluginActivationService:
     cfg: JellyfinPluginActivationConfig
-    kube: KubectlClient
+    kube: KubernetesClient
     info: LogFn
     warn: LogFn
     deployment_exists: DeploymentExistsFn

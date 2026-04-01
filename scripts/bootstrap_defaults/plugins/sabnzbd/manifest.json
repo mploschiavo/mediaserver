@@ -5,8 +5,8 @@
     "download_client": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter"
   },
   "app_service_classes": {
-    "sabnzbd_service": "bootstrap_services.sabnzbd_service:SabnzbdService",
-    "usenet_client_service": "bootstrap_services.sabnzbd_service:SabnzbdService"
+    "sabnzbd_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService",
+    "usenet_client_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService"
   },
   "event_handlers": {
     "ACQUIRE": {

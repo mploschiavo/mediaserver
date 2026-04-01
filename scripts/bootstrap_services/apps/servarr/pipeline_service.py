@@ -5,19 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .config_models import (
+from ...config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,
     ServarrAppConfig,
 )
-from .servarr_adapters import AdapterDependencies, AdapterRegistry
-from .servarr_technologies import (
+from ...servarr_adapters import AdapterDependencies, AdapterRegistry
+from ...servarr_technologies import (
     ServarrAdapterContext,
     ServarrAdapterDependencies,
     ServarrAdapterFactory,
 )
-from .servarr_types import ClientAuth, ServarrRunConfig
+from .types import ClientAuth, ServarrRunConfig
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]

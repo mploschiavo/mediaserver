@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from core.exceptions import KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 LogFn = Callable[[str], None]
 
@@ -19,7 +19,7 @@ class BootstrapDeploymentOpsConfig:
 @dataclass
 class BootstrapDeploymentOpsService:
     cfg: BootstrapDeploymentOpsConfig
-    kube: KubectlClient
+    kube: KubernetesClient
     info: LogFn
 
     def deployment_exists(self, deployment: str) -> bool:

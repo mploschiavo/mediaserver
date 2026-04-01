@@ -26,7 +26,7 @@ from bootstrap_services.servarr_technologies import (  # noqa: E402
     ServarrAdapterFactory,
     SonarrAdapter,
 )
-from bootstrap_services.servarr_types import ClientAuth, ServarrRunConfig  # noqa: E402
+from bootstrap_services.apps.servarr.types import ClientAuth, ServarrRunConfig  # noqa: E402
 
 
 class ServarrTechnologyAdaptersTests(unittest.TestCase):

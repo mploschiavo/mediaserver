@@ -216,11 +216,6 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/apply-scale-policy.sh", proc.stdout)
 
-    def test_bootstrap_debug_wrapper_help_contract(self):
-        proc = run_wrapper("bootstrap-debug.sh", "--help")
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("scripts/bootstrap-debug.sh", proc.stdout)
-
     def test_rebuild_verify_wrapper_help_contract(self):
         proc = run_wrapper("rebuild-verify.sh", "--help")
         self.assertEqual(proc.returncode, 0)

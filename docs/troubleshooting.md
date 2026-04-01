@@ -76,7 +76,7 @@ Check:
 ```bash
 kubectl -n <NAMESPACE> describe job media-stack-bootstrap
 kubectl -n <NAMESPACE> logs job/media-stack-bootstrap --tail=300
-bash scripts/bootstrap-debug.sh
+MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
 ```
 
 Common causes:

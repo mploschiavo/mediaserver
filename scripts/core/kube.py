@@ -1,6 +1,6 @@
 """Kubernetes API adapter.
 
-This module keeps the historical `KubectlClient.run([...])` interface used by
+This module keeps the historical `KubernetesClient.run([...])` interface used by
 CLI services, but executes against the official Kubernetes Python client
 (`kubernetes-client/python`) instead of shelling out to kubectl.
 """
@@ -162,7 +162,7 @@ def _render_custom_columns(
 
 
 @dataclass
-class KubectlClient:
+class KubernetesClient:
     cmd_prefix: list[str]
     runner: CommandRunner
     _k8s_client: Any = field(default=None, init=False, repr=False)
@@ -176,7 +176,7 @@ class KubectlClient:
     _dynamic_client: Any = field(default=None, init=False, repr=False)
 
     @classmethod
-    def from_environment(cls) -> "KubectlClient":
+    def from_environment(cls) -> "KubernetesClient":
         override = os.environ.get("KUBECTL_CMD", "").strip()
         if override:
             return cls(cmd_prefix=override.split(), runner=CommandRunner())

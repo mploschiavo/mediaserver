@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from bootstrap_services.apps.prowlarr.runtime_ops import ensure_prowlarr_application
+from bootstrap_services.apps.servarr.pipeline_service import ServarrPipelineService
 from bootstrap_services.runtime_core import (
     DiscoveryListsService,
-    ServarrPipelineService,
     bool_cfg,
     coerce_list,
     env_truthy,

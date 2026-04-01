@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass
 
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 from core.logging_utils import configure_logging, log_event
 
 SAB_RECONCILE_SCRIPT = r"""
@@ -138,7 +138,7 @@ class SabnzbdApiAccessService:
     def __init__(
         self,
         cfg: SabnzbdApiAccessConfig,
-        kube: KubectlClient,
+        kube: KubernetesClient,
         logger: logging.Logger,
     ) -> None:
         self.cfg = cfg
@@ -305,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cfg = SabnzbdApiAccessConfig.from_env()
         service = SabnzbdApiAccessService(
-            cfg=cfg, kube=KubectlClient.from_environment(), logger=logger
+            cfg=cfg, kube=KubernetesClient.from_environment(), logger=logger
         )
         return service.run()
     except (ConfigError, KubernetesError, MediaStackError) as exc:

@@ -11,7 +11,7 @@ from typing import Callable
 
 from bootstrap_services.plugin_manifest_loader import load_plugin_manifests
 from core.exceptions import ConfigError, KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 LogFn = Callable[[str], None]
 
@@ -26,7 +26,7 @@ class BootstrapSecretPrimingConfig:
 @dataclass
 class BootstrapSecretPrimingService:
     cfg: BootstrapSecretPrimingConfig
-    kube: KubectlClient
+    kube: KubernetesClient
     info: LogFn
     warn: LogFn
 

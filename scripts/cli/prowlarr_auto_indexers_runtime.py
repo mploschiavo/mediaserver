@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from core.exceptions import ConfigError, KubernetesError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 
 def ts() -> str:
@@ -107,7 +107,7 @@ class ProwlarrAutoIndexerRunner:
     def __init__(
         self,
         cfg: AutoIndexerConfig,
-        kube: KubectlClient,
+        kube: KubernetesClient,
         tracker: PhaseTracker,
     ) -> None:
         self.cfg = cfg

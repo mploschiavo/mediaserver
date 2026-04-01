@@ -6,13 +6,11 @@ from __future__ import annotations
 from typing import Any
 
 from bootstrap_services.arr_indexer_sync_service import ArrIndexerSyncService
+from bootstrap_services.arr_queue_cleanup_service import ArrQueueCleanupService
+from bootstrap_services.arr_service import ArrService
+from bootstrap_services.auth_service import AuthService
+from bootstrap_services.health_service import HealthService
 from bootstrap_services.runtime_core import (
-    ArrQueueCleanupService,
-    ArrService,
-    AuthService,
-    HealthService,
-    SabnzbdService,
-    ServarrPolicyService,
     bool_cfg,
     coerce_list,
     field_list,
@@ -23,12 +21,14 @@ from bootstrap_services.runtime_core import (
     normalize_remote_path_mappings,
     normalize_token,
     normalize_url,
-    resolve_app_service_class,
     resolve_arr_quality_preferences,
     resolve_path,
     to_int,
 )
-from bootstrap_services.runtime_service_registry import get_runtime_binding
+from bootstrap_services.runtime_service_registry import (
+    get_runtime_binding,
+    resolve_app_service_class,
+)
 
 
 def _detect_arr_api_base(app_name, app_url, api_key):
@@ -152,11 +152,11 @@ def _torrent_client_service(cfg=None) -> Any:
     )
 
 
-def _usenet_client_service(cfg=None) -> SabnzbdService:
+def _usenet_client_service(cfg=None) -> Any:
     technology = _infer_usenet_client_technology(cfg) or "sabnzbd"
     service_cls = resolve_app_service_class(
         "usenet_client_service",
-        SabnzbdService,
+        object,
         technology=technology,
     )
     return service_cls(
@@ -194,13 +194,13 @@ def _arr_indexer_sync_service(cfg=None) -> ArrIndexerSyncService:
     )
 
 
-def _sabnzbd_service(cfg=None) -> SabnzbdService:
+def _sabnzbd_service(cfg=None) -> Any:
     """Compatibility alias retained while runtime code migrates to generic naming."""
     return _usenet_client_service(cfg)
 
 
-def _servarr_policy_service(cfg=None) -> ServarrPolicyService:
-    service_cls = resolve_app_service_class("servarr_policy_service", ServarrPolicyService)
+def _servarr_policy_service(cfg=None) -> Any:
+    service_cls = resolve_app_service_class("servarr_policy_service", object)
     return service_cls(
         http_request=http_request,
         bool_cfg=bool_cfg,

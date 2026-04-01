@@ -15,9 +15,8 @@
     "media_hygiene_service": "bootstrap_services.media_hygiene_service:MediaHygieneService",
     "media_hygiene_ops_service": "bootstrap_services.media_hygiene_ops_service:MediaHygieneOpsService",
     "media_server_adapter_factory": "bootstrap_services.media_server_adapters.factory:MediaServerAdapterFactory",
-    "servarr_policy_service": "bootstrap_services.servarr_policy_service:ServarrPolicyService",
-    "servarr_pipeline_service": "bootstrap_services.servarr_pipeline_service:ServarrPipelineService",
-    "technology_lifecycle_manager": "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
+    "servarr_policy_service": "bootstrap_services.apps.servarr.policy_service:ServarrPolicyService",
+    "servarr_pipeline_service": "bootstrap_services.apps.servarr.pipeline_service:ServarrPipelineService"
   },
   "service_technology_map": {
     "auth_service": "servarr",
@@ -33,7 +32,6 @@
     "media_hygiene_ops_service": "storage",
     "media_server_adapter_factory": "bootstrap",
     "servarr_policy_service": "servarr",
-    "servarr_pipeline_service": "servarr",
-    "technology_lifecycle_manager": "bootstrap"
+    "servarr_pipeline_service": "servarr"
   }
 }

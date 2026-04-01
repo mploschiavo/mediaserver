@@ -279,7 +279,7 @@ kubectl -n media-stack rollout restart deploy/sonarr deploy/radarr deploy/lidarr
 
 If bootstrap status is unclear, collect focused diagnostics:
 ```bash
-bash scripts/bootstrap-debug.sh
+MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
 ```
 
 If PVCs are stuck `Pending`, inspect claim events and storage class:

@@ -113,7 +113,7 @@ bash scripts/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.g
 
 ```bash
 bash scripts/stack-status.sh
-bash scripts/bootstrap-debug.sh
+MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
 bash scripts/watch-install.sh
 ```
 

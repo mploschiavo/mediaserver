@@ -12,7 +12,7 @@ from typing import Callable
 
 from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, MediaStackError
-from core.kube import KubectlClient
+from core.kube import KubernetesClient
 
 from cli.bootstrap_core_phases_service import (
     BootstrapCorePhasesConfig,
@@ -117,7 +117,7 @@ class PhaseTracker:
 
 class RunBootstrapJobRunner:
     def __init__(
-        self, cfg: RunBootstrapJobConfig, kube: KubectlClient, tracker: PhaseTracker
+        self, cfg: RunBootstrapJobConfig, kube: KubernetesClient, tracker: PhaseTracker
     ) -> None:
         self.cfg = cfg
         self.kube = kube
@@ -384,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     root_dir = Path(__file__).resolve().parents[2]
     cfg = parse_run_bootstrap_job_config(argv, root_dir=root_dir)
     runner = RunBootstrapJobRunner(
-        cfg=cfg, kube=KubectlClient.from_environment(), tracker=PhaseTracker()
+        cfg=cfg, kube=KubernetesClient.from_environment(), tracker=PhaseTracker()
     )
     return runner.run()
 

@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.servarr_policy_service import ServarrPolicyService  # noqa: E402
+from bootstrap_services.apps.servarr.policy_service import ServarrPolicyService  # noqa: E402
 
 
 def _bool_cfg(cfg, key, default):

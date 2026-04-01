@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from ..apps.servarr.types import ClientAuth, ServarrRunConfig
 from ..config_models import (
     AppCapabilities,
     ArrDownloadHandlingPolicy,
@@ -13,7 +14,6 @@ from ..config_models import (
     ServarrAppConfig,
 )
 from ..servarr_adapters import AdapterDependencies, AppBootstrapContext, HookFn
-from ..servarr_types import ClientAuth, ServarrRunConfig
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
