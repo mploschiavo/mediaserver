@@ -9,6 +9,7 @@
   },
   "capability_defaults": {
     "default_download_category": "books",
-    "monitor_scope_all_value": "entireAuthor"
+    "monitor_scope_all_value": "entireAuthor",
+    "download_client_dual_priority_fields": true
   }
 }

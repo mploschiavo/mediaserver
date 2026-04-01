@@ -130,6 +130,9 @@ class ServarrPipelineService:
             "supports_seed_series": app.capabilities.supports_seed_series,
             "monitor_scope_all_value": app.capabilities.monitor_scope_all_value,
             "default_download_category": app.capabilities.default_download_category,
+            "download_client_dual_priority_fields": (
+                app.capabilities.download_client_dual_priority_fields
+            ),
         }
         base_caps.update(caps)
         base["capabilities"] = base_caps

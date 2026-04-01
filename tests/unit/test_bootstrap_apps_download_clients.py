@@ -53,7 +53,11 @@ class DownloadClientTests(unittest.TestCase):
                 return 200, {}, ""
             raise AssertionError(f"Unexpected request: {method} {path}")
 
-        app_cfg = {"name": "Readarr", "implementation": "Readarr"}
+        app_cfg = {
+            "name": "Readarr",
+            "implementation": "Readarr",
+            "capabilities": {"download_client_dual_priority_fields": True},
+        }
         client_cfg = {
             "implementation": "QBittorrent",
             "name": "qBittorrent",
@@ -136,7 +140,11 @@ class DownloadClientTests(unittest.TestCase):
                 return 200, {}, ""
             raise AssertionError(f"Unexpected request: {method} {path}")
 
-        app_cfg = {"name": "Readarr", "implementation": "Readarr"}
+        app_cfg = {
+            "name": "Readarr",
+            "implementation": "Readarr",
+            "capabilities": {"download_client_dual_priority_fields": True},
+        }
         client_cfg = {
             "implementation": "QBittorrent",
             "name": "qBittorrent",
@@ -169,6 +177,77 @@ class DownloadClientTests(unittest.TestCase):
         self.assertEqual(retry_fields.get("Priority"), 1)
         self.assertEqual(retry_fields.get("recentTvPriority"), 1)
         self.assertEqual(retry_fields.get("olderTvPriority"), 1)
+
+    def test_priority_alias_is_capability_driven_not_app_name(self):
+        calls = []
+
+        schema_payload = [
+            {
+                "implementation": "QBittorrent",
+                "configContract": "QBittorrentSettings",
+                "fields": [
+                    {"name": "host", "value": ""},
+                    {"name": "port", "value": 8080},
+                    {"name": "username", "value": ""},
+                    {"name": "password", "value": ""},
+                    {"name": "priority", "value": 0},
+                    {"name": "category", "value": ""},
+                ],
+            }
+        ]
+        existing_clients = [
+            {
+                "id": 11,
+                "implementation": "QBittorrent",
+                "name": "qBittorrent",
+                "fields": [
+                    {"name": "host", "value": "qbittorrent"},
+                    {"name": "port", "value": 8080},
+                ],
+            }
+        ]
+
+        def fake_http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=20):
+            del base_url, api_key, timeout
+            calls.append((method, path, payload))
+            if path.endswith("/downloadclient/schema"):
+                return 200, schema_payload, ""
+            if path.endswith("/downloadclient") and method == "GET":
+                return 200, existing_clients, ""
+            if path.endswith("/downloadclient/11") and method == "PUT":
+                return 200, {}, ""
+            raise AssertionError(f"Unexpected request: {method} {path}")
+
+        app_cfg = {"name": "Readarr", "implementation": "Readarr"}
+        client_cfg = {
+            "implementation": "QBittorrent",
+            "name": "qBittorrent",
+            "host": "qbittorrent",
+            "port": 8080,
+            "priority": 5,
+        }
+        client_auth = {"username": "admin", "password": "secret"}
+
+        with mock.patch.object(SERVARR_FACTORY, "http_request", side_effect=fake_http_request):
+            MODULE.ensure_arr_download_client(
+                app_cfg=app_cfg,
+                app_url="http://readarr:8787",
+                api_base="/api/v1",
+                api_key="readarr-api-key",
+                client_cfg=client_cfg,
+                client_auth=client_auth,
+            )
+
+        put_calls = [
+            item for item in calls if item[0] == "PUT" and item[1].endswith("/downloadclient/11")
+        ]
+        self.assertEqual(len(put_calls), 1)
+        payload = put_calls[0][2]
+        self.assertEqual(payload.get("priority"), 5)
+        self.assertNotIn("Priority", payload)
+        fields = {field["name"]: field.get("value") for field in payload.get("fields", [])}
+        self.assertEqual(fields.get("priority"), 5)
+        self.assertNotIn("Priority", fields)
 
 
 if __name__ == "__main__":

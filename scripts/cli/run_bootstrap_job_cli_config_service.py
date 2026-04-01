@@ -110,7 +110,7 @@ def build_parser(root_dir: Path) -> argparse.ArgumentParser:
         "--skip-qbit-ensure",
         action="store_true",
         default=env_bool("SKIP_QBIT_ENSURE", False),
-        help="Skip torrent client credential ensure phase (qBittorrent wrapper).",
+        help="Skip torrent client credential ensure phase (legacy flag name).",
     )
     parser.add_argument(
         "--skip-sab-ensure",

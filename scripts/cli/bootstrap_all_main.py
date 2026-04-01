@@ -359,6 +359,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--skip-qbit-ensure",
         action="store_true",
         default=str(os.environ.get("SKIP_QBIT_ENSURE", "0")).strip() == "1",
+        help="Skip torrent client credential ensure phase (legacy flag name).",
     )
     parser.add_argument(
         "--skip-sab-ensure",

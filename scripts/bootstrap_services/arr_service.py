@@ -259,8 +259,12 @@ class ArrService:
             values["apiKey"] = auth_api_key
         if "apikey" in values:
             values["apikey"] = auth_api_key
-        app_impl_lower = str(app_cfg.get("implementation") or "").strip().lower()
-        enforce_dual_priority_fields = app_impl_lower == "readarr"
+        capabilities = app_cfg.get("capabilities") or {}
+        enforce_dual_priority_fields = (
+            bool(capabilities.get("download_client_dual_priority_fields", False))
+            if isinstance(capabilities, dict)
+            else False
+        )
         for priority_key in list(values.keys()):
             key_lower = str(priority_key).strip().lower()
             if key_lower in ("priority", "torrentpriority", "nzbpriority") or key_lower.endswith(
