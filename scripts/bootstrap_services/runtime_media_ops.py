@@ -3,25 +3,35 @@
 
 import importlib
 
-import bootstrap_services.runtime_core as _core
+from bootstrap_lib.homepage import DEFAULT_HOSTS as _lib_default_homepage_hosts
+from bootstrap_lib.homepage import render_services_yaml as _lib_render_homepage_services_yaml
 
-log = _core.log
-bool_cfg = _core.bool_cfg
-coerce_list = _core.coerce_list
-normalize_url = _core.normalize_url
-wait_for_service = _core.wait_for_service
-get_arr_app = _core.get_arr_app
-resolve_path = _core.resolve_path
-read_api_key = _core.read_api_key
-load_bootstrap_default_json = _core.load_bootstrap_default_json
-read_jellyseerr_api_key = _core.read_jellyseerr_api_key
-http_request = _core.http_request
-resolve_app_service_class = _core.resolve_app_service_class
-ConfigArtifactsService = _core.ConfigArtifactsService
-MaintainerrService = _core.MaintainerrService
+from bootstrap_services.config_artifacts_service import ConfigArtifactsService
+from bootstrap_services.maintainerr_service import MaintainerrService
+from bootstrap_services.runtime_platform import (
+    bool_cfg,
+    coerce_list,
+    http_request,
+    load_bootstrap_default_json,
+    log,
+    normalize_url,
+    resolve_app_service_class,
+    resolve_path,
+    wait_for_service,
+)
+from bootstrap_services.runtime_secrets import api_keys_service, read_api_key
 
-_lib_default_homepage_hosts = _core._lib_default_homepage_hosts
-_lib_render_homepage_services_yaml = _core._lib_render_homepage_services_yaml
+
+def _get_arr_app(arr_apps, implementation):
+    target = str(implementation or "").strip()
+    for app in arr_apps or []:
+        if str((app or {}).get("implementation") or "").strip() == target:
+            return app
+    return None
+
+
+def _read_jellyseerr_api_key(config_root, timeout_seconds=120):
+    return api_keys_service().read_jellyseerr_api_key(config_root, timeout_seconds=timeout_seconds)
 
 
 def _jellyfin_runtime_ops():
@@ -56,8 +66,8 @@ def _maintainerr_service(cfg=None) -> MaintainerrService:
         wait_for_service=wait_for_service,
         http_request=http_request,
         read_api_key=read_api_key,
-        read_jellyseerr_api_key=read_jellyseerr_api_key,
-        get_arr_app=get_arr_app,
+        read_jellyseerr_api_key=_read_jellyseerr_api_key,
+        get_arr_app=_get_arr_app,
         resolve_path=resolve_path,
     )
 

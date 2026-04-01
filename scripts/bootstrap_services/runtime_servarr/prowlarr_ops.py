@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bootstrap_services.runtime_core import (
+from bootstrap_services.runtime_platform import (
     bool_cfg,
     log,
     normalize_url,

@@ -12,7 +12,6 @@ select = ["E", "F", "I", "W"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/bootstrap_services/runtime_core.py" = ["F401"]
 "scripts/bootstrap_services/runtime_media_ops.py" = ["F405"]
 "scripts/bootstrap_services/runtime_servarr/*.py" = ["F405"]
 "tests/unit/*.py" = ["E402", "I001"]

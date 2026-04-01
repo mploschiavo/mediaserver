@@ -11,14 +11,25 @@ import os
 import re
 from urllib import parse
 
-from bootstrap_lib.defaults import load_json_default as _lib_load_json_default
 from bootstrap_lib.homepage import DEFAULT_HOSTS as _lib_default_homepage_hosts
 from bootstrap_lib.homepage import render_services_yaml as _lib_render_homepage_services_yaml
 from bootstrap_lib.jellyfin import apply_artwork_profile as _lib_jellyfin_apply_artwork_profile
 from bootstrap_lib.jellyfin import reorder_provider_names as _lib_jellyfin_reorder_provider_names
 
-import bootstrap_services.runtime_core as _core
 from bootstrap_services.config_artifacts_service import ConfigArtifactsService
+from bootstrap_services.runtime_platform import (
+    bool_cfg,
+    coerce_list,
+    http_request,
+    load_bootstrap_default_json,
+    log,
+    normalize_url,
+    resolve_app_service_class,
+    resolve_path,
+    to_int,
+    wait_for_service,
+)
+from bootstrap_services.runtime_secrets import api_keys_service, candidate_config_roots
 
 from .home_rails_service import JellyfinHomeRailsDependencies, JellyfinHomeRailsService
 from .libraries_service import JellyfinLibrariesDependencies, JellyfinLibrariesService
@@ -28,19 +39,6 @@ from .livetv_state_service import JellyfinLiveTvStateService
 from .playback_service import JellyfinPlaybackDependencies, JellyfinPlaybackService
 from .plugins_service import JellyfinPluginsDependencies, JellyfinPluginsService
 from .prewarm_service import JellyfinPrewarmDependencies, JellyfinPrewarmService
-
-log = _core.log
-bool_cfg = _core.bool_cfg
-coerce_list = _core.coerce_list
-to_int = _core.to_int
-normalize_url = _core.normalize_url
-wait_for_service = _core.wait_for_service
-resolve_path = _core.resolve_path
-http_request = _core.http_request
-resolve_app_service_class = _core.resolve_app_service_class
-
-_api_keys_service = _core._api_keys_service
-_candidate_config_roots = _core._candidate_config_roots
 
 
 def _jellyfin_service(cfg=None) -> JellyfinService:
@@ -69,7 +67,7 @@ def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
     service_cls = resolve_app_service_class("jellyfin_livetv_source_service", JellyfinLiveTvSourceService)
     return service_cls(
         coerce_list=coerce_list,
-        candidate_config_roots=_candidate_config_roots,
+        candidate_config_roots=candidate_config_roots,
         resolve_path=resolve_path,
         log=log,
     )
@@ -80,7 +78,7 @@ def _jellyfin_livetv_state_service(cfg=None) -> JellyfinLiveTvStateService:
     return service_cls(
         coerce_list=coerce_list,
         resolve_path=resolve_path,
-        candidate_config_roots=_candidate_config_roots,
+        candidate_config_roots=candidate_config_roots,
         jellyfin_request=jellyfin_request,
         log=log,
     )
@@ -198,11 +196,11 @@ def prepare_jellyfin_xmltv_guide_path(guide, tuners, config_root):
 
 
 def read_jellyfin_api_key_from_db(config_root, jellyfin_cfg):
-    return _api_keys_service().read_jellyfin_api_key_from_db(config_root, jellyfin_cfg)
+    return api_keys_service().read_jellyfin_api_key_from_db(config_root, jellyfin_cfg)
 
 
 def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
-    return _api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
+    return api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
 
 
 def load_jellyfin_livetv_state(config_root, live_cfg):
@@ -432,7 +430,7 @@ def detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username):
         resolve_jellyfin_api_key=resolve_jellyfin_api_key,
         jellyfin_request=jellyfin_request,
         log=log,
-        load_bootstrap_default_json=_lib_load_json_default,
+        load_bootstrap_default_json=load_bootstrap_default_json,
         default_homepage_hosts=list(_lib_default_homepage_hosts),
         render_homepage_services_yaml=_lib_render_homepage_services_yaml,
     )
@@ -449,7 +447,7 @@ def ensure_jellyfin_auto_collections_config(cfg, config_root, wait_timeout):
         resolve_jellyfin_api_key=resolve_jellyfin_api_key,
         jellyfin_request=jellyfin_request,
         log=log,
-        load_bootstrap_default_json=_lib_load_json_default,
+        load_bootstrap_default_json=load_bootstrap_default_json,
         default_homepage_hosts=list(_lib_default_homepage_hosts),
         render_homepage_services_yaml=_lib_render_homepage_services_yaml,
     )

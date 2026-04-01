@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bootstrap_services.runtime_core import (
+from bootstrap_services.runtime_platform import (
     http_request,
     log,
     to_int,

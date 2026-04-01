@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.runtime_core import (  # noqa: E402
+from bootstrap_services.runtime_service_registry import (  # noqa: E402
     resolve_app_service_class,
     set_runtime_context_cfg,
 )

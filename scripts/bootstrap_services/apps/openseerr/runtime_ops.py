@@ -5,30 +5,39 @@ from __future__ import annotations
 
 from typing import Any
 
-import bootstrap_services.runtime_core as _core
 import bootstrap_services.runtime_servarr.arr_ops as _servarr_arr_ops
+from bootstrap_services.runtime_platform import (
+    bool_cfg,
+    coerce_list,
+    http_request,
+    log,
+    normalize_base_path,
+    normalize_url,
+    parse_service_url,
+    resolve_app_service_class,
+    to_int,
+    wait_for_service,
+)
+from bootstrap_services.runtime_secrets import api_keys_service, read_json_file
+from bootstrap_services.runtime_servarr.common import (
+    choose_profile,
+    choose_root_folder,
+    find_existing_servarr,
+    get_arr_app,
+    get_arr_quality_profile,
+)
 
 from .service import OpenSeerrService
 
-log = _core.log
-bool_cfg = _core.bool_cfg
-coerce_list = _core.coerce_list
-to_int = _core.to_int
-normalize_url = _core.normalize_url
-wait_for_service = _core.wait_for_service
-parse_service_url = _core.parse_service_url
-read_json_file = _core.read_json_file
-get_arr_app = _core.get_arr_app
-choose_profile = _core.choose_profile
-choose_root_folder = _core.choose_root_folder
-normalize_base_path = _core.normalize_base_path
-find_existing_servarr = _core.find_existing_servarr
-get_arr_quality_profile = _core.get_arr_quality_profile
-read_jellyseerr_api_key = _core.read_jellyseerr_api_key
-http_request = _core.http_request
-resolve_jellyfin_api_key = _core.resolve_jellyfin_api_key
-resolve_app_service_class = _core.resolve_app_service_class
 detect_arr_api_base = _servarr_arr_ops.detect_arr_api_base
+
+
+def read_jellyseerr_api_key(config_root, timeout_seconds=120):
+    return api_keys_service().read_jellyseerr_api_key(config_root, timeout_seconds=timeout_seconds)
+
+
+def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
+    return api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
 
 
 def _get_arr_root_folder_path(

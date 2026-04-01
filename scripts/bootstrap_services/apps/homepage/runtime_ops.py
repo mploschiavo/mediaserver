@@ -6,15 +6,15 @@ from __future__ import annotations
 from bootstrap_lib.homepage import DEFAULT_HOSTS as _lib_default_homepage_hosts
 from bootstrap_lib.homepage import render_services_yaml as _lib_render_homepage_services_yaml
 
-import bootstrap_services.runtime_core as _core
+from bootstrap_services.runtime_platform import (
+    bool_cfg,
+    coerce_list,
+    log,
+    resolve_app_service_class,
+    resolve_path,
+)
 
 from .service import HomepageService
-
-log = _core.log
-bool_cfg = _core.bool_cfg
-coerce_list = _core.coerce_list
-resolve_path = _core.resolve_path
-resolve_app_service_class = _core.resolve_app_service_class
 
 
 def _homepage_service(_cfg=None) -> HomepageService:
