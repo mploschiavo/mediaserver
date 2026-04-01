@@ -225,8 +225,7 @@ class RunBootstrapJobRunner:
                 config_file=self.cfg.config_file,
                 namespace=self.cfg.namespace,
                 prepare_host_root=self.cfg.prepare_host_root,
-                skip_qbit_ensure=self.cfg.skip_qbit_ensure,
-                skip_sab_ensure=self.cfg.skip_sab_ensure,
+                phase_skip_flags=self.cfg.effective_phase_skip_flags,
             )
         )
 

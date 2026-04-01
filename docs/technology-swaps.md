@@ -46,6 +46,7 @@ Registration is manifest-only. Runtime-only hooks still supported:
 - `adapter_hooks.media_server_operation_plans`
 - `adapter_hooks.runner_phase_scripts`
 - `adapter_hooks.bootstrap_all`
+- `adapter_hooks.bootstrap_job`
 - `adapter_hooks.scale_policy`
 
 Disallowed runtime registration overrides:
@@ -62,6 +63,10 @@ Disallowed runtime registration overrides:
 - `usenet_client`
 - `media_server`
 - `request_manager`
+
+Binding requirement:
+- `media_server` is required.
+- `torrent_client` and `usenet_client` are optional (phase plans + runtime config decide whether related flows run).
 
 Example:
 
@@ -137,6 +142,17 @@ python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 ```bash
 bash scripts/bootstrap-all.sh
 ```
+
+## Declarative Wrapper Phases
+
+Bootstrap wrapper flow is config-first:
+
+- `adapter_hooks.bootstrap_all.phase_plan`: controls order and conditions for `bootstrap-all`.
+- `adapter_hooks.bootstrap_job.phase_plan`: controls order and conditions for `run-bootstrap-job`.
+- `phase_plan[*].when`: declarative condition object (`all_of`, `any_of`, `not`, `var`, `equals`, `in`, `truthy`, `exists`).
+- `phase_plan[*].skip_flag`: generates CLI flags (for example `skip_torrent_client_ensure` => `--skip-torrent-client-ensure`).
+
+Legacy flag aliases remain supported (`--skip-qbit-ensure`, `--skip-sab-ensure`, `--skip-jellyfin-bootstrap`) for backward compatibility.
 
 ### Example: Jellyfin -> Plex
 

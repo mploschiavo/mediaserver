@@ -25,6 +25,21 @@ class RunBootstrapJobCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.job_log_tail_lines, 200)
         self.assertEqual(cfg.bootstrap_runner_image, "registry.local/bootstrap:dev")
 
+    def test_parse_dynamic_skip_flags_from_env(self):
+        root_dir = Path("/tmp/media-stack")
+        with patch.dict(
+            os.environ,
+            {
+                "SKIP_TORRENT_CLIENT_ENSURE": "1",
+                "SKIP_USENET_CLIENT_ENSURE": "1",
+            },
+            clear=False,
+        ):
+            cfg = parse_run_bootstrap_job_config([], root_dir=root_dir)
+
+        self.assertTrue(cfg.effective_phase_skip_flags.get("skip_torrent_client_ensure"))
+        self.assertTrue(cfg.effective_phase_skip_flags.get("skip_usenet_client_ensure"))
+
 
 if __name__ == "__main__":
     unittest.main()

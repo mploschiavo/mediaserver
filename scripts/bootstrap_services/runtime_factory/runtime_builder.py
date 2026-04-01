@@ -189,8 +189,10 @@ class BootstrapRuntimeBuilder:
         usenet_client_key = binding_resolution.usenet_client_key
         qbit_cfg = dict(binding_resolution.torrent_client_cfg)
         sab_cfg = dict(binding_resolution.usenet_client_cfg)
-        qbit_cfg.setdefault("_technology_key", torrent_client_key)
-        sab_cfg.setdefault("_technology_key", usenet_client_key)
+        if torrent_client_key:
+            qbit_cfg.setdefault("_technology_key", torrent_client_key)
+        if usenet_client_key:
+            sab_cfg.setdefault("_technology_key", usenet_client_key)
 
         arr_download_handling_cfg = ArrDownloadHandlingPolicy.from_dict(
             cfg.get("arr_download_handling") or {},
@@ -256,8 +258,12 @@ class BootstrapRuntimeBuilder:
             cfg.get("prowlarr_auto_add_tested_indexers", False) or args.auto_prowlarr_indexers
         )
 
-        configure_qbit_arr_clients = bool(qbit_cfg.get("configure_arr_clients", False))
-        configure_sab_arr_clients = bool(sab_cfg.get("configure_arr_clients", False))
+        configure_qbit_arr_clients = bool(
+            torrent_client_key and qbit_cfg.get("configure_arr_clients", False)
+        )
+        configure_sab_arr_clients = bool(
+            usenet_client_key and sab_cfg.get("configure_arr_clients", False)
+        )
         sab_remote_path_mappings = (
             self.deps.build_sab_remote_path_mappings(sab_cfg) if configure_sab_arr_clients else []
         )
@@ -267,9 +273,12 @@ class BootstrapRuntimeBuilder:
         configure_arr_download_handling = arr_download_handling_cfg.enabled
         configure_arr_discovery_lists = arr_discovery_lists_cfg.enabled
         set_qbit_categories = bool(
-            qbit_cfg.get("set_categories", qbit_cfg.get("set_categories_in_qbit", False))
+            torrent_client_key
+            and qbit_cfg.get("set_categories", qbit_cfg.get("set_categories_in_qbit", False))
         )
-        qbit_login_required = bool(qbit_cfg.get("login_required", fully_preconfigured))
+        qbit_login_required = bool(
+            torrent_client_key and qbit_cfg.get("login_required", fully_preconfigured)
+        )
         refresh_health_after_bootstrap = bool(cfg.get("refresh_health_after_bootstrap", True))
 
         configure_jellyseerr_services = jellyseerr_model.enabled
@@ -320,7 +329,7 @@ class BootstrapRuntimeBuilder:
 
         qb_user = self._resolve_optional_env_value(qbit_cfg, "username_env")
         qb_pass = self._resolve_optional_env_value(qbit_cfg, "password_env")
-        if qbit_login_required and (not qb_user or not qb_pass):
+        if torrent_client_key and qbit_login_required and (not qb_user or not qb_pass):
             missing = []
             if not qb_user:
                 missing.append("username_env")
@@ -333,8 +342,8 @@ class BootstrapRuntimeBuilder:
 
         sab_username = self._resolve_optional_env_value(sab_cfg, "username_env")
         sab_password = self._resolve_optional_env_value(sab_cfg, "password_env")
-        sab_login_required = bool(sab_cfg.get("login_required", False))
-        if sab_login_required and (not sab_username or not sab_password):
+        sab_login_required = bool(usenet_client_key and sab_cfg.get("login_required", False))
+        if usenet_client_key and sab_login_required and (not sab_username or not sab_password):
             missing = []
             if not sab_username:
                 missing.append("username_env")

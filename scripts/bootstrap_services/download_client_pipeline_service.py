@@ -71,50 +71,49 @@ class DownloadClientPipelineService:
 
         torrent_key = str(inputs.torrent_client_key or "").strip().lower()
         usenet_key = str(inputs.usenet_client_key or "").strip().lower()
-        if not torrent_key:
-            raise ValueError("Missing torrent client key; set technology_bindings.torrent_client.")
-        if not usenet_key:
-            raise ValueError("Missing usenet client key; set technology_bindings.usenet_client.")
+        torrent_status: dict[str, Any] = {}
+        if torrent_key:
+            torrent_context = DownloadClientAdapterContext(
+                key=torrent_key,
+                display_name=str(inputs.qbit_cfg.get("name") or torrent_key.title()),
+                cfg=inputs.qbit_cfg,
+                wait_timeout=inputs.wait_timeout,
+                config_root=inputs.config_root,
+                arr_apps_raw=inputs.arr_apps_raw,
+                fully_preconfigured=inputs.fully_preconfigured,
+                configure_arr_clients=inputs.configure_qbit_arr_clients,
+                set_categories=inputs.set_qbit_categories,
+                login_required=inputs.qbit_login_required,
+                username=inputs.qbit_username,
+                password=inputs.qbit_password,
+            )
+            torrent_adapter = adapter_factory.create(torrent_key, torrent_context)
+            torrent_adapter.load()
+            torrent_adapter.precheck()
+            torrent_adapter.prepare()
+            torrent_adapter.configure()
+            torrent_adapter.ensure()
+            torrent_status = torrent_adapter.status_check()
 
-        torrent_context = DownloadClientAdapterContext(
-            key=torrent_key,
-            display_name=str(inputs.qbit_cfg.get("name") or torrent_key.title()),
-            cfg=inputs.qbit_cfg,
-            wait_timeout=inputs.wait_timeout,
-            config_root=inputs.config_root,
-            arr_apps_raw=inputs.arr_apps_raw,
-            fully_preconfigured=inputs.fully_preconfigured,
-            configure_arr_clients=inputs.configure_qbit_arr_clients,
-            set_categories=inputs.set_qbit_categories,
-            login_required=inputs.qbit_login_required,
-            username=inputs.qbit_username,
-            password=inputs.qbit_password,
-        )
-        torrent_adapter = adapter_factory.create(torrent_key, torrent_context)
-        torrent_adapter.load()
-        torrent_adapter.precheck()
-        torrent_adapter.prepare()
-        torrent_adapter.configure()
-        torrent_adapter.ensure()
-        torrent_status = torrent_adapter.status_check()
-
-        sab_context = DownloadClientAdapterContext(
-            key=usenet_key,
-            display_name=str(inputs.sab_cfg.get("name") or usenet_key.title()),
-            cfg=inputs.sab_cfg,
-            wait_timeout=inputs.wait_timeout,
-            config_root=inputs.config_root,
-            arr_apps_raw=inputs.arr_apps_raw,
-            fully_preconfigured=inputs.fully_preconfigured,
-            configure_arr_clients=inputs.configure_sab_arr_clients,
-        )
-        sab_adapter = adapter_factory.create(usenet_key, sab_context)
-        sab_adapter.load()
-        sab_adapter.precheck()
-        sab_adapter.prepare()
-        sab_adapter.configure()
-        sab_adapter.ensure()
-        sab_status = sab_adapter.status_check()
+        sab_status: dict[str, Any] = {}
+        if usenet_key:
+            sab_context = DownloadClientAdapterContext(
+                key=usenet_key,
+                display_name=str(inputs.sab_cfg.get("name") or usenet_key.title()),
+                cfg=inputs.sab_cfg,
+                wait_timeout=inputs.wait_timeout,
+                config_root=inputs.config_root,
+                arr_apps_raw=inputs.arr_apps_raw,
+                fully_preconfigured=inputs.fully_preconfigured,
+                configure_arr_clients=inputs.configure_sab_arr_clients,
+            )
+            sab_adapter = adapter_factory.create(usenet_key, sab_context)
+            sab_adapter.load()
+            sab_adapter.precheck()
+            sab_adapter.prepare()
+            sab_adapter.configure()
+            sab_adapter.ensure()
+            sab_status = sab_adapter.status_check()
 
         return DownloadClientPipelineResult(
             qbit_login_ok=bool(torrent_status.get("login_ok", False)),
