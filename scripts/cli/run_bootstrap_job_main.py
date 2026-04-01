@@ -255,16 +255,18 @@ class RunBootstrapJobRunner:
             self._core_phases_service().run(
                 run_phase=self._run_phase,
                 run_script=self._run_script,
-                resolve_bootstrap_config=self.resolve_bootstrap_config,
-                ensure_bootstrap_pvc_prereqs=self.ensure_bootstrap_pvc_prereqs,
-                prime_servarr_api_keys_secret=self.prime_servarr_api_keys_secret,
-                prime_usenet_client_api_key_secret=self.prime_usenet_client_api_key_secret,
-                prime_request_manager_api_key_secret=self.prime_request_manager_api_key_secret,
-                prime_tautulli_api_key_secret=self.prime_tautulli_api_key_secret,
-                update_bootstrap_configmaps=self.update_bootstrap_configmaps,
-                recreate_bootstrap_job=self.recreate_bootstrap_job,
-                wait_for_bootstrap_job=self.wait_for_bootstrap_job,
-                print_bootstrap_job_logs=self.print_bootstrap_job_logs,
+                operation_handlers={
+                    "resolve_bootstrap_config": self.resolve_bootstrap_config,
+                    "ensure_bootstrap_pvc_prereqs": self.ensure_bootstrap_pvc_prereqs,
+                    "prime_servarr_api_keys_secret": self.prime_servarr_api_keys_secret,
+                    "prime_usenet_client_api_key_secret": self.prime_usenet_client_api_key_secret,
+                    "prime_request_manager_api_key_secret": self.prime_request_manager_api_key_secret,
+                    "prime_tautulli_api_key_secret": self.prime_tautulli_api_key_secret,
+                    "update_bootstrap_configmaps": self.update_bootstrap_configmaps,
+                    "recreate_bootstrap_job": self.recreate_bootstrap_job,
+                    "wait_for_bootstrap_job": self.wait_for_bootstrap_job,
+                    "print_bootstrap_job_logs": self.print_bootstrap_job_logs,
+                },
             )
 
             self._post_job_actions_service().run_actions(

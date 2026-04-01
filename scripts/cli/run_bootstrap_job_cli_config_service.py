@@ -15,6 +15,7 @@ from core.exceptions import ConfigError  # noqa: E402
 
 from cli.bootstrap_component_resolver import (  # noqa: E402
     PhaseSkipFlagSpec,
+    normalize_flag_token,
     resolve_bootstrap_component_plan,
     resolve_phase_skip_flag_specs,
 )
@@ -179,6 +180,13 @@ def parse_run_bootstrap_job_config(
     phase_skip_flags = {
         spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
     }
+    for env_name in os.environ:
+        if not str(env_name).upper().startswith("SKIP_"):
+            continue
+        key = normalize_flag_token(env_name)
+        if not key:
+            continue
+        phase_skip_flags[key] = bool(phase_skip_flags.get(key, False) or env_bool(env_name, False))
     skip_qbit_ensure = bool(phase_skip_flags.get("skip_torrent_client_ensure", False))
     skip_sab_ensure = bool(phase_skip_flags.get("skip_usenet_client_ensure", False))
     return RunBootstrapJobConfig(

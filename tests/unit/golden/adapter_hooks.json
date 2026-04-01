@@ -1,10 +1,49 @@
 {
   "operation_handlers": {},
   "scale_policy": {
+    "core_apps": [
+      "jellyfin",
+      "jellyseerr",
+      "qbittorrent",
+      "sabnzbd",
+      "sonarr",
+      "radarr",
+      "lidarr",
+      "readarr",
+      "prowlarr",
+      "bazarr",
+      "maintainerr"
+    ],
     "worker_apps": [
       "unpackerr",
       "flaresolverr"
     ]
+  },
+  "skip_flag_aliases": {
+    "skip_torrent_client_ensure": {
+      "options": [
+        "--skip-qbit-ensure"
+      ],
+      "env_vars": [
+        "SKIP_QBIT_ENSURE"
+      ]
+    },
+    "skip_usenet_client_ensure": {
+      "options": [
+        "--skip-sab-ensure"
+      ],
+      "env_vars": [
+        "SKIP_SAB_ENSURE"
+      ]
+    },
+    "skip_media_server_bootstrap": {
+      "options": [
+        "--skip-jellyfin-bootstrap"
+      ],
+      "env_vars": [
+        "SKIP_JELLYFIN_BOOTSTRAP"
+      ]
+    }
   },
   "runner_phase_scripts": {
     "torrent_client_credentials": {
@@ -192,96 +231,170 @@
     }
   },
   "bootstrap_job": {
+    "components": {
+      "torrent_client": {
+        "binding": "torrent_client"
+      },
+      "usenet_client": {
+        "binding": "usenet_client"
+      },
+      "request_manager": {
+        "binding": "request_manager"
+      }
+    },
     "phase_plan": [
       {
-        "operation": "ensure_torrent_client_access",
+        "operation": "run_component_script",
+        "phase_name": "Ensure torrent client bootstrap access ({component|unbound})",
         "skip_flag": "skip_torrent_client_ensure",
         "when": {
           "all_of": [
             {
               "any_of": [
                 {
-                  "var": "selected.torrent_client.configure_arr_clients",
+                  "var": "components.torrent_client.selected.configure_arr_clients",
                   "truthy": true
                 },
                 {
-                  "var": "selected.torrent_client.set_categories_in_qbit",
+                  "var": "components.torrent_client.selected.set_categories_in_qbit",
                   "truthy": true
                 },
                 {
-                  "var": "selected.torrent_client.set_categories",
+                  "var": "components.torrent_client.selected.set_categories",
                   "truthy": true
                 }
               ]
             },
             {
-              "var": "scripts.torrent_client_credentials",
+              "var": "components.torrent_client.scripts.torrent_client_credentials",
               "truthy": true
             }
           ]
+        },
+        "params": {
+          "component": "torrent_client",
+          "binding": "torrent_client",
+          "script_phase": "torrent_client_credentials",
+          "env": {
+            "NAMESPACE": "$namespace",
+            "PREPARE_HOST_ROOT": "$prepare_host_root"
+          }
         }
       },
       {
-        "operation": "ensure_usenet_client_access",
+        "operation": "run_component_script",
+        "phase_name": "Ensure usenet client API access ({component|unbound})",
         "skip_flag": "skip_usenet_client_ensure",
         "when": {
           "all_of": [
             {
-              "var": "selected.usenet_client.configure_arr_clients",
+              "var": "components.usenet_client.selected.configure_arr_clients",
               "truthy": true
             },
             {
-              "var": "scripts.usenet_client_api_access",
+              "var": "components.usenet_client.scripts.usenet_client_api_access",
               "truthy": true
             }
           ]
+        },
+        "params": {
+          "component": "usenet_client",
+          "binding": "usenet_client",
+          "script_phase": "usenet_client_api_access",
+          "env": {
+            "NAMESPACE": "$namespace"
+          }
         }
       },
       {
-        "operation": "resolve_bootstrap_config"
+        "operation": "call_handler",
+        "phase_name": "Resolve bootstrap config",
+        "params": {
+          "handler": "resolve_bootstrap_config"
+        }
       },
       {
-        "operation": "ensure_bootstrap_pvc_prereqs"
+        "operation": "call_handler",
+        "phase_name": "Ensure bootstrap PVC prerequisites",
+        "params": {
+          "handler": "ensure_bootstrap_pvc_prereqs"
+        }
       },
       {
-        "operation": "prime_servarr_api_keys_secret"
+        "operation": "call_handler",
+        "phase_name": "Prime Arr API keys into secret",
+        "params": {
+          "handler": "prime_servarr_api_keys_secret"
+        }
       },
       {
-        "operation": "prime_usenet_client_api_key_secret",
+        "operation": "call_handler",
+        "phase_name": "Prime usenet client API key into secret ({component|unbound})",
         "when": {
           "var": "bindings.usenet_client",
           "in": [
             "sabnzbd"
           ]
+        },
+        "params": {
+          "handler": "prime_usenet_client_api_key_secret",
+          "component": "usenet_client",
+          "binding": "usenet_client"
         }
       },
       {
-        "operation": "prime_request_manager_api_key_secret",
+        "operation": "call_handler",
+        "phase_name": "Prime request manager API key into secret ({component|unbound})",
         "when": {
           "var": "bindings.request_manager",
           "in": [
             "jellyseerr"
           ]
+        },
+        "params": {
+          "handler": "prime_request_manager_api_key_secret",
+          "component": "request_manager",
+          "binding": "request_manager"
         }
       },
       {
-        "operation": "prime_tautulli_api_key_secret",
+        "operation": "call_handler",
+        "phase_name": "Prime Tautulli API key into secret",
         "when": {
           "var": "config.maintainerr.integrations.tautulli.enabled",
           "truthy": true
+        },
+        "params": {
+          "handler": "prime_tautulli_api_key_secret"
         }
       },
       {
-        "operation": "update_bootstrap_configmaps"
+        "operation": "call_handler",
+        "phase_name": "Update bootstrap ConfigMaps",
+        "params": {
+          "handler": "update_bootstrap_configmaps"
+        }
       },
       {
-        "operation": "recreate_bootstrap_job"
+        "operation": "call_handler",
+        "phase_name": "Recreate bootstrap Job",
+        "params": {
+          "handler": "recreate_bootstrap_job"
+        }
       },
       {
-        "operation": "wait_for_bootstrap_job"
+        "operation": "call_handler",
+        "phase_name": "Wait for bootstrap Job completion",
+        "params": {
+          "handler": "wait_for_bootstrap_job"
+        }
       },
       {
-        "operation": "print_bootstrap_job_logs"
+        "operation": "call_handler",
+        "phase_name": "Print bootstrap Job logs",
+        "params": {
+          "handler": "print_bootstrap_job_logs"
+        }
       }
     ]
   }
