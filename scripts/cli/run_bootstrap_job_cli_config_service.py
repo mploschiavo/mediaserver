@@ -116,7 +116,7 @@ def build_parser(root_dir: Path) -> argparse.ArgumentParser:
         "--skip-sab-ensure",
         action="store_true",
         default=env_bool("SKIP_SAB_ENSURE", False),
-        help="Skip SABnzbd ensure phase.",
+        help="Skip usenet client API-access ensure phase (legacy flag name).",
     )
     return parser
 

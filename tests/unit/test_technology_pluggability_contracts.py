@@ -55,7 +55,15 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "radarr": {"adapter_classes": {"servarr"}},
     "lidarr": {"adapter_classes": {"servarr"}},
     "readarr": {"adapter_classes": {"servarr"}},
-    "sabnzbd": {"adapter_classes": {"download_client"}},
+    "sabnzbd": {
+        "adapter_classes": {"download_client"},
+        "app_service_classes": {"usenet_client_service"},
+        "operation_handlers": {
+            "read_sabnzbd_api_key",
+            "ensure_sabnzbd_defaults",
+            "ensure_sabnzbd_categories",
+        },
+    },
     "tautulli": {"app_service_classes": {"tautulli_service"}},
     "flaresolverr": {},
     "maintainerr": {"app_service_classes": {"maintainerr_service"}},
@@ -87,7 +95,12 @@ def _load_manifest(technology: str) -> dict:
 
 def _iter_specs(manifest: dict) -> list[str]:
     specs = []
-    for section_key in ("adapter_classes", "app_service_classes", "operation_handlers", "before_common_steps"):
+    for section_key in (
+        "adapter_classes",
+        "app_service_classes",
+        "operation_handlers",
+        "before_common_steps",
+    ):
         section = manifest.get(section_key) or {}
         if not isinstance(section, dict):
             continue
@@ -202,7 +215,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         # Remove every manifest that provides torrent_client_service so class resolution
         # for torrent-client operations deterministically fails only when invoked.
         filtered_manifests = [
-            item for item in all_manifests if "torrent_client_service" not in (item.app_service_classes or {})
+            item
+            for item in all_manifests
+            if "torrent_client_service" not in (item.app_service_classes or {})
         ]
         self.assertTrue(
             any(item.technology == "qbittorrent" for item in all_manifests),
@@ -214,7 +229,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         )
 
         try:
-            with mock.patch.object(registry, "load_plugin_manifests", return_value=filtered_manifests):
+            with mock.patch.object(
+                registry, "load_plugin_manifests", return_value=filtered_manifests
+            ):
                 registry.set_runtime_context_cfg({})
                 # Shared runtime init/import should still work for unrelated services.
                 arr_service = runtime_factory._arr_service()
@@ -223,6 +240,44 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                 # The removed technology should fail only when invoked.
                 with self.assertRaises(RuntimeError):
                     runtime_factory._torrent_client_service({"url": "http://qbittorrent:8080"})
+        finally:
+            registry.set_runtime_context_cfg(prior_context)
+
+    def test_missing_sabnzbd_manifest_does_not_break_shared_runtime_import_init(self):
+        import bootstrap_services.plugin_manifest_loader as manifest_loader
+        import bootstrap_services.runtime_service_registry as registry
+        import bootstrap_services.runtime_servarr.factory as runtime_factory
+
+        prior_context = registry.get_runtime_context_cfg()
+        all_manifests = manifest_loader.load_plugin_manifests()
+        # Remove every manifest that provides usenet_client_service so class resolution
+        # for usenet-client operations deterministically fails only when invoked.
+        filtered_manifests = [
+            item
+            for item in all_manifests
+            if "usenet_client_service" not in (item.app_service_classes or {})
+        ]
+        self.assertTrue(
+            any(item.technology == "sabnzbd" for item in all_manifests),
+            "Expected sabnzbd manifest to exist for this simulation test.",
+        )
+        self.assertTrue(
+            len(filtered_manifests) < len(all_manifests),
+            "Expected at least one manifest to provide usenet_client_service.",
+        )
+
+        try:
+            with mock.patch.object(
+                registry, "load_plugin_manifests", return_value=filtered_manifests
+            ):
+                registry.set_runtime_context_cfg({})
+                # Shared runtime init/import should still work for unrelated services.
+                arr_service = runtime_factory._arr_service()
+                self.assertIsNotNone(arr_service)
+
+                # The removed technology should fail only when invoked.
+                with self.assertRaises(RuntimeError):
+                    runtime_factory._usenet_client_service({"url": "http://sabnzbd:8080"})
         finally:
             registry.set_runtime_context_cfg(prior_context)
 
@@ -237,14 +292,18 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         runtime_hooks["app_service_classes"] = dict(runtime_hooks.get("app_service_classes") or {})
         runtime_hooks["app_service_classes_by_technology"] = {
             str(tech): dict(service_map)
-            for tech, service_map in (runtime_hooks.get("app_service_classes_by_technology") or {}).items()
+            for tech, service_map in (
+                runtime_hooks.get("app_service_classes_by_technology") or {}
+            ).items()
             if isinstance(service_map, dict)
         }
         runtime_hooks["runtime_bindings"] = {"torrent_client": "qbittorrent"}
 
         # Remove only the runtime-resolved torrent-client binding.
         runtime_hooks["app_service_classes"].pop("torrent_client_service", None)
-        qbittorrent_map = runtime_hooks["app_service_classes_by_technology"].get("qbittorrent") or {}
+        qbittorrent_map = (
+            runtime_hooks["app_service_classes_by_technology"].get("qbittorrent") or {}
+        )
         qbittorrent_map = dict(qbittorrent_map) if isinstance(qbittorrent_map, dict) else {}
         qbittorrent_map.pop("torrent_client_service", None)
         runtime_hooks["app_service_classes_by_technology"]["qbittorrent"] = qbittorrent_map
@@ -258,6 +317,43 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             # Failure is deferred until we invoke the removed technology path.
             with self.assertRaises(RuntimeError):
                 runtime_factory._torrent_client_service({})
+        finally:
+            registry.set_runtime_context_cfg(prior_context)
+
+    def test_runtime_usenet_binding_removal_is_lazy_until_technology_path_invoked(self):
+        import bootstrap_services.plugin_manifest_loader as manifest_loader
+        import bootstrap_services.runtime_service_registry as registry
+        import bootstrap_services.runtime_servarr.factory as runtime_factory
+
+        prior_context = registry.get_runtime_context_cfg()
+        manifests = manifest_loader.load_plugin_manifests()
+        runtime_hooks = manifest_loader.build_adapter_hook_defaults(manifests).to_dict()
+        runtime_hooks["app_service_classes"] = dict(runtime_hooks.get("app_service_classes") or {})
+        runtime_hooks["app_service_classes_by_technology"] = {
+            str(tech): dict(service_map)
+            for tech, service_map in (
+                runtime_hooks.get("app_service_classes_by_technology") or {}
+            ).items()
+            if isinstance(service_map, dict)
+        }
+        runtime_hooks["runtime_bindings"] = {"usenet_client": "sabnzbd"}
+
+        # Remove only the runtime-resolved usenet-client binding.
+        runtime_hooks["app_service_classes"].pop("usenet_client_service", None)
+        sabnzbd_map = runtime_hooks["app_service_classes_by_technology"].get("sabnzbd") or {}
+        sabnzbd_map = dict(sabnzbd_map) if isinstance(sabnzbd_map, dict) else {}
+        sabnzbd_map.pop("usenet_client_service", None)
+        runtime_hooks["app_service_classes_by_technology"]["sabnzbd"] = sabnzbd_map
+
+        try:
+            registry.set_runtime_context_cfg(runtime_hooks)
+            # Shared runtime init still succeeds for unrelated service wiring.
+            arr_service = runtime_factory._arr_service()
+            self.assertIsNotNone(arr_service)
+
+            # Failure is deferred until we invoke the removed technology path.
+            with self.assertRaises(RuntimeError):
+                runtime_factory._usenet_client_service({})
         finally:
             registry.set_runtime_context_cfg(prior_context)
 
@@ -275,7 +371,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         self.assertTrue(hasattr(runtime_media_ops, "ensure_maintainerr_policy"))
         self.assertTrue(hasattr(runtime_media_ops, "_jellyfin_runtime_ops"))
 
-        with mock.patch.object(runtime_media_ops.importlib, "import_module", side_effect=_patched_import_module):
+        with mock.patch.object(
+            runtime_media_ops.importlib, "import_module", side_effect=_patched_import_module
+        ):
             # Should fail only once jellyfin-specific lazy path is explicitly invoked.
             with self.assertRaises(ModuleNotFoundError):
                 runtime_media_ops._jellyfin_runtime_ops()

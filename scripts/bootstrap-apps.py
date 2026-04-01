@@ -117,9 +117,9 @@ def main():
         RunnerOperationHandlers(
             ensure_app_auth_settings=runtime_servarr_ops.ensure_app_auth_settings,
             qbit_login=_missing_op_handler("qbit_login"),
-            read_sabnzbd_api_key=runtime_servarr_ops.read_sabnzbd_api_key,
-            ensure_sabnzbd_defaults=runtime_servarr_ops.ensure_sabnzbd_defaults,
-            ensure_sabnzbd_categories=runtime_servarr_ops.ensure_sabnzbd_categories,
+            read_sabnzbd_api_key=_missing_op_handler("read_sabnzbd_api_key"),
+            ensure_sabnzbd_defaults=_missing_op_handler("ensure_sabnzbd_defaults"),
+            ensure_sabnzbd_categories=_missing_op_handler("ensure_sabnzbd_categories"),
             setup_qbit_categories=_missing_op_handler("setup_qbit_categories"),
             run_servarr_pipeline=runtime_servarr_ops._servarr_pipeline_service().run,
             ensure_bazarr_arr_integration=_missing_op_handler("ensure_bazarr_arr_integration"),
@@ -127,7 +127,9 @@ def main():
             ensure_jellyfin_livetv=_missing_op_handler("ensure_jellyfin_livetv"),
             ensure_jellyfin_libraries=_missing_op_handler("ensure_jellyfin_libraries"),
             ensure_jellyfin_plugins=_missing_op_handler("ensure_jellyfin_plugins"),
-            ensure_jellyfin_playback_defaults=_missing_op_handler("ensure_jellyfin_playback_defaults"),
+            ensure_jellyfin_playback_defaults=_missing_op_handler(
+                "ensure_jellyfin_playback_defaults"
+            ),
             ensure_jellyfin_home_rails=_missing_op_handler("ensure_jellyfin_home_rails"),
             ensure_jellyfin_auto_collections_config=_missing_op_handler(
                 "ensure_jellyfin_auto_collections_config"
@@ -145,9 +147,7 @@ def main():
             ensure_prowlarr_indexer=_missing_op_handler("ensure_prowlarr_indexer"),
             auto_add_tested_indexers=_missing_op_handler("auto_add_tested_indexers"),
             trigger_prowlarr_sync=_missing_op_handler("trigger_prowlarr_sync"),
-            sync_arr_indexers_from_prowlarr=_missing_op_handler(
-                "sync_arr_indexers_from_prowlarr"
-            ),
+            sync_arr_indexers_from_prowlarr=_missing_op_handler("sync_arr_indexers_from_prowlarr"),
             run_prowlarr_indexer_pipeline=_missing_op_handler("run_prowlarr_indexer_pipeline"),
         ),
         operation_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("operation_handlers"),

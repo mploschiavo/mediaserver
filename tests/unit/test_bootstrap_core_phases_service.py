@@ -47,7 +47,7 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(phases[0], ("Ensure torrent client credentials", False))
-        self.assertEqual(phases[1], ("Ensure SABnzbd API access", True))
+        self.assertEqual(phases[1], ("Ensure usenet client API access", True))
         self.assertTrue(any(s[0] == "ensure-sabnzbd-api-access.sh" for s in called["scripts"]))
 
 
