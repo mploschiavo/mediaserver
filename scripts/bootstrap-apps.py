@@ -137,8 +137,8 @@ def main():
             enforce_disk_guardrails=runtime_servarr_ops.enforce_disk_guardrails,
             run_media_hygiene=runtime_servarr_ops.run_media_hygiene,
             ensure_jellyfin_prewarm=_missing_op_handler("ensure_jellyfin_prewarm"),
-            ensure_maintainerr_policy=runtime_media_ops.ensure_maintainerr_policy,
-            ensure_maintainerr_integrations=runtime_media_ops.ensure_maintainerr_integrations,
+            ensure_maintainerr_policy=_missing_op_handler("ensure_maintainerr_policy"),
+            ensure_maintainerr_integrations=_missing_op_handler("ensure_maintainerr_integrations"),
             ensure_homepage_services_config=runtime_media_ops.ensure_homepage_services_config,
             ensure_prowlarr_ready=_missing_op_handler("ensure_prowlarr_ready"),
             ensure_prowlarr_flaresolverr_proxy=_missing_op_handler(
