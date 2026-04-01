@@ -120,7 +120,8 @@ Binding notes:
 Wrapper phase orchestration is declarative:
 - Phase order is read from `adapter_hooks.bootstrap_all.phase_plan` and `adapter_hooks.bootstrap_job.phase_plan`.
 - `bootstrap_all` uses a single operation (`operation: "run"`) with `params.action` (`component_script`, `script`, `enable_components`).
-- `bootstrap_job` config resolution targets are declared at `adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets`.
+- `bootstrap_job` config resolver operations are declared at `adapter_hooks.bootstrap_job.config_resolver.operations`.
+- Resolver handlers are plugin-driven (`<technology>/manifest.json` -> `config_resolver_handlers`) with optional config overrides at `adapter_hooks.bootstrap_job.config_resolver.handler_specs`.
 - Phase checks/conditions are read from each phase entry `when` expression.
 - CLI skip flags are derived from phase-plan `skip_flag` keys (with legacy aliases retained).
 

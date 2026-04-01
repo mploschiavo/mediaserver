@@ -243,6 +243,9 @@
   },
   "bootstrap_job": {
     "config_resolver": {
+      "operations": [
+        "inject_homepage_ingress_hosts"
+      ],
       "ingress_host_targets": [
         {
           "name": "homepage",
