@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from .enums import RunnerEvent
+
 DEFAULT_PLUGIN_MANIFESTS_DIR = (
     Path(__file__).resolve().parents[1] / "bootstrap_defaults" / "plugins"
 )
@@ -20,6 +22,7 @@ class PluginManifest:
     before_common_steps: dict[str, str] = field(default_factory=dict)
     app_service_classes: dict[str, str] = field(default_factory=dict)
     service_technology_map: dict[str, str] = field(default_factory=dict)
+    event_handlers: dict[str, dict[str, str]] = field(default_factory=dict)
     operation_handlers: dict[str, str] = field(default_factory=dict)
     capability_defaults: dict[str, Any] = field(default_factory=dict)
     source_path: Path | None = None
@@ -35,6 +38,7 @@ class AdapterHookDefaults:
     app_service_classes: dict[str, str] = field(default_factory=dict)
     app_service_classes_by_technology: dict[str, dict[str, str]] = field(default_factory=dict)
     service_technology_map: dict[str, str] = field(default_factory=dict)
+    event_handlers: dict[str, dict[str, str]] = field(default_factory=dict)
     operation_handlers: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,6 +55,11 @@ class AdapterHookDefaults:
                 if isinstance(service_map, dict)
             },
             "service_technology_map": dict(self.service_technology_map),
+            "event_handlers": {
+                str(event): dict(handlers)
+                for event, handlers in self.event_handlers.items()
+                if isinstance(handlers, dict)
+            },
             "operation_handlers": dict(self.operation_handlers),
         }
 
@@ -78,6 +87,24 @@ def _coerce_str_map(value: Any) -> dict[str, str]:
     return out
 
 
+def _coerce_event_handler_map(value: Any) -> dict[str, dict[str, str]]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for event_name, handler_map in value.items():
+        event_key_raw = _to_non_empty_str(event_name)
+        if not event_key_raw:
+            continue
+        if not isinstance(handler_map, dict):
+            continue
+        try:
+            event_key = RunnerEvent.from_value(event_key_raw).value
+        except ValueError:
+            continue
+        out[event_key] = _coerce_str_map(handler_map)
+    return out
+
+
 def _coerce_aliases(value: Any) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
@@ -99,6 +126,13 @@ def _load_manifest(path: Path) -> PluginManifest:
         raise ValueError(f"Plugin manifest missing required 'technology': {path}")
 
     adapter_classes = _coerce_str_map(payload.get("adapter_classes"))
+    event_handlers = _coerce_event_handler_map(payload.get("event_handlers"))
+    legacy_operation_handlers = _coerce_str_map(payload.get("operation_handlers"))
+    if legacy_operation_handlers:
+        event_handlers.setdefault(RunnerEvent.RUN.value, {}).update(legacy_operation_handlers)
+
+    run_operation_handlers = dict(event_handlers.get(RunnerEvent.RUN.value, {}))
+
     return PluginManifest(
         technology=technology.lower(),
         aliases=_coerce_aliases(payload.get("aliases")),
@@ -106,7 +140,8 @@ def _load_manifest(path: Path) -> PluginManifest:
         before_common_steps=_coerce_str_map(payload.get("before_common_steps")),
         app_service_classes=_coerce_str_map(payload.get("app_service_classes")),
         service_technology_map=_coerce_str_map(payload.get("service_technology_map")),
-        operation_handlers=_coerce_str_map(payload.get("operation_handlers")),
+        event_handlers=event_handlers,
+        operation_handlers=run_operation_handlers,
         capability_defaults=dict(payload.get("capability_defaults") or {}),
         source_path=path,
     )
@@ -129,6 +164,7 @@ def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookD
     app_service_classes: dict[str, str] = {}
     app_service_classes_by_technology: dict[str, dict[str, str]] = {}
     service_technology_map: dict[str, str] = {}
+    event_handlers: dict[str, dict[str, str]] = {}
     operation_handlers: dict[str, str] = {}
 
     for manifest in manifests:
@@ -159,6 +195,14 @@ def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookD
             app_service_classes.update(manifest_services)
             app_service_classes_by_technology.setdefault(technology, {}).update(manifest_services)
         service_technology_map.update(manifest.service_technology_map)
+        for event_name, handler_map in (manifest.event_handlers or {}).items():
+            event_handlers.setdefault(event_name, {}).update(
+                {
+                    str(handler_name): str(spec)
+                    for handler_name, spec in handler_map.items()
+                    if str(handler_name).strip() and str(spec).strip()
+                }
+            )
         operation_handlers.update(manifest.operation_handlers)
 
     return AdapterHookDefaults(
@@ -170,6 +214,7 @@ def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookD
         app_service_classes=app_service_classes,
         app_service_classes_by_technology=app_service_classes_by_technology,
         service_technology_map=service_technology_map,
+        event_handlers=event_handlers,
         operation_handlers=operation_handlers,
     )
 

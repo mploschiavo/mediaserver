@@ -10,13 +10,12 @@ from .download_client_adapters import (
     DownloadClientAdapterDependencies,
     DownloadClientAdapterFactory,
 )
-from .enums import RunnerOperation
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
-InvokeOperationFn = Callable[[RunnerOperation | str, Any], Any]
+InvokeHandlerFn = Callable[..., Any]
 
 
 @dataclass(frozen=True)
@@ -50,7 +49,17 @@ class DownloadClientPipelineService:
     normalize_url: NormalizeUrlFn
     wait_for_service: WaitForServiceFn
     bool_cfg: BoolCfgFn
-    invoke_operation: InvokeOperationFn
+    invoke_handler: InvokeHandlerFn | None = None
+    invoke_operation: InvokeHandlerFn | None = None
+
+    def _dispatch_invoke(self, event: str, handler: str, *args: Any) -> Any:
+        if callable(self.invoke_handler):
+            return self.invoke_handler(event, handler, *args)
+        if callable(self.invoke_operation):
+            return self.invoke_operation(handler, *args)
+        raise ValueError(
+            "DownloadClientPipelineService requires invoke_handler " "(or legacy invoke_operation)."
+        )
 
     def _dependencies(self) -> DownloadClientAdapterDependencies:
         return DownloadClientAdapterDependencies(
@@ -58,7 +67,7 @@ class DownloadClientPipelineService:
             normalize_url=self.normalize_url,
             wait_for_service=self.wait_for_service,
             bool_cfg=self.bool_cfg,
-            invoke_operation=self.invoke_operation,
+            invoke_handler=self._dispatch_invoke,
         )
 
     def run_prepare(self, inputs: DownloadClientPipelineInputs) -> DownloadClientPipelineResult:

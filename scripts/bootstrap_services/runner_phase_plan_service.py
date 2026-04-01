@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from .enums import RunnerEvent
+
 RunOptionalStepFn = Callable[..., None]
-InvokeOperationFn = Callable[..., Any]
+InvokeEventFn = Callable[..., Any]
 LogFn = Callable[[str], None]
 
-_ARG_TOKEN_ATTRS: dict[str, str] = {
+DEFAULT_ARG_TOKEN_ATTRS: dict[str, str] = {
     "cfg": "cfg",
     "config_root": "config_root",
     "wait_timeout": "wait_timeout",
@@ -53,7 +55,12 @@ def _has_runtime_value(runtime: Any, attr: str) -> bool:
     return bool(value)
 
 
-def _resolve_step_args(runtime: Any, step_cfg: dict[str, Any]) -> tuple[Any, ...]:
+def _resolve_step_args(
+    runtime: Any,
+    step_cfg: dict[str, Any],
+    *,
+    arg_token_attrs: dict[str, str],
+) -> tuple[Any, ...]:
     raw_args = step_cfg.get("args", [])
     if raw_args is None:
         return ()
@@ -63,7 +70,7 @@ def _resolve_step_args(runtime: Any, step_cfg: dict[str, Any]) -> tuple[Any, ...
     args: list[Any] = []
     for token in raw_args:
         if isinstance(token, str):
-            attr = _ARG_TOKEN_ATTRS.get(token)
+            attr = arg_token_attrs.get(token)
             if attr is not None:
                 args.append(getattr(runtime, attr))
                 continue
@@ -87,14 +94,33 @@ def _resolve_steps_for_phase(
     ).strip()
 
 
+def _resolve_step_event_and_handler(step_cfg: dict[str, Any]) -> tuple[str, str]:
+    event_raw = str(step_cfg.get("event") or "").strip()
+    handler_raw = str(step_cfg.get("handler") or "").strip()
+    operation_raw = str(step_cfg.get("operation") or "").strip()
+
+    if not event_raw and operation_raw:
+        event_raw = RunnerEvent.RUN.value
+    if not handler_raw:
+        handler_raw = operation_raw
+
+    if not event_raw or not handler_raw:
+        return "", ""
+
+    event_key = RunnerEvent.from_value(event_raw).value
+    return event_key, handler_raw
+
+
 def run_phase_plan(
     *,
     runtime: Any,
     plan_cfg: dict[str, Any],
     phase_name: str,
-    invoke_operation: InvokeOperationFn,
+    invoke_event: InvokeEventFn | None = None,
+    invoke_operation: InvokeEventFn | None = None,
     run_optional_step: RunOptionalStepFn,
     log: LogFn,
+    arg_token_attrs: dict[str, str] | None = None,
 ) -> bool:
     """Run one configured runner phase plan.
 
@@ -106,11 +132,23 @@ def run_phase_plan(
     if not steps:
         return False
 
+    if callable(invoke_event):
+        invoke = invoke_event
+    elif callable(invoke_operation):
+
+        def invoke(_event: str, handler: str, *op_args: Any) -> Any:
+            return invoke_operation(handler, *op_args)
+
+    else:
+        raise ValueError("run_phase_plan requires invoke_event (or legacy invoke_operation).")
+
+    resolved_tokens = arg_token_attrs or DEFAULT_ARG_TOKEN_ATTRS
+
     for step in steps:
-        operation = str(step.get("operation") or "").strip()
-        if not operation:
+        event_name, handler_name = _resolve_step_event_and_handler(step)
+        if not event_name or not handler_name:
             continue
-        args = _resolve_step_args(runtime, step)
+        args = _resolve_step_args(runtime, step, arg_token_attrs=resolved_tokens)
 
         enabled = bool(step.get("enabled", True))
         enabled_attr = str(step.get("enabled_attr") or "").strip()
@@ -130,13 +168,17 @@ def run_phase_plan(
             warning_message = str(step.get("warning_message") or "").strip()
             if not warning_message:
                 warning_message = (
-                    f"[WARN] Runner operation '{operation}' skipped. "
+                    f"[WARN] Runner handler '{handler_name}' skipped. "
                     "Set corresponding *.required=true to fail the bootstrap instead."
                 )
             run_optional_step(
                 enabled=enabled,
                 required=required,
-                action=lambda op=operation, op_args=args: invoke_operation(op, *op_args),
+                action=lambda evt=event_name, key=handler_name, op_args=args: invoke(
+                    evt,
+                    key,
+                    *op_args,
+                ),
                 warning_message=warning_message,
             )
             continue
@@ -144,7 +186,7 @@ def run_phase_plan(
         if not enabled:
             continue
 
-        invoke_operation(operation, *args)
+        invoke(event_name, handler_name, *args)
 
     if complete_message:
         log(complete_message)

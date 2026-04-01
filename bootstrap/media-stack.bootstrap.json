@@ -10,7 +10,7 @@
     "request_manager": "jellyseerr"
   },
   "adapter_hooks": {
-    "operation_handlers": {},
+    "event_handlers": {},
     "scale_policy": {
       "apps": [
         "jellyfin",

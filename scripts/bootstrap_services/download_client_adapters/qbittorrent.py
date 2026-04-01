@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..enums import RunnerOperation
+from ..enums import RunnerEvent
 from .base import DownloadClientAdapterBase
 
 
@@ -27,8 +27,9 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
             self.context.status["login_ok"] = False
             return
         try:
-            self.deps.invoke_operation(
-                RunnerOperation.TORRENT_CLIENT_LOGIN,
+            self.deps.invoke_handler(
+                RunnerEvent.ACQUIRE,
+                "torrent_client_login",
                 self.context.url or self.deps.normalize_url("http://qbittorrent:8080"),
                 self.context.username,
                 self.context.password,
@@ -53,8 +54,9 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
             return
         if not bool(self.context.status.get("login_ok", False)):
             return
-        self.deps.invoke_operation(
-            RunnerOperation.SETUP_TORRENT_CATEGORIES,
+        self.deps.invoke_handler(
+            RunnerEvent.ENSURE,
+            "setup_torrent_categories",
             self.context.arr_apps_raw,
             self.context.cfg,
             self.context.username,

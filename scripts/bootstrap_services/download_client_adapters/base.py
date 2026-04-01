@@ -5,13 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from ..enums import RunnerOperation
-
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
-InvokeOperationFn = Callable[[RunnerOperation | str, Any], Any]
+InvokeHandlerFn = Callable[..., Any]
 
 
 @dataclass
@@ -38,7 +36,7 @@ class DownloadClientAdapterDependencies:
     normalize_url: NormalizeUrlFn
     wait_for_service: WaitForServiceFn
     bool_cfg: BoolCfgFn
-    invoke_operation: InvokeOperationFn
+    invoke_handler: InvokeHandlerFn
 
 
 @dataclass

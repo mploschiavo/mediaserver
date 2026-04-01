@@ -29,6 +29,54 @@ class BootstrapMode(str, Enum):
         raise ValueError(f"Unsupported bootstrap mode: {value}")
 
 
+class RunnerEvent(str, Enum):
+    INIT = "INIT"
+    DISCOVER_CAPABILITIES = "DISCOVER_CAPABILITIES"
+    VALIDATE = "VALIDATE"
+    PLAN = "PLAN"
+    PRE = "PRE"
+    ACQUIRE = "ACQUIRE"
+    RESERVE = "RESERVE"
+    RUN = "RUN"
+    COMMIT = "COMMIT"
+    POST = "POST"
+    ENSURE = "ENSURE"
+    CHECK_STATUS = "CHECK_STATUS"
+    HEALTH_CHECK = "HEALTH_CHECK"
+    HEARTBEAT = "HEARTBEAT"
+    REPORT = "REPORT"
+    PAUSE = "PAUSE"
+    RESUME = "RESUME"
+    CANCEL = "CANCEL"
+    ABORT = "ABORT"
+    TIMEOUT = "TIMEOUT"
+    RETRY = "RETRY"
+    ROLLBACK = "ROLLBACK"
+    COMPENSATE = "COMPENSATE"
+    RECOVER = "RECOVER"
+    RECONCILE = "RECONCILE"
+    RELEASE = "RELEASE"
+    CLEANUP = "CLEANUP"
+    FINALIZE = "FINALIZE"
+    UPGRADE = "UPGRADE"
+    MIGRATE = "MIGRATE"
+    SHUTDOWN = "SHUTDOWN"
+
+    @classmethod
+    def choices(cls) -> list[str]:
+        return [event.value for event in cls]
+
+    @classmethod
+    def from_value(cls, value: str) -> "RunnerEvent":
+        token = str(value or "").strip().upper()
+        for event in cls:
+            if event.value == token:
+                return event
+        raise ValueError(f"Unsupported runner event: {value}")
+
+
+# Legacy operation aliases retained for compatibility with existing plan
+# references while migrating to the explicit RunnerEvent lifecycle contract.
 class RunnerOperation(str, Enum):
     ENSURE_APP_AUTH_SETTINGS = "ensure_app_auth_settings"
     TORRENT_CLIENT_LOGIN = "torrent_client_login"

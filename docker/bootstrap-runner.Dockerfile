@@ -6,4 +6,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/media-stack
 
+RUN pip install --no-cache-dir kubernetes
+
 COPY scripts /opt/media-stack/scripts

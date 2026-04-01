@@ -1,109 +1,102 @@
-"""Runner operation wiring extracted from bootstrap entrypoint."""
+"""Runner event registry wiring."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .enums import RunnerOperation
-from .runner_operations_service import RunnerOperationRegistry
+from .runner_operations_service import RunnerEventRegistry
 
 OperationFn = Callable[..., Any]
 
 
 @dataclass(frozen=True)
 class RunnerOperationHandlers:
-    ensure_app_auth_settings: OperationFn
-    torrent_client_login: OperationFn
-    read_sabnzbd_api_key: OperationFn
-    ensure_sabnzbd_defaults: OperationFn
-    ensure_sabnzbd_categories: OperationFn
-    setup_torrent_categories: OperationFn
-    run_servarr_pipeline: OperationFn
-    ensure_bazarr_arr_integration: OperationFn
-    configure_jellyseerr: OperationFn
-    ensure_jellyfin_livetv: OperationFn
-    ensure_jellyfin_libraries: OperationFn
-    ensure_jellyfin_plugins: OperationFn
-    ensure_jellyfin_playback_defaults: OperationFn
-    ensure_jellyfin_home_rails: OperationFn
-    ensure_jellyfin_auto_collections_config: OperationFn
-    enforce_disk_guardrails: OperationFn
-    run_media_hygiene: OperationFn
-    ensure_jellyfin_prewarm: OperationFn
-    ensure_maintainerr_policy: OperationFn
-    ensure_maintainerr_integrations: OperationFn
-    ensure_homepage_services_config: OperationFn
-    ensure_prowlarr_ready: OperationFn
-    ensure_prowlarr_flaresolverr_proxy: OperationFn
-    ensure_prowlarr_indexer: OperationFn
-    auto_add_tested_indexers: OperationFn
-    trigger_prowlarr_sync: OperationFn
-    sync_arr_indexers_from_prowlarr: OperationFn
-    run_prowlarr_indexer_pipeline: OperationFn
+    """Legacy compatibility container for flat handler wiring."""
+
+    ensure_app_auth_settings: OperationFn | None = None
+    torrent_client_login: OperationFn | None = None
+    read_sabnzbd_api_key: OperationFn | None = None
+    ensure_sabnzbd_defaults: OperationFn | None = None
+    ensure_sabnzbd_categories: OperationFn | None = None
+    setup_torrent_categories: OperationFn | None = None
+    run_servarr_pipeline: OperationFn | None = None
+    ensure_bazarr_arr_integration: OperationFn | None = None
+    configure_jellyseerr: OperationFn | None = None
+    ensure_jellyfin_livetv: OperationFn | None = None
+    ensure_jellyfin_libraries: OperationFn | None = None
+    ensure_jellyfin_plugins: OperationFn | None = None
+    ensure_jellyfin_playback_defaults: OperationFn | None = None
+    ensure_jellyfin_home_rails: OperationFn | None = None
+    ensure_jellyfin_auto_collections_config: OperationFn | None = None
+    enforce_disk_guardrails: OperationFn | None = None
+    run_media_hygiene: OperationFn | None = None
+    ensure_jellyfin_prewarm: OperationFn | None = None
+    ensure_maintainerr_policy: OperationFn | None = None
+    ensure_maintainerr_integrations: OperationFn | None = None
+    ensure_homepage_services_config: OperationFn | None = None
+    ensure_prowlarr_ready: OperationFn | None = None
+    ensure_prowlarr_flaresolverr_proxy: OperationFn | None = None
+    ensure_prowlarr_indexer: OperationFn | None = None
+    auto_add_tested_indexers: OperationFn | None = None
+    trigger_prowlarr_sync: OperationFn | None = None
+    sync_arr_indexers_from_prowlarr: OperationFn | None = None
+    run_prowlarr_indexer_pipeline: OperationFn | None = None
     qbit_login: OperationFn | None = None
     setup_qbit_categories: OperationFn | None = None
 
+    def to_handler_map(self) -> dict[str, OperationFn]:
+        out: dict[str, OperationFn] = {}
+        for key, value in self.__dict__.items():
+            if callable(value):
+                out[key] = value
+        if callable(self.qbit_login):
+            out.setdefault("torrent_client_login", self.qbit_login)
+            out.setdefault("qbit_login", self.qbit_login)
+        if callable(self.setup_qbit_categories):
+            out.setdefault("setup_torrent_categories", self.setup_qbit_categories)
+            out.setdefault("setup_qbit_categories", self.setup_qbit_categories)
+        return out
+
+
+def _coerce_base_handlers(
+    handlers: dict[str, OperationFn] | RunnerOperationHandlers | None,
+) -> dict[str, OperationFn] | None:
+    if handlers is None:
+        return None
+    if isinstance(handlers, RunnerOperationHandlers):
+        return handlers.to_handler_map()
+    return dict(handlers)
+
+
+def build_runner_event_registry(
+    *,
+    base_handlers: dict[str, OperationFn] | RunnerOperationHandlers | None = None,
+    base_event_handlers: dict[str, dict[str, OperationFn]] | None = None,
+    event_handler_specs: dict[str, Any] | None = None,
+    operation_handler_specs: dict[str, Any] | None = None,
+) -> RunnerEventRegistry:
+    return RunnerEventRegistry.from_maps(
+        handlers=_coerce_base_handlers(base_handlers),
+        event_handlers=base_event_handlers,
+        event_handler_specs=event_handler_specs,
+        handler_specs=operation_handler_specs,
+    )
+
 
 def build_runner_operation_registry(
-    handlers: RunnerOperationHandlers,
+    handlers: dict[str, OperationFn] | RunnerOperationHandlers | None = None,
     *,
     operation_handler_specs: dict[str, Any] | None = None,
-) -> RunnerOperationRegistry:
-    torrent_client_login = handlers.torrent_client_login or handlers.qbit_login
-    if torrent_client_login is None:
-        raise ValueError(
-            "RunnerOperationHandlers requires a torrent-client login handler "
-            "(torrent_client_login or qbit_login)."
-        )
-    setup_torrent_categories = handlers.setup_torrent_categories or handlers.setup_qbit_categories
-    if setup_torrent_categories is None:
-        raise ValueError(
-            "RunnerOperationHandlers requires a torrent category setup handler "
-            "(setup_torrent_categories or setup_qbit_categories)."
-        )
+    event_handler_specs: dict[str, Any] | None = None,
+) -> RunnerEventRegistry:
+    """Compatibility wrapper for older callsites.
 
-    base_handlers = {
-        RunnerOperation.ENSURE_APP_AUTH_SETTINGS.value: handlers.ensure_app_auth_settings,
-        RunnerOperation.TORRENT_CLIENT_LOGIN.value: torrent_client_login,
-        RunnerOperation.QBIT_LOGIN.value: torrent_client_login,
-        RunnerOperation.READ_SABNZBD_API_KEY.value: handlers.read_sabnzbd_api_key,
-        RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value: handlers.ensure_sabnzbd_defaults,
-        RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value: handlers.ensure_sabnzbd_categories,
-        RunnerOperation.SETUP_TORRENT_CATEGORIES.value: setup_torrent_categories,
-        RunnerOperation.SETUP_QBIT_CATEGORIES.value: setup_torrent_categories,
-        RunnerOperation.RUN_SERVARR_PIPELINE.value: handlers.run_servarr_pipeline,
-        RunnerOperation.ENSURE_BAZARR_INTEGRATION.value: handlers.ensure_bazarr_arr_integration,
-        RunnerOperation.CONFIGURE_JELLYSEERR.value: handlers.configure_jellyseerr,
-        RunnerOperation.ENSURE_JELLYFIN_LIVETV.value: handlers.ensure_jellyfin_livetv,
-        RunnerOperation.ENSURE_JELLYFIN_LIBRARIES.value: handlers.ensure_jellyfin_libraries,
-        RunnerOperation.ENSURE_JELLYFIN_PLUGINS.value: handlers.ensure_jellyfin_plugins,
-        RunnerOperation.ENSURE_JELLYFIN_PLAYBACK.value: handlers.ensure_jellyfin_playback_defaults,
-        RunnerOperation.ENSURE_JELLYFIN_HOME_RAILS.value: handlers.ensure_jellyfin_home_rails,
-        RunnerOperation.ENSURE_JELLYFIN_AUTO_COLLECTIONS.value: (
-            handlers.ensure_jellyfin_auto_collections_config
-        ),
-        RunnerOperation.ENFORCE_DISK_GUARDRAILS.value: handlers.enforce_disk_guardrails,
-        RunnerOperation.RUN_MEDIA_HYGIENE.value: handlers.run_media_hygiene,
-        RunnerOperation.ENSURE_JELLYFIN_PREWARM.value: handlers.ensure_jellyfin_prewarm,
-        RunnerOperation.ENSURE_MAINTAINERR_POLICY.value: handlers.ensure_maintainerr_policy,
-        RunnerOperation.ENSURE_MAINTAINERR_INTEGRATIONS.value: (
-            handlers.ensure_maintainerr_integrations
-        ),
-        RunnerOperation.ENSURE_HOMEPAGE_SERVICES.value: handlers.ensure_homepage_services_config,
-        RunnerOperation.ENSURE_PROWLARR_READY.value: handlers.ensure_prowlarr_ready,
-        RunnerOperation.ENSURE_PROWLARR_FLARESOLVERR_PROXY.value: (
-            handlers.ensure_prowlarr_flaresolverr_proxy
-        ),
-        RunnerOperation.ENSURE_PROWLARR_INDEXER.value: handlers.ensure_prowlarr_indexer,
-        RunnerOperation.AUTO_ADD_TESTED_INDEXERS.value: handlers.auto_add_tested_indexers,
-        RunnerOperation.TRIGGER_PROWLARR_SYNC.value: handlers.trigger_prowlarr_sync,
-        RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value: (
-            handlers.sync_arr_indexers_from_prowlarr
-        ),
-        RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value: handlers.run_prowlarr_indexer_pipeline,
-    }
-    return RunnerOperationRegistry.from_maps(
-        handlers=base_handlers,
-        handler_specs=operation_handler_specs,
+    Prefer `build_runner_event_registry` for new code.
+    """
+
+    return build_runner_event_registry(
+        base_handlers=handlers,
+        event_handler_specs=event_handler_specs,
+        operation_handler_specs=operation_handler_specs,
     )

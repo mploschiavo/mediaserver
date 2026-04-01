@@ -10,7 +10,7 @@ from .download_client_pipeline_service import (
     DownloadClientPipelineResult,
     DownloadClientPipelineService,
 )
-from .enums import BootstrapMode, RunnerOperation
+from .enums import BootstrapMode, RunnerEvent
 from .media_server_adapters import MediaServerAdapterContext, MediaServerAdapterFactory
 from .runner_operations_service import RunnerOperationRegistry
 from .runner_phase_plan_service import run_phase_plan as run_runner_phase_plan
@@ -49,8 +49,14 @@ class BootstrapRunnerService:
     lifecycle_manager: TechnologyLifecycleManager | None = None
     _download_client_prepare_result: DownloadClientPipelineResult | None = None
 
-    def _invoke_operation(self, operation: RunnerOperation | str, *args: Any, **kwargs: Any) -> Any:
-        return self.deps.operations.invoke(operation, *args, **kwargs)
+    def _invoke_handler(
+        self,
+        event: RunnerEvent | str,
+        handler: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        return self.deps.operations.invoke_event(event, handler, *args, **kwargs)
 
     def _technology_aliases(self, rt: BootstrapRuntime) -> dict[str, str]:
         aliases: dict[str, str] = {}
@@ -70,7 +76,9 @@ class BootstrapRunnerService:
             return ""
         return self._technology_aliases(rt).get(token, token)
 
-    def _technology_keys_from_hook_map(self, rt: BootstrapRuntime, hook_key: str) -> tuple[str, ...]:
+    def _technology_keys_from_hook_map(
+        self, rt: BootstrapRuntime, hook_key: str
+    ) -> tuple[str, ...]:
         hook_map = (rt.adapter_hooks_cfg or {}).get(hook_key) or {}
         if not isinstance(hook_map, dict):
             return ()
@@ -188,7 +196,8 @@ class BootstrapRunnerService:
         self.lifecycle_manager.run_phase(phase, rt, keys=keys)
 
     def _runner_operation_plans(self, rt: BootstrapRuntime) -> dict[str, Any]:
-        plans = (rt.adapter_hooks_cfg or {}).get("runner_operation_plans") or {}
+        hooks = rt.adapter_hooks_cfg or {}
+        plans = hooks.get("runner_event_plans") or hooks.get("runner_operation_plans") or {}
         return plans if isinstance(plans, dict) else {}
 
     def _run_runner_plan_phase(self, rt: BootstrapRuntime, phase_name: str) -> bool:
@@ -196,7 +205,7 @@ class BootstrapRunnerService:
             runtime=rt,
             plan_cfg=self._runner_operation_plans(rt),
             phase_name=phase_name,
-            invoke_operation=self._invoke_operation,
+            invoke_event=self._invoke_handler,
             run_optional_step=self._run_optional_step,
             log=self.deps.log,
         )
@@ -205,7 +214,9 @@ class BootstrapRunnerService:
         for app in rt.arr_apps:
             self.deps.wait_for_service(app.name, app.url, "/ping", rt.wait_timeout)
 
-    def _download_client_pipeline_service(self, rt: BootstrapRuntime) -> DownloadClientPipelineService:
+    def _download_client_pipeline_service(
+        self, rt: BootstrapRuntime
+    ) -> DownloadClientPipelineService:
         service_cls = resolve_app_service_class(
             "download_client_pipeline_service",
             DownloadClientPipelineService,
@@ -215,13 +226,15 @@ class BootstrapRunnerService:
             normalize_url=self.deps.normalize_url,
             wait_for_service=self.deps.wait_for_service,
             bool_cfg=self.deps.bool_cfg,
-            invoke_operation=self._invoke_operation,
+            invoke_handler=self._invoke_handler,
         )
 
     def _prepare_download_clients(self, rt: BootstrapRuntime) -> DownloadClientPipelineResult:
         if self._download_client_prepare_result is not None:
             return self._download_client_prepare_result
-        self._download_client_prepare_result = self._download_client_pipeline_service(rt).run_prepare(
+        self._download_client_prepare_result = self._download_client_pipeline_service(
+            rt
+        ).run_prepare(
             DownloadClientPipelineInputs(
                 config_root=rt.config_root,
                 arr_apps_raw=rt.arr_apps_raw,
@@ -262,7 +275,7 @@ class BootstrapRunnerService:
             MediaServerAdapterContext(
                 backend=backend,
                 runtime=rt,
-                invoke_operation=self._invoke_operation,
+                invoke_event=self._invoke_handler,
                 run_optional_step=self._run_optional_step,
                 log=self.deps.log,
             ),
@@ -283,8 +296,9 @@ class BootstrapRunnerService:
                 self.deps.log(
                     f"[WARN] Media hygiene mode: service wait skipped for {app.name} ({exc})"
                 )
-        self._invoke_operation(
-            RunnerOperation.RUN_MEDIA_HYGIENE,
+        self._invoke_handler(
+            RunnerEvent.RUN,
+            "run_media_hygiene",
             rt.cfg,
             rt.config_root,
             rt.arr_apps_raw,
@@ -345,8 +359,9 @@ class BootstrapRunnerService:
     def _run_servarr_pipeline(
         self, rt: BootstrapRuntime, qbit_login_ok: bool, sab_api_key: str
     ) -> None:
-        self._invoke_operation(
-            RunnerOperation.RUN_SERVARR_PIPELINE,
+        self._invoke_handler(
+            RunnerEvent.RUN,
+            "run_servarr_pipeline",
             ServarrPipelineInputs(
                 cfg=rt.cfg,
                 arr_apps=rt.arr_apps,

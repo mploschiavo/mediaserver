@@ -14,14 +14,16 @@
     "jellyfin_plugins_service": "bootstrap_services.apps.jellyfin.plugins_service:JellyfinPluginsService",
     "jellyfin_prewarm_service": "bootstrap_services.apps.jellyfin.prewarm_service:JellyfinPrewarmService"
   },
-  "operation_handlers": {
-    "ensure_jellyfin_livetv": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_livetv",
-    "ensure_jellyfin_libraries": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries",
-    "ensure_jellyfin_plugins": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_plugins",
-    "ensure_jellyfin_playback_defaults": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_playback_defaults",
-    "ensure_jellyfin_home_rails": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_home_rails",
-    "ensure_jellyfin_auto_collections_config": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config",
-    "ensure_jellyfin_prewarm": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm"
+  "event_handlers": {
+    "ENSURE": {
+      "ensure_jellyfin_livetv": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_livetv",
+      "ensure_jellyfin_libraries": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries",
+      "ensure_jellyfin_plugins": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_plugins",
+      "ensure_jellyfin_playback_defaults": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_playback_defaults",
+      "ensure_jellyfin_home_rails": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_home_rails",
+      "ensure_jellyfin_auto_collections_config": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config",
+      "ensure_jellyfin_prewarm": "bootstrap_services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm"
+    }
   },
   "service_technology_map": {
     "jellyfin_livetv_service": "jellyfin",

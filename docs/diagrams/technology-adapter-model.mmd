@@ -10,7 +10,7 @@ flowchart LR
   RES[RuntimeBindingResolver]
   RT[BootstrapRuntime]
 
-  OPREG[RunnerOperationRegistry]
+  OPREG[RunnerEventRegistry]
   DLF[DownloadClientAdapterFactory]
   MSF[MediaServerAdapterFactory]
   SAF[ServarrAdapterFactory]
@@ -27,7 +27,7 @@ flowchart LR
     C1[adapter_classes]
     C2[app_service_classes]
     C3[service_technology_map]
-    C4[operation_handlers]
+    C4[event_handlers<br/>plus legacy operation_handlers]
     C5[aliases and capability_defaults]
   end
 

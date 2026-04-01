@@ -29,7 +29,8 @@ Runtime state is not authoritative if it conflicts with declarative config.
 - Active component choice is declared only in `technology_bindings`.
 - Technology registration is declared only in plugin manifests.
 - Runtime config can override behavior plans and handlers, but not class registration maps.
-- Shared operation names are generic (for example `torrent_client_login`) so base orchestration is technology-neutral.
+- Shared lifecycle events are concrete (`RunnerEvent`) and handlers are technology-local
+  (`event_handlers.<EVENT>.<handler_key>`), so base orchestration remains technology-neutral.
 
 ## Reconciliation Rules
 

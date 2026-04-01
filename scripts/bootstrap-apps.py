@@ -18,25 +18,12 @@ from bootstrap_services.bootstrap_runner_service import (
     BootstrapRunnerService,
 )
 from bootstrap_services.enums import BootstrapMode
-from bootstrap_services.operation_wiring import (
-    RunnerOperationHandlers,
-    build_runner_operation_registry,
-)
+from bootstrap_services.operation_wiring import build_runner_event_registry
 from bootstrap_services.runtime_factory import (
     BootstrapCliArgs,
     BootstrapRuntimeFactoryDependencies,
     BootstrapRuntimeFactoryService,
 )
-
-
-def _missing_op_handler(operation_name: str):
-    def _missing(*_args, **_kwargs):
-        raise RuntimeError(
-            f"Operation handler for '{operation_name}' is not bound. "
-            "Provide adapter_hooks.operation_handlers (plugin manifest) for this operation."
-        )
-
-    return _missing
 
 
 def main():
@@ -113,44 +100,14 @@ def main():
     }
     runtime_core.set_runtime_context_cfg(runtime_context_cfg)
     runtime_core.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
-    runner_operations = build_runner_operation_registry(
-        RunnerOperationHandlers(
-            ensure_app_auth_settings=runtime_servarr_ops.ensure_app_auth_settings,
-            torrent_client_login=_missing_op_handler("torrent_client_login"),
-            read_sabnzbd_api_key=_missing_op_handler("read_sabnzbd_api_key"),
-            ensure_sabnzbd_defaults=_missing_op_handler("ensure_sabnzbd_defaults"),
-            ensure_sabnzbd_categories=_missing_op_handler("ensure_sabnzbd_categories"),
-            setup_torrent_categories=_missing_op_handler("setup_torrent_categories"),
-            run_servarr_pipeline=runtime_servarr_ops._servarr_pipeline_service().run,
-            ensure_bazarr_arr_integration=_missing_op_handler("ensure_bazarr_arr_integration"),
-            configure_jellyseerr=_missing_op_handler("configure_jellyseerr"),
-            ensure_jellyfin_livetv=_missing_op_handler("ensure_jellyfin_livetv"),
-            ensure_jellyfin_libraries=_missing_op_handler("ensure_jellyfin_libraries"),
-            ensure_jellyfin_plugins=_missing_op_handler("ensure_jellyfin_plugins"),
-            ensure_jellyfin_playback_defaults=_missing_op_handler(
-                "ensure_jellyfin_playback_defaults"
-            ),
-            ensure_jellyfin_home_rails=_missing_op_handler("ensure_jellyfin_home_rails"),
-            ensure_jellyfin_auto_collections_config=_missing_op_handler(
-                "ensure_jellyfin_auto_collections_config"
-            ),
-            enforce_disk_guardrails=runtime_servarr_ops.enforce_disk_guardrails,
-            run_media_hygiene=runtime_servarr_ops.run_media_hygiene,
-            ensure_jellyfin_prewarm=_missing_op_handler("ensure_jellyfin_prewarm"),
-            ensure_maintainerr_policy=_missing_op_handler("ensure_maintainerr_policy"),
-            ensure_maintainerr_integrations=_missing_op_handler("ensure_maintainerr_integrations"),
-            ensure_homepage_services_config=_missing_op_handler("ensure_homepage_services_config"),
-            ensure_prowlarr_ready=_missing_op_handler("ensure_prowlarr_ready"),
-            ensure_prowlarr_flaresolverr_proxy=_missing_op_handler(
-                "ensure_prowlarr_flaresolverr_proxy"
-            ),
-            ensure_prowlarr_indexer=_missing_op_handler("ensure_prowlarr_indexer"),
-            auto_add_tested_indexers=_missing_op_handler("auto_add_tested_indexers"),
-            trigger_prowlarr_sync=_missing_op_handler("trigger_prowlarr_sync"),
-            sync_arr_indexers_from_prowlarr=_missing_op_handler("sync_arr_indexers_from_prowlarr"),
-            run_prowlarr_indexer_pipeline=_missing_op_handler("run_prowlarr_indexer_pipeline"),
-        ),
-        operation_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("operation_handlers"),
+    runner_operations = build_runner_event_registry(
+        base_handlers={
+            "ensure_app_auth_settings": runtime_servarr_ops.ensure_app_auth_settings,
+            "run_servarr_pipeline": runtime_servarr_ops._servarr_pipeline_service().run,
+            "enforce_disk_guardrails": runtime_servarr_ops.enforce_disk_guardrails,
+            "run_media_hygiene": runtime_servarr_ops.run_media_hygiene,
+        },
+        event_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("event_handlers"),
     )
 
     runner = BootstrapRunnerService(

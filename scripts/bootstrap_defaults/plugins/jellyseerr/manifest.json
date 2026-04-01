@@ -5,8 +5,10 @@
     "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService",
     "request_manager_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
   },
-  "operation_handlers": {
-    "configure_jellyseerr": "bootstrap_services.apps.jellyseerr.runtime_ops:configure_jellyseerr"
+  "event_handlers": {
+    "RUN": {
+      "configure_jellyseerr": "bootstrap_services.apps.jellyseerr.runtime_ops:configure_jellyseerr"
+    }
   },
   "service_technology_map": {
     "jellyseerr_service": "jellyseerr",

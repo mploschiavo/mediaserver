@@ -299,11 +299,20 @@
     "adapter_hooks": {
       "type": "object",
       "properties": {
+        "event_handlers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+          }
+        },
         "operation_handlers": {
           "type": "object",
           "additionalProperties": {"type": "string"}
         },
+        "runner_event_plans": {"type": "object"},
         "runner_operation_plans": {"type": "object"},
+        "media_server_event_plans": {"type": "object"},
         "media_server_operation_plans": {"type": "object"},
         "runner_phase_scripts": {
           "type": "object",
