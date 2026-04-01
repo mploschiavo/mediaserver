@@ -12,7 +12,7 @@ from bootstrap_services.servarr_adapters import (  # noqa: E402
     AppBootstrapContext,
     noop_before_common_steps,
 )
-from bootstrap_services.config_models import ServarrAppConfig  # noqa: E402
+from bootstrap_services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
 from bootstrap_services.apps.servarr.pipeline_service import (  # noqa: E402
     ClientAuth,
     ServarrPipelineInputs,

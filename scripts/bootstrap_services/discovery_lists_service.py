@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .config_models import ArrDiscoveryListsConfig
+from .apps.servarr.config_models import ArrDiscoveryListsConfig
 from .discovery_lists.ops import (
     build_arr_import_list_payload,
     ensure_arr_discovery_lists_for_app,
@@ -89,4 +89,3 @@ class DiscoveryListsService:
         api_key: str,
     ) -> None:
         trigger_arr_discovery_kickoff(self, cfg, app_cfg, app_url, api_base, api_key)
-

@@ -8,7 +8,7 @@ from http import cookiejar
 from typing import Any, Callable
 from urllib import error, parse, request
 
-from bootstrap_services.config_models import DownloadClientConfig
+from bootstrap_services.apps.download_clients.config_models import DownloadClientConfig
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
@@ -79,7 +79,9 @@ class QBittorrentService:
                 f"qBittorrent: failed updating preferences (HTTP {exc.code}): {body}"
             ) from exc
 
-    def list_torrents(self, opener, base_url: str, filter_value: str = "all") -> list[dict[str, Any]]:
+    def list_torrents(
+        self, opener, base_url: str, filter_value: str = "all"
+    ) -> list[dict[str, Any]]:
         req = request.Request(
             f"{self.normalize_url(base_url)}/api/v2/torrents/info?"
             f"{parse.urlencode({'filter': str(filter_value or 'all')})}",

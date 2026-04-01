@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ...config_models import (
+from ...servarr_adapters import AdapterDependencies, AdapterRegistry
+from .config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,
     ServarrAppConfig,
 )
-from ...servarr_adapters import AdapterDependencies, AdapterRegistry
 from .technologies import (
     ServarrAdapterContext,
     ServarrAdapterDependencies,

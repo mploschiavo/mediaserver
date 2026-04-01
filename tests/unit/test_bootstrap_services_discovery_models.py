@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.config_models import (  # noqa: E402
-    ArrDiscoveryListEntry,
+from bootstrap_services.apps.servarr.config_models import ArrDiscoveryListEntry  # noqa: E402
+from bootstrap_services.apps.servarr.config_models_discovery import (  # noqa: E402
     LastFmTagOptions,
     TmdbPopularImportOptions,
 )
@@ -51,4 +51,3 @@ class DiscoveryConfigModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

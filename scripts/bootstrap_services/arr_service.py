@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .config_models import DownloadClientConfig
+from .apps.download_clients.config_models import DownloadClientConfig
 
 HttpRequestFn = Callable[..., tuple[int, Any, str]]
 LogFn = Callable[[str], None]

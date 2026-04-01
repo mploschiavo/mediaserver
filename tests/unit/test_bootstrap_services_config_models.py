@@ -5,10 +5,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.config_models import (  # noqa: E402
-    AppCapabilities,
+from bootstrap_services.apps.download_clients.config_models import (  # noqa: E402
     DiskGuardrailsConfig,
     QbitQueueGuardrailsConfig,
+)
+from bootstrap_services.apps.servarr.config_models import (  # noqa: E402
+    AppCapabilities,
     ServarrAppConfig,
 )
 

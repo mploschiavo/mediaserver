@@ -8,7 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.config_models import (  # noqa: E402
+from bootstrap_services.apps.servarr.config_models import (  # noqa: E402
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config_models import (
+from .apps.servarr.config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,

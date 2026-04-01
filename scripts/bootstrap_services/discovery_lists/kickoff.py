@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config_models import ArrDiscoveryListsConfig
+from ..apps.servarr.config_models import ArrDiscoveryListsConfig
 
 
 def trigger_arr_discovery_kickoff(

@@ -6,7 +6,7 @@ import importlib
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from .enums import RunnerEvent, RunnerOperation
+from .enums import RunnerEvent
 
 OperationHandler = Callable[..., Any]
 
@@ -142,8 +142,8 @@ class RunnerOperationRegistry:
             )
         return fn(*args, **kwargs)
 
-    def invoke(self, operation: RunnerOperation | str, *args: Any, **kwargs: Any) -> Any:
-        key = operation.value if isinstance(operation, RunnerOperation) else str(operation or "")
+    def invoke(self, operation: str, *args: Any, **kwargs: Any) -> Any:
+        key = str(operation or "")
         if not key:
             raise KeyError("Runner operation not registered: <empty>")
         handler = self.handlers.get(key)

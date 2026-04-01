@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .config_model_utils import to_int
+from ...config_model_utils import to_int
 
 
 @dataclass(frozen=True)

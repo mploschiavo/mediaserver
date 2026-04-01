@@ -2,11 +2,9 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.bootstrap_services.config_models import (
-    ArrDiscoveryListsConfig,
-    DownloadClientConfig,
-    JellyfinLiveTvConfig,
-)
+from scripts.bootstrap_services.apps.download_clients.config_models import DownloadClientConfig
+from scripts.bootstrap_services.apps.jellyfin.config_models import JellyfinLiveTvConfig
+from scripts.bootstrap_services.apps.servarr.config_models import ArrDiscoveryListsConfig
 from scripts.bootstrap_services.plugin_manifest_loader import (
     build_adapter_hook_defaults,
     load_plugin_manifests,

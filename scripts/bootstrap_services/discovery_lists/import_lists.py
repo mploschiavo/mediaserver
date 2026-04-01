@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config_models import ArrDiscoveryListEntry, ArrDiscoveryListsConfig
-from ..config_models_discovery import (
+from ..apps.servarr.config_models import ArrDiscoveryListEntry, ArrDiscoveryListsConfig
+from ..apps.servarr.config_models_discovery import (
     GenericDiscoveryProviderOptions,
     GoodreadsListImportOptions,
     LastFmTagOptions,

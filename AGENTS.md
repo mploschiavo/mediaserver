@@ -76,6 +76,10 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 - Do not place app-specific implementation files at `scripts/bootstrap_services/*` root when an app package exists.
 - App-specific types/policies/pipelines must live under `scripts/bootstrap_services/apps/<app>/`.
 - If a root-level shared module becomes app-specific during refactor, move it (do not leave duplicate logic in root).
+- Hard-fail leakage rule:
+  - Platform/framework modules outside `scripts/bootstrap_services/apps/**` must not contain app keywords.
+  - Treat these tokens as app-specific leakage indicators: `arr`, `homepage`, `jelly`, `maintainerr`, `qb`, `sab`, `goodread`.
+  - If any leakage is found, fail the build and move that logic into the owning app package.
 
 ### Event Contract (Required)
 - Runtime handlers are lifecycle-event driven.
@@ -162,7 +166,8 @@ Current key test suites:
 5. `python3 -m unittest discover -s tests/unit -p 'test_*.py'`
 6. `rg -n "from core.kube import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
 7. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
-8. Live bootstrap smoke in cluster:
+8. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" scripts/bootstrap_services scripts/core scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns no matches
+9. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 
