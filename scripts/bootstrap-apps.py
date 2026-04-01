@@ -12,7 +12,7 @@ import traceback
 
 import bootstrap_services.runtime_core as runtime_core
 import bootstrap_services.runtime_media_ops as runtime_media_ops
-import bootstrap_services.runtime_servarr.service_ops as runtime_servarr_ops
+import bootstrap_services.runtime_servarr.arr_ops as runtime_servarr_arr_ops
 from bootstrap_services.bootstrap_runner_service import (
     BootstrapRunnerDependencies,
     BootstrapRunnerService,
@@ -77,7 +77,7 @@ def main():
             coerce_list=runtime_core.coerce_list,
             env_truthy=runtime_core.env_truthy,
             read_api_key=runtime_core.read_api_key,
-            build_sab_remote_path_mappings=runtime_servarr_ops.build_sab_remote_path_mappings,
+            build_sab_remote_path_mappings=runtime_servarr_arr_ops.build_sab_remote_path_mappings,
         )
     )
     build_result = runtime_factory.build_from_cli(
@@ -91,22 +91,8 @@ def main():
         )
     )
     runtime_state = build_result.runtime
-    runtime_context_cfg = dict(runtime_state.adapter_hooks_cfg or {})
-    runtime_context_cfg["runtime_bindings"] = {
-        "torrent_client": runtime_state.torrent_client_key,
-        "usenet_client": runtime_state.usenet_client_key,
-        "media_server": runtime_state.media_server_backend,
-        "request_manager": runtime_state.request_manager_backend,
-    }
-    runtime_core.set_runtime_context_cfg(runtime_context_cfg)
     runtime_core.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
     runner_operations = build_runner_event_registry(
-        base_handlers={
-            "ensure_app_auth_settings": runtime_servarr_ops.ensure_app_auth_settings,
-            "run_servarr_pipeline": runtime_servarr_ops._servarr_pipeline_service().run,
-            "enforce_disk_guardrails": runtime_servarr_ops.enforce_disk_guardrails,
-            "run_media_hygiene": runtime_servarr_ops.run_media_hygiene,
-        },
         event_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("event_handlers"),
     )
 

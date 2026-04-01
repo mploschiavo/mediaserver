@@ -6,24 +6,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from bootstrap_services.runtime_core import (
-    DiscoveryListsService,
-    ServarrPipelineService,
-    bool_cfg,
-    coerce_list,
-    env_truthy,
-    field_list,
-    field_map,
-    get_arr_quality_profile,
     http_request,
     log,
-    normalize_token,
-    normalize_url,
-    resolve_app_service_class,
-    resolve_arr_quality_preferences,
-    resolve_env_placeholder,
     to_int,
 )
-from bootstrap_services.servarr_adapters import AdapterDependencies
 
 from .factory import (
     _arr_service,
@@ -31,75 +17,6 @@ from .factory import (
     _health_service,
     _servarr_policy_service,
 )
-
-# Local wrappers required by discovery/pipeline factory wiring.
-# These are implemented below and intentionally referenced by callables in services.
-
-
-def ensure_prowlarr_application(
-    prowlarr_url,
-    prowlarr_key,
-    app_name,
-    implementation,
-    app_url,
-    app_key,
-):
-    from . import prowlarr_ops as _prowlarr_ops
-
-    return _prowlarr_ops.ensure_prowlarr_application(
-        prowlarr_url=prowlarr_url,
-        prowlarr_key=prowlarr_key,
-        app_name=app_name,
-        implementation=implementation,
-        app_url=app_url,
-        app_key=app_key,
-    )
-
-
-def _discovery_service(cfg=None) -> DiscoveryListsService:
-    service_cls = resolve_app_service_class("discovery_lists_service", DiscoveryListsService)
-    return service_cls(
-        bool_cfg=bool_cfg,
-        coerce_list=coerce_list,
-        log=log,
-        http_request=http_request,
-        resolve_env_placeholder=resolve_env_placeholder,
-        field_map=field_map,
-        field_list=field_list,
-        to_int=to_int,
-        normalize_token=normalize_token,
-        resolve_arr_quality_preferences=resolve_arr_quality_preferences,
-        get_arr_quality_profile=get_arr_quality_profile,
-        pick_first_profile_id=pick_first_profile_id,
-        env_truthy=env_truthy,
-        trigger_arr_command=_health_service().trigger_arr_command,
-    )
-
-
-def _servarr_pipeline_service(cfg=None) -> ServarrPipelineService:
-    adapter_deps = AdapterDependencies(
-        bool_cfg=bool_cfg,
-        log=log,
-        ensure_readarr_metadata_source=ensure_readarr_metadata_source,
-    )
-    service_cls = resolve_app_service_class("servarr_pipeline_service", ServarrPipelineService)
-    return service_cls(
-        log=log,
-        normalize_url=normalize_url,
-        detect_arr_api_base=detect_arr_api_base,
-        ensure_app_auth_settings=ensure_app_auth_settings,
-        ensure_arr_media_management=ensure_arr_media_management,
-        ensure_root_folder=ensure_root_folder,
-        ensure_arr_download_handling=ensure_arr_download_handling,
-        ensure_arr_quality_upgrade_policy=ensure_arr_quality_upgrade_policy,
-        ensure_prowlarr_application=ensure_prowlarr_application,
-        ensure_arr_download_client=ensure_arr_download_client,
-        ensure_arr_remote_path_mappings=ensure_arr_remote_path_mappings,
-        ensure_arr_discovery_lists_for_app=ensure_arr_discovery_lists_for_app,
-        trigger_arr_discovery_kickoff=trigger_arr_discovery_kickoff,
-        trigger_health_check=trigger_health_check,
-        adapter_deps=adapter_deps,
-    )
 
 
 def detect_arr_api_base(app_name, app_url, api_key):
@@ -221,16 +138,6 @@ def trigger_arr_command(app_name, app_url, api_base, api_key, command_name, *, r
     )
 
 
-def trigger_arr_discovery_kickoff(cfg, app_cfg, app_url, api_base, api_key):
-    return _discovery_service().trigger_arr_discovery_kickoff(
-        cfg,
-        app_cfg,
-        app_url,
-        api_base,
-        api_key,
-    )
-
-
 def fetch_arr_download_client_config(app_name, app_url, api_base, api_key):
     return _servarr_policy_service().fetch_download_client_config(
         app_name,
@@ -279,40 +186,6 @@ def ensure_arr_quality_upgrade_policy(
         api_base,
         api_key,
         quality_upgrade_cfg,
-    )
-
-
-def coerce_for_example(value, example):
-    return DiscoveryListsService._coerce_for_example(value, example)
-
-
-def resolve_import_list_definitions(arr_discovery_cfg, app_cfg):
-    return _discovery_service().resolve_import_list_definitions(arr_discovery_cfg, app_cfg)
-
-
-def build_arr_import_list_payload(
-    app_cfg,
-    schema,
-    list_cfg,
-    default_quality_profile_id,
-    default_metadata_profile_id=None,
-):
-    return _discovery_service().build_arr_import_list_payload(
-        app_cfg,
-        schema,
-        list_cfg,
-        default_quality_profile_id,
-        default_metadata_profile_id,
-    )
-
-
-def ensure_arr_discovery_lists_for_app(cfg, app_cfg, app_url, api_base, api_key):
-    return _discovery_service().ensure_arr_discovery_lists_for_app(
-        cfg,
-        app_cfg,
-        app_url,
-        api_base,
-        api_key,
     )
 
 

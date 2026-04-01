@@ -8,7 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.runtime_servarr.service_ops as MODULE
+import bootstrap_services.runtime_servarr.hygiene_ops as MODULE
 import bootstrap_services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
 import bootstrap_services.apps.jellyfin.livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
 import bootstrap_services.apps.jellyfin.runtime_ops as JELLYFIN_OPS
@@ -443,8 +443,12 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
 
         with (
             mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
-            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
-            mock.patch.object(JELLYFIN_OPS, "load_jellyfin_livetv_state", return_value=existing_state),
+            mock.patch.object(
+                JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"
+            ),
+            mock.patch.object(
+                JELLYFIN_OPS, "load_jellyfin_livetv_state", return_value=existing_state
+            ),
             mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
             mock.patch.object(JELLYFIN_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
@@ -549,7 +553,9 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
 
         with (
             mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
-            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(
+                JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"
+            ),
             mock.patch.object(
                 JELLYFIN_OPS,
                 "load_jellyfin_livetv_state",
@@ -717,7 +723,9 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
-            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(
+                JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"
+            ),
             mock.patch.object(
                 JELLYFIN_OPS,
                 "load_jellyfin_livetv_state",

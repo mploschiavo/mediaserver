@@ -404,12 +404,10 @@ class BootstrapRunnerService:
     def run(self, rt: BootstrapRuntime) -> None:
         prior_hooks = get_runtime_context_cfg()
         runtime_context_cfg = dict(rt.adapter_hooks_cfg or {})
-        runtime_context_cfg["runtime_bindings"] = {
-            "torrent_client": rt.torrent_client_key,
-            "usenet_client": rt.usenet_client_key,
-            "media_server": rt.media_server_backend,
-            "request_manager": rt.request_manager_backend,
-        }
+        runtime_bindings = rt.cfg.get("technology_bindings") if isinstance(rt.cfg, dict) else {}
+        runtime_context_cfg["runtime_bindings"] = (
+            dict(runtime_bindings) if isinstance(runtime_bindings, dict) else {}
+        )
         set_runtime_context_cfg(runtime_context_cfg)
         try:
             self._download_client_prepare_result = None

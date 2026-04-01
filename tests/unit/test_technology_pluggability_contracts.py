@@ -80,7 +80,7 @@ SHARED_RUNTIME_ENTRY_MODULES = [
     ROOT / "scripts" / "bootstrap-apps.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_core.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_media_ops.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "service_ops.py",
+    ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "__init__.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "factory.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "prowlarr_ops.py",
     ROOT / "scripts" / "bootstrap_services" / "runtime_servarr" / "qbit_ops.py",
