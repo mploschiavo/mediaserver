@@ -11,7 +11,6 @@ import os
 import sys
 import traceback
 
-import bootstrap_services.runtime_media_ops as runtime_media_ops
 import bootstrap_services.runtime_platform as runtime_platform
 import bootstrap_services.runtime_secrets as runtime_secrets
 from bootstrap_services.bootstrap_runner_service import (
@@ -80,7 +79,7 @@ def main():
     runtime_factory = BootstrapRuntimeFactoryService(
         deps=BootstrapRuntimeFactoryDependencies(
             load_bootstrap_default_json=runtime_platform.load_bootstrap_default_json,
-            deep_merge_objects=runtime_media_ops.deep_merge_objects,
+            deep_merge_objects=runtime_platform.deep_merge_objects,
             bool_cfg=runtime_platform.bool_cfg,
             coerce_list=runtime_platform.coerce_list,
             env_truthy=runtime_platform.env_truthy,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -135,6 +136,21 @@ def load_bootstrap_default_json(filename, fallback):
     )
 
 
+def deep_merge_objects(base_obj, override_obj):
+    if not isinstance(base_obj, dict):
+        base_obj = {}
+    if not isinstance(override_obj, dict):
+        return json.loads(json.dumps(base_obj))
+
+    out = json.loads(json.dumps(base_obj))
+    for key, value in override_obj.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge_objects(out.get(key), value)
+            continue
+        out[key] = json.loads(json.dumps(value))
+    return out
+
+
 def field_map(field_list):
     out = {}
     for item in field_list or []:
@@ -178,6 +194,7 @@ __all__ = [
     "field_list",
     "field_map",
     "find_component_by_implementation",
+    "deep_merge_objects",
     "http_request",
     "load_bootstrap_default_json",
     "log",
