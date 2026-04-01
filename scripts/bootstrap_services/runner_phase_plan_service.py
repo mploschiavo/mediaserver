@@ -14,6 +14,9 @@ _ARG_TOKEN_ATTRS: dict[str, str] = {
     "wait_timeout": "wait_timeout",
     "arr_apps_raw": "arr_apps_raw",
     "app_keys": "app_keys",
+    "torrent_client_cfg": "torrent_client_cfg",
+    "torrent_client_username": "torrent_client_username",
+    "torrent_client_password": "torrent_client_password",
     "qbit_cfg": "qbit_cfg",
     "app_auth_cfg": "app_auth_cfg",
     "qb_user": "qb_user",
@@ -68,7 +71,9 @@ def _resolve_step_args(runtime: Any, step_cfg: dict[str, Any]) -> tuple[Any, ...
     return tuple(args)
 
 
-def _resolve_steps_for_phase(plan_cfg: dict[str, Any], phase_name: str) -> tuple[list[dict[str, Any]], str]:
+def _resolve_steps_for_phase(
+    plan_cfg: dict[str, Any], phase_name: str
+) -> tuple[list[dict[str, Any]], str]:
     phase_cfg = plan_cfg.get(phase_name)
     if isinstance(phase_cfg, list):
         return [item for item in phase_cfg if isinstance(item, dict)], ""

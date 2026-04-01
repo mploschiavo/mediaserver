@@ -28,7 +28,7 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
             return
         try:
             self.deps.invoke_operation(
-                RunnerOperation.QBIT_LOGIN,
+                RunnerOperation.TORRENT_CLIENT_LOGIN,
                 self.context.url or self.deps.normalize_url("http://qbittorrent:8080"),
                 self.context.username,
                 self.context.password,
@@ -43,7 +43,7 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
                 ) from exc
             self.deps.log(
                 "[WARN] qBittorrent login failed. "
-                "Continuing because qbit login is not required in config "
+                "Continuing because torrent-client login is not required in config "
                 "(set download_clients.qbittorrent.login_required=true to fail hard)."
             )
             self.context.status["login_ok"] = False
@@ -54,7 +54,7 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
         if not bool(self.context.status.get("login_ok", False)):
             return
         self.deps.invoke_operation(
-            RunnerOperation.SETUP_QBIT_CATEGORIES,
+            RunnerOperation.SETUP_TORRENT_CATEGORIES,
             self.context.arr_apps_raw,
             self.context.cfg,
             self.context.username,

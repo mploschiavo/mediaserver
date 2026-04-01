@@ -20,10 +20,12 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
     def _deps(self):
         operation_mocks = {
             RunnerOperation.ENSURE_APP_AUTH_SETTINGS.value: mock.Mock(),
+            RunnerOperation.TORRENT_CLIENT_LOGIN.value: mock.Mock(),
             RunnerOperation.QBIT_LOGIN.value: mock.Mock(),
             RunnerOperation.READ_SABNZBD_API_KEY.value: mock.Mock(return_value=""),
             RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value: mock.Mock(),
             RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value: mock.Mock(),
+            RunnerOperation.SETUP_TORRENT_CATEGORIES.value: mock.Mock(),
             RunnerOperation.SETUP_QBIT_CATEGORIES.value: mock.Mock(),
             RunnerOperation.RUN_SERVARR_PIPELINE.value: mock.Mock(),
             RunnerOperation.ENSURE_BAZARR_INTEGRATION.value: mock.Mock(),
@@ -180,7 +182,13 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                         "steps": [
                             {
                                 "operation": "enforce_disk_guardrails",
-                                "args": ["cfg", "config_root", "qbit_cfg", "qb_user", "qb_pass"],
+                                "args": [
+                                    "cfg",
+                                    "config_root",
+                                    "torrent_client_cfg",
+                                    "torrent_client_username",
+                                    "torrent_client_password",
+                                ],
                                 "enabled_attr": "configure_disk_guardrails",
                                 "required_attr": "disk_guardrails_required",
                             },
@@ -191,9 +199,9 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                                     "config_root",
                                     "arr_apps_raw",
                                     "app_keys",
-                                    "qbit_cfg",
-                                    "qb_user",
-                                    "qb_pass",
+                                    "torrent_client_cfg",
+                                    "torrent_client_username",
+                                    "torrent_client_password",
                                 ],
                                 "enabled_attr": "configure_media_hygiene",
                                 "required_attr": "media_hygiene_required",
@@ -218,7 +226,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                             }
                         ]
                     },
-                }
+                },
             },
             prowlarr_indexers=[],
             sab_remote_path_mappings=[],

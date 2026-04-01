@@ -82,3 +82,28 @@ class BootstrapRuntime:
     jellyfin_prewarm_required: bool
     media_server_backend: str = "jellyfin"
     request_manager_backend: str = "jellyseerr"
+
+    # Generic torrent-client aliases retained for neutral shared-runtime naming.
+    @property
+    def torrent_client_cfg(self) -> dict[str, Any]:
+        return self.qbit_cfg
+
+    @property
+    def torrent_client_username(self) -> str:
+        return self.qb_user
+
+    @property
+    def torrent_client_password(self) -> str:
+        return self.qb_pass
+
+    @property
+    def configure_torrent_arr_clients(self) -> bool:
+        return self.configure_qbit_arr_clients
+
+    @property
+    def set_torrent_categories(self) -> bool:
+        return self.set_qbit_categories
+
+    @property
+    def torrent_client_login_required(self) -> bool:
+        return self.qbit_login_required

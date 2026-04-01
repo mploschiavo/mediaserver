@@ -116,8 +116,12 @@ class TechnologySwapMatrixE2ETests(unittest.TestCase):
             invoke_operation=lambda operation, *args: (
                 True
                 if (operation.value if hasattr(operation, "value") else str(operation))
-                == "qbit_login"
-                else ("" if "sab" in (operation.value if hasattr(operation, "value") else str(operation)) else None)
+                in {"torrent_client_login", "qbit_login"}
+                else (
+                    ""
+                    if "sab" in (operation.value if hasattr(operation, "value") else str(operation))
+                    else None
+                )
             ),
         )
 
