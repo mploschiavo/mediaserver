@@ -2,13 +2,15 @@
 
 This directory intentionally contains both:
 - stable shell entrypoints (`*.sh`) for operators
-- Python CLI implementations in `scripts/cli/`
+- framework/orchestration Python CLIs in `scripts/cli/`
+- app-specific Python CLIs in `scripts/bootstrap_services/apps/<app>/cli/`
 
 ## Design Rules
 
 - Keep shell scripts as thin wrappers around Python CLIs when logic is non-trivial.
 - Shared wrapper behavior lives in [`scripts/lib/run-python-cli.sh`](./lib/run-python-cli.sh).
-- Python CLIs should live in `scripts/cli/*_main.py`.
+- Framework/orchestration CLIs should live in `scripts/cli/*_main.py`.
+- App-specific CLIs should live in `scripts/bootstrap_services/apps/<app>/cli/*_main.py`.
 - Avoid new root-level Python compatibility wrappers.
 - `install.sh`, `rebuild-and-bootstrap.sh`, `run-bootstrap-job.sh`, and `bootstrap-all.sh`
   are now Python-backed wrappers with
@@ -20,7 +22,8 @@ This directory intentionally contains both:
 - Shared orchestration scripts must remain technology-neutral.
 - Runtime hook overrides are limited to event handlers, phase plans, bootstrap wrapper phase-script maps, and scale-policy/worker lists in `adapter_hooks`.
 - Concrete lifecycle events (`RunnerEvent`) drive orchestration; technologies provide handler bindings per event.
-- Legacy qB helper/CLI names remain for backward compatibility (`ensure-qbit-credentials.sh`, etc.).
+- Legacy operator shell entrypoint names remain for backward compatibility (`ensure-qbit-credentials.sh`, etc.),
+  but app implementation modules live under `scripts/bootstrap_services/apps/<app>/cli/`.
 
 ## Stable Operator Entrypoints
 
