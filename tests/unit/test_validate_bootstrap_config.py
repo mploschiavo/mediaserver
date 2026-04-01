@@ -28,6 +28,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             "technology_bindings": {
                 "torrent_client": "transmission",
                 "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
             },
             "download_clients": {
                 "transmission": {"url": "http://transmission:9091"},
@@ -43,6 +44,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             "technology_bindings": {
                 "torrent_client": "transmission",
                 "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
             },
             "download_clients": {
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -58,6 +60,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -78,6 +85,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -98,6 +110,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -118,6 +135,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -138,6 +160,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -155,6 +182,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
@@ -173,40 +205,23 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         }
         self.assertEqual(self.mod.basic_checks(cfg), [])
 
-    def test_basic_checks_use_adapter_default_bindings_for_active_client_validation(self):
+    def test_basic_checks_reject_missing_binding_values(self):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
-            "download_clients": {
-                "transmission": {"url": "http://transmission:9091"},
-                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            "technology_bindings": {
+                "torrent_client": "",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
             },
-            "adapter_hooks": {
-                "default_bindings": {
-                    "torrent_client": "transmission",
-                    "usenet_client": "sabnzbd",
-                }
-            },
-        }
-        self.assertEqual(self.mod.basic_checks(cfg), [])
-
-    def test_basic_checks_reject_empty_default_binding_values(self):
-        cfg = {
-            "prowlarr_url": "http://prowlarr:9696",
-            "arr_apps": [],
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
             },
-            "adapter_hooks": {
-                "default_bindings": {
-                    "torrent_client": "",
-                }
-            },
         }
         errors = self.mod.basic_checks(cfg)
         self.assertTrue(
-            any("default_bindings.torrent_client" in err for err in errors),
+            any("technology_bindings.torrent_client" in err for err in errors),
             errors,
         )
 
@@ -214,6 +229,11 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
             "download_clients": {
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},

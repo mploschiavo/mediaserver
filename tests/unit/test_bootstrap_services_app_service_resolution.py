@@ -24,7 +24,7 @@ class AppServiceResolutionTests(unittest.TestCase):
         cfg = {
             "adapter_hooks": {
                 "app_service_classes": {
-                    "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
                 }
             }
         }
@@ -36,7 +36,7 @@ class AppServiceResolutionTests(unittest.TestCase):
             {},
             {
                 "app_service_classes": {
-                    "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
                 }
             },
         )

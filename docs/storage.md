@@ -98,14 +98,10 @@ Arr apps import and organize into canonical library paths under `/media`.
 
 To avoid duplicate storage usage, keep Arr media-management defaults in hardlink-friendly mode when filesystem semantics allow it.
 
-## Legacy HostPath Mode (Optional)
+## Storage Mode
 
-If you intentionally want host directory prep semantics, use:
-```bash
-bash scripts/install.sh --profile full --storage-mode legacy-hostpath --node-ip <NODE_IP>
-```
-
-This enables host folder prep helpers (`prepare-host.sh`, `fix-media-perms.sh`) using `/srv/media-stack` by default.
+This stack now runs in `dynamic-pvc` mode only. Storage behavior is driven by
+PVCs + StorageClass and is portable across clusters.
 
 ## Backup/Restore
 

@@ -1,7 +1,3 @@
-"""Maintainerr app package.
-
-Imports are intentionally not re-exported here to avoid circular import
-issues when compatibility modules import back into top-level services.
-"""
+"""Maintainerr app package."""
 
 __all__: list[str] = []

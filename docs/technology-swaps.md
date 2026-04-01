@@ -26,7 +26,6 @@ Two sections control swaps:
 2. `adapter_hooks`
 - maps technology key -> Python adapter class path (`module:ClassName`)
 - resolved dynamically at runtime
-- supports `default_bindings` to define fallback role bindings (`torrent_client`, `usenet_client`, `media_server`)
 - optional `technology_aliases` lets you use shorthand keys in bindings (for example `qbit`, `sab`, `jf`)
 - can also register custom runner operations via `operation_handlers`:
   - `operation_name -> module.submodule:callable_name`
@@ -46,7 +45,7 @@ Primary one-place edit surface for most swaps:
 
 In practice, most technology swaps are now:
 1. add adapter module file
-2. change one binding key + one hook path in this single JSON
+2. change one explicit binding key + one hook path in this single JSON
 3. rerun bootstrap
 
 Example:

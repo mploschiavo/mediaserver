@@ -55,8 +55,6 @@ class RebuildSecretPreservationService:
             data = {}
 
         keys = [
-            "QBITTORRENT_USERNAME",
-            "QBITTORRENT_PASSWORD",
             "SABNZBD_API_KEY",
             "STACK_ADMIN_USERNAME",
             "STACK_ADMIN_PASSWORD",

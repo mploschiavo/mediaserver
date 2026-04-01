@@ -1,9 +1,4 @@
 {
-  "default_bindings": {
-    "torrent_client": "qbittorrent",
-    "usenet_client": "sabnzbd",
-    "media_server": "jellyfin"
-  },
   "before_common_steps": {
     "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
   },
@@ -54,21 +49,21 @@
     "servarr_policy_service": "bootstrap_services.servarr_policy_service:ServarrPolicyService",
     "servarr_pipeline_service": "bootstrap_services.servarr_pipeline_service:ServarrPipelineService",
     "technology_lifecycle_manager": "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager",
-    "jellyfin_livetv_service": "bootstrap_services.apps.jellyfin.livetv_service:JellyfinService",
-    "jellyfin_livetv_source_service": "bootstrap_services.apps.jellyfin.livetv_source_service:JellyfinLiveTvSourceService",
-    "jellyfin_livetv_state_service": "bootstrap_services.apps.jellyfin.livetv_state_service:JellyfinLiveTvStateService",
-    "jellyfin_libraries_service": "bootstrap_services.apps.jellyfin.libraries_service:JellyfinLibrariesService",
-    "jellyfin_home_rails_service": "bootstrap_services.apps.jellyfin.home_rails_service:JellyfinHomeRailsService",
-    "jellyfin_playback_service": "bootstrap_services.apps.jellyfin.playback_service:JellyfinPlaybackService",
-    "jellyfin_plugins_service": "bootstrap_services.apps.jellyfin.plugins_service:JellyfinPluginsService",
-    "jellyfin_prewarm_service": "bootstrap_services.apps.jellyfin.prewarm_service:JellyfinPrewarmService",
-    "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService",
-    "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService",
-    "sabnzbd_service": "bootstrap_services.apps.sabnzbd.service:SabnzbdService",
-    "bazarr_service": "bootstrap_services.apps.bazarr.service:BazarrService",
-    "qbittorrent_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
+    "jellyfin_livetv_service": "bootstrap_services.jellyfin_service:JellyfinService",
+    "jellyfin_livetv_source_service": "bootstrap_services.jellyfin_livetv_source_service:JellyfinLiveTvSourceService",
+    "jellyfin_livetv_state_service": "bootstrap_services.jellyfin_livetv_state_service:JellyfinLiveTvStateService",
+    "jellyfin_libraries_service": "bootstrap_services.jellyfin_libraries_service:JellyfinLibrariesService",
+    "jellyfin_home_rails_service": "bootstrap_services.jellyfin_home_rails_service:JellyfinHomeRailsService",
+    "jellyfin_playback_service": "bootstrap_services.jellyfin_playback_service:JellyfinPlaybackService",
+    "jellyfin_plugins_service": "bootstrap_services.jellyfin_plugins_service:JellyfinPluginsService",
+    "jellyfin_prewarm_service": "bootstrap_services.jellyfin_prewarm_service:JellyfinPrewarmService",
+    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService",
+    "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService",
+    "sabnzbd_service": "bootstrap_services.sabnzbd_service:SabnzbdService",
+    "bazarr_service": "bootstrap_services.bazarr_service:BazarrService",
+    "qbittorrent_service": "bootstrap_services.qbit_service:QBittorrentService",
     "tautulli_service": "bootstrap_services.apps.tautulli.service:TautulliService",
-    "maintainerr_service": "bootstrap_services.apps.maintainerr.service:MaintainerrService"
+    "maintainerr_service": "bootstrap_services.maintainerr_service:MaintainerrService"
   },
   "service_technology_map": {
     "auth_service": "servarr",

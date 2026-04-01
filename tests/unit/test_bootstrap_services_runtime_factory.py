@@ -67,7 +67,15 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
                     "root_folder": "/media/tv",
                 }
             ],
-            "download_clients": {"qbittorrent": {"configure_arr_clients": True}},
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
+            "download_clients": {
+                "qbittorrent": {"configure_arr_clients": True},
+                "sabnzbd": {"configure_arr_clients": False},
+            },
         }
 
         result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
@@ -93,6 +101,15 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
                     "root_folder": "/media/tv",
                 }
             ],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
+            "download_clients": {
+                "qbittorrent": {"configure_arr_clients": False},
+                "sabnzbd": {"configure_arr_clients": False},
+            },
         }
 
         result = factory.build(self._args(mode=BootstrapMode.JELLYFIN_PREWARM), cfg)
@@ -106,6 +123,15 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
+            "download_clients": {
+                "qbittorrent": {"configure_arr_clients": False},
+                "sabnzbd": {"configure_arr_clients": False},
+            },
         }
 
         with mock.patch.dict(os.environ, {"FULLY_PRECONFIGURED": "1"}, clear=False):
@@ -184,18 +210,11 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
         self.assertEqual(result.runtime.media_server_backend, "jellyfin")
 
-    def test_default_bindings_from_adapter_hooks_drive_selection_without_explicit_bindings(self):
+    def test_missing_required_bindings_raise(self):
         factory = self._factory()
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
-            "adapter_hooks": {
-                "default_bindings": {
-                    "torrent_client": "transmission",
-                    "usenet_client": "sabnzbd",
-                    "media_server": "emby",
-                }
-            },
             "download_clients": {
                 "transmission": {
                     "url": "http://transmission:9091",
@@ -210,11 +229,8 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
             },
         }
 
-        result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
-
-        self.assertEqual(result.runtime.torrent_client_key, "transmission")
-        self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
-        self.assertEqual(result.runtime.media_server_backend, "emby")
+        with self.assertRaises(ValueError):
+            factory.build(self._args(mode=BootstrapMode.FULL), cfg)
 
     def test_load_config_merges_base_and_env_overlay_when_enabled(self):
         factory = self._factory()
@@ -238,6 +254,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
                     "{"
                     '"config_overlays":{"enabled":true,"env":"prod",'
                     '"base_path":"config/runtime/base.json","overlay_dir":"config/runtime/overlays"},'
+                    '"technology_bindings":{"torrent_client":"qbittorrent","usenet_client":"sabnzbd","media_server":"jellyfin"},'
                     '"arr_apps":[],"prowlarr_url":"http://override:9696"'
                     "}\n"
                 ),
@@ -257,6 +274,15 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
+            "download_clients": {
+                "qbittorrent": {"configure_arr_clients": False},
+                "sabnzbd": {"configure_arr_clients": False},
+            },
             "maintainerr": {
                 "enabled": True,
                 "required": False,

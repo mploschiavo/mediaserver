@@ -69,25 +69,12 @@ class DownloadClientPipelineService:
             ),
         )
 
-        hook_defaults = ((inputs.adapter_hooks_cfg or {}).get("default_bindings") or {}) if isinstance(inputs.adapter_hooks_cfg, dict) else {}
-        hook_torrent = str(hook_defaults.get("torrent_client") or "").strip().lower()
-        hook_usenet = str(hook_defaults.get("usenet_client") or "").strip().lower()
-        cfg_torrent = str(inputs.qbit_cfg.get("technology_key") or "").strip().lower()
-        cfg_usenet = str(inputs.sab_cfg.get("technology_key") or "").strip().lower()
-
-        # Keep compatibility while preferring config-driven resolution.
-        torrent_key = (
-            str(inputs.torrent_client_key or "").strip().lower()
-            or hook_torrent
-            or cfg_torrent
-            or "qbittorrent"
-        )
-        usenet_key = (
-            str(inputs.usenet_client_key or "").strip().lower()
-            or hook_usenet
-            or cfg_usenet
-            or "sabnzbd"
-        )
+        torrent_key = str(inputs.torrent_client_key or "").strip().lower()
+        usenet_key = str(inputs.usenet_client_key or "").strip().lower()
+        if not torrent_key:
+            raise ValueError("Missing torrent client key; set technology_bindings.torrent_client.")
+        if not usenet_key:
+            raise ValueError("Missing usenet client key; set technology_bindings.usenet_client.")
 
         qbit_context = DownloadClientAdapterContext(
             key=torrent_key,

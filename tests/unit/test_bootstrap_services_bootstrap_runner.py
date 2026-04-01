@@ -79,7 +79,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             app_auth_cfg={},
             adapter_hooks_cfg={
                 "app_service_classes": {
-                    "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService"
+                    "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService"
                 },
                 "service_technology_map": {"prowlarr_service": "prowlarr"},
                 "runner_operation_plans": {
@@ -373,7 +373,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                     "sab": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
                 },
                 "app_service_classes": {
-                    "jellyseerr_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
                 },
             },
         )

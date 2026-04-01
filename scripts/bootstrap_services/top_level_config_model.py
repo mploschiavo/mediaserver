@@ -140,7 +140,15 @@ class TopLevelBootstrapConfig:
         ArrDownloadHandlingPolicy.from_dict(_expect_dict(src, "arr_download_handling", {}))
         ArrQualityUpgradePolicy.from_dict(_expect_dict(src, "arr_quality_upgrade", {}))
         ServarrAppConfig.from_list(_expect_list(src, "arr_apps", []))
-        TechnologyBindingsConfig.from_dict(_expect_dict(src, "technology_bindings", {}))
+        technology_bindings_typed = TechnologyBindingsConfig.from_dict(
+            _expect_dict(src, "technology_bindings", {})
+        )
+        if not technology_bindings_typed.torrent_client:
+            raise ValueError("$.technology_bindings.torrent_client must be a non-empty string")
+        if not technology_bindings_typed.usenet_client:
+            raise ValueError("$.technology_bindings.usenet_client must be a non-empty string")
+        if not technology_bindings_typed.media_server:
+            raise ValueError("$.technology_bindings.media_server must be a non-empty string")
         JellyfinLiveTvConfig.from_dict(_expect_dict(src, "jellyfin_livetv", {}))
         JellyfinLibrariesConfig.from_dict(_expect_dict(src, "jellyfin_libraries", {}))
         JellyfinPluginsConfig.from_dict(_expect_dict(src, "jellyfin_plugins", {}))

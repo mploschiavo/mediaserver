@@ -21,7 +21,6 @@ class SetQbitSecretConfig:
     namespace: str
     username: str
     password: str
-    write_legacy_qbit_keys: bool
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -48,11 +47,6 @@ def parse_config(argv: list[str] | None = None) -> SetQbitSecretConfig:
         str(__import__("os").environ.get("DEFAULT_STACK_ADMIN_PASS", "media-stack-admin")).strip()
         or "media-stack-admin"
     )
-    write_legacy_qbit_keys = (
-        str(__import__("os").environ.get("WRITE_LEGACY_QBIT_KEYS", "0")).strip().lower()
-        in {"1", "true", "yes", "on"}
-    )
-
     username = str(args.username or "").strip()
     password = str(args.password or "").strip()
 
@@ -67,7 +61,6 @@ def parse_config(argv: list[str] | None = None) -> SetQbitSecretConfig:
         namespace=namespace,
         username=username,
         password=password,
-        write_legacy_qbit_keys=write_legacy_qbit_keys,
     )
 
 
@@ -130,17 +123,6 @@ stringData:
   JELLYFIN_USER_ID: ""
 """
         _apply_manifest(kubectl, manifest)
-        if cfg.write_legacy_qbit_keys:
-            _patch_secret(
-                kubectl,
-                cfg.namespace,
-                {
-                    "stringData": {
-                        "QBITTORRENT_USERNAME": cfg.username,
-                        "QBITTORRENT_PASSWORD": cfg.password,
-                    }
-                },
-            )
         print(f"[OK] Created {cfg.namespace}/media-stack-secrets with stack admin credentials.")
         return 0
 
@@ -148,9 +130,6 @@ stringData:
         "STACK_ADMIN_USERNAME": cfg.username,
         "STACK_ADMIN_PASSWORD": cfg.password,
     }
-    if cfg.write_legacy_qbit_keys:
-        string_data["QBITTORRENT_USERNAME"] = cfg.username
-        string_data["QBITTORRENT_PASSWORD"] = cfg.password
     _patch_secret(kubectl, cfg.namespace, {"stringData": string_data})
     print(f"[OK] Updated stack admin credentials in {cfg.namespace}/media-stack-secrets.")
     return 0

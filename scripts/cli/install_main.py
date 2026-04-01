@@ -131,9 +131,10 @@ class InstallRunner:
             raise InstallError(
                 f"Unsupported profile '{self.cfg.profile}'. Use minimal|full|public-demo|power-user."
             )
-        if self.cfg.storage_mode not in {"dynamic-pvc", "legacy-hostpath"}:
+        if self.cfg.storage_mode != "dynamic-pvc":
             raise InstallError(
-                f"Unsupported storage mode '{self.cfg.storage_mode}'. Use dynamic-pvc|legacy-hostpath."
+                f"Unsupported storage mode '{self.cfg.storage_mode}'. "
+                "legacy-hostpath was removed; use dynamic-pvc."
             )
         if not self.cfg.namespace.strip():
             raise InstallError("Namespace cannot be empty.")
@@ -218,11 +219,8 @@ class InstallRunner:
             )
 
     def prepare_host_directories(self) -> None:
-        if self.cfg.storage_mode != "legacy-hostpath":
-            info(f"Skipping host directory prep (storage mode: {self.cfg.storage_mode})")
-            raise SkipPhase()
-        info(f"Preparing host directories under {self.cfg.prepare_host_root}")
-        self._run_script("prepare-host.sh", self.cfg.prepare_host_root)
+        info("Skipping host directory prep (dynamic PVC mode only).")
+        raise SkipPhase()
 
     def apply_scale_policy_guardrails_dry_run(self) -> None:
         info("Applying scale policy guardrails")

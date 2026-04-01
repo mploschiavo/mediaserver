@@ -35,6 +35,7 @@ from ..enums import BootstrapMode
 from ..runtime_models import BootstrapRuntime
 from ..technology_catalog import default_servarr_catalog
 from ..top_level_config_model import TopLevelBootstrapConfig
+from .bindings_resolution import RuntimeBindingResolver
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 CoerceListFn = Callable[[Any], list[Any]]
@@ -187,7 +188,7 @@ class BootstrapRuntimeFactoryService:
         base_path = self._resolve_path(root_dir, overlay_cfg.base_path)
         if base_path.exists():
             base_cfg = json.loads(base_path.read_text(encoding="utf-8"))
-            merged = self.deps.deep_merge_objects(merged, TopLevelBootstrapConfig.from_dict(base_cfg).to_dict())
+            merged = self.deps.deep_merge_objects(merged, dict(base_cfg))
 
         overlay_filename = overlay_cfg.env_overlays.get(selected_env, f"{selected_env}.json")
         overlay_path = self._resolve_path(
@@ -196,10 +197,7 @@ class BootstrapRuntimeFactoryService:
         )
         if overlay_path.exists():
             overlay_cfg_data = json.loads(overlay_path.read_text(encoding="utf-8"))
-            merged = self.deps.deep_merge_objects(
-                merged,
-                TopLevelBootstrapConfig.from_dict(overlay_cfg_data).to_dict(),
-            )
+            merged = self.deps.deep_merge_objects(merged, dict(overlay_cfg_data))
 
         merged = self.deps.deep_merge_objects(merged, model.to_dict())
         return TopLevelBootstrapConfig.from_dict(merged).to_dict()
@@ -261,117 +259,19 @@ class BootstrapRuntimeFactoryService:
                 "media_server_operation_plans": media_server_cfg.get("operation_plans") or {},
             },
         )
-        default_binding_cfg = (adapter_hooks_cfg or {}).get("default_bindings") or {}
         bindings_cfg = TechnologyBindingsConfig.from_dict(
             cfg.get("technology_bindings") or {},
-            defaults=default_binding_cfg if isinstance(default_binding_cfg, dict) else {},
         )
-
-        raw_aliases = (adapter_hooks_cfg or {}).get("technology_aliases") or {}
-        technology_aliases: dict[str, str] = {}
-        if isinstance(raw_aliases, dict):
-            for source, target in raw_aliases.items():
-                src = str(source or "").strip().lower()
-                dst = str(target or "").strip().lower()
-                if src and dst:
-                    technology_aliases[src] = dst
-
-        def _canonical_tech_key(value: str, fallback: str) -> str:
-            token = str(value or "").strip().lower() or str(fallback or "").strip().lower()
-            if not token:
-                return ""
-            return technology_aliases.get(token, token)
-
-        def _hook_keys(hook_key: str) -> list[str]:
-            hook_map = (adapter_hooks_cfg or {}).get(hook_key) or {}
-            if not isinstance(hook_map, dict):
-                return []
-            keys: list[str] = []
-            for key in hook_map.keys():
-                canonical = _canonical_tech_key(str(key), "")
-                if canonical and canonical not in keys:
-                    keys.append(canonical)
-            return keys
-
-        def _first_non_empty(values: list[str]) -> str:
-            for value in values:
-                token = str(value or "").strip()
-                if token:
-                    return token
-            return ""
-
-        def _first_configured_key(candidates: list[str]) -> str:
-            for key in candidates:
-                if download_clients_model.get(key):
-                    return key
-            return ""
-
-        def _resolve_client_cfg(
-            requested_key: str,
-            fallback_key: str,
-        ) -> tuple[str, dict[str, Any]]:
-            req = _canonical_tech_key(requested_key, fallback_key)
-            fallback = _canonical_tech_key(fallback_key, req)
-            candidates = [req]
-            if fallback and fallback not in candidates:
-                candidates.append(fallback)
-            for key in candidates:
-                selected = download_clients_model.get(key)
-                if selected:
-                    return key, selected.raw
-            return _first_non_empty(candidates), {}
-
-        configured_download_client_keys = download_clients_model.configured_keys()
-        hook_download_client_keys = _hook_keys("download_client_adapter_classes")
-        hook_default_torrent = _canonical_tech_key(
-            str((default_binding_cfg or {}).get("torrent_client") or ""),
-            "",
+        binding_resolution = RuntimeBindingResolver().resolve(
+            technology_bindings=bindings_cfg,
+            adapter_hooks_cfg=adapter_hooks_cfg,
+            download_clients=download_clients_model,
+            media_server_cfg=media_server_cfg,
         )
-        hook_default_usenet = _canonical_tech_key(
-            str((default_binding_cfg or {}).get("usenet_client") or ""),
-            "",
-        )
-        torrent_default_key = _first_configured_key(
-            [
-                _canonical_tech_key(bindings_cfg.torrent_client, ""),
-                hook_default_torrent,
-                *hook_download_client_keys,
-                *configured_download_client_keys,
-            ]
-        ) or _first_non_empty(
-            [
-                _canonical_tech_key(bindings_cfg.torrent_client, ""),
-                hook_default_torrent,
-                hook_default_usenet,
-                *hook_download_client_keys,
-                *configured_download_client_keys,
-            ],
-        )
-        usenet_default_key = _first_configured_key(
-            [
-                _canonical_tech_key(bindings_cfg.usenet_client, ""),
-                hook_default_usenet,
-                *hook_download_client_keys,
-                *configured_download_client_keys,
-            ]
-        ) or _first_non_empty(
-            [
-                _canonical_tech_key(bindings_cfg.usenet_client, ""),
-                hook_default_usenet,
-                hook_default_torrent,
-                *hook_download_client_keys,
-                *configured_download_client_keys,
-            ],
-        )
-
-        torrent_client_key, qbit_cfg = _resolve_client_cfg(
-            bindings_cfg.torrent_client,
-            torrent_default_key,
-        )
-        usenet_client_key, sab_cfg = _resolve_client_cfg(
-            bindings_cfg.usenet_client,
-            usenet_default_key,
-        )
+        torrent_client_key = binding_resolution.torrent_client_key
+        usenet_client_key = binding_resolution.usenet_client_key
+        qbit_cfg = dict(binding_resolution.torrent_client_cfg)
+        sab_cfg = dict(binding_resolution.usenet_client_cfg)
 
         arr_download_handling_cfg = ArrDownloadHandlingPolicy.from_dict(
             cfg.get("arr_download_handling") or {},
@@ -412,20 +312,7 @@ class BootstrapRuntimeFactoryService:
         media_hygiene_model = MediaHygieneConfig.from_dict(cfg.get("media_hygiene") or {})
         maintainerr_model = MaintainerrConfig.from_dict(cfg.get("maintainerr") or {})
 
-        hook_media_server_keys = _hook_keys("media_server_adapter_classes")
-        hook_default_media_server = _canonical_tech_key(
-            str((default_binding_cfg or {}).get("media_server") or ""),
-            "",
-        )
-        media_server_default_key = (
-            _canonical_tech_key(bindings_cfg.media_server, "")
-            or hook_default_media_server
-            or (hook_media_server_keys[0] if hook_media_server_keys else "")
-        )
-        media_server_backend = _canonical_tech_key(
-            str(media_server_cfg.get("backend") or bindings_cfg.media_server),
-            media_server_default_key,
-        )
+        media_server_backend = binding_resolution.media_server_backend
 
         app_auth_model = AppAuthConfig.from_dict(cfg.get("app_auth") or {})
         app_auth_cfg = dict(app_auth_model.raw)
@@ -527,13 +414,11 @@ class BootstrapRuntimeFactoryService:
         qb_user = (
             os.environ.get(torrent_username_env)
             or os.environ.get("STACK_ADMIN_USERNAME")
-            or os.environ.get("QBITTORRENT_USERNAME")
             or "admin"
         )
         qb_pass = (
             os.environ.get(torrent_password_env)
             or os.environ.get("STACK_ADMIN_PASSWORD")
-            or os.environ.get("QBITTORRENT_PASSWORD")
             or "media-stack-admin"
         )
         sab_username = (
