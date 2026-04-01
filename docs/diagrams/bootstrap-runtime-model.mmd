@@ -1,20 +1,25 @@
 stateDiagram-v2
   [*] --> ParseConfig
-  ParseConfig --> ResolveBindings
+  ParseConfig --> LoadPluginManifests
+  LoadPluginManifests --> MergeHookDefaults
+  MergeHookDefaults --> ResolveBindings
   ResolveBindings --> BuildRuntime
-  BuildRuntime --> RunCommonOps
-  RunCommonOps --> RunDownloadClientOps
-  RunDownloadClientOps --> RunServarrOps
-  RunServarrOps --> RunMediaServerOps
-  RunMediaServerOps --> RunAppServices
-  RunAppServices --> RunHygiene
-  RunHygiene --> VerifyHealth
-  VerifyHealth --> [*]
 
-  RunServarrOps --> RetryableFailure: transient http/k8s error
-  RetryableFailure --> RunServarrOps: retry decorator
+  BuildRuntime --> RunPrecheckPlan
+  RunPrecheckPlan --> RunDownloadClientPhases
+  RunDownloadClientPhases --> RunServarrPhases
+  RunServarrPhases --> RunMediaServerPlan
+  RunMediaServerPlan --> RunPostServarrPlans
+  RunPostServarrPlans --> RunIndexerPipeline
+  RunIndexerPipeline --> RunStatusPhase
+  RunStatusPhase --> [*]
+
+  RunServarrPhases --> RetryableFailure: transient http/k8s error
+  RetryableFailure --> RunServarrPhases: retry decorator
   RetryableFailure --> FatalFailure: max retries
   FatalFailure --> [*]
 
-  RunDownloadClientOps --> FatalFailure: invalid adapter config
-  RunMediaServerOps --> FatalFailure: unsupported operation plan
+  LoadPluginManifests --> FatalFailure: invalid manifest contract
+  ResolveBindings --> FatalFailure: missing or unbound technology
+  RunDownloadClientPhases --> FatalFailure: missing required operation handler
+  RunMediaServerPlan --> FatalFailure: invalid media-server plan

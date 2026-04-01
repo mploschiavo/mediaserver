@@ -8,6 +8,16 @@ Reference authenticated screenshots:
 - [Jellyseerr](screenshots/apps/jellyseerr_local.png)
 - [Maintainerr](screenshots/apps/maintainerr_local.png)
 
+## Pluggable Role Mapping
+
+Service roles are binding-driven from `technology_bindings`:
+- `media_server`
+- `request_manager`
+- `torrent_client`
+- `usenet_client`
+
+The examples below describe the default stack selection, but runtime orchestration is manifest-driven and can be swapped without editing shared runner code.
+
 ## Jellyfin
 Primary media server. Reads finalized media from `/media/*` and renders it to clients.
 
@@ -19,7 +29,7 @@ Central indexer manager. Sonarr/Radarr/Lidarr/Readarr receive indexers from Prow
 
 ## Sonarr / Radarr / Lidarr / Readarr
 Automation managers for TV, movies, music, and books.
-They search via Prowlarr, send downloads to qB/SAB, then import into `/media/*`.
+They search via Prowlarr, send downloads to the active torrent/usenet clients, then import into `/media/*`.
 Bootstrap also enforces CDH + hardlink-friendly media management and quality-profile preference (1080p then 720p fallback for Sonarr/Radarr), plus quality-upgrade lifecycle stop conditions (default blocks 4K tiers).
 Radarr TMDb discovery lists are configured OTB for self-filling libraries (Trending/Popular/Top Rated/Upcoming).
 They are not full library groomers for stale/old content; for deeper lifecycle pruning use a policy tool such as Maintainerr.
@@ -43,7 +53,7 @@ It is also not a Jellyfin library source directly.
 ## Grooming / Retention Layer
 Recommended best-practice split:
 - Arr stack: acquisition and import orchestration.
-- qB/SAB: transport lifecycle cleanup.
+- torrent/usenet transport clients: lifecycle cleanup.
 - Dedicated groomer policy tool (Maintainerr): library retention based on watch/use rules.
 
 In other words, no single Arr app is the full groomer. Use the layered approach above.

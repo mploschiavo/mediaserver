@@ -7,24 +7,34 @@ This platform follows a strict desired-state hierarchy.
 ## Canonical Sources
 
 1. **Git-tracked manifests and configs**
-- `k8s/*.yaml`
-- `k8s/profiles/*`
-- `bootstrap/media-stack.bootstrap.json`
-- scripts under `scripts/`
+  - `k8s/*.yaml`
+  - `k8s/profiles/*`
+  - `bootstrap/media-stack.bootstrap.json`
+  - `scripts/bootstrap_defaults/plugins/*/manifest.json`
+  - `scripts/bootstrap_defaults/runner_operation_plans.json`
+  - `scripts/bootstrap_defaults/media_server_operation_plans.json`
+  - scripts under `scripts/`
 
 2. **Cluster secrets generated/reconciled from code**
-- `media-stack-secrets` (Kubernetes Secret)
-- local export file `secrets.generated.env` for operator visibility
+  - `media-stack-secrets` (Kubernetes Secret)
+  - local export file `secrets.generated.env` for operator visibility
 
 3. **Runtime state in each application**
-- Arr/Prowlarr/Jellyseerr/Jellyfin UI state
+  - Arr/Prowlarr/Jellyseerr/Jellyfin UI state
 
 Runtime state is not authoritative if it conflicts with declarative config.
+
+## Binding and Registration Contracts
+
+- Active component choice is declared only in `technology_bindings`.
+- Technology registration is declared only in plugin manifests.
+- Runtime config can override behavior plans and handlers, but not class registration maps.
+- Shared operation names are generic (for example `torrent_client_login`) so base orchestration is technology-neutral.
 
 ## Reconciliation Rules
 
 - Install/rebuild scripts always re-apply profile manifests.
-- Bootstrap job re-applies cross-app integration state.
+- Bootstrap job re-applies manifest-bound cross-app integration state.
 - Optional periodic reconcile job reduces drift over time.
 - Validation scripts (`verify-flow.sh`, smoke tests) assert expected outcomes.
 

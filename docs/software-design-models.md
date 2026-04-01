@@ -15,8 +15,9 @@ This page captures the internal design models used by the bootstrap/runtime syst
 
 - Diagram: [docs/diagrams/technology-adapter-model.svg](diagrams/technology-adapter-model.svg)
 - Purpose:
-  - Shows how `technology_bindings` and `adapter_hooks` drive runtime resolution.
-  - Documents the fallback chain: explicit hook -> convention discovery -> generic no-op.
+  - Shows how `technology_bindings` + plugin manifests drive runtime resolution.
+  - Documents registration contracts for adapters, app services, and operation handlers.
+  - Separates manifest registration from runtime-only `adapter_hooks` overrides.
 
 ![Technology adapter model](diagrams/technology-adapter-model.png)
 
@@ -33,7 +34,9 @@ This page captures the internal design models used by the bootstrap/runtime syst
 
 - Composition over inheritance for orchestration and side-effect boundaries.
 - Per-technology adapters for swap isolation.
+- Manifest-first registration contracts for adapters/services/operations.
 - Typed config and explicit operation plans as runtime contracts.
+- Generic shared operation names to avoid technology-specific branding in base orchestration.
 - Thin shell entrypoints + Python implementations under `scripts/cli/` and `scripts/bootstrap_services/`.
 
 ## Regenerate Diagrams

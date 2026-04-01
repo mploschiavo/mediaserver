@@ -67,7 +67,7 @@ bash scripts/render-architecture-diagrams.sh
 ## Source-of-Truth Philosophy
 
 Priority order:
-1. Git-managed manifests and bootstrap config
+1. Git-managed manifests, plugin manifests, and bootstrap config
 2. Generated/managed Kubernetes Secrets
 3. Reconcile scripts and bootstrap Job/CronJob
 4. Runtime app state
@@ -79,6 +79,29 @@ See [docs/source-of-truth.md](docs/source-of-truth.md).
 Technology backends are selected declaratively via:
 - `technology_bindings` (active backend per role)
 - plugin manifests (`scripts/bootstrap_defaults/plugins/<technology>/manifest.json`)
+
+Manifest contract keys:
+- `adapter_classes`
+- `app_service_classes`
+- `service_technology_map`
+- `operation_handlers`
+- optional `capability_defaults` and `aliases`
+
+Runtime override scope is intentionally narrow:
+- `adapter_hooks.operation_handlers`
+- `adapter_hooks.runner_operation_plans`
+- `adapter_hooks.media_server_operation_plans`
+
+Registration overrides are intentionally blocked in runtime config:
+- `adapter_hooks.adapter_classes`
+- `adapter_hooks.download_client_adapter_classes`
+- `adapter_hooks.media_server_adapter_classes`
+- `adapter_hooks.app_service_classes`
+- `adapter_hooks.service_technology_map`
+
+Shared runner operation names are generic (technology-neutral):
+- `torrent_client_login`
+- `setup_torrent_categories`
 
 Supported binding roles:
 - `torrent_client`
@@ -92,25 +115,41 @@ Current built-in swap families:
 - usenet client: `sabnzbd`, `nzbget`, `jdownloader`, `grabit`
 - torrent client: `qbittorrent`, `transmission`
 
+## Pluggable Architecture Quick Check
+
+For any technology in a role:
+1. Registration lives in one plugin manifest.
+2. Activation is only through `technology_bindings`.
+3. Shared orchestration remains unchanged.
+4. Removal should fail only when that technology is actively bound.
+
+Swap-removal test flow:
+1. Point `technology_bindings.<role>` to another registered technology.
+2. Reconcile once (`bash scripts/bootstrap-all.sh`).
+3. Temporarily remove the old plugin manifest (or remove its role keys).
+4. Run unit tests:
+
+```bash
+python3 -m unittest tests.unit.test_technology_pluggability_contracts
+python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
+```
+
 ## Swap One Technology (Quick Path)
 
 Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> another media backend, or one Servarr app implementation) without editing `bootstrap-apps.py`.
 
-1. Add/update the app/client config block in `bootstrap/media-stack.bootstrap.json`.
-2. Add or update one adapter module under `scripts/bootstrap_services/...`.
-3. Register the adapter in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`.
+1. Add or update one technology manifest in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`.
+2. Add/update the app/client config block in `bootstrap/media-stack.bootstrap.json`.
+3. Add or update adapter/service module(s) under `scripts/bootstrap_services/...`.
 4. Change the active binding in `technology_bindings`.
-5. Validate and reconcile:
+5. Validate, test, and reconcile:
 
 ```bash
 bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+python3 -m unittest tests.unit.test_technology_pluggability_contracts
+python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 bash scripts/bootstrap-all.sh
 ```
-
-Optional runtime hook overrides:
-- `adapter_hooks.operation_handlers`
-- `adapter_hooks.runner_operation_plans`
-- `adapter_hooks.media_server_operation_plans`
 
 Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 
@@ -124,12 +163,15 @@ To add or replace one technology with minimal blast radius:
    - `scripts/bootstrap_services/media_server_adapters/`
 2. Register the class path in plugin manifest:
    - `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
-3. Bind runtime usage through `technology_bindings`.
-4. Keep policy/config in JSON under `bootstrap/` or `config/runtime/overlays/*`.
-5. Validate + reconcile:
+3. Expose only technology-local operations through manifest `operation_handlers`.
+4. Bind runtime usage through `technology_bindings`.
+5. Keep policy/config in JSON under `bootstrap/` or `config/runtime/overlays/*`.
+6. Validate + reconcile:
 
 ```bash
 bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+python3 -m unittest tests.unit.test_technology_pluggability_contracts
+python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 bash scripts/bootstrap-all.sh
 RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
 ```

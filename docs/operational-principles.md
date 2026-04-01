@@ -57,6 +57,13 @@ Start with stable defaults, then layer:
 - storage migration plans
 - GitOps promotion flows
 
+## 11) Pluggability by Contract
+
+- Choose active technologies with `technology_bindings`.
+- Register technologies only through plugin manifests.
+- Keep shared orchestration generic; put app-specific behavior in app/adapter modules.
+- Prove swap safety with contract and matrix tests before merge.
+
 ---
 
 **Project Steward**

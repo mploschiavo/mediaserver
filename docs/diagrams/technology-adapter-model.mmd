@@ -1,53 +1,75 @@
 flowchart LR
   CFG[bootstrap/media-stack.bootstrap.json]
   BIND[technology_bindings]
-  HOOKS[adapter_hooks]
+  RH[adapter_hooks<br/>runtime overrides only]
 
-  FACT[Adapter Resolution Factory]
-  CONV[Convention Fallback Discovery]
-  NOP[Generic No-op Adapter]
+  PM[scripts/bootstrap_defaults/plugins/*/manifest.json]
+  LOAD[plugin_manifest_loader.py]
+  DEF[AdapterHookDefaults<br/>aliases + class maps + handlers]
 
-  subgraph Roles[Technology Roles]
+  RES[RuntimeBindingResolver]
+  RT[BootstrapRuntime]
+
+  OPREG[RunnerOperationRegistry]
+  DLF[DownloadClientAdapterFactory]
+  MSF[MediaServerAdapterFactory]
+  SAF[ServarrAdapterFactory]
+
+  subgraph Roles[Active Runtime Roles]
     TOR[torrent_client]
     USE[usenet_client]
     MED[media_server]
-    ARR[arr_apps implementation]
+    RQM[request_manager]
+    ARR[arr implementations]
   end
 
-  subgraph Impl[Concrete Adapter Modules]
-    QBA[download_client_adapters/qbittorrent.py]
-    SABA[download_client_adapters/sabnzbd.py]
-    MSA[media_server_adapters/jellyfin.py]
-    SONA[servarr_technologies/sonarr.py]
-    RADA[servarr_technologies/radarr.py]
-    LIDA[servarr_technologies/lidarr.py]
-    READA[servarr_technologies/readarr.py]
+  subgraph Contracts[Manifest Contract Keys]
+    C1[adapter_classes]
+    C2[app_service_classes]
+    C3[service_technology_map]
+    C4[operation_handlers]
+    C5[aliases and capability_defaults]
   end
 
-  CFG --> BIND
-  CFG --> HOOKS
+  subgraph Impl[Concrete Modules]
+    TCA[download_client_adapters/*]
+    MSA[media_server_adapters/*]
+    SVA[servarr_technologies/*]
+    APS[apps/*/service.py and runtime_ops.py]
+  end
 
-  BIND --> TOR
-  BIND --> USE
-  BIND --> MED
-  BIND --> ARR
+  CFG --> BIND --> RES
+  CFG --> RH
 
-  TOR --> FACT
-  USE --> FACT
-  MED --> FACT
-  ARR --> FACT
-  HOOKS --> FACT
+  PM --> LOAD --> DEF
+  DEF --> C1
+  DEF --> C2
+  DEF --> C3
+  DEF --> C4
+  DEF --> C5
 
-  FACT --> QBA
-  FACT --> SABA
-  FACT --> MSA
-  FACT --> SONA
-  FACT --> RADA
-  FACT --> LIDA
-  FACT --> READA
+  DEF --> RES
+  RES --> TOR
+  RES --> USE
+  RES --> MED
+  RES --> RQM
+  RES --> ARR
+  RES --> RT
 
-  FACT --> CONV --> NOP
+  DEF --> DLF
+  DEF --> MSF
+  DEF --> SAF
+  DEF --> OPREG
+
+  RH --> OPREG
+  RH --> RT
+
+  DLF --> TCA
+  MSF --> MSA
+  SAF --> SVA
+  OPREG --> APS
 
   style CFG fill:#eef7ff,stroke:#1f4f99,stroke-width:2px
-  style FACT fill:#fff7e8,stroke:#9a6b00,stroke-width:2px
-  style NOP fill:#ffecec,stroke:#ad1f2f,stroke-width:2px
+  style PM fill:#f4f7ea,stroke:#507a18,stroke-width:2px
+  style DEF fill:#fff7e8,stroke:#9a6b00,stroke-width:2px
+  style RH fill:#fff0f0,stroke:#ad1f2f,stroke-width:2px

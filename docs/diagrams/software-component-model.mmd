@@ -5,6 +5,13 @@ flowchart TD
     SH3["verify-flow.sh\ntest.sh"]
   end
 
+  subgraph Contracts[Declarative Contracts]
+    CFG["bootstrap/media-stack.bootstrap.json\ntechnology_bindings + policies"]
+    PM["scripts/bootstrap_defaults/plugins/*/manifest.json"]
+    RPLAN["bootstrap_defaults/runner_operation_plans.json"]
+    MPLAN["bootstrap_defaults/media_server_operation_plans.json"]
+  end
+
   subgraph Entry[Composition Root]
     MAIN["bootstrap-apps.py"]
     RF["runtime_factory/*"]
@@ -13,7 +20,7 @@ flowchart TD
   end
 
   subgraph Core[Shared Runtime Core]
-    CFG["config_models.py"]
+    CFGM["config_models.py"]
     CORE_RT["runtime_core.py"]
     MED["runtime_media_ops.py"]
     ARR["runtime_servarr/service_ops.py"]
@@ -27,21 +34,26 @@ flowchart TD
   end
 
   subgraph AppSvc[App Services]
-    APPMOD["apps/* service modules\njellyfin, jellyseerr, prowlarr,\nbazarr, qbittorrent, sabnzbd,\nmaintainerr, homepage, tautulli"]
+    APPMOD["apps/* service modules\njellyfin, jellyseerr, prowlarr,\nbazarr, torrent clients,\nusenet clients, maintainerr,\nhomepage, tautulli"]
   end
 
   subgraph Runtime[Cluster Runtime]
     JOB["media-stack-bootstrap\nJob/CronJobs"]
-    APPS["Arr/Prowlarr/Jellyfin\nJellyseerr/qB/SAB"]
+    APPS["Arr/Prowlarr/Jellyfin\nJellyseerr + bound clients"]
   end
 
   SH1 --> MAIN
   SH2 --> MAIN
   SH3 --> MAIN
 
+  CFG --> RF
+  PM --> RF
+  RPLAN --> RF
+  MPLAN --> RF
+
   MAIN --> RF --> RUN --> WIRE
 
-  RUN --> CFG
+  RUN --> CFGM
   RUN --> CORE_RT
   RUN --> MED
   RUN --> ARR
