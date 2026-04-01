@@ -7,10 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config_models import DownloadClientsConfig, ServarrAppConfig, TechnologyBindingsConfig
+from .apps.download_clients.config_models import DownloadClientsConfig, TechnologyBindingsConfig
+from .apps.servarr.config_models import ServarrAppConfig
 
 SUPPORTED_BOOTSTRAP_CONFIG_VERSION = 2
-_TOP_LEVEL_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "bootstrap_defaults" / "top_level_config_schema.json"
+_TOP_LEVEL_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1] / "bootstrap_defaults" / "top_level_config_schema.json"
+)
 
 
 def _expect_int(data: dict[str, Any], key: str) -> int:

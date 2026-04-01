@@ -6,28 +6,34 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from ..config_models import (
-    AppAuthConfig,
-    ArrDiscoveryListsConfig,
-    ArrDownloadHandlingPolicy,
-    ArrMediaManagementPolicy,
-    ArrQualityUpgradePolicy,
-    BazarrConfig,
+from ..apps.download_clients.config_models import (
     DiskGuardrailsConfig,
     DownloadClientsConfig,
+    TechnologyBindingsConfig,
+)
+from ..apps.integrations.config_models import (
+    AppAuthConfig,
+    BazarrConfig,
     HomepageConfig,
     JellyfinAutoCollectionsConfig,
     JellyfinHomeRailsConfig,
+    JellyseerrConfig,
+    MaintainerrConfig,
+    MediaHygieneConfig,
+)
+from ..apps.jellyfin.config_models import (
     JellyfinLibrariesConfig,
     JellyfinLiveTvConfig,
     JellyfinPlaybackConfig,
     JellyfinPluginsConfig,
     JellyfinPrewarmConfig,
-    JellyseerrConfig,
-    MaintainerrConfig,
-    MediaHygieneConfig,
+)
+from ..apps.servarr.config_models import (
+    ArrDiscoveryListsConfig,
+    ArrDownloadHandlingPolicy,
+    ArrMediaManagementPolicy,
+    ArrQualityUpgradePolicy,
     ServarrAppConfig,
-    TechnologyBindingsConfig,
 )
 from ..enums import BootstrapMode
 from ..plugin_manifest_loader import (

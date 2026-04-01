@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..config_models import DownloadClientsConfig, TechnologyBindingsConfig
+from ..apps.download_clients.config_models import DownloadClientsConfig, TechnologyBindingsConfig
 
 
 @dataclass(frozen=True)

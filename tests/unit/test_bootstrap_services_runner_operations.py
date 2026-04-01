@@ -5,15 +5,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.enums import RunnerOperation  # noqa: E402
 from bootstrap_services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
 
 
 class RunnerOperationRegistryTests(unittest.TestCase):
     def test_invoke_with_enum(self):
+        prewarm_op = "ensure_jellyfin_prewarm"
         registry = RunnerOperationRegistry(
             handlers={
-                RunnerOperation.ENSURE_JELLYFIN_PREWARM.value: lambda cfg, root, timeout: (
+                prewarm_op: lambda cfg, root, timeout: (
                     cfg,
                     root,
                     timeout,
@@ -21,7 +21,7 @@ class RunnerOperationRegistryTests(unittest.TestCase):
             }
         )
         result = registry.invoke(
-            RunnerOperation.ENSURE_JELLYFIN_PREWARM,
+            prewarm_op,
             {"jellyfin": {}},
             "/srv-config",
             60,

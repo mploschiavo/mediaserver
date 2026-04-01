@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from .config_model_utils import coerce_bool_opt, coerce_str_list_opt, normalize_by_app_key
+from ...config_model_utils import coerce_bool_opt, coerce_str_list_opt, normalize_by_app_key
 from .config_models_discovery import (
     DiscoveryListContract,
     DiscoveryProviderOptions,

@@ -11,44 +11,77 @@ from bootstrap_services.bootstrap_runner_service import (  # noqa: E402
     BootstrapRunnerService,
     BootstrapRuntime,
 )
-from bootstrap_services.config_models import ServarrAppConfig  # noqa: E402
-from bootstrap_services.enums import BootstrapMode, RunnerOperation  # noqa: E402
+from bootstrap_services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
+from bootstrap_services.enums import BootstrapMode  # noqa: E402
 from bootstrap_services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
+
+
+class OP:
+    ENSURE_APP_AUTH_SETTINGS = "ensure_app_auth_settings"
+    TORRENT_CLIENT_LOGIN = "torrent_client_login"
+    QBIT_LOGIN = "qbit_login"
+    READ_SABNZBD_API_KEY = "read_sabnzbd_api_key"
+    ENSURE_SABNZBD_DEFAULTS = "ensure_sabnzbd_defaults"
+    ENSURE_SABNZBD_CATEGORIES = "ensure_sabnzbd_categories"
+    SETUP_TORRENT_CATEGORIES = "setup_torrent_categories"
+    SETUP_QBIT_CATEGORIES = "setup_qbit_categories"
+    RUN_SERVARR_PIPELINE = "run_servarr_pipeline"
+    ENSURE_BAZARR_INTEGRATION = "ensure_bazarr_arr_integration"
+    CONFIGURE_JELLYSEERR = "configure_jellyseerr"
+    ENSURE_JELLYFIN_LIVETV = "ensure_jellyfin_livetv"
+    ENSURE_JELLYFIN_LIBRARIES = "ensure_jellyfin_libraries"
+    ENSURE_JELLYFIN_PLUGINS = "ensure_jellyfin_plugins"
+    ENSURE_JELLYFIN_PLAYBACK = "ensure_jellyfin_playback_defaults"
+    ENSURE_JELLYFIN_HOME_RAILS = "ensure_jellyfin_home_rails"
+    ENSURE_JELLYFIN_AUTO_COLLECTIONS = "ensure_jellyfin_auto_collections_config"
+    ENFORCE_DISK_GUARDRAILS = "enforce_disk_guardrails"
+    RUN_MEDIA_HYGIENE = "run_media_hygiene"
+    ENSURE_JELLYFIN_PREWARM = "ensure_jellyfin_prewarm"
+    ENSURE_MAINTAINERR_POLICY = "ensure_maintainerr_policy"
+    ENSURE_MAINTAINERR_INTEGRATIONS = "ensure_maintainerr_integrations"
+    ENSURE_HOMEPAGE_SERVICES = "ensure_homepage_services_config"
+    ENSURE_PROWLARR_READY = "ensure_prowlarr_ready"
+    ENSURE_PROWLARR_FLARESOLVERR_PROXY = "ensure_prowlarr_flaresolverr_proxy"
+    ENSURE_PROWLARR_INDEXER = "ensure_prowlarr_indexer"
+    AUTO_ADD_TESTED_INDEXERS = "auto_add_tested_indexers"
+    TRIGGER_PROWLARR_SYNC = "trigger_prowlarr_sync"
+    SYNC_ARR_INDEXERS_FROM_PROWLARR = "sync_arr_indexers_from_prowlarr"
+    RUN_PROWLARR_INDEXER_PIPELINE = "run_prowlarr_indexer_pipeline"
 
 
 class BootstrapRunnerServiceTests(unittest.TestCase):
     def _deps(self):
         operation_mocks = {
-            RunnerOperation.ENSURE_APP_AUTH_SETTINGS.value: mock.Mock(),
-            RunnerOperation.TORRENT_CLIENT_LOGIN.value: mock.Mock(),
-            RunnerOperation.QBIT_LOGIN.value: mock.Mock(),
-            RunnerOperation.READ_SABNZBD_API_KEY.value: mock.Mock(return_value=""),
-            RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value: mock.Mock(),
-            RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value: mock.Mock(),
-            RunnerOperation.SETUP_TORRENT_CATEGORIES.value: mock.Mock(),
-            RunnerOperation.SETUP_QBIT_CATEGORIES.value: mock.Mock(),
-            RunnerOperation.RUN_SERVARR_PIPELINE.value: mock.Mock(),
-            RunnerOperation.ENSURE_BAZARR_INTEGRATION.value: mock.Mock(),
-            RunnerOperation.CONFIGURE_JELLYSEERR.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_LIVETV.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_LIBRARIES.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_PLUGINS.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_PLAYBACK.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_HOME_RAILS.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_AUTO_COLLECTIONS.value: mock.Mock(),
-            RunnerOperation.ENFORCE_DISK_GUARDRAILS.value: mock.Mock(),
-            RunnerOperation.RUN_MEDIA_HYGIENE.value: mock.Mock(),
-            RunnerOperation.ENSURE_JELLYFIN_PREWARM.value: mock.Mock(),
-            RunnerOperation.ENSURE_MAINTAINERR_POLICY.value: mock.Mock(),
-            RunnerOperation.ENSURE_MAINTAINERR_INTEGRATIONS.value: mock.Mock(),
-            RunnerOperation.ENSURE_HOMEPAGE_SERVICES.value: mock.Mock(),
-            RunnerOperation.ENSURE_PROWLARR_READY.value: mock.Mock(return_value="/api/v1"),
-            RunnerOperation.ENSURE_PROWLARR_FLARESOLVERR_PROXY.value: mock.Mock(),
-            RunnerOperation.ENSURE_PROWLARR_INDEXER.value: mock.Mock(),
-            RunnerOperation.AUTO_ADD_TESTED_INDEXERS.value: mock.Mock(),
-            RunnerOperation.TRIGGER_PROWLARR_SYNC.value: mock.Mock(),
-            RunnerOperation.SYNC_ARR_INDEXERS_FROM_PROWLARR.value: mock.Mock(),
-            RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value: mock.Mock(),
+            OP.ENSURE_APP_AUTH_SETTINGS: mock.Mock(),
+            OP.TORRENT_CLIENT_LOGIN: mock.Mock(),
+            OP.QBIT_LOGIN: mock.Mock(),
+            OP.READ_SABNZBD_API_KEY: mock.Mock(return_value=""),
+            OP.ENSURE_SABNZBD_DEFAULTS: mock.Mock(),
+            OP.ENSURE_SABNZBD_CATEGORIES: mock.Mock(),
+            OP.SETUP_TORRENT_CATEGORIES: mock.Mock(),
+            OP.SETUP_QBIT_CATEGORIES: mock.Mock(),
+            OP.RUN_SERVARR_PIPELINE: mock.Mock(),
+            OP.ENSURE_BAZARR_INTEGRATION: mock.Mock(),
+            OP.CONFIGURE_JELLYSEERR: mock.Mock(),
+            OP.ENSURE_JELLYFIN_LIVETV: mock.Mock(),
+            OP.ENSURE_JELLYFIN_LIBRARIES: mock.Mock(),
+            OP.ENSURE_JELLYFIN_PLUGINS: mock.Mock(),
+            OP.ENSURE_JELLYFIN_PLAYBACK: mock.Mock(),
+            OP.ENSURE_JELLYFIN_HOME_RAILS: mock.Mock(),
+            OP.ENSURE_JELLYFIN_AUTO_COLLECTIONS: mock.Mock(),
+            OP.ENFORCE_DISK_GUARDRAILS: mock.Mock(),
+            OP.RUN_MEDIA_HYGIENE: mock.Mock(),
+            OP.ENSURE_JELLYFIN_PREWARM: mock.Mock(),
+            OP.ENSURE_MAINTAINERR_POLICY: mock.Mock(),
+            OP.ENSURE_MAINTAINERR_INTEGRATIONS: mock.Mock(),
+            OP.ENSURE_HOMEPAGE_SERVICES: mock.Mock(),
+            OP.ENSURE_PROWLARR_READY: mock.Mock(return_value="/api/v1"),
+            OP.ENSURE_PROWLARR_FLARESOLVERR_PROXY: mock.Mock(),
+            OP.ENSURE_PROWLARR_INDEXER: mock.Mock(),
+            OP.AUTO_ADD_TESTED_INDEXERS: mock.Mock(),
+            OP.TRIGGER_PROWLARR_SYNC: mock.Mock(),
+            OP.SYNC_ARR_INDEXERS_FROM_PROWLARR: mock.Mock(),
+            OP.RUN_PROWLARR_INDEXER_PIPELINE: mock.Mock(),
         }
         deps = BootstrapRunnerDependencies(
             log=mock.Mock(),
@@ -280,8 +313,8 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         runner = BootstrapRunnerService(deps=deps)
         runtime = self._runtime(mode=BootstrapMode.MEDIA_SERVER_PREWARM)
         runner.run(runtime)
-        deps.operation_mocks[RunnerOperation.ENSURE_JELLYFIN_PREWARM.value].assert_called_once()  # type: ignore[attr-defined]
-        deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_not_called()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.ENSURE_JELLYFIN_PREWARM].assert_called_once()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_not_called()  # type: ignore[attr-defined]
 
     def test_media_hygiene_mode_waits_and_runs_hygiene(self):
         deps = self._deps()
@@ -301,16 +334,16 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         )
         runner.run(runtime)
         deps.wait_for_service.assert_called()
-        deps.operation_mocks[RunnerOperation.RUN_MEDIA_HYGIENE.value].assert_called_once()  # type: ignore[attr-defined]
-        deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_not_called()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.RUN_MEDIA_HYGIENE].assert_called_once()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_not_called()  # type: ignore[attr-defined]
 
     def test_full_mode_runs_pipeline_and_optional_sync(self):
         deps = self._deps()
         runner = BootstrapRunnerService(deps=deps)
         runtime = self._runtime(trigger_sync=True)
         runner.run(runtime)
-        deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_called_once()  # type: ignore[attr-defined]
-        deps.operation_mocks[RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value].assert_called_once_with(  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_called_once()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.RUN_PROWLARR_INDEXER_PIPELINE].assert_called_once_with(  # type: ignore[attr-defined]
             runtime.cfg,
             "http://prowlarr:9696",
             "key",
@@ -327,11 +360,11 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         runner = BootstrapRunnerService(deps=deps)
         runtime = self._runtime()
         runner.run(runtime)
-        deps.operation_mocks[RunnerOperation.ENSURE_PROWLARR_READY.value].assert_called_once()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.ENSURE_PROWLARR_READY].assert_called_once()  # type: ignore[attr-defined]
 
     def test_required_optional_step_still_fails_hard(self):
         deps = self._deps()
-        deps.operation_mocks[RunnerOperation.CONFIGURE_JELLYSEERR.value].side_effect = RuntimeError(  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.CONFIGURE_JELLYSEERR].side_effect = RuntimeError(  # type: ignore[attr-defined]
             "boom"
         )
         runner = BootstrapRunnerService(deps=deps)
@@ -352,7 +385,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
         runner.run(runtime)
 
-        deps.operation_mocks[RunnerOperation.ENSURE_MAINTAINERR_INTEGRATIONS.value].assert_called_once_with(  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.ENSURE_MAINTAINERR_INTEGRATIONS].assert_called_once_with(  # type: ignore[attr-defined]
             runtime.cfg,
             runtime.config_root,
             runtime.arr_apps_raw,
@@ -375,7 +408,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         runner.run(runtime)
 
         deps.operation_mocks[
-            RunnerOperation.RUN_PROWLARR_INDEXER_PIPELINE.value
+            OP.RUN_PROWLARR_INDEXER_PIPELINE
         ].assert_called_once_with(  # type: ignore[attr-defined]
             runtime.cfg,
             runtime.prowlarr_url,
@@ -426,7 +459,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             },
         )
         runner.run(runtime)
-        deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_called_once()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_called_once()  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

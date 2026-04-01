@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import error, request
 
-from bootstrap_services.config_models import DownloadClientConfig
+from bootstrap_services.apps.download_clients.config_models import DownloadClientConfig
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
@@ -132,7 +132,9 @@ class TransmissionService:
             f"(categories={categories or ['downloads']})."
         )
 
-    def list_torrents(self, opener, base_url: str, filter_value: str = "all") -> list[dict[str, Any]]:
+    def list_torrents(
+        self, opener, base_url: str, filter_value: str = "all"
+    ) -> list[dict[str, Any]]:
         del base_url
         payload = self._rpc_call(
             opener,
@@ -246,9 +248,7 @@ class TransmissionService:
                 raise RuntimeError(
                     f"Transmission RPC {method} failed (HTTP {exc.code}): {body_text}"
                 ) from exc
-        raise RuntimeError(
-            f"Transmission RPC {method} failed after session negotiation retries."
-        )
+        raise RuntimeError(f"Transmission RPC {method} failed after session negotiation retries.")
 
     def _map_torrent_record(self, item: dict[str, Any]) -> dict[str, Any]:
         status = int(self.to_int(item.get("status"), 0) or 0)
