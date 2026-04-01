@@ -1,4 +1,4 @@
-"""Orchestrate qBittorrent/SABnzbd bootstrap via per-client adapters."""
+"""Orchestrate torrent and usenet client bootstrap via per-client adapters."""
 
 from __future__ import annotations
 
@@ -64,7 +64,9 @@ class DownloadClientPipelineService:
     def run_prepare(self, inputs: DownloadClientPipelineInputs) -> DownloadClientPipelineResult:
         adapter_factory = DownloadClientAdapterFactory(
             deps=self._dependencies(),
-            adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get("download_client_adapter_classes"),
+            adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get(
+                "download_client_adapter_classes"
+            ),
         )
 
         torrent_key = str(inputs.torrent_client_key or "").strip().lower()
@@ -74,7 +76,7 @@ class DownloadClientPipelineService:
         if not usenet_key:
             raise ValueError("Missing usenet client key; set technology_bindings.usenet_client.")
 
-        qbit_context = DownloadClientAdapterContext(
+        torrent_context = DownloadClientAdapterContext(
             key=torrent_key,
             display_name=str(inputs.qbit_cfg.get("name") or torrent_key.title()),
             cfg=inputs.qbit_cfg,
@@ -88,13 +90,13 @@ class DownloadClientPipelineService:
             username=inputs.qbit_username,
             password=inputs.qbit_password,
         )
-        qbit_adapter = adapter_factory.create(torrent_key, qbit_context)
-        qbit_adapter.load()
-        qbit_adapter.precheck()
-        qbit_adapter.prepare()
-        qbit_adapter.configure()
-        qbit_adapter.ensure()
-        qbit_status = qbit_adapter.status_check()
+        torrent_adapter = adapter_factory.create(torrent_key, torrent_context)
+        torrent_adapter.load()
+        torrent_adapter.precheck()
+        torrent_adapter.prepare()
+        torrent_adapter.configure()
+        torrent_adapter.ensure()
+        torrent_status = torrent_adapter.status_check()
 
         sab_context = DownloadClientAdapterContext(
             key=usenet_key,
@@ -115,6 +117,6 @@ class DownloadClientPipelineService:
         sab_status = sab_adapter.status_check()
 
         return DownloadClientPipelineResult(
-            qbit_login_ok=bool(qbit_status.get("login_ok", False)),
+            qbit_login_ok=bool(torrent_status.get("login_ok", False)),
             sab_api_key=str(sab_status.get("api_key") or ""),
         )

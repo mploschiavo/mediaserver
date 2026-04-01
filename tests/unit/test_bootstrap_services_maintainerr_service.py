@@ -40,6 +40,64 @@ class MaintainerrServiceTests(unittest.TestCase):
         )
         http_request.assert_not_called()
 
+    def test_ensure_integrations_skips_radarr_when_arr_app_missing_and_not_required(self):
+        http_request = mock.Mock()
+        service = self._service(http_request)
+        service.ensure_integrations(
+            cfg={
+                "maintainerr": {
+                    "enabled": True,
+                    "url": "http://maintainerr:6246",
+                    "integrations": {
+                        "enabled": True,
+                        "sync_rules": False,
+                        "main": {"enabled": False},
+                        "radarr": {"enabled": True, "required": False},
+                        "sonarr": {"enabled": False},
+                        "jellyseerr": {"enabled": False},
+                        "tautulli": {"enabled": False},
+                    },
+                }
+            },
+            config_root="/srv-config",
+            arr_apps=[],
+            wait_timeout=10,
+        )
+
+        http_request.assert_not_called()
+        self.assertTrue(
+            any(
+                "skipping radarr integration" in str(call.args[0]).lower()
+                for call in service.log.call_args_list
+                if call.args
+            )
+        )
+
+    def test_ensure_integrations_fails_when_required_radarr_arr_app_is_missing(self):
+        http_request = mock.Mock()
+        service = self._service(http_request)
+        with self.assertRaisesRegex(RuntimeError, "Radarr integration is enabled and required"):
+            service.ensure_integrations(
+                cfg={
+                    "maintainerr": {
+                        "enabled": True,
+                        "url": "http://maintainerr:6246",
+                        "integrations": {
+                            "enabled": True,
+                            "sync_rules": False,
+                            "main": {"enabled": False},
+                            "radarr": {"enabled": True, "required": True},
+                            "sonarr": {"enabled": False},
+                            "jellyseerr": {"enabled": False},
+                            "tautulli": {"enabled": False},
+                        },
+                    }
+                },
+                config_root="/srv-config",
+                arr_apps=[],
+                wait_timeout=10,
+            )
+
     def test_ensure_integrations_configures_and_tests_all_targets(self):
         calls: list[tuple[str, str, dict | None]] = []
 
@@ -116,32 +174,44 @@ class MaintainerrServiceTests(unittest.TestCase):
             del base_url, api_key, timeout
             calls.append((method, path, payload))
             if (method, path) == ("GET", "/api/settings"):
-                return 200, {
-                    "applicationUrl": "maintainerr.local",
-                    "media_server_type": "jellyfin",
-                    "seerr_url": "http://jellyseerr:5055",
-                    "seerr_api_key": "jellyseerr-key",
-                    "jellyfin_url": "http://jellyfin:8096",
-                    "jellyfin_server_name": "Jellyfin",
-                    "tautulli_url": "http://tautulli:8181",
-                    "tautulli_api_key": "tautulli-key",
-                }, "{}"
+                return (
+                    200,
+                    {
+                        "applicationUrl": "maintainerr.local",
+                        "media_server_type": "jellyfin",
+                        "seerr_url": "http://jellyseerr:5055",
+                        "seerr_api_key": "jellyseerr-key",
+                        "jellyfin_url": "http://jellyfin:8096",
+                        "jellyfin_server_name": "Jellyfin",
+                        "tautulli_url": "http://tautulli:8181",
+                        "tautulli_api_key": "tautulli-key",
+                    },
+                    "{}",
+                )
             if (method, path) == ("GET", "/api/settings/radarr"):
-                return 200, [
-                    {
-                        "serverName": "Radarr",
-                        "url": "http://radarr:7878",
-                        "apiKey": "radarr-key",
-                    }
-                ], "[]"
+                return (
+                    200,
+                    [
+                        {
+                            "serverName": "Radarr",
+                            "url": "http://radarr:7878",
+                            "apiKey": "radarr-key",
+                        }
+                    ],
+                    "[]",
+                )
             if (method, path) == ("GET", "/api/settings/sonarr"):
-                return 200, [
-                    {
-                        "serverName": "Sonarr",
-                        "url": "http://sonarr:8989",
-                        "apiKey": "sonarr-key",
-                    }
-                ], "[]"
+                return (
+                    200,
+                    [
+                        {
+                            "serverName": "Sonarr",
+                            "url": "http://sonarr:8989",
+                            "apiKey": "sonarr-key",
+                        }
+                    ],
+                    "[]",
+                )
             if (method, path) == ("GET", "/api/settings/seerr"):
                 return 200, {"url": "http://jellyseerr:5055", "api_key": "jellyseerr-key"}, "{}"
             if (method, path) == ("GET", "/api/settings/tautulli"):
@@ -241,10 +311,14 @@ class MaintainerrServiceTests(unittest.TestCase):
                 if (method, path) == ("GET", "/api/settings/tautulli"):
                     return 200, {"url": "", "api_key": ""}, "{}"
                 if (method, path) == ("GET", "/api/media-server/libraries"):
-                    return 200, [
-                        {"id": "lib-movies", "title": "Movies", "type": "movie"},
-                        {"id": "lib-tv", "title": "TV Shows", "type": "show"},
-                    ], "[]"
+                    return (
+                        200,
+                        [
+                            {"id": "lib-movies", "title": "Movies", "type": "movie"},
+                            {"id": "lib-tv", "title": "TV Shows", "type": "show"},
+                        ],
+                        "[]",
+                    )
                 if (method, path) == ("GET", "/api/rules?activeOnly=false"):
                     return 200, [], "[]"
                 if (method, path) == ("POST", "/api/rules"):
@@ -323,9 +397,9 @@ class MaintainerrServiceTests(unittest.TestCase):
                         "useRules": True,
                         "rules": [
                             {
-                                "ruleJson": "{\"firstVal\":[6,0],\"operator\":null,"
-                                "\"action\":5,\"customVal\":{\"ruleTypeId\":1,"
-                                "\"value\":\"days_ago:30\"},\"section\":0}"
+                                "ruleJson": '{"firstVal":[6,0],"operator":null,'
+                                '"action":5,"customVal":{"ruleTypeId":1,'
+                                '"value":"days_ago:30"},"section":0}'
                             }
                         ],
                         "collection": {
@@ -355,9 +429,13 @@ class MaintainerrServiceTests(unittest.TestCase):
                 if (method, path) == ("GET", "/api/settings/tautulli"):
                     return 200, {"url": "", "api_key": ""}, "{}"
                 if (method, path) == ("GET", "/api/media-server/libraries"):
-                    return 200, [
-                        {"id": "lib-movies", "title": "Movies", "type": "movie"},
-                    ], "[]"
+                    return (
+                        200,
+                        [
+                            {"id": "lib-movies", "title": "Movies", "type": "movie"},
+                        ],
+                        "[]",
+                    )
                 if (method, path) == ("GET", "/api/rules?activeOnly=false"):
                     return 200, [], "[]"
                 if (method, path) == ("POST", "/api/rules"):
@@ -450,10 +528,14 @@ class MaintainerrServiceTests(unittest.TestCase):
                 if (method, path) == ("GET", "/api/settings/tautulli"):
                     return 200, {"url": "", "api_key": ""}, "{}"
                 if (method, path) == ("GET", "/api/media-server/libraries"):
-                    return 200, [
-                        {"id": "lib-movies", "title": "Movies", "type": "movie"},
-                        {"id": "lib-tv", "title": "TV Shows", "type": "show"},
-                    ], "[]"
+                    return (
+                        200,
+                        [
+                            {"id": "lib-movies", "title": "Movies", "type": "movie"},
+                            {"id": "lib-tv", "title": "TV Shows", "type": "show"},
+                        ],
+                        "[]",
+                    )
                 if (method, path) == ("POST", "/api/rules/yaml/decode"):
                     result = {
                         "mediaType": "movie",

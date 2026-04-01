@@ -54,11 +54,11 @@ def qbit_list_completed_torrents(opener, base_url):
         payload = json.loads(body)
     except Exception as exc:
         raise RuntimeError(
-            f"qBittorrent: failed parsing completed torrents payload: {exc}"
+            f"Torrent client: failed parsing completed torrents payload: {exc}"
         ) from exc
     if isinstance(payload, list):
         return payload
-    raise RuntimeError("qBittorrent: completed torrent payload was not a list.")
+    raise RuntimeError("Torrent client: completed torrent payload was not a list.")
 
 
 def qbit_list_torrents(opener, base_url, filter_value="all"):
@@ -72,10 +72,10 @@ def qbit_list_torrents(opener, base_url, filter_value="all"):
     try:
         payload = json.loads(body)
     except Exception as exc:
-        raise RuntimeError(f"qBittorrent: failed parsing torrents payload: {exc}") from exc
+        raise RuntimeError(f"Torrent client: failed parsing torrents payload: {exc}") from exc
     if isinstance(payload, list):
         return payload
-    raise RuntimeError("qBittorrent: torrents payload was not a list.")
+    raise RuntimeError("Torrent client: torrents payload was not a list.")
 
 
 def qbit_delete_torrents(opener, base_url, hashes, delete_files=True):

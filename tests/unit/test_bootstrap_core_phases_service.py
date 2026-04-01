@@ -30,6 +30,7 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
 
         def noop():
             return None
+
         svc.run(
             run_phase=_run_phase,
             run_script=_run_script,
@@ -45,7 +46,7 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
             print_bootstrap_job_logs=noop,
         )
 
-        self.assertEqual(phases[0], ("Ensure qBittorrent credentials", False))
+        self.assertEqual(phases[0], ("Ensure torrent client credentials", False))
         self.assertEqual(phases[1], ("Ensure SABnzbd API access", True))
         self.assertTrue(any(s[0] == "ensure-sabnzbd-api-access.sh" for s in called["scripts"]))
 
