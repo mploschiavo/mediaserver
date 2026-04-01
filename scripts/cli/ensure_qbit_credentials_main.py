@@ -23,7 +23,6 @@ from typing import Iterable
 from core.exceptions import ConfigError, MediaStackError
 from core.kube import resolve_kubectl_binary
 
-
 _TEMP_PASSWORD_RE = re.compile(r"temporary password[^:]*:\s*(.+)$", re.IGNORECASE)
 
 

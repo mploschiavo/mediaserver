@@ -23,6 +23,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
 
     def test_basic_checks_use_active_client_bindings(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -39,6 +40,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
 
     def test_basic_checks_fail_when_active_client_missing(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -58,6 +60,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
 
     def test_basic_checks_validate_adapter_hook_spec_format(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -70,19 +73,18 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
             },
             "adapter_hooks": {
-                "download_client_adapter_classes": {
-                    "qbittorrent": "invalid-spec-without-colon"
-                }
+                "download_client_adapter_classes": {"qbittorrent": "invalid-spec-without-colon"}
             },
         }
         errors = self.mod.basic_checks(cfg)
         self.assertTrue(
-            any("invalid hook spec" in err for err in errors),
+            any("unsupported" in err for err in errors),
             errors,
         )
 
     def test_basic_checks_validate_operation_handler_spec_format(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -94,11 +96,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
                 "qbittorrent": {"url": "http://qbittorrent:8080"},
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
             },
-            "adapter_hooks": {
-                "operation_handlers": {
-                    "custom_operation": "invalid-handler-spec"
-                }
-            },
+            "adapter_hooks": {"operation_handlers": {"custom_operation": "invalid-handler-spec"}},
         }
         errors = self.mod.basic_checks(cfg)
         self.assertTrue(
@@ -108,6 +106,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
 
     def test_basic_checks_validate_app_service_class_spec_format(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -120,19 +119,18 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
                 "sabnzbd": {"url": "http://sabnzbd:8080"},
             },
             "adapter_hooks": {
-                "app_service_classes": {
-                    "jellyseerr_service": "invalid-service-spec"
-                }
+                "app_service_classes": {"jellyseerr_service": "invalid-service-spec"}
             },
         }
         errors = self.mod.basic_checks(cfg)
         self.assertTrue(
-            any("invalid hook spec" in err for err in errors),
+            any("unsupported" in err for err in errors),
             errors,
         )
 
     def test_basic_checks_validate_technology_aliases_shape(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -152,34 +150,13 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
         }
         errors = self.mod.basic_checks(cfg)
         self.assertTrue(
-            any("technology_aliases" in err for err in errors),
+            any("unsupported" in err and "technology_aliases" in err for err in errors),
             errors,
         )
 
-    def test_basic_checks_accepts_valid_technology_aliases(self):
-        cfg = {
-            "prowlarr_url": "http://prowlarr:9696",
-            "arr_apps": [],
-            "technology_bindings": {
-                "torrent_client": "qbittorrent",
-                "usenet_client": "sabnzbd",
-                "media_server": "jellyfin",
-            },
-            "download_clients": {
-                "qbittorrent": {"url": "http://qbittorrent:8080"},
-                "sabnzbd": {"url": "http://sabnzbd:8080"},
-            },
-            "adapter_hooks": {
-                "technology_aliases": {
-                    "qbit": "qbittorrent",
-                    "sab": "sabnzbd",
-                }
-            },
-        }
-        self.assertEqual(self.mod.basic_checks(cfg), [])
-
     def test_basic_checks_validate_media_server_operation_plan_shape(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -207,6 +184,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
 
     def test_basic_checks_reject_missing_binding_values(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -227,6 +205,7 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
 
     def test_basic_checks_reject_media_server_operation_step_without_operation(self):
         cfg = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {
@@ -255,6 +234,23 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             any(".operation: required non-empty string" in err for err in errors),
             errors,
         )
+
+    def test_basic_checks_reject_missing_config_version(self):
+        cfg = {
+            "prowlarr_url": "http://prowlarr:9696",
+            "arr_apps": [],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
+            "download_clients": {
+                "qbittorrent": {"url": "http://qbittorrent:8080"},
+                "sabnzbd": {"url": "http://sabnzbd:8080"},
+            },
+        }
+        errors = self.mod.basic_checks(cfg)
+        self.assertTrue(any("config_version" in err for err in errors), errors)
 
 
 if __name__ == "__main__":

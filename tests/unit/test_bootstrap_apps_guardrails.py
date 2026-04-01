@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import sys
 import tempfile
@@ -9,12 +8,14 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
+import bootstrap_services.jellyfin_livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
+import bootstrap_services.media_hygiene_ops.duplicate_prune as DUPLICATE_PRUNE
+import bootstrap_services.media_hygiene_ops.ipfilter as IPFILTER
+import bootstrap_services.media_hygiene_ops.queue_guardrails as QUEUE_GUARDRAILS
+import bootstrap_services.runtime_media_ops as MEDIA_OPS
+import bootstrap_services.runtime_servarr.hygiene_ops as HYGIENE_OPS
 
 
 class DiskGuardrailsTests(unittest.TestCase):
@@ -31,9 +32,9 @@ class DiskGuardrailsTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                MODULE, "_disk_usage_percent", return_value=(42.0, 1_000_000, 580_000)
+                HYGIENE_OPS, "_disk_usage_percent", return_value=(42.0, 1_000_000, 580_000)
             ),
-            mock.patch.object(MODULE, "qbit_login") as login_mock,
+            mock.patch.object(HYGIENE_OPS, "qbit_login") as login_mock,
         ):
             MODULE.enforce_disk_guardrails(cfg, "/srv-config", qbit_cfg, "admin", "secret")
             login_mock.assert_not_called()
@@ -87,14 +88,14 @@ class DiskGuardrailsTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                MODULE,
+                HYGIENE_OPS,
                 "_disk_usage_percent",
                 side_effect=[(75.0, 1_000_000, 250_000), (60.0, 1_000_000, 400_000)],
             ),
-            mock.patch.object(MODULE, "qbit_login", return_value=object()),
-            mock.patch.object(MODULE, "qbit_list_completed_torrents", return_value=torrents),
-            mock.patch.object(MODULE, "qbit_delete_torrents") as delete_mock,
-            mock.patch.object(MODULE.time, "time", return_value=now),
+            mock.patch.object(HYGIENE_OPS, "qbit_login", return_value=object()),
+            mock.patch.object(HYGIENE_OPS, "qbit_list_completed_torrents", return_value=torrents),
+            mock.patch.object(HYGIENE_OPS, "qbit_delete_torrents") as delete_mock,
+            mock.patch.object(DISK_GUARDRAILS_SERVICE.time, "time", return_value=now),
         ):
             MODULE.enforce_disk_guardrails(cfg, "/srv-config", qbit_cfg, "admin", "secret")
 
@@ -110,7 +111,7 @@ class MediaHygieneQbitDuplicatePruneTests(unittest.TestCase):
         hygiene_cfg = {"qbit_duplicate_prune": {"enabled": False}}
         qbit_cfg = {"url": "http://qbittorrent:8080"}
 
-        with mock.patch.object(MODULE, "qbit_login") as login_mock:
+        with mock.patch.object(HYGIENE_OPS, "qbit_login") as login_mock:
             summary = MODULE.run_qbit_duplicate_prune(
                 hygiene_cfg,
                 qbit_cfg,
@@ -170,10 +171,10 @@ class MediaHygieneQbitDuplicatePruneTests(unittest.TestCase):
         ]
 
         with (
-            mock.patch.object(MODULE, "qbit_login", return_value=object()),
-            mock.patch.object(MODULE, "qbit_list_completed_torrents", return_value=torrents),
-            mock.patch.object(MODULE, "qbit_delete_torrents") as delete_mock,
-            mock.patch.object(MODULE.time, "time", return_value=now),
+            mock.patch.object(HYGIENE_OPS, "qbit_login", return_value=object()),
+            mock.patch.object(HYGIENE_OPS, "qbit_list_completed_torrents", return_value=torrents),
+            mock.patch.object(HYGIENE_OPS, "qbit_delete_torrents") as delete_mock,
+            mock.patch.object(DUPLICATE_PRUNE.time, "time", return_value=now),
         ):
             summary = MODULE.run_qbit_duplicate_prune(
                 hygiene_cfg,
@@ -226,13 +227,13 @@ class MediaHygieneQbitIpFilterTests(unittest.TestCase):
 
             with (
                 mock.patch.object(
-                    MODULE.request,
+                    IPFILTER.request,
                     "urlopen",
                     return_value=self._Resp(ipfilter_bytes),
                 ),
-                mock.patch.object(MODULE, "qbit_login", return_value=object()),
-                mock.patch.object(MODULE, "qbit_set_preferences") as prefs_mock,
-                mock.patch.object(MODULE.time, "time", return_value=5_000_000),
+                mock.patch.object(HYGIENE_OPS, "qbit_login", return_value=object()),
+                mock.patch.object(HYGIENE_OPS, "qbit_set_preferences") as prefs_mock,
+                mock.patch.object(IPFILTER.time, "time", return_value=5_000_000),
             ):
                 summary = MODULE.run_qbit_ipfilter_refresh(
                     hygiene_cfg,
@@ -280,12 +281,12 @@ class MediaHygieneQbitIpFilterTests(unittest.TestCase):
 
             with (
                 mock.patch.object(
-                    MODULE.request,
+                    IPFILTER.request,
                     "urlopen",
                     side_effect=RuntimeError("source down"),
                 ),
-                mock.patch.object(MODULE, "qbit_login", return_value=object()),
-                mock.patch.object(MODULE, "qbit_set_preferences") as prefs_mock,
+                mock.patch.object(HYGIENE_OPS, "qbit_login", return_value=object()),
+                mock.patch.object(HYGIENE_OPS, "qbit_set_preferences") as prefs_mock,
             ):
                 summary = MODULE.run_qbit_ipfilter_refresh(
                     hygiene_cfg,
@@ -307,7 +308,7 @@ class MediaHygieneQbitIpFilterTests(unittest.TestCase):
 class QbitQueueGuardrailsTests(unittest.TestCase):
     def test_qbit_queue_guardrails_noop_when_disabled(self):
         qbit_cfg = {"url": "http://qbittorrent:8080", "queue_guardrails": {"enabled": False}}
-        with mock.patch.object(MODULE, "qbit_login") as login_mock:
+        with mock.patch.object(HYGIENE_OPS, "qbit_login") as login_mock:
             summary = MODULE.run_qbit_queue_guardrails(qbit_cfg, "admin", "secret")
         login_mock.assert_not_called()
         self.assertFalse(summary.get("enabled"))
@@ -380,10 +381,10 @@ class QbitQueueGuardrailsTests(unittest.TestCase):
         ]
 
         with (
-            mock.patch.object(MODULE, "qbit_login", return_value=object()),
-            mock.patch.object(MODULE, "qbit_list_torrents", return_value=torrents),
-            mock.patch.object(MODULE, "qbit_delete_torrents") as delete_mock,
-            mock.patch.object(MODULE.time, "time", return_value=now),
+            mock.patch.object(HYGIENE_OPS, "qbit_login", return_value=object()),
+            mock.patch.object(HYGIENE_OPS, "qbit_list_torrents", return_value=torrents),
+            mock.patch.object(HYGIENE_OPS, "qbit_delete_torrents") as delete_mock,
+            mock.patch.object(QUEUE_GUARDRAILS.time, "time", return_value=now),
         ):
             summary = MODULE.run_qbit_queue_guardrails(qbit_cfg, "admin", "secret")
 
@@ -441,11 +442,11 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             raise AssertionError(f"Unexpected Live TV API call: {path}")
 
         with (
-            mock.patch.object(MODULE, "wait_for_service"),
-            mock.patch.object(MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
-            mock.patch.object(MODULE, "load_jellyfin_livetv_state", return_value=existing_state),
-            mock.patch.object(MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(MEDIA_OPS, "wait_for_service"),
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(MEDIA_OPS, "load_jellyfin_livetv_state", return_value=existing_state),
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
             MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
@@ -547,15 +548,15 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
 
         with (
-            mock.patch.object(MODULE, "wait_for_service"),
-            mock.patch.object(MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(MEDIA_OPS, "wait_for_service"),
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
             mock.patch.object(
-                MODULE,
+                MEDIA_OPS,
                 "load_jellyfin_livetv_state",
                 side_effect=[existing_state, refreshed_state, refreshed_state],
             ),
-            mock.patch.object(MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
         ):
             MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
@@ -579,9 +580,9 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
         }
 
         with (
-            mock.patch.object(MODULE, "wait_for_service") as wait_mock,
-            mock.patch.object(MODULE, "resolve_jellyfin_api_key") as api_key_mock,
-            mock.patch.object(MODULE, "jellyfin_request") as request_mock,
+            mock.patch.object(MEDIA_OPS, "wait_for_service") as wait_mock,
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key") as api_key_mock,
+            mock.patch.object(MEDIA_OPS, "jellyfin_request") as request_mock,
         ):
             MODULE.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
 
@@ -715,16 +716,18 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(MODULE, "wait_for_service"),
-            mock.patch.object(MODULE, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
+            mock.patch.object(MEDIA_OPS, "wait_for_service"),
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"),
             mock.patch.object(
-                MODULE,
+                MEDIA_OPS,
                 "load_jellyfin_livetv_state",
                 side_effect=[existing_state, refreshed_state, refreshed_state],
             ),
-            mock.patch.object(MODULE, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_jellyfin_request),
-            mock.patch.object(MODULE.request, "urlopen", side_effect=fake_urlopen),
+            mock.patch.object(MEDIA_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+            mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
+            mock.patch.object(
+                JELLYFIN_LIVETV_SOURCE_SERVICE.request, "urlopen", side_effect=fake_urlopen
+            ),
         ):
             MODULE.ensure_jellyfin_livetv(cfg, tmp, 30)
 

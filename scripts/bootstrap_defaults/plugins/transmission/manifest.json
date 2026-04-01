@@ -1,0 +1,7 @@
+{
+  "technology": "transmission",
+  "aliases": [],
+  "adapter_classes": {
+    "download_client": "bootstrap_services.download_client_adapters.transmission:TransmissionDownloadClientAdapter"
+  }
+}

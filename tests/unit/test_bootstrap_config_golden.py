@@ -7,6 +7,10 @@ from scripts.bootstrap_services.config_models import (
     DownloadClientConfig,
     JellyfinLiveTvConfig,
 )
+from scripts.bootstrap_services.plugin_manifest_loader import (
+    build_adapter_hook_defaults,
+    load_plugin_manifests,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "bootstrap" / "media-stack.bootstrap.json"
@@ -58,19 +62,16 @@ class BootstrapConfigGoldenTests(unittest.TestCase):
 
     def test_adapter_hooks_matches_golden(self):
         self._assert_matches_golden("adapter_hooks", "adapter_hooks.json")
-        hooks = self.cfg.get("adapter_hooks") or {}
-        app_services = (hooks.get("app_service_classes") or {}).keys()
-        expected_services = {
-            "jellyseerr_service",
-            "prowlarr_service",
-            "sabnzbd_service",
-            "bazarr_service",
-            "qbittorrent_service",
-            "tautulli_service",
-        }
-        self.assertTrue(expected_services.issubset(set(app_services)))
-        servarr_adapters = set((hooks.get("adapter_classes") or {}).keys())
-        self.assertEqual({"sonarr", "radarr", "lidarr", "readarr"}, servarr_adapters)
+        manifests = load_plugin_manifests()
+        defaults = build_adapter_hook_defaults(manifests)
+        self.assertEqual(
+            {"sonarr", "radarr", "lidarr", "readarr"},
+            set(defaults.adapter_classes.keys()),
+        )
+        self.assertEqual(
+            {"qbittorrent", "sabnzbd", "transmission"},
+            set(defaults.download_client_adapter_classes.keys()),
+        )
 
 
 if __name__ == "__main__":

@@ -49,7 +49,9 @@ class RuntimeBindingResolver:
         aliases = self._aliases(adapter_hooks_cfg)
         configured_download_client_keys = download_clients.configured_keys()
 
-        def _resolve_required_download_client(binding_value: str, binding_name: str) -> tuple[str, dict[str, Any]]:
+        def _resolve_required_download_client(
+            binding_value: str, binding_name: str
+        ) -> tuple[str, dict[str, Any]]:
             canonical = self._canonical(binding_value, aliases)
             if not canonical:
                 raise ValueError(
@@ -92,4 +94,3 @@ class RuntimeBindingResolver:
             torrent_client_cfg=torrent_client_cfg,
             usenet_client_cfg=usenet_client_cfg,
         )
-

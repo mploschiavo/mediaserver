@@ -2,7 +2,7 @@
 """Media-server and UI-facing runtime operations (Jellyfin/Bazarr/Jellyseerr/Homepage)."""
 
 import bootstrap_services.runtime_core as _core
-import bootstrap_services.runtime_servarr_ops as _servarr_ops
+import bootstrap_services.runtime_servarr.arr_ops as _servarr_arr_ops
 from bootstrap_services.runtime_core import *  # noqa: F401,F403
 
 _api_keys_service = _core._api_keys_service
@@ -12,7 +12,8 @@ _lib_default_homepage_hosts = _core._lib_default_homepage_hosts
 _lib_jellyfin_apply_artwork_profile = _core._lib_jellyfin_apply_artwork_profile
 _lib_jellyfin_reorder_provider_names = _core._lib_jellyfin_reorder_provider_names
 _lib_render_homepage_services_yaml = _core._lib_render_homepage_services_yaml
-detect_arr_api_base = _servarr_ops.detect_arr_api_base
+detect_arr_api_base = _servarr_arr_ops.detect_arr_api_base
+
 
 def _jellyfin_service(cfg=None) -> JellyfinService:
     deps = JellyfinLiveTvDependencies(
@@ -35,6 +36,7 @@ def _jellyfin_service(cfg=None) -> JellyfinService:
     service_cls = resolve_app_service_class(cfg, "jellyfin_livetv_service", JellyfinService)
     return service_cls(deps=deps)
 
+
 def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
     service_cls = resolve_app_service_class(
         cfg, "jellyfin_livetv_source_service", JellyfinLiveTvSourceService
@@ -45,6 +47,7 @@ def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
         resolve_path=resolve_path,
         log=log,
     )
+
 
 def _jellyfin_livetv_state_service(cfg=None) -> JellyfinLiveTvStateService:
     service_cls = resolve_app_service_class(
@@ -57,6 +60,7 @@ def _jellyfin_livetv_state_service(cfg=None) -> JellyfinLiveTvStateService:
         jellyfin_request=jellyfin_request,
         log=log,
     )
+
 
 def _jellyfin_home_rails_service(cfg=None) -> JellyfinHomeRailsService:
     deps = JellyfinHomeRailsDependencies(
@@ -71,8 +75,11 @@ def _jellyfin_home_rails_service(cfg=None) -> JellyfinHomeRailsService:
         chunked=chunked,
         resolve_jellyfin_user_id_value=resolve_jellyfin_user_id_value,
     )
-    service_cls = resolve_app_service_class(cfg, "jellyfin_home_rails_service", JellyfinHomeRailsService)
+    service_cls = resolve_app_service_class(
+        cfg, "jellyfin_home_rails_service", JellyfinHomeRailsService
+    )
     return service_cls(deps=deps)
+
 
 def _jellyfin_libraries_service(cfg=None) -> JellyfinLibrariesService:
     deps = JellyfinLibrariesDependencies(
@@ -87,8 +94,11 @@ def _jellyfin_libraries_service(cfg=None) -> JellyfinLibrariesService:
         reorder_provider_names=_lib_jellyfin_reorder_provider_names,
         apply_artwork_profile=_lib_jellyfin_apply_artwork_profile,
     )
-    service_cls = resolve_app_service_class(cfg, "jellyfin_libraries_service", JellyfinLibrariesService)
+    service_cls = resolve_app_service_class(
+        cfg, "jellyfin_libraries_service", JellyfinLibrariesService
+    )
     return service_cls(deps=deps)
+
 
 def _jellyfin_plugins_service(cfg=None) -> JellyfinPluginsService:
     deps = JellyfinPluginsDependencies(
@@ -103,6 +113,7 @@ def _jellyfin_plugins_service(cfg=None) -> JellyfinPluginsService:
     service_cls = resolve_app_service_class(cfg, "jellyfin_plugins_service", JellyfinPluginsService)
     return service_cls(deps=deps)
 
+
 def _jellyfin_playback_service(cfg=None) -> JellyfinPlaybackService:
     deps = JellyfinPlaybackDependencies(
         log=log,
@@ -116,8 +127,11 @@ def _jellyfin_playback_service(cfg=None) -> JellyfinPlaybackService:
         resolve_user_id=resolve_jellyfin_user_id_value,
         normalize_plugin_name=normalize_plugin_name,
     )
-    service_cls = resolve_app_service_class(cfg, "jellyfin_playback_service", JellyfinPlaybackService)
+    service_cls = resolve_app_service_class(
+        cfg, "jellyfin_playback_service", JellyfinPlaybackService
+    )
     return service_cls(deps=deps)
+
 
 def _jellyfin_prewarm_service(cfg=None) -> JellyfinPrewarmService:
     deps = JellyfinPrewarmDependencies(
@@ -133,6 +147,7 @@ def _jellyfin_prewarm_service(cfg=None) -> JellyfinPrewarmService:
     service_cls = resolve_app_service_class(cfg, "jellyfin_prewarm_service", JellyfinPrewarmService)
     return service_cls(deps=deps)
 
+
 def _bazarr_service(cfg=None) -> BazarrService:
     service_cls = resolve_app_service_class(cfg, "bazarr_service", BazarrService)
     return service_cls(
@@ -146,6 +161,7 @@ def _bazarr_service(cfg=None) -> BazarrService:
         resolve_path=resolve_path,
         apply_scalar_updates=_lib_bazarr_apply_scalar_updates,
     )
+
 
 def _jellyseerr_service(cfg=None) -> JellyseerrService:
     service_cls = resolve_app_service_class(cfg, "jellyseerr_service", JellyseerrService)
@@ -172,6 +188,7 @@ def _jellyseerr_service(cfg=None) -> JellyseerrService:
         http_request=http_request,
     )
 
+
 def _config_artifacts_service(cfg=None) -> ConfigArtifactsService:
     service_cls = resolve_app_service_class(cfg, "config_artifacts_service", ConfigArtifactsService)
     return service_cls(
@@ -188,6 +205,7 @@ def _config_artifacts_service(cfg=None) -> ConfigArtifactsService:
         render_homepage_services_yaml=_lib_render_homepage_services_yaml,
     )
 
+
 def _maintainerr_service(cfg=None) -> MaintainerrService:
     service_cls = resolve_app_service_class(cfg, "maintainerr_service", MaintainerrService)
     return service_cls(
@@ -202,6 +220,7 @@ def _maintainerr_service(cfg=None) -> MaintainerrService:
         resolve_path=resolve_path,
     )
 
+
 def jellyfin_request(base_url, path, api_key, method="GET", payload=None, timeout=30):
     if not api_key:
         raise RuntimeError("Jellyfin API key is required for authenticated requests.")
@@ -215,6 +234,7 @@ def jellyfin_request(base_url, path, api_key, method="GET", payload=None, timeou
         timeout=timeout,
     )
 
+
 def prepare_jellyfin_m3u_tuner_url(tuner, guides, config_root, guide_channel_ids_cache=None):
     return _jellyfin_livetv_source_service().prepare_m3u_tuner_url(
         tuner=tuner,
@@ -223,6 +243,7 @@ def prepare_jellyfin_m3u_tuner_url(tuner, guides, config_root, guide_channel_ids
         guide_channel_ids_cache=guide_channel_ids_cache,
     )
 
+
 def prepare_jellyfin_xmltv_guide_path(guide, tuners, config_root):
     return _jellyfin_livetv_source_service().prepare_xmltv_guide_path(
         guide=guide,
@@ -230,17 +251,23 @@ def prepare_jellyfin_xmltv_guide_path(guide, tuners, config_root):
         config_root=config_root,
     )
 
+
 def read_jellyfin_api_key_from_db(config_root, jellyfin_cfg):
     return _api_keys_service().read_jellyfin_api_key_from_db(config_root, jellyfin_cfg)
+
 
 def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
     return _api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
 
+
 def load_jellyfin_livetv_state(config_root, live_cfg):
-    return _jellyfin_livetv_state_service(live_cfg if isinstance(live_cfg, dict) else None).load_state(
+    return _jellyfin_livetv_state_service(
+        live_cfg if isinstance(live_cfg, dict) else None
+    ).load_state(
         config_root=config_root,
         live_cfg=live_cfg,
     )
+
 
 def resolve_jellyfin_tuner_type_id(jellyfin_url, jellyfin_api_key, requested_type):
     return _jellyfin_livetv_state_service().resolve_tuner_type_id(
@@ -249,11 +276,13 @@ def resolve_jellyfin_tuner_type_id(jellyfin_url, jellyfin_api_key, requested_typ
         requested_type=requested_type,
     )
 
+
 def normalize_enabled_tuner_ids(enabled_tuners, state):
     return _jellyfin_livetv_state_service().normalize_enabled_tuner_ids(
         enabled_tuners=enabled_tuners,
         state=state,
     )
+
 
 def delete_jellyfin_livetv_entity(jellyfin_url, jellyfin_api_key, entity, entity_id):
     return _jellyfin_livetv_state_service().delete_entity(
@@ -263,12 +292,14 @@ def delete_jellyfin_livetv_entity(jellyfin_url, jellyfin_api_key, entity, entity
         entity_id=entity_id,
     )
 
+
 def trigger_jellyfin_scheduled_task(jellyfin_url, jellyfin_api_key, preferred_names):
     return _jellyfin_livetv_state_service().trigger_scheduled_task(
         jellyfin_url=jellyfin_url,
         jellyfin_api_key=jellyfin_api_key,
         preferred_names=preferred_names,
     )
+
 
 def trigger_jellyfin_livetv_refresh(jellyfin_url, jellyfin_api_key, endpoint_path, label):
     return _jellyfin_livetv_state_service().trigger_refresh(
@@ -278,14 +309,18 @@ def trigger_jellyfin_livetv_refresh(jellyfin_url, jellyfin_api_key, endpoint_pat
         label=label,
     )
 
+
 def ensure_jellyfin_livetv(cfg, config_root, wait_timeout):
     _jellyfin_service(cfg).ensure_livetv(cfg, config_root, wait_timeout)
+
 
 def ensure_jellyfin_libraries(cfg, config_root, wait_timeout):
     _jellyfin_libraries_service(cfg).ensure(cfg, config_root, wait_timeout)
 
+
 def ensure_jellyfin_prewarm(cfg, config_root, wait_timeout):
     _jellyfin_prewarm_service(cfg).ensure(cfg, config_root, wait_timeout)
+
 
 def jellyfin_build_query_path(path, params):
     pairs = []
@@ -307,6 +342,7 @@ def jellyfin_build_query_path(path, params):
         return path
     return f"{path}?{parse.urlencode(pairs, doseq=True)}"
 
+
 def jellyfin_items_from_payload(payload):
     if isinstance(payload, dict):
         items = payload.get("Items")
@@ -314,6 +350,7 @@ def jellyfin_items_from_payload(payload):
     if isinstance(payload, list):
         return payload
     return []
+
 
 def normalize_item_ids(items):
     out = []
@@ -331,6 +368,7 @@ def normalize_item_ids(items):
         out.append(item_id)
     return out
 
+
 def chunked(values, size):
     batch = []
     for value in values:
@@ -340,6 +378,7 @@ def chunked(values, size):
             batch = []
     if batch:
         yield batch
+
 
 def resolve_jellyfin_user_id_value(section_cfg, jellyfin_url, jellyfin_api_key):
     user_id = (
@@ -362,26 +401,32 @@ def resolve_jellyfin_user_id_value(section_cfg, jellyfin_url, jellyfin_api_key):
 
     return ""
 
+
 def ensure_jellyfin_playback_defaults(cfg, config_root, wait_timeout):
     _jellyfin_playback_service(cfg).ensure(cfg, config_root, wait_timeout)
 
+
 def default_jellyfin_home_rails():
     return _jellyfin_home_rails_service().default_rails()
+
 
 def find_jellyfin_collection_by_name(jellyfin_url, jellyfin_api_key, user_id, collection_name):
     return _jellyfin_home_rails_service().find_collection_by_name(
         jellyfin_url, jellyfin_api_key, user_id, collection_name
     )
 
+
 def collection_item_ids(jellyfin_url, jellyfin_api_key, user_id, collection_id):
     return _jellyfin_home_rails_service().collection_item_ids(
         jellyfin_url, jellyfin_api_key, user_id, collection_id
     )
 
+
 def update_collection_items(jellyfin_url, jellyfin_api_key, collection_id, to_add, to_remove):
     return _jellyfin_home_rails_service().update_collection_items(
         jellyfin_url, jellyfin_api_key, collection_id, to_add, to_remove
     )
+
 
 def ensure_jellyfin_collection_membership(
     jellyfin_url,
@@ -400,15 +445,18 @@ def ensure_jellyfin_collection_membership(
         clear_when_empty=clear_when_empty,
     )
 
+
 def delete_jellyfin_collection_by_name(jellyfin_url, jellyfin_api_key, user_id, collection_name):
     return _jellyfin_home_rails_service().delete_collection_by_name(
         jellyfin_url, jellyfin_api_key, user_id, collection_name
     )
 
+
 def run_jellyfin_rail_query(jellyfin_url, jellyfin_api_key, user_id, rail_cfg, max_items):
     return _jellyfin_home_rails_service().run_rail_query(
         jellyfin_url, jellyfin_api_key, user_id, rail_cfg, max_items
     )
+
 
 def ensure_jellyfin_home_rails(cfg, config_root, wait_timeout):
     _jellyfin_home_rails_service(cfg).ensure_home_rails(
@@ -420,20 +468,26 @@ def ensure_jellyfin_home_rails(cfg, config_root, wait_timeout):
         resolve_jellyfin_api_key=resolve_jellyfin_api_key,
     )
 
+
 def normalize_plugin_name(value):
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
 
 def ensure_jellyfin_plugins(cfg, config_root, wait_timeout):
     _jellyfin_plugins_service(cfg).ensure(cfg, config_root, wait_timeout)
 
+
 def yaml_scalar(value):
     return _config_artifacts_service().yaml_scalar(value)
+
 
 def render_yaml(value, indent=0):
     return _config_artifacts_service().render_yaml(value, indent=indent)
 
+
 def ensure_homepage_services_config(cfg, config_root):
     return _config_artifacts_service(cfg).ensure_homepage_services_config(cfg, config_root)
+
 
 def ensure_bazarr_arr_integration(cfg, config_root, arr_apps, app_keys, wait_timeout):
     return _bazarr_service(cfg).ensure_arr_integration(
@@ -444,13 +498,16 @@ def ensure_bazarr_arr_integration(cfg, config_root, arr_apps, app_keys, wait_tim
         wait_timeout=wait_timeout,
     )
 
+
 def detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username):
     return _config_artifacts_service().detect_jellyfin_user_id(
         jellyfin_url, jellyfin_api_key, preferred_username
     )
 
+
 def default_auto_collections_plugins():
     return _config_artifacts_service().default_auto_collections_plugins()
+
 
 def ensure_jellyfin_auto_collections_config(cfg, config_root, wait_timeout):
     _config_artifacts_service(cfg).ensure_jellyfin_auto_collections_config(
@@ -460,11 +517,14 @@ def ensure_jellyfin_auto_collections_config(cfg, config_root, wait_timeout):
         resolve_jellyfin_user_id_value_fn=resolve_jellyfin_user_id_value,
     )
 
+
 def deep_merge_objects(base_obj, override_obj):
     return _config_artifacts_service().deep_merge_objects(base_obj, override_obj)
 
+
 def ensure_maintainerr_policy(cfg, config_root):
     _config_artifacts_service(cfg).ensure_maintainerr_policy(cfg, config_root)
+
 
 def ensure_maintainerr_integrations(cfg, config_root, arr_apps, wait_timeout):
     _maintainerr_service(cfg).ensure_integrations(
@@ -473,6 +533,7 @@ def ensure_maintainerr_integrations(cfg, config_root, arr_apps, wait_timeout):
         arr_apps=arr_apps,
         wait_timeout=wait_timeout,
     )
+
 
 def get_arr_root_folder_path(app_name, app_url, api_base, api_key, preferred_root):
     status, root_folders, body = http_request(app_url, f"{api_base}/rootfolder", api_key=api_key)
@@ -486,6 +547,7 @@ def get_arr_root_folder_path(app_name, app_url, api_base, api_key, preferred_roo
         return preferred
     raise RuntimeError(f"{app_name}: no root folder could be resolved.")
 
+
 def get_sonarr_language_profile_id(sonarr_url, sonarr_api_base, sonarr_api_key):
     status, language_profiles, _ = http_request(
         sonarr_url, f"{sonarr_api_base}/languageprofile", api_key=sonarr_api_key
@@ -493,6 +555,7 @@ def get_sonarr_language_profile_id(sonarr_url, sonarr_api_base, sonarr_api_key):
     if status == 200 and isinstance(language_profiles, list) and language_profiles:
         return to_int(language_profiles[0].get("id"), 1)
     return 1
+
 
 def configure_jellyseerr(cfg, arr_apps, app_keys, config_root, wait_timeout):
     return _jellyseerr_service(cfg).configure(

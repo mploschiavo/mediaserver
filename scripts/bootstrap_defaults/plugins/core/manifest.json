@@ -1,0 +1,39 @@
+{
+  "technology": "bootstrap",
+  "aliases": [],
+  "adapter_classes": {},
+  "app_service_classes": {
+    "auth_service": "bootstrap_services.auth_service:AuthService",
+    "arr_service": "bootstrap_services.arr_service:ArrService",
+    "arr_indexer_sync_service": "bootstrap_services.arr_indexer_sync_service:ArrIndexerSyncService",
+    "arr_queue_cleanup_service": "bootstrap_services.arr_queue_cleanup_service:ArrQueueCleanupService",
+    "config_artifacts_service": "bootstrap_services.config_artifacts_service:ConfigArtifactsService",
+    "discovery_lists_service": "bootstrap_services.discovery_lists_service:DiscoveryListsService",
+    "download_client_pipeline_service": "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService",
+    "disk_guardrails_service": "bootstrap_services.disk_guardrails_service:DiskGuardrailsService",
+    "health_service": "bootstrap_services.health_service:HealthService",
+    "media_hygiene_service": "bootstrap_services.media_hygiene_service:MediaHygieneService",
+    "media_hygiene_ops_service": "bootstrap_services.media_hygiene_ops_service:MediaHygieneOpsService",
+    "media_server_adapter_factory": "bootstrap_services.media_server_adapters.factory:MediaServerAdapterFactory",
+    "servarr_policy_service": "bootstrap_services.servarr_policy_service:ServarrPolicyService",
+    "servarr_pipeline_service": "bootstrap_services.servarr_pipeline_service:ServarrPipelineService",
+    "technology_lifecycle_manager": "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
+  },
+  "service_technology_map": {
+    "auth_service": "servarr",
+    "arr_service": "servarr",
+    "arr_indexer_sync_service": "prowlarr",
+    "arr_queue_cleanup_service": "servarr",
+    "config_artifacts_service": "bootstrap",
+    "discovery_lists_service": "servarr",
+    "download_client_pipeline_service": "bootstrap",
+    "disk_guardrails_service": "storage",
+    "health_service": "servarr",
+    "media_hygiene_service": "storage",
+    "media_hygiene_ops_service": "storage",
+    "media_server_adapter_factory": "bootstrap",
+    "servarr_policy_service": "servarr",
+    "servarr_pipeline_service": "servarr",
+    "technology_lifecycle_manager": "bootstrap"
+  }
+}

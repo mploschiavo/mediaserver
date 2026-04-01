@@ -1,4 +1,3 @@
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -7,12 +6,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_servarr.factory as SERVARR_FACTORY
 
 
 class DownloadClientTests(unittest.TestCase):
@@ -68,7 +63,7 @@ class DownloadClientTests(unittest.TestCase):
         }
         client_auth = {"username": "admin", "password": "secret"}
 
-        with mock.patch.object(MODULE, "http_request", side_effect=fake_http_request):
+        with mock.patch.object(SERVARR_FACTORY, "http_request", side_effect=fake_http_request):
             MODULE.ensure_arr_download_client(
                 app_cfg=app_cfg,
                 app_url="http://readarr:8787",
@@ -150,7 +145,7 @@ class DownloadClientTests(unittest.TestCase):
         }
         client_auth = {"username": "admin", "password": "secret"}
 
-        with mock.patch.object(MODULE, "http_request", side_effect=fake_http_request):
+        with mock.patch.object(SERVARR_FACTORY, "http_request", side_effect=fake_http_request):
             MODULE.ensure_arr_download_client(
                 app_cfg=app_cfg,
                 app_url="http://readarr:8787",

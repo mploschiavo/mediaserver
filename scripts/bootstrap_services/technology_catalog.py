@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .plugin_manifest_loader import PluginManifest, load_plugin_manifests
+
 
 @dataclass(frozen=True)
 class TechnologyDefinition:
@@ -17,7 +19,7 @@ class TechnologyDefinition:
             raw = str(candidate).strip()
             if not raw:
                 continue
-            for value in (raw, raw.lower()):
+            for value in (raw, raw.lower(), raw.capitalize()):
                 if value not in names:
                     names.append(value)
         return tuple(names)
@@ -70,11 +72,34 @@ class ServarrTechnologyCatalog:
 
 
 def default_servarr_catalog() -> ServarrTechnologyCatalog:
-    return ServarrTechnologyCatalog(
-        definitions=(
-            TechnologyDefinition(key="sonarr", aliases=("Sonarr",)),
-            TechnologyDefinition(key="radarr", aliases=("Radarr",)),
-            TechnologyDefinition(key="lidarr", aliases=("Lidarr",)),
-            TechnologyDefinition(key="readarr", aliases=("Readarr",)),
+    manifests = load_plugin_manifests()
+    return build_servarr_catalog_from_manifests(manifests)
+
+
+def build_servarr_catalog_from_manifests(
+    manifests: list[PluginManifest],
+) -> ServarrTechnologyCatalog:
+    definitions: list[TechnologyDefinition] = []
+    for manifest in manifests:
+        role_map = manifest.adapter_classes
+        if not isinstance(role_map, dict):
+            continue
+        if str(role_map.get("servarr") or "").strip() == "":
+            continue
+        key = str(manifest.technology or "").strip().lower()
+        if not key:
+            continue
+        definitions.append(
+            TechnologyDefinition(
+                key=key,
+                aliases=tuple(alias for alias in manifest.aliases if alias and alias != key),
+            )
         )
-    )
+
+    if not definitions:
+        raise ValueError(
+            "No Servarr technology manifests discovered. "
+            "Expected at least one plugin manifest with adapter_classes.servarr."
+        )
+
+    return ServarrTechnologyCatalog(definitions=tuple(definitions))

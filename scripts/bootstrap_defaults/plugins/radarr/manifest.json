@@ -1,0 +1,8 @@
+{
+  "technology": "radarr",
+  "aliases": ["rarr"],
+  "adapter_classes": {
+    "servarr": "bootstrap_services.servarr_technologies.radarr:RadarrAdapter"
+  },
+  "capability_defaults": {}
+}

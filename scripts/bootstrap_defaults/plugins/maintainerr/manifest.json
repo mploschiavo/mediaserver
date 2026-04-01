@@ -1,0 +1,10 @@
+{
+  "technology": "maintainerr",
+  "aliases": [],
+  "app_service_classes": {
+    "maintainerr_service": "bootstrap_services.maintainerr_service:MaintainerrService"
+  },
+  "service_technology_map": {
+    "maintainerr_service": "maintainerr"
+  }
+}
