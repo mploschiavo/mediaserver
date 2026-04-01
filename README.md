@@ -119,6 +119,7 @@ Binding notes:
 
 Wrapper phase orchestration is declarative:
 - Phase order is read from `adapter_hooks.bootstrap_all.phase_plan` and `adapter_hooks.bootstrap_job.phase_plan`.
+- `bootstrap_all` uses a single operation (`operation: "run"`) with `params.action` (`component_script`, `script`, `enable_components`).
 - Phase checks/conditions are read from each phase entry `when` expression.
 - CLI skip flags are derived from phase-plan `skip_flag` keys (with legacy aliases retained).
 

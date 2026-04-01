@@ -163,8 +163,8 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             "adapter_hooks": {
                 "bootstrap_all": {
                     "phase_plan": [
-                        {"operation": "run_script"},
-                        {"operation": "run_component_script"},
+                        {"operation": "run", "params": {"action": "script"}},
+                        {"operation": "run", "params": {"action": "component_script"}},
                     ]
                 },
                 "bootstrap_job": {
@@ -180,7 +180,11 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         job_plan = resolve_bootstrap_job_phase_plan(cfg)
         self.assertEqual(
             [step.operation for step in all_plan],
-            ["run_script", "run_component_script"],
+            ["run", "run"],
+        )
+        self.assertEqual(
+            [str((step.params or {}).get("action") or "") for step in all_plan],
+            ["script", "component_script"],
         )
         self.assertEqual(
             [step.operation for step in job_plan],

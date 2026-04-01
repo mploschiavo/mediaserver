@@ -70,7 +70,7 @@
   "bootstrap_all": {
     "phase_plan": [
       {
-        "operation": "run_component_script",
+        "operation": "run",
         "phase_name": "Ensure torrent client bootstrap access ({component|unbound})",
         "skip_flag": "skip_torrent_client_ensure",
         "when": {
@@ -98,6 +98,7 @@
           ]
         },
         "params": {
+          "action": "component_script",
           "component": "torrent_client",
           "script_phase": "torrent_client_credentials",
           "env": {
@@ -107,7 +108,7 @@
         }
       },
       {
-        "operation": "run_component_script",
+        "operation": "run",
         "phase_name": "Ensure media server bootstrap access ({component|unbound})",
         "skip_flag": "skip_media_server_bootstrap",
         "when": {
@@ -115,6 +116,7 @@
           "truthy": true
         },
         "params": {
+          "action": "component_script",
           "component": "media_server",
           "script_phase": "media_server_bootstrap",
           "env": {
@@ -124,7 +126,7 @@
         }
       },
       {
-        "operation": "run_component_script",
+        "operation": "run",
         "phase_name": "Ensure usenet client API access ({component|unbound})",
         "skip_flag": "skip_usenet_client_ensure",
         "when": {
@@ -140,6 +142,7 @@
           ]
         },
         "params": {
+          "action": "component_script",
           "component": "usenet_client",
           "script_phase": "usenet_client_api_access",
           "env": {
@@ -148,9 +151,10 @@
         }
       },
       {
-        "operation": "run_script",
+        "operation": "run",
         "phase_name": "Run bootstrap job",
         "params": {
+          "action": "script",
           "script": "run-bootstrap-job.sh",
           "args": [
             "$config_file"
@@ -164,13 +168,14 @@
         }
       },
       {
-        "operation": "run_component_script",
+        "operation": "run",
         "phase_name": "Seed request manager local admin ({component|unbound})",
         "when": {
           "var": "components.request_manager.scripts.request_manager_seed_local_admin",
           "truthy": true
         },
         "params": {
+          "action": "component_script",
           "component": "request_manager",
           "script_phase": "request_manager_seed_local_admin",
           "env": {
@@ -179,7 +184,7 @@
         }
       },
       {
-        "operation": "run_component_script",
+        "operation": "run",
         "phase_name": "Run indexer auto-discovery ({component|unbound})",
         "when": {
           "all_of": [
@@ -194,6 +199,7 @@
           ]
         },
         "params": {
+          "action": "component_script",
           "component": "indexer_manager",
           "technology": "prowlarr",
           "script_phase": "indexer_auto_discovery",
@@ -204,10 +210,13 @@
         }
       },
       {
-        "operation": "enable_components",
+        "operation": "run",
         "when": {
           "var": "flags.enable_components",
           "equals": true
+        },
+        "params": {
+          "action": "enable_components"
         }
       }
     ],
