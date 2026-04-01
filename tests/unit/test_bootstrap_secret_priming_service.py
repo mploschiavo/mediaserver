@@ -12,6 +12,7 @@ from cli.bootstrap_secret_priming_service import (  # noqa: E402
     BootstrapSecretPrimingConfig,
     BootstrapSecretPrimingService,
 )
+from core.exceptions import ConfigError
 
 
 class _Result:
@@ -173,6 +174,38 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
             if call[:5] == ["-n", "media-stack", "patch", "secret", "media-stack-secrets"]
         ]
         self.assertEqual(patch_calls, [])
+
+    def test_invalid_bootstrap_config_fails_fast(self):
+        kube = _Kube()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = Path(tmpdir) / "bootstrap.json"
+            cfg_path.write_text("{not-json", encoding="utf-8")
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=cfg_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=mock.Mock(),
+            )
+            with self.assertRaises(ConfigError):
+                svc.prime_servarr_api_keys()
+
+    def test_missing_manifest_derived_targets_fails_fast(self):
+        kube = _Kube()
+        svc = BootstrapSecretPrimingService(
+            cfg=BootstrapSecretPrimingConfig(namespace="media-stack"),
+            kube=kube,
+            info=mock.Mock(),
+            warn=mock.Mock(),
+        )
+        with mock.patch(
+            "cli.bootstrap_secret_priming_service.load_plugin_manifests",
+            return_value=[],
+        ):
+            with self.assertRaises(ConfigError):
+                svc.prime_servarr_api_keys()
 
 
 if __name__ == "__main__":

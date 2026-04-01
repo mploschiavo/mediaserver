@@ -28,8 +28,6 @@ class SyncUnpackerrKeysConfig:
 
 
 class SyncUnpackerrKeysService:
-    FALLBACK_API_KEY_APPS = ("sonarr", "radarr", "lidarr", "readarr", "prowlarr")
-
     def __init__(
         self,
         cfg: SyncUnpackerrKeysConfig,
@@ -60,14 +58,8 @@ class SyncUnpackerrKeysService:
         if path and path.is_file():
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception as exc:  # pragma: no cover - defensive fallback
-                log_event(
-                    self.logger,
-                    logging.WARNING,
-                    "sync.unpackerr.bootstrap_config_parse_failed",
-                    config_path=str(path),
-                    error=str(exc),
-                )
+            except Exception as exc:
+                raise ConfigError(f"Failed parsing bootstrap config {path}: {exc}") from exc
             else:
                 apps: list[str] = []
                 arr_apps = payload.get("arr_apps") if isinstance(payload, dict) else None
@@ -98,15 +90,14 @@ class SyncUnpackerrKeysService:
                         apps.append(technology)
             if apps:
                 return apps
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            log_event(
-                self.logger,
-                logging.WARNING,
-                "sync.unpackerr.manifest_discovery_failed",
-                error=str(exc),
-            )
+        except Exception as exc:
+            raise ConfigError(
+                f"Failed resolving Arr/Prowlarr app targets from plugin manifests: {exc}"
+            ) from exc
 
-        return list(self.FALLBACK_API_KEY_APPS)
+        raise ConfigError(
+            "No Arr/Prowlarr app targets discovered from bootstrap config or plugin manifests."
+        )
 
     def run(self) -> int:
         target_apps = self._discover_target_apps()

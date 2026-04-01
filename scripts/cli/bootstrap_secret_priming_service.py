@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from bootstrap_services.plugin_manifest_loader import load_plugin_manifests
-from core.exceptions import KubernetesError
+from core.exceptions import ConfigError, KubernetesError
 from core.kube import KubectlClient
 
 LogFn = Callable[[str], None]
@@ -29,8 +29,6 @@ class BootstrapSecretPrimingService:
     kube: KubectlClient
     info: LogFn
     warn: LogFn
-
-    FALLBACK_API_KEY_APPS = ("sonarr", "radarr", "lidarr", "readarr", "prowlarr")
 
     @staticmethod
     def _clean(value: str | None) -> str:
@@ -136,11 +134,8 @@ class BootstrapSecretPrimingService:
         if path and path.is_file():
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception as exc:  # pragma: no cover - defensive fallback
-                self.warn(
-                    f"Could not parse bootstrap config at {path}; "
-                    f"falling back to default Arr key priming list ({exc})."
-                )
+            except Exception as exc:
+                raise ConfigError(f"Could not parse bootstrap config at {path}: {exc}") from exc
             else:
                 apps: list[str] = []
                 arr_apps = payload.get("arr_apps") if isinstance(payload, dict) else None
@@ -171,13 +166,15 @@ class BootstrapSecretPrimingService:
                         apps.append(technology)
             if apps:
                 return apps
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            self.warn(
-                "Could not resolve fallback API-key app list from plugin manifests; "
-                f"using static fallback ({exc})."
-            )
+        except Exception as exc:
+            raise ConfigError(
+                f"Could not resolve API-key app list from plugin manifests: {exc}"
+            ) from exc
 
-        return list(self.FALLBACK_API_KEY_APPS)
+        raise ConfigError(
+            "Could not resolve API-key app list: no Servarr/Prowlarr technologies "
+            "found in bootstrap config or plugin manifests."
+        )
 
     def prime_servarr_api_keys(self) -> None:
         if not self._secret_exists():

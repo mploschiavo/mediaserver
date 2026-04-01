@@ -185,9 +185,8 @@ class BootstrapAllRunner:
         *,
         component_key: str = "",
         component_technology: str = "",
-        fallback: str = "",
     ) -> str:
-        raw = str(template or "").strip() or str(fallback or "").strip()
+        raw = str(template or "").strip()
         if not raw:
             return ""
         out = raw.replace("{component_key}", component_key)
@@ -235,17 +234,12 @@ class BootstrapAllRunner:
         )
         manifest_path = (self.cfg.root_dir / component_manifest).resolve()
         if not manifest_path.is_file():
-            warn(
-                f"Component manifest not found for '{component}' at {manifest_path}; "
-                "skipping component enable."
-            )
-            return
+            raise ConfigError(f"Component manifest not found for '{component}': {manifest_path}")
 
         deployment_name = resolve_component_deployment_name(
             plan.config,
             component=component,
             aliases=plan.aliases,
-            default=component,
         )
         self._apply_manifest_file(manifest_path, component=component)
         self.kube.run(
@@ -372,11 +366,9 @@ class BootstrapAllRunner:
             },
         }
 
-        def _phase_enabled(step: BootstrapPhasePlanStep, default_enabled: bool) -> bool:
-            enabled = (
-                bool(step.enabled)
-                and bool(default_enabled)
-                and evaluate_phase_condition(step.when, context=phase_context)
+        def _phase_enabled(step: BootstrapPhasePlanStep) -> bool:
+            enabled = bool(step.enabled) and evaluate_phase_condition(
+                step.when, context=phase_context
             )
             if enabled and step.skip_flag and self._skip_phase(step.skip_flag):
                 enabled = False
@@ -409,15 +401,18 @@ class BootstrapAllRunner:
             component_technology: str = "",
         ) -> list[str]:
             args: list[str] = []
-            if isinstance(raw_args, list):
-                for value in raw_args:
-                    args.append(
-                        self._render_template_value(
-                            value,
-                            component_key=component_key,
-                            component_technology=component_technology,
-                        )
+            if raw_args is None:
+                return args
+            if not isinstance(raw_args, list):
+                raise ConfigError("Phase params.args must be an array when provided.")
+            for value in raw_args:
+                args.append(
+                    self._render_template_value(
+                        value,
+                        component_key=component_key,
+                        component_technology=component_technology,
                     )
+                )
             return args
 
         def _resolve_rendered_env(
@@ -427,38 +422,51 @@ class BootstrapAllRunner:
             component_technology: str = "",
         ) -> dict[str, str]:
             env: dict[str, str] = {}
-            if isinstance(raw_env, dict):
-                for key, value in raw_env.items():
-                    env_key = str(key or "").strip()
-                    if not env_key:
-                        continue
-                    env[env_key] = self._render_template_value(
-                        value,
-                        component_key=component_key,
-                        component_technology=component_technology,
-                    )
+            if raw_env is None:
+                return env
+            if not isinstance(raw_env, dict):
+                raise ConfigError("Phase params.env must be an object/map when provided.")
+            for key, value in raw_env.items():
+                env_key = str(key or "").strip()
+                if not env_key:
+                    continue
+                env[env_key] = self._render_template_value(
+                    value,
+                    component_key=component_key,
+                    component_technology=component_technology,
+                )
             return env
 
         def _run_component_script_step(step: BootstrapPhasePlanStep) -> None:
             params = dict(step.params or {})
             component_key, component_technology = _resolve_component_technology(step)
-            if not component_key:
+            enabled = _phase_enabled(step)
+            if enabled and not component_key:
                 raise ConfigError(
                     "bootstrap_all run action 'component_script' requires "
                     "params.component, params.binding, or params.technology."
                 )
-            component = component_context.get(component_key) or {}
-            scripts = component.get("scripts")
+            if enabled and not component_technology:
+                raise ConfigError(
+                    "bootstrap_all run action 'component_script' could not resolve technology "
+                    f"for component '{component_key}'. Check adapter_hooks.bootstrap_all.components "
+                    "and technology_bindings."
+                )
             script_phase = str(params.get("script_phase") or "").strip()
             if not script_phase:
                 raise ConfigError(
                     "bootstrap_all run action 'component_script' requires params.script_phase."
                 )
-            script_name = ""
-            if isinstance(scripts, dict):
-                script_name = str(scripts.get(script_phase) or "").strip()
-            if not script_name:
-                script_name = self._phase_script(script_phase, component_technology)
+            script_name = self._phase_script(script_phase, component_technology)
+            if enabled and not script_name:
+                raise ConfigError(
+                    "bootstrap_all run action 'component_script' could not resolve script "
+                    f"for component '{component_key or component_technology}' "
+                    f"(technology='{component_technology or 'unbound'}', "
+                    f"script_phase='{script_phase}'). "
+                    "Declare adapter_hooks.runner_phase_scripts.<script_phase> mapping "
+                    "for the bound technology."
+                )
 
             args = _resolve_rendered_args(
                 raw_args=params.get("args"),
@@ -471,13 +479,15 @@ class BootstrapAllRunner:
                 component_technology=component_technology,
             )
 
-            fallback_name = f"Run component script ({component_key}:{script_phase})"
             phase_name = self._format_phase_name(
                 _phase_name("", step),
                 component_key=component_key,
                 component_technology=component_technology,
-                fallback=fallback_name,
             )
+            if not phase_name:
+                raise ConfigError(
+                    "bootstrap_all run action 'component_script' requires non-empty phase_name."
+                )
             self._run_phase(
                 phase_name,
                 lambda script=script_name, script_args=tuple(args), script_env=dict(
@@ -487,7 +497,7 @@ class BootstrapAllRunner:
                     *script_args,
                     env=script_env,
                 ),
-                enabled=_phase_enabled(step, bool(script_name)),
+                enabled=enabled,
             )
 
         def _run_script_step(step: BootstrapPhasePlanStep) -> None:
@@ -495,12 +505,16 @@ class BootstrapAllRunner:
             script_name = self._render_template_value(params.get("script", ""))
             if not script_name:
                 raise ConfigError("bootstrap_all run action 'script' requires params.script.")
+            enabled = _phase_enabled(step)
             args = _resolve_rendered_args(raw_args=params.get("args"))
             env = _resolve_rendered_env(raw_env=params.get("env"))
             phase_name = self._format_phase_name(
                 _phase_name("", step),
-                fallback=f"Run script ({script_name})",
             )
+            if not phase_name:
+                raise ConfigError(
+                    "bootstrap_all run action 'script' requires non-empty phase_name."
+                )
             self._run_phase(
                 phase_name,
                 lambda script=script_name, script_args=tuple(args), script_env=dict(
@@ -510,34 +524,38 @@ class BootstrapAllRunner:
                     *script_args,
                     env=script_env,
                 ),
-                enabled=_phase_enabled(step, True),
+                enabled=enabled,
             )
 
         def _run_enable_components_step(step: BootstrapPhasePlanStep) -> None:
-            if not _phase_enabled(step, True):
+            if not _phase_enabled(step):
                 return
             components_to_enable = resolve_bootstrap_enable_components(
                 plan.config,
                 aliases=plan.aliases,
             )
             if not components_to_enable:
-                warn(
-                    "No bootstrap components configured in adapter_hooks.bootstrap_all.enable_components; "
-                    "component enable phase skipped."
+                raise ConfigError(
+                    "bootstrap_all run action 'enable_components' requires a non-empty "
+                    "adapter_hooks.bootstrap_all.enable_components list."
                 )
-                return
             for component in components_to_enable:
                 component_key_sync_script = self._phase_script(
                     "component_key_sync",
                     component,
                 )
+                if not component_key_sync_script:
+                    raise ConfigError(
+                        "bootstrap_all run action 'enable_components' could not resolve "
+                        f"runner_phase_scripts.component_key_sync for component '{component}'."
+                    )
                 self._run_phase(
                     f"Sync component integration keys ({component})",
                     lambda script=component_key_sync_script: self._run_script(
                         script,
                         env={"NAMESPACE": self.cfg.namespace},
                     ),
-                    enabled=bool(component_key_sync_script),
+                    enabled=True,
                 )
                 self._run_phase(
                     f"Enable component deployment ({component})",
@@ -595,10 +613,7 @@ def _parse_args(
     config_file = Path(str(pre_args.config_file)).resolve()
     loaded_cfg: dict[str, object] = {}
     if config_file.exists():
-        try:
-            loaded_cfg = resolve_bootstrap_component_plan(config_file).config
-        except ConfigError:
-            loaded_cfg = {}
+        loaded_cfg = resolve_bootstrap_component_plan(config_file).config
 
     skip_specs = resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_all")
 
