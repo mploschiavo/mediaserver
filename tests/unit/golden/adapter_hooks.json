@@ -242,6 +242,16 @@
     ]
   },
   "bootstrap_job": {
+    "config_resolver": {
+      "ingress_host_targets": [
+        {
+          "name": "homepage",
+          "hosts_path": "homepage.hosts",
+          "enable_path": "homepage.enabled",
+          "enable_value": true
+        }
+      ]
+    },
     "components": {
       "torrent_client": {
         "binding": "torrent_client"

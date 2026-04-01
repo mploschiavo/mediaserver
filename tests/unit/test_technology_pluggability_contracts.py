@@ -26,6 +26,7 @@ TECHNOLOGIES = [
     "tautulli",
     "flaresolverr",
     "maintainerr",
+    "homepage",
 ]
 
 MIN_REGISTRATION_REQUIREMENTS = {
@@ -69,6 +70,10 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "maintainerr": {
         "app_service_classes": {"maintainerr_service"},
         "operation_handlers": {"ensure_maintainerr_policy", "ensure_maintainerr_integrations"},
+    },
+    "homepage": {
+        "app_service_classes": {"homepage_service"},
+        "operation_handlers": {"ensure_homepage_services_config"},
     },
 }
 

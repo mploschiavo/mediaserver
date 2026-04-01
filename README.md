@@ -120,6 +120,7 @@ Binding notes:
 Wrapper phase orchestration is declarative:
 - Phase order is read from `adapter_hooks.bootstrap_all.phase_plan` and `adapter_hooks.bootstrap_job.phase_plan`.
 - `bootstrap_all` uses a single operation (`operation: "run"`) with `params.action` (`component_script`, `script`, `enable_components`).
+- `bootstrap_job` config resolution targets are declared at `adapter_hooks.bootstrap_job.config_resolver.ingress_host_targets`.
 - Phase checks/conditions are read from each phase entry `when` expression.
 - CLI skip flags are derived from phase-plan `skip_flag` keys (with legacy aliases retained).
 
@@ -128,6 +129,7 @@ Current built-in swap families:
 - request manager: `jellyseerr`, `openseerr` (`openseer` alias)
 - usenet client: `sabnzbd`, `nzbget`, `jdownloader`, `grabit`
 - torrent client: `qbittorrent`, `transmission`
+- dashboard app operations: `homepage`
 
 ## Pluggable Architecture Quick Check
 
