@@ -3,9 +3,8 @@
 
 from __future__ import annotations
 
-from bootstrap_services.apps.prowlarr.flaresolverr_service import ProwlarrFlareSolverrService
-from bootstrap_services.apps.prowlarr.pipeline_service import ProwlarrIndexerPipelineService
-from bootstrap_services.apps.prowlarr.precheck_service import ProwlarrPrecheckService
+from typing import Any
+
 from bootstrap_services.runtime_core import (
     bool_cfg,
     log,
@@ -18,8 +17,11 @@ from .arr_ops import detect_arr_api_base, ensure_app_auth_settings
 from .factory import _arr_indexer_sync_service, _prowlarr_service
 
 
-def _prowlarr_precheck_service(cfg=None) -> ProwlarrPrecheckService:
-    service_cls = resolve_app_service_class("prowlarr_precheck_service", ProwlarrPrecheckService
+def _prowlarr_precheck_service(cfg=None) -> Any:
+    service_cls = resolve_app_service_class(
+        "prowlarr_precheck_service",
+        object,
+        technology="prowlarr",
     )
     return service_cls(
         log=log,
@@ -30,9 +32,11 @@ def _prowlarr_precheck_service(cfg=None) -> ProwlarrPrecheckService:
     )
 
 
-def _prowlarr_flaresolverr_service(cfg=None) -> ProwlarrFlareSolverrService:
-    service_cls = resolve_app_service_class("prowlarr_flaresolverr_service",
-        ProwlarrFlareSolverrService,
+def _prowlarr_flaresolverr_service(cfg=None) -> Any:
+    service_cls = resolve_app_service_class(
+        "prowlarr_flaresolverr_service",
+        object,
+        technology="prowlarr",
     )
     return service_cls(
         bool_cfg=bool_cfg,
@@ -48,9 +52,11 @@ def _prowlarr_flaresolverr_service(cfg=None) -> ProwlarrFlareSolverrService:
     )
 
 
-def _prowlarr_indexer_pipeline_service(cfg=None) -> ProwlarrIndexerPipelineService:
-    service_cls = resolve_app_service_class("prowlarr_indexer_pipeline_service",
-        ProwlarrIndexerPipelineService,
+def _prowlarr_indexer_pipeline_service(cfg=None) -> Any:
+    service_cls = resolve_app_service_class(
+        "prowlarr_indexer_pipeline_service",
+        object,
+        technology="prowlarr",
     )
     return service_cls(
         log=log,

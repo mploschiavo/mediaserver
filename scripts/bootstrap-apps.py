@@ -104,7 +104,14 @@ def main():
         )
     )
     runtime_state = build_result.runtime
-    runtime_core.set_runtime_context_cfg(runtime_state.adapter_hooks_cfg)
+    runtime_context_cfg = dict(runtime_state.adapter_hooks_cfg or {})
+    runtime_context_cfg["runtime_bindings"] = {
+        "torrent_client": runtime_state.torrent_client_key,
+        "usenet_client": runtime_state.usenet_client_key,
+        "media_server": runtime_state.media_server_backend,
+        "request_manager": runtime_state.request_manager_backend,
+    }
+    runtime_core.set_runtime_context_cfg(runtime_context_cfg)
     runtime_core.log(f"[INFO] Bootstrap plan: {build_result.plan.to_log_line()}")
     runner_operations = build_runner_operation_registry(
         RunnerOperationHandlers(
