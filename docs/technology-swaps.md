@@ -148,6 +148,8 @@ bash scripts/bootstrap-all.sh
 Bootstrap wrapper flow is config-first:
 
 - `adapter_hooks.bootstrap_all.phase_plan`: controls order and conditions for `bootstrap-all`.
+- `adapter_hooks.bootstrap_all.phase_plan[*].operation`: use `run`.
+- `adapter_hooks.bootstrap_all.phase_plan[*].params.action`: dispatch action (`component_script`, `script`, `enable_components`).
 - `adapter_hooks.bootstrap_job.phase_plan`: controls order and conditions for `run-bootstrap-job`.
 - `phase_plan[*].when`: declarative condition object (`all_of`, `any_of`, `not`, `var`, `equals`, `in`, `truthy`, `exists`).
 - `phase_plan[*].skip_flag`: generates CLI flags (for example `skip_torrent_client_ensure` => `--skip-torrent-client-ensure`).

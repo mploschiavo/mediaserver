@@ -338,7 +338,10 @@ class BootstrapAllRunner:
             return component_key, ""
 
         for step in phase_plan:
-            if step.operation != "run_component_script":
+            params = dict(step.params or {})
+            operation = str(step.operation or "").strip()
+            action = str(params.get("action") or "").strip().lower()
+            if operation != "run" or action != "component_script":
                 continue
             key, technology = _resolve_component_technology(step)
             if key and key not in components:
@@ -378,150 +381,181 @@ class BootstrapAllRunner:
         def _phase_name(default_name: str, step: BootstrapPhasePlanStep) -> str:
             return step.phase_name or default_name
 
-        for step in phase_plan:
-            operation = step.operation
+        def _resolve_step_action(step: BootstrapPhasePlanStep) -> str:
+            operation = str(step.operation or "").strip()
+            if operation != "run":
+                raise ConfigError(
+                    "Unknown bootstrap-all phase operation "
+                    f"'{operation}' in adapter_hooks.bootstrap_all.phase_plan. "
+                    "Supported operation: 'run'."
+                )
+            params = dict(step.params or {})
+            action = str(params.get("action") or "").strip().lower()
+            if not action:
+                raise ConfigError(
+                    "bootstrap_all phase operation 'run' requires params.action "
+                    "in adapter_hooks.bootstrap_all.phase_plan."
+                )
+            return action
 
-            if operation == "run_component_script":
-                params = dict(step.params or {})
-                component_key, component_technology = _resolve_component_technology(step)
-                if not component_key:
-                    raise ConfigError(
-                        "bootstrap_all phase operation 'run_component_script' requires "
-                        "params.component, params.binding, or params.technology."
-                    )
-                component = component_context.get(component_key) or {}
-                scripts = component.get("scripts")
-                script_phase = str(params.get("script_phase") or "").strip()
-                if not script_phase:
-                    raise ConfigError(
-                        "bootstrap_all phase operation 'run_component_script' requires "
-                        "params.script_phase."
-                    )
-                script_name = ""
-                if isinstance(scripts, dict):
-                    script_name = str(scripts.get(script_phase) or "").strip()
-                if not script_name:
-                    script_name = self._phase_script(script_phase, component_technology)
-
-                env: dict[str, str] = {}
-                raw_env = params.get("env")
-                if isinstance(raw_env, dict):
-                    for key, value in raw_env.items():
-                        env_key = str(key or "").strip()
-                        if not env_key:
-                            continue
-                        env[env_key] = self._render_template_value(
+        def _resolve_rendered_args(
+            *,
+            raw_args: object,
+            component_key: str = "",
+            component_technology: str = "",
+        ) -> list[str]:
+            args: list[str] = []
+            if isinstance(raw_args, list):
+                for value in raw_args:
+                    args.append(
+                        self._render_template_value(
                             value,
                             component_key=component_key,
                             component_technology=component_technology,
                         )
-
-                args: list[str] = []
-                raw_args = params.get("args")
-                if isinstance(raw_args, list):
-                    for value in raw_args:
-                        args.append(
-                            self._render_template_value(
-                                value,
-                                component_key=component_key,
-                                component_technology=component_technology,
-                            )
-                        )
-
-                fallback_name = f"Run component script ({component_key}:{script_phase})"
-                phase_name = self._format_phase_name(
-                    _phase_name("", step),
-                    component_key=component_key,
-                    component_technology=component_technology,
-                    fallback=fallback_name,
-                )
-                self._run_phase(
-                    phase_name,
-                    lambda script=script_name, script_args=tuple(args), script_env=dict(
-                        env
-                    ): self._run_script(
-                        script,
-                        *script_args,
-                        env=script_env,
-                    ),
-                    enabled=_phase_enabled(step, bool(script_name)),
-                )
-                continue
-
-            if operation == "run_script":
-                params = dict(step.params or {})
-                script_name = self._render_template_value(params.get("script", ""))
-                if not script_name:
-                    raise ConfigError(
-                        "bootstrap_all phase operation 'run_script' requires params.script."
                     )
-                args: list[str] = []
-                raw_args = params.get("args")
-                if isinstance(raw_args, list):
-                    for value in raw_args:
-                        args.append(self._render_template_value(value))
-                env: dict[str, str] = {}
-                raw_env = params.get("env")
-                if isinstance(raw_env, dict):
-                    for key, value in raw_env.items():
-                        env_key = str(key or "").strip()
-                        if not env_key:
-                            continue
-                        env[env_key] = self._render_template_value(value)
-                phase_name = self._format_phase_name(
-                    _phase_name("", step),
-                    fallback=f"Run script ({script_name})",
-                )
-                self._run_phase(
-                    phase_name,
-                    lambda script=script_name, script_args=tuple(args), script_env=dict(
-                        env
-                    ): self._run_script(
-                        script,
-                        *script_args,
-                        env=script_env,
-                    ),
-                    enabled=_phase_enabled(step, True),
-                )
-                continue
+            return args
 
-            if operation == "enable_components":
-                if not _phase_enabled(step, True):
-                    continue
-                components_to_enable = resolve_bootstrap_enable_components(
-                    plan.config,
-                    aliases=plan.aliases,
-                )
-                if not components_to_enable:
-                    warn(
-                        "No bootstrap components configured in adapter_hooks.bootstrap_all.enable_components; "
-                        "component enable phase skipped."
+        def _resolve_rendered_env(
+            *,
+            raw_env: object,
+            component_key: str = "",
+            component_technology: str = "",
+        ) -> dict[str, str]:
+            env: dict[str, str] = {}
+            if isinstance(raw_env, dict):
+                for key, value in raw_env.items():
+                    env_key = str(key or "").strip()
+                    if not env_key:
+                        continue
+                    env[env_key] = self._render_template_value(
+                        value,
+                        component_key=component_key,
+                        component_technology=component_technology,
                     )
-                    continue
-                for component in components_to_enable:
-                    component_key_sync_script = self._phase_script(
-                        "component_key_sync",
-                        component,
-                    )
-                    self._run_phase(
-                        f"Sync component integration keys ({component})",
-                        lambda script=component_key_sync_script: self._run_script(
-                            script,
-                            env={"NAMESPACE": self.cfg.namespace},
-                        ),
-                        enabled=bool(component_key_sync_script),
-                    )
-                    self._run_phase(
-                        f"Enable component deployment ({component})",
-                        lambda app=component: self._enable_component_deployment(app),
-                        enabled=True,
-                    )
-                continue
+            return env
 
-            raise ConfigError(
-                "Unknown bootstrap-all phase operation "
-                f"'{operation}' in adapter_hooks.bootstrap_all.phase_plan."
+        def _run_component_script_step(step: BootstrapPhasePlanStep) -> None:
+            params = dict(step.params or {})
+            component_key, component_technology = _resolve_component_technology(step)
+            if not component_key:
+                raise ConfigError(
+                    "bootstrap_all run action 'component_script' requires "
+                    "params.component, params.binding, or params.technology."
+                )
+            component = component_context.get(component_key) or {}
+            scripts = component.get("scripts")
+            script_phase = str(params.get("script_phase") or "").strip()
+            if not script_phase:
+                raise ConfigError(
+                    "bootstrap_all run action 'component_script' requires params.script_phase."
+                )
+            script_name = ""
+            if isinstance(scripts, dict):
+                script_name = str(scripts.get(script_phase) or "").strip()
+            if not script_name:
+                script_name = self._phase_script(script_phase, component_technology)
+
+            args = _resolve_rendered_args(
+                raw_args=params.get("args"),
+                component_key=component_key,
+                component_technology=component_technology,
             )
+            env = _resolve_rendered_env(
+                raw_env=params.get("env"),
+                component_key=component_key,
+                component_technology=component_technology,
+            )
+
+            fallback_name = f"Run component script ({component_key}:{script_phase})"
+            phase_name = self._format_phase_name(
+                _phase_name("", step),
+                component_key=component_key,
+                component_technology=component_technology,
+                fallback=fallback_name,
+            )
+            self._run_phase(
+                phase_name,
+                lambda script=script_name, script_args=tuple(args), script_env=dict(
+                    env
+                ): self._run_script(
+                    script,
+                    *script_args,
+                    env=script_env,
+                ),
+                enabled=_phase_enabled(step, bool(script_name)),
+            )
+
+        def _run_script_step(step: BootstrapPhasePlanStep) -> None:
+            params = dict(step.params or {})
+            script_name = self._render_template_value(params.get("script", ""))
+            if not script_name:
+                raise ConfigError("bootstrap_all run action 'script' requires params.script.")
+            args = _resolve_rendered_args(raw_args=params.get("args"))
+            env = _resolve_rendered_env(raw_env=params.get("env"))
+            phase_name = self._format_phase_name(
+                _phase_name("", step),
+                fallback=f"Run script ({script_name})",
+            )
+            self._run_phase(
+                phase_name,
+                lambda script=script_name, script_args=tuple(args), script_env=dict(
+                    env
+                ): self._run_script(
+                    script,
+                    *script_args,
+                    env=script_env,
+                ),
+                enabled=_phase_enabled(step, True),
+            )
+
+        def _run_enable_components_step(step: BootstrapPhasePlanStep) -> None:
+            if not _phase_enabled(step, True):
+                return
+            components_to_enable = resolve_bootstrap_enable_components(
+                plan.config,
+                aliases=plan.aliases,
+            )
+            if not components_to_enable:
+                warn(
+                    "No bootstrap components configured in adapter_hooks.bootstrap_all.enable_components; "
+                    "component enable phase skipped."
+                )
+                return
+            for component in components_to_enable:
+                component_key_sync_script = self._phase_script(
+                    "component_key_sync",
+                    component,
+                )
+                self._run_phase(
+                    f"Sync component integration keys ({component})",
+                    lambda script=component_key_sync_script: self._run_script(
+                        script,
+                        env={"NAMESPACE": self.cfg.namespace},
+                    ),
+                    enabled=bool(component_key_sync_script),
+                )
+                self._run_phase(
+                    f"Enable component deployment ({component})",
+                    lambda app=component: self._enable_component_deployment(app),
+                    enabled=True,
+                )
+
+        action_handlers: dict[str, Callable[[BootstrapPhasePlanStep], None]] = {
+            "component_script": _run_component_script_step,
+            "script": _run_script_step,
+            "enable_components": _run_enable_components_step,
+        }
+
+        for step in phase_plan:
+            action = _resolve_step_action(step)
+            handler = action_handlers.get(action)
+            if handler is None:
+                raise ConfigError(
+                    "Unknown bootstrap-all run action "
+                    f"'{action}' in adapter_hooks.bootstrap_all.phase_plan params.action."
+                )
+            handler(step)
 
         info("Full bootstrap complete.")
         self.tracker.summary()

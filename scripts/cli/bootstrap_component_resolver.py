@@ -550,13 +550,18 @@ def resolve_phase_skip_flag_specs(
             token = str(env).strip()
             if token and token not in env_vars:
                 env_vars.append(token)
+        operation_label = str(step.operation or "").strip()
+        if operation_label == "run":
+            action = str((step.params or {}).get("action") or "").strip()
+            if action:
+                operation_label = f"run:{action}"
         out.append(
             PhaseSkipFlagSpec(
                 key=key,
                 option_strings=tuple(option_strings),
                 env_vars=tuple(env_vars),
                 help=(
-                    f"Skip '{step.operation}' phase(s) from adapter_hooks.{pipeline}.phase_plan "
+                    f"Skip '{operation_label}' phase(s) from adapter_hooks.{pipeline}.phase_plan "
                     f"(flag key: {key})."
                 ),
             )
