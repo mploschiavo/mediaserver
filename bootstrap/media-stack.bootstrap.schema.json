@@ -319,6 +319,22 @@
               "type": "array",
               "items": {"type": "string"}
             },
+            "components": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  {"type": "string"},
+                  {
+                    "type": "object",
+                    "properties": {
+                      "binding": {"type": "string", "minLength": 1},
+                      "technology": {"type": "string", "minLength": 1}
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
             "phase_plan": {
               "type": "array",
               "items": {
@@ -332,6 +348,10 @@
                       "skip_flag": {"type": "string", "minLength": 1},
                       "phase_name": {"type": "string", "minLength": 1},
                       "enabled": {"type": "boolean"},
+                      "params": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
                       "when": {
                         "oneOf": [
                           {"type": "boolean"},
@@ -372,6 +392,10 @@
                       "skip_flag": {"type": "string", "minLength": 1},
                       "phase_name": {"type": "string", "minLength": 1},
                       "enabled": {"type": "boolean"},
+                      "params": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
                       "when": {
                         "oneOf": [
                           {"type": "boolean"},

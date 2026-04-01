@@ -29,69 +29,117 @@
   "bootstrap_all": {
     "phase_plan": [
       {
-        "operation": "ensure_torrent_client_access",
+        "operation": "run_component_script",
+        "phase_name": "Ensure torrent client bootstrap access ({component|unbound})",
         "skip_flag": "skip_torrent_client_ensure",
         "when": {
           "all_of": [
             {
               "any_of": [
                 {
-                  "var": "selected.torrent_client.configure_arr_clients",
+                  "var": "components.torrent_client.selected.configure_arr_clients",
                   "truthy": true
                 },
                 {
-                  "var": "selected.torrent_client.set_categories_in_qbit",
+                  "var": "components.torrent_client.selected.set_categories_in_qbit",
                   "truthy": true
                 },
                 {
-                  "var": "selected.torrent_client.set_categories",
+                  "var": "components.torrent_client.selected.set_categories",
                   "truthy": true
                 }
               ]
             },
             {
-              "var": "scripts.torrent_client_credentials",
+              "var": "components.torrent_client.scripts.torrent_client_credentials",
               "truthy": true
             }
           ]
+        },
+        "params": {
+          "component": "torrent_client",
+          "script_phase": "torrent_client_credentials",
+          "env": {
+            "NAMESPACE": "$namespace",
+            "PREPARE_HOST_ROOT": "$prepare_host_root"
+          }
         }
       },
       {
-        "operation": "ensure_media_server_access",
+        "operation": "run_component_script",
+        "phase_name": "Ensure media server bootstrap access ({component|unbound})",
         "skip_flag": "skip_media_server_bootstrap",
         "when": {
-          "var": "scripts.media_server_bootstrap",
+          "var": "components.media_server.scripts.media_server_bootstrap",
           "truthy": true
+        },
+        "params": {
+          "component": "media_server",
+          "script_phase": "media_server_bootstrap",
+          "env": {
+            "NAMESPACE": "$namespace",
+            "SECRET_NAME": "$secret_name"
+          }
         }
       },
       {
-        "operation": "ensure_usenet_client_access",
+        "operation": "run_component_script",
+        "phase_name": "Ensure usenet client API access ({component|unbound})",
         "skip_flag": "skip_usenet_client_ensure",
         "when": {
           "all_of": [
             {
-              "var": "selected.usenet_client.configure_arr_clients",
+              "var": "components.usenet_client.selected.configure_arr_clients",
               "truthy": true
             },
             {
-              "var": "scripts.usenet_client_api_access",
+              "var": "components.usenet_client.scripts.usenet_client_api_access",
               "truthy": true
             }
           ]
+        },
+        "params": {
+          "component": "usenet_client",
+          "script_phase": "usenet_client_api_access",
+          "env": {
+            "NAMESPACE": "$namespace"
+          }
         }
       },
       {
-        "operation": "run_bootstrap_job"
+        "operation": "run_script",
+        "phase_name": "Run bootstrap job",
+        "params": {
+          "script": "run-bootstrap-job.sh",
+          "args": [
+            "$config_file"
+          ],
+          "env": {
+            "NAMESPACE": "$namespace",
+            "SKIP_TORRENT_CLIENT_ENSURE": "1",
+            "SKIP_USENET_CLIENT_ENSURE": "1",
+            "PREPARE_HOST_ROOT": "$prepare_host_root"
+          }
+        }
       },
       {
-        "operation": "seed_request_manager_local_admin",
+        "operation": "run_component_script",
+        "phase_name": "Seed request manager local admin ({component|unbound})",
         "when": {
-          "var": "scripts.request_manager_seed_local_admin",
+          "var": "components.request_manager.scripts.request_manager_seed_local_admin",
           "truthy": true
+        },
+        "params": {
+          "component": "request_manager",
+          "script_phase": "request_manager_seed_local_admin",
+          "env": {
+            "NAMESPACE": "$namespace"
+          }
         }
       },
       {
-        "operation": "run_indexer_auto_discovery",
+        "operation": "run_component_script",
+        "phase_name": "Run indexer auto-discovery ({component|unbound})",
         "when": {
           "all_of": [
             {
@@ -99,10 +147,19 @@
               "truthy": true
             },
             {
-              "var": "scripts.indexer_auto_discovery",
+              "var": "components.indexer_manager.scripts.indexer_auto_discovery",
               "truthy": true
             }
           ]
+        },
+        "params": {
+          "component": "indexer_manager",
+          "technology": "prowlarr",
+          "script_phase": "indexer_auto_discovery",
+          "env": {
+            "NAMESPACE": "$namespace",
+            "PREPARE_HOST_ROOT": "$prepare_host_root"
+          }
         }
       },
       {
@@ -115,7 +172,24 @@
     ],
     "enable_workers": [
       "unpackerr"
-    ]
+    ],
+    "components": {
+      "torrent_client": {
+        "binding": "torrent_client"
+      },
+      "media_server": {
+        "binding": "media_server"
+      },
+      "usenet_client": {
+        "binding": "usenet_client"
+      },
+      "request_manager": {
+        "binding": "request_manager"
+      },
+      "indexer_manager": {
+        "technology": "prowlarr"
+      }
+    }
   },
   "bootstrap_job": {
     "phase_plan": [

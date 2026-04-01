@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from cli.bootstrap_component_resolver import (  # noqa: E402
     evaluate_phase_condition,
+    resolve_bootstrap_all_components,
     resolve_bootstrap_all_phase_plan,
     resolve_bootstrap_job_phase_plan,
     resolve_bootstrap_component_plan,
@@ -145,8 +146,8 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             "adapter_hooks": {
                 "bootstrap_all": {
                     "phase_plan": [
-                        {"operation": "run_bootstrap_job"},
-                        {"operation": "ensure_torrent_client_access"},
+                        {"operation": "run_script"},
+                        {"operation": "run_component_script"},
                     ]
                 },
                 "bootstrap_job": {
@@ -162,15 +163,49 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         job_plan = resolve_bootstrap_job_phase_plan(cfg)
         self.assertEqual(
             [step.operation for step in all_plan],
-            ["run_bootstrap_job", "ensure_torrent_client_access"],
+            ["run_script", "run_component_script"],
         )
         self.assertEqual(
             [step.operation for step in job_plan],
             ["resolve_bootstrap_config", "ensure_bootstrap_pvc_prereqs"],
         )
 
+    def test_resolve_bootstrap_all_components_prefers_declared_components_map(self):
+        cfg = {
+            "adapter_hooks": {
+                "bootstrap_all": {
+                    "components": {
+                        "download": {"binding": "torrent_client"},
+                        "indexer": {"technology": "Prowlarr"},
+                        "requests": "jellyseerr",
+                    }
+                }
+            }
+        }
+        aliases = {
+            "qbittorrent": "qbittorrent",
+            "prowlarr": "prowlarr",
+            "jellyseerr": "jellyseerr",
+        }
+        role_bindings = {"torrent_client": "qbittorrent", "request_manager": "jellyseerr"}
+
+        resolved = resolve_bootstrap_all_components(
+            cfg,
+            aliases=aliases,
+            role_bindings=role_bindings,
+        )
+
+        self.assertEqual(
+            resolved,
+            {
+                "download": "qbittorrent",
+                "indexer": "prowlarr",
+                "requests": "jellyseerr",
+            },
+        )
+
     def test_resolve_phase_skip_flag_specs_includes_generic_and_legacy_aliases(self):
-        specs = resolve_phase_skip_flag_specs({}, pipeline="bootstrap_all")
+        specs = resolve_phase_skip_flag_specs(self._base_config(), pipeline="bootstrap_all")
         by_key = {spec.key: spec for spec in specs}
         torrent_spec = by_key["skip_torrent_client_ensure"]
         self.assertIn("--skip-torrent-client-ensure", torrent_spec.option_strings)

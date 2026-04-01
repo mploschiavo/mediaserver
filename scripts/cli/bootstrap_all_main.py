@@ -26,9 +26,9 @@ from cli.bootstrap_component_resolver import (
     BootstrapComponentPlan,
     BootstrapPhasePlanStep,
     PhaseSkipFlagSpec,
-    canonicalize_technology,
     evaluate_phase_condition,
     normalize_flag_token,
+    resolve_bootstrap_all_components,
     resolve_bootstrap_all_phase_plan,
     resolve_bootstrap_component_plan,
     resolve_bootstrap_enable_workers,
@@ -145,16 +145,6 @@ class BootstrapAllRunner:
             self._plan = resolve_bootstrap_component_plan(self.cfg.config_file)
         return self._plan
 
-    def _role_binding(self, role_key: str) -> str:
-        return str(self._component_plan().role_bindings.get(role_key) or "").strip()
-
-    def _selected_download_client(self, role_key: str) -> dict[str, object]:
-        technology = self._role_binding(role_key)
-        selected = self._component_plan().download_clients.get(technology)
-        if isinstance(selected, dict):
-            return selected
-        return {}
-
     def _phase_script(self, phase_key: str, technology: str) -> str:
         return resolve_runner_phase_script(
             self._component_plan().config,
@@ -168,6 +158,42 @@ class BootstrapAllRunner:
         if not token:
             return False
         return bool(self.cfg.phase_skip_flags.get(token, False))
+
+    def _render_template_value(
+        self,
+        value: object,
+        *,
+        component_key: str = "",
+        component_technology: str = "",
+    ) -> str:
+        text = str(value or "")
+        tokens = {
+            "$namespace": self.cfg.namespace,
+            "$prepare_host_root": self.cfg.prepare_host_root,
+            "$secret_name": self.cfg.secret_name,
+            "$config_file": str(self.cfg.config_file),
+            "$component_key": component_key,
+            "$component": component_technology,
+        }
+        for token, token_value in tokens.items():
+            text = text.replace(token, str(token_value))
+        return text
+
+    def _format_phase_name(
+        self,
+        template: str,
+        *,
+        component_key: str = "",
+        component_technology: str = "",
+        fallback: str = "",
+    ) -> str:
+        raw = str(template or "").strip() or str(fallback or "").strip()
+        if not raw:
+            return ""
+        out = raw.replace("{component_key}", component_key)
+        out = out.replace("{component|unbound}", component_technology or "unbound")
+        out = out.replace("{component}", component_technology)
+        return out
 
     def _manifest_overrides(self, text: str) -> str:
         out = re.sub(
@@ -272,41 +298,68 @@ class BootstrapAllRunner:
             raise ConfigError(f"Config file not found: {self.cfg.config_file}")
 
         plan = self._component_plan()
-        torrent_client = self._role_binding("torrent_client")
-        usenet_client = self._role_binding("usenet_client")
-        media_server = self._role_binding("media_server")
-        request_manager = self._role_binding("request_manager")
-        prowlarr_key = canonicalize_technology("prowlarr", plan.aliases) or "prowlarr"
-
-        torrent_script = self._phase_script("torrent_client_credentials", torrent_client)
-        usenet_script = self._phase_script("usenet_client_api_access", usenet_client)
-        media_server_script = self._phase_script("media_server_bootstrap", media_server)
-        request_seed_script = self._phase_script(
-            "request_manager_seed_local_admin",
-            request_manager,
-        )
-        indexer_script = self._phase_script("indexer_auto_discovery", prowlarr_key)
-
         phase_plan = resolve_bootstrap_all_phase_plan(plan.config)
+        adapter_hooks = plan.config.get("adapter_hooks")
+        runner_phase_scripts = (
+            (adapter_hooks or {}).get("runner_phase_scripts")
+            if isinstance(adapter_hooks, dict)
+            else {}
+        )
+        configured_phase_keys = (
+            tuple(str(key) for key in runner_phase_scripts.keys())
+            if isinstance(runner_phase_scripts, dict)
+            else ()
+        )
+
+        components: dict[str, str] = resolve_bootstrap_all_components(
+            plan.config,
+            aliases=plan.aliases,
+            role_bindings=plan.role_bindings,
+        )
+
+        def _resolve_component_technology(step: BootstrapPhasePlanStep) -> tuple[str, str]:
+            params = dict(step.params or {})
+            component_key = str(params.get("component") or "").strip()
+            if component_key:
+                token = str(components.get(component_key) or "").strip()
+                if token:
+                    return component_key, token
+
+            binding_key = str(params.get("binding") or "").strip()
+            if binding_key:
+                token = str(plan.role_bindings.get(binding_key) or "").strip()
+                if token:
+                    return component_key or binding_key, token
+
+            technology = str(params.get("technology") or "").strip()
+            if technology:
+                return component_key or technology, technology
+
+            return component_key, ""
+
+        for step in phase_plan:
+            if step.operation != "run_component_script":
+                continue
+            key, technology = _resolve_component_technology(step)
+            if key and key not in components:
+                components[key] = technology
+
+        component_context: dict[str, dict[str, object]] = {}
+        for component_key, technology in components.items():
+            script_map: dict[str, str] = {}
+            for phase_key in configured_phase_keys:
+                script_map[phase_key] = self._phase_script(phase_key, technology)
+            selected_client = plan.download_clients.get(technology)
+            component_context[component_key] = {
+                "technology": str(technology or "").strip(),
+                "scripts": script_map,
+                "selected": dict(selected_client) if isinstance(selected_client, dict) else {},
+            }
+
         phase_context: dict[str, object] = {
             "config": plan.config,
-            "bindings": {
-                "torrent_client": torrent_client,
-                "usenet_client": usenet_client,
-                "media_server": media_server,
-                "request_manager": request_manager,
-            },
-            "scripts": {
-                "torrent_client_credentials": torrent_script,
-                "usenet_client_api_access": usenet_script,
-                "media_server_bootstrap": media_server_script,
-                "request_manager_seed_local_admin": request_seed_script,
-                "indexer_auto_discovery": indexer_script,
-            },
-            "selected": {
-                "torrent_client": self._selected_download_client("torrent_client"),
-                "usenet_client": self._selected_download_client("usenet_client"),
-            },
+            "bindings": dict(plan.role_bindings),
+            "components": component_context,
             "flags": {
                 "enable_workers": self.cfg.enable_workers,
             },
@@ -328,107 +381,107 @@ class BootstrapAllRunner:
         for step in phase_plan:
             operation = step.operation
 
-            if operation == "ensure_torrent_client_access":
+            if operation == "run_component_script":
+                params = dict(step.params or {})
+                component_key, component_technology = _resolve_component_technology(step)
+                if not component_key:
+                    raise ConfigError(
+                        "bootstrap_all phase operation 'run_component_script' requires "
+                        "params.component, params.binding, or params.technology."
+                    )
+                component = component_context.get(component_key) or {}
+                scripts = component.get("scripts")
+                script_phase = str(params.get("script_phase") or "").strip()
+                if not script_phase:
+                    raise ConfigError(
+                        "bootstrap_all phase operation 'run_component_script' requires "
+                        "params.script_phase."
+                    )
+                script_name = ""
+                if isinstance(scripts, dict):
+                    script_name = str(scripts.get(script_phase) or "").strip()
+                if not script_name:
+                    script_name = self._phase_script(script_phase, component_technology)
+
+                env: dict[str, str] = {}
+                raw_env = params.get("env")
+                if isinstance(raw_env, dict):
+                    for key, value in raw_env.items():
+                        env_key = str(key or "").strip()
+                        if not env_key:
+                            continue
+                        env[env_key] = self._render_template_value(
+                            value,
+                            component_key=component_key,
+                            component_technology=component_technology,
+                        )
+
+                args: list[str] = []
+                raw_args = params.get("args")
+                if isinstance(raw_args, list):
+                    for value in raw_args:
+                        args.append(
+                            self._render_template_value(
+                                value,
+                                component_key=component_key,
+                                component_technology=component_technology,
+                            )
+                        )
+
+                fallback_name = f"Run component script ({component_key}:{script_phase})"
+                phase_name = self._format_phase_name(
+                    _phase_name("", step),
+                    component_key=component_key,
+                    component_technology=component_technology,
+                    fallback=fallback_name,
+                )
                 self._run_phase(
-                    _phase_name(
-                        f"Ensure torrent client bootstrap access ({torrent_client or 'unbound'})",
-                        step,
+                    phase_name,
+                    lambda script=script_name, script_args=tuple(args), script_env=dict(
+                        env
+                    ): self._run_script(
+                        script,
+                        *script_args,
+                        env=script_env,
                     ),
-                    lambda: self._run_script(
-                        torrent_script,
-                        env={
-                            "NAMESPACE": self.cfg.namespace,
-                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                        },
-                    ),
-                    enabled=_phase_enabled(
-                        step,
-                        bool(torrent_script),
-                    ),
+                    enabled=_phase_enabled(step, bool(script_name)),
                 )
                 continue
 
-            if operation == "ensure_media_server_access":
-                self._run_phase(
-                    _phase_name(
-                        f"Ensure media server bootstrap access ({media_server or 'unbound'})",
-                        step,
-                    ),
-                    lambda: self._run_script(
-                        media_server_script,
-                        env={
-                            "NAMESPACE": self.cfg.namespace,
-                            "SECRET_NAME": self.cfg.secret_name,
-                        },
-                    ),
-                    enabled=_phase_enabled(step, bool(media_server_script)),
+            if operation == "run_script":
+                params = dict(step.params or {})
+                script_name = self._render_template_value(params.get("script", ""))
+                if not script_name:
+                    raise ConfigError(
+                        "bootstrap_all phase operation 'run_script' requires params.script."
+                    )
+                args: list[str] = []
+                raw_args = params.get("args")
+                if isinstance(raw_args, list):
+                    for value in raw_args:
+                        args.append(self._render_template_value(value))
+                env: dict[str, str] = {}
+                raw_env = params.get("env")
+                if isinstance(raw_env, dict):
+                    for key, value in raw_env.items():
+                        env_key = str(key or "").strip()
+                        if not env_key:
+                            continue
+                        env[env_key] = self._render_template_value(value)
+                phase_name = self._format_phase_name(
+                    _phase_name("", step),
+                    fallback=f"Run script ({script_name})",
                 )
-                continue
-
-            if operation == "ensure_usenet_client_access":
                 self._run_phase(
-                    _phase_name(
-                        f"Ensure usenet client API access ({usenet_client or 'unbound'})",
-                        step,
-                    ),
-                    lambda: self._run_script(
-                        usenet_script,
-                        env={"NAMESPACE": self.cfg.namespace},
-                    ),
-                    enabled=_phase_enabled(
-                        step,
-                        bool(usenet_script),
-                    ),
-                )
-                continue
-
-            if operation == "run_bootstrap_job":
-                self._run_phase(
-                    _phase_name("Run bootstrap job", step),
-                    lambda: self._run_script(
-                        "run-bootstrap-job.sh",
-                        str(self.cfg.config_file),
-                        env={
-                            "NAMESPACE": self.cfg.namespace,
-                            "SKIP_QBIT_ENSURE": "1",
-                            "SKIP_SAB_ENSURE": "1",
-                            "SKIP_TORRENT_CLIENT_ENSURE": "1",
-                            "SKIP_USENET_CLIENT_ENSURE": "1",
-                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                        },
+                    phase_name,
+                    lambda script=script_name, script_args=tuple(args), script_env=dict(
+                        env
+                    ): self._run_script(
+                        script,
+                        *script_args,
+                        env=script_env,
                     ),
                     enabled=_phase_enabled(step, True),
-                )
-                continue
-
-            if operation == "seed_request_manager_local_admin":
-                self._run_phase(
-                    _phase_name(
-                        f"Seed request manager local admin ({request_manager or 'unbound'})",
-                        step,
-                    ),
-                    lambda: self._run_script(
-                        request_seed_script,
-                        env={"NAMESPACE": self.cfg.namespace},
-                    ),
-                    enabled=_phase_enabled(step, bool(request_seed_script)),
-                )
-                continue
-
-            if operation == "run_indexer_auto_discovery":
-                self._run_phase(
-                    _phase_name("Run indexer auto-discovery", step),
-                    lambda: self._run_script(
-                        indexer_script,
-                        env={
-                            "NAMESPACE": self.cfg.namespace,
-                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                        },
-                    ),
-                    enabled=_phase_enabled(
-                        step,
-                        bool(indexer_script),
-                    ),
                 )
                 continue
 
