@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from bootstrap_services.apps.jellyseerr import operations as _ops
+from . import operations as _ops
 
 HttpRequestFn = Callable[..., tuple[int, Any, str]]
 LogFn = Callable[[str], None]

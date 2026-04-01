@@ -66,7 +66,6 @@ from bootstrap_services.discovery_lists_service import DiscoveryListsService
 from bootstrap_services.disk_guardrails_service import DiskGuardrailsService
 from bootstrap_services.enums import BootstrapMode
 from bootstrap_services.health_service import HealthService
-from bootstrap_services.jellyseerr_service import JellyseerrService
 from bootstrap_services.maintainerr_service import MaintainerrService
 from bootstrap_services.media_hygiene_ops_service import MediaHygieneOpsService
 from bootstrap_services.media_hygiene_service import MediaHygieneService

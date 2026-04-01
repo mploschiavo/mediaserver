@@ -405,7 +405,9 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                     "sab": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
                 },
                 "app_service_classes": {
-                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService",
+                    "jellyseerr_service": (
+                        "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    ),
                     "technology_lifecycle_manager": (
                         "bootstrap_services.technology_lifecycle_service:TechnologyLifecycleManager"
                     ),

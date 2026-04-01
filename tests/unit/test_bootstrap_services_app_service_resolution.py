@@ -9,7 +9,7 @@ from bootstrap_services.runtime_core import (  # noqa: E402
     resolve_app_service_class,
     set_runtime_context_cfg,
 )
-from bootstrap_services.jellyseerr_service import JellyseerrService  # noqa: E402
+from bootstrap_services.apps.jellyseerr.service import JellyseerrService  # noqa: E402
 
 
 class AppServiceResolutionTests(unittest.TestCase):
@@ -24,7 +24,9 @@ class AppServiceResolutionTests(unittest.TestCase):
         set_runtime_context_cfg(
             {
                 "app_service_classes": {
-                    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+                    "jellyseerr_service": (
+                        "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    )
                 }
             },
         )
@@ -36,12 +38,14 @@ class AppServiceResolutionTests(unittest.TestCase):
             {
                 "technology_aliases": {"openseer": "openseerr"},
                 "app_service_classes": {
-                    "request_manager_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+                    "request_manager_service": (
+                        "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    )
                 },
                 "app_service_classes_by_technology": {
                     "jellyseerr": {
                         "request_manager_service": (
-                            "bootstrap_services.jellyseerr_service:JellyseerrService"
+                            "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
                         )
                     },
                     "openseerr": {
@@ -74,7 +78,7 @@ class AppServiceResolutionTests(unittest.TestCase):
         set_runtime_context_cfg(
             {
                 "app_service_classes": {
-                    "other_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+                    "other_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
                 }
             }
         )
