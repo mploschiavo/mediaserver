@@ -31,24 +31,6 @@ class BootstrapManifestService:
     info: LogFn
     warn: LogFn
 
-    LEGACY_REQUIRED_PVCS = (
-        "media-stack-config-jellyfin",
-        "media-stack-config-jellyseerr",
-        "media-stack-config-sonarr",
-        "media-stack-config-radarr",
-        "media-stack-config-lidarr",
-        "media-stack-config-readarr",
-        "media-stack-config-bazarr",
-        "media-stack-config-prowlarr",
-        "media-stack-config-sabnzbd",
-        "media-stack-config-homepage",
-        "media-stack-config-maintainerr",
-        "media-stack-config-jellyfin-auto-collections",
-        "media-stack-data-torrents",
-        "media-stack-data-usenet",
-        "media-stack-media",
-    )
-
     def manifest_overrides(self, text: str) -> str:
         out = re.sub(
             r"namespace:\s*media-stack\b",
@@ -106,27 +88,30 @@ class BootstrapManifestService:
 
     def ensure_bootstrap_pvc_prereqs(self) -> None:
         storage_manifest = self.cfg.root_dir / "k8s" / "storage-pvc.yaml"
-        required = list(self.LEGACY_REQUIRED_PVCS)
+        if not storage_manifest.exists():
+            raise ConfigError(
+                f"PVC manifest required for bootstrap prerequisites: {storage_manifest}"
+            )
 
-        if storage_manifest.exists():
-            self.info(f"Ensuring bootstrap PVC prerequisites via {storage_manifest}")
-            with TemporaryDirectory(prefix="media-stack-storage-pvc-") as tmpdir:
-                patched = Path(tmpdir) / "storage-pvc.yaml"
-                patched_text = self.manifest_overrides(storage_manifest.read_text(encoding="utf-8"))
-                discovered_pvcs = self._extract_pvc_names_from_manifest(patched_text)
-                if discovered_pvcs:
-                    required = discovered_pvcs
-                patched.write_text(
-                    patched_text,
-                    encoding="utf-8",
+        self.info(f"Ensuring bootstrap PVC prerequisites via {storage_manifest}")
+        with TemporaryDirectory(prefix="media-stack-storage-pvc-") as tmpdir:
+            patched = Path(tmpdir) / "storage-pvc.yaml"
+            patched_text = self.manifest_overrides(storage_manifest.read_text(encoding="utf-8"))
+            required = self._extract_pvc_names_from_manifest(patched_text)
+            if not required:
+                raise ConfigError(
+                    "storage-pvc.yaml did not declare any PersistentVolumeClaims; "
+                    "bootstrap cannot continue."
                 )
-                result = self.kube.run(["apply", "-f", str(patched)], check=False)
-                if result.stdout.strip():
-                    print(result.stdout.rstrip())
-                if result.stderr.strip():
-                    print(result.stderr.rstrip(), file=sys.stderr)
-        else:
-            self.warn(f"PVC manifest not found at {storage_manifest}")
+            patched.write_text(
+                patched_text,
+                encoding="utf-8",
+            )
+            result = self.kube.run(["apply", "-f", str(patched)], check=False)
+            if result.stdout.strip():
+                print(result.stdout.rstrip())
+            if result.stderr.strip():
+                print(result.stderr.rstrip(), file=sys.stderr)
 
         missing = []
         for pvc in required:

@@ -7,6 +7,16 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 SCRIPT_PATH = ROOT / "scripts" / "cli" / "generate_secrets_main.py"
+if not SCRIPT_PATH.exists():
+    SCRIPT_PATH = (
+        ROOT
+        / "scripts"
+        / "bootstrap_services"
+        / "apps"
+        / "stack"
+        / "cli"
+        / "generate_secrets_main.py"
+    )
 
 
 def _load_module():

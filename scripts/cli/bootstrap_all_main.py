@@ -640,7 +640,7 @@ def _parse_args(
         "--enable-components",
         dest="enable_components",
         action="store_true",
-        default=_env_bool_candidates(("ENABLE_COMPONENTS", "ENABLE_UNPACKERR"), True),
+        default=_env_bool_candidates(("ENABLE_COMPONENTS",), True),
         help="Enable configured bootstrap component deployments.",
     )
     for spec in skip_specs:

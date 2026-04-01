@@ -16,7 +16,7 @@ class _Proc:
 
 
 class RebuildManifestApplyServiceTests(unittest.TestCase):
-    def test_fallback_applies_ordered_files_optional_and_unpackerr(self):
+    def test_fallback_applies_ordered_files_optional_and_configured_component_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             applied_files: list[Path] = []
@@ -32,8 +32,9 @@ class RebuildManifestApplyServiceTests(unittest.TestCase):
                     namespace="media-stack",
                     profile="full",
                     include_optional="1",
-                    enable_unpackerr="1",
+                    enable_components="1",
                     kubectl=["kubectl"],
+                    component_enable_manifest_paths=("k8s/unpackerr.yaml",),
                 ),
                 info=lambda _msg: None,
                 warn=lambda _msg: None,
@@ -69,7 +70,7 @@ class RebuildManifestApplyServiceTests(unittest.TestCase):
                     namespace="media-stack",
                     profile="full",
                     include_optional="",
-                    enable_unpackerr="",
+                    enable_components="",
                     kubectl=["kubectl"],
                 ),
                 info=lambda _msg: None,

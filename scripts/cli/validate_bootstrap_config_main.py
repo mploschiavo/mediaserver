@@ -26,7 +26,7 @@ def basic_checks(cfg):
     if not isinstance(cfg, dict):
         return ["$: config root must be an object"]
 
-    for key in ("config_version", "prowlarr_url", "arr_apps", "download_clients"):
+    for key in ("config_version", "technology_bindings"):
         if key not in cfg:
             errors.append(f"$: missing required key '{key}'")
 
@@ -36,18 +36,6 @@ def basic_checks(cfg):
             errors.append("$.config_version: must be an integer")
         elif config_version != 2:
             errors.append("$.config_version: unsupported version (expected 2)")
-
-    arr_apps = cfg.get("arr_apps")
-    if arr_apps is not None and not isinstance(arr_apps, list):
-        errors.append("$.arr_apps: must be an array")
-    if isinstance(arr_apps, list):
-        for idx, app in enumerate(arr_apps):
-            if not isinstance(app, dict):
-                errors.append(f"$.arr_apps[{idx}]: must be an object")
-                continue
-            for required in ("name", "implementation", "url", "root_folder"):
-                if not str(app.get(required) or "").strip():
-                    errors.append(f"$.arr_apps[{idx}].{required}: required non-empty string")
 
     clients = cfg.get("download_clients")
     if clients is not None and not isinstance(clients, dict):
@@ -169,13 +157,19 @@ def basic_checks(cfg):
             errors,
         )
 
-    if "prowlarr_indexer_reputation" in cfg and not isinstance(
-        cfg.get("prowlarr_indexer_reputation"),
-        dict,
-    ):
-        errors.append("$.prowlarr_indexer_reputation: must be an object")
-    if "arr_indexer_sync" in cfg and not isinstance(cfg.get("arr_indexer_sync"), dict):
-        errors.append("$.arr_indexer_sync: must be an object")
+    rebuild_hooks = adapter_hooks.get("rebuild")
+    if rebuild_hooks is not None and not isinstance(rebuild_hooks, dict):
+        errors.append("$.adapter_hooks.rebuild: must be an object")
+
+    microk8s_reconcile_hooks = adapter_hooks.get("microk8s_reconcile")
+    if microk8s_reconcile_hooks is not None and not isinstance(microk8s_reconcile_hooks, dict):
+        errors.append("$.adapter_hooks.microk8s_reconcile: must be an object")
+    if isinstance(microk8s_reconcile_hooks, dict):
+        _validate_microk8s_reconcile_hooks(
+            microk8s_reconcile_hooks,
+            "$.adapter_hooks.microk8s_reconcile",
+            errors,
+        )
 
     overlays = cfg.get("config_overlays")
     if overlays is not None:
@@ -240,6 +234,56 @@ def _validate_media_server_operation_plans(plans, path_prefix, errors):
                             f"{step_path}.event: unsupported event '{event_name}' "
                             f"(expected one of {', '.join(RunnerEvent.choices())})"
                         )
+
+
+def _validate_microk8s_reconcile_hooks(hooks, path_prefix, errors):
+    phase_plan = hooks.get("phase_plan")
+    if not isinstance(phase_plan, list) or not phase_plan:
+        errors.append(f"{path_prefix}.phase_plan: must be a non-empty array")
+    else:
+        from bootstrap_services.enums import RunnerEvent
+
+        for idx, step in enumerate(phase_plan):
+            step_path = f"{path_prefix}.phase_plan[{idx}]"
+            if not isinstance(step, dict):
+                errors.append(f"{step_path}: must be an object")
+                continue
+            handler = str(step.get("handler") or "").strip()
+            event_name = str(step.get("event") or "").strip()
+            if not handler:
+                errors.append(f"{step_path}.handler: required non-empty string")
+            if not event_name:
+                errors.append(f"{step_path}.event: required non-empty string")
+            else:
+                try:
+                    RunnerEvent.from_value(event_name)
+                except ValueError:
+                    errors.append(
+                        f"{step_path}.event: unsupported event '{event_name}' "
+                        f"(expected one of {', '.join(RunnerEvent.choices())})"
+                    )
+
+    optional_deployments = hooks.get("optional_deployments")
+    if optional_deployments is not None and not isinstance(optional_deployments, list):
+        errors.append(f"{path_prefix}.optional_deployments: must be an array")
+
+    optional_manifest_paths = hooks.get("optional_manifest_paths")
+    if optional_manifest_paths is not None and not isinstance(optional_manifest_paths, list):
+        errors.append(f"{path_prefix}.optional_manifest_paths: must be an array")
+
+    conditional_manifests = hooks.get("conditional_manifests")
+    if conditional_manifests is not None and not isinstance(conditional_manifests, list):
+        errors.append(f"{path_prefix}.conditional_manifests: must be an array")
+    if isinstance(conditional_manifests, list):
+        for idx, item in enumerate(conditional_manifests):
+            item_path = f"{path_prefix}.conditional_manifests[{idx}]"
+            if not isinstance(item, dict):
+                errors.append(f"{item_path}: must be an object")
+                continue
+            if not str(item.get("deployment") or "").strip():
+                errors.append(f"{item_path}.deployment: required non-empty string")
+            if not str(item.get("manifest_path") or "").strip():
+                errors.append(f"{item_path}.manifest_path: required non-empty string")
 
 
 def main() -> int:

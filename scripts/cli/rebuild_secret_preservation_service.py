@@ -17,6 +17,7 @@ class RebuildSecretPreservationConfig:
     namespace: str
     secret_name: str
     kubectl: list[str]
+    preserve_keys: tuple[str, ...] = ()
 
 
 @dataclass
@@ -46,7 +47,9 @@ class RebuildSecretPreservationService:
             check=False,
         )
         if proc.returncode != 0:
-            self.info(f"No existing secret {self.cfg.namespace}/{self.cfg.secret_name} found to preserve.")
+            self.info(
+                f"No existing secret {self.cfg.namespace}/{self.cfg.secret_name} found to preserve."
+            )
             return {}
 
         payload = json.loads(proc.stdout or "{}")
@@ -54,13 +57,7 @@ class RebuildSecretPreservationService:
         if not isinstance(data, dict):
             data = {}
 
-        keys = [
-            "SABNZBD_API_KEY",
-            "STACK_ADMIN_USERNAME",
-            "STACK_ADMIN_PASSWORD",
-            "JELLYFIN_API_KEY",
-            "JELLYFIN_USER_ID",
-        ]
+        keys = tuple(self.cfg.preserve_keys or ("STACK_ADMIN_USERNAME", "STACK_ADMIN_PASSWORD"))
 
         restored: dict[str, str] = {}
         for key in keys:

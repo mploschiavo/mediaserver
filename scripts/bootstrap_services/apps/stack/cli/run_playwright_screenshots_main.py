@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from core.exceptions import ConfigError, MediaStackError
+from cli.cli_common import repo_root_from_script_file
 
 
 def info(message: str) -> None:
@@ -160,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     if not namespace:
         raise ConfigError("NAMESPACE must be non-empty")
 
-    root_dir = Path(__file__).resolve().parents[2]
+    root_dir = repo_root_from_script_file(__file__)
     out_dir = str(args.out_dir or "").strip() or str(root_dir / "docs" / "screenshots" / "apps")
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)

@@ -50,8 +50,6 @@ class RunBootstrapJobConfig:
     bootstrap_runner_image: str
     root_dir: Path
     config_file: Path
-    skip_qbit_ensure: bool = False
-    skip_sab_ensure: bool = False
     phase_skip_flags: dict[str, bool] = field(default_factory=dict)
 
     @property
@@ -72,16 +70,11 @@ class RunBootstrapJobConfig:
 
     @property
     def effective_phase_skip_flags(self) -> dict[str, bool]:
-        out = {
+        return {
             str(key).strip().lower(): bool(value)
             for key, value in (self.phase_skip_flags or {}).items()
             if str(key).strip()
         }
-        if self.skip_qbit_ensure:
-            out["skip_torrent_client_ensure"] = True
-        if self.skip_sab_ensure:
-            out["skip_usenet_client_ensure"] = True
-        return out
 
 
 def build_parser(
@@ -187,8 +180,6 @@ def parse_run_bootstrap_job_config(
         if not key:
             continue
         phase_skip_flags[key] = bool(phase_skip_flags.get(key, False) or env_bool(env_name, False))
-    skip_qbit_ensure = bool(phase_skip_flags.get("skip_torrent_client_ensure", False))
-    skip_sab_ensure = bool(phase_skip_flags.get("skip_usenet_client_ensure", False))
     return RunBootstrapJobConfig(
         namespace=str(args.namespace).strip() or "media-stack",
         timeout_raw=str(args.timeout).strip() or "10m",
@@ -201,7 +192,5 @@ def parse_run_bootstrap_job_config(
         or "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
         root_dir=root_dir,
         config_file=Path(str(args.config_file)),
-        skip_qbit_ensure=skip_qbit_ensure,
-        skip_sab_ensure=skip_sab_ensure,
         phase_skip_flags=phase_skip_flags,
     )

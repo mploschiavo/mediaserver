@@ -55,17 +55,50 @@ class _Kube:
         return _Result(1, "", "unexpected command")
 
 
+def _write_bootstrap_cfg(tmpdir: str, payload: dict[str, object]) -> Path:
+    path = Path(tmpdir) / "resolved-bootstrap.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
 class BootstrapSecretPrimingServiceTests(unittest.TestCase):
-    def test_primes_jellyseerr_and_tautulli_keys(self):
+    def test_primes_request_manager_and_analytics_keys(self):
         kube = _Kube()
-        svc = BootstrapSecretPrimingService(
-            cfg=BootstrapSecretPrimingConfig(namespace="media-stack"),
-            kube=kube,
-            info=mock.Mock(),
-            warn=mock.Mock(),
-        )
-        svc.prime_jellyseerr_api_key()
-        svc.prime_tautulli_api_key()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = _write_bootstrap_cfg(
+                tmpdir,
+                {
+                    "adapter_hooks": {
+                        "bootstrap_job": {
+                            "secret_priming_targets": {
+                                "request_manager": {
+                                    "env_key": "JELLYSEERR_API_KEY",
+                                    "env_var": "JELLYSEERR_API_KEY",
+                                    "deployment": "jellyseerr",
+                                    "extract_command": "cat /tmp/key",
+                                },
+                                "analytics": {
+                                    "env_key": "TAUTULLI_API_KEY",
+                                    "env_var": "TAUTULLI_API_KEY",
+                                    "deployment": "tautulli",
+                                    "extract_command": "cat /tmp/key",
+                                },
+                            }
+                        }
+                    }
+                },
+            )
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=cfg_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=mock.Mock(),
+            )
+            svc.prime_request_manager_api_key()
+            svc.prime_analytics_api_key()
 
         payloads = []
         for call in kube.calls:
@@ -74,15 +107,35 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
         self.assertIn({"stringData": {"JELLYSEERR_API_KEY": "jellyseerr-key"}}, payloads)
         self.assertIn({"stringData": {"TAUTULLI_API_KEY": "tautulli-key"}}, payloads)
 
-    def test_primes_all_servarr_and_prowlarr_keys(self):
+    def test_primes_all_configured_api_keys(self):
         kube = _Kube()
-        svc = BootstrapSecretPrimingService(
-            cfg=BootstrapSecretPrimingConfig(namespace="media-stack"),
-            kube=kube,
-            info=mock.Mock(),
-            warn=mock.Mock(),
-        )
-        svc.prime_servarr_api_keys()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = _write_bootstrap_cfg(
+                tmpdir,
+                {
+                    "adapter_hooks": {
+                        "bootstrap_job": {
+                            "arr_api_key_technologies": [
+                                "sonarr",
+                                "radarr",
+                                "lidarr",
+                                "readarr",
+                                "prowlarr",
+                            ]
+                        }
+                    }
+                },
+            )
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=cfg_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=mock.Mock(),
+            )
+            svc.prime_servarr_api_keys()
 
         patch_payloads = [
             json.loads(call[-1])
@@ -100,26 +153,27 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
         self.assertIn("READARR_API_KEY", keys)
         self.assertIn("PROWLARR_API_KEY", keys)
 
-    def test_primes_only_configured_arr_apps_from_resolved_bootstrap_config(self):
+    def test_primes_only_configured_api_key_apps(self):
         kube = _Kube()
         with tempfile.TemporaryDirectory() as tmpdir:
-            bootstrap_cfg = Path(tmpdir) / "resolved-bootstrap.json"
-            bootstrap_cfg.write_text(
-                json.dumps(
-                    {
-                        "arr_apps": [
-                            {"name": "Radarr", "implementation": "radarr"},
-                            {"name": "Lidarr", "implementation": "lidarr"},
-                        ],
-                        "prowlarr_url": "http://prowlarr:9696",
+            cfg_path = _write_bootstrap_cfg(
+                tmpdir,
+                {
+                    "adapter_hooks": {
+                        "bootstrap_job": {
+                            "arr_api_key_technologies": [
+                                "radarr",
+                                "lidarr",
+                                "prowlarr",
+                            ]
+                        }
                     }
-                ),
-                encoding="utf-8",
+                },
             )
             svc = BootstrapSecretPrimingService(
                 cfg=BootstrapSecretPrimingConfig(
                     namespace="media-stack",
-                    bootstrap_config_file=bootstrap_cfg,
+                    bootstrap_config_file=cfg_path,
                 ),
                 kube=kube,
                 info=mock.Mock(),
@@ -156,15 +210,36 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
     def test_skips_when_secret_missing(self):
         kube = _Kube(secret_exists=False)
         warn = mock.Mock()
-        svc = BootstrapSecretPrimingService(
-            cfg=BootstrapSecretPrimingConfig(namespace="media-stack"),
-            kube=kube,
-            info=mock.Mock(),
-            warn=warn,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = _write_bootstrap_cfg(
+                tmpdir,
+                {
+                    "adapter_hooks": {
+                        "bootstrap_job": {
+                            "secret_priming_targets": {
+                                "usenet_client": {
+                                    "env_key": "SABNZBD_API_KEY",
+                                    "env_var": "SABNZBD_API_KEY",
+                                    "deployment": "sabnzbd",
+                                    "extract_command": "cat /tmp/key",
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=cfg_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=warn,
+            )
 
-        with mock.patch.dict("os.environ", {"SABNZBD_API_KEY": "env-sab-key"}, clear=False):
-            svc.prime_sab_api_key()
+            with mock.patch.dict("os.environ", {"SABNZBD_API_KEY": "env-sab-key"}, clear=False):
+                svc.prime_usenet_client_api_key()
 
         warning_messages = " ".join(call.args[0] for call in warn.call_args_list if call.args)
         self.assertIn("media-stack-secrets", warning_messages)
@@ -192,18 +267,22 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 svc.prime_servarr_api_keys()
 
-    def test_missing_manifest_derived_targets_fails_fast(self):
+    def test_missing_api_key_technologies_fails_fast(self):
         kube = _Kube()
-        svc = BootstrapSecretPrimingService(
-            cfg=BootstrapSecretPrimingConfig(namespace="media-stack"),
-            kube=kube,
-            info=mock.Mock(),
-            warn=mock.Mock(),
-        )
-        with mock.patch(
-            "cli.bootstrap_secret_priming_service.load_plugin_manifests",
-            return_value=[],
-        ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = _write_bootstrap_cfg(
+                tmpdir,
+                {"adapter_hooks": {"bootstrap_job": {}}},
+            )
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=cfg_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=mock.Mock(),
+            )
             with self.assertRaises(ConfigError):
                 svc.prime_servarr_api_keys()
 

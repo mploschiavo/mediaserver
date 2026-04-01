@@ -21,6 +21,7 @@ from urllib import request
 
 from core.kube import resolve_kubectl_binary
 from core.phase_tracker import PhaseTracker
+from cli.cli_common import repo_root_from_script_file
 
 
 class InstallError(RuntimeError):
@@ -266,7 +267,7 @@ class InstallRunner:
 
 
 def parse_args(argv: list[str]) -> InstallConfig:
-    root_dir = Path(__file__).resolve().parents[2]
+    root_dir = repo_root_from_script_file(__file__)
 
     parser = argparse.ArgumentParser(
         prog="scripts/install.sh",

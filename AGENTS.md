@@ -131,6 +131,14 @@ Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
 - Keep `scripts/*.py` limited to CLI entrypoints and intentionally shared tooling.
 - Put domain behavior in `scripts/bootstrap_services/**` rather than root `scripts/` where possible.
 - App-specific Python implementation must not live under `scripts/cli/`; place it under `scripts/bootstrap_services/apps/<app>/**`.
+- `scripts/cli/*.py` must remain app/technology-neutral orchestration glue.
+  - Do not hard-code technology/app names in `scripts/cli`.
+  - If a CLI is app-specific or stack-composed, move it under `scripts/bootstrap_services/apps/<app>/cli/` (or `apps/stack/cli/` for stack-level UX flows).
+  - Shell wrappers may keep historical script names and should resolve via `scripts/lib/run-python-cli.sh`.
+- Reconcile orchestration contract:
+  - `adapter_hooks.microk8s_reconcile.phase_plan` is the source of truth for reconcile order/conditions.
+  - Reconcile steps must declare `event` + `handler` and use `RunnerEvent`.
+  - Do not add bespoke hard-coded reconcile sequencing in CLI modules.
 
 ## Logging, Errors, and Secrets
 - Use structured logging via `scripts/core/logging_utils.py`.
@@ -168,7 +176,8 @@ Current key test suites:
 6. `rg -n "from core.kube import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
 7. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
 8. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" scripts/bootstrap_services scripts/core scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns no matches
-9. Live bootstrap smoke in cluster:
+9. `rg -n -i "(jellyfin|jellyseerr|prowlarr|qbittorrent|qbit|sabnzbd|sonarr|radarr|lidarr|readarr|bazarr|unpackerr|maintainerr|tautulli|homepage|plex|emby|flaresolverr)" scripts/cli/*.py` returns no matches
+10. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 

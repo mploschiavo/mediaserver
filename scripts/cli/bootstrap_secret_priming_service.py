@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from bootstrap_services.plugin_manifest_loader import load_plugin_manifests
 from core.exceptions import ConfigError, KubernetesError
 from core.kube import KubernetesClient
 
@@ -53,40 +52,15 @@ class BootstrapSecretPrimingService:
             return ""
         return self._clean(result.stdout)
 
-    def _read_sab_api_key_from_deploy(self) -> str:
-        command = (
-            "sed -n 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*//p' /config/sabnzbd.ini "
-            "| head -n1"
-        )
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/sabnzbd", "--", "sh", "-c", command],
-            check=False,
-        )
-        if result.returncode != 0:
+    def _read_value_from_deploy(self, deployment: str, command: str) -> str:
+        token = self._normalize_deploy_token(deployment)
+        if not token:
             return ""
-        return self._clean(result.stdout)
-
-    def _read_jellyseerr_api_key_from_deploy(self) -> str:
-        command = (
-            "node -e \"const fs=require('fs'); "
-            "const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); "
-            "process.stdout.write(String(((d.main||{}).apiKey||'')).trim());\""
-        )
-        result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/jellyseerr", "--", "sh", "-c", command],
-            check=False,
-        )
-        if result.returncode != 0:
+        command_text = str(command or "").strip()
+        if not command_text:
             return ""
-        return self._clean(result.stdout)
-
-    def _read_tautulli_api_key_from_deploy(self) -> str:
-        command = (
-            "sed -n 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*//p' /config/config.ini "
-            "| head -n1"
-        )
         result = self.kube.run(
-            ["-n", self.cfg.namespace, "exec", "deploy/tautulli", "--", "sh", "-c", command],
+            ["-n", self.cfg.namespace, "exec", f"deploy/{token}", "--", "sh", "-c", command_text],
             check=False,
         )
         if result.returncode != 0:
@@ -138,49 +112,120 @@ class BootstrapSecretPrimingService:
                 raise ConfigError(f"Could not parse bootstrap config at {path}: {exc}") from exc
             else:
                 apps: list[str] = []
-                arr_apps = payload.get("arr_apps") if isinstance(payload, dict) else None
-                if isinstance(arr_apps, list):
-                    for item in arr_apps:
-                        if not isinstance(item, dict):
-                            continue
-                        app = self._normalize_deploy_token(
-                            item.get("implementation") or item.get("name")
-                        )
+                adapter_hooks = payload.get("adapter_hooks")
+                bootstrap_job_hooks = (
+                    adapter_hooks.get("bootstrap_job") if isinstance(adapter_hooks, dict) else {}
+                )
+                configured_tokens = (
+                    bootstrap_job_hooks.get("arr_api_key_technologies")
+                    if isinstance(bootstrap_job_hooks, dict)
+                    else None
+                )
+                if isinstance(configured_tokens, list):
+                    for item in configured_tokens:
+                        app = self._normalize_deploy_token(item)
                         if app and app not in apps:
                             apps.append(app)
-                prowlarr_url = str((payload or {}).get("prowlarr_url") or "").strip()
-                if prowlarr_url and "prowlarr" not in apps:
-                    apps.append("prowlarr")
                 if apps:
                     return apps
 
-        try:
-            apps: list[str] = []
-            for manifest in load_plugin_manifests():
-                technology = self._normalize_deploy_token(manifest.technology)
-                if not technology:
-                    continue
-                is_servarr = bool((manifest.adapter_classes or {}).get("servarr"))
-                if technology == "prowlarr" or is_servarr:
-                    if technology not in apps:
-                        apps.append(technology)
-            if apps:
-                return apps
-        except Exception as exc:
-            raise ConfigError(
-                f"Could not resolve API-key app list from plugin manifests: {exc}"
-            ) from exc
-
         raise ConfigError(
-            "Could not resolve API-key app list: no Servarr/Prowlarr technologies "
-            "found in bootstrap config or plugin manifests."
+            "Could not resolve API-key app list: "
+            "adapter_hooks.bootstrap_job.arr_api_key_technologies must be configured."
         )
+
+    def _resolve_secret_priming_targets(self) -> dict[str, dict[str, str]]:
+        path = self.cfg.bootstrap_config_file
+        if not path or not path.is_file():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ConfigError(f"Could not parse bootstrap config at {path}: {exc}") from exc
+
+        adapter_hooks = payload.get("adapter_hooks")
+        if not isinstance(adapter_hooks, dict):
+            return {}
+        bootstrap_job = adapter_hooks.get("bootstrap_job")
+        if not isinstance(bootstrap_job, dict):
+            return {}
+        raw_targets = bootstrap_job.get("secret_priming_targets")
+        if raw_targets is None:
+            return {}
+        if not isinstance(raw_targets, dict):
+            raise ConfigError(
+                "adapter_hooks.bootstrap_job.secret_priming_targets must be an object"
+            )
+
+        targets: dict[str, dict[str, str]] = {}
+        for key, value in raw_targets.items():
+            token = str(key or "").strip()
+            if not token:
+                continue
+            if not isinstance(value, dict):
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.secret_priming_targets"
+                    f".{token} must be an object"
+                )
+            env_key = str(value.get("env_key") or "").strip()
+            deployment = str(value.get("deployment") or "").strip()
+            extract_command = str(value.get("extract_command") or "").strip()
+            env_var = str(value.get("env_var") or "").strip() or env_key
+            if not env_key or not deployment or not extract_command:
+                raise ConfigError(
+                    "adapter_hooks.bootstrap_job.secret_priming_targets"
+                    f".{token} requires env_key, deployment, and extract_command"
+                )
+            targets[token] = {
+                "env_key": env_key,
+                "deployment": deployment,
+                "extract_command": extract_command,
+                "env_var": env_var,
+            }
+        return targets
+
+    def _prime_named_target(self, target_key: str) -> None:
+        targets = self._resolve_secret_priming_targets()
+        target = targets.get(target_key)
+        if not target:
+            self.warn(
+                "Secret priming target not configured: "
+                f"adapter_hooks.bootstrap_job.secret_priming_targets.{target_key}"
+            )
+            return
+
+        if not self._secret_exists():
+            self.warn(
+                f"Secret {self.cfg.namespace}/{self.cfg.secret_name} not found; "
+                f"skipping {target.get('env_key', target_key)} priming."
+            )
+            return
+
+        env_var = str(target.get("env_var") or "").strip()
+        env_key = str(target.get("env_key") or "").strip()
+        deployment = str(target.get("deployment") or "").strip()
+        extract_command = str(target.get("extract_command") or "").strip()
+        if not env_key:
+            self.warn(f"Skipping secret priming target '{target_key}': missing env_key")
+            return
+
+        key = self._clean(os.environ.get(env_var))
+        if not key:
+            key = self._read_value_from_deploy(deployment, extract_command)
+        if not key:
+            self.warn(
+                f"Could not discover {env_key} from env/{env_var} or deploy/{deployment}; continuing."
+            )
+            return
+
+        self._patch_secret_string(env_key, key)
+        self.info(f"Seeded {env_key} in media-stack-secrets.")
 
     def prime_servarr_api_keys(self) -> None:
         if not self._secret_exists():
             self.warn(
                 f"Secret {self.cfg.namespace}/{self.cfg.secret_name} not found; "
-                "skipping Arr API key priming."
+                "skipping component API key priming."
             )
             return
 
@@ -200,64 +245,15 @@ class BootstrapSecretPrimingService:
             found += 1
 
         if found == 0:
-            self.warn("No Arr/Prowlarr API keys were discovered from running deployments.")
+            self.warn("No configured API keys were discovered from running deployments.")
         else:
             self.info(f"Primed API keys in secret for {found} app(s).")
 
-    def prime_sab_api_key(self) -> None:
-        if not self._secret_exists():
-            self.warn(
-                f"Secret {self.cfg.namespace}/{self.cfg.secret_name} not found; "
-                "skipping SABnzbd API key priming."
-            )
-            return
+    def prime_usenet_client_api_key(self) -> None:
+        self._prime_named_target("usenet_client")
 
-        key = self._clean(os.environ.get("SABNZBD_API_KEY"))
-        if not key:
-            key = self._read_sab_api_key_from_deploy()
-        if not key:
-            self.warn("Could not discover SABnzbd API key from env or deploy/sabnzbd; continuing.")
-            return
+    def prime_request_manager_api_key(self) -> None:
+        self._prime_named_target("request_manager")
 
-        self._patch_secret_string("SABNZBD_API_KEY", key)
-        self.info("Seeded SABNZBD_API_KEY in media-stack-secrets.")
-
-    def prime_jellyseerr_api_key(self) -> None:
-        if not self._secret_exists():
-            self.warn(
-                f"Secret {self.cfg.namespace}/{self.cfg.secret_name} not found; "
-                "skipping Jellyseerr API key priming."
-            )
-            return
-
-        key = self._clean(os.environ.get("JELLYSEERR_API_KEY"))
-        if not key:
-            key = self._read_jellyseerr_api_key_from_deploy()
-        if not key:
-            self.warn(
-                "Could not discover Jellyseerr API key from env or deploy/jellyseerr; continuing."
-            )
-            return
-
-        self._patch_secret_string("JELLYSEERR_API_KEY", key)
-        self.info("Seeded JELLYSEERR_API_KEY in media-stack-secrets.")
-
-    def prime_tautulli_api_key(self) -> None:
-        if not self._secret_exists():
-            self.warn(
-                f"Secret {self.cfg.namespace}/{self.cfg.secret_name} not found; "
-                "skipping Tautulli API key priming."
-            )
-            return
-
-        key = self._clean(os.environ.get("TAUTULLI_API_KEY"))
-        if not key:
-            key = self._read_tautulli_api_key_from_deploy()
-        if not key:
-            self.warn(
-                "Could not discover Tautulli API key from env or deploy/tautulli; continuing."
-            )
-            return
-
-        self._patch_secret_string("TAUTULLI_API_KEY", key)
-        self.info("Seeded TAUTULLI_API_KEY in media-stack-secrets.")
+    def prime_analytics_api_key(self) -> None:
+        self._prime_named_target("analytics")

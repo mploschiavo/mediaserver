@@ -477,6 +477,97 @@
             }
           },
           "additionalProperties": true
+        },
+        "rebuild": {
+          "type": "object",
+          "properties": {
+            "preserve_secret_keys": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "profile_manifest_paths": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            },
+            "component_enable_manifest_paths": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "profile_scale_to_zero_apps": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            },
+            "profile_tls": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "secret_name": {"type": "string"},
+                  "hosts": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "microk8s_reconcile": {
+          "type": "object",
+          "required": ["phase_plan", "optional_deployments", "optional_manifest_paths"],
+          "properties": {
+            "phase_plan": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["event", "handler"],
+                "properties": {
+                  "phase_name": {"type": "string"},
+                  "event": {"type": "string"},
+                  "handler": {"type": "string"},
+                  "enabled": {"type": "boolean"},
+                  "when": {
+                    "oneOf": [
+                      {"type": "boolean"},
+                      {"type": "object"},
+                      {"type": "array"}
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "optional_deployments": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "optional_manifest_paths": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "conditional_manifests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["deployment", "manifest_path"],
+                "properties": {
+                  "deployment": {"type": "string"},
+                  "manifest_path": {"type": "string"},
+                  "message": {"type": "string"}
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

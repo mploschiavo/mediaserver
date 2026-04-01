@@ -60,11 +60,12 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
                 "prime_servarr_api_keys_secret": noop,
                 "prime_usenet_client_api_key_secret": noop,
                 "prime_request_manager_api_key_secret": noop,
-                "prime_tautulli_api_key_secret": noop,
+                "prime_analytics_api_key_secret": noop,
                 "update_bootstrap_configmaps": noop,
                 "recreate_bootstrap_job": noop,
                 "wait_for_bootstrap_job": noop,
                 "print_bootstrap_job_logs": noop,
+                "activate_media_server_plugins": noop,
             },
         )
 
