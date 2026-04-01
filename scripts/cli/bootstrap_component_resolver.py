@@ -301,68 +301,60 @@ def resolve_runner_phase_script(
     return str(default or "").strip()
 
 
-def resolve_bootstrap_enable_workers(
+def resolve_bootstrap_enable_components(
     cfg: dict[str, Any],
     *,
     aliases: dict[str, str],
-    fallback_workers: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     hooks = _adapter_hooks(cfg)
     bootstrap_all = hooks.get("bootstrap_all")
-    if isinstance(bootstrap_all, dict) and "enable_workers" in bootstrap_all:
-        workers = bootstrap_all.get("enable_workers")
-        return _coerce_technology_list(workers, aliases)
-
-    out: list[str] = []
-    for worker in fallback_workers:
-        token = canonicalize_technology(worker, aliases)
-        if token and token not in out:
-            out.append(token)
-    return tuple(out)
+    if not isinstance(bootstrap_all, dict):
+        return ()
+    return _coerce_technology_list(bootstrap_all.get("enable_components"), aliases)
 
 
-def resolve_worker_manifest_path(
+def resolve_component_manifest_path(
     cfg: dict[str, Any],
     *,
-    worker: str,
+    component: str,
     aliases: dict[str, str],
     default: str | None = None,
 ) -> str:
     hooks = _adapter_hooks(cfg)
     bootstrap_all = hooks.get("bootstrap_all")
-    canonical_worker = canonicalize_technology(worker, aliases)
+    canonical_component = canonicalize_technology(component, aliases)
     if isinstance(bootstrap_all, dict):
-        mapping = bootstrap_all.get("worker_manifests")
+        mapping = bootstrap_all.get("component_manifests")
         if isinstance(mapping, dict):
-            candidate = str(mapping.get(canonical_worker) or "").strip()
+            candidate = str(mapping.get(canonical_component) or "").strip()
             if candidate:
                 return candidate
     if default is not None:
         return str(default)
-    return f"k8s/{canonical_worker}.yaml"
+    return f"k8s/{canonical_component}.yaml"
 
 
-def resolve_worker_deployment_name(
+def resolve_component_deployment_name(
     cfg: dict[str, Any],
     *,
-    worker: str,
+    component: str,
     aliases: dict[str, str],
     default: str | None = None,
 ) -> str:
     hooks = _adapter_hooks(cfg)
     bootstrap_all = hooks.get("bootstrap_all")
-    canonical_worker = canonicalize_technology(worker, aliases)
+    canonical_component = canonicalize_technology(component, aliases)
     if isinstance(bootstrap_all, dict):
-        mapping = bootstrap_all.get("worker_deployments")
+        mapping = bootstrap_all.get("component_deployments")
         if isinstance(mapping, dict):
-            candidate = normalize_technology_token(mapping.get(canonical_worker))
+            candidate = normalize_technology_token(mapping.get(canonical_component))
             if candidate:
                 return candidate
     if default is not None:
         explicit = normalize_technology_token(default)
         if explicit:
             return explicit
-    return canonical_worker
+    return canonical_component
 
 
 def _resolve_pipeline_components(
@@ -581,30 +573,13 @@ def _resolve_scale_policy_lists(
     scale_policy = hooks.get("scale_policy")
     if not isinstance(scale_policy, dict):
         raise ConfigError(
-            "adapter_hooks.scale_policy must be defined as an object with "
-            "'apps' (or legacy core_apps/worker_apps) lists."
+            "adapter_hooks.scale_policy must be defined as an object with an 'apps' list."
         )
 
     managed_apps = _coerce_technology_list(scale_policy.get("apps"), aliases)
     if not managed_apps:
-        legacy_core = _coerce_technology_list(scale_policy.get("core_apps"), aliases)
-        legacy_worker = _coerce_technology_list(scale_policy.get("worker_apps"), aliases)
-        merged: list[str] = []
-        for token in (*legacy_core, *legacy_worker):
-            if token and token not in merged:
-                merged.append(token)
-        managed_apps = tuple(merged)
-
-    if not managed_apps:
-        raise ConfigError(
-            "adapter_hooks.scale_policy.apps must be defined and non-empty "
-            "(or legacy core_apps/worker_apps lists must be provided)."
-        )
-
+        raise ConfigError("adapter_hooks.scale_policy.apps must be defined and non-empty.")
     scale_to_zero_apps = _coerce_technology_list(scale_policy.get("scale_to_zero_apps"), aliases)
-    if not scale_to_zero_apps and "scale_to_zero_apps" not in scale_policy:
-        scale_to_zero_apps = _coerce_technology_list(scale_policy.get("worker_apps"), aliases)
-
     filtered_scale_to_zero = tuple(token for token in scale_to_zero_apps if token in managed_apps)
     return managed_apps, filtered_scale_to_zero
 

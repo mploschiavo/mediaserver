@@ -74,7 +74,7 @@
       "indexer_auto_discovery": {
         "prowlarr": "run-prowlarr-auto-indexers.sh"
       },
-      "worker_key_sync": {
+      "component_key_sync": {
         "unpackerr": "sync-unpackerr-keys.sh"
       }
     },
@@ -215,15 +215,12 @@
           }
         },
         {
-          "operation": "enable_workers",
+          "operation": "enable_components",
           "when": {
-            "var": "flags.enable_workers",
+            "var": "flags.enable_components",
             "equals": true
           }
         }
-      ],
-      "enable_workers": [
-        "unpackerr"
       ],
       "components": {
         "torrent_client": {
@@ -241,7 +238,10 @@
         "indexer_manager": {
           "technology": "prowlarr"
         }
-      }
+      },
+      "enable_components": [
+        "unpackerr"
+      ]
     },
     "bootstrap_job": {
       "components": {

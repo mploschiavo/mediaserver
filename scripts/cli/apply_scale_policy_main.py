@@ -91,8 +91,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scripts/apply-scale-policy.sh",
         description=(
-            "Enforce scale policy: keep core apps at replicas>=1 and optionally "
-            "scale worker apps to 0."
+            "Enforce scale policy: keep managed apps at replicas>=1 and optionally "
+            "scale configured apps to 0."
         ),
     )
     parser.add_argument(
@@ -105,11 +105,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--scale-to-zero",
-        "--scale-workers-to-zero",
         dest="scale_to_zero",
         action="store_true",
-        default=_env_truthy(os.environ.get("SCALE_TO_ZERO"))
-        or _env_truthy(os.environ.get("SCALE_WORKERS_TO_ZERO")),
+        default=_env_truthy(os.environ.get("SCALE_TO_ZERO")),
         help="Scale apps listed in adapter_hooks.scale_policy.scale_to_zero_apps to 0 replicas.",
     )
     return parser

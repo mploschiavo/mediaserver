@@ -31,11 +31,11 @@ from cli.bootstrap_component_resolver import (
     resolve_bootstrap_all_components,
     resolve_bootstrap_all_phase_plan,
     resolve_bootstrap_component_plan,
-    resolve_bootstrap_enable_workers,
+    resolve_bootstrap_enable_components,
+    resolve_component_deployment_name,
+    resolve_component_manifest_path,
     resolve_phase_skip_flag_specs,
     resolve_runner_phase_script,
-    resolve_worker_deployment_name,
-    resolve_worker_manifest_path,
 )
 
 
@@ -100,7 +100,7 @@ class BootstrapAllConfig:
     root_dir: Path
     config_file: Path
     namespace: str
-    enable_workers: bool
+    enable_components: bool
     secret_name: str
     prepare_host_root: str
     phase_skip_flags: dict[str, bool]
@@ -207,15 +207,15 @@ class BootstrapAllRunner:
         out = out.replace("/srv/media-stack", self.cfg.prepare_host_root)
         return out
 
-    def _apply_manifest_file(self, manifest_path: Path, *, worker: str) -> None:
+    def _apply_manifest_file(self, manifest_path: Path, *, component: str) -> None:
         if not manifest_path.is_file():
-            raise ConfigError(f"Worker manifest not found for '{worker}': {manifest_path}")
+            raise ConfigError(f"Component manifest not found for '{component}': {manifest_path}")
         patched_text = self._manifest_overrides(manifest_path.read_text(encoding="utf-8"))
         from tempfile import TemporaryDirectory
 
-        prefix_worker = re.sub(r"[^a-z0-9-]+", "-", str(worker or "").lower()).strip("-")
-        prefix_worker = prefix_worker or "worker"
-        with TemporaryDirectory(prefix=f"media-stack-{prefix_worker}-") as tmp:
+        prefix_component = re.sub(r"[^a-z0-9-]+", "-", str(component or "").lower()).strip("-")
+        prefix_component = prefix_component or "component"
+        with TemporaryDirectory(prefix=f"media-stack-{prefix_component}-") as tmp:
             patched = Path(tmp) / manifest_path.name
             patched.write_text(patched_text, encoding="utf-8")
             result = self.kube.run(["apply", "-f", str(patched)], check=False)
@@ -226,28 +226,28 @@ class BootstrapAllRunner:
             if result.returncode != 0:
                 raise KubernetesError(result.stderr or result.stdout)
 
-    def _enable_worker_deployment(self, worker: str) -> None:
+    def _enable_component_deployment(self, component: str) -> None:
         plan = self._component_plan()
-        worker_manifest = resolve_worker_manifest_path(
+        component_manifest = resolve_component_manifest_path(
             plan.config,
-            worker=worker,
+            component=component,
             aliases=plan.aliases,
         )
-        manifest_path = (self.cfg.root_dir / worker_manifest).resolve()
+        manifest_path = (self.cfg.root_dir / component_manifest).resolve()
         if not manifest_path.is_file():
             warn(
-                f"Worker manifest not found for '{worker}' at {manifest_path}; "
-                "skipping worker enable."
+                f"Component manifest not found for '{component}' at {manifest_path}; "
+                "skipping component enable."
             )
             return
 
-        deployment_name = resolve_worker_deployment_name(
+        deployment_name = resolve_component_deployment_name(
             plan.config,
-            worker=worker,
+            component=component,
             aliases=plan.aliases,
-            default=worker,
+            default=component,
         )
-        self._apply_manifest_file(manifest_path, worker=worker)
+        self._apply_manifest_file(manifest_path, component=component)
         self.kube.run(
             [
                 "-n",
@@ -361,7 +361,7 @@ class BootstrapAllRunner:
             "bindings": dict(plan.role_bindings),
             "components": component_context,
             "flags": {
-                "enable_workers": self.cfg.enable_workers,
+                "enable_components": self.cfg.enable_components,
             },
         }
 
@@ -485,33 +485,35 @@ class BootstrapAllRunner:
                 )
                 continue
 
-            if operation == "enable_workers":
+            if operation == "enable_components":
                 if not _phase_enabled(step, True):
                     continue
-                workers_to_enable = resolve_bootstrap_enable_workers(
+                components_to_enable = resolve_bootstrap_enable_components(
                     plan.config,
                     aliases=plan.aliases,
-                    fallback_workers=plan.scale_to_zero_apps,
                 )
-                if not workers_to_enable:
+                if not components_to_enable:
                     warn(
-                        "No bootstrap workers configured in adapter_hooks.bootstrap_all.enable_workers; "
-                        "worker enable phase skipped."
+                        "No bootstrap components configured in adapter_hooks.bootstrap_all.enable_components; "
+                        "component enable phase skipped."
                     )
                     continue
-                for worker in workers_to_enable:
-                    worker_key_sync_script = self._phase_script("worker_key_sync", worker)
+                for component in components_to_enable:
+                    component_key_sync_script = self._phase_script(
+                        "component_key_sync",
+                        component,
+                    )
                     self._run_phase(
-                        f"Sync worker integration keys ({worker})",
-                        lambda script=worker_key_sync_script: self._run_script(
+                        f"Sync component integration keys ({component})",
+                        lambda script=component_key_sync_script: self._run_script(
                             script,
                             env={"NAMESPACE": self.cfg.namespace},
                         ),
-                        enabled=bool(worker_key_sync_script),
+                        enabled=bool(component_key_sync_script),
                     )
                     self._run_phase(
-                        f"Enable worker deployment ({worker})",
-                        lambda app=worker: self._enable_worker_deployment(app),
+                        f"Enable component deployment ({component})",
+                        lambda app=component: self._enable_component_deployment(app),
                         enabled=True,
                     )
                 continue
@@ -582,12 +584,11 @@ def _parse_args(
         default=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
     )
     parser.add_argument(
-        "--enable-workers",
-        "--enable-unpackerr",
-        dest="enable_workers",
+        "--enable-components",
+        dest="enable_components",
         action="store_true",
-        default=_env_bool_candidates(("ENABLE_WORKERS", "ENABLE_UNPACKERR"), True),
-        help="Enable configured bootstrap worker deployments.",
+        default=_env_bool_candidates(("ENABLE_COMPONENTS", "ENABLE_UNPACKERR"), True),
+        help="Enable configured bootstrap component deployments.",
     )
     for spec in skip_specs:
         parser.add_argument(
@@ -632,7 +633,7 @@ def main(argv: list[str] | None = None) -> int:
         root_dir=root_dir,
         config_file=config_file,
         namespace=str(args.namespace).strip(),
-        enable_workers=bool(args.enable_workers),
+        enable_components=bool(args.enable_components),
         secret_name=str(args.secret_name).strip(),
         prepare_host_root=str(args.prepare_host_root).strip(),
         phase_skip_flags={
