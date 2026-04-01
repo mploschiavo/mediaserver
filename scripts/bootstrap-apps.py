@@ -109,11 +109,11 @@ def main():
     runner_operations = build_runner_operation_registry(
         RunnerOperationHandlers(
             ensure_app_auth_settings=runtime_servarr_ops.ensure_app_auth_settings,
-            qbit_login=runtime_servarr_ops.qbit_login,
+            qbit_login=_missing_op_handler("qbit_login"),
             read_sabnzbd_api_key=runtime_servarr_ops.read_sabnzbd_api_key,
             ensure_sabnzbd_defaults=runtime_servarr_ops.ensure_sabnzbd_defaults,
             ensure_sabnzbd_categories=runtime_servarr_ops.ensure_sabnzbd_categories,
-            setup_qbit_categories=runtime_servarr_ops.setup_qbit_categories,
+            setup_qbit_categories=_missing_op_handler("setup_qbit_categories"),
             run_servarr_pipeline=runtime_servarr_ops._servarr_pipeline_service().run,
             ensure_bazarr_arr_integration=_missing_op_handler("ensure_bazarr_arr_integration"),
             configure_jellyseerr=_missing_op_handler("configure_jellyseerr"),

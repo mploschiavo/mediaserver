@@ -8,7 +8,7 @@ from http import cookiejar
 from typing import Any, Callable
 from urllib import error, parse, request
 
-from .config_models import DownloadClientConfig
+from bootstrap_services.config_models import DownloadClientConfig
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]

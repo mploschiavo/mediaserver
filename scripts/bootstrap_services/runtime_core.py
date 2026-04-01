@@ -72,7 +72,6 @@ from bootstrap_services.operation_wiring import (
     RunnerOperationHandlers,
     build_runner_operation_registry,
 )
-from bootstrap_services.qbit_service import QBittorrentService
 from bootstrap_services.runtime_factory import (
     BootstrapCliArgs,
     BootstrapRuntimeFactoryDependencies,
