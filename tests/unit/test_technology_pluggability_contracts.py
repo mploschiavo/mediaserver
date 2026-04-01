@@ -66,7 +66,10 @@ MIN_REGISTRATION_REQUIREMENTS = {
     },
     "tautulli": {"app_service_classes": {"tautulli_service"}},
     "flaresolverr": {},
-    "maintainerr": {"app_service_classes": {"maintainerr_service"}},
+    "maintainerr": {
+        "app_service_classes": {"maintainerr_service"},
+        "operation_handlers": {"ensure_maintainerr_policy", "ensure_maintainerr_integrations"},
+    },
 }
 
 SHARED_RUNTIME_ENTRY_MODULES = [
@@ -281,6 +284,45 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         finally:
             registry.set_runtime_context_cfg(prior_context)
 
+    def test_missing_maintainerr_manifest_does_not_break_shared_runtime_import_init(self):
+        import bootstrap_services.plugin_manifest_loader as manifest_loader
+        import bootstrap_services.runtime_media_ops as runtime_media_ops
+        import bootstrap_services.runtime_service_registry as registry
+        import bootstrap_services.runtime_servarr.factory as runtime_factory
+
+        prior_context = registry.get_runtime_context_cfg()
+        all_manifests = manifest_loader.load_plugin_manifests()
+        # Remove every manifest that provides maintainerr_service so class resolution
+        # for maintainerr operations deterministically fails only when invoked.
+        filtered_manifests = [
+            item
+            for item in all_manifests
+            if "maintainerr_service" not in (item.app_service_classes or {})
+        ]
+        self.assertTrue(
+            any(item.technology == "maintainerr" for item in all_manifests),
+            "Expected maintainerr manifest to exist for this simulation test.",
+        )
+        self.assertTrue(
+            len(filtered_manifests) < len(all_manifests),
+            "Expected at least one manifest to provide maintainerr_service.",
+        )
+
+        try:
+            with mock.patch.object(
+                registry, "load_plugin_manifests", return_value=filtered_manifests
+            ):
+                registry.set_runtime_context_cfg({})
+                # Shared runtime init/import should still work for unrelated services.
+                arr_service = runtime_factory._arr_service()
+                self.assertIsNotNone(arr_service)
+
+                # The removed technology should fail only when invoked.
+                with self.assertRaises(RuntimeError):
+                    runtime_media_ops._maintainerr_service({})
+        finally:
+            registry.set_runtime_context_cfg(prior_context)
+
     def test_runtime_binding_removal_is_lazy_until_technology_path_invoked(self):
         import bootstrap_services.plugin_manifest_loader as manifest_loader
         import bootstrap_services.runtime_service_registry as registry
@@ -354,6 +396,45 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             # Failure is deferred until we invoke the removed technology path.
             with self.assertRaises(RuntimeError):
                 runtime_factory._usenet_client_service({})
+        finally:
+            registry.set_runtime_context_cfg(prior_context)
+
+    def test_runtime_maintainerr_binding_removal_is_lazy_until_technology_path_invoked(self):
+        import bootstrap_services.plugin_manifest_loader as manifest_loader
+        import bootstrap_services.runtime_media_ops as runtime_media_ops
+        import bootstrap_services.runtime_service_registry as registry
+        import bootstrap_services.runtime_servarr.factory as runtime_factory
+
+        prior_context = registry.get_runtime_context_cfg()
+        manifests = manifest_loader.load_plugin_manifests()
+        runtime_hooks = manifest_loader.build_adapter_hook_defaults(manifests).to_dict()
+        runtime_hooks["app_service_classes"] = dict(runtime_hooks.get("app_service_classes") or {})
+        runtime_hooks["app_service_classes_by_technology"] = {
+            str(tech): dict(service_map)
+            for tech, service_map in (
+                runtime_hooks.get("app_service_classes_by_technology") or {}
+            ).items()
+            if isinstance(service_map, dict)
+        }
+
+        # Remove only the maintainerr runtime binding.
+        runtime_hooks["app_service_classes"].pop("maintainerr_service", None)
+        maintainerr_map = (
+            runtime_hooks["app_service_classes_by_technology"].get("maintainerr") or {}
+        )
+        maintainerr_map = dict(maintainerr_map) if isinstance(maintainerr_map, dict) else {}
+        maintainerr_map.pop("maintainerr_service", None)
+        runtime_hooks["app_service_classes_by_technology"]["maintainerr"] = maintainerr_map
+
+        try:
+            registry.set_runtime_context_cfg(runtime_hooks)
+            # Shared runtime init still succeeds for unrelated service wiring.
+            arr_service = runtime_factory._arr_service()
+            self.assertIsNotNone(arr_service)
+
+            # Failure is deferred until we invoke the removed technology path.
+            with self.assertRaises(RuntimeError):
+                runtime_media_ops._maintainerr_service({})
         finally:
             registry.set_runtime_context_cfg(prior_context)
 

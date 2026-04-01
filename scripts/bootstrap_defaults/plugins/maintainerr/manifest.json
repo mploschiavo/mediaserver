@@ -2,7 +2,11 @@
   "technology": "maintainerr",
   "aliases": [],
   "app_service_classes": {
-    "maintainerr_service": "bootstrap_services.maintainerr_service:MaintainerrService"
+    "maintainerr_service": "bootstrap_services.apps.maintainerr.service:MaintainerrService"
+  },
+  "operation_handlers": {
+    "ensure_maintainerr_policy": "bootstrap_services.apps.maintainerr.runtime_ops:ensure_maintainerr_policy",
+    "ensure_maintainerr_integrations": "bootstrap_services.apps.maintainerr.runtime_ops:ensure_maintainerr_integrations"
   },
   "service_technology_map": {
     "maintainerr_service": "maintainerr"

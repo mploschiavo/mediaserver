@@ -1,3 +1,5 @@
 """Maintainerr app package."""
 
-__all__: list[str] = []
+from .service import MaintainerrService
+
+__all__ = ["MaintainerrService"]
