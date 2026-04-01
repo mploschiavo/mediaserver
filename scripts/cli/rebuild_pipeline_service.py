@@ -44,7 +44,11 @@ class RebuildPipelineService:
 
     def apply_scale_policy_guardrails(self) -> None:
         self.info("Applying scale-policy guardrails")
-        self.run_script("apply-scale-policy.sh", env={"NAMESPACE": self.cfg.namespace})
+        self.run_script(
+            "apply-scale-policy.sh",
+            str(self.cfg.config_file),
+            env={"NAMESPACE": self.cfg.namespace},
+        )
 
     def run_bootstrap_pipeline(self) -> None:
         self.info("Running full bootstrap pipeline")

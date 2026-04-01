@@ -10,23 +10,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from core.exceptions import MediaStackError
 
+from cli.bootstrap_component_resolver import resolve_bootstrap_component_plan
 from cli.cli_common import kube_cmd, run_command
-
-CORE_APPS = (
-    "jellyfin",
-    "jellyseerr",
-    "prowlarr",
-    "qbittorrent",
-    "sonarr",
-    "radarr",
-    "lidarr",
-    "readarr",
-    "bazarr",
-)
-WORKER_APPS = ("unpackerr", "flaresolverr")
 
 
 def _env_truthy(value: str | None) -> bool:
@@ -90,6 +79,14 @@ def _scale_deployment(
     print(f"[OK] scale deploy/{name} -> {replicas}")
 
 
+def _default_config_file() -> Path:
+    env_path = str(os.environ.get("CONFIG_FILE", "")).strip()
+    if env_path:
+        return Path(env_path)
+    root_dir = Path(__file__).resolve().parents[2]
+    return root_dir / "bootstrap" / "media-stack.bootstrap.json"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scripts/apply-scale-policy.sh",
@@ -98,26 +95,39 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "scale worker apps to 0."
         ),
     )
+    parser.add_argument(
+        "config_file",
+        nargs="?",
+        default=str(_default_config_file()),
+        help="Bootstrap config JSON path",
+    )
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--scale-workers-to-zero",
         action="store_true",
         default=_env_truthy(os.environ.get("SCALE_WORKERS_TO_ZERO")),
-        help="Scale worker-like apps (unpackerr/flaresolverr) to 0 replicas.",
+        help="Scale worker-like apps from bootstrap config/manifest policy to 0 replicas.",
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    config_file = Path(str(args.config_file)).resolve()
     namespace = str(args.namespace or "").strip()
     if not namespace:
         raise MediaStackError("NAMESPACE must be non-empty")
 
+    plan = resolve_bootstrap_component_plan(config_file)
+    core_apps = tuple(plan.core_apps)
+    worker_apps = tuple(app for app in plan.worker_apps if app not in core_apps)
+
     kubectl = kube_cmd()
 
-    for app in CORE_APPS:
+    if core_apps:
+        print(f"[INFO] Core apps from config/manifest: {', '.join(core_apps)}")
+    for app in core_apps:
         if not _deployment_exists(kubectl, namespace, app):
             continue
         replicas = _current_replicas(kubectl, namespace, app)
@@ -131,7 +141,9 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     if bool(args.scale_workers_to_zero):
-        for app in WORKER_APPS:
+        if worker_apps:
+            print(f"[INFO] Worker apps from config/manifest: {', '.join(worker_apps)}")
+        for app in worker_apps:
             _scale_deployment(
                 kubectl,
                 namespace=namespace,

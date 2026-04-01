@@ -10,7 +10,38 @@
     "request_manager": "jellyseerr"
   },
   "adapter_hooks": {
-    "operation_handlers": {}
+    "operation_handlers": {},
+    "scale_policy": {
+      "worker_apps": [
+        "unpackerr",
+        "flaresolverr"
+      ]
+    },
+    "runner_phase_scripts": {
+      "torrent_client_credentials": {
+        "qbittorrent": "ensure-qbit-credentials.sh"
+      },
+      "usenet_client_api_access": {
+        "sabnzbd": "ensure-sabnzbd-api-access.sh"
+      },
+      "media_server_bootstrap": {
+        "jellyfin": "ensure-jellyfin-bootstrap.sh"
+      },
+      "request_manager_seed_local_admin": {
+        "jellyseerr": "seed-jellyseerr-local-admin.sh"
+      },
+      "indexer_auto_discovery": {
+        "prowlarr": "run-prowlarr-auto-indexers.sh"
+      },
+      "worker_key_sync": {
+        "unpackerr": "sync-unpackerr-keys.sh"
+      }
+    },
+    "bootstrap_all": {
+      "enable_workers": [
+        "unpackerr"
+      ]
+    }
   },
   "arr_download_handling": {
     "enabled": true,

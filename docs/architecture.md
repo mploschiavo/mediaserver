@@ -20,7 +20,7 @@ The runtime is intentionally layered so technologies can be swapped locally with
 
 Contract rules:
 - Registration is manifest-first, not runtime-config overrides.
-- `adapter_hooks` is runtime-only for operation handler and phase-plan overrides.
+- `adapter_hooks` is runtime-only for operation handlers, phase plans, wrapper phase-script maps, and scale-policy/worker orchestration lists.
 - Shared operation contracts are generic (`torrent_client_login`, `setup_torrent_categories`).
 - `BootstrapRunnerService` remains orchestration-only; app-specific branching belongs in app/adapter modules or declarative plans.
 
