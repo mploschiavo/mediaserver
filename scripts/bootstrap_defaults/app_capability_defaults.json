@@ -1,8 +1,4 @@
 {
-  "sonarr": {
-    "supports_series_folder_management": true,
-    "supports_seed_series": true
-  },
   "radarr": {},
   "lidarr": {
     "monitor_scope_all_value": "entireArtist"

@@ -118,7 +118,9 @@ class PhaseTracker:
 
 
 class RunBootstrapJobRunner:
-    def __init__(self, cfg: RunBootstrapJobConfig, kube: KubectlClient, tracker: PhaseTracker) -> None:
+    def __init__(
+        self, cfg: RunBootstrapJobConfig, kube: KubectlClient, tracker: PhaseTracker
+    ) -> None:
         self.cfg = cfg
         self.kube = kube
         self.tracker = tracker
@@ -140,7 +142,10 @@ class RunBootstrapJobRunner:
 
     def _secret_priming_service(self) -> BootstrapSecretPrimingService:
         return BootstrapSecretPrimingService(
-            cfg=BootstrapSecretPrimingConfig(namespace=self.cfg.namespace),
+            cfg=BootstrapSecretPrimingConfig(
+                namespace=self.cfg.namespace,
+                bootstrap_config_file=self.artifacts.job_config_file,
+            ),
             kube=self.kube,
             info=info,
             warn=warn,
@@ -282,10 +287,14 @@ class RunBootstrapJobRunner:
 
             info("Bootstrap job completed.")
             self.tracker.print_summary()
-            self.notify("ok", f"media-stack bootstrap job completed (namespace={self.cfg.namespace})")
+            self.notify(
+                "ok", f"media-stack bootstrap job completed (namespace={self.cfg.namespace})"
+            )
             return 0
         except Exception:
-            self.notify("error", f"media-stack bootstrap job failed (namespace={self.cfg.namespace})")
+            self.notify(
+                "error", f"media-stack bootstrap job failed (namespace={self.cfg.namespace})"
+            )
             raise
         finally:
             self.cleanup()
@@ -375,7 +384,9 @@ class RunBootstrapJobRunner:
 def main(argv: list[str] | None = None) -> int:
     root_dir = Path(__file__).resolve().parents[2]
     cfg = parse_run_bootstrap_job_config(argv, root_dir=root_dir)
-    runner = RunBootstrapJobRunner(cfg=cfg, kube=KubectlClient.from_environment(), tracker=PhaseTracker())
+    runner = RunBootstrapJobRunner(
+        cfg=cfg, kube=KubectlClient.from_environment(), tracker=PhaseTracker()
+    )
     return runner.run()
 
 

@@ -5,6 +5,7 @@
     "servarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter"
   },
   "capability_defaults": {
+    "default_download_category": "music",
     "monitor_scope_all_value": "entireArtist"
   }
 }

@@ -1,5 +1,6 @@
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -97,6 +98,59 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
         self.assertIn("LIDARR_API_KEY", keys)
         self.assertIn("READARR_API_KEY", keys)
         self.assertIn("PROWLARR_API_KEY", keys)
+
+    def test_primes_only_configured_arr_apps_from_resolved_bootstrap_config(self):
+        kube = _Kube()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bootstrap_cfg = Path(tmpdir) / "resolved-bootstrap.json"
+            bootstrap_cfg.write_text(
+                json.dumps(
+                    {
+                        "arr_apps": [
+                            {"name": "Radarr", "implementation": "radarr"},
+                            {"name": "Lidarr", "implementation": "lidarr"},
+                        ],
+                        "prowlarr_url": "http://prowlarr:9696",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=bootstrap_cfg,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=mock.Mock(),
+            )
+            svc.prime_servarr_api_keys()
+
+        patch_payloads = [
+            json.loads(call[-1])
+            for call in kube.calls
+            if call[:5] == ["-n", "media-stack", "patch", "secret", "media-stack-secrets"]
+        ]
+        keys = {
+            next(iter((payload.get("stringData") or {}).keys()))
+            for payload in patch_payloads
+            if payload.get("stringData")
+        }
+        self.assertEqual(
+            keys,
+            {"RADARR_API_KEY", "LIDARR_API_KEY", "PROWLARR_API_KEY"},
+        )
+
+        exec_targets = [
+            call[3]
+            for call in kube.calls
+            if call[:3] == ["-n", "media-stack", "exec"] and len(call) > 3
+        ]
+        self.assertIn("deploy/radarr", exec_targets)
+        self.assertIn("deploy/lidarr", exec_targets)
+        self.assertIn("deploy/prowlarr", exec_targets)
+        self.assertNotIn("deploy/sonarr", exec_targets)
+        self.assertNotIn("deploy/readarr", exec_targets)
 
     def test_skips_when_secret_missing(self):
         kube = _Kube(secret_exists=False)

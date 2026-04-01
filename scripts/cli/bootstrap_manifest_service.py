@@ -31,6 +31,24 @@ class BootstrapManifestService:
     info: LogFn
     warn: LogFn
 
+    LEGACY_REQUIRED_PVCS = (
+        "media-stack-config-jellyfin",
+        "media-stack-config-jellyseerr",
+        "media-stack-config-sonarr",
+        "media-stack-config-radarr",
+        "media-stack-config-lidarr",
+        "media-stack-config-readarr",
+        "media-stack-config-bazarr",
+        "media-stack-config-prowlarr",
+        "media-stack-config-sabnzbd",
+        "media-stack-config-homepage",
+        "media-stack-config-maintainerr",
+        "media-stack-config-jellyfin-auto-collections",
+        "media-stack-data-torrents",
+        "media-stack-data-usenet",
+        "media-stack-media",
+    )
+
     def manifest_overrides(self, text: str) -> str:
         out = re.sub(
             r"namespace:\s*media-stack\b",
@@ -51,32 +69,55 @@ class BootstrapManifestService:
         out = out.replace("/srv/media-stack", self.cfg.prepare_host_root)
         return out
 
+    @staticmethod
+    def _leading_spaces(line: str) -> int:
+        return len(line) - len(line.lstrip(" "))
+
+    @classmethod
+    def _extract_pvc_names_from_manifest(cls, manifest_text: str) -> list[str]:
+        names: list[str] = []
+        docs = re.split(r"(?m)^---\s*$", str(manifest_text or ""))
+        for doc in docs:
+            if not re.search(r"(?m)^\s*kind:\s*PersistentVolumeClaim\s*$", doc):
+                continue
+
+            in_metadata = False
+            metadata_indent = 0
+            name = ""
+            for line in doc.splitlines():
+                if not line.strip():
+                    continue
+                indent = cls._leading_spaces(line)
+                if not in_metadata:
+                    if re.match(r"^\s*metadata:\s*$", line):
+                        in_metadata = True
+                        metadata_indent = indent
+                    continue
+                if indent <= metadata_indent:
+                    break
+                match = re.match(r"^\s*name:\s*([^\s#]+)\s*$", line)
+                if match:
+                    name = str(match.group(1)).strip()
+                    break
+
+            if name and name not in names:
+                names.append(name)
+        return names
+
     def ensure_bootstrap_pvc_prereqs(self) -> None:
         storage_manifest = self.cfg.root_dir / "k8s" / "storage-pvc.yaml"
-        required = [
-            "media-stack-config-jellyfin",
-            "media-stack-config-jellyseerr",
-            "media-stack-config-sonarr",
-            "media-stack-config-radarr",
-            "media-stack-config-lidarr",
-            "media-stack-config-readarr",
-            "media-stack-config-bazarr",
-            "media-stack-config-prowlarr",
-            "media-stack-config-sabnzbd",
-            "media-stack-config-homepage",
-            "media-stack-config-maintainerr",
-            "media-stack-config-jellyfin-auto-collections",
-            "media-stack-data-torrents",
-            "media-stack-data-usenet",
-            "media-stack-media",
-        ]
+        required = list(self.LEGACY_REQUIRED_PVCS)
 
         if storage_manifest.exists():
             self.info(f"Ensuring bootstrap PVC prerequisites via {storage_manifest}")
             with TemporaryDirectory(prefix="media-stack-storage-pvc-") as tmpdir:
                 patched = Path(tmpdir) / "storage-pvc.yaml"
+                patched_text = self.manifest_overrides(storage_manifest.read_text(encoding="utf-8"))
+                discovered_pvcs = self._extract_pvc_names_from_manifest(patched_text)
+                if discovered_pvcs:
+                    required = discovered_pvcs
                 patched.write_text(
-                    self.manifest_overrides(storage_manifest.read_text(encoding="utf-8")),
+                    patched_text,
                     encoding="utf-8",
                 )
                 result = self.kube.run(["apply", "-f", str(patched)], check=False)
