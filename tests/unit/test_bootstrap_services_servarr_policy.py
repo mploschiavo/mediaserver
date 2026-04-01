@@ -168,7 +168,11 @@ class ServarrPolicyServiceTests(unittest.TestCase):
 
         svc = self._service(fake_http)
         svc.ensure_media_management(
-            app_cfg={"name": "Sonarr", "implementation": "sonarr"},
+            app_cfg={
+                "name": "Sonarr",
+                "implementation": "sonarr",
+                "capabilities": {"supports_series_folder_management": True},
+            },
             app_url="http://sonarr:8989",
             api_base="/api/v3",
             api_key="key",

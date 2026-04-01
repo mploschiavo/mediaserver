@@ -15,6 +15,12 @@ def set_runtime_context_cfg(adapter_hooks_cfg=None):
     _RUNTIME_CONTEXT_ADAPTER_HOOKS = dict(adapter_hooks_cfg or {})
 
 
+def get_runtime_context_cfg() -> dict[str, object]:
+    if not isinstance(_RUNTIME_CONTEXT_ADAPTER_HOOKS, dict):
+        return {}
+    return dict(_RUNTIME_CONTEXT_ADAPTER_HOOKS)
+
+
 def _manifest_adapter_hooks() -> dict[str, object]:
     defaults = build_adapter_hook_defaults(load_plugin_manifests())
     return defaults.to_dict()

@@ -5,6 +5,7 @@
     "servarr": "bootstrap_services.servarr_technologies.sonarr:SonarrAdapter"
   },
   "capability_defaults": {
-    "supports_series_folder_management": true
+    "supports_series_folder_management": true,
+    "supports_seed_series": true
   }
 }

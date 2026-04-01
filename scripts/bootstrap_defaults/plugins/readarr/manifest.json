@@ -7,5 +7,7 @@
   "before_common_steps": {
     "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
   },
-  "capability_defaults": {}
+  "capability_defaults": {
+    "monitor_scope_all_value": "entireAuthor"
+  }
 }

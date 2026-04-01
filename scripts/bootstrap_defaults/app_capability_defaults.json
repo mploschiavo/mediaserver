@@ -1,8 +1,13 @@
 {
   "sonarr": {
-    "supports_series_folder_management": true
+    "supports_series_folder_management": true,
+    "supports_seed_series": true
   },
   "radarr": {},
-  "lidarr": {},
-  "readarr": {}
+  "lidarr": {
+    "monitor_scope_all_value": "entireArtist"
+  },
+  "readarr": {
+    "monitor_scope_all_value": "entireAuthor"
+  }
 }

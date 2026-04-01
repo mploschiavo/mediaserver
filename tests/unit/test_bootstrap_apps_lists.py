@@ -14,6 +14,7 @@ class BootstrapAppImportListPayloadTests(unittest.TestCase):
             "name": "Lidarr",
             "implementation": "Lidarr",
             "root_folder": "/media/music",
+            "capabilities": {"monitor_scope_all_value": "entireArtist"},
         }
         schema = {
             "implementation": "LastFmTag",
@@ -55,6 +56,7 @@ class BootstrapAppImportListPayloadTests(unittest.TestCase):
             "name": "Readarr",
             "implementation": "Readarr",
             "root_folder": "/media/books",
+            "capabilities": {"monitor_scope_all_value": "entireAuthor"},
         }
         schema = {
             "implementation": "GoodreadsListImportList",
@@ -150,6 +152,7 @@ class BootstrapAppImportListPayloadTests(unittest.TestCase):
             "name": "Lidarr",
             "implementation": "Lidarr",
             "root_folder": "/media/music",
+            "capabilities": {"monitor_scope_all_value": "entireArtist"},
         }
         schema = {
             "implementation": "LastFmTag",
@@ -188,6 +191,7 @@ class BootstrapAppImportListPayloadTests(unittest.TestCase):
             "name": "Readarr",
             "implementation": "Readarr",
             "root_folder": "/media/books",
+            "capabilities": {"monitor_scope_all_value": "entireAuthor"},
         }
         schema = {
             "implementation": "GoodreadsListImportList",
