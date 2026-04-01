@@ -28,13 +28,13 @@ from cli.bootstrap_component_resolver import (
     PhaseSkipFlagSpec,
     evaluate_phase_condition,
     normalize_flag_token,
-    resolve_bootstrap_all_components,
-    resolve_bootstrap_all_phase_plan,
     resolve_bootstrap_component_plan,
     resolve_bootstrap_enable_components,
     resolve_component_deployment_name,
     resolve_component_manifest_path,
     resolve_phase_skip_flag_specs,
+    resolve_pipeline_components,
+    resolve_pipeline_phase_plan,
     resolve_runner_phase_script,
 )
 
@@ -298,7 +298,10 @@ class BootstrapAllRunner:
             raise ConfigError(f"Config file not found: {self.cfg.config_file}")
 
         plan = self._component_plan()
-        phase_plan = resolve_bootstrap_all_phase_plan(plan.config)
+        phase_plan = resolve_pipeline_phase_plan(
+            plan.config,
+            pipeline="bootstrap_all",
+        )
         adapter_hooks = plan.config.get("adapter_hooks")
         runner_phase_scripts = (
             (adapter_hooks or {}).get("runner_phase_scripts")
@@ -311,8 +314,9 @@ class BootstrapAllRunner:
             else ()
         )
 
-        components: dict[str, str] = resolve_bootstrap_all_components(
+        components: dict[str, str] = resolve_pipeline_components(
             plan.config,
+            pipeline="bootstrap_all",
             aliases=plan.aliases,
             role_bindings=plan.role_bindings,
         )

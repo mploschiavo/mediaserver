@@ -12,9 +12,8 @@ from cli.bootstrap_component_resolver import (  # noqa: E402
     resolve_bootstrap_enable_components,
     resolve_component_deployment_name,
     resolve_component_manifest_path,
-    resolve_bootstrap_all_components,
-    resolve_bootstrap_all_phase_plan,
-    resolve_bootstrap_job_phase_plan,
+    resolve_pipeline_components,
+    resolve_pipeline_phase_plan,
     resolve_bootstrap_component_plan,
     resolve_phase_skip_flag_specs,
     resolve_runner_phase_script,
@@ -176,8 +175,8 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             }
         }
 
-        all_plan = resolve_bootstrap_all_phase_plan(cfg)
-        job_plan = resolve_bootstrap_job_phase_plan(cfg)
+        all_plan = resolve_pipeline_phase_plan(cfg, pipeline="bootstrap_all")
+        job_plan = resolve_pipeline_phase_plan(cfg, pipeline="bootstrap_job")
         self.assertEqual(
             [step.operation for step in all_plan],
             ["run", "run"],
@@ -210,8 +209,9 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         }
         role_bindings = {"torrent_client": "qbittorrent", "request_manager": "jellyseerr"}
 
-        resolved = resolve_bootstrap_all_components(
+        resolved = resolve_pipeline_components(
             cfg,
+            pipeline="bootstrap_all",
             aliases=aliases,
             role_bindings=role_bindings,
         )
