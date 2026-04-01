@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from core.exceptions import KubernetesError
@@ -17,6 +19,7 @@ LogFn = Callable[[str], None]
 class BootstrapSecretPrimingConfig:
     namespace: str
     secret_name: str = "media-stack-secrets"
+    bootstrap_config_file: Path | None = None
 
 
 @dataclass
@@ -25,6 +28,8 @@ class BootstrapSecretPrimingService:
     kube: KubectlClient
     info: LogFn
     warn: LogFn
+
+    DEFAULT_API_KEY_APPS = ("sonarr", "radarr", "lidarr", "readarr", "prowlarr")
 
     @staticmethod
     def _clean(value: str | None) -> str:
@@ -40,10 +45,7 @@ class BootstrapSecretPrimingService:
         )
 
     def _read_api_key_from_deploy(self, app: str) -> str:
-        command = (
-            "sed -n 's:.*<ApiKey>\\(.*\\)</ApiKey>.*:\\1:p' /config/config.xml "
-            "| head -n1"
-        )
+        command = "sed -n 's:.*<ApiKey>\\(.*\\)</ApiKey>.*:\\1:p' /config/config.xml " "| head -n1"
         result = self.kube.run(
             ["-n", self.cfg.namespace, "exec", f"deploy/{app}", "--", "sh", "-c", command],
             check=False,
@@ -113,6 +115,51 @@ class BootstrapSecretPrimingService:
         if result.returncode != 0:
             raise KubernetesError(result.stderr or result.stdout)
 
+    @staticmethod
+    def _normalize_deploy_token(value: str | None) -> str:
+        token = str(value or "").strip().lower()
+        token = re.sub(r"[^a-z0-9-]+", "-", token)
+        token = token.strip("-")
+        return token
+
+    @staticmethod
+    def _api_key_env_name(app: str) -> str:
+        token = re.sub(r"[^A-Za-z0-9]+", "_", str(app or ""))
+        token = token.strip("_").upper()
+        if not token:
+            return ""
+        return f"{token}_API_KEY"
+
+    def _resolve_api_key_apps(self) -> list[str]:
+        path = self.cfg.bootstrap_config_file
+        if path and path.is_file():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                self.warn(
+                    f"Could not parse bootstrap config at {path}; "
+                    f"falling back to default Arr key priming list ({exc})."
+                )
+            else:
+                apps: list[str] = []
+                arr_apps = payload.get("arr_apps") if isinstance(payload, dict) else None
+                if isinstance(arr_apps, list):
+                    for item in arr_apps:
+                        if not isinstance(item, dict):
+                            continue
+                        app = self._normalize_deploy_token(
+                            item.get("implementation") or item.get("name")
+                        )
+                        if app and app not in apps:
+                            apps.append(app)
+                prowlarr_url = str((payload or {}).get("prowlarr_url") or "").strip()
+                if prowlarr_url and "prowlarr" not in apps:
+                    apps.append("prowlarr")
+                if apps:
+                    return apps
+
+        return list(self.DEFAULT_API_KEY_APPS)
+
     def prime_servarr_api_keys(self) -> None:
         if not self._secret_exists():
             self.warn(
@@ -121,16 +168,19 @@ class BootstrapSecretPrimingService:
             )
             return
 
-        apps = ["sonarr", "radarr", "lidarr", "readarr", "prowlarr"]
+        apps = self._resolve_api_key_apps()
         found = 0
         for app in apps:
             key = self._read_api_key_from_deploy(app)
             if not key:
                 self.warn(f"Could not read API key from deploy/{app} yet; continuing.")
                 continue
-            upper = app.upper()
-            self._patch_secret_string(f"{upper}_API_KEY", key)
-            self.info(f"Seeded {upper}_API_KEY in media-stack-secrets from deploy/{app}")
+            env_key = self._api_key_env_name(app)
+            if not env_key:
+                self.warn(f"Skipping API key seed for invalid app token '{app}'.")
+                continue
+            self._patch_secret_string(env_key, key)
+            self.info(f"Seeded {env_key} in media-stack-secrets from deploy/{app}")
             found += 1
 
         if found == 0:
@@ -188,7 +238,9 @@ class BootstrapSecretPrimingService:
         if not key:
             key = self._read_tautulli_api_key_from_deploy()
         if not key:
-            self.warn("Could not discover Tautulli API key from env or deploy/tautulli; continuing.")
+            self.warn(
+                "Could not discover Tautulli API key from env or deploy/tautulli; continuing."
+            )
             return
 
         self._patch_secret_string("TAUTULLI_API_KEY", key)

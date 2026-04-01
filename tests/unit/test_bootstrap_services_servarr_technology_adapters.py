@@ -8,6 +8,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_services.config_models import ServarrAppConfig  # noqa: E402
+from bootstrap_services.plugin_manifest_loader import (  # noqa: E402
+    build_adapter_hook_defaults,
+    load_plugin_manifests,
+)
 from bootstrap_services.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
     noop_before_common_steps,
@@ -168,6 +172,28 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             ).create(self._context("custom-arr"), noop_before_common_steps)
 
         self.assertIsInstance(adapter, CustomArrAdapter)
+
+    def test_removing_sonarr_mapping_keeps_other_technologies_functional(self):
+        defaults = build_adapter_hook_defaults(load_plugin_manifests())
+        filtered_specs = {
+            key: value
+            for key, value in (defaults.adapter_classes or {}).items()
+            if str(key).strip().lower() != "sonarr"
+        }
+        self.assertNotIn("sonarr", filtered_specs)
+
+        factory = ServarrAdapterFactory(
+            deps=self._deps(),
+            adapter_deps=self._adapter_deps(),
+            adapter_class_specs=filtered_specs,
+        )
+
+        self.assertIsInstance(
+            factory.create(self._context("radarr"), noop_before_common_steps),
+            RadarrAdapter,
+        )
+        with self.assertRaises(ValueError):
+            factory.create(self._context("sonarr"), noop_before_common_steps)
 
 
 if __name__ == "__main__":

@@ -27,20 +27,37 @@ class ArrService:
     normalize_remote_path_mappings: NormalizeMappingsFn
 
     def choose_category(self, app_cfg: dict[str, Any], client_cfg: dict[str, Any]) -> str:
-        if app_cfg.get("qbit_category"):
-            return app_cfg["qbit_category"]
+        qbit_category = str(app_cfg.get("qbit_category") or "").strip()
+        if qbit_category:
+            return qbit_category
+
+        app_category = str(app_cfg.get("category") or "").strip()
+        if app_category:
+            return app_category
 
         categories = client_cfg.get("categories", {})
-        if app_cfg["implementation"] in categories:
-            return categories[app_cfg["implementation"]]
+        if isinstance(categories, dict):
+            lookup_tokens: list[str] = []
+            for token in (app_cfg.get("implementation"), app_cfg.get("name")):
+                raw = str(token or "").strip()
+                if not raw:
+                    continue
+                for variant in (raw, raw.lower(), raw.upper(), raw.capitalize()):
+                    if variant and variant not in lookup_tokens:
+                        lookup_tokens.append(variant)
 
-        default_map = {
-            "Sonarr": "tv",
-            "Radarr": "movies",
-            "Lidarr": "music",
-            "Readarr": "books",
-        }
-        return default_map.get(app_cfg["implementation"], "downloads")
+            for lookup in lookup_tokens:
+                category = str(categories.get(lookup) or "").strip()
+                if category:
+                    return category
+
+        capabilities = app_cfg.get("capabilities") or {}
+        if isinstance(capabilities, dict):
+            capability_category = str(capabilities.get("default_download_category") or "").strip()
+            if capability_category:
+                return capability_category
+
+        return "downloads"
 
     def normalize_mapping_path(self, path_value: Any) -> str:
         text = str(path_value or "").strip()

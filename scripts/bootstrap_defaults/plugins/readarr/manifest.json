@@ -8,6 +8,7 @@
     "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
   },
   "capability_defaults": {
+    "default_download_category": "books",
     "monitor_scope_all_value": "entireAuthor"
   }
 }

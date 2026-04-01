@@ -103,13 +103,17 @@ class ServarrPipelineService:
 
     @staticmethod
     def _raw_app_dict(app: ServarrAppConfig) -> dict[str, Any]:
-        base = dict(app.raw) if app.raw else {
-            "name": app.name,
-            "implementation": app.implementation,
-            "url": app.url,
-            "root_folder": app.root_folder,
-            "category": app.category,
-        }
+        base = (
+            dict(app.raw)
+            if app.raw
+            else {
+                "name": app.name,
+                "implementation": app.implementation,
+                "url": app.url,
+                "root_folder": app.root_folder,
+                "category": app.category,
+            }
+        )
         base_caps = dict(base.get("capabilities") or {})
         caps = {
             "supports_auth": app.capabilities.supports_auth,
@@ -125,6 +129,7 @@ class ServarrPipelineService:
             "supports_series_folder_management": app.capabilities.supports_series_folder_management,
             "supports_seed_series": app.capabilities.supports_seed_series,
             "monitor_scope_all_value": app.capabilities.monitor_scope_all_value,
+            "default_download_category": app.capabilities.default_download_category,
         }
         base_caps.update(caps)
         base["capabilities"] = base_caps

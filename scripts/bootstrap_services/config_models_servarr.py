@@ -205,8 +205,7 @@ class ArrDiscoveryListEntry:
         resolve_env_placeholder: Callable[[Any], Any],
     ) -> bool:
         token = str(
-            self.resolved_field_override("accessToken", resolve_env_placeholder)
-            or ""
+            self.resolved_field_override("accessToken", resolve_env_placeholder) or ""
         ).strip()
         return bool(token)
 
@@ -575,6 +574,7 @@ class AppCapabilities:
     supports_series_folder_management: bool = False
     supports_seed_series: bool = False
     monitor_scope_all_value: str = ""
+    default_download_category: str = ""
 
     @classmethod
     def from_dict(
@@ -600,6 +600,7 @@ class AppCapabilities:
             ),
             supports_seed_series=bool(merged.get("supports_seed_series", False)),
             monitor_scope_all_value=str(merged.get("monitor_scope_all_value", "")).strip(),
+            default_download_category=str(merged.get("default_download_category", "")).strip(),
         )
 
 
