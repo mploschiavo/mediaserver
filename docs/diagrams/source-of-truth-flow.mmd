@@ -1,9 +1,9 @@
 flowchart LR
-  SRC[Git Desired State\n- k8s manifests\n- bootstrap config\n- scripts]
+  SRC[Git Desired State\n- k8s manifests\n- bootstrap config\n- plugin manifests\n- operation plans]
   SEC[Managed Secrets\nKubernetes Secret]
-  BOOT[Bootstrap/Reconcile]
+  BOOT[Bootstrap and Reconcile]
   RUN[Runtime App State]
-  TEST[Verification\nflow + smoke + playwright]
+  TEST[Verification\nflow + smoke + API tests]
 
   SRC --> BOOT
   SEC --> BOOT

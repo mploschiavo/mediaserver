@@ -14,6 +14,14 @@ This directory intentionally contains both:
   are now Python-backed wrappers with
   phase logging and checkpoint-aware orchestration.
 
+## Pluggable Runtime Contract
+
+- Technology registration is manifest-driven under `scripts/bootstrap_defaults/plugins/*/manifest.json`.
+- Shared orchestration scripts must remain technology-neutral.
+- Runtime hook overrides are limited to operation handlers and phase plans.
+- Generic operation names are used in base orchestration (for example `torrent_client_login`).
+- Legacy qB helper/CLI names remain for backward compatibility (`ensure-qbit-credentials.sh`, etc.).
+
 ## Stable Operator Entrypoints
 
 - `install.sh`

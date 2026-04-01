@@ -5,6 +5,25 @@ This platform is organized as a control plane plus a data plane.
 - **Control plane**: deployment scripts, bootstrap job, reconcile logic, and verification tooling.
 - **Data plane**: downloader clients, Arr import pipeline, media libraries, and playback services.
 
+## Pluggable Layers and Contracts
+
+The runtime is intentionally layered so technologies can be swapped locally without editing shared orchestration:
+
+1. **Declarative bindings layer**
+   `bootstrap/media-stack.bootstrap.json` selects active technologies per role through `technology_bindings`.
+2. **Manifest registration layer**
+   `scripts/bootstrap_defaults/plugins/<technology>/manifest.json` declares adapter classes, service classes, operation handlers, and aliases.
+3. **App/technology implementation layer**
+   `scripts/bootstrap_services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `servarr_technologies/`.
+4. **Shared orchestration layer**
+   `bootstrap-apps.py`, `runtime_factory/*`, and `bootstrap_runner_service.py` stay technology-neutral.
+
+Contract rules:
+- Registration is manifest-first, not runtime-config overrides.
+- `adapter_hooks` is runtime-only for operation handler and phase-plan overrides.
+- Shared operation contracts are generic (`torrent_client_login`, `setup_torrent_categories`).
+- `BootstrapRunnerService` remains orchestration-only; app-specific branching belongs in app/adapter modules or declarative plans.
+
 ## Diagram Catalog
 
 Rendered diagram artifacts live in `docs/diagrams`.
@@ -102,10 +121,10 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  GIT[Git Config] --> INSTALL[Install and Rebuild Scripts]
+  GIT[Git Config + Plugin Manifests] --> INSTALL[Install and Rebuild Scripts]
   INSTALL --> K8S[Kubernetes Resources]
   INSTALL --> BOOT[Bootstrap Job]
-  BOOT --> APPS[Arr/Prowlarr/Jellyseerr/Jellyfin Settings]
+  BOOT --> APPS[Manifest-Bound Runtime Operations]
   APPS --> VERIFY[verify-flow and smoke tests]
   VERIFY --> GIT
 ```
@@ -132,6 +151,8 @@ Key rendered artifacts:
 - Downloader/import path conventions are explicit and codified.
 - Namespace-scoped deployments allow side-by-side validation.
 - Drift is reduced through periodic reconcile and explicit verification.
+- Technology replacement is role-local and binding-driven.
+- Removing one technology manifest does not break unrelated technologies when that role is rebound.
 
 ---
 
