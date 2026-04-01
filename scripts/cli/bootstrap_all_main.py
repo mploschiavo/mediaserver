@@ -8,7 +8,6 @@ https://matthewloschiavo.com
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import shlex
@@ -19,10 +18,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, KubernetesError
 from core.kube import KubectlClient
 from core.state_store import CheckpointStateStore
+
+from cli.bootstrap_component_resolver import (
+    BootstrapComponentPlan,
+    canonicalize_technology,
+    resolve_bootstrap_component_plan,
+    resolve_bootstrap_enable_workers,
+    resolve_runner_phase_script,
+    resolve_worker_deployment_name,
+    resolve_worker_manifest_path,
+)
 
 
 def ts() -> str:
@@ -102,6 +110,7 @@ class BootstrapAllRunner:
         self.kube = KubectlClient.from_environment()
         self.tracker = PhaseTracker()
         self.state = CheckpointStateStore(cfg.state_file)
+        self._plan: BootstrapComponentPlan | None = None
         self.state.load()
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
@@ -127,40 +136,40 @@ class BootstrapAllRunner:
                 f"{' '.join(shlex.quote(x) for x in [str(script_path), *args])}"
             )
 
-    def _config_probe(self, probe: str) -> bool:
-        raw_cfg = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
-        if not isinstance(raw_cfg, dict):
-            raise ConfigError("Bootstrap config root must be an object.")
-        try:
-            cfg = TopLevelBootstrapConfig.from_dict(raw_cfg).to_dict()
-        except ValueError as exc:
-            raise ConfigError(f"Invalid bootstrap config: {exc}") from exc
-        bindings = cfg.get("technology_bindings") or {}
-        clients = cfg.get("download_clients") or {}
-        if not isinstance(bindings, dict):
-            bindings = {}
-        if not isinstance(clients, dict):
-            clients = {}
+    def _component_plan(self) -> BootstrapComponentPlan:
+        if self._plan is None:
+            self._plan = resolve_bootstrap_component_plan(self.cfg.config_file)
+        return self._plan
 
-        def resolve_client(role_key: str, default_key: str) -> dict:
-            selected = str(bindings.get(role_key, default_key) or "").strip().lower() or default_key
-            selected_cfg = clients.get(selected)
-            if isinstance(selected_cfg, dict):
-                return selected_cfg
-            fallback = clients.get(default_key)
-            return fallback if isinstance(fallback, dict) else {}
+    def _role_binding(self, role_key: str) -> str:
+        return str(self._component_plan().role_bindings.get(role_key) or "").strip()
 
-        if probe == "torrent-ensure":
-            client = resolve_client("torrent_client", "qbittorrent")
-            return bool(
-                client.get("configure_arr_clients")
-                or client.get("set_categories_in_qbit")
-                or client.get("set_categories")
-            )
-        if probe == "usenet-ensure":
-            client = resolve_client("usenet_client", "sabnzbd")
-            return bool(client.get("configure_arr_clients"))
-        raise ConfigError(f"Unknown config probe: {probe}")
+    def _selected_download_client(self, role_key: str) -> dict[str, object]:
+        technology = self._role_binding(role_key)
+        selected = self._component_plan().download_clients.get(technology)
+        if isinstance(selected, dict):
+            return selected
+        return {}
+
+    def _should_run_torrent_client_ensure(self) -> bool:
+        selected = self._selected_download_client("torrent_client")
+        return bool(
+            selected.get("configure_arr_clients")
+            or selected.get("set_categories_in_qbit")
+            or selected.get("set_categories")
+        )
+
+    def _should_run_usenet_client_ensure(self) -> bool:
+        selected = self._selected_download_client("usenet_client")
+        return bool(selected.get("configure_arr_clients"))
+
+    def _phase_script(self, phase_key: str, technology: str) -> str:
+        return resolve_runner_phase_script(
+            self._component_plan().config,
+            phase_key=phase_key,
+            technology=technology,
+            aliases=self._component_plan().aliases,
+        )
 
     def _manifest_overrides(self, text: str) -> str:
         out = re.sub(
@@ -174,13 +183,16 @@ class BootstrapAllRunner:
         out = out.replace("/srv/media-stack", self.cfg.prepare_host_root)
         return out
 
-    def _apply_unpacked_manifest(self) -> None:
-        manifest_path = self.cfg.root_dir / "k8s" / "unpackerr.yaml"
+    def _apply_manifest_file(self, manifest_path: Path, *, worker: str) -> None:
+        if not manifest_path.is_file():
+            raise ConfigError(f"Worker manifest not found for '{worker}': {manifest_path}")
         patched_text = self._manifest_overrides(manifest_path.read_text(encoding="utf-8"))
         from tempfile import TemporaryDirectory
 
-        with TemporaryDirectory(prefix="media-stack-unpackerr-") as tmp:
-            patched = Path(tmp) / "unpackerr.yaml"
+        prefix_worker = re.sub(r"[^a-z0-9-]+", "-", str(worker or "").lower()).strip("-")
+        prefix_worker = prefix_worker or "worker"
+        with TemporaryDirectory(prefix=f"media-stack-{prefix_worker}-") as tmp:
+            patched = Path(tmp) / manifest_path.name
             patched.write_text(patched_text, encoding="utf-8")
             result = self.kube.run(["apply", "-f", str(patched)], check=False)
             if result.stdout.strip():
@@ -189,6 +201,48 @@ class BootstrapAllRunner:
                 print(result.stderr.rstrip(), file=sys.stderr)
             if result.returncode != 0:
                 raise KubernetesError(result.stderr or result.stdout)
+
+    def _enable_worker_deployment(self, worker: str) -> None:
+        plan = self._component_plan()
+        worker_manifest = resolve_worker_manifest_path(
+            plan.config,
+            worker=worker,
+            aliases=plan.aliases,
+        )
+        manifest_path = (self.cfg.root_dir / worker_manifest).resolve()
+        if not manifest_path.is_file():
+            warn(
+                f"Worker manifest not found for '{worker}' at {manifest_path}; "
+                "skipping worker enable."
+            )
+            return
+
+        deployment_name = resolve_worker_deployment_name(
+            plan.config,
+            worker=worker,
+            aliases=plan.aliases,
+            default=worker,
+        )
+        self._apply_manifest_file(manifest_path, worker=worker)
+        self.kube.run(
+            [
+                "-n",
+                self.cfg.namespace,
+                "scale",
+                f"deploy/{deployment_name}",
+                "--replicas=1",
+            ]
+        )
+        self.kube.run(
+            [
+                "-n",
+                self.cfg.namespace,
+                "rollout",
+                "status",
+                f"deploy/{deployment_name}",
+                "--timeout=10m",
+            ]
+        )
 
     def _run_phase(
         self,
@@ -219,44 +273,81 @@ class BootstrapAllRunner:
         if not self.cfg.config_file.exists():
             raise ConfigError(f"Config file not found: {self.cfg.config_file}")
 
-        should_run_qbit = self._config_probe("torrent-ensure")
-        should_run_sab = self._config_probe("usenet-ensure")
+        plan = self._component_plan()
+        torrent_client = self._role_binding("torrent_client")
+        usenet_client = self._role_binding("usenet_client")
+        media_server = self._role_binding("media_server")
+        request_manager = self._role_binding("request_manager")
+        prowlarr_key = canonicalize_technology("prowlarr", plan.aliases) or "prowlarr"
+
+        torrent_script = self._phase_script("torrent_client_credentials", torrent_client)
+        usenet_script = self._phase_script("usenet_client_api_access", usenet_client)
+        media_server_script = self._phase_script("media_server_bootstrap", media_server)
+        request_seed_script = self._phase_script(
+            "request_manager_seed_local_admin",
+            request_manager,
+        )
+        indexer_script = self._phase_script("indexer_auto_discovery", prowlarr_key)
+
+        should_run_torrent_ensure = self._should_run_torrent_client_ensure()
+        should_run_usenet_ensure = self._should_run_usenet_client_ensure()
+        should_run_indexer_discovery = bool(str(plan.config.get("prowlarr_url") or "").strip())
+
+        if should_run_torrent_ensure and not torrent_script:
+            warn(
+                f"No runner phase script configured for torrent_client_credentials/{torrent_client}; "
+                "skipping torrent-client ensure."
+            )
+        if should_run_usenet_ensure and not usenet_script:
+            warn(
+                f"No runner phase script configured for usenet_client_api_access/{usenet_client}; "
+                "skipping usenet-client ensure."
+            )
+        if media_server and not media_server_script:
+            warn(
+                f"No runner phase script configured for media_server_bootstrap/{media_server}; "
+                "skipping media-server bootstrap ensure."
+            )
 
         self._run_phase(
-            "Ensure torrent client credentials",
+            f"Ensure torrent client bootstrap access ({torrent_client or 'unbound'})",
             lambda: self._run_script(
-                "ensure-qbit-credentials.sh",
+                torrent_script,
                 env={
                     "NAMESPACE": self.cfg.namespace,
                     "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
                 },
             ),
-            enabled=(not self.cfg.skip_qbit_ensure and should_run_qbit),
+            enabled=(
+                not self.cfg.skip_qbit_ensure and should_run_torrent_ensure and bool(torrent_script)
+            ),
         )
 
         self._run_phase(
-            "Ensure Jellyfin bootstrap and API key",
+            f"Ensure media server bootstrap access ({media_server or 'unbound'})",
             lambda: self._run_script(
-                "ensure-jellyfin-bootstrap.sh",
+                media_server_script,
                 env={
                     "NAMESPACE": self.cfg.namespace,
                     "SECRET_NAME": self.cfg.secret_name,
                 },
             ),
-            enabled=(not self.cfg.skip_jellyfin_bootstrap),
+            enabled=(not self.cfg.skip_jellyfin_bootstrap and bool(media_server_script)),
         )
 
         self._run_phase(
-            "Ensure usenet client API access",
+            f"Ensure usenet client API access ({usenet_client or 'unbound'})",
             lambda: self._run_script(
-                "ensure-sabnzbd-api-access.sh",
+                usenet_script,
                 env={"NAMESPACE": self.cfg.namespace},
             ),
-            enabled=(not self.cfg.skip_sab_ensure and should_run_sab),
+            enabled=(
+                not self.cfg.skip_sab_ensure and should_run_usenet_ensure and bool(usenet_script)
+            ),
         )
 
         self._run_phase(
-            "Run Arr/Prowlarr/Jellyseerr bootstrap job",
+            "Run bootstrap job",
             lambda: self._run_script(
                 "run-bootstrap-job.sh",
                 str(self.cfg.config_file),
@@ -270,59 +361,54 @@ class BootstrapAllRunner:
         )
 
         self._run_phase(
-            "Seed Jellyseerr local admin",
+            f"Seed request manager local admin ({request_manager or 'unbound'})",
             lambda: self._run_script(
-                "seed-jellyseerr-local-admin.sh",
+                request_seed_script,
                 env={"NAMESPACE": self.cfg.namespace},
             ),
+            enabled=bool(request_seed_script),
         )
 
         self._run_phase(
-            "Run Prowlarr auto-indexer discovery",
+            "Run indexer auto-discovery",
             lambda: self._run_script(
-                "run-prowlarr-auto-indexers.sh",
+                indexer_script,
                 env={
                     "NAMESPACE": self.cfg.namespace,
                     "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
                 },
             ),
+            enabled=(should_run_indexer_discovery and bool(indexer_script)),
         )
 
-        self._run_phase(
-            "Sync Unpackerr API keys",
-            lambda: self._run_script(
-                "sync-unpackerr-keys.sh",
-                env={"NAMESPACE": self.cfg.namespace},
-            ),
-        )
-
-        def enable_unpackerr() -> None:
-            self._apply_unpacked_manifest()
-            self.kube.run(
-                [
-                    "-n",
-                    self.cfg.namespace,
-                    "scale",
-                    "deploy/unpackerr",
-                    "--replicas=1",
-                ]
+        workers_to_enable: tuple[str, ...] = ()
+        if self.cfg.enable_unpackerr:
+            workers_to_enable = resolve_bootstrap_enable_workers(
+                plan.config,
+                aliases=plan.aliases,
+                fallback_workers=plan.worker_apps,
             )
-            self.kube.run(
-                [
-                    "-n",
-                    self.cfg.namespace,
-                    "rollout",
-                    "status",
-                    "deploy/unpackerr",
-                    "--timeout=10m",
-                ]
-            )
+            if not workers_to_enable:
+                warn(
+                    "No bootstrap workers configured in adapter_hooks.bootstrap_all.enable_workers; "
+                    "worker enable phase skipped."
+                )
 
-        self._run_phase(
-            "Enable Unpackerr deployment",
-            enable_unpackerr,
-            enabled=self.cfg.enable_unpackerr,
-        )
+        for worker in workers_to_enable:
+            worker_key_sync_script = self._phase_script("worker_key_sync", worker)
+            self._run_phase(
+                f"Sync worker integration keys ({worker})",
+                lambda script=worker_key_sync_script: self._run_script(
+                    script,
+                    env={"NAMESPACE": self.cfg.namespace},
+                ),
+                enabled=bool(worker_key_sync_script),
+            )
+            self._run_phase(
+                f"Enable worker deployment ({worker})",
+                lambda app=worker: self._enable_worker_deployment(app),
+                enabled=True,
+            )
 
         info("Full bootstrap complete.")
         self.tracker.summary()
@@ -354,6 +440,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--enable-unpackerr",
         action="store_true",
         default=str(os.environ.get("ENABLE_UNPACKERR", "1")).strip() == "1",
+        help="Enable configured bootstrap worker deployments (legacy flag name).",
     )
     parser.add_argument(
         "--skip-qbit-ensure",
@@ -371,6 +458,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--skip-jellyfin-bootstrap",
         action="store_true",
         default=str(os.environ.get("SKIP_JELLYFIN_BOOTSTRAP", "0")).strip() == "1",
+        help="Skip media-server bootstrap ensure phase (legacy flag name).",
     )
     parser.add_argument(
         "--resume",

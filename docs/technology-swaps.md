@@ -44,6 +44,9 @@ Registration is manifest-only. Runtime-only hooks still supported:
 - `adapter_hooks.operation_handlers`
 - `adapter_hooks.runner_operation_plans`
 - `adapter_hooks.media_server_operation_plans`
+- `adapter_hooks.runner_phase_scripts`
+- `adapter_hooks.bootstrap_all`
+- `adapter_hooks.scale_policy`
 
 Disallowed runtime registration overrides:
 - `adapter_hooks.adapter_classes`

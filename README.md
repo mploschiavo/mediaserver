@@ -91,6 +91,9 @@ Runtime override scope is intentionally narrow:
 - `adapter_hooks.operation_handlers`
 - `adapter_hooks.runner_operation_plans`
 - `adapter_hooks.media_server_operation_plans`
+- `adapter_hooks.runner_phase_scripts` (bootstrap wrapper phase->script mapping)
+- `adapter_hooks.bootstrap_all` (worker enable/sync manifest wiring for bootstrap-all)
+- `adapter_hooks.scale_policy` (core/worker app lists for scale guardrails)
 
 Registration overrides are intentionally blocked in runtime config:
 - `adapter_hooks.adapter_classes`
