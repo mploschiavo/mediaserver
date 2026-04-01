@@ -31,10 +31,12 @@ class BootstrapMode(str, Enum):
 
 class RunnerOperation(str, Enum):
     ENSURE_APP_AUTH_SETTINGS = "ensure_app_auth_settings"
+    TORRENT_CLIENT_LOGIN = "torrent_client_login"
     QBIT_LOGIN = "qbit_login"
     READ_SABNZBD_API_KEY = "read_sabnzbd_api_key"
     ENSURE_SABNZBD_DEFAULTS = "ensure_sabnzbd_defaults"
     ENSURE_SABNZBD_CATEGORIES = "ensure_sabnzbd_categories"
+    SETUP_TORRENT_CATEGORIES = "setup_torrent_categories"
     SETUP_QBIT_CATEGORIES = "setup_qbit_categories"
     RUN_SERVARR_PIPELINE = "run_servarr_pipeline"
     ENSURE_BAZARR_INTEGRATION = "ensure_bazarr_arr_integration"

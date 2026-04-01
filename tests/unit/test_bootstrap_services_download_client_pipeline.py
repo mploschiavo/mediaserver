@@ -19,9 +19,13 @@ from bootstrap_services.enums import RunnerOperation  # noqa: E402
 
 class DownloadClientPipelineServiceTests(unittest.TestCase):
     def _invoke(self):
+        torrent_login = mock.Mock()
+        setup_torrent_categories = mock.Mock()
         handlers = {
-            RunnerOperation.QBIT_LOGIN.value: mock.Mock(),
-            RunnerOperation.SETUP_QBIT_CATEGORIES.value: mock.Mock(),
+            RunnerOperation.TORRENT_CLIENT_LOGIN.value: torrent_login,
+            RunnerOperation.QBIT_LOGIN.value: torrent_login,
+            RunnerOperation.SETUP_TORRENT_CATEGORIES.value: setup_torrent_categories,
+            RunnerOperation.SETUP_QBIT_CATEGORIES.value: setup_torrent_categories,
             RunnerOperation.READ_SABNZBD_API_KEY.value: mock.Mock(return_value="sab-key"),
             RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value: mock.Mock(),
             RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value: mock.Mock(),
@@ -89,8 +93,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
 
         self.assertTrue(result.qbit_login_ok)
         self.assertEqual(result.sab_api_key, "sab-key")
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_called_once()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_called_once()
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_called_once()
+        invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_called_once()
         invoke.handlers[RunnerOperation.READ_SABNZBD_API_KEY.value].assert_called_once()
         invoke.handlers[RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value].assert_called_once()
         invoke.handlers[RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value].assert_called_once()
@@ -145,8 +149,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             )
         )
         self.assertFalse(result.qbit_login_ok)
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_not_called()
+        invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_not_called()
 
     def test_pipeline_uses_active_transmission_key_from_bindings(self):
         invoke = self._invoke()
@@ -162,8 +166,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             )
         )
         self.assertFalse(result.qbit_login_ok)
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_not_called()
+        invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_not_called()
 
     def test_pipeline_supports_custom_torrent_key_via_reflection_mapping(self):
         invoke = self._invoke()
@@ -191,8 +195,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             )
         )
         self.assertFalse(result.qbit_login_ok)
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_not_called()
+        invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_not_called()
 
     def test_pipeline_requires_explicit_mapping_for_custom_client_module(self):
         invoke = self._invoke()
@@ -232,8 +236,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             )
 
         self.assertTrue(result.qbit_login_ok)
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_not_called()
+        invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_not_called()
 
     def test_pipeline_supports_nzbget_as_active_usenet_client(self):
         invoke = self._invoke()
@@ -263,8 +267,8 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
         )
         self.assertTrue(result.qbit_login_ok)
         self.assertEqual(result.sab_api_key, "")
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_called_once()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_called_once()
+        invoke.handlers[RunnerOperation.TORRENT_CLIENT_LOGIN.value].assert_called_once()
+        invoke.handlers[RunnerOperation.SETUP_TORRENT_CATEGORIES.value].assert_called_once()
         invoke.handlers[RunnerOperation.READ_SABNZBD_API_KEY.value].assert_not_called()
 
 

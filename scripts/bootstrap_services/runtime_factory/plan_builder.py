@@ -13,17 +13,17 @@ def build_plan_summary(runtime: BootstrapRuntime) -> BootstrapPlanSummary:
         prowlarr_indexers=len(runtime.prowlarr_indexers),
         auto_indexers=runtime.auto_indexers,
         configure_arr_clients=(
-            runtime.configure_qbit_arr_clients or runtime.configure_sab_arr_clients
+            runtime.configure_torrent_arr_clients or runtime.configure_sab_arr_clients
         ),
-        configure_qbit_arr_clients=runtime.configure_qbit_arr_clients,
+        configure_torrent_arr_clients=runtime.configure_torrent_arr_clients,
         configure_sab_arr_clients=runtime.configure_sab_arr_clients,
         sab_remote_path_mappings=len(runtime.sab_remote_path_mappings),
         configure_arr_media_management=runtime.configure_arr_media_management,
         configure_arr_quality_upgrade=runtime.configure_arr_quality_upgrade,
         configure_arr_download_handling=runtime.configure_arr_download_handling,
         configure_arr_discovery_lists=runtime.configure_arr_discovery_lists,
-        set_qbit_categories=runtime.set_qbit_categories,
-        qbit_login_required=runtime.qbit_login_required,
+        set_torrent_categories=runtime.set_torrent_categories,
+        torrent_client_login_required=runtime.torrent_client_login_required,
         refresh_health_after_bootstrap=runtime.refresh_health_after_bootstrap,
         app_auth_enabled=bool((runtime.app_auth_cfg or {}).get("enabled", False)),
         configure_homepage=runtime.configure_homepage_services,

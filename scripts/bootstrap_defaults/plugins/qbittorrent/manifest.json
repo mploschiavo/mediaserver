@@ -9,8 +9,8 @@
     "torrent_client_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService"
   },
   "operation_handlers": {
-    "qbit_login": "bootstrap_services.apps.qbittorrent.runtime_ops:qbit_login",
-    "setup_qbit_categories": "bootstrap_services.apps.qbittorrent.runtime_ops:setup_qbit_categories"
+    "torrent_client_login": "bootstrap_services.apps.qbittorrent.runtime_ops:torrent_client_login",
+    "setup_torrent_categories": "bootstrap_services.apps.qbittorrent.runtime_ops:setup_torrent_categories"
   },
   "service_technology_map": {
     "qbittorrent_service": "qbittorrent",

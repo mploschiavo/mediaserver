@@ -49,7 +49,7 @@ MIN_REGISTRATION_REQUIREMENTS = {
     "qbittorrent": {
         "adapter_classes": {"download_client"},
         "app_service_classes": {"torrent_client_service"},
-        "operation_handlers": {"qbit_login", "setup_qbit_categories"},
+        "operation_handlers": {"torrent_client_login", "setup_torrent_categories"},
     },
     "sonarr": {"adapter_classes": {"servarr"}},
     "radarr": {"adapter_classes": {"servarr"}},

@@ -34,15 +34,15 @@ class BootstrapPlanSummary:
     prowlarr_indexers: int
     auto_indexers: bool
     configure_arr_clients: bool
-    configure_qbit_arr_clients: bool
+    configure_torrent_arr_clients: bool
     configure_sab_arr_clients: bool
     sab_remote_path_mappings: int
     configure_arr_media_management: bool
     configure_arr_quality_upgrade: bool
     configure_arr_download_handling: bool
     configure_arr_discovery_lists: bool
-    set_qbit_categories: bool
-    qbit_login_required: bool
+    set_torrent_categories: bool
+    torrent_client_login_required: bool
     refresh_health_after_bootstrap: bool
     app_auth_enabled: bool
     configure_homepage: bool
@@ -64,6 +64,18 @@ class BootstrapPlanSummary:
     fully_preconfigured: bool
     trigger_sync: bool
 
+    @property
+    def configure_qbit_arr_clients(self) -> bool:
+        return self.configure_torrent_arr_clients
+
+    @property
+    def set_qbit_categories(self) -> bool:
+        return self.set_torrent_categories
+
+    @property
+    def qbit_login_required(self) -> bool:
+        return self.torrent_client_login_required
+
     def to_log_line(self) -> str:
         return (
             f"mode={self.mode.value}, "
@@ -71,15 +83,15 @@ class BootstrapPlanSummary:
             f"prowlarr_indexers={self.prowlarr_indexers}, "
             f"auto_indexers={self.auto_indexers}, "
             f"configure_arr_clients={self.configure_arr_clients}, "
-            f"configure_qbit_arr_clients={self.configure_qbit_arr_clients}, "
+            f"configure_torrent_arr_clients={self.configure_torrent_arr_clients}, "
             f"configure_sab_arr_clients={self.configure_sab_arr_clients}, "
             f"sab_remote_path_mappings={self.sab_remote_path_mappings}, "
             f"configure_arr_media_management={self.configure_arr_media_management}, "
             f"configure_arr_quality_upgrade={self.configure_arr_quality_upgrade}, "
             f"configure_arr_download_handling={self.configure_arr_download_handling}, "
             f"configure_arr_discovery_lists={self.configure_arr_discovery_lists}, "
-            f"set_qbit_categories={self.set_qbit_categories}, "
-            f"qbit_login_required={self.qbit_login_required}, "
+            f"set_torrent_categories={self.set_torrent_categories}, "
+            f"torrent_client_login_required={self.torrent_client_login_required}, "
             f"refresh_health_after_bootstrap={self.refresh_health_after_bootstrap}, "
             f"app_auth_enabled={self.app_auth_enabled}, "
             f"configure_homepage={self.configure_homepage}, "

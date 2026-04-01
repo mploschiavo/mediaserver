@@ -18,6 +18,10 @@ def qbit_login(base_url, username, password):
     return _torrent_client_service({"url": base_url}).login(base_url, username, password)
 
 
+def torrent_client_login(base_url, username, password):
+    return qbit_login(base_url, username, password)
+
+
 def qbit_create_category(opener, base_url, category, save_path):
     return _torrent_client_service({"url": base_url}).create_category(
         opener,
@@ -65,6 +69,10 @@ def setup_qbit_storage_defaults(opener, qbit_url, qbit_cfg):
     )
 
 
+def setup_torrent_storage_defaults(opener, torrent_client_url, torrent_client_cfg):
+    return setup_qbit_storage_defaults(opener, torrent_client_url, torrent_client_cfg)
+
+
 def setup_qbit_categories(arr_apps, qbit_cfg, qb_username, qb_password):
     qbit_url = ""
     if isinstance(qbit_cfg, dict):
@@ -78,4 +86,18 @@ def setup_qbit_categories(arr_apps, qbit_cfg, qb_username, qb_password):
         setup_storage_defaults_fn=setup_qbit_storage_defaults,
         create_category_fn=qbit_create_category,
         login_fn=qbit_login,
+    )
+
+
+def setup_torrent_categories(
+    arr_apps,
+    torrent_client_cfg,
+    torrent_client_username,
+    torrent_client_password,
+):
+    return setup_qbit_categories(
+        arr_apps,
+        torrent_client_cfg,
+        torrent_client_username,
+        torrent_client_password,
     )

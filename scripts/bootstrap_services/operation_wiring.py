@@ -14,11 +14,11 @@ OperationFn = Callable[..., Any]
 @dataclass(frozen=True)
 class RunnerOperationHandlers:
     ensure_app_auth_settings: OperationFn
-    qbit_login: OperationFn
+    torrent_client_login: OperationFn
     read_sabnzbd_api_key: OperationFn
     ensure_sabnzbd_defaults: OperationFn
     ensure_sabnzbd_categories: OperationFn
-    setup_qbit_categories: OperationFn
+    setup_torrent_categories: OperationFn
     run_servarr_pipeline: OperationFn
     ensure_bazarr_arr_integration: OperationFn
     configure_jellyseerr: OperationFn
@@ -41,6 +41,8 @@ class RunnerOperationHandlers:
     trigger_prowlarr_sync: OperationFn
     sync_arr_indexers_from_prowlarr: OperationFn
     run_prowlarr_indexer_pipeline: OperationFn
+    qbit_login: OperationFn | None = None
+    setup_qbit_categories: OperationFn | None = None
 
 
 def build_runner_operation_registry(
@@ -48,13 +50,28 @@ def build_runner_operation_registry(
     *,
     operation_handler_specs: dict[str, Any] | None = None,
 ) -> RunnerOperationRegistry:
+    torrent_client_login = handlers.torrent_client_login or handlers.qbit_login
+    if torrent_client_login is None:
+        raise ValueError(
+            "RunnerOperationHandlers requires a torrent-client login handler "
+            "(torrent_client_login or qbit_login)."
+        )
+    setup_torrent_categories = handlers.setup_torrent_categories or handlers.setup_qbit_categories
+    if setup_torrent_categories is None:
+        raise ValueError(
+            "RunnerOperationHandlers requires a torrent category setup handler "
+            "(setup_torrent_categories or setup_qbit_categories)."
+        )
+
     base_handlers = {
         RunnerOperation.ENSURE_APP_AUTH_SETTINGS.value: handlers.ensure_app_auth_settings,
-        RunnerOperation.QBIT_LOGIN.value: handlers.qbit_login,
+        RunnerOperation.TORRENT_CLIENT_LOGIN.value: torrent_client_login,
+        RunnerOperation.QBIT_LOGIN.value: torrent_client_login,
         RunnerOperation.READ_SABNZBD_API_KEY.value: handlers.read_sabnzbd_api_key,
         RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value: handlers.ensure_sabnzbd_defaults,
         RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value: handlers.ensure_sabnzbd_categories,
-        RunnerOperation.SETUP_QBIT_CATEGORIES.value: handlers.setup_qbit_categories,
+        RunnerOperation.SETUP_TORRENT_CATEGORIES.value: setup_torrent_categories,
+        RunnerOperation.SETUP_QBIT_CATEGORIES.value: setup_torrent_categories,
         RunnerOperation.RUN_SERVARR_PIPELINE.value: handlers.run_servarr_pipeline,
         RunnerOperation.ENSURE_BAZARR_INTEGRATION.value: handlers.ensure_bazarr_arr_integration,
         RunnerOperation.CONFIGURE_JELLYSEERR.value: handlers.configure_jellyseerr,

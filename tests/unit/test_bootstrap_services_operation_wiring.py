@@ -19,11 +19,11 @@ class OperationWiringTests(unittest.TestCase):
     def _handlers(self):
         return RunnerOperationHandlers(
             ensure_app_auth_settings=_noop,
-            qbit_login=_noop,
+            torrent_client_login=_noop,
             read_sabnzbd_api_key=_noop,
             ensure_sabnzbd_defaults=_noop,
             ensure_sabnzbd_categories=_noop,
-            setup_qbit_categories=_noop,
+            setup_torrent_categories=_noop,
             run_servarr_pipeline=_noop,
             ensure_bazarr_arr_integration=_noop,
             configure_jellyseerr=_noop,

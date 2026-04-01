@@ -51,14 +51,28 @@
     "steps": [
       {
         "operation": "enforce_disk_guardrails",
-        "args": ["cfg", "config_root", "qbit_cfg", "qb_user", "qb_pass"],
+        "args": [
+          "cfg",
+          "config_root",
+          "torrent_client_cfg",
+          "torrent_client_username",
+          "torrent_client_password"
+        ],
         "enabled_attr": "configure_disk_guardrails",
         "required_attr": "disk_guardrails_required",
         "warning_message": "[WARN] Disk guardrails: automation skipped. Set disk_guardrails.required=true to fail the bootstrap instead."
       },
       {
         "operation": "run_media_hygiene",
-        "args": ["cfg", "config_root", "arr_apps_raw", "app_keys", "qbit_cfg", "qb_user", "qb_pass"],
+        "args": [
+          "cfg",
+          "config_root",
+          "arr_apps_raw",
+          "app_keys",
+          "torrent_client_cfg",
+          "torrent_client_username",
+          "torrent_client_password"
+        ],
         "enabled_attr": "configure_media_hygiene",
         "required_attr": "media_hygiene_required",
         "warning_message": "[WARN] Media hygiene: automation skipped. Set media_hygiene.required=true to fail the bootstrap instead."
