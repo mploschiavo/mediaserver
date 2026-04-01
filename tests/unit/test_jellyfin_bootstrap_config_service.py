@@ -2,7 +2,9 @@ import os
 import unittest
 from unittest.mock import patch
 
-from scripts.cli.jellyfin_bootstrap_config_service import parse_jellyfin_bootstrap_config
+from scripts.bootstrap_services.apps.jellyfin.cli.jellyfin_bootstrap_config_service import (
+    parse_jellyfin_bootstrap_config,
+)
 
 
 class JellyfinBootstrapConfigServiceTests(unittest.TestCase):

@@ -1,6 +1,8 @@
 import unittest
 
-from scripts.cli.jellyfin_bootstrap_auth_service import JellyfinBootstrapAuthService
+from scripts.bootstrap_services.apps.jellyfin.cli.jellyfin_bootstrap_auth_service import (
+    JellyfinBootstrapAuthService,
+)
 
 
 class JellyfinBootstrapAuthServiceTests(unittest.TestCase):

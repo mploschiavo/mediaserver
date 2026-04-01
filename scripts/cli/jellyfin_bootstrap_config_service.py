@@ -1,32 +1,40 @@
+"""Compatibility wrapper for moved app-scoped CLI implementation."""
+
 from __future__ import annotations
 
-import argparse
-import os
-from dataclasses import dataclass
+import importlib
+import sys
+from pathlib import Path
+from types import ModuleType
 
 
-@dataclass(frozen=True)
-class JellyfinBootstrapConfig:
-    namespace: str
-    secret_name: str
-    service_name: str
-    wait_seconds: int
-    app_name: str
-
-
-def parse_jellyfin_bootstrap_config(argv=None) -> JellyfinBootstrapConfig:
-    parser = argparse.ArgumentParser(
-        prog="scripts/ensure-jellyfin-bootstrap.sh",
-        description=(
-            "Completes Jellyfin first-run bootstrap and syncs API key/user id into media-stack secret."
-        ),
+def _load_impl() -> ModuleType:
+    scripts_dir = Path(__file__).resolve().parents[1]
+    scripts_dir_text = str(scripts_dir)
+    if scripts_dir_text not in sys.path:
+        sys.path.insert(0, scripts_dir_text)
+    return importlib.import_module(
+        "bootstrap_services.apps.jellyfin.cli.jellyfin_bootstrap_config_service"
     )
-    parser.parse_args(argv)
 
-    return JellyfinBootstrapConfig(
-        namespace=os.environ.get("NAMESPACE", "media-stack"),
-        secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets"),
-        service_name=os.environ.get("JELLYFIN_SERVICE_NAME", "jellyfin"),
-        wait_seconds=int(os.environ.get("JELLYFIN_BOOTSTRAP_WAIT_SECONDS", "180")),
-        app_name=os.environ.get("JELLYFIN_API_KEY_APP_NAME", "media-stack-bootstrap"),
-    )
+
+_IMPL = _load_impl()
+
+
+def __getattr__(name: str):
+    return getattr(_IMPL, name)
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(dir(_IMPL)))
+
+
+def main() -> int:
+    main_fn = getattr(_IMPL, "main", None)
+    if main_fn is None:
+        raise AttributeError("Target module does not define main()")
+    return int(main_fn())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch
 
-from scripts.cli import jellyfin_bootstrap_db_discovery_service as svc
+from scripts.bootstrap_services.apps.jellyfin.cli import (
+    jellyfin_bootstrap_db_discovery_service as svc,
+)
 
 
 class _Proc:

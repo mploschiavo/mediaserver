@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from scripts.cli import jellyfin_bootstrap_kube_service as svc
+from scripts.bootstrap_services.apps.jellyfin.cli import jellyfin_bootstrap_kube_service as svc
 
 
 class _Proc:
@@ -21,7 +21,9 @@ class JellyfinBootstrapKubeServiceTests(unittest.TestCase):
                 "STACK_ADMIN_PASSWORD": base64.b64encode(b"secret").decode("ascii"),
             }
         }
-        with patch.object(svc, "run_cmd", return_value=_Proc(returncode=0, stdout=json.dumps(payload))):
+        with patch.object(
+            svc, "run_cmd", return_value=_Proc(returncode=0, stdout=json.dumps(payload))
+        ):
             values = svc.get_secret(["kubectl"], "media-stack", "media-stack-secrets")
         self.assertEqual(values["STACK_ADMIN_USERNAME"], "admin")
         self.assertEqual(values["STACK_ADMIN_PASSWORD"], "secret")
