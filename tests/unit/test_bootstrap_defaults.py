@@ -11,13 +11,11 @@ from scripts.bootstrap_lib.defaults import load_json_default
 
 
 class BootstrapDefaultsTests(unittest.TestCase):
-    def test_load_json_default_returns_fallback_when_missing(self):
+    def test_load_json_default_raises_when_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             defaults_dir = Path(tmp)
-            fallback = {"enabled": True}
-            loaded = load_json_default(defaults_dir, "missing.json", fallback)
-            self.assertEqual(loaded, fallback)
-            self.assertIsNot(loaded, fallback)
+            with self.assertRaises(FileNotFoundError):
+                load_json_default(defaults_dir, "missing.json", {"enabled": True})
 
     def test_load_json_default_reads_json_file(self):
         with tempfile.TemporaryDirectory() as tmp:

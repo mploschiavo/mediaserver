@@ -168,10 +168,17 @@ class BootstrapCorePhasesService:
             if operation == "run_component_script":
                 params = dict(step.params or {})
                 component_key, component_technology = _resolve_component_technology(step)
-                if not component_key:
+                enabled = _phase_enabled(step)
+                if enabled and not component_key:
                     raise ConfigError(
                         "bootstrap_job phase operation 'run_component_script' requires "
                         "params.component, params.binding, or params.technology."
+                    )
+                if enabled and not component_technology:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' could not resolve "
+                        f"technology for component '{component_key}'. Check "
+                        "adapter_hooks.bootstrap_job.components and technology_bindings."
                     )
                 script_phase = str(params.get("script_phase") or "").strip()
                 if not script_phase:
@@ -180,7 +187,6 @@ class BootstrapCorePhasesService:
                         "params.script_phase."
                     )
 
-                enabled = _phase_enabled(step)
                 script_name = self._phase_script(script_phase, component_technology)
                 if enabled and not script_name:
                     raise ConfigError(
@@ -194,6 +200,11 @@ class BootstrapCorePhasesService:
 
                 env: dict[str, str] = {}
                 raw_env = params.get("env")
+                if raw_env is not None and not isinstance(raw_env, dict):
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' params.env "
+                        "must be an object/map when provided."
+                    )
                 if isinstance(raw_env, dict):
                     for key, value in raw_env.items():
                         env_key = str(key or "").strip()
@@ -207,6 +218,11 @@ class BootstrapCorePhasesService:
 
                 args: list[str] = []
                 raw_args = params.get("args")
+                if raw_args is not None and not isinstance(raw_args, list):
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' params.args "
+                        "must be an array when provided."
+                    )
                 if isinstance(raw_args, list):
                     for value in raw_args:
                         args.append(

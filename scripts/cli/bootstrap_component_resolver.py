@@ -47,12 +47,12 @@ def _adapter_hooks(cfg: dict[str, Any]) -> dict[str, Any]:
 def _phase_plan_steps(
     value: Any,
     *,
-    fallback: tuple[BootstrapPhasePlanStep, ...],
+    pipeline: str,
 ) -> tuple[BootstrapPhasePlanStep, ...]:
     if not isinstance(value, list):
-        return fallback
+        return ()
     out: list[BootstrapPhasePlanStep] = []
-    for item in value:
+    for index, item in enumerate(value):
         operation = ""
         skip_flag = ""
         phase_name = ""
@@ -61,18 +61,33 @@ def _phase_plan_steps(
         params: dict[str, Any] = {}
         if isinstance(item, str):
             operation = str(item).strip()
+            if not operation:
+                raise ConfigError(
+                    f"adapter_hooks.{pipeline}.phase_plan[{index}] must be a non-empty operation string."
+                )
         elif isinstance(item, dict):
             operation = str(item.get("operation") or "").strip()
+            if not operation:
+                raise ConfigError(
+                    f"adapter_hooks.{pipeline}.phase_plan[{index}].operation must be a non-empty string."
+                )
             skip_flag = normalize_flag_token(item.get("skip_flag"))
             phase_name = str(item.get("phase_name") or "").strip()
             if "enabled" in item:
                 enabled = bool(item.get("enabled"))
             if "when" in item:
                 when = item.get("when")
-            if isinstance(item.get("params"), dict):
-                params = dict(item.get("params") or {})
-        if not operation:
-            continue
+            raw_params = item.get("params")
+            if raw_params is not None and not isinstance(raw_params, dict):
+                raise ConfigError(
+                    f"adapter_hooks.{pipeline}.phase_plan[{index}].params must be an object/map."
+                )
+            if isinstance(raw_params, dict):
+                params = dict(raw_params)
+        else:
+            raise ConfigError(
+                f"adapter_hooks.{pipeline}.phase_plan[{index}] must be a string or object."
+            )
         out.append(
             BootstrapPhasePlanStep(
                 operation=operation,
@@ -83,8 +98,6 @@ def _phase_plan_steps(
                 params=params,
             )
         )
-    if not out:
-        return fallback
     return tuple(out)
 
 
@@ -144,7 +157,7 @@ def resolve_pipeline_phase_plan(
             f"adapter_hooks.{pipeline} must be defined as an object with a phase_plan list."
         )
 
-    plan = _phase_plan_steps(section.get("phase_plan"), fallback=())
+    plan = _phase_plan_steps(section.get("phase_plan"), pipeline=pipeline)
     if plan:
         return plan
     if allow_empty:
@@ -280,7 +293,6 @@ def resolve_runner_phase_script(
     phase_key: str,
     technology: str,
     aliases: dict[str, str] | None = None,
-    default: str = "",
 ) -> str:
     normalized_aliases = dict(aliases or {})
     hooks = _adapter_hooks(cfg)
@@ -298,7 +310,7 @@ def resolve_runner_phase_script(
                 candidate = str(phase_map.get(token) or "").strip()
                 if candidate:
                     return candidate
-    return str(default or "").strip()
+    return ""
 
 
 def resolve_bootstrap_enable_components(
@@ -318,7 +330,6 @@ def resolve_component_manifest_path(
     *,
     component: str,
     aliases: dict[str, str],
-    default: str | None = None,
 ) -> str:
     hooks = _adapter_hooks(cfg)
     bootstrap_all = hooks.get("bootstrap_all")
@@ -329,9 +340,10 @@ def resolve_component_manifest_path(
             candidate = str(mapping.get(canonical_component) or "").strip()
             if candidate:
                 return candidate
-    if default is not None:
-        return str(default)
-    return f"k8s/{canonical_component}.yaml"
+    raise ConfigError(
+        "adapter_hooks.bootstrap_all.component_manifests must define a manifest path "
+        f"for component '{canonical_component}'."
+    )
 
 
 def resolve_component_deployment_name(
@@ -339,7 +351,6 @@ def resolve_component_deployment_name(
     *,
     component: str,
     aliases: dict[str, str],
-    default: str | None = None,
 ) -> str:
     hooks = _adapter_hooks(cfg)
     bootstrap_all = hooks.get("bootstrap_all")
@@ -350,11 +361,10 @@ def resolve_component_deployment_name(
             candidate = normalize_technology_token(mapping.get(canonical_component))
             if candidate:
                 return candidate
-    if default is not None:
-        explicit = normalize_technology_token(default)
-        if explicit:
-            return explicit
-    return canonical_component
+    raise ConfigError(
+        "adapter_hooks.bootstrap_all.component_deployments must define a deployment name "
+        f"for component '{canonical_component}'."
+    )
 
 
 def resolve_pipeline_components(
@@ -366,33 +376,42 @@ def resolve_pipeline_components(
 ) -> dict[str, str]:
     hooks = _adapter_hooks(cfg)
     section = hooks.get(pipeline)
+    if not isinstance(section, dict):
+        raise ConfigError(
+            f"adapter_hooks.{pipeline} must be defined as an object with a components map."
+        )
+
+    components = section.get("components")
+    if not isinstance(components, dict) or not components:
+        raise ConfigError(
+            f"adapter_hooks.{pipeline}.components must be defined as a non-empty object."
+        )
 
     resolved: dict[str, str] = {}
-    if isinstance(section, dict):
-        components = section.get("components")
-        if isinstance(components, dict):
-            for key, value in components.items():
-                component_key = str(key or "").strip()
-                if not component_key:
-                    continue
-                technology = ""
-                if isinstance(value, dict):
-                    binding_key = str(value.get("binding") or "").strip()
-                    if binding_key:
-                        technology = str(role_bindings.get(binding_key) or "").strip()
-                    if not technology:
-                        technology = canonicalize_technology(value.get("technology"), aliases)
-                else:
-                    technology = canonicalize_technology(value, aliases)
-                resolved[component_key] = str(technology or "").strip()
-            if resolved:
-                return resolved
-
-    for role_key, technology in role_bindings.items():
-        key = str(role_key or "").strip()
-        token = str(technology or "").strip()
-        if key and token:
-            resolved[key] = token
+    for key, value in components.items():
+        component_key = str(key or "").strip()
+        if not component_key:
+            raise ConfigError(f"adapter_hooks.{pipeline}.components has an empty component key.")
+        technology = ""
+        if isinstance(value, dict):
+            binding_key = str(value.get("binding") or "").strip()
+            if binding_key:
+                technology = str(role_bindings.get(binding_key) or "").strip()
+                if not technology:
+                    raise ConfigError(
+                        f"adapter_hooks.{pipeline}.components.{component_key}.binding "
+                        f"references unbound technology_bindings key '{binding_key}'."
+                    )
+            if not technology:
+                technology = canonicalize_technology(value.get("technology"), aliases)
+        else:
+            technology = canonicalize_technology(value, aliases)
+        technology = str(technology or "").strip()
+        if not technology:
+            raise ConfigError(
+                f"adapter_hooks.{pipeline}.components.{component_key} must resolve to a technology."
+            )
+        resolved[component_key] = technology
     return resolved
 
 

@@ -250,7 +250,13 @@
       },
       "enable_components": [
         "unpackerr"
-      ]
+      ],
+      "component_manifests": {
+        "unpackerr": "k8s/unpackerr.yaml"
+      },
+      "component_deployments": {
+        "unpackerr": "unpackerr"
+      }
     },
     "bootstrap_job": {
       "config_resolver": {

@@ -19,6 +19,7 @@ sys.modules["sync_unpackerr_keys"] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 from core.subprocess_utils import CommandResult  # noqa: E402
+from core.exceptions import ConfigError  # noqa: E402
 
 
 class FakeKube:
@@ -196,6 +197,33 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(Exception, "One or more API keys were empty"):
             service.run()
+
+    def test_service_fails_fast_when_bootstrap_config_invalid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "bootstrap.json"
+            config_path.write_text("{invalid", encoding="utf-8")
+            kube = FakeKube({"sonarr": "S"})
+            service = MODULE.SyncUnpackerrKeysService(
+                cfg=MODULE.SyncUnpackerrKeysConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=config_path,
+                ),
+                kube=kube,
+                logger=logging.getLogger("test.sync_unpackerr"),
+            )
+            with self.assertRaises(ConfigError):
+                service.run()
+
+    def test_service_fails_when_no_manifest_targets_discovered(self):
+        kube = FakeKube({"sonarr": "S"})
+        service = MODULE.SyncUnpackerrKeysService(
+            cfg=MODULE.SyncUnpackerrKeysConfig(namespace="media-stack"),
+            kube=kube,
+            logger=logging.getLogger("test.sync_unpackerr"),
+        )
+        with mock.patch("sync_unpackerr_keys.load_plugin_manifests", return_value=[]):
+            with self.assertRaises(ConfigError):
+                service.run()
 
 
 if __name__ == "__main__":

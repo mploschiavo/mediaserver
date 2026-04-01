@@ -314,7 +314,7 @@
         },
         "bootstrap_all": {
           "type": "object",
-          "required": ["phase_plan"],
+          "required": ["phase_plan", "components"],
           "properties": {
             "enable_components": {
               "type": "array",
@@ -340,7 +340,7 @@
               "type": "array",
               "items": {
                 "oneOf": [
-                  {"type": "string"},
+                  {"type": "string", "minLength": 1},
                   {
                     "type": "object",
                     "required": ["operation"],
@@ -379,7 +379,7 @@
         },
         "bootstrap_job": {
           "type": "object",
-          "required": ["phase_plan"],
+          "required": ["phase_plan", "components"],
           "properties": {
             "config_resolver": {
               "type": "object",
@@ -431,7 +431,7 @@
               "type": "array",
               "items": {
                 "oneOf": [
-                  {"type": "string"},
+                  {"type": "string", "minLength": 1},
                   {
                     "type": "object",
                     "required": ["operation"],

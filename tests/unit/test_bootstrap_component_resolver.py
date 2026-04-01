@@ -157,6 +157,15 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             "unpackerr-worker",
         )
 
+    def test_component_manifest_and_deployment_require_explicit_mapping(self):
+        cfg = {"adapter_hooks": {"bootstrap_all": {}}}
+        aliases = {"unpackerr": "unpackerr"}
+
+        with self.assertRaises(ConfigError):
+            resolve_component_manifest_path(cfg, component="unpackerr", aliases=aliases)
+        with self.assertRaises(ConfigError):
+            resolve_component_deployment_name(cfg, component="unpackerr", aliases=aliases)
+
     def test_bootstrap_phase_plan_order_is_config_driven(self):
         cfg = {
             "adapter_hooks": {
@@ -224,6 +233,48 @@ class BootstrapComponentResolverTests(unittest.TestCase):
                 "requests": "jellyseerr",
             },
         )
+
+    def test_resolve_pipeline_components_requires_non_empty_components_map(self):
+        cfg = {"adapter_hooks": {"bootstrap_all": {"components": {}}}}
+        aliases = {"qbittorrent": "qbittorrent"}
+        role_bindings = {"torrent_client": "qbittorrent"}
+        with self.assertRaises(ConfigError):
+            resolve_pipeline_components(
+                cfg,
+                pipeline="bootstrap_all",
+                aliases=aliases,
+                role_bindings=role_bindings,
+            )
+
+    def test_resolve_pipeline_components_rejects_unbound_binding_reference(self):
+        cfg = {
+            "adapter_hooks": {
+                "bootstrap_all": {"components": {"download": {"binding": "torrent_client"}}}
+            }
+        }
+        with self.assertRaises(ConfigError):
+            resolve_pipeline_components(
+                cfg,
+                pipeline="bootstrap_all",
+                aliases={},
+                role_bindings={},
+            )
+
+    def test_phase_plan_rejects_invalid_params_shape(self):
+        cfg = {
+            "adapter_hooks": {
+                "bootstrap_all": {
+                    "phase_plan": [
+                        {
+                            "operation": "run",
+                            "params": "not-a-map",
+                        }
+                    ]
+                }
+            }
+        }
+        with self.assertRaises(ConfigError):
+            resolve_pipeline_phase_plan(cfg, pipeline="bootstrap_all")
 
     def test_resolve_phase_skip_flag_specs_includes_generic_and_configured_aliases(self):
         specs = resolve_phase_skip_flag_specs(self._base_config(), pipeline="bootstrap_all")
