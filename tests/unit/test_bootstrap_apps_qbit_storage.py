@@ -1,4 +1,3 @@
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -7,12 +6,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_servarr.factory as SERVARR_FACTORY
+import bootstrap_services.runtime_servarr.qbit_ops as QB_OPS
 
 
 class QBittorrentStorageDefaultsTests(unittest.TestCase):
@@ -36,8 +32,8 @@ class QBittorrentStorageDefaultsTests(unittest.TestCase):
             },
         }
 
-        with mock.patch.object(MODULE, "qbit_set_preferences", side_effect=fake_set_preferences):
-            with mock.patch.object(MODULE, "log"):
+        with mock.patch.object(QB_OPS, "qbit_set_preferences", side_effect=fake_set_preferences):
+            with mock.patch.object(SERVARR_FACTORY, "log"):
                 MODULE.setup_qbit_storage_defaults(
                     opener=object(),
                     qbit_url="http://qbittorrent:8080",
@@ -69,8 +65,8 @@ class QBittorrentStorageDefaultsTests(unittest.TestCase):
             "auto_tmm_enabled": True,
         }
 
-        with mock.patch.object(MODULE, "qbit_set_preferences", side_effect=fake_set_preferences):
-            with mock.patch.object(MODULE, "log"):
+        with mock.patch.object(QB_OPS, "qbit_set_preferences", side_effect=fake_set_preferences):
+            with mock.patch.object(SERVARR_FACTORY, "log"):
                 MODULE.setup_qbit_storage_defaults(
                     opener=object(),
                     qbit_url="http://qbittorrent:8080",
@@ -106,8 +102,12 @@ class QBittorrentStorageDefaultsTests(unittest.TestCase):
             },
         }
 
-        with mock.patch.object(MODULE, "qbit_set_preferences", side_effect=fake_set_preferences):
-            with mock.patch.object(MODULE, "log", side_effect=lambda msg: logs.append(str(msg))):
+        with mock.patch.object(QB_OPS, "qbit_set_preferences", side_effect=fake_set_preferences):
+            with mock.patch.object(
+                SERVARR_FACTORY,
+                "log",
+                side_effect=lambda msg: logs.append(str(msg)),
+            ):
                 MODULE.setup_qbit_storage_defaults(
                     opener=object(),
                     qbit_url="http://qbittorrent:8080",

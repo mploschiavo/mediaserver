@@ -1,7 +1,16 @@
 {
   "qbittorrent": {
+    "url": "http://qbittorrent:8080",
+    "host": "qbittorrent",
+    "port": 8080,
+    "implementation": "QBittorrent",
+    "name": "qBittorrent",
+    "configure_arr_clients": true,
+    "set_categories_in_qbit": true,
+    "login_required": true,
+    "username_env": "STACK_ADMIN_USERNAME",
+    "password_env": "STACK_ADMIN_PASSWORD",
     "auth_bypass": {
-      "allow_open_world": false,
       "localhost": true,
       "whitelist_enabled": true,
       "whitelist_subnets": [
@@ -10,29 +19,83 @@
         "192.168.0.0/16",
         "127.0.0.1/32",
         "::1/128"
-      ]
+      ],
+      "allow_open_world": false
     },
-    "auto_tmm_enabled": true,
-    "categories": {
-      "Lidarr": "music",
-      "Radarr": "movies",
-      "Readarr": "books",
-      "Sonarr": "tv"
-    },
-    "completed_paths": {
-      "books": "/data/torrents/completed/books",
-      "movies": "/data/torrents/completed/movies",
-      "music": "/data/torrents/completed/music",
-      "tv": "/data/torrents/completed/tv"
-    },
-    "configure_arr_clients": true,
     "default_save_path": "/data/torrents/completed",
-    "host": "qbittorrent",
-    "implementation": "QBittorrent",
-    "login_required": true,
-    "name": "qBittorrent",
-    "port": 8080,
+    "temp_path": "/data/torrents/incomplete",
+    "temp_path_enabled": true,
+    "auto_tmm_enabled": true,
+    "seeding_policy": {
+      "enabled": true,
+      "max_ratio": 1.2,
+      "max_seeding_time_minutes": 1440,
+      "remove_on_limit_reached": false
+    },
     "queue_guardrails": {
+      "enabled": true,
+      "dry_run": false,
+      "default_max_queued": 20,
+      "max_queued_by_category": {
+        "tv": 20,
+        "movies": 12,
+        "music": 6,
+        "books": 4
+      },
+      "include_uncategorized": false,
+      "count_states": [
+        "downloading",
+        "queuedDL",
+        "stalledDL",
+        "metaDL",
+        "forcedDL",
+        "checkingDL",
+        "pausedDL",
+        "allocating",
+        "checkingResumeData"
+      ],
+      "prune_when_over_limit": true,
+      "prune_states": [
+        "queuedDL",
+        "stalledDL",
+        "metaDL",
+        "pausedDL",
+        "error",
+        "missingFiles"
+      ],
+      "over_limit_max_delete_per_category": 15,
+      "over_limit_delete_files": true,
+      "stale_prune": {
+        "enabled": true,
+        "max_age_hours": 96,
+        "max_stalled_hours": 12,
+        "max_eta_seconds": 1209600,
+        "min_progress": 0.98,
+        "max_download_speed_bps": 32768,
+        "states": [
+          "downloading",
+          "queuedDL",
+          "stalledDL",
+          "metaDL",
+          "pausedDL",
+          "error",
+          "missingFiles"
+        ],
+        "max_delete_per_run": 25,
+        "delete_files": true
+      },
+      "max_total_size_gib_by_category": {
+        "tv": 120,
+        "movies": 180,
+        "music": 25,
+        "books": 12
+      },
+      "max_weight_percent_by_category": {
+        "tv": 30,
+        "movies": 35,
+        "music": 8,
+        "books": 5
+      },
       "budget_prune_states": [
         "queuedDL",
         "stalledDL",
@@ -45,120 +108,59 @@
         "queuedUP",
         "pausedUP"
       ],
-      "count_states": [
-        "downloading",
-        "queuedDL",
-        "stalledDL",
-        "metaDL",
-        "forcedDL",
-        "checkingDL",
-        "pausedDL",
-        "allocating",
-        "checkingResumeData"
-      ],
-      "default_max_queued": 20,
-      "dry_run": false,
-      "enabled": true,
-      "include_uncategorized": false,
-      "max_queued_by_category": {
-        "books": 4,
-        "movies": 12,
-        "music": 6,
-        "tv": 20
-      },
-      "max_total_size_gib_by_category": {
-        "books": 12,
-        "movies": 180,
-        "music": 25,
-        "tv": 120
-      },
-      "max_weight_percent_by_category": {
-        "books": 5,
-        "movies": 35,
-        "music": 8,
-        "tv": 30
-      },
-      "over_budget_delete_files": true,
       "over_budget_max_delete_per_category": 20,
-      "over_limit_delete_files": true,
-      "over_limit_max_delete_per_category": 15,
-      "prune_states": [
-        "queuedDL",
-        "stalledDL",
-        "metaDL",
-        "pausedDL",
-        "error",
-        "missingFiles"
-      ],
-      "prune_when_over_limit": true,
-      "stale_prune": {
-        "delete_files": true,
-        "enabled": true,
-        "max_age_hours": 96,
-        "max_delete_per_run": 25,
-        "max_download_speed_bps": 32768,
-        "max_eta_seconds": 1209600,
-        "max_stalled_hours": 12,
-        "min_progress": 0.98,
-        "states": [
-          "downloading",
-          "queuedDL",
-          "stalledDL",
-          "metaDL",
-          "pausedDL",
-          "error",
-          "missingFiles"
-        ]
-      }
+      "over_budget_delete_files": true
     },
-    "seeding_policy": {
-      "enabled": true,
-      "max_ratio": 1.2,
-      "max_seeding_time_minutes": 1440,
-      "remove_on_limit_reached": false
+    "categories": {
+      "Sonarr": "tv",
+      "Radarr": "movies",
+      "Lidarr": "music",
+      "Readarr": "books"
     },
-    "set_categories_in_qbit": true,
-    "temp_path": "/data/torrents/incomplete",
-    "temp_path_enabled": true,
-    "url": "http://qbittorrent:8080"
+    "completed_paths": {
+      "tv": "/data/torrents/completed/tv",
+      "movies": "/data/torrents/completed/movies",
+      "music": "/data/torrents/completed/music",
+      "books": "/data/torrents/completed/books"
+    }
   },
   "sabnzbd": {
-    "api_key_config_path": "sabnzbd/sabnzbd.ini",
-    "api_key_env": "SABNZBD_API_KEY",
-    "api_key_required": false,
-    "auto_browser": false,
-    "categories": {
-      "Lidarr": "music",
-      "Radarr": "movies",
-      "Readarr": "books",
-      "Sonarr": "tv"
-    },
-    "complete_dir": "/data/usenet/completed",
-    "completed_paths": {
-      "books": "/data/usenet/completed/books",
-      "movies": "/data/usenet/completed/movies",
-      "music": "/data/usenet/completed/music",
-      "tv": "/data/usenet/completed/tv"
-    },
-    "configure_arr_clients": true,
+    "url": "http://sabnzbd:8080",
     "host": "sabnzbd",
-    "implementation": "Sabnzbd",
-    "incomplete_dir": "/data/usenet/incomplete",
-    "name": "SABnzbd",
     "port": 8080,
+    "implementation": "Sabnzbd",
+    "name": "SABnzbd",
+    "configure_arr_clients": true,
+    "set_categories_in_sab": true,
+    "incomplete_dir": "/data/usenet/incomplete",
+    "complete_dir": "/data/usenet/completed",
+    "auto_browser": false,
+    "api_key_env": "SABNZBD_API_KEY",
+    "api_key_config_path": "sabnzbd/sabnzbd.ini",
+    "api_key_required": false,
     "remote_path_mappings": [
       {
         "host": "sabnzbd",
-        "local_path": "/data/usenet/completed",
-        "remote_path": "/config/Downloads/complete"
+        "remote_path": "/config/Downloads/complete",
+        "local_path": "/data/usenet/completed"
       },
       {
         "host": "sabnzbd",
-        "local_path": "/data/usenet/completed",
-        "remote_path": "Downloads/complete"
+        "remote_path": "Downloads/complete",
+        "local_path": "/data/usenet/completed"
       }
     ],
-    "set_categories_in_sab": true,
-    "url": "http://sabnzbd:8080"
+    "categories": {
+      "Sonarr": "tv",
+      "Radarr": "movies",
+      "Lidarr": "music",
+      "Readarr": "books"
+    },
+    "completed_paths": {
+      "tv": "/data/usenet/completed/tv",
+      "movies": "/data/usenet/completed/movies",
+      "music": "/data/usenet/completed/music",
+      "books": "/data/usenet/completed/books"
+    }
   }
 }

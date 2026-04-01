@@ -1,0 +1,10 @@
+{
+  "technology": "jellyseerr",
+  "aliases": ["seerr"],
+  "app_service_classes": {
+    "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+  },
+  "service_technology_map": {
+    "jellyseerr_service": "jellyseerr"
+  }
+}

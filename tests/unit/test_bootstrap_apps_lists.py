@@ -1,4 +1,3 @@
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -6,12 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
 
 
 class BootstrapAppImportListPayloadTests(unittest.TestCase):

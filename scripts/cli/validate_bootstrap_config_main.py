@@ -26,9 +26,16 @@ def basic_checks(cfg):
     if not isinstance(cfg, dict):
         return ["$: config root must be an object"]
 
-    for key in ("prowlarr_url", "arr_apps", "download_clients"):
+    for key in ("config_version", "prowlarr_url", "arr_apps", "download_clients"):
         if key not in cfg:
             errors.append(f"$: missing required key '{key}'")
+
+    if "config_version" in cfg:
+        config_version = cfg.get("config_version")
+        if not isinstance(config_version, int):
+            errors.append("$.config_version: must be an integer")
+        elif config_version != 2:
+            errors.append("$.config_version: unsupported version (expected 2)")
 
     arr_apps = cfg.get("arr_apps")
     if arr_apps is not None and not isinstance(arr_apps, list):
@@ -59,25 +66,25 @@ def basic_checks(cfg):
     if not isinstance(bindings, dict):
         bindings = {}
 
-    aliases_map = adapter_hooks.get("technology_aliases")
-    aliases: dict[str, str] = {}
-    if aliases_map is not None:
-        if not isinstance(aliases_map, dict):
-            errors.append("$.adapter_hooks.technology_aliases: must be an object")
-        else:
-            for src, dst in aliases_map.items():
-                src_key = str(src or "").strip().lower()
-                dst_key = str(dst or "").strip().lower()
-                if not src_key or not dst_key:
-                    errors.append(
-                        "$.adapter_hooks.technology_aliases: keys and values must be non-empty strings"
-                    )
-                    continue
-                aliases[src_key] = dst_key
+    disallowed_adapter_hook_keys = (
+        "technology_aliases",
+        "adapter_classes",
+        "download_client_adapter_classes",
+        "media_server_adapter_classes",
+        "before_common_steps",
+        "app_service_classes",
+        "service_technology_map",
+    )
+    for disallowed_key in disallowed_adapter_hook_keys:
+        value = adapter_hooks.get(disallowed_key)
+        if value not in (None, {}):
+            errors.append(
+                f"$.adapter_hooks.{disallowed_key}: unsupported. "
+                "Move adapter/service registration into plugin manifests."
+            )
 
     def _bound_key(name: str) -> str:
-        value = str(bindings.get(name, "") or "").strip().lower()
-        return aliases.get(value, value)
+        return str(bindings.get(name, "") or "").strip().lower()
 
     torrent_client_key = _bound_key("torrent_client")
     usenet_client_key = _bound_key("usenet_client")
@@ -95,14 +102,7 @@ def basic_checks(cfg):
                 errors.append(f"$.download_clients: missing active client section '{name}'")
 
     if isinstance(adapter_hooks, dict):
-        for hook_key in (
-            "before_common_steps",
-            "adapter_classes",
-            "download_client_adapter_classes",
-            "media_server_adapter_classes",
-            "app_service_classes",
-            "operation_handlers",
-        ):
+        for hook_key in ("operation_handlers",):
             hook_map = adapter_hooks.get(hook_key)
             if hook_map is None:
                 continue

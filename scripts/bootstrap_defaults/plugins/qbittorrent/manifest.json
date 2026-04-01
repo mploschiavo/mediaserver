@@ -1,0 +1,13 @@
+{
+  "technology": "qbittorrent",
+  "aliases": ["qbit", "qb"],
+  "adapter_classes": {
+    "download_client": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter"
+  },
+  "app_service_classes": {
+    "qbittorrent_service": "bootstrap_services.qbit_service:QBittorrentService"
+  },
+  "service_technology_map": {
+    "qbittorrent_service": "qbittorrent"
+  }
+}

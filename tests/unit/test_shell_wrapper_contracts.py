@@ -186,6 +186,31 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/microk8s-reconcile.sh", proc.stdout)
 
+    def test_render_architecture_diagrams_wrapper_help_contract(self):
+        proc = run_wrapper("render-architecture-diagrams.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/render-architecture-diagrams.sh", proc.stdout)
+
+    def test_setup_lan_tls_wrapper_help_contract(self):
+        proc = run_wrapper("setup-lan-tls.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/setup-lan-tls.sh", proc.stdout)
+
+    def test_seed_jellyseerr_local_admin_wrapper_help_contract(self):
+        proc = run_wrapper("seed-jellyseerr-local-admin.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/seed-jellyseerr-local-admin.sh", proc.stdout)
+
+    def test_backup_stack_wrapper_help_contract(self):
+        proc = run_wrapper("backup-stack.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/backup-stack.sh", proc.stdout)
+
+    def test_restore_stack_wrapper_help_contract(self):
+        proc = run_wrapper("restore-stack.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/restore-stack.sh", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

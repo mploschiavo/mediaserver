@@ -1,4 +1,3 @@
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -7,12 +6,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_servarr.arr_ops as SERVARR_ARR_OPS
 
 
 class ReadarrMetadataSourceTests(unittest.TestCase):
@@ -31,7 +26,7 @@ class ReadarrMetadataSourceTests(unittest.TestCase):
         cfg = {"readarr": {"metadata_source": "https://api.bookinfo.pro"}}
         app_cfg = {"name": "Readarr", "implementation": "Readarr"}
 
-        with mock.patch.object(MODULE, "http_request", side_effect=fake_http_request):
+        with mock.patch.object(SERVARR_ARR_OPS, "http_request", side_effect=fake_http_request):
             MODULE.ensure_readarr_metadata_source(
                 cfg=cfg,
                 app_cfg=app_cfg,
@@ -57,7 +52,7 @@ class ReadarrMetadataSourceTests(unittest.TestCase):
         cfg = {"readarr": {"metadata_source": "https://api.bookinfo.pro"}}
         app_cfg = {"name": "Readarr", "implementation": "Readarr"}
 
-        with mock.patch.object(MODULE, "http_request", side_effect=fake_http_request):
+        with mock.patch.object(SERVARR_ARR_OPS, "http_request", side_effect=fake_http_request):
             MODULE.ensure_readarr_metadata_source(
                 cfg=cfg,
                 app_cfg=app_cfg,

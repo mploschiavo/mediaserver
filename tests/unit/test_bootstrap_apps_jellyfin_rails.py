@@ -1,4 +1,3 @@
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -8,12 +7,8 @@ from urllib import parse
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_media_ops as MEDIA_OPS
 
 
 class JellyfinHomeRailsTests(unittest.TestCase):
@@ -38,7 +33,7 @@ class JellyfinHomeRailsTests(unittest.TestCase):
             ]
         }
 
-        with mock.patch.object(MODULE, "jellyfin_request", return_value=(200, fake_payload, "")):
+        with mock.patch.object(MEDIA_OPS, "jellyfin_request", return_value=(200, fake_payload, "")):
             ids = MODULE.run_jellyfin_rail_query(
                 "http://jellyfin:8096", "api-key", "user-id", rail_cfg, 40
             )
@@ -60,7 +55,7 @@ class JellyfinHomeRailsTests(unittest.TestCase):
             ]
         }
 
-        with mock.patch.object(MODULE, "jellyfin_request", return_value=(200, fake_payload, "")):
+        with mock.patch.object(MEDIA_OPS, "jellyfin_request", return_value=(200, fake_payload, "")):
             ids = MODULE.run_jellyfin_rail_query(
                 "http://jellyfin:8096", "api-key", "user-id", rail_cfg, 40
             )
@@ -75,7 +70,7 @@ class JellyfinHomeRailsTests(unittest.TestCase):
             captured["path"] = path
             return 200, {"Items": []}, ""
 
-        with mock.patch.object(MODULE, "jellyfin_request", side_effect=fake_request):
+        with mock.patch.object(MEDIA_OPS, "jellyfin_request", side_effect=fake_request):
             MODULE.collection_item_ids("http://jellyfin:8096", "api-key", "user-id", "col-1")
 
         query = parse.parse_qs(parse.urlsplit(captured["path"]).query)
@@ -91,11 +86,13 @@ class JellyfinHomeRailsTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                MODULE.JellyfinHomeRailsService, "find_collection_by_name", return_value="ABCD"
+                MEDIA_OPS.JellyfinHomeRailsService, "find_collection_by_name", return_value="ABCD"
             ),
-            mock.patch.object(MODULE.JellyfinHomeRailsService, "collection_item_ids", return_value=[]),
             mock.patch.object(
-                MODULE.JellyfinHomeRailsService,
+                MEDIA_OPS.JellyfinHomeRailsService, "collection_item_ids", return_value=[]
+            ),
+            mock.patch.object(
+                MEDIA_OPS.JellyfinHomeRailsService,
                 "update_collection_items",
                 side_effect=fake_update,
             ),

@@ -4,12 +4,17 @@
   "title": "Media Stack Bootstrap Config",
   "type": "object",
   "required": [
+    "config_version",
     "prowlarr_url",
     "arr_apps",
     "download_clients",
     "technology_bindings"
   ],
   "properties": {
+    "config_version": {
+      "type": "integer",
+      "const": 2
+    },
     "prowlarr_url": {
       "type": "string",
       "minLength": 1
@@ -192,37 +197,14 @@
     "adapter_hooks": {
       "type": "object",
       "properties": {
-        "before_common_steps": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        },
-        "adapter_classes": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        },
-        "download_client_adapter_classes": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        },
-        "media_server_adapter_classes": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        },
-        "technology_aliases": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        },
-        "app_service_classes": {
-          "type": "object",
-          "additionalProperties": {"type": "string"}
-        },
         "operation_handlers": {
           "type": "object",
           "additionalProperties": {"type": "string"}
         },
+        "runner_operation_plans": {"type": "object"},
         "media_server_operation_plans": {"type": "object"}
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

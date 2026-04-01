@@ -1,0 +1,16 @@
+{
+  "technology": "prowlarr",
+  "aliases": ["prow"],
+  "app_service_classes": {
+    "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService",
+    "prowlarr_flaresolverr_service": "bootstrap_services.apps.prowlarr.flaresolverr_service:ProwlarrFlareSolverrService",
+    "prowlarr_precheck_service": "bootstrap_services.apps.prowlarr.precheck_service:ProwlarrPrecheckService",
+    "prowlarr_indexer_pipeline_service": "bootstrap_services.apps.prowlarr.pipeline_service:ProwlarrIndexerPipelineService"
+  },
+  "service_technology_map": {
+    "prowlarr_service": "prowlarr",
+    "prowlarr_flaresolverr_service": "prowlarr",
+    "prowlarr_precheck_service": "prowlarr",
+    "prowlarr_indexer_pipeline_service": "prowlarr"
+  }
+}

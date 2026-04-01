@@ -1,0 +1,11 @@
+{
+  "technology": "readarr",
+  "aliases": ["rdr"],
+  "adapter_classes": {
+    "servarr": "bootstrap_services.servarr_technologies.readarr:ReadarrAdapter"
+  },
+  "before_common_steps": {
+    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps"
+  },
+  "capability_defaults": {}
+}

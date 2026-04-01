@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config_models import (
-    ArrDownloadHandlingPolicy,
     ArrDiscoveryListsConfig,
+    ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
     ArrQualityUpgradePolicy,
     DiskGuardrailsConfig,
@@ -21,8 +21,12 @@ from .config_models import (
     TechnologyBindingsConfig,
 )
 
+SUPPORTED_BOOTSTRAP_CONFIG_VERSION = 2
 
-def _expect_dict(data: dict[str, Any], key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
+
+def _expect_dict(
+    data: dict[str, Any], key: str, default: dict[str, Any] | None = None
+) -> dict[str, Any]:
     value = data.get(key, default if default is not None else {})
     if value is None:
         return {}
@@ -52,6 +56,15 @@ def _expect_str(data: dict[str, Any], key: str, default: str = "") -> str:
     if not isinstance(value, str):
         raise ValueError(f"$.{key} must be a string")
     return value
+
+
+def _expect_int(data: dict[str, Any], key: str) -> int:
+    if key not in data:
+        raise ValueError(f"$.{key} is required")
+    value = data.get(key)
+    if not isinstance(value, int):
+        raise ValueError(f"$.{key} must be an integer")
+    return int(value)
 
 
 @dataclass(frozen=True)
@@ -89,6 +102,7 @@ class ConfigOverlaySettings:
 
 @dataclass(frozen=True)
 class TopLevelBootstrapConfig:
+    config_version: int
     adapter_hooks: dict[str, Any]
     app_auth: dict[str, Any]
     arr_apps: list[dict[str, Any]]
@@ -132,6 +146,14 @@ class TopLevelBootstrapConfig:
         if not isinstance(cfg, dict):
             raise ValueError("Bootstrap config root must be an object")
         src = dict(cfg)
+        config_version = _expect_int(src, "config_version")
+        if config_version != SUPPORTED_BOOTSTRAP_CONFIG_VERSION:
+            raise ValueError(
+                "$.config_version "
+                f"{config_version} is not supported. "
+                f"Expected {SUPPORTED_BOOTSTRAP_CONFIG_VERSION}. "
+                "Migrate your bootstrap config before running."
+            )
 
         # Validate key nested sections through typed models so invalid shapes fail fast.
         DownloadClientsConfig.from_dict(_expect_dict(src, "download_clients", {}))
@@ -157,6 +179,7 @@ class TopLevelBootstrapConfig:
         DiskGuardrailsConfig.from_dict(_expect_dict(src, "disk_guardrails", {}))
 
         known_keys = {
+            "config_version",
             "adapter_hooks",
             "app_auth",
             "arr_apps",
@@ -205,6 +228,7 @@ class TopLevelBootstrapConfig:
         exclude_tokens = [str(item).strip() for item in exclude_tokens_raw if str(item).strip()]
 
         return cls(
+            config_version=config_version,
             adapter_hooks=_expect_dict(src, "adapter_hooks", {}),
             app_auth=_expect_dict(src, "app_auth", {}),
             arr_apps=[dict(item) for item in arr_apps_raw],
@@ -238,7 +262,9 @@ class TopLevelBootstrapConfig:
             prowlarr_url=_expect_str(src, "prowlarr_url", ""),
             quality_profiles=_expect_dict(src, "quality_profiles", {}),
             readarr=_expect_dict(src, "readarr", {}),
-            refresh_health_after_bootstrap=_expect_bool(src, "refresh_health_after_bootstrap", True),
+            refresh_health_after_bootstrap=_expect_bool(
+                src, "refresh_health_after_bootstrap", True
+            ),
             sonarr_seed_series=_expect_dict(src, "sonarr_seed_series", {}),
             technology_bindings=_expect_dict(src, "technology_bindings", {}),
             trigger_indexer_sync=_expect_bool(src, "trigger_indexer_sync", True),

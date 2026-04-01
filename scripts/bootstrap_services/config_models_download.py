@@ -62,8 +62,14 @@ class QbitQueueGuardrailsConfig:
             max_queued_by_category=_int_map(src.get("max_queued_by_category")),
             max_total_size_gib_by_category=_float_map(src.get("max_total_size_gib_by_category")),
             max_weight_percent_by_category=_float_map(src.get("max_weight_percent_by_category")),
-            over_limit_max_delete_per_category=to_int(src.get("over_limit_max_delete_per_category"), 15) or 15,
-            over_budget_max_delete_per_category=to_int(src.get("over_budget_max_delete_per_category"), 20) or 20,
+            over_limit_max_delete_per_category=to_int(
+                src.get("over_limit_max_delete_per_category"), 15
+            )
+            or 15,
+            over_budget_max_delete_per_category=to_int(
+                src.get("over_budget_max_delete_per_category"), 20
+            )
+            or 20,
             raw=src,
         )
 
@@ -79,7 +85,9 @@ class QbitAuthBypassConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "QbitAuthBypassConfig":
         src = dict(data or {})
-        whitelist_subnets = [str(x).strip() for x in (src.get("whitelist_subnets") or []) if str(x).strip()]
+        whitelist_subnets = [
+            str(x).strip() for x in (src.get("whitelist_subnets") or []) if str(x).strip()
+        ]
         if not whitelist_subnets:
             whitelist_subnets = [
                 "10.0.0.0/8",
@@ -171,6 +179,10 @@ class DownloadClientConfig:
     use_ssl: bool = False
     url_base: str = ""
     priority: int = 1
+    username_env: str = ""
+    password_env: str = ""
+    api_key_env: str = ""
+    api_key_required: bool = False
     categories: dict[str, str] = field(default_factory=dict)
     completed_paths: dict[str, str] = field(default_factory=dict)
     default_save_path: str = "/data/torrents/completed"
@@ -196,7 +208,9 @@ class DownloadClientConfig:
         src = dict(data or {})
         auth_bypass_typed = QbitAuthBypassConfig.from_dict(src.get("auth_bypass") or {})
         seeding_policy_typed = QbitSeedingPolicyConfig.from_dict(src.get("seeding_policy") or {})
-        queue_guardrails_typed = QbitQueueGuardrailsConfig.from_dict(src.get("queue_guardrails") or {})
+        queue_guardrails_typed = QbitQueueGuardrailsConfig.from_dict(
+            src.get("queue_guardrails") or {}
+        )
         return cls(
             url=str(src.get("url", "")).strip(),
             host=str(src.get("host", "")).strip(),
@@ -206,6 +220,10 @@ class DownloadClientConfig:
             use_ssl=bool(src.get("use_ssl", False)),
             url_base=str(src.get("url_base", "")).strip(),
             priority=to_int(src.get("priority"), 1) or 1,
+            username_env=str(src.get("username_env", "")).strip(),
+            password_env=str(src.get("password_env", "")).strip(),
+            api_key_env=str(src.get("api_key_env", "")).strip(),
+            api_key_required=bool(src.get("api_key_required", False)),
             categories=dict(src.get("categories") or {}),
             completed_paths=dict(src.get("completed_paths") or {}),
             default_save_path=str(src.get("default_save_path", "/data/torrents/completed")),

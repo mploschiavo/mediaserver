@@ -1,0 +1,10 @@
+{
+  "technology": "bazarr",
+  "aliases": ["barr"],
+  "app_service_classes": {
+    "bazarr_service": "bootstrap_services.bazarr_service:BazarrService"
+  },
+  "service_technology_map": {
+    "bazarr_service": "bazarr"
+  }
+}

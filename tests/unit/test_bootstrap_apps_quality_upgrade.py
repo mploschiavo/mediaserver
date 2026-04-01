@@ -1,4 +1,3 @@
-import importlib.util
 import os
 import sys
 import tempfile
@@ -9,12 +8,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SPEC = importlib.util.spec_from_file_location(
-    "bootstrap_apps", ROOT / "scripts" / "bootstrap-apps.py"
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
+import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_servarr.factory as SERVARR_FACTORY
 
 
 class ArrQualityUpgradePolicyTests(unittest.TestCase):
@@ -46,9 +41,13 @@ class ArrQualityUpgradePolicyTests(unittest.TestCase):
             return 200, {}, ""
 
         with (
-            mock.patch.object(MODULE, "resolve_arr_quality_preferences", return_value=(None, [])),
-            mock.patch.object(MODULE, "get_arr_quality_profile", return_value=selected_profile),
-            mock.patch.object(MODULE, "http_request", side_effect=fake_http_request),
+            mock.patch.object(
+                SERVARR_FACTORY, "resolve_arr_quality_preferences", return_value=(None, [])
+            ),
+            mock.patch.object(
+                SERVARR_FACTORY, "get_arr_quality_profile", return_value=selected_profile
+            ),
+            mock.patch.object(SERVARR_FACTORY, "http_request", side_effect=fake_http_request),
         ):
             MODULE.ensure_arr_quality_upgrade_policy(
                 cfg,
@@ -88,9 +87,13 @@ class ArrQualityUpgradePolicyTests(unittest.TestCase):
         }
 
         with (
-            mock.patch.object(MODULE, "resolve_arr_quality_preferences", return_value=(None, [])),
-            mock.patch.object(MODULE, "get_arr_quality_profile", return_value=selected_profile),
-            mock.patch.object(MODULE, "http_request") as request_mock,
+            mock.patch.object(
+                SERVARR_FACTORY, "resolve_arr_quality_preferences", return_value=(None, [])
+            ),
+            mock.patch.object(
+                SERVARR_FACTORY, "get_arr_quality_profile", return_value=selected_profile
+            ),
+            mock.patch.object(SERVARR_FACTORY, "http_request") as request_mock,
         ):
             MODULE.ensure_arr_quality_upgrade_policy(
                 cfg,

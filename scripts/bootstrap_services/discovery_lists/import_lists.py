@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config_models import ArrDiscoveryListsConfig
+from ..config_models import ArrDiscoveryListEntry, ArrDiscoveryListsConfig
 from .common import coerce_for_example
 from .sonarr_seed import ensure_sonarr_seed_series
 
@@ -13,24 +13,36 @@ def resolve_import_list_definitions(
     service,
     arr_discovery_cfg: ArrDiscoveryListsConfig | dict[str, Any],
     app_cfg: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> list[ArrDiscoveryListEntry]:
     if isinstance(arr_discovery_cfg, ArrDiscoveryListsConfig):
         model = arr_discovery_cfg
     else:
         model = ArrDiscoveryListsConfig.from_dict(arr_discovery_cfg)
     app_impl = str(app_cfg.get("implementation") or "")
-    return service.coerce_list(model.by_app.get(app_impl) or model.by_app.get(app_impl.lower()) or [])
+    typed = model.typed_by_app.get(app_impl) or model.typed_by_app.get(app_impl.lower()) or []
+    if typed:
+        return list(typed)
+    fallback = service.coerce_list(
+        model.by_app.get(app_impl) or model.by_app.get(app_impl.lower()) or []
+    )
+    return [ArrDiscoveryListEntry.from_dict(item) for item in fallback if isinstance(item, dict)]
 
 
 def build_arr_import_list_payload(
     service,
     app_cfg: dict[str, Any],
     schema: dict[str, Any],
-    list_cfg: dict[str, Any],
+    list_cfg: ArrDiscoveryListEntry | dict[str, Any],
     default_quality_profile_id: int | None,
     default_metadata_profile_id: int | None = None,
 ) -> dict[str, Any]:
-    name = str(list_cfg.get("name") or schema.get("implementationName") or "").strip()
+    entry = (
+        list_cfg
+        if isinstance(list_cfg, ArrDiscoveryListEntry)
+        else ArrDiscoveryListEntry.from_dict(list_cfg)
+    )
+    list_raw = entry.raw
+    name = str(entry.name or schema.get("implementationName") or "").strip()
     if not name:
         raise RuntimeError(
             f"{app_cfg.get('name', app_cfg.get('implementation', 'Arr'))}: "
@@ -38,8 +50,8 @@ def build_arr_import_list_payload(
         )
 
     values = service.field_map(schema.get("fields"))
-    allow_unknown_overrides = bool(list_cfg.get("allow_unknown_field_overrides", False))
-    for field_name, field_value in (list_cfg.get("field_overrides") or {}).items():
+    allow_unknown_overrides = bool(entry.allow_unknown_field_overrides)
+    for field_name, field_value in (entry.field_overrides or {}).items():
         resolved_value = service.resolve_env_placeholder(field_value)
         if field_name in values:
             values[field_name] = coerce_for_example(resolved_value, values.get(field_name))
@@ -95,18 +107,18 @@ def build_arr_import_list_payload(
         "should_search": "shouldSearch",
     }
     for src_key, dst_key in cfg_key_map.items():
-        if src_key not in list_cfg:
+        if src_key not in list_raw:
             continue
-        value = service.resolve_env_placeholder(list_cfg.get(src_key))
+        value = service.resolve_env_placeholder(list_raw.get(src_key))
         if dst_key in payload:
             payload[dst_key] = coerce_for_example(value, payload.get(dst_key))
         else:
             payload[dst_key] = value
 
     def apply_alias(src_key: str, dst_keys: tuple[str, ...]) -> None:
-        if src_key not in list_cfg:
+        if src_key not in list_raw:
             return
-        value = service.resolve_env_placeholder(list_cfg.get(src_key))
+        value = service.resolve_env_placeholder(list_raw.get(src_key))
         for dst_key in dst_keys:
             if dst_key in payload:
                 payload[dst_key] = coerce_for_example(value, payload.get(dst_key))
@@ -134,9 +146,9 @@ def build_arr_import_list_payload(
         elif app_impl == "lidarr":
             payload["shouldMonitor"] = "entireArtist"
 
-    root_folder_path = str(list_cfg.get("root_folder_path") or "").strip() or str(
-        app_cfg.get("root_folder") or ""
-    ).strip()
+    root_folder_path = (
+        str(entry.root_folder_path or "").strip() or str(app_cfg.get("root_folder") or "").strip()
+    )
     if root_folder_path:
         payload["rootFolderPath"] = root_folder_path
 
@@ -170,7 +182,9 @@ def ensure_arr_discovery_lists_for_app(
     schemas_by_impl: dict[str, dict[str, Any]] = {}
     existing_lists: list[dict[str, Any]] = []
     if list_defs:
-        status, schemas, body = service.http_request(app_url, f"{api_base}/importlist/schema", api_key=api_key)
+        status, schemas, body = service.http_request(
+            app_url, f"{api_base}/importlist/schema", api_key=api_key
+        )
         if status != 200 or not isinstance(schemas, list):
             raise RuntimeError(
                 f"{app_name}: failed reading import list schema (HTTP {status}): {body}"
@@ -181,11 +195,11 @@ def ensure_arr_discovery_lists_for_app(
             if isinstance(item, dict) and str(item.get("implementation") or "").strip()
         }
 
-        status, existing_lists, body = service.http_request(app_url, f"{api_base}/importlist", api_key=api_key)
+        status, existing_lists, body = service.http_request(
+            app_url, f"{api_base}/importlist", api_key=api_key
+        )
         if status != 200 or not isinstance(existing_lists, list):
-            raise RuntimeError(
-                f"{app_name}: failed listing import lists (HTTP {status}): {body}"
-            )
+            raise RuntimeError(f"{app_name}: failed listing import lists (HTTP {status}): {body}")
 
     preferred_id, preferred_names = service.resolve_arr_quality_preferences(cfg, app_cfg)
     selected_profile = service.get_arr_quality_profile(
@@ -235,38 +249,47 @@ def ensure_arr_discovery_lists_for_app(
     skipped = 0
     desired_keys = set()
     managed_implementations = {
-        str(item.get("implementation") or "").strip().lower()
+        str(item.implementation or "").strip().lower()
         for item in list_defs
-        if isinstance(item, dict) and str(item.get("implementation") or "").strip()
+        if str(item.implementation or "").strip()
     }
 
     for list_cfg in list_defs:
-        if not isinstance(list_cfg, dict):
-            continue
-
-        impl_raw = str(list_cfg.get("implementation") or "").strip()
+        impl_raw = str(list_cfg.implementation or "").strip()
         if not impl_raw:
             service.log(f"[WARN] {app_name}: skipping import list entry without implementation")
+            skipped += 1
+            continue
+        if list_cfg.contract_missing_override_fields:
+            missing_fields = ", ".join(list_cfg.contract_missing_override_fields)
+            msg = (
+                f"{app_name}: import list '{list_cfg.name}' ({impl_raw}) is missing required "
+                f"field_overrides: {missing_fields}"
+            )
+            if bool(list_cfg.required):
+                raise RuntimeError(msg)
+            service.log(f"[WARN] {msg}")
             skipped += 1
             continue
         schema = schemas_by_impl.get(impl_raw.lower())
         if not schema:
             msg = f"{app_name}: import list implementation '{impl_raw}' is not supported by this Arr build."
-            if service.bool_cfg(list_cfg, "required", False):
+            if bool(list_cfg.required):
                 raise RuntimeError(msg)
             service.log(f"[WARN] {msg}")
             skipped += 1
             continue
 
         schema_fields = {str(f.get("name") or "") for f in (schema.get("fields") or [])}
-        list_name = str(list_cfg.get("name") or schema.get("implementationName") or impl_raw).strip()
-        if "signIn" in schema_fields:
+        list_name = str(list_cfg.name or schema.get("implementationName") or impl_raw).strip()
+        auth_required = "signIn" in schema_fields or bool(list_cfg.contract.requires_auth)
+        if auth_required:
             access_token = str(
                 service.resolve_env_placeholder(
-                    ((list_cfg.get("field_overrides") or {}).get("accessToken", ""))
+                    ((list_cfg.field_overrides or {}).get("accessToken", ""))
                 )
             ).strip()
-            if not access_token and service.bool_cfg(list_cfg, "skip_if_auth_required", True):
+            if not access_token and bool(list_cfg.skip_if_auth_required):
                 service.log(
                     f"[WARN] {app_name}: skipping import list '{list_name}' ({impl_raw}) because provider auth is required "
                     "(set field_overrides.accessToken/refreshToken to enable)."
@@ -316,7 +339,7 @@ def ensure_arr_discovery_lists_for_app(
                 service.log(f"[OK] {app_name}: updated discovery list '{payload['name']}'")
                 continue
             msg = f"{app_name}: failed updating discovery list '{payload['name']}' (HTTP {status}): {body}"
-            if service.bool_cfg(list_cfg, "required", False):
+            if bool(list_cfg.required):
                 raise RuntimeError(msg)
             service.log(f"[WARN] {msg}")
             skipped += 1
@@ -335,13 +358,15 @@ def ensure_arr_discovery_lists_for_app(
             continue
 
         msg = f"{app_name}: failed creating discovery list '{payload['name']}' (HTTP {status}): {body}"
-        if service.bool_cfg(list_cfg, "required", False):
+        if bool(list_cfg.required):
             raise RuntimeError(msg)
         service.log(f"[WARN] {msg}")
         skipped += 1
 
     if list_defs and prune_unmanaged and managed_implementations:
-        status, existing_lists, body = service.http_request(app_url, f"{api_base}/importlist", api_key=api_key)
+        status, existing_lists, body = service.http_request(
+            app_url, f"{api_base}/importlist", api_key=api_key
+        )
         if status != 200 or not isinstance(existing_lists, list):
             raise RuntimeError(
                 f"{app_name}: failed listing import lists for prune (HTTP {status}): {body}"
@@ -363,7 +388,9 @@ def ensure_arr_discovery_lists_for_app(
             )
             if status in (200, 202, 204):
                 deleted += 1
-                service.log(f"[OK] {app_name}: pruned unmanaged discovery list '{item.get('name', item_id)}'")
+                service.log(
+                    f"[OK] {app_name}: pruned unmanaged discovery list '{item.get('name', item_id)}'"
+                )
                 continue
             service.log(
                 f"[WARN] {app_name}: failed pruning unmanaged discovery list '{item.get('name', item_id)}' (HTTP {status}): {body}"

@@ -12,6 +12,7 @@ class TopLevelBootstrapConfigModelTests(unittest.TestCase):
     def test_from_dict_accepts_known_sections_and_unknown_passthrough(self):
         model = TopLevelBootstrapConfig.from_dict(
             {
+                "config_version": 2,
                 "prowlarr_url": "http://prowlarr:9696",
                 "arr_apps": [],
                 "download_clients": {},
@@ -35,8 +36,25 @@ class TopLevelBootstrapConfigModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             TopLevelBootstrapConfig.from_dict(
                 {
+                    "config_version": 2,
                     "prowlarr_url": 123,
                     "arr_apps": [],
+                }
+            )
+
+    def test_from_dict_requires_supported_config_version(self):
+        with self.assertRaises(ValueError):
+            TopLevelBootstrapConfig.from_dict(
+                {
+                    "config_version": 1,
+                    "prowlarr_url": "http://prowlarr:9696",
+                    "arr_apps": [],
+                    "download_clients": {},
+                    "technology_bindings": {
+                        "torrent_client": "qbittorrent",
+                        "usenet_client": "sabnzbd",
+                        "media_server": "jellyfin",
+                    },
                 }
             )
 

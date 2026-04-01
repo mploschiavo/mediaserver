@@ -6,6 +6,17 @@ live in focused modules by domain.
 
 from __future__ import annotations
 
+from .config_models_discovery import (
+    DiscoveryListContract,
+    DiscoveryProviderOptions,
+    GenericDiscoveryProviderOptions,
+    GoodreadsListImportOptions,
+    LastFmTagOptions,
+    TmdbPopularImportOptions,
+    TraktPopularImportOptions,
+    parse_discovery_provider_options,
+    resolve_discovery_list_contract,
+)
 from .config_models_download import (
     DiskGuardrailsConfig,
     DownloadClientConfig,
@@ -23,9 +34,9 @@ from .config_models_integrations import (
     JellyfinAutoCollectionsConfig,
     JellyfinHomeRailsConfig,
     JellyseerrConfig,
-    MediaHygieneConfig,
     MaintainerrConfig,
     MaintainerrIntegrationsConfig,
+    MediaHygieneConfig,
 )
 from .config_models_jellyfin import (
     JellyfinArtworkHealthCheckConfig,
@@ -64,6 +75,15 @@ __all__ = [
     "DownloadClientConfig",
     "DownloadClientsConfig",
     "TechnologyBindingsConfig",
+    "DiscoveryListContract",
+    "DiscoveryProviderOptions",
+    "GenericDiscoveryProviderOptions",
+    "TmdbPopularImportOptions",
+    "LastFmTagOptions",
+    "GoodreadsListImportOptions",
+    "TraktPopularImportOptions",
+    "resolve_discovery_list_contract",
+    "parse_discovery_provider_options",
     "BoolSectionConfig",
     "AppAuthConfig",
     "HomepageConfig",

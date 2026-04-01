@@ -1,0 +1,27 @@
+{
+  "technology": "jellyfin",
+  "aliases": ["jf"],
+  "adapter_classes": {
+    "media_server": "bootstrap_services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
+  },
+  "app_service_classes": {
+    "jellyfin_livetv_service": "bootstrap_services.jellyfin_service:JellyfinService",
+    "jellyfin_livetv_source_service": "bootstrap_services.jellyfin_livetv_source_service:JellyfinLiveTvSourceService",
+    "jellyfin_livetv_state_service": "bootstrap_services.jellyfin_livetv_state_service:JellyfinLiveTvStateService",
+    "jellyfin_libraries_service": "bootstrap_services.jellyfin_libraries_service:JellyfinLibrariesService",
+    "jellyfin_home_rails_service": "bootstrap_services.jellyfin_home_rails_service:JellyfinHomeRailsService",
+    "jellyfin_playback_service": "bootstrap_services.jellyfin_playback_service:JellyfinPlaybackService",
+    "jellyfin_plugins_service": "bootstrap_services.jellyfin_plugins_service:JellyfinPluginsService",
+    "jellyfin_prewarm_service": "bootstrap_services.jellyfin_prewarm_service:JellyfinPrewarmService"
+  },
+  "service_technology_map": {
+    "jellyfin_livetv_service": "jellyfin",
+    "jellyfin_livetv_source_service": "jellyfin",
+    "jellyfin_livetv_state_service": "jellyfin",
+    "jellyfin_libraries_service": "jellyfin",
+    "jellyfin_home_rails_service": "jellyfin",
+    "jellyfin_playback_service": "jellyfin",
+    "jellyfin_plugins_service": "jellyfin",
+    "jellyfin_prewarm_service": "jellyfin"
+  }
+}

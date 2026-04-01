@@ -1,0 +1,13 @@
+{
+  "technology": "sabnzbd",
+  "aliases": ["sab"],
+  "adapter_classes": {
+    "download_client": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter"
+  },
+  "app_service_classes": {
+    "sabnzbd_service": "bootstrap_services.sabnzbd_service:SabnzbdService"
+  },
+  "service_technology_map": {
+    "sabnzbd_service": "sabnzbd"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "technology": "lidarr",
+  "aliases": ["larr"],
+  "adapter_classes": {
+    "servarr": "bootstrap_services.servarr_technologies.lidarr:LidarrAdapter"
+  },
+  "capability_defaults": {}
+}
