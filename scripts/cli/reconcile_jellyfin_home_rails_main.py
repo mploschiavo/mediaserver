@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from urllib import error, request
 
+from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
+
 
 def _ts() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -175,7 +177,15 @@ def main() -> int:
             return 1
 
         _info("Reconciling Jellyfin home rails via bootstrap logic")
-        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        raw_cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_cfg, dict):
+            _err("Bootstrap config root must be a JSON object.")
+            return 1
+        try:
+            cfg = TopLevelBootstrapConfig.from_dict(raw_cfg).to_dict()
+        except ValueError as exc:
+            _err(f"Invalid bootstrap config: {exc}")
+            return 1
         rails_cfg = copy.deepcopy(cfg.get("jellyfin_home_rails") or {})
         if args.force_enable:
             rails_cfg["enabled"] = True
@@ -209,4 +219,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

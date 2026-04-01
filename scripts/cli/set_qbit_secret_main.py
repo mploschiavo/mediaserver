@@ -40,22 +40,15 @@ def parse_config(argv: list[str] | None = None) -> SetQbitSecretConfig:
     args = _build_parser().parse_args(argv)
 
     namespace = str(__import__("os").environ.get("NAMESPACE", "media-stack")).strip() or "media-stack"
-    default_stack_admin_user = (
-        str(__import__("os").environ.get("DEFAULT_STACK_ADMIN_USER", "admin")).strip() or "admin"
-    )
-    default_stack_admin_pass = (
-        str(__import__("os").environ.get("DEFAULT_STACK_ADMIN_PASS", "media-stack-admin")).strip()
-        or "media-stack-admin"
-    )
-    username = str(args.username or "").strip()
-    password = str(args.password or "").strip()
+    env = __import__("os").environ
+    username = str(args.username or env.get("STACK_ADMIN_USERNAME") or "").strip()
+    password = str(args.password or env.get("STACK_ADMIN_PASSWORD") or "").strip()
 
-    if not username and not password:
-        username = default_stack_admin_user
-        password = default_stack_admin_pass
-        print("[INFO] Using default stack admin credentials from env defaults.")
-    elif not username or not password:
-        raise ConfigError("Provide both USERNAME and PASSWORD, or provide neither to use defaults.")
+    if not username or not password:
+        raise ConfigError(
+            "Provide USERNAME and PASSWORD args, or set both STACK_ADMIN_USERNAME and "
+            "STACK_ADMIN_PASSWORD in the environment."
+        )
 
     return SetQbitSecretConfig(
         namespace=namespace,

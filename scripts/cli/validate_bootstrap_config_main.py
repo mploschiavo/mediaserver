@@ -222,32 +222,33 @@ def main() -> int:
 
     try:
         import jsonschema  # type: ignore
-
-        validator = jsonschema.Draft202012Validator(schema)
-        errors = sorted(validator.iter_errors(cfg), key=lambda err: list(err.path))
-        if errors:
-            print("[ERR] Bootstrap config schema validation failed:", file=sys.stderr)
-            for err in errors:
-                path = format_path(list(err.path))
-                print(f"  - {path}: {err.message}", file=sys.stderr)
-            return 1
-        print(f"[OK] Bootstrap config is schema-valid: {config_path} (schema={schema_path})")
-        return 0
     except ModuleNotFoundError:
-        fallback_errors = basic_checks(cfg)
-        if fallback_errors:
-            print(
-                "[ERR] jsonschema module not installed and basic validation failed:",
-                file=sys.stderr,
-            )
-            for line in fallback_errors:
-                print(f"  - {line}", file=sys.stderr)
-            return 1
         print(
-            "[WARN] jsonschema module not installed; ran basic validation only. "
-            "Install python3-jsonschema for full schema checks."
+            "[ERR] jsonschema module is required for strict validation. "
+            "Install dependencies and retry.",
+            file=sys.stderr,
         )
-        return 0
+        return 2
+
+    validator = jsonschema.Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(cfg), key=lambda err: list(err.path))
+    if errors:
+        print("[ERR] Bootstrap config schema validation failed:", file=sys.stderr)
+        for err in errors:
+            path = format_path(list(err.path))
+            print(f"  - {path}: {err.message}", file=sys.stderr)
+        return 1
+
+    from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
+
+    try:
+        TopLevelBootstrapConfig.from_dict(cfg)
+    except ValueError as exc:
+        print(f"[ERR] Bootstrap config semantic validation failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"[OK] Bootstrap config is schema-valid: {config_path} (schema={schema_path})")
+    return 0
 
 
 if __name__ == "__main__":

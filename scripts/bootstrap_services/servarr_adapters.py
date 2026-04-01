@@ -1,4 +1,4 @@
-"""Config-driven Servarr adapter hooks with optional reflection loading."""
+"""Config-driven Servarr adapter hooks."""
 
 from __future__ import annotations
 
@@ -81,9 +81,7 @@ class AdapterRegistry:
 
     @classmethod
     def from_config(cls, adapter_hooks_cfg: dict[str, Any] | None = None) -> "AdapterRegistry":
-        hooks: dict[str, HookFn] = {
-            "readarr": readarr_before_common_steps,
-        }
+        hooks: dict[str, HookFn] = {}
         cfg = adapter_hooks_cfg or {}
         before_cfg = cfg.get("before_common_steps") or {}
         if not isinstance(before_cfg, dict):

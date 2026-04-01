@@ -88,8 +88,22 @@ def main(argv=None):
     info(f"Jellyfin service: {service_name}")
 
     secret = get_secret(kubectl, namespace, secret_name)
-    stack_user = secret.get("STACK_ADMIN_USERNAME") or cfg.stack_admin_username
-    stack_pass = secret.get("STACK_ADMIN_PASSWORD") or cfg.stack_admin_password
+    stack_user = str(secret.get("STACK_ADMIN_USERNAME") or "").strip()
+    stack_pass = str(secret.get("STACK_ADMIN_PASSWORD") or "").strip()
+    if not stack_user:
+        fail(
+            "Missing STACK_ADMIN_USERNAME in secret and environment. "
+            "Set it in media-stack-secrets before running Jellyfin bootstrap."
+        )
+    if not stack_pass:
+        fail(
+            "Missing STACK_ADMIN_PASSWORD in secret and environment. "
+            "Set it in media-stack-secrets before running Jellyfin bootstrap."
+        )
+    if stack_pass == "change-me":
+        fail(
+            "STACK_ADMIN_PASSWORD is 'change-me'. Set a real password in media-stack-secrets first."
+        )
     existing_api_key = secret.get("JELLYFIN_API_KEY", "").strip()
     existing_user_id = secret.get("JELLYFIN_USER_ID", "").strip()
 

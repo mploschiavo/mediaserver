@@ -9,32 +9,20 @@ class BootstrapMode(str, Enum):
     FULL = "full"
     MEDIA_SERVER_PREWARM = "media-server-prewarm"
     MEDIA_SERVER_HOME_RAILS = "media-server-home-rails"
-    JELLYFIN_PREWARM = "jellyfin-prewarm"
-    JELLYFIN_HOME_RAILS = "jellyfin-home-rails"
     MEDIA_HYGIENE = "media-hygiene"
 
     @classmethod
     def choices(cls) -> list[str]:
-        # Keep legacy jellyfin-* modes for backward compatibility while exposing
-        # media-server-generic modes for backend swappability.
         return [
             cls.FULL.value,
             cls.MEDIA_SERVER_PREWARM.value,
             cls.MEDIA_SERVER_HOME_RAILS.value,
-            cls.JELLYFIN_PREWARM.value,
-            cls.JELLYFIN_HOME_RAILS.value,
             cls.MEDIA_HYGIENE.value,
         ]
 
     @classmethod
     def from_cli(cls, value: str) -> "BootstrapMode":
         text = str(value or "").strip().lower()
-        aliases = {
-            cls.JELLYFIN_PREWARM.value: cls.MEDIA_SERVER_PREWARM,
-            cls.JELLYFIN_HOME_RAILS.value: cls.MEDIA_SERVER_HOME_RAILS,
-        }
-        if text in aliases:
-            return aliases[text]
         for mode in cls:
             if mode.value == text:
                 return mode

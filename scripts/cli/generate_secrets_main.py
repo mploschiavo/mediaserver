@@ -21,8 +21,8 @@ from core.exceptions import ConfigError, MediaStackError
 from core.kube import resolve_kubectl_binary
 
 SECRET_KEY_DEFAULTS: dict[str, str] = {
-    "STACK_ADMIN_USERNAME": "admin",
-    "STACK_ADMIN_PASSWORD": "change-me",
+    "STACK_ADMIN_USERNAME": "",
+    "STACK_ADMIN_PASSWORD": "",
     "SABNZBD_API_KEY": "",
     "JELLYFIN_API_KEY": "",
     "JELLYFIN_USER_ID": "",
@@ -97,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--stack-admin-user",
-        default=os.environ.get("STACK_ADMIN_USER", "admin"),
+        default=os.environ.get("STACK_ADMIN_USER", ""),
     )
     return parser
 
@@ -110,7 +110,7 @@ def parse_config(argv: list[str] | None = None) -> GenerateSecretsConfig:
     pass_length = int(args.pass_length)
     if pass_length <= 0:
         raise ConfigError("PASS_LENGTH must be greater than zero.")
-    stack_admin_user = str(args.stack_admin_user or "").strip() or "admin"
+    stack_admin_user = str(args.stack_admin_user or "").strip()
     return GenerateSecretsConfig(
         namespace=namespace,
         secret_name=secret_name,
@@ -170,10 +170,23 @@ def build_secret_values(
 
     stack_user = str(values.get("STACK_ADMIN_USERNAME", "")).strip()
     stack_pass = str(values.get("STACK_ADMIN_PASSWORD", "")).strip()
-    if not stack_user or rotate_existing:
+    if rotate_existing:
+        if not stack_admin_user:
+            raise ConfigError(
+                "STACK_ADMIN_USER is required when rotating credentials "
+                "(--stack-admin-user or env STACK_ADMIN_USER)."
+            )
         stack_user = stack_admin_user
-    if not stack_pass or rotate_existing or stack_pass == "change-me":
+    elif not stack_user:
+        if not stack_admin_user:
+            raise ConfigError(
+                "STACK_ADMIN_USERNAME is missing from secret and no STACK_ADMIN_USER was provided."
+            )
+        stack_user = stack_admin_user
+
+    if not stack_pass or rotate_existing:
         stack_pass = _rand_secret(pass_length)
+
     values["STACK_ADMIN_USERNAME"] = stack_user
     values["STACK_ADMIN_PASSWORD"] = stack_pass
 

@@ -14,7 +14,7 @@ from bootstrap_services.config_models import (  # noqa: E402
     ArrQualityUpgradePolicy,
 )
 from bootstrap_services.enums import BootstrapMode  # noqa: E402
-from bootstrap_services.runtime_factory_service import (  # noqa: E402
+from bootstrap_services.runtime_factory import (  # noqa: E402
     BootstrapCliArgs,
     BootstrapRuntimeFactoryDependencies,
     BootstrapRuntimeFactoryService,
@@ -134,7 +134,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         }
 
         with self._qbit_env():
-            result = factory.build(self._args(mode=BootstrapMode.JELLYFIN_PREWARM), cfg)
+            result = factory.build(self._args(mode=BootstrapMode.MEDIA_SERVER_PREWARM), cfg)
 
         self.assertEqual(result.runtime.prowlarr_key, "")
         self.assertEqual(result.runtime.app_keys, {})

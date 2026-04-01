@@ -1,21 +1,134 @@
 #!/usr/bin/env python3
-"""Compatibility re-export surface for runtime Servarr operations.
+"""Explicit runtime Servarr operation exports.
 
-The implementation is split into focused modules:
-- factory.py
-- arr_ops.py
-- qbit_ops.py
-- sab_ops.py
-- prowlarr_ops.py
-- hygiene_ops.py
+This module intentionally provides a stable import surface for callers while
+keeping the implementation split across focused modules.
 """
 
 from __future__ import annotations
 
-from .arr_ops import *  # noqa: F401,F403
-from .arr_ops import _servarr_pipeline_service as _servarr_pipeline_service
-from .factory import *  # noqa: F401,F403
-from .hygiene_ops import *  # noqa: F401,F403
-from .prowlarr_ops import *  # noqa: F401,F403
-from .qbit_ops import *  # noqa: F401,F403
-from .sab_ops import *  # noqa: F401,F403
+from .arr_ops import (
+    _servarr_pipeline_service,
+    auth_scope_matches,
+    build_arr_import_list_payload,
+    build_root_folder_payload,
+    build_sab_remote_path_mappings,
+    choose_category,
+    coerce_for_example,
+    detect_arr_api_base,
+    ensure_app_auth_settings,
+    ensure_arr_discovery_lists_for_app,
+    ensure_arr_download_client,
+    ensure_arr_download_handling,
+    ensure_arr_media_management,
+    ensure_arr_quality_upgrade_policy,
+    ensure_arr_remote_path_mappings,
+    ensure_readarr_metadata_source,
+    ensure_root_folder,
+    fetch_arr_download_client_config,
+    normalize_mapping_path,
+    pick_first_profile_id,
+    resolve_arr_overrides_by_app,
+    resolve_import_list_definitions,
+    trigger_arr_command,
+    trigger_arr_discovery_kickoff,
+    trigger_health_check,
+)
+from .hygiene_ops import (
+    arr_queue_records,
+    delete_queue_item,
+    enforce_disk_guardrails,
+    ensure_arr_failed_queue_cleanup,
+    queue_item_is_failed,
+    run_filesystem_hygiene,
+    run_media_hygiene,
+    run_qbit_duplicate_prune,
+    run_qbit_ipfilter_refresh,
+    run_qbit_queue_guardrails,
+)
+from .prowlarr_ops import (
+    auto_add_tested_indexers,
+    build_indexer_payload,
+    ensure_prowlarr_application,
+    ensure_prowlarr_flaresolverr_proxy,
+    ensure_prowlarr_indexer,
+    ensure_prowlarr_ready,
+    find_existing_application,
+    resolve_schema_contract,
+    run_prowlarr_indexer_pipeline,
+    sync_arr_indexers_from_prowlarr,
+    trigger_prowlarr_sync,
+)
+from .qbit_ops import (
+    qbit_create_category,
+    qbit_login,
+    qbit_set_preferences,
+    setup_qbit_categories,
+    setup_qbit_storage_defaults,
+)
+from .sab_ops import (
+    ensure_sabnzbd_categories,
+    ensure_sabnzbd_defaults,
+    read_sabnzbd_api_key,
+    sabnzbd_get_config_section,
+    sabnzbd_request,
+)
+
+__all__ = [
+    "auth_scope_matches",
+    "auto_add_tested_indexers",
+    "arr_queue_records",
+    "build_arr_import_list_payload",
+    "build_indexer_payload",
+    "build_root_folder_payload",
+    "build_sab_remote_path_mappings",
+    "choose_category",
+    "coerce_for_example",
+    "delete_queue_item",
+    "detect_arr_api_base",
+    "enforce_disk_guardrails",
+    "ensure_app_auth_settings",
+    "ensure_arr_discovery_lists_for_app",
+    "ensure_arr_download_client",
+    "ensure_arr_download_handling",
+    "ensure_arr_failed_queue_cleanup",
+    "ensure_arr_media_management",
+    "ensure_arr_quality_upgrade_policy",
+    "ensure_arr_remote_path_mappings",
+    "ensure_prowlarr_application",
+    "ensure_prowlarr_flaresolverr_proxy",
+    "ensure_prowlarr_indexer",
+    "ensure_prowlarr_ready",
+    "ensure_readarr_metadata_source",
+    "ensure_root_folder",
+    "ensure_sabnzbd_categories",
+    "ensure_sabnzbd_defaults",
+    "fetch_arr_download_client_config",
+    "find_existing_application",
+    "normalize_mapping_path",
+    "pick_first_profile_id",
+    "qbit_create_category",
+    "qbit_login",
+    "qbit_set_preferences",
+    "queue_item_is_failed",
+    "read_sabnzbd_api_key",
+    "resolve_arr_overrides_by_app",
+    "resolve_import_list_definitions",
+    "resolve_schema_contract",
+    "run_filesystem_hygiene",
+    "run_media_hygiene",
+    "run_prowlarr_indexer_pipeline",
+    "run_qbit_duplicate_prune",
+    "run_qbit_ipfilter_refresh",
+    "run_qbit_queue_guardrails",
+    "sabnzbd_get_config_section",
+    "sabnzbd_request",
+    "setup_qbit_categories",
+    "setup_qbit_storage_defaults",
+    "sync_arr_indexers_from_prowlarr",
+    "trigger_arr_command",
+    "trigger_arr_discovery_kickoff",
+    "trigger_health_check",
+    "trigger_prowlarr_sync",
+    "_servarr_pipeline_service",
+]

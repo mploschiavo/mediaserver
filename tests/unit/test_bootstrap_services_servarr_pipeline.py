@@ -22,39 +22,13 @@ from bootstrap_services.servarr_pipeline_service import (  # noqa: E402
 
 
 class ServarrAdapterRegistryTests(unittest.TestCase):
-    def test_registry_defaults_include_readarr_hook(self):
+    def test_registry_defaults_to_noop_when_no_hook_manifest_loaded(self):
         deps = AdapterDependencies(
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
             log=mock.Mock(),
             ensure_readarr_metadata_source=mock.Mock(),
         )
         registry = AdapterRegistry.from_config({})
-        hook = registry.before_common_steps_for("readarr")
-        hook(
-            deps,
-            AppBootstrapContext(
-                cfg={},
-                app_cfg={"implementation": "readarr"},
-                app_url="http://readarr:8787",
-                api_base="/api/v1",
-                api_key="abc",
-            ),
-        )
-        deps.ensure_readarr_metadata_source.assert_called_once()
-
-    def test_registry_can_disable_default_hook(self):
-        deps = AdapterDependencies(
-            bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
-            log=mock.Mock(),
-            ensure_readarr_metadata_source=mock.Mock(),
-        )
-        registry = AdapterRegistry.from_config(
-            {
-                "before_common_steps": {
-                    "readarr": "",
-                }
-            }
-        )
         hook = registry.before_common_steps_for("readarr")
         self.assertIs(hook, noop_before_common_steps)
         hook(
@@ -68,6 +42,32 @@ class ServarrAdapterRegistryTests(unittest.TestCase):
             ),
         )
         deps.ensure_readarr_metadata_source.assert_not_called()
+
+    def test_registry_can_enable_readarr_hook_via_manifest_mapping(self):
+        deps = AdapterDependencies(
+            bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
+            log=mock.Mock(),
+            ensure_readarr_metadata_source=mock.Mock(),
+        )
+        registry = AdapterRegistry.from_config(
+            {
+                "before_common_steps": {
+                    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps",
+                }
+            }
+        )
+        hook = registry.before_common_steps_for("readarr")
+        hook(
+            deps,
+            AppBootstrapContext(
+                cfg={},
+                app_cfg={"implementation": "readarr"},
+                app_url="http://readarr:8787",
+                api_base="/api/v1",
+                api_key="abc",
+            ),
+        )
+        deps.ensure_readarr_metadata_source.assert_called_once()
 
     def test_registry_invalid_hook_spec_raises(self):
         with self.assertRaises(ValueError):
@@ -123,6 +123,13 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         )
 
     def _base_inputs(self, arr_apps, app_keys, adapter_hooks_cfg=None):
+        resolved_hooks = adapter_hooks_cfg
+        if resolved_hooks is None:
+            resolved_hooks = {
+                "before_common_steps": {
+                    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps",
+                }
+            }
         return ServarrPipelineInputs(
             cfg={"readarr": {"metadata_source_required": False}},
             arr_apps=arr_apps,
@@ -138,7 +145,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
             sab_cfg={"url": "http://sabnzbd:8080"},
             sab_auth=ClientAuth(username="sab", password="sabpw"),
             sab_remote_path_mappings=[{"remote_path": "/a", "host_path": "/b"}],
-            adapter_hooks_cfg=adapter_hooks_cfg or {},
+            adapter_hooks_cfg=resolved_hooks,
             run_cfg=ServarrRunConfig(
                 configure_arr_media_management=True,
                 configure_arr_download_handling=True,

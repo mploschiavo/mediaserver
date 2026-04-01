@@ -42,7 +42,38 @@ class BootstrapConfigResolverServiceTests(unittest.TestCase):
             base = Path(tmp)
             config_path = base / "bootstrap.json"
             job_config_path = base / "job-config.json"
-            config_path.write_text(json.dumps({"homepage": {"enabled": False}}), encoding="utf-8")
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "config_version": 2,
+                        "prowlarr_url": "http://prowlarr:9696",
+                        "arr_apps": [],
+                        "download_clients": {
+                            "qbittorrent": {
+                                "url": "http://qbittorrent:8080",
+                                "host": "qbittorrent",
+                                "port": 8080,
+                                "name": "qBittorrent",
+                                "implementation": "qBittorrent",
+                            },
+                            "sabnzbd": {
+                                "url": "http://sabnzbd:8080",
+                                "host": "sabnzbd",
+                                "port": 8080,
+                                "name": "SABnzbd",
+                                "implementation": "SABnzbd",
+                            },
+                        },
+                        "technology_bindings": {
+                            "torrent_client": "qbittorrent",
+                            "usenet_client": "sabnzbd",
+                            "media_server": "jellyfin",
+                        },
+                        "homepage": {"enabled": False},
+                    }
+                ),
+                encoding="utf-8",
+            )
             kube = _Kube("jellyfin.local\nsonarr.local\njellyfin.local\n")
             svc = BootstrapConfigResolverService(
                 cfg=BootstrapConfigResolverConfig(

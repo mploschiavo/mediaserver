@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import importlib
-import inspect
 import json
 import os
 import re
@@ -107,7 +105,7 @@ from bootstrap_services.operation_wiring import (
 )
 from bootstrap_services.prowlarr_service import ProwlarrService
 from bootstrap_services.qbit_service import QBittorrentService
-from bootstrap_services.runtime_factory_service import (
+from bootstrap_services.runtime_factory import (
     BootstrapCliArgs,
     BootstrapRuntimeFactoryDependencies,
     BootstrapRuntimeFactoryService,
@@ -125,6 +123,10 @@ from bootstrap_services.runtime_helpers import (
 )
 from bootstrap_services.runtime_helpers import (
     to_float as _to_float,
+)
+from bootstrap_services.runtime_service_registry import (
+    resolve_app_service_class,
+    set_runtime_context_cfg,
 )
 from bootstrap_services.sabnzbd_service import SabnzbdService
 from bootstrap_services.servarr_adapters import AdapterDependencies
@@ -233,6 +235,10 @@ def read_jellyseerr_api_key(config_root, timeout_seconds=120):
     return _api_keys_service().read_jellyseerr_api_key(config_root, timeout_seconds=timeout_seconds)
 
 
+def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
+    return _api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
+
+
 def resolve_path(base_root, maybe_relative):
     p = Path(str(maybe_relative))
     if p.is_absolute():
@@ -334,8 +340,6 @@ def env_truthy(name, default=False):
 
 
 BOOTSTRAP_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "bootstrap_defaults"
-_RUNTIME_CONTEXT_CFG: dict[str, object] = {}
-_RUNTIME_CONTEXT_ADAPTER_HOOKS: dict[str, object] = {}
 
 
 def load_bootstrap_default_json(filename, fallback):
@@ -344,62 +348,6 @@ def load_bootstrap_default_json(filename, fallback):
         filename,
         fallback,
         log=log,
-    )
-
-
-def set_runtime_context_cfg(cfg, adapter_hooks_cfg=None):
-    global _RUNTIME_CONTEXT_CFG, _RUNTIME_CONTEXT_ADAPTER_HOOKS
-    _RUNTIME_CONTEXT_CFG = dict(cfg or {})
-    _RUNTIME_CONTEXT_ADAPTER_HOOKS = dict(adapter_hooks_cfg or {})
-
-
-def _load_class_from_spec(spec, *, path_label):
-    raw = str(spec or "").strip()
-    if ":" not in raw:
-        raise RuntimeError(
-            f"{path_label}: invalid class spec '{raw}' "
-            "(expected 'module.submodule:ClassName')."
-        )
-    module_name, class_name = raw.rsplit(":", 1)
-    module_name = module_name.strip()
-    class_name = class_name.strip()
-    if not module_name or not class_name:
-        raise RuntimeError(
-            f"{path_label}: invalid class spec '{raw}' "
-            "(expected 'module.submodule:ClassName')."
-        )
-    module = importlib.import_module(module_name)
-    cls = getattr(module, class_name, None)
-    if not inspect.isclass(cls):
-        raise RuntimeError(f"{path_label}: '{raw}' does not resolve to a class.")
-    return cls
-
-
-def resolve_app_service_class(cfg, service_key, default_cls):
-    key = str(service_key or "").strip()
-    if not key:
-        return default_cls
-
-    hooks = {}
-    if isinstance(_RUNTIME_CONTEXT_ADAPTER_HOOKS, dict):
-        hooks = _RUNTIME_CONTEXT_ADAPTER_HOOKS
-    if not hooks:
-        src_cfg = cfg if isinstance(cfg, dict) else _RUNTIME_CONTEXT_CFG
-        hooks = (src_cfg.get("adapter_hooks") or {}) if isinstance(src_cfg, dict) else {}
-    if not isinstance(hooks, dict):
-        raise RuntimeError("adapter_hooks must be an object/map.")
-
-    service_map = hooks.get("app_service_classes") or {}
-    if not isinstance(service_map, dict):
-        raise RuntimeError("adapter_hooks.app_service_classes must be an object/map.")
-
-    spec = service_map.get(key)
-    if spec is None or str(spec).strip() == "":
-        return default_cls
-
-    return _load_class_from_spec(
-        spec,
-        path_label=f"adapter_hooks.app_service_classes.{key}",
     )
 
 

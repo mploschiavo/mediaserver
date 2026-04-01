@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_servarr.service_ops as MODULE
 import bootstrap_services.runtime_servarr.arr_ops as SERVARR_ARR_OPS
 
 

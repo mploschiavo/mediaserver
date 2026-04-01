@@ -217,6 +217,13 @@ class TopLevelBootstrapConfig:
             "config_overlays",
         }
         unknown = {key: value for key, value in src.items() if key not in known_keys}
+        if unknown:
+            unknown_keys = ", ".join(sorted(unknown.keys()))
+            raise ValueError(
+                "Unsupported top-level bootstrap config keys: "
+                f"{unknown_keys}. "
+                "Migrate config_version to the current schema before running."
+            )
 
         arr_apps_raw = _expect_list(src, "arr_apps", [])
         if any(not isinstance(item, dict) for item in arr_apps_raw):

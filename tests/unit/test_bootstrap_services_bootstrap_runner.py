@@ -82,6 +82,29 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                     "prowlarr_service": "bootstrap_services.prowlarr_service:ProwlarrService"
                 },
                 "service_technology_map": {"prowlarr_service": "prowlarr"},
+                "media_server_operation_plans": {
+                    "jellyfin": {
+                        "prewarm_mode": {
+                            "steps": [
+                                {
+                                    "operation": "ensure_jellyfin_prewarm",
+                                    "args": ["cfg", "config_root"],
+                                }
+                            ]
+                        },
+                        "home_rails_mode": {
+                            "steps": [
+                                {
+                                    "operation": "ensure_jellyfin_home_rails",
+                                    "args": ["cfg", "config_root"],
+                                }
+                            ]
+                        },
+                        "pre_servarr_steps": {"steps": []},
+                        "post_servarr_pre_hygiene_steps": {"steps": []},
+                        "post_servarr_post_hygiene_steps": {"steps": []},
+                    }
+                },
                 "runner_operation_plans": {
                     "precheck_steps": {
                         "steps": [
@@ -241,7 +264,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
     def test_prewarm_mode_short_circuit(self):
         deps = self._deps()
         runner = BootstrapRunnerService(deps=deps)
-        runtime = self._runtime(mode=BootstrapMode.JELLYFIN_PREWARM)
+        runtime = self._runtime(mode=BootstrapMode.MEDIA_SERVER_PREWARM)
         runner.run(runtime)
         deps.operation_mocks[RunnerOperation.ENSURE_JELLYFIN_PREWARM.value].assert_called_once()  # type: ignore[attr-defined]
         deps.operation_mocks[RunnerOperation.RUN_SERVARR_PIPELINE.value].assert_not_called()  # type: ignore[attr-defined]
@@ -374,6 +397,15 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                 },
                 "app_service_classes": {
                     "jellyseerr_service": "bootstrap_services.jellyseerr_service:JellyseerrService"
+                },
+                "media_server_operation_plans": {
+                    "jellyfin": {
+                        "prewarm_mode": {"steps": []},
+                        "home_rails_mode": {"steps": []},
+                        "pre_servarr_steps": {"steps": []},
+                        "post_servarr_pre_hygiene_steps": {"steps": []},
+                        "post_servarr_post_hygiene_steps": {"steps": []},
+                    }
                 },
             },
         )

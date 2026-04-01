@@ -29,8 +29,8 @@ class SetQbitSecretCliTests(unittest.TestCase):
             os.environ,
             {
                 "NAMESPACE": "media-stack-dev",
-                "DEFAULT_STACK_ADMIN_USER": "adminx",
-                "DEFAULT_STACK_ADMIN_PASS": "passx",
+                "STACK_ADMIN_USERNAME": "adminx",
+                "STACK_ADMIN_PASSWORD": "passx",
             },
             clear=False,
         ):

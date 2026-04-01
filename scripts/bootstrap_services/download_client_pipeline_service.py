@@ -64,9 +64,7 @@ class DownloadClientPipelineService:
     def run_prepare(self, inputs: DownloadClientPipelineInputs) -> DownloadClientPipelineResult:
         adapter_factory = DownloadClientAdapterFactory(
             deps=self._dependencies(),
-            adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get(
-                "download_client_adapter_classes"
-            ),
+            adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get("download_client_adapter_classes"),
         )
 
         torrent_key = str(inputs.torrent_client_key or "").strip().lower()

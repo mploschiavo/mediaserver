@@ -60,7 +60,22 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             configure_sab_arr_clients=True,
             fully_preconfigured=True,
             wait_timeout=30,
-            adapter_hooks_cfg={},
+            adapter_hooks_cfg={
+                "download_client_adapter_classes": {
+                    "qbittorrent": (
+                        "bootstrap_services.download_client_adapters.qbittorrent:"
+                        "QbittorrentDownloadClientAdapter"
+                    ),
+                    "sabnzbd": (
+                        "bootstrap_services.download_client_adapters.sabnzbd:"
+                        "SabnzbdDownloadClientAdapter"
+                    ),
+                    "transmission": (
+                        "bootstrap_services.download_client_adapters.transmission:"
+                        "TransmissionDownloadClientAdapter"
+                    ),
+                }
+            },
             torrent_client_key="qbittorrent",
             usenet_client_key="sabnzbd",
         )
@@ -80,21 +95,23 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
         invoke.handlers[RunnerOperation.ENSURE_SABNZBD_DEFAULTS.value].assert_called_once()
         invoke.handlers[RunnerOperation.ENSURE_SABNZBD_CATEGORIES.value].assert_called_once()
 
-    def test_pipeline_allows_disabling_qbit_adapter_mapping(self):
+    def test_pipeline_rejects_disabled_qbit_adapter_mapping(self):
         invoke = self._invoke()
         service = self._service(invoke)
-        result = service.run_prepare(
-            self._inputs(
-                adapter_hooks_cfg={
-                    "download_client_adapter_classes": {
-                        "qbittorrent": "",
+        with self.assertRaises(ValueError):
+            service.run_prepare(
+                self._inputs(
+                    adapter_hooks_cfg={
+                        "download_client_adapter_classes": {
+                            "qbittorrent": "",
+                            "sabnzbd": (
+                                "bootstrap_services.download_client_adapters.sabnzbd:"
+                                "SabnzbdDownloadClientAdapter"
+                            ),
+                        }
                     }
-                }
+                )
             )
-        )
-        self.assertFalse(result.qbit_login_ok)
-        invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
-        invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
 
     def test_pipeline_rejects_invalid_download_client_adapter_shape(self):
         invoke = self._invoke()
@@ -118,6 +135,10 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                         "qbittorrent": (
                             "bootstrap_services.download_client_adapters.transmission:"
                             "TransmissionDownloadClientAdapter"
+                        ),
+                        "sabnzbd": (
+                            "bootstrap_services.download_client_adapters.sabnzbd:"
+                            "SabnzbdDownloadClientAdapter"
                         ),
                     }
                 }
@@ -160,7 +181,11 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                         "mytorrent": (
                             "bootstrap_services.download_client_adapters.transmission:"
                             "TransmissionDownloadClientAdapter"
-                        )
+                        ),
+                        "sabnzbd": (
+                            "bootstrap_services.download_client_adapters.sabnzbd:"
+                            "SabnzbdDownloadClientAdapter"
+                        ),
                     }
                 },
             )
@@ -169,7 +194,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
         invoke.handlers[RunnerOperation.QBIT_LOGIN.value].assert_not_called()
         invoke.handlers[RunnerOperation.SETUP_QBIT_CATEGORIES.value].assert_not_called()
 
-    def test_pipeline_supports_convention_discovery_for_custom_client_module(self):
+    def test_pipeline_requires_explicit_mapping_for_custom_client_module(self):
         invoke = self._invoke()
         service = self._service(invoke)
 
@@ -191,7 +216,18 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                         "name": "My Torrent",
                         "configure_arr_clients": True,
                     },
-                    adapter_hooks_cfg={},
+                    adapter_hooks_cfg={
+                        "download_client_adapter_classes": {
+                            "my-torrent": (
+                                "bootstrap_services.download_client_adapters.my_torrent:"
+                                "MyTorrentDownloadClientAdapter"
+                            ),
+                            "sabnzbd": (
+                                "bootstrap_services.download_client_adapters.sabnzbd:"
+                                "SabnzbdDownloadClientAdapter"
+                            ),
+                        }
+                    },
                 )
             )
 

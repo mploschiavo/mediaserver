@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError
 from core.kube import KubectlClient
 
@@ -31,7 +32,10 @@ class BootstrapConfigResolverService:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ConfigError(f"Expected JSON object in {path}")
-        return data
+        try:
+            return TopLevelBootstrapConfig.from_dict(data).to_dict()
+        except ValueError as exc:
+            raise ConfigError(f"Invalid bootstrap config at {path}: {exc}") from exc
 
     def resolve_bootstrap_config(self) -> None:
         hosts_result = self.kube.run(

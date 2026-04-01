@@ -340,8 +340,6 @@ class BootstrapRunnerService:
         handlers: dict[BootstrapMode, Callable[[BootstrapRuntime], None]] = {
             BootstrapMode.MEDIA_SERVER_PREWARM: self._run_media_server_prewarm_mode,
             BootstrapMode.MEDIA_SERVER_HOME_RAILS: self._run_media_server_home_rails_mode,
-            BootstrapMode.JELLYFIN_PREWARM: self._run_media_server_prewarm_mode,
-            BootstrapMode.JELLYFIN_HOME_RAILS: self._run_media_server_home_rails_mode,
             BootstrapMode.MEDIA_HYGIENE: self._run_media_hygiene_mode,
         }
         handler = handlers.get(rt.mode)

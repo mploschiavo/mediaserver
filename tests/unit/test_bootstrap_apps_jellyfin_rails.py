@@ -7,7 +7,7 @@ from urllib import parse
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import bootstrap_services.entrypoint_runtime as MODULE
+import bootstrap_services.runtime_media_ops as MODULE
 import bootstrap_services.runtime_media_ops as MEDIA_OPS
 
 
