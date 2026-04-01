@@ -19,6 +19,7 @@ from cli.bootstrap_component_resolver import (  # noqa: E402
     resolve_worker_deployment_name,
     resolve_worker_manifest_path,
 )
+from core.exceptions import ConfigError  # noqa: E402
 
 
 class BootstrapComponentResolverTests(unittest.TestCase):
@@ -34,10 +35,13 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return path
 
-    def test_resolve_plan_derives_bindings_and_apps(self):
+    def test_resolve_plan_uses_configured_bindings_and_scale_policy_apps(self):
         cfg = self._base_config()
         hooks = dict(cfg.get("adapter_hooks") or {})
-        hooks.pop("scale_policy", None)
+        hooks["scale_policy"] = {
+            "core_apps": ["jf", "seerr", "qbit", "sab", "prowlarr", "bazarr", "maintainerr"],
+            "worker_apps": ["unpackerr"],
+        }
         hooks["bootstrap_all"] = {"enable_workers": ["unpackerr"]}
         cfg["adapter_hooks"] = hooks
         cfg["technology_bindings"] = {
@@ -54,12 +58,19 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         self.assertEqual(plan.role_bindings["media_server"], "jellyfin")
         self.assertEqual(plan.role_bindings["request_manager"], "jellyseerr")
 
-        for expected in ("qbittorrent", "sabnzbd", "jellyfin", "jellyseerr", "prowlarr"):
-            self.assertIn(expected, plan.core_apps)
-
-        self.assertIn("flaresolverr", plan.worker_apps)
-        self.assertIn("unpackerr", plan.worker_apps)
-        self.assertNotIn("flaresolverr", plan.core_apps)
+        self.assertEqual(
+            plan.core_apps,
+            (
+                "jellyfin",
+                "jellyseerr",
+                "qbittorrent",
+                "sabnzbd",
+                "prowlarr",
+                "bazarr",
+                "maintainerr",
+            ),
+        )
+        self.assertEqual(plan.worker_apps, ("unpackerr",))
 
     def test_explicit_scale_policy_overrides_core_and_worker_sets(self):
         cfg = self._base_config()
@@ -73,6 +84,15 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         plan = resolve_bootstrap_component_plan(self._write_config(cfg))
         self.assertEqual(plan.core_apps, ("radarr", "custom-core"))
         self.assertEqual(plan.worker_apps, ("worker-x",))
+
+    def test_missing_scale_policy_lists_raise_config_error(self):
+        cfg = self._base_config()
+        hooks = dict(cfg.get("adapter_hooks") or {})
+        hooks["scale_policy"] = {}
+        cfg["adapter_hooks"] = hooks
+
+        with self.assertRaises(ConfigError):
+            resolve_bootstrap_component_plan(self._write_config(cfg))
 
     def test_runner_phase_script_resolution_uses_specific_and_wildcard(self):
         cfg = {
@@ -204,7 +224,7 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             },
         )
 
-    def test_resolve_phase_skip_flag_specs_includes_generic_and_legacy_aliases(self):
+    def test_resolve_phase_skip_flag_specs_includes_generic_and_configured_aliases(self):
         specs = resolve_phase_skip_flag_specs(self._base_config(), pipeline="bootstrap_all")
         by_key = {spec.key: spec for spec in specs}
         torrent_spec = by_key["skip_torrent_client_ensure"]

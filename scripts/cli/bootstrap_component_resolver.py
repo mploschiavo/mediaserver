@@ -26,15 +26,6 @@ def canonicalize_technology(value: Any, aliases: dict[str, str]) -> str:
     return aliases.get(token, token)
 
 
-def _dedupe(values: list[str]) -> tuple[str, ...]:
-    out: list[str] = []
-    for item in values:
-        token = str(item or "").strip()
-        if token and token not in out:
-            out.append(token)
-    return tuple(out)
-
-
 def _coerce_technology_list(value: Any, aliases: dict[str, str]) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
@@ -97,12 +88,6 @@ def _phase_plan_steps(
     return tuple(out)
 
 
-def _enabled_section(value: Any) -> bool:
-    if not isinstance(value, dict):
-        return False
-    return bool(value.get("enabled"))
-
-
 @dataclass(frozen=True)
 class ManifestCatalog:
     aliases: dict[str, str] = field(default_factory=dict)
@@ -145,89 +130,54 @@ def normalize_flag_token(value: Any) -> str:
     return token
 
 
-_DEFAULT_BOOTSTRAP_ALL_PHASE_PLAN: tuple[BootstrapPhasePlanStep, ...] = (
-    BootstrapPhasePlanStep(
-        operation="run_script",
-        phase_name="Run bootstrap job",
-        params={
-            "script": "run-bootstrap-job.sh",
-            "args": ["$config_file"],
-            "env": {
-                "NAMESPACE": "$namespace",
-                "PREPARE_HOST_ROOT": "$prepare_host_root",
-            },
-        },
-    ),
-    BootstrapPhasePlanStep(
-        operation="enable_workers",
-        when={"var": "flags.enable_workers", "equals": True},
-    ),
-)
+def _resolve_phase_plan(
+    cfg: dict[str, Any],
+    *,
+    pipeline: str,
+    allow_empty: bool = False,
+) -> tuple[BootstrapPhasePlanStep, ...]:
+    hooks = _adapter_hooks(cfg)
+    section = hooks.get(pipeline)
+    if not isinstance(section, dict):
+        if allow_empty:
+            return ()
+        raise ConfigError(
+            f"adapter_hooks.{pipeline} must be defined as an object with a phase_plan list."
+        )
+
+    plan = _phase_plan_steps(section.get("phase_plan"), fallback=())
+    if plan:
+        return plan
+    if allow_empty:
+        return ()
+    raise ConfigError(
+        f"adapter_hooks.{pipeline}.phase_plan must declare at least one phase operation."
+    )
 
 
-_DEFAULT_BOOTSTRAP_JOB_PHASE_PLAN: tuple[BootstrapPhasePlanStep, ...] = (
-    BootstrapPhasePlanStep(
-        operation="ensure_torrent_client_access",
-        skip_flag="skip_torrent_client_ensure",
-        when={
-            "all_of": [
-                {
-                    "any_of": [
-                        {"var": "selected.torrent_client.configure_arr_clients", "truthy": True},
-                        {"var": "selected.torrent_client.set_categories_in_qbit", "truthy": True},
-                        {"var": "selected.torrent_client.set_categories", "truthy": True},
-                    ]
-                },
-                {"var": "scripts.torrent_client_credentials", "truthy": True},
-            ]
-        },
-    ),
-    BootstrapPhasePlanStep(
-        operation="ensure_usenet_client_access",
-        skip_flag="skip_usenet_client_ensure",
-        when={
-            "all_of": [
-                {"var": "selected.usenet_client.configure_arr_clients", "truthy": True},
-                {"var": "scripts.usenet_client_api_access", "truthy": True},
-            ]
-        },
-    ),
-    BootstrapPhasePlanStep(operation="resolve_bootstrap_config"),
-    BootstrapPhasePlanStep(operation="ensure_bootstrap_pvc_prereqs"),
-    BootstrapPhasePlanStep(operation="prime_servarr_api_keys_secret"),
-    BootstrapPhasePlanStep(
-        operation="prime_usenet_client_api_key_secret",
-        when={"var": "bindings.usenet_client", "in": ["sabnzbd"]},
-    ),
-    BootstrapPhasePlanStep(
-        operation="prime_request_manager_api_key_secret",
-        when={"var": "bindings.request_manager", "in": ["jellyseerr"]},
-    ),
-    BootstrapPhasePlanStep(
-        operation="prime_tautulli_api_key_secret",
-        when={"var": "config.maintainerr.integrations.tautulli.enabled", "truthy": True},
-    ),
-    BootstrapPhasePlanStep(operation="update_bootstrap_configmaps"),
-    BootstrapPhasePlanStep(operation="recreate_bootstrap_job"),
-    BootstrapPhasePlanStep(operation="wait_for_bootstrap_job"),
-    BootstrapPhasePlanStep(operation="print_bootstrap_job_logs"),
-)
+def _resolve_skip_flag_aliases(cfg: dict[str, Any]) -> dict[str, dict[str, tuple[str, ...]]]:
+    hooks = _adapter_hooks(cfg)
+    raw = hooks.get("skip_flag_aliases")
+    if not isinstance(raw, dict):
+        return {}
 
-
-_LEGACY_SKIP_FLAG_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
-    "skip_torrent_client_ensure": {
-        "options": ("--skip-qbit-ensure",),
-        "env_vars": ("SKIP_QBIT_ENSURE",),
-    },
-    "skip_usenet_client_ensure": {
-        "options": ("--skip-sab-ensure",),
-        "env_vars": ("SKIP_SAB_ENSURE",),
-    },
-    "skip_media_server_bootstrap": {
-        "options": ("--skip-jellyfin-bootstrap",),
-        "env_vars": ("SKIP_JELLYFIN_BOOTSTRAP",),
-    },
-}
+    aliases: dict[str, dict[str, tuple[str, ...]]] = {}
+    for key, value in raw.items():
+        token = normalize_flag_token(key)
+        if not token or not isinstance(value, dict):
+            continue
+        options: list[str] = []
+        env_vars: list[str] = []
+        for opt in value.get("options") or ():
+            option = str(opt).strip()
+            if option and option not in options:
+                options.append(option)
+        for env in value.get("env_vars") or ():
+            env_var = str(env).strip()
+            if env_var and env_var not in env_vars:
+                env_vars.append(env_var)
+        aliases[token] = {"options": tuple(options), "env_vars": tuple(env_vars)}
+    return aliases
 
 
 def load_bootstrap_config(config_file: Path) -> dict[str, Any]:
@@ -407,18 +357,19 @@ def resolve_worker_deployment_name(
     return canonical_worker
 
 
-def resolve_bootstrap_all_components(
+def _resolve_pipeline_components(
     cfg: dict[str, Any],
     *,
+    pipeline: str,
     aliases: dict[str, str],
     role_bindings: dict[str, str],
 ) -> dict[str, str]:
     hooks = _adapter_hooks(cfg)
-    bootstrap_all = hooks.get("bootstrap_all")
+    section = hooks.get(pipeline)
 
     resolved: dict[str, str] = {}
-    if isinstance(bootstrap_all, dict):
-        components = bootstrap_all.get("components")
+    if isinstance(section, dict):
+        components = section.get("components")
         if isinstance(components, dict):
             for key, value in components.items():
                 component_key = str(key or "").strip()
@@ -445,25 +396,47 @@ def resolve_bootstrap_all_components(
     return resolved
 
 
+def resolve_bootstrap_all_components(
+    cfg: dict[str, Any],
+    *,
+    aliases: dict[str, str],
+    role_bindings: dict[str, str],
+) -> dict[str, str]:
+    return _resolve_pipeline_components(
+        cfg,
+        pipeline="bootstrap_all",
+        aliases=aliases,
+        role_bindings=role_bindings,
+    )
+
+
+def resolve_bootstrap_job_components(
+    cfg: dict[str, Any],
+    *,
+    aliases: dict[str, str],
+    role_bindings: dict[str, str],
+) -> dict[str, str]:
+    return _resolve_pipeline_components(
+        cfg,
+        pipeline="bootstrap_job",
+        aliases=aliases,
+        role_bindings=role_bindings,
+    )
+
+
 def resolve_bootstrap_all_phase_plan(cfg: dict[str, Any]) -> tuple[BootstrapPhasePlanStep, ...]:
-    hooks = _adapter_hooks(cfg)
-    bootstrap_all = hooks.get("bootstrap_all")
-    if not isinstance(bootstrap_all, dict):
-        return _DEFAULT_BOOTSTRAP_ALL_PHASE_PLAN
-    return _phase_plan_steps(
-        bootstrap_all.get("phase_plan"),
-        fallback=_DEFAULT_BOOTSTRAP_ALL_PHASE_PLAN,
+    return _resolve_phase_plan(
+        cfg,
+        pipeline="bootstrap_all",
+        allow_empty=False,
     )
 
 
 def resolve_bootstrap_job_phase_plan(cfg: dict[str, Any]) -> tuple[BootstrapPhasePlanStep, ...]:
-    hooks = _adapter_hooks(cfg)
-    bootstrap_job = hooks.get("bootstrap_job")
-    if not isinstance(bootstrap_job, dict):
-        return _DEFAULT_BOOTSTRAP_JOB_PHASE_PLAN
-    return _phase_plan_steps(
-        bootstrap_job.get("phase_plan"),
-        fallback=_DEFAULT_BOOTSTRAP_JOB_PHASE_PLAN,
+    return _resolve_phase_plan(
+        cfg,
+        pipeline="bootstrap_job",
+        allow_empty=False,
     )
 
 
@@ -551,12 +524,13 @@ def resolve_phase_skip_flag_specs(
     pipeline: str,
 ) -> tuple[PhaseSkipFlagSpec, ...]:
     if pipeline == "bootstrap_all":
-        plan = resolve_bootstrap_all_phase_plan(cfg)
+        plan = _resolve_phase_plan(cfg, pipeline="bootstrap_all", allow_empty=True)
     elif pipeline == "bootstrap_job":
-        plan = resolve_bootstrap_job_phase_plan(cfg)
+        plan = _resolve_phase_plan(cfg, pipeline="bootstrap_job", allow_empty=True)
     else:
         return ()
 
+    configured_aliases = _resolve_skip_flag_aliases(cfg)
     out: list[PhaseSkipFlagSpec] = []
     seen: set[str] = set()
     for step in plan:
@@ -567,7 +541,7 @@ def resolve_phase_skip_flag_specs(
         generic_option = f"--{key.replace('_', '-')}"
         option_strings = [generic_option]
         env_vars = [key.upper()]
-        legacy = _LEGACY_SKIP_FLAG_ALIASES.get(key) or {}
+        legacy = configured_aliases.get(key) or {}
         for opt in legacy.get("options", ()):
             token = str(opt).strip()
             if token and token not in option_strings:
@@ -590,75 +564,26 @@ def resolve_phase_skip_flag_specs(
     return tuple(out)
 
 
-def _resolve_explicit_scale_list(
+def _resolve_scale_policy_list(
     cfg: dict[str, Any],
     *,
     list_key: str,
     aliases: dict[str, str],
-) -> tuple[str, ...] | None:
+    required: bool = False,
+) -> tuple[str, ...]:
     hooks = _adapter_hooks(cfg)
     scale_policy = hooks.get("scale_policy")
     if not isinstance(scale_policy, dict):
-        return None
-    if list_key not in scale_policy:
-        return None
-    return _coerce_technology_list(scale_policy.get(list_key), aliases)
-
-
-def _derive_default_core_apps(
-    cfg: dict[str, Any],
-    *,
-    aliases: dict[str, str],
-    catalog: ManifestCatalog,
-    role_bindings: dict[str, str],
-) -> tuple[str, ...]:
-    apps: list[str] = []
-
-    for role_key in ("media_server", "request_manager", "torrent_client", "usenet_client"):
-        token = str(role_bindings.get(role_key) or "").strip()
-        if token and token not in apps:
-            apps.append(token)
-
-    arr_apps = cfg.get("arr_apps")
-    if isinstance(arr_apps, list):
-        for item in arr_apps:
-            if not isinstance(item, dict):
-                continue
-            token = canonicalize_technology(
-                item.get("implementation") or item.get("name"),
-                aliases,
+        if required:
+            raise ConfigError(
+                "adapter_hooks.scale_policy must be defined as an object with core_apps/worker_apps lists."
             )
-            if token and token not in apps:
-                apps.append(token)
-
-    if str(cfg.get("prowlarr_url") or "").strip():
-        prowlarr = canonicalize_technology("prowlarr", aliases)
-        if prowlarr and prowlarr not in apps:
-            apps.append(prowlarr)
-
-    for technology in catalog.runtime_technologies:
-        if _enabled_section(cfg.get(technology)) and technology not in apps:
-            apps.append(technology)
-
-    return _dedupe(apps)
-
-
-def _derive_default_worker_apps(
-    cfg: dict[str, Any],
-    *,
-    aliases: dict[str, str],
-    catalog: ManifestCatalog,
-) -> tuple[str, ...]:
-    workers: list[str] = []
-    for technology in catalog.auxiliary_technologies:
-        if _enabled_section(cfg.get(technology)) and technology not in workers:
-            workers.append(technology)
-
-    configured_workers = resolve_bootstrap_enable_workers(cfg, aliases=aliases)
-    for technology in configured_workers:
-        if technology and technology not in workers:
-            workers.append(technology)
-    return _dedupe(workers)
+        return ()
+    if list_key not in scale_policy:
+        if required:
+            raise ConfigError(f"adapter_hooks.scale_policy.{list_key} must be defined.")
+        return ()
+    return _coerce_technology_list(scale_policy.get(list_key), aliases)
 
 
 def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPlan:
@@ -666,33 +591,18 @@ def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPla
     catalog = build_manifest_catalog()
     role_bindings = resolve_role_bindings(cfg, aliases=catalog.aliases)
     download_clients = resolve_download_clients(cfg, aliases=catalog.aliases)
-
-    explicit_core = _resolve_explicit_scale_list(
+    core_apps = _resolve_scale_policy_list(
         cfg,
         list_key="core_apps",
         aliases=catalog.aliases,
+        required=True,
     )
-    core_apps = explicit_core
-    if explicit_core is None:
-        core_apps = _derive_default_core_apps(
-            cfg,
-            aliases=catalog.aliases,
-            catalog=catalog,
-            role_bindings=role_bindings,
-        )
-
-    explicit_workers = _resolve_explicit_scale_list(
+    worker_apps = _resolve_scale_policy_list(
         cfg,
         list_key="worker_apps",
         aliases=catalog.aliases,
+        required=True,
     )
-    worker_apps = explicit_workers
-    if explicit_workers is None:
-        worker_apps = _derive_default_worker_apps(
-            cfg,
-            aliases=catalog.aliases,
-            catalog=catalog,
-        )
 
     return BootstrapComponentPlan(
         config=cfg,

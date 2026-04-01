@@ -39,16 +39,18 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
         svc.run(
             run_phase=_run_phase,
             run_script=_run_script,
-            resolve_bootstrap_config=noop,
-            ensure_bootstrap_pvc_prereqs=noop,
-            prime_servarr_api_keys_secret=noop,
-            prime_usenet_client_api_key_secret=noop,
-            prime_request_manager_api_key_secret=noop,
-            prime_tautulli_api_key_secret=noop,
-            update_bootstrap_configmaps=noop,
-            recreate_bootstrap_job=noop,
-            wait_for_bootstrap_job=noop,
-            print_bootstrap_job_logs=noop,
+            operation_handlers={
+                "resolve_bootstrap_config": noop,
+                "ensure_bootstrap_pvc_prereqs": noop,
+                "prime_servarr_api_keys_secret": noop,
+                "prime_usenet_client_api_key_secret": noop,
+                "prime_request_manager_api_key_secret": noop,
+                "prime_tautulli_api_key_secret": noop,
+                "update_bootstrap_configmaps": noop,
+                "recreate_bootstrap_job": noop,
+                "wait_for_bootstrap_job": noop,
+                "print_bootstrap_job_logs": noop,
+            },
         )
 
         self.assertEqual(

@@ -314,6 +314,7 @@
         },
         "bootstrap_all": {
           "type": "object",
+          "required": ["phase_plan"],
           "properties": {
             "enable_workers": {
               "type": "array",
@@ -378,7 +379,24 @@
         },
         "bootstrap_job": {
           "type": "object",
+          "required": ["phase_plan"],
           "properties": {
+            "components": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  {"type": "string"},
+                  {
+                    "type": "object",
+                    "properties": {
+                      "binding": {"type": "string", "minLength": 1},
+                      "technology": {"type": "string", "minLength": 1}
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
             "phase_plan": {
               "type": "array",
               "items": {
@@ -419,8 +437,26 @@
           },
           "additionalProperties": true
         },
+        "skip_flag_aliases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "options": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "env_vars": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            },
+            "additionalProperties": false
+          }
+        },
         "scale_policy": {
           "type": "object",
+          "required": ["core_apps", "worker_apps"],
           "properties": {
             "core_apps": {
               "type": "array",

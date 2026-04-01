@@ -4,12 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from core.exceptions import ConfigError
+
 from cli.bootstrap_component_resolver import (
     BootstrapComponentPlan,
     BootstrapPhasePlanStep,
     evaluate_phase_condition,
     normalize_flag_token,
     resolve_bootstrap_component_plan,
+    resolve_bootstrap_job_components,
     resolve_bootstrap_job_phase_plan,
     resolve_runner_phase_script,
 )
@@ -28,9 +31,6 @@ class BootstrapCorePhasesService:
         self.cfg = cfg
         self.plan: BootstrapComponentPlan = resolve_bootstrap_component_plan(self.cfg.config_file)
 
-    def _role_binding(self, role_key: str) -> str:
-        return str(self.plan.role_bindings.get(role_key) or "").strip()
-
     def _phase_script(self, phase_key: str, technology: str) -> str:
         return resolve_runner_phase_script(
             self.plan.config,
@@ -45,50 +45,110 @@ class BootstrapCorePhasesService:
             return False
         return bool(self.cfg.phase_skip_flags.get(token, False))
 
-    def _selected_download_client(self, role_key: str) -> dict[str, object]:
-        technology = self._role_binding(role_key)
-        selected = self.plan.download_clients.get(technology)
-        if isinstance(selected, dict):
-            return selected
-        return {}
+    def _render_template_value(
+        self,
+        value: object,
+        *,
+        component_key: str = "",
+        component_technology: str = "",
+    ) -> str:
+        text = str(value or "")
+        tokens = {
+            "$namespace": self.cfg.namespace,
+            "$prepare_host_root": self.cfg.prepare_host_root,
+            "$config_file": str(self.cfg.config_file),
+            "$component_key": component_key,
+            "$component": component_technology,
+        }
+        for token, token_value in tokens.items():
+            text = text.replace(token, str(token_value))
+        return text
+
+    def _format_phase_name(
+        self,
+        template: str,
+        *,
+        component_key: str = "",
+        component_technology: str = "",
+        fallback: str = "",
+    ) -> str:
+        raw = str(template or "").strip() or str(fallback or "").strip()
+        if not raw:
+            return ""
+        out = raw.replace("{component_key}", component_key)
+        out = out.replace("{component|unbound}", component_technology or "unbound")
+        out = out.replace("{component}", component_technology)
+        return out
 
     def run(
         self,
         *,
         run_phase: Callable[..., None],
         run_script: Callable[..., None],
-        resolve_bootstrap_config: Callable[[], None],
-        ensure_bootstrap_pvc_prereqs: Callable[[], None],
-        prime_servarr_api_keys_secret: Callable[[], None],
-        prime_usenet_client_api_key_secret: Callable[[], None],
-        prime_request_manager_api_key_secret: Callable[[], None],
-        prime_tautulli_api_key_secret: Callable[[], None],
-        update_bootstrap_configmaps: Callable[[], None],
-        recreate_bootstrap_job: Callable[[], None],
-        wait_for_bootstrap_job: Callable[[], None],
-        print_bootstrap_job_logs: Callable[[], None],
+        operation_handlers: dict[str, Callable[[], None]],
     ) -> None:
-        torrent_client = self._role_binding("torrent_client")
-        usenet_client = self._role_binding("usenet_client")
-        request_manager = self._role_binding("request_manager")
-        torrent_script = self._phase_script("torrent_client_credentials", torrent_client)
-        usenet_script = self._phase_script("usenet_client_api_access", usenet_client)
         phase_plan = resolve_bootstrap_job_phase_plan(self.plan.config)
+        adapter_hooks = self.plan.config.get("adapter_hooks")
+        runner_phase_scripts = (
+            (adapter_hooks or {}).get("runner_phase_scripts")
+            if isinstance(adapter_hooks, dict)
+            else {}
+        )
+        configured_phase_keys = (
+            tuple(str(key) for key in runner_phase_scripts.keys())
+            if isinstance(runner_phase_scripts, dict)
+            else ()
+        )
+
+        components: dict[str, str] = resolve_bootstrap_job_components(
+            self.plan.config,
+            aliases=self.plan.aliases,
+            role_bindings=self.plan.role_bindings,
+        )
+
+        def _resolve_component_technology(step: BootstrapPhasePlanStep) -> tuple[str, str]:
+            params = dict(step.params or {})
+            component_key = str(params.get("component") or "").strip()
+            if component_key:
+                token = str(components.get(component_key) or "").strip()
+                if token:
+                    return component_key, token
+
+            binding_key = str(params.get("binding") or "").strip()
+            if binding_key:
+                token = str(self.plan.role_bindings.get(binding_key) or "").strip()
+                if token:
+                    return component_key or binding_key, token
+
+            technology = str(params.get("technology") or "").strip()
+            if technology:
+                return component_key or technology, technology
+
+            return component_key, ""
+
+        for step in phase_plan:
+            if step.operation != "run_component_script":
+                continue
+            key, technology = _resolve_component_technology(step)
+            if key and key not in components:
+                components[key] = technology
+
+        component_context: dict[str, dict[str, object]] = {}
+        for component_key, technology in components.items():
+            script_map: dict[str, str] = {}
+            for phase_key in configured_phase_keys:
+                script_map[phase_key] = self._phase_script(phase_key, technology)
+            selected_client = self.plan.download_clients.get(technology)
+            component_context[component_key] = {
+                "technology": str(technology or "").strip(),
+                "scripts": script_map,
+                "selected": dict(selected_client) if isinstance(selected_client, dict) else {},
+            }
+
         phase_context: dict[str, object] = {
             "config": self.plan.config,
-            "bindings": {
-                "torrent_client": torrent_client,
-                "usenet_client": usenet_client,
-                "request_manager": request_manager,
-            },
-            "scripts": {
-                "torrent_client_credentials": torrent_script,
-                "usenet_client_api_access": usenet_script,
-            },
-            "selected": {
-                "torrent_client": self._selected_download_client("torrent_client"),
-                "usenet_client": self._selected_download_client("usenet_client"),
-            },
+            "bindings": dict(self.plan.role_bindings),
+            "components": component_context,
         }
 
         def _phase_enabled(step: BootstrapPhasePlanStep, default_enabled: bool) -> bool:
@@ -101,117 +161,102 @@ class BootstrapCorePhasesService:
                 enabled = False
             return enabled
 
-        def _phase_name(default_name: str, step: BootstrapPhasePlanStep) -> str:
-            return step.phase_name or default_name
-
         for step in phase_plan:
             operation = step.operation
 
-            if operation == "ensure_torrent_client_access":
+            if operation == "run_component_script":
+                params = dict(step.params or {})
+                component_key, component_technology = _resolve_component_technology(step)
+                if not component_key:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' requires "
+                        "params.component, params.binding, or params.technology."
+                    )
+                component = component_context.get(component_key) or {}
+                scripts = component.get("scripts")
+                script_phase = str(params.get("script_phase") or "").strip()
+                if not script_phase:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'run_component_script' requires "
+                        "params.script_phase."
+                    )
+
+                script_name = ""
+                if isinstance(scripts, dict):
+                    script_name = str(scripts.get(script_phase) or "").strip()
+                if not script_name:
+                    script_name = self._phase_script(script_phase, component_technology)
+
+                env: dict[str, str] = {}
+                raw_env = params.get("env")
+                if isinstance(raw_env, dict):
+                    for key, value in raw_env.items():
+                        env_key = str(key or "").strip()
+                        if not env_key:
+                            continue
+                        env[env_key] = self._render_template_value(
+                            value,
+                            component_key=component_key,
+                            component_technology=component_technology,
+                        )
+
+                args: list[str] = []
+                raw_args = params.get("args")
+                if isinstance(raw_args, list):
+                    for value in raw_args:
+                        args.append(
+                            self._render_template_value(
+                                value,
+                                component_key=component_key,
+                                component_technology=component_technology,
+                            )
+                        )
+
+                fallback_name = f"Run component script ({component_key}:{script_phase})"
+                phase_name = self._format_phase_name(
+                    step.phase_name,
+                    component_key=component_key,
+                    component_technology=component_technology,
+                    fallback=fallback_name,
+                )
                 run_phase(
-                    _phase_name(
-                        f"Ensure torrent client bootstrap access ({torrent_client or 'unbound'})",
-                        step,
+                    phase_name,
+                    lambda script=script_name, script_args=tuple(args), script_env=dict(
+                        env
+                    ): run_script(
+                        script,
+                        *script_args,
+                        env=script_env,
                     ),
-                    lambda: run_script(
-                        torrent_script,
-                        env={
-                            "NAMESPACE": self.cfg.namespace,
-                            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                        },
-                    ),
-                    enabled=_phase_enabled(
-                        step,
-                        bool(torrent_script),
-                    ),
+                    enabled=_phase_enabled(step, bool(script_name)),
                 )
                 continue
 
-            if operation == "ensure_usenet_client_access":
-                run_phase(
-                    _phase_name(
-                        f"Ensure usenet client API access ({usenet_client or 'unbound'})",
-                        step,
-                    ),
-                    lambda: run_script(
-                        usenet_script,
-                        env={"NAMESPACE": self.cfg.namespace},
-                    ),
-                    enabled=_phase_enabled(
-                        step,
-                        bool(usenet_script),
-                    ),
+            if operation == "call_handler":
+                params = dict(step.params or {})
+                handler_key = str(params.get("handler") or "").strip()
+                if not handler_key:
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'call_handler' requires params.handler."
+                    )
+                handler = operation_handlers.get(handler_key)
+                if not callable(handler):
+                    raise ConfigError(
+                        "bootstrap_job phase operation 'call_handler' references unknown handler "
+                        f"'{handler_key}'."
+                    )
+                component_key, component_technology = _resolve_component_technology(step)
+                phase_name = self._format_phase_name(
+                    step.phase_name,
+                    component_key=component_key,
+                    component_technology=component_technology,
+                    fallback=f"Run handler ({handler_key})",
                 )
-                continue
-
-            if operation == "resolve_bootstrap_config":
-                run_phase(_phase_name("Resolve bootstrap config", step), resolve_bootstrap_config)
-                continue
-
-            if operation == "ensure_bootstrap_pvc_prereqs":
                 run_phase(
-                    _phase_name("Ensure bootstrap PVC prerequisites", step),
-                    ensure_bootstrap_pvc_prereqs,
-                )
-                continue
-
-            if operation == "prime_servarr_api_keys_secret":
-                run_phase(
-                    _phase_name("Prime Arr API keys into secret", step),
-                    prime_servarr_api_keys_secret,
-                )
-                continue
-
-            if operation == "prime_usenet_client_api_key_secret":
-                run_phase(
-                    _phase_name(
-                        f"Prime usenet client API key into secret ({usenet_client or 'unbound'})",
-                        step,
-                    ),
-                    prime_usenet_client_api_key_secret,
+                    phase_name,
+                    handler,
                     enabled=_phase_enabled(step, True),
                 )
-                continue
-
-            if operation == "prime_request_manager_api_key_secret":
-                run_phase(
-                    _phase_name(
-                        f"Prime request manager API key into secret ({request_manager or 'unbound'})",
-                        step,
-                    ),
-                    prime_request_manager_api_key_secret,
-                    enabled=_phase_enabled(step, True),
-                )
-                continue
-
-            if operation == "prime_tautulli_api_key_secret":
-                run_phase(
-                    _phase_name("Prime Tautulli API key into secret", step),
-                    prime_tautulli_api_key_secret,
-                    enabled=_phase_enabled(step, True),
-                )
-                continue
-
-            if operation == "update_bootstrap_configmaps":
-                run_phase(
-                    _phase_name("Update bootstrap ConfigMaps", step),
-                    update_bootstrap_configmaps,
-                )
-                continue
-
-            if operation == "recreate_bootstrap_job":
-                run_phase(_phase_name("Recreate bootstrap Job", step), recreate_bootstrap_job)
-                continue
-
-            if operation == "wait_for_bootstrap_job":
-                run_phase(
-                    _phase_name("Wait for bootstrap Job completion", step),
-                    wait_for_bootstrap_job,
-                )
-                continue
-
-            if operation == "print_bootstrap_job_logs":
-                run_phase(_phase_name("Print bootstrap Job logs", step), print_bootstrap_job_logs)
                 continue
 
             raise ValueError(
