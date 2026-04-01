@@ -304,7 +304,46 @@
           "additionalProperties": {"type": "string"}
         },
         "runner_operation_plans": {"type": "object"},
-        "media_server_operation_plans": {"type": "object"}
+        "media_server_operation_plans": {"type": "object"},
+        "runner_phase_scripts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+          }
+        },
+        "bootstrap_all": {
+          "type": "object",
+          "properties": {
+            "enable_workers": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "worker_manifests": {
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            },
+            "worker_deployments": {
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            }
+          },
+          "additionalProperties": true
+        },
+        "scale_policy": {
+          "type": "object",
+          "properties": {
+            "core_apps": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "worker_apps": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          },
+          "additionalProperties": true
+        }
       },
       "additionalProperties": false
     }

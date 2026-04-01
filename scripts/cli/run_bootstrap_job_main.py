@@ -222,6 +222,7 @@ class RunBootstrapJobRunner:
     def _core_phases_service(self) -> BootstrapCorePhasesService:
         return BootstrapCorePhasesService(
             BootstrapCorePhasesConfig(
+                config_file=self.cfg.config_file,
                 namespace=self.cfg.namespace,
                 prepare_host_root=self.cfg.prepare_host_root,
                 skip_qbit_ensure=self.cfg.skip_qbit_ensure,
@@ -258,8 +259,8 @@ class RunBootstrapJobRunner:
                 resolve_bootstrap_config=self.resolve_bootstrap_config,
                 ensure_bootstrap_pvc_prereqs=self.ensure_bootstrap_pvc_prereqs,
                 prime_servarr_api_keys_secret=self.prime_servarr_api_keys_secret,
-                prime_sab_api_key_secret=self.prime_sab_api_key_secret,
-                prime_jellyseerr_api_key_secret=self.prime_jellyseerr_api_key_secret,
+                prime_usenet_client_api_key_secret=self.prime_usenet_client_api_key_secret,
+                prime_request_manager_api_key_secret=self.prime_request_manager_api_key_secret,
                 prime_tautulli_api_key_secret=self.prime_tautulli_api_key_secret,
                 update_bootstrap_configmaps=self.update_bootstrap_configmaps,
                 recreate_bootstrap_job=self.recreate_bootstrap_job,
@@ -332,10 +333,10 @@ class RunBootstrapJobRunner:
     def prime_servarr_api_keys_secret(self) -> None:
         self._secret_priming_service().prime_servarr_api_keys()
 
-    def prime_sab_api_key_secret(self) -> None:
+    def prime_usenet_client_api_key_secret(self) -> None:
         self._secret_priming_service().prime_sab_api_key()
 
-    def prime_jellyseerr_api_key_secret(self) -> None:
+    def prime_request_manager_api_key_secret(self) -> None:
         self._secret_priming_service().prime_jellyseerr_api_key()
 
     def prime_tautulli_api_key_secret(self) -> None:
