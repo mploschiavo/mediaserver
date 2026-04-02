@@ -226,6 +226,33 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/run-playwright-screenshots.sh", proc.stdout)
 
+    def test_with_env_wrapper_help_contract(self):
+        proc = run_wrapper("with-env.sh", "--help")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("scripts/with-env.sh", proc.stdout)
+
+    def test_with_env_wrapper_defaults_delete_namespace_to_zero(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_file = Path(tmpdir) / "media-dev.env"
+            env_file.write_text(
+                textwrap.dedent(
+                    """\
+                    NAMESPACE=media-dev
+                    INGRESS_DOMAIN=media-dev.local
+                    """
+                ),
+                encoding="utf-8",
+            )
+            proc = run_wrapper(
+                "with-env.sh",
+                str(env_file),
+                "bash",
+                "-lc",
+                'printf "%s" "$DELETE_NAMESPACE"',
+            )
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(proc.stdout, "0")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,8 @@ class BootstrapJobWaitConfig:
     timeout_seconds: int
     timeout_raw: str
     heartbeat_interval: int
+    job_discovery_grace_seconds: int = 30
+    job_missing_timeout_seconds: int = 60
 
 
 @dataclass
@@ -56,8 +58,12 @@ class BootstrapJobWaitService:
             payload = json.loads(result.stdout or "{}")
         except json.JSONDecodeError:
             return []
-        items = payload.get("items")
-        return list(items) if isinstance(items, list) else []
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if isinstance(payload, dict):
+            items = payload.get("items")
+            return list(items) if isinstance(items, list) else []
+        return []
 
     def _describe(self, kind: str, name: str) -> str:
         result = self.kube.run(
@@ -182,6 +188,7 @@ class BootstrapJobWaitService:
         start = self.now()
         last_heartbeat = -self.cfg.heartbeat_interval
         last_pending_dump = -99999
+        job_last_seen_elapsed: int | None = None
 
         while True:
             elapsed = self.now() - start
@@ -192,8 +199,19 @@ class BootstrapJobWaitService:
 
             job = self._get_job(job_name)
             if not job:
+                if elapsed < self.cfg.job_discovery_grace_seconds:
+                    self.sleep(1)
+                    continue
+                if job_last_seen_elapsed is None:
+                    missing_for = elapsed - self.cfg.job_discovery_grace_seconds
+                else:
+                    missing_for = elapsed - job_last_seen_elapsed
+                if missing_for < self.cfg.job_missing_timeout_seconds:
+                    self.sleep(1)
+                    continue
                 self.warn(f"Job {self.cfg.namespace}/{job_name} not found while waiting.")
                 raise KubernetesError("Bootstrap job disappeared while waiting")
+            job_last_seen_elapsed = elapsed
 
             status = job.get("status", {}) or {}
             succeeded = int(status.get("succeeded") or 0)
@@ -220,6 +238,26 @@ class BootstrapJobWaitService:
                 raise KubernetesError("Bootstrap job failed")
 
             pods = self._get_pods(f"job-name={job_name}")
+            job_uid = str((job.get("metadata") or {}).get("uid") or "")
+            if job_uid:
+                filtered = [
+                    item
+                    for item in pods
+                    if str(
+                        ((item.get("metadata") or {}).get("labels") or {}).get(
+                            "batch.kubernetes.io/controller-uid"
+                        )
+                        or ((item.get("metadata") or {}).get("labels") or {}).get("controller-uid")
+                        or ""
+                    )
+                    == job_uid
+                ]
+                if filtered:
+                    pods = filtered
+            pods.sort(
+                key=lambda item: str((item.get("metadata") or {}).get("creation_timestamp") or ""),
+                reverse=True,
+            )
             pod = pods[0] if pods else None
             if pod:
                 pod_name = str(pod.get("metadata", {}).get("name") or "")

@@ -59,9 +59,30 @@ class GenerateSecretsMainTests(unittest.TestCase):
                 stack_admin_user="new-admin",
                 pass_length=24,
                 rotate_existing=True,
+                namespace="media-dev",
             )
         self.assertEqual(values["STACK_ADMIN_USERNAME"], "new-admin")
         self.assertEqual(values["STACK_ADMIN_PASSWORD"], "new-pass")
+
+    def test_build_secret_values_defaults_password_to_namespace(self):
+        values = self.mod.build_secret_values(
+            current={"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": ""},
+            stack_admin_user="",
+            pass_length=24,
+            rotate_existing=False,
+            namespace="media-dev",
+        )
+        self.assertEqual(values["STACK_ADMIN_PASSWORD"], "media-dev")
+
+    def test_build_secret_values_migrates_legacy_default_password_to_namespace(self):
+        values = self.mod.build_secret_values(
+            current={"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "media-stack-admin"},
+            stack_admin_user="",
+            pass_length=24,
+            rotate_existing=False,
+            namespace="media-dev",
+        )
+        self.assertEqual(values["STACK_ADMIN_PASSWORD"], "media-dev")
 
     def test_apply_secret_includes_extended_keys_in_manifest(self):
         observed: dict[str, str] = {}

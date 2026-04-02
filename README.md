@@ -310,6 +310,13 @@ Namespace-isolated install (side-by-side environment):
 bash scripts/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
 ```
 
+Safe env-file pattern (recommended for repeat runs):
+```bash
+cp examples/environments/media-dev.env.example ~/.config/media-stack/media-dev.env
+bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/install.sh
+bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/rebuild-and-bootstrap.sh
+```
+
 Disaster-recovery style rebuild + verification:
 ```bash
 bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
