@@ -70,7 +70,7 @@ If .local does not resolve on your device, add hosts entry:
 Recommended fastest order (about 15-25 minutes):
 1) Full zero-to-usable run (recommended):
    - bash scripts/install.sh --profile full --node-ip {cfg.node_ip}
-   - bash scripts/rebuild-and-bootstrap.sh {cfg.node_ip}
+   - bash scripts/deploy-stack.sh {cfg.node_ip}
 2) Run full bootstrap automation (if namespace already exists):
    - bash scripts/set-qbit-secret.sh   # defaults to admin/<namespace>
    - bash scripts/ensure-jellyfin-bootstrap.sh   # auto-discovers/updates Jellyfin API key in secret

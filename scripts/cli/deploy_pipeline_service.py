@@ -1,4 +1,4 @@
-"""Scripted rebuild pipeline step helpers."""
+"""Scripted deploy pipeline step helpers."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ RunScriptFn = Callable[..., None]
 
 
 @dataclass(frozen=True)
-class RebuildPipelineConfig:
+class DeployPipelineConfig:
     namespace: str
     root_dir: Path
     prepare_host_root: str
@@ -33,8 +33,8 @@ class RebuildPipelineConfig:
 
 
 @dataclass
-class RebuildPipelineService:
-    cfg: RebuildPipelineConfig
+class DeployPipelineService:
+    cfg: DeployPipelineConfig
     info: InfoFn
     run_script: RunScriptFn
 

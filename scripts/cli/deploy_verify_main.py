@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic rebuild + verification orchestration.
+"""Deterministic deploy + verification orchestration.
 
 Media Automation Stack by Matthew Loschiavo:
 https://matthewloschiavo.com
@@ -39,9 +39,9 @@ def _run(script_path: Path, *args: str, env: dict[str, str] | None = None) -> No
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="scripts/rebuild-verify.sh",
+        prog="scripts/deploy-verify.sh",
         description=(
-            "End-to-end deterministic rebuild runner: install/bootstrap, flow verify, "
+            "End-to-end deterministic deploy runner: install/bootstrap, flow verify, "
             "smoke checks, optional Playwright smoke, final status snapshot."
         ),
     )
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     root_dir = Path(__file__).resolve().parents[2]
     scripts_dir = root_dir / "scripts"
 
-    info("Starting rebuild and verification")
+    info("Starting deploy and verification")
     info(f"Node IP: {node_ip}")
     info(f"Namespace: {namespace}")
     info(f"Profile: {profile}")
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     _run(scripts_dir / "stack-status.sh", env={"NAMESPACE": namespace})
 
     print()
-    print(f"[OK] Rebuild + verification complete for namespace '{namespace}'.")
+    print(f"[OK] Deploy + verification complete for namespace '{namespace}'.")
     print("[INFO] Render hosts entries if needed:")
     print(f"  bash scripts/render-hosts-example.sh {node_ip} {namespace}")
     return 0

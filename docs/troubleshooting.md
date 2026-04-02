@@ -187,7 +187,7 @@ bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 If your kubectl enforces strict load restrictions, use installer/rebuild scripts. They already include fallback behavior to direct manifest apply.
 
 ```bash
-bash scripts/rebuild-and-bootstrap.sh <NODE_IP>
+bash scripts/deploy-stack.sh <NODE_IP>
 ```
 
 ## 9) qBittorrent Login Drift

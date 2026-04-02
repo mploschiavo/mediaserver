@@ -237,7 +237,7 @@ class InstallRunner:
     def deploy_and_bootstrap(self) -> None:
         info("Deploying and bootstrapping stack")
         self._run_script(
-            "rebuild-and-bootstrap.sh",
+            "deploy-stack.sh",
             self.cfg.node_ip,
             env={
                 "PROFILE": self.cfg.profile,

@@ -12,6 +12,10 @@ from core.platforms.compose.services.traefik_dynamic_config import (
     TraefikDynamicConfigRender,
     TraefikDynamicConfigService,
 )
+from core.platforms.compose.services.traefik_patch_service import (
+    ComposeTraefikPatchResult,
+    ComposeTraefikPatchService,
+)
 
 __all__ = [
     "ComposeContainerRuntimeService",
@@ -19,6 +23,8 @@ __all__ = [
     "ComposeLabelService",
     "ComposeRuntimeArtifactService",
     "ComposeSpecResolver",
+    "ComposeTraefikPatchResult",
+    "ComposeTraefikPatchService",
     "TraefikDynamicConfigRender",
     "TraefikDynamicConfigService",
     "parse_duration_nanoseconds",

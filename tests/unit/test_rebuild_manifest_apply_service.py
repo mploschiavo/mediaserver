@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.cli.rebuild_manifest_apply_service import (
+from core.platforms.kubernetes.services.rebuild_manifest_apply_service import (
     RebuildManifestApplyConfig,
     RebuildManifestApplyService,
 )

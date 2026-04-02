@@ -1,6 +1,6 @@
 # Compose Guide
 
-Docker Compose is supported as an alternate runtime target for rebuild deployment flows.
+Docker Compose is supported as an alternate runtime target for deployment flows.
 
 Kubernetes remains the primary runtime path for full bootstrap job orchestration and periodic reconcile jobs.
 
@@ -24,10 +24,10 @@ Not currently part of Compose target:
 - Optional: `docker/.env` for local overrides (defaults from process env when omitted)
 - Optional but recommended: `bootstrap/media-stack.bootstrap.yaml` for deployment/purpose/install/exposure/auth defaults
 
-## Deploy with Rebuild Runner (Compose Target)
+## Deploy with Stack Runner (Compose Target)
 
 ```bash
-bash scripts/rebuild-and-bootstrap.sh \
+bash scripts/deploy-stack.sh \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
@@ -38,7 +38,7 @@ bash scripts/rebuild-and-bootstrap.sh \
 Optional profiles:
 
 ```bash
-bash scripts/rebuild-and-bootstrap.sh \
+bash scripts/deploy-stack.sh \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
@@ -51,6 +51,10 @@ Notes:
 - Path-prefix and hybrid route strategies can publish browser apps under one gateway host (for example `/app/sonarr`) while keeping Jellyfin direct-host routing for TV/mobile clients.
 - `AUTH_PROVIDER` supports `none`, `authelia`, and `authentik` middleware wiring stubs in Compose labels.
 - `run_bootstrap` is forced off for non-Kubernetes targets.
+- Traefik patching is automatic for Compose target when edge provider is `traefik`:
+  - runtime patch file: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
+  - replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
+  - implementation owner: `scripts/core/platforms/compose/services/traefik_patch_service.py`
 
 See also:
 - [Bootstrap Profile](bootstrap-profile.md)

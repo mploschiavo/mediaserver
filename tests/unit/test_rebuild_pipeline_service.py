@@ -6,16 +6,16 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from cli.rebuild_pipeline_service import (  # noqa: E402
-    RebuildPipelineConfig,
-    RebuildPipelineService,
+from cli.deploy_pipeline_service import (  # noqa: E402
+    DeployPipelineConfig,
+    DeployPipelineService,
 )
 
 
-class RebuildPipelineServiceTests(unittest.TestCase):
+class DeployPipelineServiceTests(unittest.TestCase):
     def _svc(self, run_script):
-        return RebuildPipelineService(
-            cfg=RebuildPipelineConfig(
+        return DeployPipelineService(
+            cfg=DeployPipelineConfig(
                 namespace="media-stack",
                 root_dir=ROOT,
                 prepare_host_root="/srv/media-stack",

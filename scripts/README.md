@@ -12,7 +12,7 @@ This directory intentionally contains both:
 - Framework/orchestration CLIs should live in `scripts/cli/*_main.py`.
 - App-specific CLIs should live in `scripts/bootstrap_services/apps/<app>/cli/*_main.py`.
 - Avoid new root-level Python compatibility wrappers.
-- `install.sh`, `rebuild-and-bootstrap.sh`, `run-bootstrap-job.sh`, and `bootstrap-all.sh`
+- `install.sh`, `deploy-stack.sh`, `run-bootstrap-job.sh`, and `bootstrap-all.sh`
   are now Python-backed wrappers with
   phase logging and checkpoint-aware orchestration.
 
@@ -28,7 +28,7 @@ This directory intentionally contains both:
 ## Stable Operator Entrypoints
 
 - `install.sh`
-- `rebuild-and-bootstrap.sh`
+- `deploy-stack.sh`
 - `bootstrap-all.sh`
 - `run-bootstrap-job.sh`
 - `with-env.sh` (load env-file + run command with safe defaults)

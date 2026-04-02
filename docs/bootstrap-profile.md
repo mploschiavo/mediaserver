@@ -106,7 +106,7 @@ Rebuild runner auto-loads `bootstrap/media-stack.bootstrap.yaml` when present.
 Override path:
 
 ```bash
-bash scripts/rebuild-and-bootstrap.sh \
+bash scripts/deploy-stack.sh \
   --bootstrap-profile-file /path/to/profile.yaml
 ```
 
