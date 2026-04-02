@@ -18,6 +18,12 @@ from typing import Callable
 
 from core.kube import resolve_kubectl_binary
 from core.phase_tracker import PhaseTracker
+from core.platform_adapter import (
+    RebuildPlatformAdapter,
+    RebuildPlatformAdapterBuildRequest,
+    build_rebuild_platform_adapter,
+    normalize_platform_target,
+)
 
 from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
@@ -85,6 +91,9 @@ class RebuildBootstrapRunner:
     tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
     backup_secret_values: dict[str, str] = field(default_factory=dict)
     _resolved_config_cache: dict[str, object] | None = field(default=None, init=False, repr=False)
+    _platform_adapter_cache: RebuildPlatformAdapter | None = field(
+        default=None, init=False, repr=False
+    )
 
     def _resolved_bootstrap_config(self) -> dict[str, object]:
         if self._resolved_config_cache is None:
@@ -341,6 +350,38 @@ class RebuildBootstrapRunner:
             run_script=self._run_script,
         )
 
+    def _platform_adapter(self) -> RebuildPlatformAdapter:
+        if self._platform_adapter_cache is None:
+            try:
+                resolved_target = self._resolved_platform_target()
+                request = RebuildPlatformAdapterBuildRequest(
+                    target=resolved_target,
+                    environment_id=self.cfg.namespace,
+                    info=info,
+                )
+                if resolved_target == "k8s":
+                    request = RebuildPlatformAdapterBuildRequest(
+                        target=resolved_target,
+                        environment_id=self.cfg.namespace,
+                        info=info,
+                        namespace_service=self._namespace_service(),
+                        manifest_apply_service=self._manifest_apply_service(),
+                        ingress_service=self._ingress_service(),
+                        deployments_wait_service=self._deployments_wait_service(),
+                        smoke_test_service=self._smoke_test_service(),
+                        run_kubectl=self._run_kubectl,
+                    )
+                self._platform_adapter_cache = build_rebuild_platform_adapter(request=request)
+            except ValueError as exc:
+                raise RebuildError(str(exc)) from exc
+        return self._platform_adapter_cache
+
+    def _resolved_platform_target(self) -> str:
+        resolved = normalize_platform_target(self.cfg.platform_target)
+        if not resolved:
+            raise RebuildError("PLATFORM_TARGET cannot be empty.")
+        return resolved
+
     def run(self) -> int:
         self._validate_inputs()
 
@@ -348,6 +389,7 @@ class RebuildBootstrapRunner:
         self._run_phase("Resolve profile defaults", self.apply_profile_defaults)
         info(f"Namespace: {self.cfg.namespace}")
         info(f"Profile: {self.cfg.profile}")
+        info(f"Platform target: {self._resolved_platform_target()}")
         info(f"Ingress domain: {self.cfg.ingress_domain}")
         info(f"Config: {self.cfg.config_file}")
         info(f"Delete namespace: {self.cfg.delete_namespace}")
@@ -435,6 +477,7 @@ class RebuildBootstrapRunner:
             raise RebuildError(f"Config file not found: {self.cfg.config_file}")
         if not self.cfg.namespace.strip():
             raise RebuildError("NAMESPACE cannot be empty.")
+        self._resolved_platform_target()
         self.cfg.ingress_domain = self.cfg.ingress_domain.lstrip(".").strip()
         if not self.cfg.ingress_domain:
             raise RebuildError("INGRESS_DOMAIN cannot be empty.")
@@ -510,7 +553,7 @@ class RebuildBootstrapRunner:
         self._secret_preservation_service().restore_values(self.backup_secret_values)
 
     def delete_namespace_optional(self) -> None:
-        handled = self._namespace_service().delete_namespace_optional(self.cfg.delete_namespace)
+        handled = self._platform_adapter().delete_environment_optional(self.cfg.delete_namespace)
         if not handled:
             raise SkipPhase()
 
@@ -521,7 +564,7 @@ class RebuildBootstrapRunner:
         self._manifest_overrides_service().apply_manifest_file_with_overrides(file_path)
 
     def apply_manifests_for_profile(self) -> None:
-        self._manifest_apply_service().apply_manifests_for_profile()
+        self._platform_adapter().apply_environment_definition()
 
     def generate_secrets(self) -> None:
         self._pipeline_service().generate_secrets()
@@ -530,13 +573,13 @@ class RebuildBootstrapRunner:
         return self._ingress_service().pick_ingress_class()
 
     def patch_ingress_class(self) -> None:
-        handled = self._ingress_service().patch_ingress_class()
+        handled = self._platform_adapter().reconcile_edge_routing()
         if not handled:
             raise SkipPhase()
 
     def wait_for_deployments(self) -> None:
         try:
-            self._deployments_wait_service().wait_for_deployments()
+            self._platform_adapter().wait_for_workloads()
         except RuntimeError as exc:
             raise RebuildError(str(exc)) from exc
 
@@ -555,34 +598,41 @@ class RebuildBootstrapRunner:
         raise SkipPhase()
 
     def run_smoke_test(self) -> None:
-        resolved = self._smoke_test_service().run_smoke_test()
+        resolved = self._platform_adapter().run_smoke_test()
         self.cfg.node_ip = resolved or self.cfg.node_ip
         if not resolved:
             raise SkipPhase()
 
     def print_final_pod_status(self) -> None:
-        info("Final pod status:")
-        self._run_kubectl(["-n", self.cfg.namespace, "get", "pods"])
+        self._platform_adapter().print_workload_status()
 
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     root_dir = Path(__file__).resolve().parents[2]
     cfg = parse_rebuild_bootstrap_config(args, root_dir=root_dir)
+    target = normalize_platform_target(cfg.platform_target)
 
-    try:
-        kubectl = resolve_kubectl_binary()
-    except Exception as exc:
-        err(str(exc))
-        return 2
+    kubectl: list[str] = []
+    if target == "k8s":
+        try:
+            kubectl = resolve_kubectl_binary()
+        except Exception as exc:
+            err(str(exc))
+            return 2
 
     runner = RebuildBootstrapRunner(cfg=cfg, kubectl=kubectl)
     try:
         return runner.run()
     except Exception as exc:
         warn(f"Rebuild/bootstrap failed: {exc}")
-        warn("Pod status snapshot at failure:")
-        subprocess.run([*kubectl, "-n", cfg.namespace, "get", "pods", "-o", "wide"], check=False)
+        if target == "k8s" and kubectl:
+            warn("Pod status snapshot at failure:")
+            subprocess.run(
+                [*kubectl, "-n", cfg.namespace, "get", "pods", "-o", "wide"], check=False
+            )
+        else:
+            warn("Platform status snapshot at failure is not configured for this target.")
         runner.tracker.summary()
         runner.notify(
             "error",
