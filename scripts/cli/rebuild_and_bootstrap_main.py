@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from core.bootstrap_profile import load_bootstrap_profile_catalog
 from core.compose_bootstrap_service import ComposeBootstrapConfig, ComposeBootstrapService
 from core.docker import DockerClient
 from core.kube import KubernetesClient
@@ -118,14 +119,15 @@ class RebuildBootstrapRunner:
         dict[str, tuple[str, ...]],
         tuple[str, ...],
         tuple[str, ...],
+        tuple[str, ...],
     ]:
         cfg = self._resolved_bootstrap_config()
         adapter_hooks = cfg.get("adapter_hooks")
         if not isinstance(adapter_hooks, dict):
-            return {}, {}, {}, {}, (), ()
+            return {}, {}, {}, {}, (), (), ()
         rebuild_hooks = adapter_hooks.get("rebuild")
         if not isinstance(rebuild_hooks, dict):
-            return {}, {}, {}, {}, (), ()
+            return {}, {}, {}, {}, (), (), ()
 
         scale_to_zero: dict[str, tuple[str, ...]] = {}
         raw_scale_to_zero = rebuild_hooks.get("profile_scale_to_zero_apps")
@@ -218,6 +220,17 @@ class RebuildBootstrapRunner:
                 if str(item or "").strip()
             )
 
+        base_manifest_paths: tuple[str, ...] = ()
+        raw_base_manifest_paths = rebuild_hooks.get("base_manifest_paths")
+        if raw_base_manifest_paths is not None:
+            if not isinstance(raw_base_manifest_paths, list):
+                raise RebuildError("adapter_hooks.rebuild.base_manifest_paths must be an array")
+            base_manifest_paths = tuple(
+                str(item or "").strip()
+                for item in raw_base_manifest_paths
+                if str(item or "").strip()
+            )
+
         return (
             scale_to_zero,
             tls_hosts,
@@ -225,6 +238,7 @@ class RebuildBootstrapRunner:
             profile_manifest_paths,
             component_enable_manifest_paths,
             preserve_secret_keys,
+            base_manifest_paths,
         )
 
     def _bootstrap_job_hooks(self) -> dict[str, object]:
@@ -236,6 +250,132 @@ class RebuildBootstrapRunner:
         if not isinstance(bootstrap_job, dict):
             return {}
         return bootstrap_job
+
+    def _edge_hooks(self) -> dict[str, object]:
+        cfg = self._resolved_bootstrap_config()
+        adapter_hooks = cfg.get("adapter_hooks")
+        if not isinstance(adapter_hooks, dict):
+            return {}
+        edge = adapter_hooks.get("edge")
+        if not isinstance(edge, dict):
+            return {}
+        return edge
+
+    def _ingress_class_priority(self) -> tuple[str, ...]:
+        hooks = self._edge_hooks()
+        raw = hooks.get("ingress_class_priority")
+        if not isinstance(raw, list):
+            return ()
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            token = str(item or "").strip()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
+
+    def _edge_router_provider(self) -> str:
+        hooks = self._edge_hooks()
+        return str(hooks.get("router_provider") or "").strip().lower()
+
+    def _edge_router_service_names(self) -> tuple[str, ...]:
+        hooks = self._edge_hooks()
+        raw = hooks.get("router_service_names")
+        if not isinstance(raw, list):
+            return ()
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
+
+    def _edge_compose_provider_specs(self) -> dict[str, dict[str, str]]:
+        hooks = self._edge_hooks()
+        raw = hooks.get("compose_provider_specs")
+        if not isinstance(raw, dict):
+            return {}
+        out: dict[str, dict[str, str]] = {}
+        for raw_provider, raw_spec in raw.items():
+            provider = str(raw_provider or "").strip().lower()
+            if not provider or not isinstance(raw_spec, dict):
+                continue
+            spec: dict[str, str] = {}
+            for raw_key, raw_value in raw_spec.items():
+                key = str(raw_key or "").strip()
+                value = str(raw_value or "").strip()
+                if key and value:
+                    spec[key] = value
+            if spec:
+                out[provider] = spec
+        return out
+
+    def _media_server_service_names(self) -> tuple[str, ...]:
+        hooks = self._edge_hooks()
+        raw = hooks.get("media_server_service_names")
+        out: list[str] = []
+        seen: set[str] = set()
+        if isinstance(raw, list):
+            for item in raw:
+                token = str(item or "").strip().lower()
+                if not token or token in seen:
+                    continue
+                seen.add(token)
+                out.append(token)
+        if out:
+            return tuple(out)
+        cfg = self._resolved_bootstrap_config()
+        technology_bindings = cfg.get("technology_bindings")
+        if isinstance(technology_bindings, dict):
+            token = str(technology_bindings.get("media_server") or "").strip().lower()
+            if token:
+                return (token,)
+        return ()
+
+    def _auth_provider_middleware_defaults(self) -> dict[str, str]:
+        catalog = load_bootstrap_profile_catalog()
+        out: dict[str, str] = {
+            str(key).strip().lower(): str(value or "").strip()
+            for key, value in dict(catalog.auth_provider_middleware_defaults or {}).items()
+            if str(key).strip()
+        }
+        hooks = self._edge_hooks()
+        raw = hooks.get("auth_provider_middleware_defaults")
+        if isinstance(raw, dict):
+            for raw_key, raw_value in raw.items():
+                key = str(raw_key or "").strip().lower()
+                if not key:
+                    continue
+                out[key] = str(raw_value or "").strip()
+        return out
+
+    def _valid_route_strategies(self) -> tuple[str, ...]:
+        catalog = load_bootstrap_profile_catalog()
+        values = tuple(dict.fromkeys(catalog.route_strategy_aliases.values()))
+        return tuple(str(value).strip().lower() for value in values if str(value).strip())
+
+    def _valid_auth_providers(self) -> tuple[str, ...]:
+        catalog = load_bootstrap_profile_catalog()
+        values: list[str] = []
+        seen: set[str] = set()
+        for token in catalog.auth_providers:
+            normalized = str(token or "").strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            values.append(normalized)
+        for token in self._auth_provider_middleware_defaults().keys():
+            normalized = str(token or "").strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            values.append(normalized)
+        return tuple(values)
 
     def _runtime_config_policy_handler_spec(self) -> str:
         hooks = self._bootstrap_job_hooks()
@@ -296,7 +436,7 @@ class RebuildBootstrapRunner:
         )
 
     def _secret_preservation_service(self) -> RebuildSecretPreservationService:
-        _, _, _, _, _, preserve_secret_keys = self._rebuild_profile_actions()
+        _, _, _, _, _, preserve_secret_keys, _ = self._rebuild_profile_actions()
         return RebuildSecretPreservationService(
             cfg=RebuildSecretPreservationConfig(
                 namespace=self.cfg.namespace,
@@ -333,6 +473,7 @@ class RebuildBootstrapRunner:
             profile_manifest_paths,
             component_enable_manifest_paths,
             _preserve_secret_keys,
+            base_manifest_paths,
         ) = self._rebuild_profile_actions()
         return RebuildManifestApplyService(
             cfg=RebuildManifestApplyConfig(
@@ -346,6 +487,7 @@ class RebuildBootstrapRunner:
                 profile_tls_secret_names=profile_tls_secret_names,
                 profile_manifest_paths=profile_manifest_paths,
                 component_enable_manifest_paths=component_enable_manifest_paths,
+                base_manifest_paths=base_manifest_paths,
             ),
             info=info,
             warn=warn,
@@ -362,6 +504,7 @@ class RebuildBootstrapRunner:
             cfg=RebuildIngressConfig(
                 namespace=self.cfg.namespace,
                 ingress_class=self.cfg.ingress_class,
+                ingress_class_priority=self._ingress_class_priority(),
                 internet_exposed=self.cfg.internet_exposed,
                 route_strategy=self.cfg.route_strategy,
                 app_gateway_host=self.cfg.app_gateway_host,
@@ -474,11 +617,17 @@ class RebuildBootstrapRunner:
                         selected_apps=self._selected_apps(),
                         internet_exposed=self._is_truthy(self.cfg.internet_exposed),
                         route_strategy=self.cfg.route_strategy,
+                        allowed_route_strategies=self._valid_route_strategies(),
                         app_gateway_host=self.cfg.app_gateway_host,
                         app_path_prefix=self.cfg.app_path_prefix,
                         media_server_direct_host=self.cfg.media_server_direct_host,
                         auth_provider=self.cfg.auth_provider,
                         auth_middleware=self.cfg.auth_middleware,
+                        edge_router_provider=self._edge_router_provider(),
+                        edge_router_service_names=self._edge_router_service_names(),
+                        edge_compose_provider_specs=self._edge_compose_provider_specs(),
+                        auth_provider_middleware_defaults=self._auth_provider_middleware_defaults(),
+                        media_server_service_names=self._media_server_service_names(),
                         wait_timeout=self.cfg.wait_timeout,
                         node_ip=self.cfg.node_ip,
                     )
@@ -657,10 +806,14 @@ class RebuildBootstrapRunner:
             raise RebuildError(
                 f"Unknown PROFILE '{self.cfg.profile}'. Supported: minimal, full, public-demo, power-user."
             )
-        if self.cfg.route_strategy not in {"subdomain", "path-prefix", "hybrid"}:
-            raise RebuildError("ROUTE_STRATEGY must be one of: subdomain, path-prefix, hybrid.")
-        if self.cfg.auth_provider not in {"none", "authelia", "authentik"}:
-            raise RebuildError("AUTH_PROVIDER must be one of: none, authelia, authentik.")
+        valid_route_strategies = set(self._valid_route_strategies())
+        if self.cfg.route_strategy not in valid_route_strategies:
+            allowed = ", ".join(sorted(valid_route_strategies))
+            raise RebuildError(f"ROUTE_STRATEGY must be one of: {allowed}.")
+        valid_auth_providers = set(self._valid_auth_providers())
+        if self.cfg.auth_provider not in valid_auth_providers:
+            allowed = ", ".join(sorted(valid_auth_providers))
+            raise RebuildError(f"AUTH_PROVIDER must be one of: {allowed}.")
         if self._resolved_platform_target() == "compose" and self.cfg.run_bootstrap == "1":
             if not self._runtime_config_policy_handler_spec():
                 raise RebuildError(

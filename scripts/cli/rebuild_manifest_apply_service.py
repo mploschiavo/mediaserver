@@ -20,6 +20,7 @@ class RebuildManifestApplyConfig:
     profile_tls_secret_names: dict[str, str] | None = None
     profile_manifest_paths: dict[str, tuple[str, ...]] | None = None
     component_enable_manifest_paths: tuple[str, ...] | None = None
+    base_manifest_paths: tuple[str, ...] | None = None
 
 
 class RebuildManifestApplyService:
@@ -103,17 +104,18 @@ class RebuildManifestApplyService:
         else:
             message = (proc.stderr or proc.stdout or "").strip().splitlines()
             self.warn(f"Base kustomize build failed: {message[-1] if message else 'unknown error'}")
-            ordered_files = [
-                "namespace.yaml",
-                "hardening.yaml",
-                "secrets.example.yaml",
-                "storage-pvc.yaml",
-                "core.yaml",
-                "ingress-traefik.yaml",
-                "scale-policy.yaml",
-            ]
-            for name in ordered_files:
-                self.apply_manifest_file_with_overrides(self.cfg.root_dir / "k8s" / name)
+            ordered_files = tuple(self.cfg.base_manifest_paths or ())
+            if not ordered_files:
+                ordered_files = (
+                    "namespace.yaml",
+                    "hardening.yaml",
+                    "secrets.example.yaml",
+                    "storage-pvc.yaml",
+                    "core.yaml",
+                    "scale-policy.yaml",
+                )
+            for manifest_rel in ordered_files:
+                self.apply_manifest_file_with_overrides(self.cfg.root_dir / manifest_rel)
 
         if (
             self.cfg.profile in {"full", "public-demo", "power-user"}

@@ -66,11 +66,17 @@ class RebuildPlatformAdapterBuildRequest:
     selected_apps: tuple[str, ...] = ()
     internet_exposed: bool = False
     route_strategy: str = "subdomain"
+    allowed_route_strategies: tuple[str, ...] = ()
     app_gateway_host: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
-    auth_provider: str = "none"
+    auth_provider: str = ""
     auth_middleware: str = ""
+    edge_router_provider: str = ""
+    edge_router_service_names: tuple[str, ...] = ()
+    edge_compose_provider_specs: dict[str, dict[str, str]] | None = None
+    auth_provider_middleware_defaults: dict[str, str] | None = None
+    media_server_service_names: tuple[str, ...] = ()
     wait_timeout: str = "20m"
     node_ip: str = ""
 
@@ -154,11 +160,19 @@ def build_rebuild_platform_adapter(
                 selected_apps=tuple(request.selected_apps or ()),
                 internet_exposed=bool(request.internet_exposed),
                 route_strategy=request.route_strategy,
+                allowed_route_strategies=tuple(request.allowed_route_strategies or ()),
                 app_gateway_host=request.app_gateway_host,
                 app_path_prefix=request.app_path_prefix,
                 media_server_direct_host=request.media_server_direct_host,
                 auth_provider=request.auth_provider,
                 auth_middleware=request.auth_middleware,
+                edge_router_provider=request.edge_router_provider,
+                edge_router_service_names=tuple(request.edge_router_service_names or ()),
+                edge_compose_provider_specs=dict(request.edge_compose_provider_specs or {}),
+                auth_provider_middleware_defaults=dict(
+                    request.auth_provider_middleware_defaults or {}
+                ),
+                media_server_service_names=tuple(request.media_server_service_names or ()),
                 wait_timeout=request.wait_timeout,
                 node_ip=request.node_ip,
                 target=resolved_target,

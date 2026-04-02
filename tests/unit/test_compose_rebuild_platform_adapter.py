@@ -13,6 +13,24 @@ from core.compose_rebuild_platform_adapter import (  # noqa: E402
 )
 from core.docker import DockerContainerState  # noqa: E402
 
+_TRAEFIK_EDGE_SPEC = {
+    "enable_label_key": "traefik.enable",
+    "router_label_prefix": "traefik.http.routers.",
+    "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
+    "router_service_key_template": "traefik.http.routers.{router_name}.service",
+    "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",
+    "strip_prefix_key_template": "traefik.http.middlewares.{middleware_name}.stripprefix.prefixes",
+    "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
+    "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
+    "direct_host_rule_template": "Host(`{direct_host}`)",
+}
+
+_AUTH_MIDDLEWARE_DEFAULTS = {
+    "none": "",
+    "authelia": "authelia@docker",
+    "authentik": "authentik@docker",
+}
+
 
 def _compose_text() -> str:
     return (
@@ -77,11 +95,17 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 selected_apps=selected_apps,
                 node_ip=node_ip,
                 route_strategy=route_strategy,
+                allowed_route_strategies=("subdomain", "path-prefix", "hybrid"),
                 app_gateway_host=app_gateway_host,
                 media_server_direct_host=media_server_direct_host,
                 internet_exposed=internet_exposed,
                 auth_provider=auth_provider,
                 auth_middleware=auth_middleware,
+                edge_router_provider="traefik",
+                edge_router_service_names=("traefik",),
+                edge_compose_provider_specs={"traefik": dict(_TRAEFIK_EDGE_SPEC)},
+                auth_provider_middleware_defaults=dict(_AUTH_MIDDLEWARE_DEFAULTS),
+                media_server_service_names=("jellyfin", "jellyfin-nvidia"),
             ),
             info=mock.Mock(),
             docker=docker or mock.Mock(),

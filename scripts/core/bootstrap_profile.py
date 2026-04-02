@@ -23,6 +23,8 @@ class BootstrapProfileCatalog:
     purpose_values: tuple[str, ...]
     route_strategy_aliases: dict[str, str]
     auth_providers: tuple[str, ...]
+    auth_disabled_provider: str
+    auth_provider_middleware_defaults: dict[str, str]
     app_keys: tuple[str, ...]
     app_aliases: dict[str, str]
     install_profiles: dict[str, tuple[str, ...]]
@@ -46,7 +48,7 @@ class BootstrapExposureSettings:
     gateway_host: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
-    auth_provider: str = "none"
+    auth_provider: str = ""
     auth_middleware: str = ""
 
     @property
@@ -205,19 +207,19 @@ class BootstrapProfileConfig:
             raise ValueError("auth must be an object when provided")
         auth = auth or {}
         auth_enabled = _as_bool(auth.get("enabled"), default=False, catalog=active_catalog)
-        auth_provider = str(auth.get("provider") or "none").strip().lower()
+        auth_provider = (
+            str(auth.get("provider") or active_catalog.auth_disabled_provider).strip().lower()
+        )
         if not auth_enabled:
-            auth_provider = "none"
+            auth_provider = active_catalog.auth_disabled_provider
         if auth_provider not in set(active_catalog.auth_providers):
             allowed = ", ".join(active_catalog.auth_providers)
             raise ValueError(f"auth.provider must be one of: {allowed}")
         auth_middleware = str(auth.get("middleware") or "").strip()
-        if auth_provider == "authelia" and not auth_middleware:
-            auth_middleware = "authelia@docker"
-        if auth_provider == "authentik" and not auth_middleware:
-            auth_middleware = "authentik@docker"
-        if auth_provider == "none":
-            auth_middleware = ""
+        if not auth_middleware:
+            auth_middleware = str(
+                active_catalog.auth_provider_middleware_defaults.get(auth_provider) or ""
+            ).strip()
 
         live_tv_defaults = payload.get("live_tv_defaults")
         if live_tv_defaults is not None and not isinstance(live_tv_defaults, dict):
@@ -324,6 +326,31 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
         payload.get("auth_providers"),
         field_name="auth_providers",
     )
+    auth_disabled_provider = str(payload.get("auth_disabled_provider") or "").strip().lower()
+    if not auth_disabled_provider:
+        auth_disabled_provider = auth_providers[0]
+    if auth_disabled_provider not in set(auth_providers):
+        raise ValueError(
+            "auth_disabled_provider must be one of auth_providers "
+            f"(got '{auth_disabled_provider}')"
+        )
+    raw_auth_defaults = payload.get("auth_provider_middleware_defaults")
+    auth_provider_middleware_defaults: dict[str, str] = {}
+    if raw_auth_defaults is not None:
+        if not isinstance(raw_auth_defaults, dict):
+            raise ValueError("auth_provider_middleware_defaults must be an object")
+        for raw_provider, raw_middleware in raw_auth_defaults.items():
+            provider_key = str(raw_provider or "").strip().lower()
+            if not provider_key:
+                continue
+            if provider_key not in set(auth_providers):
+                raise ValueError(
+                    "auth_provider_middleware_defaults contains unknown provider "
+                    f"'{provider_key}'"
+                )
+            auth_provider_middleware_defaults[provider_key] = str(raw_middleware or "").strip()
+    for provider_key in auth_providers:
+        auth_provider_middleware_defaults.setdefault(provider_key, "")
 
     apps_payload = payload.get("apps")
     if not isinstance(apps_payload, dict):
@@ -434,6 +461,8 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
         purpose_values=purpose_values,
         route_strategy_aliases=route_strategy_aliases,
         auth_providers=auth_providers,
+        auth_disabled_provider=auth_disabled_provider,
+        auth_provider_middleware_defaults=auth_provider_middleware_defaults,
         app_keys=app_keys,
         app_aliases=app_aliases,
         install_profiles=install_profiles,

@@ -23,7 +23,11 @@ class RebuildIngressServiceTests(unittest.TestCase):
     def test_auto_pick_prefers_public(self):
         run_kube = mock.Mock(return_value=_Result(0, "nginx\npublic\n"))
         svc = RebuildIngressService(
-            cfg=RebuildIngressConfig(namespace="media-stack", ingress_class="auto"),
+            cfg=RebuildIngressConfig(
+                namespace="media-stack",
+                ingress_class="auto",
+                ingress_class_priority=("public", "nginx"),
+            ),
             info=mock.Mock(),
             warn=mock.Mock(),
             run_kube=run_kube,

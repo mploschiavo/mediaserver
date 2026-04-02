@@ -8,12 +8,14 @@ from pathlib import Path
 try:  # pragma: no cover - import path depends on entrypoint context
     from core.bootstrap_profile import (
         BootstrapProfileConfig,
+        load_bootstrap_profile_catalog,
         maybe_load_bootstrap_profile,
         normalize_selected_apps_csv,
     )
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.core.bootstrap_profile import (
         BootstrapProfileConfig,
+        load_bootstrap_profile_catalog,
         maybe_load_bootstrap_profile,
         normalize_selected_apps_csv,
     )
@@ -60,7 +62,7 @@ class RebuildBootstrapConfig:
     app_gateway_host: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
-    auth_provider: str = "none"
+    auth_provider: str = ""
     auth_middleware: str = ""
     bootstrap_profile_file: Path | None = None
 
@@ -146,6 +148,18 @@ def _resolve_profile_defaults(
 
 
 def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> RebuildBootstrapConfig:
+    profile_catalog = load_bootstrap_profile_catalog()
+    route_values = tuple(dict.fromkeys(profile_catalog.route_strategy_aliases.values()))
+    default_route_strategy = route_values[0] if route_values else "subdomain"
+    default_auth_provider = str(profile_catalog.auth_disabled_provider or "").strip().lower()
+    if not default_auth_provider:
+        default_auth_provider = (
+            str(profile_catalog.auth_providers[0] or "").strip().lower()
+            if profile_catalog.auth_providers
+            else ""
+        )
+    auth_provider_help_values = ", ".join(profile_catalog.auth_providers)
+
     parser = argparse.ArgumentParser(
         prog="scripts/rebuild-and-bootstrap.sh",
         description="Full automation helper for media-stack rebuild and bootstrap.",
@@ -185,7 +199,10 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
     parser.add_argument(
         "--auth-provider",
         default=None,
-        help="External auth provider: none, authelia, authentik.",
+        help=(
+            "External auth provider key "
+            f"(configured catalog values: {auth_provider_help_values})."
+        ),
     )
     parser.add_argument(
         "--app-gateway-host",
@@ -339,7 +356,7 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
             parsed.route_strategy,
             _env_value("ROUTE_STRATEGY"),
             profile_defaults.get("route_strategy"),
-            default="subdomain",
+            default=default_route_strategy,
         )
         .strip()
         .lower(),
@@ -367,7 +384,7 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
             parsed.auth_provider,
             _env_value("AUTH_PROVIDER"),
             profile_defaults.get("auth_provider"),
-            default="none",
+            default=default_auth_provider,
         )
         .strip()
         .lower(),

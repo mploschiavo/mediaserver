@@ -42,6 +42,13 @@ auth_providers:
   - authelia
   - authentik
 
+auth_disabled_provider: none
+
+auth_provider_middleware_defaults:
+  none: ""
+  authelia: authelia@docker
+  authentik: authentik@docker
+
 apps:
   keys:
     - jellyfin
