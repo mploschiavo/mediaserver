@@ -7,11 +7,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from core.compose_rebuild_platform_adapter import (  # noqa: E402
+from core.platforms.compose.rebuild_platform_adapter import (  # noqa: E402
     ComposeRebuildPlatformAdapter,
     ComposeRebuildPlatformConfig,
 )
-from core.docker import DockerContainerState  # noqa: E402
+from core.platforms.compose.docker_client import DockerContainerState  # noqa: E402
 
 _TRAEFIK_EDGE_SPEC = {
     "enable_label_key": "traefik.enable",
@@ -86,6 +86,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         internet_exposed: bool = False,
         auth_provider: str = "none",
         auth_middleware: str = "",
+        runtime_artifacts_dir: Path | None = None,
     ) -> ComposeRebuildPlatformAdapter:
         return ComposeRebuildPlatformAdapter(
             cfg=ComposeRebuildPlatformConfig(
@@ -106,6 +107,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 edge_compose_provider_specs={"traefik": dict(_TRAEFIK_EDGE_SPEC)},
                 auth_provider_middleware_defaults=dict(_AUTH_MIDDLEWARE_DEFAULTS),
                 media_server_service_names=("jellyfin", "jellyfin-nvidia"),
+                runtime_artifacts_dir=runtime_artifacts_dir,
             ),
             info=mock.Mock(),
             docker=docker or mock.Mock(),
@@ -278,6 +280,40 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
 
             info_messages = [call.args[0] for call in adapter.info.call_args_list if call.args]
             self.assertTrue(any("compose/app" in message for message in info_messages))
+
+    def test_secret_lifecycle_methods_are_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text(), encoding="utf-8")
+            adapter = self._adapter(compose_file=compose_file, docker=mock.Mock())
+
+            self.assertEqual(adapter.backup_secret_values("1"), {})
+            self.assertIsNone(adapter.restore_secret_values({"STACK_ADMIN_PASSWORD": "secret"}))
+
+    def test_apply_environment_definition_writes_runtime_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            artifacts_dir = Path(tmp) / "runtime-artifacts"
+            compose_file.write_text(_compose_text(), encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                docker=docker,
+                runtime_artifacts_dir=artifacts_dir,
+            )
+
+            adapter.apply_environment_definition()
+
+            expanded = artifacts_dir / "resolved" / "docker-compose.expanded.yaml"
+            selected = artifacts_dir / "resolved" / "docker-compose.selected.runtime.yaml"
+            deploy_plan = artifacts_dir / "resolved" / "deploy-plan.json"
+            self.assertTrue(expanded.exists())
+            self.assertTrue(selected.exists())
+            self.assertTrue(deploy_plan.exists())
+            self.assertIn("services:", expanded.read_text(encoding="utf-8"))
+            self.assertIn("ghcr.io/example/app:latest", selected.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

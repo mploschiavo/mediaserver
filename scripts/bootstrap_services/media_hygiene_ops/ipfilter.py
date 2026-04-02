@@ -71,7 +71,9 @@ def run_qbit_ipfilter_refresh(
     ).strip()
     timeout_seconds = ops.to_int(ipf_cfg.get("download_timeout_seconds"), 30) or 30
     min_valid_bytes = ops.to_int(ipf_cfg.get("min_valid_bytes"), 1024) or 1024
-    min_refresh_interval_hours = ops.to_float(ipf_cfg.get("min_refresh_interval_hours"), 24.0) or 24.0
+    min_refresh_interval_hours = (
+        ops.to_float(ipf_cfg.get("min_refresh_interval_hours"), 24.0) or 24.0
+    )
 
     target = Path(target_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -99,7 +101,11 @@ def run_qbit_ipfilter_refresh(
     last_success = ops.to_int(state.get("last_success_epoch"), 0) or 0
     downloaded = False
 
-    if min_refresh_seconds > 0 and last_success > 0 and (now_epoch - last_success) < min_refresh_seconds:
+    if (
+        min_refresh_seconds > 0
+        and last_success > 0
+        and (now_epoch - last_success) < min_refresh_seconds
+    ):
         summary["skipped_reason"] = "min_refresh_interval"
         summary["source_url"] = str(state.get("source_url") or source_url)
         summary["bytes"] = ops.to_int(state.get("bytes"), 0) or 0
@@ -135,7 +141,8 @@ def run_qbit_ipfilter_refresh(
                         os.replace(mirror_tmp, mirror)
                     except Exception as mirror_exc:
                         ops.log(
-                            f"[WARN] qB IP filter: mirror write failed for {mirror} " f"({mirror_exc})"
+                            f"[WARN] qB IP filter: mirror write failed for {mirror} "
+                            f"({mirror_exc})"
                         )
                 downloaded = True
                 summary["downloaded"] = True
@@ -205,4 +212,3 @@ def run_qbit_ipfilter_refresh(
         except Exception as exc:
             ops.log(f"[WARN] qB IP filter: failed writing state file {state_file} ({exc})")
     return summary
-

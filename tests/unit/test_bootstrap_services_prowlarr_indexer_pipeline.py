@@ -47,7 +47,9 @@ class ProwlarrIndexerPipelineServiceTests(unittest.TestCase):
         )
         ensure_proxy.assert_called_once()
         service.log.assert_called()
-        self.assertIn("Prowlarr FlareSolverr proxy: automation skipped", service.log.call_args[0][0])
+        self.assertIn(
+            "Prowlarr FlareSolverr proxy: automation skipped", service.log.call_args[0][0]
+        )
 
     def test_raises_when_fail_on_indexer_error_enabled(self):
         ensure_indexer = mock.Mock(side_effect=RuntimeError("bad indexer"))
@@ -98,4 +100,3 @@ class ProwlarrIndexerPipelineServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

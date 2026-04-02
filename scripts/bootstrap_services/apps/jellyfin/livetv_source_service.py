@@ -254,8 +254,7 @@ class JellyfinLiveTvSourceService:
 
         source_hash = hashlib.sha1(source_path.encode("utf-8")).hexdigest()[:12]
         output_rel_path = str(
-            guide.get("materialized_output_path")
-            or f"jellyfin/livetv-guides/{source_hash}.xml"
+            guide.get("materialized_output_path") or f"jellyfin/livetv-guides/{source_hash}.xml"
         ).strip()
         if not output_rel_path:
             output_rel_path = f"jellyfin/livetv-guides/{source_hash}.xml"

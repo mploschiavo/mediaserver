@@ -107,9 +107,9 @@ class AppAuthConfig:
         required_mode = str(required_raw if required_raw is not None else "Enabled").strip()
         return cls(
             enabled=bool(src.get("enabled", False)),
-            required=bool(src.get("required", False))
-            if isinstance(src.get("required"), bool)
-            else False,
+            required=(
+                bool(src.get("required", False)) if isinstance(src.get("required"), bool) else False
+            ),
             method=str(src.get("method", "Forms")).strip(),
             required_mode=required_mode or "Enabled",
             raw=src,

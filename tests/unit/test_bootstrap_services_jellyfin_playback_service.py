@@ -52,7 +52,9 @@ class JellyfinPlaybackServiceTests(unittest.TestCase):
         deps = JellyfinPlaybackDependencies(
             log=lambda _msg: None,
             bool_cfg=lambda cfg, key, fallback: bool(cfg.get(key, fallback)),
-            coerce_list=lambda value: value if isinstance(value, list) else ([] if value is None else [value]),
+            coerce_list=lambda value: (
+                value if isinstance(value, list) else ([] if value is None else [value])
+            ),
             normalize_url=lambda value: str(value).rstrip("/"),
             wait_for_service=lambda *_args, **_kwargs: None,
             resolve_api_key=lambda _cfg, _root: "api-key",

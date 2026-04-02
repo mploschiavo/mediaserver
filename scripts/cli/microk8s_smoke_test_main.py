@@ -49,7 +49,9 @@ def parse_config(argv: list[str] | None = None) -> Microk8sSmokeTestConfig:
         or os.environ.get("NAMESPACE", "media-stack").strip()
         or "media-stack"
     )
-    ingress_name = os.environ.get("INGRESS_NAME", "media-stack-ingress").strip() or "media-stack-ingress"
+    ingress_name = (
+        os.environ.get("INGRESS_NAME", "media-stack-ingress").strip() or "media-stack-ingress"
+    )
     node_ip = str(args.node_ip or "").strip() or _first_host_ip()
     if not node_ip:
         raise ConfigError(
@@ -150,7 +152,10 @@ def run(cfg: Microk8sSmokeTestConfig) -> int:
                 f"[WARN] Ingress class on {cfg.ingress_name} is '{ingress_class}', available classes: {' '.join(classes) or '(none)'}",
                 file=sys.stderr,
             )
-            print("[WARN] Patch example: bash scripts/microk8s-patch-ingress-class.sh public", file=sys.stderr)
+            print(
+                "[WARN] Patch example: bash scripts/microk8s-patch-ingress-class.sh public",
+                file=sys.stderr,
+            )
     else:
         class_valid = False
         print(f"[WARN] Ingress class is empty on {cfg.ingress_name}", file=sys.stderr)
@@ -170,7 +175,10 @@ def run(cfg: Microk8sSmokeTestConfig) -> int:
                 check=False,
             )
             if svc_probe.returncode != 0:
-                print(f"[WARN] {host} -> skipped (backend service '{svc}' not installed)", file=sys.stderr)
+                print(
+                    f"[WARN] {host} -> skipped (backend service '{svc}' not installed)",
+                    file=sys.stderr,
+                )
                 continue
         code = _http_code_with_host(cfg.node_ip, host)
         if code in {200, 301, 302, 303, 307, 308, 401, 403}:
@@ -203,4 +211,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

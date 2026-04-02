@@ -63,16 +63,14 @@ def _load_class_from_spec(spec, *, path_label):
     raw = str(spec or "").strip()
     if ":" not in raw:
         raise RuntimeError(
-            f"{path_label}: invalid class spec '{raw}' "
-            "(expected 'module.submodule:ClassName')."
+            f"{path_label}: invalid class spec '{raw}' " "(expected 'module.submodule:ClassName')."
         )
     module_name, class_name = raw.rsplit(":", 1)
     module_name = module_name.strip()
     class_name = class_name.strip()
     if not module_name or not class_name:
         raise RuntimeError(
-            f"{path_label}: invalid class spec '{raw}' "
-            "(expected 'module.submodule:ClassName')."
+            f"{path_label}: invalid class spec '{raw}' " "(expected 'module.submodule:ClassName')."
         )
     module = importlib.import_module(module_name)
     cls = getattr(module, class_name, None)

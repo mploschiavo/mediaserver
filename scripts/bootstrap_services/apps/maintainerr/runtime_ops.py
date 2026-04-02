@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from bootstrap_services.maintainerr_service import MaintainerrService
+from bootstrap_services.apps.maintainerr.service import MaintainerrService
 from bootstrap_services.runtime_platform import (
     bool_cfg,
     coerce_list,

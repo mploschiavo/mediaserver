@@ -32,6 +32,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _ensure_test_import_paths(root_dir: Path) -> None:
+    root_dir_text = str(root_dir)
+    scripts_dir_text = str(root_dir / "scripts")
+    for candidate in (root_dir_text, scripts_dir_text):
+        if candidate not in sys.path:
+            sys.path.insert(0, candidate)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run unit tests with per-test timing and memory telemetry."
@@ -81,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root_dir = Path(__file__).resolve().parents[2]
+    _ensure_test_import_paths(root_dir)
     cfg = UnitTestRunnerConfig(
         root_dir=root_dir,
         start_dir=args.start_dir,

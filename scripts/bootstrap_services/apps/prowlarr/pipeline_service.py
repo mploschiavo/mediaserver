@@ -102,7 +102,9 @@ class ProwlarrIndexerPipelineService:
 
         if trigger_sync:
             self.trigger_sync(prowlarr_url, prowlarr_key)
-            prune_stale = bool((cfg.get("arr_indexer_sync") or {}).get("prune_stale_indexers", True))
+            prune_stale = bool(
+                (cfg.get("arr_indexer_sync") or {}).get("prune_stale_indexers", True)
+            )
             self.sync_arr_indexers_from_prowlarr(
                 prowlarr_url,
                 prowlarr_key,
@@ -110,4 +112,3 @@ class ProwlarrIndexerPipelineService:
                 app_keys,
                 prune_stale,
             )
-

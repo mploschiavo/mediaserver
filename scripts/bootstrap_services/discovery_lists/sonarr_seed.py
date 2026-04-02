@@ -20,7 +20,9 @@ def resolve_series_quality_profile_id(
     if explicit and explicit > 0:
         return int(explicit)
 
-    status, profiles, body = service.http_request(app_url, f"{api_base}/qualityprofile", api_key=api_key)
+    status, profiles, body = service.http_request(
+        app_url, f"{api_base}/qualityprofile", api_key=api_key
+    )
     if status != 200 or not isinstance(profiles, list):
         raise RuntimeError(
             f"{app_name}: failed reading quality profiles for seed series (HTTP {status}): {body}"
@@ -61,7 +63,9 @@ def resolve_series_language_profile_id(
     if explicit and explicit > 0:
         return int(explicit)
 
-    status, profiles, _ = service.http_request(app_url, f"{api_base}/languageprofile", api_key=api_key)
+    status, profiles, _ = service.http_request(
+        app_url, f"{api_base}/languageprofile", api_key=api_key
+    )
     if status != 200 or not isinstance(profiles, list):
         return None
     for profile in profiles:
@@ -104,7 +108,9 @@ def ensure_sonarr_seed_series(
         service.log("[OK] Sonarr seed series: max_series <= 0; skipping seed add.")
         return
 
-    status, existing_series, body = service.http_request(app_url, f"{api_base}/series", api_key=api_key)
+    status, existing_series, body = service.http_request(
+        app_url, f"{api_base}/series", api_key=api_key
+    )
     if status != 200 or not isinstance(existing_series, list):
         raise RuntimeError(
             f"{app_name}: failed listing existing series for seed step (HTTP {status}): {body}"
@@ -116,9 +122,7 @@ def ensure_sonarr_seed_series(
     existing_tvdb_ids = {
         int(tvdb_id)
         for tvdb_id in (
-            service.to_int(item.get("tvdbId"))
-            for item in existing_series
-            if isinstance(item, dict)
+            service.to_int(item.get("tvdbId")) for item in existing_series if isinstance(item, dict)
         )
         if tvdb_id
     }
@@ -143,7 +147,9 @@ def ensure_sonarr_seed_series(
         api_key=api_key,
         seed_cfg=seed_cfg,
     )
-    root_folder_path = str(seed_cfg.get("root_folder_path") or app_cfg.get("root_folder") or "").strip()
+    root_folder_path = str(
+        seed_cfg.get("root_folder_path") or app_cfg.get("root_folder") or ""
+    ).strip()
     if not root_folder_path:
         raise RuntimeError(f"{app_name}: root folder is required for seed series.")
 
@@ -167,7 +173,9 @@ def ensure_sonarr_seed_series(
         lookup_path = f"{api_base}/series/lookup?term={parse.quote(seed_name)}"
         status, lookup_payload, body = service.http_request(app_url, lookup_path, api_key=api_key)
         if status != 200 or not isinstance(lookup_payload, list):
-            service.log(f"[WARN] {app_name}: seed lookup failed for '{seed_name}' (HTTP {status}): {body}")
+            service.log(
+                f"[WARN] {app_name}: seed lookup failed for '{seed_name}' (HTTP {status}): {body}"
+            )
             failed += 1
             continue
         candidate = pick_series_lookup_candidate(lookup_payload, seed_name)
@@ -219,7 +227,9 @@ def ensure_sonarr_seed_series(
                 f"(monitor={monitor_mode}, search={bool(search_missing)})"
             )
         else:
-            service.log(f"[WARN] {app_name}: failed seeding series '{seed_name}' (HTTP {status}): {body}")
+            service.log(
+                f"[WARN] {app_name}: failed seeding series '{seed_name}' (HTTP {status}): {body}"
+            )
             failed += 1
 
     service.log(

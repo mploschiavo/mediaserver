@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.exceptions import KubernetesError
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 
 @dataclass(frozen=True)

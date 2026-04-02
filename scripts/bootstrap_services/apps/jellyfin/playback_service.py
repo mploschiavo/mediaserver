@@ -116,7 +116,9 @@ class JellyfinPlaybackService:
                 selected_view_ids: set[str] = set()
                 additional_types = {
                     str(item).strip().lower()
-                    for item in d.coerce_list(home_media_cfg.get("additional_excluded_collection_types"))
+                    for item in d.coerce_list(
+                        home_media_cfg.get("additional_excluded_collection_types")
+                    )
                     if str(item).strip()
                 }
                 exclude_collections = d.bool_cfg(home_media_cfg, "exclude_collections", True)
@@ -127,17 +129,23 @@ class JellyfinPlaybackService:
                     if not isinstance(view, dict):
                         continue
                     view_id = str(view.get("Id") or view.get("id") or "").strip()
-                    collection_type = str(
-                        view.get("CollectionType") or view.get("collectionType") or ""
-                    ).strip().lower()
+                    collection_type = (
+                        str(view.get("CollectionType") or view.get("collectionType") or "")
+                        .strip()
+                        .lower()
+                    )
                     if not view_id or not collection_type:
                         continue
 
-                    managed_type = collection_type in (
-                        "boxsets",
-                        "collections",
-                        "playlists",
-                    ) or collection_type in additional_types
+                    managed_type = (
+                        collection_type
+                        in (
+                            "boxsets",
+                            "collections",
+                            "playlists",
+                        )
+                        or collection_type in additional_types
+                    )
                     if managed_type:
                         managed_view_ids.add(view_id)
 
@@ -266,7 +274,9 @@ class JellyfinPlaybackService:
                     "homesection8": "none",
                     "homesection9": "none",
                 }
-            update_existing_only = d.bool_cfg(display_cfg, "update_existing_custom_prefs_only", False)
+            update_existing_only = d.bool_cfg(
+                display_cfg, "update_existing_custom_prefs_only", False
+            )
 
             updated_display = 0
             for pref_id in preference_ids:
@@ -274,7 +284,9 @@ class JellyfinPlaybackService:
                     f"/DisplayPreferences/{parse.quote(pref_id, safe='')}",
                     {"userId": user_id, "client": client},
                 )
-                status, display_payload, body = d.jellyfin_request(jellyfin_url, path, jellyfin_api_key)
+                status, display_payload, body = d.jellyfin_request(
+                    jellyfin_url, path, jellyfin_api_key
+                )
                 if status != 200 or not isinstance(display_payload, dict):
                     d.log(
                         f"[WARN] Jellyfin playback: unable to load DisplayPreferences '{pref_id}' "

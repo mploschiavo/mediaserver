@@ -166,8 +166,10 @@ class JellyfinLiveTvSourceServiceTests(unittest.TestCase):
             output_path = root / "jellyfin" / "livetv-guides" / "test.enriched.xml"
             enriched = output_path.read_text(encoding="utf-8")
             self.assertIn('icon src="https://example.test/sports.png"', enriched)
-            self.assertIn("<category lang=\"en\">Sports</category>", enriched)
-            self.assertTrue(any("prepared XMLTV guide" in line for line in logs), msg=f"logs={logs}")
+            self.assertIn('<category lang="en">Sports</category>', enriched)
+            self.assertTrue(
+                any("prepared XMLTV guide" in line for line in logs), msg=f"logs={logs}"
+            )
 
     def test_prepare_xmltv_guide_path_uses_display_name_logo_fallback_and_default_category(self):
         logs = []
@@ -227,7 +229,7 @@ class JellyfinLiveTvSourceServiceTests(unittest.TestCase):
             output_path = root / "jellyfin" / "livetv-guides" / "display-name-fallback.xml"
             enriched = output_path.read_text(encoding="utf-8")
             self.assertIn('icon src="https://example.test/logo.png"', enriched)
-            self.assertIn("<category lang=\"en\">Shows</category>", enriched)
+            self.assertIn('<category lang="en">Shows</category>', enriched)
 
     def test_prepare_xmltv_guide_path_replaces_existing_program_icons_when_enabled(self):
         logs = []
@@ -369,7 +371,7 @@ class JellyfinLiveTvSourceServiceTests(unittest.TestCase):
                         '  <channel id="sports.2"/>',
                         '  <programme start="20260330010000 +0000" stop="20260330020000 +0000" channel="sports.2">',
                         "    <title>Sports Center</title>",
-                        "    <category lang=\"en\">Entertainment</category>",
+                        '    <category lang="en">Entertainment</category>',
                         "  </programme>",
                         "</tv>",
                     ]
@@ -397,8 +399,8 @@ class JellyfinLiveTvSourceServiceTests(unittest.TestCase):
             self.assertEqual(rendered_path, "/config/livetv-guides/category-append.xml")
             output_path = root / "jellyfin" / "livetv-guides" / "category-append.xml"
             enriched = output_path.read_text(encoding="utf-8")
-            self.assertIn("<category lang=\"en\">Entertainment</category>", enriched)
-            self.assertIn("<category lang=\"en\">Sports</category>", enriched)
+            self.assertIn('<category lang="en">Entertainment</category>', enriched)
+            self.assertIn('<category lang="en">Sports</category>', enriched)
 
 
 if __name__ == "__main__":

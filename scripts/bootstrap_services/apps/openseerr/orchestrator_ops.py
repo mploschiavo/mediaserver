@@ -44,7 +44,9 @@ def configure(
     if not svc.bool_cfg(jelly_cfg, "enabled", False):
         return
 
-    default_url = "http://openseerr:5055" if service_label == "OpenSeerr" else "http://jellyseerr:5055"
+    default_url = (
+        "http://openseerr:5055" if service_label == "OpenSeerr" else "http://jellyseerr:5055"
+    )
     jellyseerr_url = svc.normalize_url(jelly_cfg.get("url", default_url))
     svc.wait_for_service(service_label, jellyseerr_url, "/api/v1/status", wait_timeout)
 
@@ -67,7 +69,9 @@ def configure(
                 jelly_cfg,
             )
         else:
-            svc.log(f"[WARN] {service_label}: Radarr app config not found; skipping Radarr mapping.")
+            svc.log(
+                f"[WARN] {service_label}: Radarr app config not found; skipping Radarr mapping."
+            )
 
         if sonarr_app and "Sonarr" in app_keys:
             ensure_sonarr(
@@ -79,7 +83,9 @@ def configure(
                 jelly_cfg,
             )
         else:
-            svc.log(f"[WARN] {service_label}: Sonarr app config not found; skipping Sonarr mapping.")
+            svc.log(
+                f"[WARN] {service_label}: Sonarr app config not found; skipping Sonarr mapping."
+            )
     except Exception as exc:
         if not permission_error(exc):
             raise

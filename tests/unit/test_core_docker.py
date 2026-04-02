@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from core.docker import DockerClient  # noqa: E402
+from core.platforms.compose.docker_client import DockerClient  # noqa: E402
 from core.exceptions import DockerError  # noqa: E402
 
 

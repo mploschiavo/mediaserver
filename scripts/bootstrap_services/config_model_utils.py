@@ -41,4 +41,3 @@ def normalize_by_app_key(
         if candidate:
             return candidate.lower()
     return raw.lower()
-

@@ -29,4 +29,3 @@ __all__ = [
     "run_metadata_backfill",
     "run_artwork_health_check",
 ]
-

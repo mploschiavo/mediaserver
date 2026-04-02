@@ -1,0 +1,1 @@
+"""Edge provider registry package."""

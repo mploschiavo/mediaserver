@@ -12,13 +12,21 @@ class DiscoveryListsServiceTests(unittest.TestCase):
     def _svc(self, http_request, logs):
         return DiscoveryListsService(
             bool_cfg=lambda cfg, key, fallback: bool(cfg.get(key, fallback)),
-            coerce_list=lambda value: value if isinstance(value, list) else ([] if value is None else [value]),
+            coerce_list=lambda value: (
+                value if isinstance(value, list) else ([] if value is None else [value])
+            ),
             log=logs.append,
             http_request=http_request,
             resolve_env_placeholder=lambda value: value,
-            field_map=lambda fields: {str(f.get("name")): f.get("value") for f in (fields or []) if isinstance(f, dict)},
-            field_list=lambda values: [{"name": key, "value": value} for key, value in values.items()],
-            to_int=lambda value, fallback=None: int(value) if str(value).strip().isdigit() else fallback,
+            field_map=lambda fields: {
+                str(f.get("name")): f.get("value") for f in (fields or []) if isinstance(f, dict)
+            },
+            field_list=lambda values: [
+                {"name": key, "value": value} for key, value in values.items()
+            ],
+            to_int=lambda value, fallback=None: (
+                int(value) if str(value).strip().isdigit() else fallback
+            ),
             normalize_token=lambda value: str(value or "").strip().lower(),
             resolve_arr_quality_preferences=lambda _cfg, _app_cfg: (None, []),
             get_arr_quality_profile=lambda *_args, **_kwargs: {"id": 4, "name": "HD-1080p"},
@@ -38,7 +46,11 @@ class DiscoveryListsServiceTests(unittest.TestCase):
             if method == "GET" and path == "/api/v3/languageprofile":
                 return 200, [{"id": 1}], ""
             if method == "GET" and path.startswith("/api/v3/series/lookup?term="):
-                return 200, [{"title": "Breaking Bad", "tvdbId": 81189, "titleSlug": "breaking-bad"}], ""
+                return (
+                    200,
+                    [{"title": "Breaking Bad", "tvdbId": 81189, "titleSlug": "breaking-bad"}],
+                    "",
+                )
             if method == "POST" and path == "/api/v3/series":
                 return 201, {"id": 1}, ""
             return 200, [], ""
@@ -71,7 +83,9 @@ class DiscoveryListsServiceTests(unittest.TestCase):
             api_key="sonarr-api",
         )
 
-        post_calls = [entry for entry in calls if entry[0] == "POST" and entry[1] == "/api/v3/series"]
+        post_calls = [
+            entry for entry in calls if entry[0] == "POST" and entry[1] == "/api/v3/series"
+        ]
         self.assertEqual(len(post_calls), 1)
         payload = post_calls[0][2] or {}
         self.assertEqual(payload.get("tvdbId"), 81189)

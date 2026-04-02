@@ -386,9 +386,7 @@ class JellyfinLibrariesService:
                         if not isinstance(folder, dict):
                             continue
                         folder_name = (
-                            str(folder.get("Name") or folder.get("name") or "")
-                            .strip()
-                            .lower()
+                            str(folder.get("Name") or folder.get("name") or "").strip().lower()
                         )
                         if folder_name:
                             existing_by_name[folder_name] = folder
@@ -419,9 +417,9 @@ class JellyfinLibrariesService:
             if metadata_country_code and "MetadataCountryCode" in desired_options:
                 desired_options["MetadataCountryCode"] = metadata_country_code
 
-            collection_key = str(
-                collection_type or current.get("CollectionType") or ""
-            ).strip().lower()
+            collection_key = (
+                str(collection_type or current.get("CollectionType") or "").strip().lower()
+            )
             if collection_key in ("movies", "tvshows"):
                 enable_trickplay = (
                     enable_trickplay_movies if collection_key == "movies" else enable_trickplay_tv

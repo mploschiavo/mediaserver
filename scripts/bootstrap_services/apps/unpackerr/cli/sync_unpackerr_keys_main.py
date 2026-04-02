@@ -14,8 +14,8 @@ from pathlib import Path
 
 from cli.cli_common import repo_root_from_script_file
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
-from core.kube import KubernetesClient
 from core.logging_utils import configure_logging, log_event
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 from bootstrap_services.plugin_manifest_loader import load_plugin_manifests
 

@@ -9,7 +9,7 @@ import sys
 
 from cli.cli_common import repo_root_from_script_file
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 from .prowlarr_auto_indexers_runtime import (
     AutoIndexerConfig,

@@ -54,7 +54,9 @@ def run_qbit_duplicate_prune(
     ]
     if not raw_categories:
         raw_categories = [
-            str(v).strip() for v in ((qbit_cfg or {}).get("categories") or {}).values() if str(v).strip()
+            str(v).strip()
+            for v in ((qbit_cfg or {}).get("categories") or {}).values()
+            if str(v).strip()
         ]
     categories = sorted(set(raw_categories))
 
@@ -154,4 +156,3 @@ def run_qbit_duplicate_prune(
         f"(deleted={len(delete_hashes)}, groups={duplicate_groups}, delete_files={delete_files})."
     )
     return summary
-

@@ -53,7 +53,9 @@ def run_qbit_queue_guardrails(
         "checkingResumeData",
     ]
     count_states = {
-        str(x).strip().lower() for x in ops.coerce_list(queue_cfg.get("count_states")) if str(x).strip()
+        str(x).strip().lower()
+        for x in ops.coerce_list(queue_cfg.get("count_states"))
+        if str(x).strip()
     } or {x.lower() for x in default_count_states}
 
     default_prune_states = [
@@ -65,7 +67,9 @@ def run_qbit_queue_guardrails(
         "missingFiles",
     ]
     prune_states = {
-        str(x).strip().lower() for x in ops.coerce_list(queue_cfg.get("prune_states")) if str(x).strip()
+        str(x).strip().lower()
+        for x in ops.coerce_list(queue_cfg.get("prune_states"))
+        if str(x).strip()
     } or {x.lower() for x in default_prune_states}
 
     include_uncategorized = ops.bool_cfg(queue_cfg, "include_uncategorized", False)
@@ -356,12 +360,18 @@ def run_qbit_queue_guardrails(
             if progress >= float(stale_min_progress):
                 continue
             dlspeed = int(rec.get("dlspeed") or 0)
-            if stale_max_download_speed_bps is not None and dlspeed > int(stale_max_download_speed_bps):
+            if stale_max_download_speed_bps is not None and dlspeed > int(
+                stale_max_download_speed_bps
+            ):
                 continue
             age_trigger = float(rec.get("age_hours") or 0.0) >= float(stale_max_age_hours)
-            stalled_trigger = float(rec.get("stalled_hours") or 0.0) >= float(stale_max_stalled_hours)
+            stalled_trigger = float(rec.get("stalled_hours") or 0.0) >= float(
+                stale_max_stalled_hours
+            )
             eta_val = int(rec.get("eta") or -1)
-            eta_trigger = bool(stale_max_eta_seconds is not None and eta_val > int(stale_max_eta_seconds))
+            eta_trigger = bool(
+                stale_max_eta_seconds is not None and eta_val > int(stale_max_eta_seconds)
+            )
             if age_trigger or stalled_trigger or eta_trigger:
                 stale_pool.append(rec)
 
@@ -433,7 +443,11 @@ def run_qbit_queue_guardrails(
     else:
         ops.log("[OK] qB queue guardrails: no over-limit queue pruning required.")
 
-    stale_to_delete = [x for x in stale_hashes if x not in set(over_limit_hashes) and x not in set(budget_to_delete)]
+    stale_to_delete = [
+        x
+        for x in stale_hashes
+        if x not in set(over_limit_hashes) and x not in set(budget_to_delete)
+    ]
     if stale_to_delete:
         ops.qbit_delete_torrents(
             opener,
@@ -449,4 +463,3 @@ def run_qbit_queue_guardrails(
     else:
         ops.log("[OK] qB queue guardrails: no stale/slow torrent pruning required.")
     return summary
-

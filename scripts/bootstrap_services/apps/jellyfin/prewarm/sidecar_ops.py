@@ -97,13 +97,17 @@ def extract_epub_cover_bytes(epub_path: Path) -> bytes | None:
             try:
                 root = ET.fromstring(container_raw)
                 rootfile = root.find(".//{*}rootfile")
-                opf_path = str((rootfile.attrib.get("full-path") if rootfile is not None else "") or "")
+                opf_path = str(
+                    (rootfile.attrib.get("full-path") if rootfile is not None else "") or ""
+                )
                 if opf_path:
                     opf_raw = read_member(opf_path)
                     if opf_raw:
                         opf_root = ET.fromstring(opf_raw)
                         manifest = {
-                            str(item.attrib.get("id") or "").strip(): str(item.attrib.get("href") or "").strip()
+                            str(item.attrib.get("id") or "")
+                            .strip(): str(item.attrib.get("href") or "")
+                            .strip()
                             for item in opf_root.findall(".//{*}manifest/{*}item")
                         }
                         for meta in opf_root.findall(".//{*}metadata/{*}meta"):
@@ -111,7 +115,9 @@ def extract_epub_cover_bytes(epub_path: Path) -> bytes | None:
                                 cover_id = str(meta.attrib.get("content") or "").strip()
                                 if cover_id and cover_id in manifest:
                                     opf_dir = posixpath.dirname(opf_path)
-                                    cover_href = posixpath.normpath(posixpath.join(opf_dir, manifest[cover_id]))
+                                    cover_href = posixpath.normpath(
+                                        posixpath.join(opf_dir, manifest[cover_id])
+                                    )
                                     break
             except Exception:
                 cover_href = None
@@ -142,7 +148,9 @@ def iter_sidecar_books_root_candidates(sidecar_cfg: dict[str, Any]) -> list[Path
     elif configured_list is not None:
         raw_candidates.append(str(configured_list).strip())
 
-    raw_candidates.append(str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip())
+    raw_candidates.append(
+        str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip()
+    )
     raw_candidates.extend(["/media/books"])
 
     deduped: list[Path] = []
@@ -166,7 +174,9 @@ def iter_sidecar_music_root_candidates(sidecar_cfg: dict[str, Any]) -> list[Path
     elif configured_list is not None:
         raw_candidates.append(str(configured_list).strip())
 
-    raw_candidates.append(str(sidecar_cfg.get("music_root_path") or "/srv-stack/media/music").strip())
+    raw_candidates.append(
+        str(sidecar_cfg.get("music_root_path") or "/srv-stack/media/music").strip()
+    )
     raw_candidates.extend(["/media/music"])
 
     deduped: list[Path] = []
@@ -257,15 +267,28 @@ def ensure_book_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
 
     output_name = str(sidecar_cfg.get("output_filename") or "folder.jpg").strip() or "folder.jpg"
     per_book_output_enabled = d.bool_cfg(sidecar_cfg, "write_per_book_sidecars", True)
-    per_book_output_extension = str(sidecar_cfg.get("per_book_output_extension") or ".jpg").strip() or ".jpg"
+    per_book_output_extension = (
+        str(sidecar_cfg.get("per_book_output_extension") or ".jpg").strip() or ".jpg"
+    )
     if not per_book_output_extension.startswith("."):
         per_book_output_extension = "." + per_book_output_extension
     preferred_files = normalize_text_list(
         sidecar_cfg.get("preferred_filenames"),
-        ["folder.jpg", "cover.jpg", "cover.jpeg", "cover.png", "front.jpg", "front.jpeg", "front.png"],
+        [
+            "folder.jpg",
+            "cover.jpg",
+            "cover.jpeg",
+            "cover.png",
+            "front.jpg",
+            "front.jpeg",
+            "front.png",
+        ],
     )
     allowed_extensions = {
-        ext.lower() for ext in normalize_text_list(sidecar_cfg.get("image_extensions"), [".jpg", ".jpeg", ".png", ".webp"])
+        ext.lower()
+        for ext in normalize_text_list(
+            sidecar_cfg.get("image_extensions"), [".jpg", ".jpeg", ".png", ".webp"]
+        )
     }
     replace_existing = d.bool_cfg(sidecar_cfg, "replace_existing", False)
     try:
@@ -283,11 +306,15 @@ def ensure_book_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
             break
         scanned += 1
         folder_output_path = epub_path.parent / output_name
-        per_book_output_path = epub_path.with_suffix(per_book_output_extension) if per_book_output_enabled else None
+        per_book_output_path = (
+            epub_path.with_suffix(per_book_output_extension) if per_book_output_enabled else None
+        )
         pending_targets: list[Path] = []
         if replace_existing or not folder_output_path.exists():
             pending_targets.append(folder_output_path)
-        if per_book_output_path is not None and (replace_existing or not per_book_output_path.exists()):
+        if per_book_output_path is not None and (
+            replace_existing or not per_book_output_path.exists()
+        ):
             pending_targets.append(per_book_output_path)
 
         if not pending_targets:
@@ -306,7 +333,10 @@ def ensure_book_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
                         path
                         for path in fallback_candidates
                         if path.name.lower() != output_name.lower()
-                        and (per_book_output_path is None or path.resolve() != per_book_output_path.resolve())
+                        and (
+                            per_book_output_path is None
+                            or path.resolve() != per_book_output_path.resolve()
+                        )
                     ),
                     None,
                 )
@@ -377,7 +407,9 @@ def ensure_music_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
     )
     allowed_extensions = {
         ext.lower()
-        for ext in normalize_text_list(sidecar_cfg.get("image_extensions"), [".jpg", ".jpeg", ".png", ".webp"])
+        for ext in normalize_text_list(
+            sidecar_cfg.get("image_extensions"), [".jpg", ".jpeg", ".png", ".webp"]
+        )
     }
     audio_extensions = {
         ext.lower()
@@ -397,7 +429,9 @@ def ensure_music_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
             break
         if not files:
             continue
-        has_audio = any(Path(name).suffix.lower() in audio_extensions for name in files if isinstance(name, str))
+        has_audio = any(
+            Path(name).suffix.lower() in audio_extensions for name in files if isinstance(name, str)
+        )
         if not has_audio:
             continue
         scanned += 1
@@ -408,7 +442,9 @@ def ensure_music_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
             continue
         try:
             candidates = candidate_image_paths(album_dir, preferred_files, allowed_extensions)
-            source = next((path for path in candidates if path.name.lower() != output_name.lower()), None)
+            source = next(
+                (path for path in candidates if path.name.lower() != output_name.lower()), None
+            )
             if source is None:
                 skipped += 1
                 continue
@@ -422,4 +458,3 @@ def ensure_music_sidecar_artwork(service, prewarm_cfg: dict[str, Any]) -> None:
         "[OK] Jellyfin prewarm: music sidecar artwork reconcile complete "
         f"(scanned={scanned}, written={written}, skipped={skipped}, failed={failed})"
     )
-

@@ -40,7 +40,10 @@ def run_metadata_backfill(
         return
 
     libraries_filter = {
-        token.lower() for token in normalize_text_list(backfill_cfg.get("libraries"), ["Movies", "TV Shows", "Music", "Books"])
+        token.lower()
+        for token in normalize_text_list(
+            backfill_cfg.get("libraries"), ["Movies", "TV Shows", "Music", "Books"]
+        )
     }
     refresh_missing_primary = d.bool_cfg(backfill_cfg, "refresh_missing_primary_image", True)
     refresh_missing_overview = d.bool_cfg(backfill_cfg, "refresh_missing_overview", True)
@@ -64,7 +67,9 @@ def run_metadata_backfill(
             "replaceAllImages": "true",
         }
 
-    status, libraries_payload, body = d.jellyfin_request(jellyfin_url, "/Library/VirtualFolders", jellyfin_api_key)
+    status, libraries_payload, body = d.jellyfin_request(
+        jellyfin_url, "/Library/VirtualFolders", jellyfin_api_key
+    )
     if status != 200 or not isinstance(libraries_payload, list):
         message = (
             "Jellyfin prewarm: metadata backfill could not list libraries "
@@ -100,7 +105,11 @@ def run_metadata_backfill(
         if not library_id:
             continue
         name_key = library_name.lower()
-        if libraries_filter and collection_type not in libraries_filter and name_key not in libraries_filter:
+        if (
+            libraries_filter
+            and collection_type not in libraries_filter
+            and name_key not in libraries_filter
+        ):
             continue
         selected_libraries.append((library_name or collection_type, library_id))
 
@@ -234,7 +243,10 @@ def run_artwork_health_check(
         return
 
     libraries_filter = {
-        token.lower() for token in normalize_text_list(health_cfg.get("libraries"), ["Movies", "TV Shows", "Music", "Books", "Live TV"])
+        token.lower()
+        for token in normalize_text_list(
+            health_cfg.get("libraries"), ["Movies", "TV Shows", "Music", "Books", "Live TV"]
+        )
     }
     try:
         max_items = int(health_cfg.get("max_items_per_library") or 400)
@@ -250,7 +262,9 @@ def run_artwork_health_check(
         fail_below = 30.0
     required = d.bool_cfg(health_cfg, "required", False)
 
-    status, libraries_payload, body = d.jellyfin_request(jellyfin_url, "/Library/VirtualFolders", jellyfin_api_key)
+    status, libraries_payload, body = d.jellyfin_request(
+        jellyfin_url, "/Library/VirtualFolders", jellyfin_api_key
+    )
     if status != 200 or not isinstance(libraries_payload, list):
         message = (
             "Jellyfin prewarm: artwork health check could not list libraries "
@@ -278,7 +292,11 @@ def run_artwork_health_check(
         if not library_id:
             continue
         name_key = library_name.lower()
-        if libraries_filter and collection_type not in libraries_filter and name_key not in libraries_filter:
+        if (
+            libraries_filter
+            and collection_type not in libraries_filter
+            and name_key not in libraries_filter
+        ):
             continue
 
         include_types = type_map.get(collection_type) or []
@@ -316,7 +334,9 @@ def run_artwork_health_check(
         valid_items = [item for item in rows if isinstance(item, dict)]
         total = len(valid_items)
         if total == 0:
-            d.log(f"[INFO] Jellyfin prewarm: artwork health check skipped for {library_name} (no sampled items)")
+            d.log(
+                f"[INFO] Jellyfin prewarm: artwork health check skipped for {library_name} (no sampled items)"
+            )
             continue
         with_art = sum(1 for item in valid_items if item_has_artwork(item))
         coverage = (with_art / total) * 100.0
@@ -358,15 +378,18 @@ def run_artwork_health_check(
         valid_items = [item for item in rows if isinstance(item, dict)]
         total = len(valid_items)
         if total == 0:
-            d.log("[INFO] Jellyfin prewarm: artwork health check skipped for Live TV (no sampled items)")
+            d.log(
+                "[INFO] Jellyfin prewarm: artwork health check skipped for Live TV (no sampled items)"
+            )
             return
         with_art = sum(1 for item in valid_items if item_has_artwork(item))
         coverage = (with_art / total) * 100.0
-        summary = f"Jellyfin prewarm: artwork coverage for Live TV = {coverage:.1f}% ({with_art}/{total})"
+        summary = (
+            f"Jellyfin prewarm: artwork coverage for Live TV = {coverage:.1f}% ({with_art}/{total})"
+        )
         if coverage < fail_below and required:
             raise RuntimeError(f"{summary}; below fail threshold {fail_below:.1f}%")
         if coverage < warn_below:
             d.log(f"[WARN] {summary}; below warning threshold {warn_below:.1f}%")
         else:
             d.log(f"[OK] {summary}")
-

@@ -51,8 +51,7 @@ class JellyfinHomeRailsService:
         if isinstance(loaded, list):
             return loaded
         self.deps.log(
-            "[WARN] jellyfin_home_rails.json defaults must be a list. "
-            "Using empty defaults."
+            "[WARN] jellyfin_home_rails.json defaults must be a list. " "Using empty defaults."
         )
         return []
 
@@ -200,9 +199,7 @@ class JellyfinHomeRailsService:
                 )
             created = True
             collection_id = str(
-                (create_data or {}).get("Id")
-                or (create_data or {}).get("CollectionId")
-                or ""
+                (create_data or {}).get("Id") or (create_data or {}).get("CollectionId") or ""
             ).strip()
             if not collection_id:
                 collection_id = self.find_collection_by_name(

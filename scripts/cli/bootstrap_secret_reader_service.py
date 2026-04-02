@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 
 @dataclass(frozen=True)

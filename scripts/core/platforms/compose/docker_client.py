@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .exceptions import ConfigError, DockerError
+from core.exceptions import ConfigError, DockerError
 
 
 def _is_not_found(exc: Exception) -> bool:
@@ -52,6 +52,15 @@ class DockerClient:
             self.client.images.pull(image)
         except Exception as exc:
             raise DockerError(f"Failed pulling image '{image}': {exc}") from exc
+
+    def image_exists(self, image: str) -> bool:
+        try:
+            self.client.images.get(image)
+            return True
+        except Exception as exc:
+            if _is_not_found(exc):
+                return False
+            raise DockerError(f"Failed reading image '{image}': {exc}") from exc
 
     def ensure_network(self, name: str, *, driver: str = "bridge") -> None:
         try:

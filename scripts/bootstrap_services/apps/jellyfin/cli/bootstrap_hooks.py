@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 from .jellyfin_plugin_activation_service import (
     JellyfinPluginActivationConfig,

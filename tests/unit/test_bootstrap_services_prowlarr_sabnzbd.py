@@ -40,15 +40,19 @@ class SabnzbdServiceTests(unittest.TestCase):
             keyword = (query.get("keyword") or [""])[0]
 
             if mode == "get_config" and section == "misc":
-                return 200, {
-                    "config": {
-                        "misc": {
-                            "download_dir": "/wrong/incomplete",
-                            "complete_dir": "/wrong/completed",
-                            "auto_browser": "1",
+                return (
+                    200,
+                    {
+                        "config": {
+                            "misc": {
+                                "download_dir": "/wrong/incomplete",
+                                "complete_dir": "/wrong/completed",
+                                "auto_browser": "1",
+                            }
                         }
-                    }
-                }, ""
+                    },
+                    "",
+                )
             if mode == "get_config" and section == "categories":
                 return 200, {"config": {"categories": []}}, ""
             if mode == "set_config" and section == "misc" and keyword:
@@ -71,10 +75,13 @@ class SabnzbdServiceTests(unittest.TestCase):
 
     def test_read_api_key_prefers_env(self):
         service = self._service()
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
-            os.environ,
-            {"SABNZBD_API_KEY": "from-env-key"},
-            clear=False,
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(
+                os.environ,
+                {"SABNZBD_API_KEY": "from-env-key"},
+                clear=False,
+            ),
         ):
             value = service.read_api_key(tmp, {})
         self.assertEqual(value, "from-env-key")
@@ -98,8 +105,12 @@ class SabnzbdServiceTests(unittest.TestCase):
             if "mode=set_config" in path and "section=misc" in path
         ]
         self.assertEqual(len(set_requests), 3)
-        self.assertTrue(any("set download_dir=/data/usenet/incomplete" in line for line in self.logs))
-        self.assertTrue(any("set complete_dir=/data/usenet/completed" in line for line in self.logs))
+        self.assertTrue(
+            any("set download_dir=/data/usenet/incomplete" in line for line in self.logs)
+        )
+        self.assertTrue(
+            any("set complete_dir=/data/usenet/completed" in line for line in self.logs)
+        )
 
     def test_ensure_categories_deduplicates_category_writes(self):
         service = self._service()
@@ -156,24 +167,32 @@ class ProwlarrServiceTests(unittest.TestCase):
 
         def stub(_base_url, path, _api_key, method, payload):
             if path == "/api/v1/applications/schema" and method == "GET":
-                return 200, [
-                    {
-                        "implementation": "Sonarr",
-                        "configContract": "SonarrSettings",
-                        "fields": [
-                            {"name": "baseUrl", "value": ""},
-                            {"name": "apiKey", "value": ""},
-                        ],
-                    }
-                ], ""
+                return (
+                    200,
+                    [
+                        {
+                            "implementation": "Sonarr",
+                            "configContract": "SonarrSettings",
+                            "fields": [
+                                {"name": "baseUrl", "value": ""},
+                                {"name": "apiKey", "value": ""},
+                            ],
+                        }
+                    ],
+                    "",
+                )
             if path == "/api/v1/applications" and method == "GET":
-                return 200, [
-                    {
-                        "id": 42,
-                        "implementation": "Sonarr",
-                        "fields": [{"name": "baseUrl", "value": "http://sonarr:8989"}],
-                    }
-                ], ""
+                return (
+                    200,
+                    [
+                        {
+                            "id": 42,
+                            "implementation": "Sonarr",
+                            "fields": [{"name": "baseUrl", "value": "http://sonarr:8989"}],
+                        }
+                    ],
+                    "",
+                )
             if path == "/api/v1/applications/42" and method == "PUT":
                 put_attempts.append(payload)
                 if len(put_attempts) == 1:
@@ -202,20 +221,28 @@ class ProwlarrServiceTests(unittest.TestCase):
         def stub(_base_url, path, _api_key, method, payload):
             calls.append((path, method, payload))
             if path == "/api/v1/indexerProxy/schema" and method == "GET":
-                return 200, [
-                    {
-                        "implementation": "FlareSolverr",
-                        "configContract": "FlareSolverrSettings",
-                        "fields": [
-                            {"name": "host", "value": "http://localhost:8191/"},
-                            {"name": "requestTimeout", "value": 60},
-                        ],
-                    }
-                ], ""
+                return (
+                    200,
+                    [
+                        {
+                            "implementation": "FlareSolverr",
+                            "configContract": "FlareSolverrSettings",
+                            "fields": [
+                                {"name": "host", "value": "http://localhost:8191/"},
+                                {"name": "requestTimeout", "value": 60},
+                            ],
+                        }
+                    ],
+                    "",
+                )
             if path == "/api/v1/indexerProxy" and method == "GET":
                 return 200, [], ""
             if path == "/api/v1/indexerProxy" and method == "POST":
-                return 201, {"id": 7, "name": "FlareSolverr", "fields": payload.get("fields", [])}, ""
+                return (
+                    201,
+                    {"id": 7, "name": "FlareSolverr", "fields": payload.get("fields", [])},
+                    "",
+                )
             if path == "/api/v1/indexerProxy/test" and method == "POST":
                 return 200, {}, ""
             return 500, {}, f"unexpected {method} {path}"
@@ -227,29 +254,43 @@ class ProwlarrServiceTests(unittest.TestCase):
             flaresolverr_cfg={"enabled": True, "url": "http://flaresolverr:8191"},
         )
 
-        post_payloads = [payload for path, method, payload in calls if path == "/api/v1/indexerProxy" and method == "POST"]
+        post_payloads = [
+            payload
+            for path, method, payload in calls
+            if path == "/api/v1/indexerProxy" and method == "POST"
+        ]
         self.assertEqual(len(post_payloads), 1)
         post_fields = _field_map(post_payloads[0].get("fields"))
         self.assertEqual(post_fields.get("host"), "http://flaresolverr:8191/")
-        self.assertTrue(any("FlareSolverr proxy connection test passed" in line for line in self.logs))
+        self.assertTrue(
+            any("FlareSolverr proxy connection test passed" in line for line in self.logs)
+        )
 
     def test_ensure_flaresolverr_proxy_updates_existing(self):
         put_payloads = []
 
         def stub(_base_url, path, _api_key, method, payload):
             if path == "/api/v1/indexerProxy/schema" and method == "GET":
-                return 200, [
-                    {
-                        "implementation": "FlareSolverr",
-                        "configContract": "FlareSolverrSettings",
-                        "fields": [
-                            {"name": "host", "value": "http://localhost:8191/"},
-                            {"name": "requestTimeout", "value": 60},
-                        ],
-                    }
-                ], ""
+                return (
+                    200,
+                    [
+                        {
+                            "implementation": "FlareSolverr",
+                            "configContract": "FlareSolverrSettings",
+                            "fields": [
+                                {"name": "host", "value": "http://localhost:8191/"},
+                                {"name": "requestTimeout", "value": 60},
+                            ],
+                        }
+                    ],
+                    "",
+                )
             if path == "/api/v1/indexerProxy" and method == "GET":
-                return 200, [{"id": 1, "name": "FlareSolverr", "implementation": "FlareSolverr"}], ""
+                return (
+                    200,
+                    [{"id": 1, "name": "FlareSolverr", "implementation": "FlareSolverr"}],
+                    "",
+                )
             if path == "/api/v1/indexerProxy/1" and method == "PUT":
                 put_payloads.append(payload)
                 return 202, payload, ""
@@ -276,10 +317,14 @@ class ProwlarrServiceTests(unittest.TestCase):
     def test_auto_add_tested_indexers_skips_existing_and_adds_new(self):
         def stub(_base_url, path, _api_key, method, payload):
             if path == "/api/v1/indexer/schema" and method == "GET":
-                return 200, [
-                    {"implementation": "A", "name": "Existing", "fields": []},
-                    {"implementation": "B", "name": "NewOne", "fields": []},
-                ], ""
+                return (
+                    200,
+                    [
+                        {"implementation": "A", "name": "Existing", "fields": []},
+                        {"implementation": "B", "name": "NewOne", "fields": []},
+                    ],
+                    "",
+                )
             if path == "/api/v1/indexer" and method == "GET":
                 return 200, [{"implementation": "A", "name": "Existing"}], ""
             if path == "/api/v1/indexer/test" and method == "POST":
@@ -305,10 +350,14 @@ class ProwlarrServiceTests(unittest.TestCase):
         def stub(_base_url, path, _api_key, method, payload):
             nonlocal create_calls
             if path == "/api/v1/indexer/schema" and method == "GET":
-                return 200, [
-                    {"implementation": "X", "name": "LimeTorrents", "fields": []},
-                    {"implementation": "Y", "name": "SafeIndexer", "fields": []},
-                ], ""
+                return (
+                    200,
+                    [
+                        {"implementation": "X", "name": "LimeTorrents", "fields": []},
+                        {"implementation": "Y", "name": "SafeIndexer", "fields": []},
+                    ],
+                    "",
+                )
             if path == "/api/v1/indexer" and method == "GET":
                 return 200, [], ""
             if path == "/api/v1/indexer/test" and method == "POST":
@@ -382,9 +431,7 @@ class ProwlarrServiceTests(unittest.TestCase):
             )
 
     def test_build_indexer_payload_sets_default_app_profile_id(self):
-        service = self._service_with_stub(
-            lambda *_args, **_kwargs: (500, {}, "unused")
-        )
+        service = self._service_with_stub(lambda *_args, **_kwargs: (500, {}, "unused"))
 
         payload = service.build_indexer_payload(
             {

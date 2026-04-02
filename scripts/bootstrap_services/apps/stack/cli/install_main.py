@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Callable
 from urllib import request
 
-from core.kube import resolve_kubectl_binary
-from core.phase_tracker import PhaseTracker
 from cli.cli_common import repo_root_from_script_file
+from core.phase_tracker import PhaseTracker
+from core.platforms.kubernetes.kube_client import resolve_kubectl_binary
 
 
 class InstallError(RuntimeError):
@@ -88,7 +88,9 @@ class InstallRunner:
 
         self._run_phase("Preflight checks", self.preflight_checks)
         self._run_phase("Prepare host directories", self.prepare_host_directories)
-        self._run_phase("Apply scale policy guardrails (dry-run)", self.apply_scale_policy_guardrails_dry_run)
+        self._run_phase(
+            "Apply scale policy guardrails (dry-run)", self.apply_scale_policy_guardrails_dry_run
+        )
         self._run_phase("Deploy and bootstrap stack", self.deploy_and_bootstrap)
 
         if self.cfg.enable_tls == "1":
@@ -265,7 +267,6 @@ class InstallRunner:
         self._run_script("stack-status.sh", env={"NAMESPACE": self.cfg.namespace})
 
 
-
 def parse_args(argv: list[str]) -> InstallConfig:
     root_dir = repo_root_from_script_file(__file__)
 
@@ -317,7 +318,10 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         warn(f"Install failed: {exc}")
         runner.tracker.summary()
-        runner.notify("error", f"media-stack install failed (profile={cfg.profile}, namespace={cfg.namespace})")
+        runner.notify(
+            "error",
+            f"media-stack install failed (profile={cfg.profile}, namespace={cfg.namespace})",
+        )
         return 1
 
 

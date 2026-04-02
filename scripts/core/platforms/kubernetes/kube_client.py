@@ -18,9 +18,9 @@ from typing import Any, Iterable, Mapping
 
 import yaml
 
-from .decorators import retry, timed
-from .exceptions import ConfigError, KubernetesError
-from .subprocess_utils import CommandExecutionError, CommandResult, CommandRunner
+from core.decorators import retry, timed
+from core.exceptions import ConfigError, KubernetesError
+from core.subprocess_utils import CommandExecutionError, CommandResult, CommandRunner
 
 KUBECTL_RETRY_ATTEMPTS = max(1, int(os.environ.get("MEDIA_STACK_KUBECTL_RETRY_ATTEMPTS", "3")))
 KUBECTL_RETRY_DELAY_SECONDS = float(

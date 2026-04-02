@@ -79,6 +79,8 @@ class BootstrapJobWaitServiceTests(unittest.TestCase):
                 timeout_seconds=60,
                 timeout_raw="1m",
                 heartbeat_interval=15,
+                job_discovery_grace_seconds=0,
+                job_missing_timeout_seconds=0,
             ),
             kube=kube,
             info=mock.Mock(),

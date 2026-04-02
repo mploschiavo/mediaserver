@@ -26,10 +26,14 @@ class ArrIndexerSyncServiceTests(unittest.TestCase):
             if path == "/api/v1/indexer" and method == "GET":
                 return 200, [{"name": "Good", "enable": True}], ""
             if path == "/api/v3/indexer" and method == "GET":
-                return 200, [
-                    {"id": 10, "name": "Good", "implementationName": "Prowlarr"},
-                    {"id": 11, "name": "Old", "implementationName": "Prowlarr"},
-                ], ""
+                return (
+                    200,
+                    [
+                        {"id": 10, "name": "Good", "implementationName": "Prowlarr"},
+                        {"id": 11, "name": "Old", "implementationName": "Prowlarr"},
+                    ],
+                    "",
+                )
             if path == "/api/v3/indexer/11" and method == "DELETE":
                 deleted_ids.append(11)
                 return 200, {}, ""
@@ -55,9 +59,13 @@ class ArrIndexerSyncServiceTests(unittest.TestCase):
             if path == "/api/v1/indexer" and method == "GET":
                 return 200, [{"name": "Good", "enable": True}], ""
             if path == "/api/v3/indexer" and method == "GET":
-                return 200, [
-                    {"id": 11, "name": "Old", "implementationName": "Prowlarr"},
-                ], ""
+                return (
+                    200,
+                    [
+                        {"id": 11, "name": "Old", "implementationName": "Prowlarr"},
+                    ],
+                    "",
+                )
             if path == "/api/v3/indexer/11" and method == "DELETE":
                 delete_called = True
                 return 200, {}, ""
@@ -79,4 +87,3 @@ class ArrIndexerSyncServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

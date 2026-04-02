@@ -118,9 +118,7 @@ class SabnzbdService:
                 },
             )
             if status != 200:
-                raise RuntimeError(
-                    f"SABnzbd: failed setting misc.{key} (HTTP {status}): {body}"
-                )
+                raise RuntimeError(f"SABnzbd: failed setting misc.{key} (HTTP {status}): {body}")
             if isinstance(data, dict) and data.get("status") is False:
                 raise RuntimeError(f"SABnzbd: API rejected misc.{key} update request: {body}")
             self.log(f"[OK] SABnzbd: set {key}={desired_normalized}")

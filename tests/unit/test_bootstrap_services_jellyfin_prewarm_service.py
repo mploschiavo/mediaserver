@@ -246,8 +246,7 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
             jellyfin_request=jellyfin_request,
             build_query_path=lambda path, params: path
             + (
-                "?"
-                + "&".join(f"{k}={v}" for k, v in (params or {}).items() if v not in (None, ""))
+                "?" + "&".join(f"{k}={v}" for k, v in (params or {}).items() if v not in (None, ""))
                 if params
                 else ""
             ),
@@ -307,7 +306,11 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
                         "Items": [
                             {"Id": "movie-a", "ImageTags": {}, "Overview": ""},
                             {"Id": "movie-b", "ImageTags": {"Primary": "x"}, "Overview": ""},
-                            {"Id": "movie-c", "ImageTags": {"Primary": "x"}, "Overview": "Has summary"},
+                            {
+                                "Id": "movie-c",
+                                "ImageTags": {"Primary": "x"},
+                                "Overview": "Has summary",
+                            },
                         ]
                     },
                     "",
@@ -330,8 +333,7 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
             jellyfin_request=jellyfin_request,
             build_query_path=lambda path, params: path
             + (
-                "?"
-                + "&".join(f"{k}={v}" for k, v in (params or {}).items() if v not in (None, ""))
+                "?" + "&".join(f"{k}={v}" for k, v in (params or {}).items() if v not in (None, ""))
                 if params
                 else ""
             ),
@@ -365,7 +367,9 @@ class JellyfinPrewarmServiceTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("/Items/movie-a/Refresh") for path in refreshed_paths))
         self.assertTrue(any(path.startswith("/Items/movie-b/Refresh") for path in refreshed_paths))
         self.assertFalse(any(path.startswith("/Items/movie-c/Refresh") for path in refreshed_paths))
-        self.assertTrue(any(path.startswith("/Items/lib-movies/Refresh") for path in refreshed_paths))
+        self.assertTrue(
+            any(path.startswith("/Items/lib-movies/Refresh") for path in refreshed_paths)
+        )
         self.assertTrue(any("metadata backfill complete" in line for line in logs))
 
 

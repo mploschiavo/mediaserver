@@ -419,6 +419,8 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                     {
                         "type": "xmltv",
                         "path": "https://iptv-epg.org/files/epg-us.xml",
+                        "enrich_program_icons_from_tuner_logo": False,
+                        "enrich_program_categories_from_tuner_groups": False,
                     }
                 ],
             }
@@ -480,6 +482,8 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                         "type": "xmltv",
                         "path": "https://iptv-epg.org/files/epg-us.xml",
                         "enable_all_tuners": False,
+                        "enrich_program_icons_from_tuner_logo": False,
+                        "enrich_program_categories_from_tuner_groups": False,
                         "enabled_tuners": [
                             "tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u"
                         ],

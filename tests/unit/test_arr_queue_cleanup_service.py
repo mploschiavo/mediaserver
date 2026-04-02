@@ -71,13 +71,17 @@ class ArrQueueCleanupServiceTests(unittest.TestCase):
                 calls["delete"].append(path)
                 return 200, {}, ""
             if "/queue?page=1&pageSize=" in path:
-                return 200, {
-                    "records": [
-                        {"id": 11, "status": "failed"},
-                        {"id": 12, "status": "warning"},
-                        {"id": 13, "status": "completed"},
-                    ]
-                }, ""
+                return (
+                    200,
+                    {
+                        "records": [
+                            {"id": 11, "status": "failed"},
+                            {"id": 12, "status": "warning"},
+                            {"id": 13, "status": "completed"},
+                        ]
+                    },
+                    "",
+                )
             return 404, {}, "not found"
 
         svc = self._service(fake_http)

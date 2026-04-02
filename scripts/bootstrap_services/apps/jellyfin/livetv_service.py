@@ -216,7 +216,9 @@ class JellyfinService:
                 for guide in prepared_guides:
                     if not isinstance(guide, dict):
                         continue
-                    guide_path = str(guide.get("_effective_path") or guide.get("path") or "").strip()
+                    guide_path = str(
+                        guide.get("_effective_path") or guide.get("path") or ""
+                    ).strip()
                     if not guide_path:
                         continue
                     guide_type = str(guide.get("type", "xmltv")).strip().lower()

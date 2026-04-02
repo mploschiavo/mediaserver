@@ -163,4 +163,3 @@ def run_filesystem_hygiene(ops, hygiene_cfg: dict[str, Any]) -> dict[str, int]:
         f"temp={removed_temp}, zero_byte={removed_zero}, duplicates={removed_dupes}, empty_dirs={removed_empty}"
     )
     return summary
-

@@ -11,8 +11,8 @@ import sys
 from dataclasses import dataclass
 
 from core.exceptions import ConfigError, KubernetesError, MediaStackError
-from core.kube import KubernetesClient
 from core.logging_utils import configure_logging, log_event
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 SAB_RECONCILE_SCRIPT = r"""
 set -eu

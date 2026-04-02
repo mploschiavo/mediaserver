@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from core.kubernetes_rebuild_platform_adapter import (  # noqa: E402
+from core.platforms.kubernetes.rebuild_platform_adapter import (  # noqa: E402
     KubernetesRebuildPlatformAdapter,
 )
 from core.platform_adapter import (  # noqa: E402
@@ -26,6 +26,7 @@ class PlatformAdapterTests(unittest.TestCase):
             ingress_service=mock.Mock(),
             deployments_wait_service=mock.Mock(),
             smoke_test_service=mock.Mock(),
+            secret_preservation_service=mock.Mock(),
             info=mock.Mock(),
             run_kubectl=mock.Mock(),
             compose_file=Path("/tmp/docker-compose.yml"),

@@ -118,4 +118,3 @@ def build_indexer_payload(service, template: dict[str, Any]) -> dict[str, Any]:
     if app_profile_id_int <= 0:
         payload["appProfileId"] = 1
     return payload
-

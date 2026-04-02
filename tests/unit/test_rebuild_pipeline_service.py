@@ -31,6 +31,9 @@ class RebuildPipelineServiceTests(unittest.TestCase):
                 apply_initial_preferences="1",
                 auto_download_content="0",
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+                auth_provider="authelia",
+                auth_middleware="authelia@docker",
+                edge_router_provider="traefik",
             ),
             info=mock.Mock(),
             run_script=run_script,
@@ -57,6 +60,9 @@ class RebuildPipelineServiceTests(unittest.TestCase):
         self.assertEqual(env.get("PRECONFIGURE_API_KEYS"), "1")
         self.assertEqual(env.get("APPLY_INITIAL_PREFERENCES"), "1")
         self.assertEqual(env.get("AUTO_DOWNLOAD_CONTENT"), "0")
+        self.assertEqual(env.get("AUTH_PROVIDER"), "authelia")
+        self.assertEqual(env.get("AUTH_MIDDLEWARE"), "authelia@docker")
+        self.assertEqual(env.get("EDGE_ROUTER_PROVIDER"), "traefik")
 
 
 if __name__ == "__main__":

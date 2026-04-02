@@ -79,9 +79,7 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             path = Path(tmp) / "maintainerr" / "policy.json"
             self.assertTrue(path.exists())
             rendered = json.loads(path.read_text(encoding="utf-8"))
-            by_name = {
-                str(rule.get("name") or ""): rule for rule in (rendered.get("rules") or [])
-            }
+            by_name = {str(rule.get("name") or ""): rule for rule in (rendered.get("rules") or [])}
 
             expected_rule_names = {
                 "Protect Favorited Media",
@@ -99,29 +97,18 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             self.assertTrue(len(movie_rules) >= 2)
             self.assertEqual(
                 "days_ago:30",
-                str(
-                    (
-                        (movie_rules[1].get("customVal") or {}).get("value")
-                    )
-                ),
+                str(((movie_rules[1].get("customVal") or {}).get("value"))),
             )
             tv_rules = by_name["Delete Watched TV After 30 Days"].get("rules") or []
             self.assertTrue(len(tv_rules) >= 2)
             self.assertEqual(
                 "days_ago:30",
-                str(
-                    (
-                        (tv_rules[1].get("customVal") or {}).get("value")
-                    )
-                ),
+                str(((tv_rules[1].get("customVal") or {}).get("value"))),
             )
             self.assertEqual(
                 int(
                     (
-                        (
-                            by_name["Remove Old Requested Unwatched Content"].get("conditions")
-                            or {}
-                        )
+                        (by_name["Remove Old Requested Unwatched Content"].get("conditions") or {})
                     ).get("requested_days_ago_gte", 0)
                 ),
                 90,
@@ -132,11 +119,9 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             )
             self.assertEqual(
                 int(
-                    (
-                        (
-                            by_name["Leaving Soon (5 Day Warning)"].get("actions") or {}
-                        )
-                    ).get("collection_days_before_delete", 0)
+                    ((by_name["Leaving Soon (5 Day Warning)"].get("actions") or {})).get(
+                        "collection_days_before_delete", 0
+                    )
                 ),
                 5,
             )
@@ -194,10 +179,14 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
             by_name = {str(rule.get("name") or ""): rule for rule in (rendered.get("rules") or [])}
             self.assertEqual(
                 int(
-                    ((by_name["Delete Watched Movies After 30 Days"].get("conditions") or {}).get(
-                        "added_days_ago_gte",
-                        0,
-                    ))
+                    (
+                        (
+                            by_name["Delete Watched Movies After 30 Days"].get("conditions") or {}
+                        ).get(
+                            "added_days_ago_gte",
+                            0,
+                        )
+                    )
                 ),
                 45,
             )
@@ -302,7 +291,7 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
                     [
                         "mediaType: MOVIES",
                         "rules:",
-                        "  - \"0\":",
+                        '  - "0":',
                         "      - firstValue: Jellyfin.viewCount",
                         "        action: BIGGER",
                         "        customValue:",
@@ -361,7 +350,7 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
                     [
                         "mediaType: MOVIES",
                         "rules:",
-                        "  - \"0\":",
+                        '  - "0":',
                         "      - firstValue: Jellyfin.viewCount",
                         "        action: BIGGER",
                         "        customValue:",
@@ -417,7 +406,7 @@ class ConfigArtifactsServiceTests(unittest.TestCase):
                     [
                         "mediaType: MOVIES",
                         "rules:",
-                        "  - \"0\":",
+                        '  - "0":',
                         "      - firstValue: Jellyfin.viewCount",
                         "        action: BIGGER",
                         "        customValue:",

@@ -7,7 +7,7 @@ import shlex
 from dataclasses import dataclass
 from typing import Callable
 
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 LogFn = Callable[[str], None]
 DeploymentExistsFn = Callable[[str], bool]

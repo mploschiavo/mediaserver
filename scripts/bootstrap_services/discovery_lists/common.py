@@ -37,7 +37,9 @@ def service_to_int(value: Any, default: int | None = None) -> int | None:
         return default
 
 
-def pick_series_lookup_candidate(lookup_payload: list[Any], target_name: str) -> dict[str, Any] | None:
+def pick_series_lookup_candidate(
+    lookup_payload: list[Any], target_name: str
+) -> dict[str, Any] | None:
     candidates = [item for item in lookup_payload if isinstance(item, dict)]
     if not candidates:
         return None

@@ -14,8 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from core.exceptions import ConfigError, MediaStackError
 from cli.cli_common import repo_root_from_script_file
+from core.exceptions import ConfigError, MediaStackError
 
 
 def info(message: str) -> None:

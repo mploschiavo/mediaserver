@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from core.exceptions import ConfigError, KubernetesError
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 
 def ts() -> str:
@@ -97,10 +97,7 @@ class PhaseTracker:
             info("  (no phases recorded)")
             return
         for idx, phase_name in enumerate(self.phase_names):
-            info(
-                f"  {phase_name} => {self.phase_results[idx]} "
-                f"({self.phase_seconds[idx]}s)"
-            )
+            info(f"  {phase_name} => {self.phase_results[idx]} " f"({self.phase_seconds[idx]}s)")
 
 
 class ProwlarrAutoIndexerRunner:
@@ -362,9 +359,16 @@ class ProwlarrAutoIndexerRunner:
             failed = int(status.get("failed") or 0)
             conditions = status.get("conditions") or []
 
-            complete = any(c.get("type") == "Complete" and c.get("status") == "True" for c in conditions)
-            failed_condition = any(c.get("type") == "Failed" and c.get("status") == "True" for c in conditions)
-            backoff = any(c.get("reason") == "BackoffLimitExceeded" and c.get("status") == "True" for c in conditions)
+            complete = any(
+                c.get("type") == "Complete" and c.get("status") == "True" for c in conditions
+            )
+            failed_condition = any(
+                c.get("type") == "Failed" and c.get("status") == "True" for c in conditions
+            )
+            backoff = any(
+                c.get("reason") == "BackoffLimitExceeded" and c.get("status") == "True"
+                for c in conditions
+            )
 
             if complete or succeeded >= 1:
                 return
@@ -390,7 +394,9 @@ class ProwlarrAutoIndexerRunner:
                 warn(f"Auto-indexer pod cannot pull bootstrap runner image ({wait_reason}).")
                 if wait_message:
                     warn(f"Image pull message: {wait_message}")
-                warn("Build/push the runner image and retry: bash scripts/build-bootstrap-runner-image.sh")
+                warn(
+                    "Build/push the runner image and retry: bash scripts/build-bootstrap-runner-image.sh"
+                )
                 self._print_failure_context(job_name, selector)
                 raise KubernetesError("Auto-indexer pod failed due to bootstrap image pull error")
 
@@ -401,7 +407,9 @@ class ProwlarrAutoIndexerRunner:
                     last_pending_dump = elapsed
 
                 sched_message = self._pending_scheduling_message(pod)
-                if elapsed >= 20 and re.search(r"persistentvolumeclaim.*not\s+found", sched_message):
+                if elapsed >= 20 and re.search(
+                    r"persistentvolumeclaim.*not\s+found", sched_message
+                ):
                     warn("Auto-indexer pod remained Pending because required PVCs are missing.")
                     warn(f"Scheduling message: {sched_message}")
                     self._print_failure_context(job_name, selector)
@@ -491,4 +499,3 @@ class ProwlarrAutoIndexerRunner:
         )
         if logs.stdout.strip():
             print(logs.stdout.rstrip())
-

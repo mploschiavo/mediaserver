@@ -7,9 +7,17 @@ interface.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
+
+from core.platform_plugin_registry import (
+    available_platform_targets,
+    resolve_platform_plugin,
+)
+from core.platform_plugin_registry import (
+    normalize_platform_target as _normalize_platform_target_from_registry,
+)
 
 InfoFn = Callable[[str], None]
 RunKubectlFn = Callable[..., Any]
@@ -46,6 +54,12 @@ class RebuildPlatformAdapter(Protocol):
     def print_workload_status(self) -> None:
         """Emit final workload status snapshot for diagnostics."""
 
+    def backup_secret_values(self, preserve_secret_on_rebuild: str) -> dict[str, str]:
+        """Backup preserved credentials when target supports secret lifecycle."""
+
+    def restore_secret_values(self, values: dict[str, str]) -> None:
+        """Restore preserved credentials when target supports secret lifecycle."""
+
 
 @dataclass(frozen=True)
 class RebuildPlatformAdapterBuildRequest:
@@ -57,7 +71,9 @@ class RebuildPlatformAdapterBuildRequest:
     ingress_service: object | None = None
     deployments_wait_service: object | None = None
     smoke_test_service: object | None = None
+    secret_preservation_service: object | None = None
     run_kubectl: RunKubectlFn | None = None
+    runtime_artifacts_dir: Path | None = None
     docker_client: object | None = None
     compose_file: Path | None = None
     compose_env_file: Path | None = None
@@ -82,12 +98,7 @@ class RebuildPlatformAdapterBuildRequest:
 
 
 def normalize_platform_target(target: str) -> str:
-    normalized = str(target or "").strip().lower()
-    if normalized in {"k8s", "kubernetes", "microk8s"}:
-        return "k8s"
-    if normalized in {"compose", "docker-compose", "docker_compose"}:
-        return "compose"
-    return normalized
+    return _normalize_platform_target_from_registry(target)
 
 
 def _require_dependency(
@@ -104,84 +115,12 @@ def build_rebuild_platform_adapter(
     request: RebuildPlatformAdapterBuildRequest,
 ) -> RebuildPlatformAdapter:
     resolved_target = normalize_platform_target(request.target)
-
-    if resolved_target == "k8s":
-        from core.kubernetes_rebuild_platform_adapter import (
-            KubernetesRebuildPlatformAdapter,
-            KubernetesRebuildPlatformConfig,
+    plugin = resolve_platform_plugin(resolved_target)
+    if plugin is None:
+        available = ", ".join(available_platform_targets())
+        raise ValueError(
+            f"Unsupported rebuild platform target '{request.target}'. "
+            f"Supported targets: {available}."
         )
-
-        return KubernetesRebuildPlatformAdapter(
-            cfg=KubernetesRebuildPlatformConfig(
-                namespace=request.environment_id,
-                target=resolved_target,
-            ),
-            namespace_service=_require_dependency(
-                request, request.namespace_service, "namespace_service"
-            ),
-            manifest_apply_service=_require_dependency(
-                request, request.manifest_apply_service, "manifest_apply_service"
-            ),
-            ingress_service=_require_dependency(
-                request, request.ingress_service, "ingress_service"
-            ),
-            deployments_wait_service=_require_dependency(
-                request,
-                request.deployments_wait_service,
-                "deployments_wait_service",
-            ),
-            smoke_test_service=_require_dependency(
-                request, request.smoke_test_service, "smoke_test_service"
-            ),
-            info=request.info,
-            run_kubectl=_require_dependency(request, request.run_kubectl, "run_kubectl"),
-        )
-
-    if resolved_target == "compose":
-        from core.compose_rebuild_platform_adapter import (
-            ComposeRebuildPlatformAdapter,
-            ComposeRebuildPlatformConfig,
-        )
-
-        compose_file = request.compose_file
-        if compose_file is None:
-            raise ValueError(
-                "Missing required dependency for platform target "
-                f"'{request.target}': compose_file"
-            )
-
-        return ComposeRebuildPlatformAdapter(
-            cfg=ComposeRebuildPlatformConfig(
-                environment_id=request.environment_id,
-                compose_file=compose_file,
-                compose_env_file=request.compose_env_file,
-                compose_project_name=request.compose_project_name,
-                compose_profiles=tuple(request.compose_profiles or ()),
-                selected_apps=tuple(request.selected_apps or ()),
-                internet_exposed=bool(request.internet_exposed),
-                route_strategy=request.route_strategy,
-                allowed_route_strategies=tuple(request.allowed_route_strategies or ()),
-                app_gateway_host=request.app_gateway_host,
-                app_path_prefix=request.app_path_prefix,
-                media_server_direct_host=request.media_server_direct_host,
-                auth_provider=request.auth_provider,
-                auth_middleware=request.auth_middleware,
-                edge_router_provider=request.edge_router_provider,
-                edge_router_service_names=tuple(request.edge_router_service_names or ()),
-                edge_compose_provider_specs=dict(request.edge_compose_provider_specs or {}),
-                auth_provider_middleware_defaults=dict(
-                    request.auth_provider_middleware_defaults or {}
-                ),
-                media_server_service_names=tuple(request.media_server_service_names or ()),
-                wait_timeout=request.wait_timeout,
-                node_ip=request.node_ip,
-                target=resolved_target,
-            ),
-            info=request.info,
-            docker=_require_dependency(request, request.docker_client, "docker_client"),
-        )
-
-    raise ValueError(
-        f"Unsupported rebuild platform target '{request.target}'. "
-        "Supported targets: k8s, compose."
-    )
+    normalized_request = replace(request, target=resolved_target)
+    return plugin.build_adapter(normalized_request, _require_dependency)

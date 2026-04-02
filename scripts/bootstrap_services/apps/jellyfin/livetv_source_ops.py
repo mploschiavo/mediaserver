@@ -205,13 +205,17 @@ def enrich_xmltv_programmes(
                     logo_url = candidate
                     break
         if not logo_url:
-            logo_url = logo_by_name.get(normalize_name(channel_id)) or logo_by_name.get(
-                normalize_name(channel_id_norm)
-            ) or ""
+            logo_url = (
+                logo_by_name.get(normalize_name(channel_id))
+                or logo_by_name.get(normalize_name(channel_id_norm))
+                or ""
+            )
         if not logo_url and default_icon_url:
             logo_url = default_icon_url
 
-        raw_groups = groups_by_channel.get(channel_id) or groups_by_channel.get(channel_id_norm) or set()
+        raw_groups = (
+            groups_by_channel.get(channel_id) or groups_by_channel.get(channel_id_norm) or set()
+        )
         mapped_categories: list[str] = []
         for group in sorted(raw_groups):
             mapped = category_from_group_title(group)
