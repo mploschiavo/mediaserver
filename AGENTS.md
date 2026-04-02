@@ -16,6 +16,20 @@ Agents and contributors must optimize for:
 
 If a behavior differs between UI and repo code, repo code wins after next reconcile/bootstrap.
 
+## Native Manifest Policy
+- Prefer native Kubernetes YAML and native Docker Compose YAML as the runtime contract.
+- Do not invent bespoke manifest DSLs/schemas when native fields/syntax already express the behavior.
+- Keep platform config close to upstream-native semantics (`apiVersion/kind/spec` for Kubernetes, `services/networks/volumes` for Compose).
+- If higher-level config is needed for orchestration, it must map transparently to native manifests and must not obscure or replace native capability.
+- Avoid custom wrapper keys that duplicate native manifest fields.
+- During refactors, preserve native manifest readability and portability over framework-specific abstractions.
+
+## SDK-First Integration Policy
+- Prefer official, well-maintained vendor SDKs/clients before creating custom APIs, wrappers, or protocol layers.
+- Do not invent bespoke internal APIs when a best-practice SDK already covers the required behavior.
+- If no suitable SDK exists, document the gap and keep any custom adapter minimal, explicit, and easy to replace.
+- New integration abstractions must justify why SDK-first was not possible.
+
 ## Architecture Layers
 - Orchestration entrypoints:
   - Bash wrappers in `scripts/*.sh` (thin only)
@@ -109,12 +123,19 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 ## Bash vs Python Policy
 Keep Bash when it is a tiny, stable wrapper.
 Migrate Bash to Python when logic includes non-trivial branching, loops, parsing, retries, JSON/YAML transforms, or needs tests.
+For Kubernetes and Docker runtime operations, Python SDK adapters are required; do not implement runtime behavior via CLI wrapper scripts.
 
 ## Kubernetes Client Policy
 - Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `scripts/core/kube.py`.
 - Use `KubernetesClient` naming in Python code; do not add new `KubectlClient` imports/usages.
-- Avoid new Python code that shells out to `kubectl` for operations already supported by the API adapter.
-- Keep shell-based `kubectl` usage confined to operator-facing Bash wrappers unless explicitly justified.
+- Do not add new Python code that shells out to `kubectl`; use the Kubernetes API adapter instead.
+- Kubernetes orchestration/runtime behavior must be implemented in Python service/adapters, not CLI command wrappers.
+
+## Docker Client Policy
+- Python Docker helpers must use the official Docker SDK for Python (`docker-py`) through `scripts/core/docker.py` adapter boundaries.
+- Do not add new Python code that shells out to `docker` or `docker compose`; use Docker SDK adapters/services instead.
+- Compose/runtime orchestration must be API/SDK-driven in Python, not wrappers around Docker CLI commands.
+- If an operator-facing shell wrapper exists, it must remain a thin entrypoint and must not be the implementation boundary for runtime logic.
 
 ## Debug Artifact Policy
 - Do not add tracked `*debug*` wrapper/entrypoint files for bootstrap flows.
@@ -174,10 +195,13 @@ Current key test suites:
 4. `black --check scripts tests`
 5. `python3 -m unittest discover -s tests/unit -p 'test_*.py'`
 6. `rg -n "from core.kube import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
-7. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
-8. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" scripts/bootstrap_services scripts/core scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns no matches
-9. `rg -n -i "(jellyfin|jellyseerr|prowlarr|qbittorrent|qbit|sabnzbd|sonarr|radarr|lidarr|readarr|bazarr|unpackerr|maintainerr|tautulli|homepage|plex|emby|flaresolverr)" scripts/cli/*.py` returns no matches
-10. Live bootstrap smoke in cluster:
+7. For modified Python files, verify no new subprocess/shell invocations execute `kubectl`, `docker`, or `docker compose`; use SDK adapters instead.
+8. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
+9. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" scripts/bootstrap_services scripts/core scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns no matches
+10. `rg -n -i "(jellyfin|jellyseerr|prowlarr|qbittorrent|qbit|sabnzbd|sonarr|radarr|lidarr|readarr|bazarr|unpackerr|maintainerr|tautulli|homepage|plex|emby|flaresolverr)" scripts/cli/*.py` returns no matches
+11. For manifest/config changes, confirm no new bespoke manifest DSL was introduced where native Kubernetes/Compose YAML fields would suffice.
+12. For new integrations, confirm official SDK/client options were evaluated and used unless explicitly documented otherwise.
+13. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 
