@@ -57,6 +57,9 @@ Notes:
   - runtime patch file: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
   - replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
   - implementation owner: `scripts/core/platforms/compose/services/traefik_patch_service.py`
+- `envoy` is available as a pluggable edge-provider stub for Compose discovery/validation.
+  - current stub behavior: no compose label rewrites and no Traefik dynamic-file patch generation
+  - selection source: `adapter_hooks.edge.router_provider` in `bootstrap/media-stack.bootstrap.json`
 
 See also:
 - [Bootstrap Profile](bootstrap-profile.md)

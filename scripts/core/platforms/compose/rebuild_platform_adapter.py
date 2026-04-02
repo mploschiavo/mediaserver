@@ -164,7 +164,19 @@ class ComposeRebuildPlatformAdapter:
         self,
         services: dict[str, dict[str, Any]],
     ) -> None:
-        self.traefik_patch_service.apply_dynamic_file_patch(services)
+        result = self.traefik_patch_service.apply_dynamic_file_patch(services)
+        provider = self.label_service.edge_router_provider()
+        if (
+            not result.applied
+            and provider
+            and provider != "none"
+            and not self.label_service.edge_provider_has_compose_label_spec()
+        ):
+            self.info(
+                "Compose edge provider "
+                f"'{provider}' is active with stub/no-op compose label bindings; "
+                "routing labels and dynamic edge patch generation are skipped."
+            )
 
     def delete_environment_optional(self, delete_environment: str) -> bool:
         if delete_environment != "1":

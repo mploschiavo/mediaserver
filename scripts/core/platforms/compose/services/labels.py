@@ -30,6 +30,9 @@ class ComposeLabelService:
     def edge_router_provider(self) -> str:
         return str(self.cfg.edge_router_provider or "").strip().lower()
 
+    def edge_provider_has_compose_label_spec(self) -> bool:
+        return bool(self._edge_provider_spec())
+
     def route_strategy(self) -> str:
         strategy = str(self.cfg.route_strategy or "").strip().lower()
         allowed = tuple(

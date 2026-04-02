@@ -32,11 +32,11 @@ from core.platform_plugin_contract import PlatformPlugin
 from core.platform_plugin_registry import resolve_platform_plugin
 from core.subprocess_utils import CommandResult
 
+from cli import deploy_hook_config_resolver
 from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
     BootstrapNotificationService,
 )
-from cli import deploy_hook_config_resolver
 from cli.deploy_cli_config_service import (
     DeployStackConfig,
     parse_deploy_stack_config,
@@ -711,7 +711,8 @@ class DeployStackRunner:
             provider_spec = dict(
                 self._edge_compose_provider_specs().get(edge_router_provider) or {}
             )
-            if not provider_spec:
+            builtin_provider_keys = set(router_service_names_by_provider().keys())
+            if not provider_spec and edge_router_provider not in builtin_provider_keys:
                 raise DeployError(
                     "Compose edge provider bindings are missing for "
                     f"'{edge_router_provider}'. "
