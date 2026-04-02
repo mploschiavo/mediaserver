@@ -50,6 +50,13 @@ class RunBootstrapJobConfig:
     bootstrap_runner_image: str
     root_dir: Path
     config_file: Path
+    selected_apps: str = ""
+    internet_exposed: bool = False
+    route_strategy: str = "subdomain"
+    ingress_domain: str = "local"
+    app_gateway_host: str = ""
+    app_path_prefix: str = "/app"
+    media_server_direct_host: str = ""
     preconfigure_api_keys: bool = True
     apply_initial_preferences: bool = True
     auto_download_content: bool = False
@@ -195,6 +202,14 @@ def parse_run_bootstrap_job_config(
         or "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
         root_dir=root_dir,
         config_file=Path(str(args.config_file)),
+        selected_apps=str(os.environ.get("SELECTED_APPS", "")).strip(),
+        internet_exposed=env_bool_candidates(("INTERNET_EXPOSED",), False),
+        route_strategy=str(os.environ.get("ROUTE_STRATEGY", "subdomain")).strip().lower()
+        or "subdomain",
+        ingress_domain=str(os.environ.get("INGRESS_DOMAIN", "local")).strip().lower() or "local",
+        app_gateway_host=str(os.environ.get("APP_GATEWAY_HOST", "")).strip(),
+        app_path_prefix=str(os.environ.get("APP_PATH_PREFIX", "/app")).strip() or "/app",
+        media_server_direct_host=str(os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")).strip(),
         preconfigure_api_keys=env_bool_candidates(("PRECONFIGURE_API_KEYS",), True),
         apply_initial_preferences=env_bool_candidates(
             ("APPLY_INITIAL_PREFERENCES", "FULLY_PRECONFIGURED"), True

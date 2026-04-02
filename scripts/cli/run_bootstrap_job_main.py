@@ -317,8 +317,13 @@ class RunBootstrapJobRunner:
             "log_contains": self._log_contains,
         }
 
-    def _invoke_hook(self, hook: Callable[..., None], *, hook_name: str) -> None:
-        context = self._hook_context()
+    def _invoke_hook_with_context(
+        self,
+        hook: Callable[..., None],
+        *,
+        hook_name: str,
+        context: dict[str, object],
+    ) -> None:
         signature = inspect.signature(hook)
         accepts_kwargs = any(
             param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
@@ -341,6 +346,46 @@ class RunBootstrapJobRunner:
                 f"Hook '{hook_name}' requires unsupported parameters: {', '.join(required_missing)}"
             )
         hook(**accepted)
+
+    def _invoke_hook(self, hook: Callable[..., None], *, hook_name: str) -> None:
+        self._invoke_hook_with_context(
+            hook,
+            hook_name=hook_name,
+            context=self._hook_context(),
+        )
+
+    def _runtime_config_policy_handler_spec(self) -> str:
+        hooks = self._bootstrap_job_hooks()
+        spec = str(hooks.get("runtime_config_policy_handler") or "").strip()
+        if spec and ":" not in spec:
+            raise ConfigError(
+                "adapter_hooks.bootstrap_job.runtime_config_policy_handler "
+                "must be module.path:Symbol"
+            )
+        return spec
+
+    def _apply_runtime_config_policy(self, cfg: dict[str, object]) -> None:
+        spec = self._runtime_config_policy_handler_spec()
+        if not spec:
+            raise ConfigError(
+                "adapter_hooks.bootstrap_job.runtime_config_policy_handler must be set"
+            )
+        hook = self._import_hook(spec)
+        self._invoke_hook_with_context(
+            hook,
+            hook_name="apply_runtime_config_policy",
+            context={
+                "cfg": cfg,
+                "selected_apps_csv": self.cfg.selected_apps,
+                "auto_download_content": self.cfg.auto_download_content,
+                "internet_exposed": self.cfg.internet_exposed,
+                "route_strategy": self.cfg.route_strategy,
+                "ingress_domain": self.cfg.ingress_domain,
+                "app_gateway_host": self.cfg.app_gateway_host,
+                "app_path_prefix": self.cfg.app_path_prefix,
+                "media_server_direct_host": self.cfg.media_server_direct_host,
+            },
+        )
 
     def run(self) -> int:
         if not self.cfg.config_file.exists():
@@ -436,44 +481,6 @@ class RunBootstrapJobRunner:
     def ensure_bootstrap_pvc_prereqs(self) -> None:
         self._manifest_service().ensure_bootstrap_pvc_prereqs()
 
-    @staticmethod
-    def _apply_content_download_policy(
-        cfg: dict[str, object], *, auto_download_content: bool
-    ) -> None:
-        download_enabled = bool(auto_download_content)
-
-        arr_discovery_lists = cfg.get("arr_discovery_lists")
-        if isinstance(arr_discovery_lists, dict):
-            arr_discovery_lists["trigger_initial_sync"] = download_enabled
-            for value in arr_discovery_lists.values():
-                if not isinstance(value, list):
-                    continue
-                for item in value:
-                    if not isinstance(item, dict):
-                        continue
-                    for key in (
-                        "enable_auto",
-                        "enable_automatic_add",
-                        "search_on_add",
-                        "should_search",
-                    ):
-                        if key in item:
-                            item[key] = download_enabled
-
-        sonarr_seed_series = cfg.get("sonarr_seed_series")
-        if isinstance(sonarr_seed_series, dict):
-            sonarr_seed_series["enabled"] = download_enabled
-            sonarr_seed_series["search_for_missing_episodes"] = download_enabled
-
-        for request_manager_key in ("jellyseerr", "openseerr"):
-            request_manager_cfg = cfg.get(request_manager_key)
-            if not isinstance(request_manager_cfg, dict):
-                continue
-            for app_key in ("radarr", "sonarr"):
-                app_cfg = request_manager_cfg.get(app_key)
-                if isinstance(app_cfg, dict):
-                    app_cfg["prevent_search"] = not download_enabled
-
     def prepare_bootstrap_job_config(self) -> None:
         payload = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
@@ -482,10 +489,7 @@ class RunBootstrapJobRunner:
             cfg = TopLevelBootstrapConfig.from_dict(payload).to_dict()
         except ValueError as exc:
             raise ConfigError(f"Invalid bootstrap config at {self.cfg.config_file}: {exc}") from exc
-        self._apply_content_download_policy(
-            cfg,
-            auto_download_content=self.cfg.auto_download_content,
-        )
+        self._apply_runtime_config_policy(cfg)
         self.artifacts.job_config_file.write_text(
             json.dumps(cfg, indent=2) + "\n",
             encoding="utf-8",

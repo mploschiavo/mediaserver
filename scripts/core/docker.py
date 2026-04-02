@@ -21,6 +21,7 @@ class DockerContainerState:
     status: str
     health: str
     image: str
+    exit_code: int | None = None
 
 
 @dataclass
@@ -147,4 +148,10 @@ class DockerClient:
             status=str(state.get("Status") or str(getattr(container, "status", "")) or ""),
             health=str(health_payload.get("Status") or ""),
             image=str(image_cfg.get("Image") or ""),
+            exit_code=(
+                int(state.get("ExitCode"))
+                if isinstance(state.get("ExitCode"), int)
+                and not isinstance(state.get("ExitCode"), bool)
+                else None
+            ),
         )

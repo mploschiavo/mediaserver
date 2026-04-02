@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from core.compose_bootstrap_service import ComposeBootstrapConfig, ComposeBootstrapService
 from core.docker import DockerClient
 from core.kube import KubernetesClient
 from core.phase_tracker import PhaseTracker
@@ -226,6 +227,59 @@ class RebuildBootstrapRunner:
             preserve_secret_keys,
         )
 
+    def _bootstrap_job_hooks(self) -> dict[str, object]:
+        cfg = self._resolved_bootstrap_config()
+        adapter_hooks = cfg.get("adapter_hooks")
+        if not isinstance(adapter_hooks, dict):
+            return {}
+        bootstrap_job = adapter_hooks.get("bootstrap_job")
+        if not isinstance(bootstrap_job, dict):
+            return {}
+        return bootstrap_job
+
+    def _runtime_config_policy_handler_spec(self) -> str:
+        hooks = self._bootstrap_job_hooks()
+        spec = str(hooks.get("runtime_config_policy_handler") or "").strip()
+        if spec and ":" not in spec:
+            raise RebuildError(
+                "adapter_hooks.bootstrap_job.runtime_config_policy_handler "
+                "must be module.path:Symbol"
+            )
+        return spec
+
+    def _runtime_config_policy_params(self) -> dict[str, object]:
+        return {
+            "selected_apps_csv": self.cfg.selected_apps,
+            "auto_download_content": self._is_truthy(self.cfg.auto_download_content),
+            "internet_exposed": self._is_truthy(self.cfg.internet_exposed),
+            "route_strategy": self.cfg.route_strategy,
+            "ingress_domain": self.cfg.ingress_domain,
+            "app_gateway_host": self.cfg.app_gateway_host,
+            "app_path_prefix": self.cfg.app_path_prefix,
+            "media_server_direct_host": self.cfg.media_server_direct_host,
+        }
+
+    def _compose_passthrough_env_vars(self) -> tuple[str, ...]:
+        env_vars: list[str] = ["STACK_ADMIN_USERNAME", "STACK_ADMIN_PASSWORD"]
+        hooks = self._bootstrap_job_hooks()
+        secret_targets = hooks.get("secret_priming_targets")
+        if isinstance(secret_targets, dict):
+            for spec in secret_targets.values():
+                if not isinstance(spec, dict):
+                    continue
+                name = str(spec.get("env_var") or "").strip()
+                if name:
+                    env_vars.append(name)
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for raw_name in env_vars:
+            name = str(raw_name or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            deduped.append(name)
+        return tuple(deduped)
+
     def _notification_service(self) -> BootstrapNotificationService:
         return BootstrapNotificationService(
             cfg=BootstrapNotificationConfig(
@@ -339,6 +393,13 @@ class RebuildBootstrapRunner:
                 root_dir=self.cfg.root_dir,
                 prepare_host_root=self.cfg.prepare_host_root,
                 enable_components=self.cfg.enable_components,
+                selected_apps=self.cfg.selected_apps,
+                internet_exposed=self.cfg.internet_exposed,
+                route_strategy=self.cfg.route_strategy,
+                ingress_domain=self.cfg.ingress_domain,
+                app_gateway_host=self.cfg.app_gateway_host,
+                app_path_prefix=self.cfg.app_path_prefix,
+                media_server_direct_host=self.cfg.media_server_direct_host,
                 preconfigure_api_keys=self.cfg.preconfigure_api_keys,
                 apply_initial_preferences=self.cfg.apply_initial_preferences,
                 auto_download_content=self.cfg.auto_download_content,
@@ -346,6 +407,28 @@ class RebuildBootstrapRunner:
             ),
             info=info,
             run_script=self._run_script,
+        )
+
+    def _compose_bootstrap_service(self) -> ComposeBootstrapService:
+        return ComposeBootstrapService(
+            cfg=ComposeBootstrapConfig(
+                namespace=self.cfg.namespace,
+                compose_file=self.cfg.compose_file,
+                compose_env_file=self.cfg.compose_env_file,
+                compose_project_name=self.cfg.compose_project_name,
+                bootstrap_runner_image=self.cfg.bootstrap_runner_image,
+                bootstrap_config_file=self.cfg.config_file,
+                wait_timeout=self.cfg.wait_timeout,
+                purpose=self.cfg.purpose,
+                preconfigure_api_keys=self._is_truthy(self.cfg.preconfigure_api_keys),
+                apply_initial_preferences=self._is_truthy(self.cfg.apply_initial_preferences),
+                auto_download_content=self._is_truthy(self.cfg.auto_download_content),
+                runtime_config_policy_handler=self._runtime_config_policy_handler_spec(),
+                runtime_config_policy_params=self._runtime_config_policy_params(),
+                passthrough_env_vars=self._compose_passthrough_env_vars(),
+            ),
+            info=info,
+            docker=self._docker_client(),
         )
 
     def _smoke_test_service(self) -> RebuildSmokeTestService:
@@ -471,6 +554,8 @@ class RebuildBootstrapRunner:
             info(f"App gateway host: {self.cfg.app_gateway_host}")
         if self.cfg.media_server_direct_host:
             info(f"Media-server direct host: {self.cfg.media_server_direct_host}")
+        if target == "compose":
+            info(f"Compose bootstrap-runner image: {self.cfg.bootstrap_runner_image}")
 
         self.notify(
             "info",
@@ -510,9 +595,15 @@ class RebuildBootstrapRunner:
         self._run_phase("Patch ingress class", self.patch_ingress_class, enabled=is_k8s)
         self._run_phase("Wait for deployments", self.wait_for_deployments)
 
-        if is_k8s and self.cfg.run_bootstrap == "1":
-            self._run_phase("Apply scale-policy guardrails", self.apply_scale_policy_guardrails)
-            self._run_phase("Run bootstrap pipeline", self.run_bootstrap_pipeline)
+        if self.cfg.run_bootstrap == "1":
+            if is_k8s:
+                self._run_phase("Apply scale-policy guardrails", self.apply_scale_policy_guardrails)
+                self._run_phase("Run bootstrap pipeline", self.run_bootstrap_pipeline)
+            else:
+                self._run_phase(
+                    "Apply scale-policy guardrails", self.skip_scale_policy_guardrails, enabled=True
+                )
+                self._run_phase("Run compose bootstrap pipeline", self.run_compose_bootstrap)
         else:
             self._run_phase(
                 "Apply scale-policy guardrails", self.skip_scale_policy_guardrails, enabled=True
@@ -570,6 +661,15 @@ class RebuildBootstrapRunner:
             raise RebuildError("ROUTE_STRATEGY must be one of: subdomain, path-prefix, hybrid.")
         if self.cfg.auth_provider not in {"none", "authelia", "authentik"}:
             raise RebuildError("AUTH_PROVIDER must be one of: none, authelia, authentik.")
+        if self._resolved_platform_target() == "compose" and self.cfg.run_bootstrap == "1":
+            if not self._runtime_config_policy_handler_spec():
+                raise RebuildError(
+                    "Compose bootstrap requires "
+                    "adapter_hooks.bootstrap_job.runtime_config_policy_handler "
+                    "in bootstrap config."
+                )
+        if not str(self.cfg.bootstrap_runner_image or "").strip():
+            raise RebuildError("BOOTSTRAP_RUNNER_IMAGE cannot be empty.")
         if self.cfg.disk_allocation_gb < 200:
             raise RebuildError("STACK_DISK_ALLOCATION_GB must be at least 200.")
         try:
@@ -592,9 +692,6 @@ class RebuildBootstrapRunner:
         self.cfg.include_optional = resolved.include_optional
         self.cfg.enable_components = resolved.enable_components
         self.cfg.run_bootstrap = resolved.run_bootstrap
-        if self._resolved_platform_target() != "k8s" and self.cfg.run_bootstrap == "1":
-            info("Non-k8s platform target selected; forcing RUN_BOOTSTRAP=0.")
-            self.cfg.run_bootstrap = "0"
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
         try:
@@ -683,6 +780,12 @@ class RebuildBootstrapRunner:
 
     def run_bootstrap_pipeline(self) -> None:
         self._pipeline_service().run_bootstrap_pipeline()
+
+    def run_compose_bootstrap(self) -> None:
+        try:
+            self._compose_bootstrap_service().run()
+        except RuntimeError as exc:
+            raise RebuildError(str(exc)) from exc
 
     def skip_bootstrap_pipeline(self) -> None:
         info("Bootstrap skipped by profile/policy.")
