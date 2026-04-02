@@ -69,6 +69,10 @@ class DeployStackConfig:
     auth_provider: str = ""
     auth_middleware: str = ""
     edge_router_provider: str = ""
+    chaos_enabled: str = "0"
+    chaos_duration_minutes: int = 5
+    chaos_interval_seconds: int = 60
+    chaos_actions: str = "restart_container,pause_container,network_disconnect"
     bootstrap_profile_file: Path | None = None
 
 
@@ -149,6 +153,10 @@ def _resolve_profile_defaults(
         "auth_provider": profile.exposure.auth_provider,
         "auth_middleware": profile.exposure.auth_middleware,
         "edge_router_provider": profile.exposure.edge_router_provider,
+        "chaos_enabled": "1" if profile.chaos.enabled else "0",
+        "chaos_duration_minutes": str(profile.chaos.duration_minutes),
+        "chaos_interval_seconds": str(profile.chaos.interval_seconds),
+        "chaos_actions": ",".join(profile.chaos.actions),
         "ingress_domain": ingress_domain,
     }
 
@@ -422,5 +430,29 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         )
         .strip()
         .lower(),
+        chaos_enabled=_pick(
+            _env_value("CHAOS_ENABLED"),
+            profile_defaults.get("chaos_enabled"),
+            default="0",
+        ),
+        chaos_duration_minutes=int(
+            _pick(
+                _env_value("CHAOS_DURATION_MINUTES"),
+                profile_defaults.get("chaos_duration_minutes"),
+                default="5",
+            )
+        ),
+        chaos_interval_seconds=int(
+            _pick(
+                _env_value("CHAOS_INTERVAL_SECONDS"),
+                profile_defaults.get("chaos_interval_seconds"),
+                default="60",
+            )
+        ),
+        chaos_actions=_pick(
+            _env_value("CHAOS_ACTIONS"),
+            profile_defaults.get("chaos_actions"),
+            default="restart_container,pause_container,network_disconnect",
+        ),
         bootstrap_profile_file=profile_path,
     )

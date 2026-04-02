@@ -44,6 +44,7 @@ def _build_adapter(request: object, require_dependency) -> object:
             media_server_service_names=tuple(request.media_server_service_names or ()),
             wait_timeout=request.wait_timeout,
             node_ip=request.node_ip,
+            disk_allocation_gb=int(request.disk_allocation_gb or 500),
             runtime_artifacts_dir=request.runtime_artifacts_dir,
             target=request.target,
         ),
@@ -79,6 +80,7 @@ def _build_runner_request(runner: object, info_fn) -> dict[str, object]:
         "media_server_service_names": runner._media_server_service_names(),
         "wait_timeout": runner.cfg.wait_timeout,
         "node_ip": runner.cfg.node_ip,
+        "disk_allocation_gb": int(runner.cfg.disk_allocation_gb),
         "runtime_artifacts_dir": runner.runtime_artifacts_target_dir("compose"),
     }
 

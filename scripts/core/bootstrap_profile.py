@@ -18,6 +18,7 @@ from core.edge.provider_registry import load_builtin_edge_router_provider_specs
 _DEFAULT_PROFILE_CATALOG_PATH = (
     Path(__file__).resolve().parents[2] / "bootstrap" / "media-stack.bootstrap.catalog.yaml"
 )
+_MIN_PROFILE_DISK_ALLOCATION_GB = 20
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,11 @@ class BootstrapProfileCatalog:
     install_profiles: dict[str, tuple[str, ...]]
     bool_true_tokens: tuple[str, ...]
     bool_false_tokens: tuple[str, ...]
+    chaos_default_enabled: bool
+    chaos_default_duration_minutes: int
+    chaos_default_interval_seconds: int
+    chaos_allowed_actions: tuple[str, ...]
+    chaos_default_actions: tuple[str, ...]
     live_tv_tuner_urls: tuple[str, ...]
     live_tv_guide_urls: tuple[str, ...]
     live_tv_default_program_icon_url: str
@@ -71,6 +77,16 @@ class BootstrapExposureSettings:
 
 
 @dataclass(frozen=True)
+class BootstrapChaosSettings:
+    enabled: bool = False
+    duration_minutes: int = 5
+    interval_seconds: int = 60
+    actions: tuple[str, ...] = field(
+        default_factory=lambda: ("restart_container", "pause_container", "network_disconnect")
+    )
+
+
+@dataclass(frozen=True)
 class BootstrapProfileConfig:
     deployment_target: str
     purpose: str
@@ -88,6 +104,7 @@ class BootstrapProfileConfig:
     live_tv_guide_urls: tuple[str, ...] = field(default_factory=tuple)
     live_tv_default_program_icon_url: str = ""
     exposure: BootstrapExposureSettings = field(default_factory=BootstrapExposureSettings)
+    chaos: BootstrapChaosSettings = field(default_factory=BootstrapChaosSettings)
     source_path: Path | None = None
 
     @property
@@ -127,8 +144,10 @@ class BootstrapProfileConfig:
         purpose_token = _normalize_purpose(metadata.get("purpose"), active_catalog)
 
         disk_allocation_gb = _parse_storage_gb(resources.get("disk_space_gb"))
-        if disk_allocation_gb < 200:
-            raise ValueError("resources.disk_space_gb must be at least 200GB")
+        if disk_allocation_gb < _MIN_PROFILE_DISK_ALLOCATION_GB:
+            raise ValueError(
+                "resources.disk_space_gb must be at least " f"{_MIN_PROFILE_DISK_ALLOCATION_GB}GB"
+            )
         network_cidr = _parse_private_network_cidr(resources.get("network_cidr"))
 
         install_profile = _resolve_install_profile(payload.get("install_profile"), active_catalog)
@@ -235,6 +254,35 @@ class BootstrapProfileConfig:
                 active_catalog.auth_provider_middleware_defaults.get(auth_provider) or ""
             ).strip()
 
+        chaos = payload.get("chaos")
+        if chaos is not None and not isinstance(chaos, dict):
+            raise ValueError("chaos must be an object when provided")
+        chaos = chaos or {}
+        chaos_enabled = _as_bool(
+            chaos.get("enabled"),
+            default=active_catalog.chaos_default_enabled,
+            catalog=active_catalog,
+        )
+        chaos_duration_minutes = _to_positive_int(
+            chaos.get("duration_minutes"),
+            default=active_catalog.chaos_default_duration_minutes,
+            field_name="chaos.duration_minutes",
+            minimum=1,
+            maximum=120,
+        )
+        chaos_interval_seconds = _to_positive_int(
+            chaos.get("interval_seconds"),
+            default=active_catalog.chaos_default_interval_seconds,
+            field_name="chaos.interval_seconds",
+            minimum=0,
+            maximum=3600,
+        )
+        chaos_actions = _normalize_chaos_actions(
+            chaos.get("actions"),
+            allowed=active_catalog.chaos_allowed_actions,
+            default=active_catalog.chaos_default_actions,
+        )
+
         live_tv_defaults = payload.get("live_tv_defaults")
         if live_tv_defaults is not None and not isinstance(live_tv_defaults, dict):
             raise ValueError("live_tv_defaults must be an object when provided")
@@ -285,6 +333,12 @@ class BootstrapProfileConfig:
                 media_server_direct_host=media_server_direct_host,
                 auth_provider=auth_provider,
                 auth_middleware=auth_middleware,
+            ),
+            chaos=BootstrapChaosSettings(
+                enabled=chaos_enabled,
+                duration_minutes=chaos_duration_minutes,
+                interval_seconds=chaos_interval_seconds,
+                actions=chaos_actions,
             ),
             source_path=source_path,
         )
@@ -450,6 +504,42 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
         field_name="boolean_tokens.false",
     )
 
+    chaos_defaults_payload = payload.get("chaos_defaults")
+    if chaos_defaults_payload is None:
+        chaos_defaults_payload = {}
+    if not isinstance(chaos_defaults_payload, dict):
+        raise ValueError("chaos_defaults must be an object when provided")
+    chaos_default_enabled = _as_bool_with_tokens(
+        chaos_defaults_payload.get("enabled"),
+        default=False,
+        true_tokens=bool_true_tokens,
+        false_tokens=bool_false_tokens,
+    )
+    chaos_default_duration_minutes = _to_positive_int(
+        chaos_defaults_payload.get("duration_minutes"),
+        default=5,
+        field_name="chaos_defaults.duration_minutes",
+        minimum=1,
+        maximum=120,
+    )
+    chaos_default_interval_seconds = _to_positive_int(
+        chaos_defaults_payload.get("interval_seconds"),
+        default=60,
+        field_name="chaos_defaults.interval_seconds",
+        minimum=0,
+        maximum=3600,
+    )
+    chaos_allowed_actions = _normalize_string_list_allow_empty(
+        chaos_defaults_payload.get("allowed_actions"),
+        field_name="chaos_defaults.allowed_actions",
+        default=("restart_container", "pause_container", "network_disconnect"),
+    )
+    chaos_default_actions = _normalize_chaos_actions(
+        chaos_defaults_payload.get("actions"),
+        allowed=chaos_allowed_actions,
+        default=chaos_allowed_actions,
+    )
+
     live_tv_defaults = payload.get("live_tv_defaults")
     if not isinstance(live_tv_defaults, dict):
         raise ValueError("live_tv_defaults must be an object")
@@ -485,6 +575,11 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
         install_profiles=install_profiles,
         bool_true_tokens=bool_true_tokens,
         bool_false_tokens=bool_false_tokens,
+        chaos_default_enabled=chaos_default_enabled,
+        chaos_default_duration_minutes=chaos_default_duration_minutes,
+        chaos_default_interval_seconds=chaos_default_interval_seconds,
+        chaos_allowed_actions=chaos_allowed_actions,
+        chaos_default_actions=chaos_default_actions,
         live_tv_tuner_urls=live_tv_tuner_urls,
         live_tv_guide_urls=live_tv_guide_urls,
         live_tv_default_program_icon_url=live_tv_default_program_icon_url,
@@ -541,6 +636,21 @@ def _normalize_app_name(value: Any, catalog: BootstrapProfileCatalog) -> str:
 
 
 def _as_bool(value: Any, *, default: bool, catalog: BootstrapProfileCatalog) -> bool:
+    return _as_bool_with_tokens(
+        value,
+        default=default,
+        true_tokens=catalog.bool_true_tokens,
+        false_tokens=catalog.bool_false_tokens,
+    )
+
+
+def _as_bool_with_tokens(
+    value: Any,
+    *,
+    default: bool,
+    true_tokens: tuple[str, ...],
+    false_tokens: tuple[str, ...],
+) -> bool:
     if isinstance(value, bool):
         return value
     if value is None:
@@ -550,11 +660,82 @@ def _as_bool(value: Any, *, default: bool, catalog: BootstrapProfileCatalog) -> 
     token = str(value).strip().lower()
     if not token:
         return default
-    if token in set(catalog.bool_true_tokens):
+    if token in set(true_tokens):
         return True
-    if token in set(catalog.bool_false_tokens):
+    if token in set(false_tokens):
         return False
     raise ValueError(f"Invalid boolean value '{value}'")
+
+
+def _to_positive_int(
+    value: Any,
+    *,
+    default: int,
+    field_name: str,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if value is None or str(value).strip() == "":
+        return int(default)
+    try:
+        parsed = int(str(value).strip())
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be an integer.") from exc
+    if parsed < minimum or parsed > maximum:
+        raise ValueError(f"{field_name} must be between {minimum} and {maximum}.")
+    return parsed
+
+
+def _normalize_string_list_allow_empty(
+    value: Any,
+    *,
+    field_name: str,
+    default: tuple[str, ...],
+) -> tuple[str, ...]:
+    if value is None:
+        return tuple(default)
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be an array when provided")
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        token = str(raw or "").strip().lower()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return tuple(out) if out else tuple(default)
+
+
+def _normalize_chaos_actions(
+    value: Any,
+    *,
+    allowed: tuple[str, ...],
+    default: tuple[str, ...],
+) -> tuple[str, ...]:
+    allowed_set = set(allowed)
+    if not allowed_set:
+        raise ValueError("chaos allowed-actions cannot be empty")
+    if value is None:
+        return tuple(default)
+    if not isinstance(value, list):
+        raise ValueError("chaos.actions must be an array when provided")
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        token = str(raw or "").strip().lower()
+        if not token or token in seen:
+            continue
+        if token not in allowed_set:
+            allowed_text = ", ".join(sorted(allowed_set))
+            raise ValueError(
+                f"chaos.actions contains unsupported value '{token}'. Allowed: {allowed_text}"
+            )
+        seen.add(token)
+        out.append(token)
+    if not out:
+        return tuple(default)
+    return tuple(out)
 
 
 def _normalize_deployment_target(value: Any, catalog: BootstrapProfileCatalog) -> str:

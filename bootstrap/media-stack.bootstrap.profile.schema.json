@@ -41,9 +41,9 @@
       "required": ["disk_space_gb", "network_cidr"],
       "properties": {
         "disk_space_gb": {
-          "description": "Minimum 200GB. Accepts integer or values like 500GB/1TB.",
+          "description": "Minimum 20GB for constrained local testing. Accepts integer or values like 500GB/1TB.",
           "oneOf": [
-            { "type": "integer", "minimum": 200 },
+            { "type": "integer", "minimum": 20 },
             { "type": "string", "minLength": 1 }
           ]
         },
@@ -74,7 +74,8 @@
         "tautulli": { "type": "boolean" },
         "maintainerr": { "type": "boolean" },
         "unpackerr": { "type": "boolean" },
-        "homepage": { "type": "boolean" }
+        "homepage": { "type": "boolean" },
+        "flaresolverr": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -130,6 +131,23 @@
           "enum": ["none", "authelia", "authentik"]
         },
         "middleware": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "chaos": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "duration_minutes": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "interval_seconds": { "type": "integer", "minimum": 0, "maximum": 3600 },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["restart_container", "pause_container", "network_disconnect"]
+          },
+          "minItems": 1
+        }
       },
       "additionalProperties": false
     },

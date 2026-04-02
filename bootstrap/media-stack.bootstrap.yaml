@@ -41,6 +41,15 @@ auth:
   provider: none
   middleware: ""
 
+chaos:
+  enabled: false
+  duration_minutes: 5
+  interval_seconds: 60
+  actions:
+    - restart_container
+    - pause_container
+    - network_disconnect
+
 # Canonical Live TV defaults currently used by bootstrap config logic.
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u

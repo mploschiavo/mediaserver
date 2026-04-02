@@ -95,6 +95,7 @@ class RebuildPlatformAdapterBuildRequest:
     media_server_service_names: tuple[str, ...] = ()
     wait_timeout: str = "20m"
     node_ip: str = ""
+    disk_allocation_gb: int = 500
 
 
 def normalize_platform_target(target: str) -> str:

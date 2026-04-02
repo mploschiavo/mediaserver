@@ -61,7 +61,7 @@ def _reconcile_permissions_with_helper(
     raw_client = getattr(docker, "client", None) if docker is not None else None
     if raw_client is None:
         return False
-    helper_image = "busybox:latest"
+    helper_image = "busybox:1.36.1"
     command = (
         f"chown -R {uid}:{gid} /target && " "chmod -R u+rwX,g+rwX /target && " "chmod 775 /target"
     )

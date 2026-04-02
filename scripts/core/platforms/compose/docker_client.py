@@ -102,6 +102,12 @@ class DockerClient:
                 f"Failed listing containers for compose project '{project_name}': {exc}"
             ) from exc
 
+    def list_running_containers(self) -> list[Any]:
+        try:
+            return list(self.client.containers.list(all=False))
+        except Exception as exc:
+            raise DockerError(f"Failed listing running containers: {exc}") from exc
+
     def get_container(self, name: str) -> Any | None:
         try:
             return self.client.containers.get(name)
