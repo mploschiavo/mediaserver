@@ -9,7 +9,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from bootstrap_services.maintainerr_service import MaintainerrService  # noqa: E402
+from bootstrap_services.apps.maintainerr.service import MaintainerrService  # noqa: E402
 
 
 class MaintainerrServiceTests(unittest.TestCase):

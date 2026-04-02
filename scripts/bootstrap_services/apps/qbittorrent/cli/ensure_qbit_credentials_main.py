@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from core.exceptions import ConfigError, MediaStackError
-from core.kube import resolve_kubectl_binary
+from core.platforms.kubernetes.kube_client import resolve_kubectl_binary
 
 _TEMP_PASSWORD_RE = re.compile(r"temporary password[^:]*:\s*(.+)$", re.IGNORECASE)
 
@@ -80,11 +80,15 @@ class KubeClient:
         self._prefix = prefix
         self._namespace = namespace
 
-    def run(self, args: Iterable[str], *, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    def run(
+        self, args: Iterable[str], *, check: bool = True, input_text: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         cmd = [*self._prefix, *list(args)]
         return _run(cmd, check=check, input_text=input_text)
 
-    def run_ns(self, args: Iterable[str], *, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    def run_ns(
+        self, args: Iterable[str], *, check: bool = True, input_text: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         cmd = [*self._prefix, "-n", self._namespace, *list(args)]
         return _run(cmd, check=check, input_text=input_text)
 
@@ -125,14 +129,19 @@ def parse_config(argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
 
     return EnsureQbitCredentialsConfig(
         namespace=os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack",
-        secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets").strip() or "media-stack-secrets",
+        secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets").strip()
+        or "media-stack-secrets",
         rollout_timeout=os.environ.get("ROLL_OUT_TIMEOUT", "5m").strip() or "5m",
         qbit_wait_seconds=max(1, int(os.environ.get("QBIT_WAIT_SECONDS", "120"))),
         qbit_deployment=os.environ.get("QBIT_DEPLOYMENT", "qbittorrent").strip() or "qbittorrent",
         qbit_startup_username=str(os.environ.get("QBIT_STARTUP_USERNAME") or "").strip(),
-        force_reset_on_auth_failure=_truthy(os.environ.get("FORCE_RESET_ON_AUTH_FAILURE", "1"), default=True),
+        force_reset_on_auth_failure=_truthy(
+            os.environ.get("FORCE_RESET_ON_AUTH_FAILURE", "1"), default=True
+        ),
         qbit_force_config_sync=_truthy(os.environ.get("QBIT_FORCE_CONFIG_SYNC", "1"), default=True),
-        qbit_strict_login_check=_truthy(os.environ.get("QBIT_STRICT_LOGIN_CHECK", "0"), default=False),
+        qbit_strict_login_check=_truthy(
+            os.environ.get("QBIT_STRICT_LOGIN_CHECK", "0"), default=False
+        ),
         qbit_api_validation=_truthy(os.environ.get("QBIT_API_VALIDATION", "0"), default=False),
     )
 
@@ -178,7 +187,9 @@ def build_secret_patch(creds: CredentialResolution) -> dict[str, dict[str, str]]
     return {"stringData": string_data}
 
 
-def patch_secret(kube: KubeClient, cfg: EnsureQbitCredentialsConfig, patch: dict[str, object]) -> None:
+def patch_secret(
+    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, patch: dict[str, object]
+) -> None:
     kube.run_ns(
         [
             "patch",
@@ -192,7 +203,9 @@ def patch_secret(kube: KubeClient, cfg: EnsureQbitCredentialsConfig, patch: dict
     )
 
 
-def qbit_login_in_pod(kube: KubeClient, cfg: EnsureQbitCredentialsConfig, username: str, password: str) -> bool:
+def qbit_login_in_pod(
+    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, username: str, password: str
+) -> bool:
     proc = kube.run_ns(
         [
             "exec",
@@ -315,7 +328,9 @@ def try_inpod_reconcile_with_auth(
     return False
 
 
-def rollout_restart_and_wait(kube: KubeClient, cfg: EnsureQbitCredentialsConfig, *, reason: str) -> None:
+def rollout_restart_and_wait(
+    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, *, reason: str
+) -> None:
     print(f"[INFO] Restarting deploy/{cfg.qbit_deployment} after {reason}")
     kube.run_ns(["rollout", "restart", f"deploy/{cfg.qbit_deployment}"])
     proc = kube.run_ns(
@@ -363,7 +378,9 @@ def generate_qbit_pbkdf2_hash(password: str) -> str:
     return f"@ByteArray({salt_b64}:{digest_b64})"
 
 
-def sync_qbit_auth_config(kube: KubeClient, cfg: EnsureQbitCredentialsConfig, *, username: str, pbkdf2_hash: str) -> None:
+def sync_qbit_auth_config(
+    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, *, username: str, pbkdf2_hash: str
+) -> None:
     proc = kube.run_ns(
         [
             "exec",
@@ -403,7 +420,9 @@ fi
     rollout_restart_and_wait(kube, cfg, reason="config sync")
 
 
-def extract_temp_password_from_logs(kube: KubeClient, cfg: EnsureQbitCredentialsConfig, pod_name: str | None) -> str:
+def extract_temp_password_from_logs(
+    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, pod_name: str | None
+) -> str:
     logs: list[str] = []
     if pod_name:
         proc = kube.run_ns(["logs", pod_name, "--tail=300"], check=False)
@@ -526,17 +545,24 @@ def run(cfg: EnsureQbitCredentialsConfig) -> int:
 
     if config_sync_done and not cfg.qbit_api_validation and not cfg.qbit_strict_login_check:
         if qbit_login_in_pod(kube, cfg, creds.qb_user, creds.qb_pass):
-            print("[INFO] qB API validation disabled (QBIT_API_VALIDATION=0); relying on deterministic config sync.")
+            print(
+                "[INFO] qB API validation disabled (QBIT_API_VALIDATION=0); relying on deterministic config sync."
+            )
             print("[OK] qBittorrent credentials have been applied from secret via config-as-code.")
             return 0
-        print("[WARN] Deterministic config sync completed but in-pod login still failed; continuing with recovery flow.")
+        print(
+            "[WARN] Deterministic config sync completed but in-pod login still failed; continuing with recovery flow."
+        )
 
     if qbit_login_in_pod(kube, cfg, creds.qb_user, creds.qb_pass):
         print("[OK] qBittorrent WebUI credentials reconciled to secret values.")
         return 0
 
     if config_sync_done and not cfg.qbit_strict_login_check:
-        print("[WARN] qB API validation still failed, but config sync has been applied.", file=sys.stderr)
+        print(
+            "[WARN] qB API validation still failed, but config sync has been applied.",
+            file=sys.stderr,
+        )
         print(
             "[WARN] Continuing non-strict mode; downstream bootstrap will verify qB connectivity from inside cluster.",
             file=sys.stderr,

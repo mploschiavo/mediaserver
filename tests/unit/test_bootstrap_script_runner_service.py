@@ -22,9 +22,7 @@ class BootstrapScriptRunnerServiceTests(unittest.TestCase):
             script.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
             script.chmod(0o755)
 
-            svc = BootstrapScriptRunnerService(
-                cfg=BootstrapScriptRunnerConfig(root_dir=root)
-            )
+            svc = BootstrapScriptRunnerService(cfg=BootstrapScriptRunnerConfig(root_dir=root))
             svc.run_script("ok.sh")
 
     def test_run_script_raises_on_failure(self):
@@ -36,9 +34,7 @@ class BootstrapScriptRunnerServiceTests(unittest.TestCase):
             script.write_text("#!/usr/bin/env bash\nexit 7\n", encoding="utf-8")
             script.chmod(0o755)
 
-            svc = BootstrapScriptRunnerService(
-                cfg=BootstrapScriptRunnerConfig(root_dir=root)
-            )
+            svc = BootstrapScriptRunnerService(cfg=BootstrapScriptRunnerConfig(root_dir=root))
             with self.assertRaises(RuntimeError):
                 svc.run_script("fail.sh")
 

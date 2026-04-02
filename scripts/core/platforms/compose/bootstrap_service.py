@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 
-from core.docker import DockerClient
+from core.platforms.compose.docker_client import DockerClient
 
 InfoFn = Callable[[str], None]
 
@@ -222,7 +222,16 @@ class ComposeBootstrapService:
         )
         self.docker.ping()
         self.docker.ensure_network(network_name)
-        self.docker.pull_image(self.cfg.bootstrap_runner_image)
+        try:
+            self.docker.pull_image(self.cfg.bootstrap_runner_image)
+        except Exception:
+            if self.docker.image_exists(self.cfg.bootstrap_runner_image):
+                self.info(
+                    "Compose bootstrap: pull failed; using local image "
+                    f"'{self.cfg.bootstrap_runner_image}'."
+                )
+            else:
+                raise
         self.docker.remove_container(container_name, force=True)
 
         try:

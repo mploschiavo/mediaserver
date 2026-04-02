@@ -64,6 +64,22 @@ class RunUnitTestsMainTests(unittest.TestCase):
         self.assertEqual(cfg.timeout_seconds, 9.5)
         self.assertEqual(cfg.root_dir, ROOT)
 
+    def test_main_ensures_repo_and_scripts_are_on_sys_path(self):
+        repo_root = str(ROOT)
+        scripts_root = str(ROOT / "scripts")
+        trimmed_path = [item for item in sys.path if item not in {repo_root, scripts_root}]
+
+        with (
+            mock.patch.object(sys, "path", trimmed_path),
+            mock.patch("cli.run_unit_tests_main.run_discovered_unit_tests") as run_mock,
+        ):
+            run_mock.return_value = (0, [])
+            rc = main(["--verbosity", "0"])
+            self.assertIn(repo_root, sys.path)
+            self.assertIn(scripts_root, sys.path)
+
+        self.assertEqual(rc, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

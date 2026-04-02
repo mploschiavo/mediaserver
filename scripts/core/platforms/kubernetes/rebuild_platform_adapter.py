@@ -28,6 +28,12 @@ class SmokeTestService(Protocol):
     def run_smoke_test(self) -> str: ...
 
 
+class SecretPreservationService(Protocol):
+    def backup_existing_values(self, preserve_secret_on_rebuild: str) -> dict[str, str]: ...
+
+    def restore_values(self, values: dict[str, str]) -> None: ...
+
+
 @dataclass(frozen=True)
 class KubernetesRebuildPlatformConfig:
     namespace: str
@@ -42,6 +48,7 @@ class KubernetesRebuildPlatformAdapter:
     ingress_service: IngressService
     deployments_wait_service: DeploymentsWaitService
     smoke_test_service: SmokeTestService
+    secret_preservation_service: SecretPreservationService
     info: InfoFn
     run_kubectl: RunKubectlFn
     environment: PlatformEnvironmentRef = field(init=False)
@@ -74,3 +81,9 @@ class KubernetesRebuildPlatformAdapter:
     def print_workload_status(self) -> None:
         self.info("Final pod status:")
         self.run_kubectl(["-n", self.cfg.namespace, "get", "pods"])
+
+    def backup_secret_values(self, preserve_secret_on_rebuild: str) -> dict[str, str]:
+        return self.secret_preservation_service.backup_existing_values(preserve_secret_on_rebuild)
+
+    def restore_secret_values(self, values: dict[str, str]) -> None:
+        self.secret_preservation_service.restore_values(values)

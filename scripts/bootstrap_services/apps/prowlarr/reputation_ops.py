@@ -42,10 +42,7 @@ def save_reputation_state(service, path: Path, state: dict[str, Any]) -> bool:
         path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
         return True
     except Exception as exc:
-        service.log(
-            "[WARN] Auto indexer reputation: failed persisting state "
-            f"to {path}: {exc}"
-        )
+        service.log("[WARN] Auto indexer reputation: failed persisting state " f"to {path}: {exc}")
         return False
 
 
@@ -120,11 +117,14 @@ def auto_add_tested_indexers(
             candidates.append(schema)
 
     configured_excludes = coerce_exclude_name_tokens(exclude_name_tokens)
-    env_excludes = coerce_exclude_name_tokens(os.environ.get("AUTO_INDEXER_EXCLUDE_NAME_TOKENS", ""))
+    env_excludes = coerce_exclude_name_tokens(
+        os.environ.get("AUTO_INDEXER_EXCLUDE_NAME_TOKENS", "")
+    )
     exclude_tokens = list(dict.fromkeys(configured_excludes + env_excludes))
     if exclude_tokens:
         service.log(
-            "[INFO] Auto indexer: excluding candidates matching name tokens: " + ", ".join(exclude_tokens)
+            "[INFO] Auto indexer: excluding candidates matching name tokens: "
+            + ", ".join(exclude_tokens)
         )
 
     reputation_cfg = dict(reputation_cfg or {})
@@ -148,8 +148,12 @@ def auto_add_tested_indexers(
     untested_fallback_max_add = int(reputation_cfg.get("untested_fallback_max_add", 5))
     if untested_fallback_max_add <= 0:
         untested_fallback_max_add = 5
-    configured_untested_tokens = coerce_exclude_name_tokens(reputation_cfg.get("untested_fallback_name_tokens"))
-    env_untested_tokens = coerce_exclude_name_tokens(os.environ.get("AUTO_INDEXER_UNTESTED_FALLBACK_NAME_TOKENS", ""))
+    configured_untested_tokens = coerce_exclude_name_tokens(
+        reputation_cfg.get("untested_fallback_name_tokens")
+    )
+    env_untested_tokens = coerce_exclude_name_tokens(
+        os.environ.get("AUTO_INDEXER_UNTESTED_FALLBACK_NAME_TOKENS", "")
+    )
     untested_name_tokens = list(dict.fromkeys(configured_untested_tokens + env_untested_tokens))
     untested_fallback_added = 0
 
@@ -193,7 +197,9 @@ def auto_add_tested_indexers(
         service.log(f"[WARN] Auto indexer: quarantined {name} (score={score}, failures={failures})")
         existing_item = existing_by_key.get(reputation_key(str(impl), str(name)))
         if existing_item and bool(existing_item.get("enable", True)):
-            if set_indexer_enabled(service, prowlarr_url, prowlarr_key, existing_item, enabled=False):
+            if set_indexer_enabled(
+                service, prowlarr_url, prowlarr_key, existing_item, enabled=False
+            ):
                 service.log(f"[OK] Auto indexer: disabled quarantined indexer {name}")
 
     heartbeat_every = int(os.environ.get("AUTO_INDEXER_HEARTBEAT_EVERY", "25"))
@@ -277,8 +283,8 @@ def auto_add_tested_indexers(
                 rep["failures"] = int(rep.get("failures") or 0) + 1
                 rep["last_failure_epoch"] = now_epoch
                 maybe_quarantine(str(impl), str(name), rep)
-            allow_fallback_for_name = (
-                not untested_name_tokens or any(token in str(name).lower() for token in untested_name_tokens)
+            allow_fallback_for_name = not untested_name_tokens or any(
+                token in str(name).lower() for token in untested_name_tokens
             )
             allow_fallback = (
                 allow_untested_fallback
@@ -353,4 +359,3 @@ def auto_add_tested_indexers(
         f"untested_fallback_added={untested_fallback_added}, "
         f"quarantined_now={quarantined_now}"
     )
-

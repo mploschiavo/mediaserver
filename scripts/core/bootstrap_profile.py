@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from core.auth.provider_registry import merge_auth_provider_defaults
+
 _DEFAULT_PROFILE_CATALOG_PATH = (
     Path(__file__).resolve().parents[2] / "bootstrap" / "media-stack.bootstrap.catalog.yaml"
 )
@@ -335,7 +337,7 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
             f"(got '{auth_disabled_provider}')"
         )
     raw_auth_defaults = payload.get("auth_provider_middleware_defaults")
-    auth_provider_middleware_defaults: dict[str, str] = {}
+    normalized_auth_defaults: dict[str, str] = {}
     if raw_auth_defaults is not None:
         if not isinstance(raw_auth_defaults, dict):
             raise ValueError("auth_provider_middleware_defaults must be an object")
@@ -348,9 +350,11 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
                     "auth_provider_middleware_defaults contains unknown provider "
                     f"'{provider_key}'"
                 )
-            auth_provider_middleware_defaults[provider_key] = str(raw_middleware or "").strip()
-    for provider_key in auth_providers:
-        auth_provider_middleware_defaults.setdefault(provider_key, "")
+            normalized_auth_defaults[provider_key] = str(raw_middleware or "").strip()
+    auth_provider_middleware_defaults = merge_auth_provider_defaults(
+        provider_keys=auth_providers,
+        catalog_defaults=normalized_auth_defaults,
+    )
 
     apps_payload = payload.get("apps")
     if not isinstance(apps_payload, dict):

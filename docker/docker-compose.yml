@@ -15,6 +15,8 @@ services:
   traefik:
     image: traefik@sha256:74d72c7a1345984f186bddbabcc462b2128d0d8054177dc84afaeac4db1f0f56
     container_name: traefik
+    environment:
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION}
     command:
       - --api.dashboard=true
       - --api.insecure=true

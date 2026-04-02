@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from core.kubernetes_rebuild_platform_adapter import (  # noqa: E402
+from core.platforms.kubernetes.rebuild_platform_adapter import (  # noqa: E402
     KubernetesRebuildPlatformAdapter,
     KubernetesRebuildPlatformConfig,
 )
@@ -21,6 +21,7 @@ class KubernetesRebuildPlatformAdapterTests(unittest.TestCase):
             ingress_service=mock.Mock(),
             deployments_wait_service=mock.Mock(),
             smoke_test_service=mock.Mock(),
+            secret_preservation_service=mock.Mock(),
             info=mock.Mock(),
             run_kubectl=mock.Mock(),
         )
@@ -63,6 +64,21 @@ class KubernetesRebuildPlatformAdapterTests(unittest.TestCase):
         adapter.print_workload_status()
         adapter.info.assert_called_once_with("Final pod status:")
         adapter.run_kubectl.assert_called_once_with(["-n", "media-dev", "get", "pods"])
+
+    def test_backup_secret_values_delegates(self):
+        adapter = self._adapter()
+        adapter.secret_preservation_service.backup_existing_values.return_value = {
+            "STACK_ADMIN_USERNAME": "admin"
+        }
+        values = adapter.backup_secret_values("1")
+        self.assertEqual(values, {"STACK_ADMIN_USERNAME": "admin"})
+        adapter.secret_preservation_service.backup_existing_values.assert_called_once_with("1")
+
+    def test_restore_secret_values_delegates(self):
+        adapter = self._adapter()
+        values = {"STACK_ADMIN_PASSWORD": "pass"}
+        adapter.restore_secret_values(values)
+        adapter.secret_preservation_service.restore_values.assert_called_once_with(values)
 
 
 if __name__ == "__main__":

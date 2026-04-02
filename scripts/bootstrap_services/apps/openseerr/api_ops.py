@@ -85,9 +85,7 @@ def ensure_jellyfin_settings(
         svc.log("[OK] Jellyseerr: configured Jellyfin connection")
         return
 
-    raise RuntimeError(
-        f"Jellyseerr: failed to configure Jellyfin settings (HTTP {status}): {body}"
-    )
+    raise RuntimeError(f"Jellyseerr: failed to configure Jellyfin settings (HTTP {status}): {body}")
 
 
 def ensure_radarr(
@@ -167,9 +165,7 @@ def ensure_radarr(
         jellyseerr_url, "/api/v1/settings/radarr", api_key=jellyseerr_key
     )
     if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(
-            f"Jellyseerr: failed to list Radarr settings (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Jellyseerr: failed to list Radarr settings (HTTP {status}): {body}")
 
     current = svc.find_existing_servarr(
         existing,
@@ -194,9 +190,7 @@ def ensure_radarr(
         if status in (200, 201, 202):
             svc.log("[OK] Jellyseerr: updated Radarr service mapping")
             return
-        raise RuntimeError(
-            f"Jellyseerr: failed updating Radarr mapping (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Jellyseerr: failed updating Radarr mapping (HTTP {status}): {body}")
 
     status, _, body = svc.http_request(
         jellyseerr_url,
@@ -272,9 +266,7 @@ def ensure_sonarr(
         else svc.to_int(sonarr_cfg.get("active_language_profile_id"))
     )
 
-    active_anime_profile = svc.choose_profile(
-        profiles, sonarr_cfg.get("active_anime_profile_id")
-    )
+    active_anime_profile = svc.choose_profile(profiles, sonarr_cfg.get("active_anime_profile_id"))
     active_anime_language_profile = svc.choose_profile(
         language_profiles,
         sonarr_cfg.get("active_anime_language_profile_id"),
@@ -335,9 +327,7 @@ def ensure_sonarr(
         jellyseerr_url, "/api/v1/settings/sonarr", api_key=jellyseerr_key
     )
     if status != 200 or not isinstance(existing, list):
-        raise RuntimeError(
-            f"Jellyseerr: failed to list Sonarr settings (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Jellyseerr: failed to list Sonarr settings (HTTP {status}): {body}")
 
     current = svc.find_existing_servarr(
         existing,
@@ -362,9 +352,7 @@ def ensure_sonarr(
         if status in (200, 201, 202):
             svc.log("[OK] Jellyseerr: updated Sonarr service mapping")
             return
-        raise RuntimeError(
-            f"Jellyseerr: failed updating Sonarr mapping (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Jellyseerr: failed updating Sonarr mapping (HTTP {status}): {body}")
 
     status, _, body = svc.http_request(
         jellyseerr_url,
@@ -377,4 +365,3 @@ def ensure_sonarr(
         svc.log("[OK] Jellyseerr: created Sonarr service mapping")
         return
     raise RuntimeError(f"Jellyseerr: failed creating Sonarr mapping (HTTP {status}): {body}")
-

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.exceptions import ConfigError, MediaStackError
-from core.kube import resolve_kubectl_binary
+from core.platforms.kubernetes.kube_client import resolve_kubectl_binary
 
 SECRET_KEY_DEFAULTS: dict[str, str] = {
     "STACK_ADMIN_USERNAME": "",

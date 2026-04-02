@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from core.exceptions import KubernetesError
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 LogFn = Callable[[str], None]
 NowFn = Callable[[], int]
@@ -73,9 +73,7 @@ class BootstrapJobWaitService:
         return result.stdout or ""
 
     def _heartbeat(self, job_name: str, selector: str, elapsed: int) -> None:
-        self.info(
-            f"Waiting on job/{job_name} (elapsed {elapsed}s, timeout {self.cfg.timeout_raw})"
-        )
+        self.info(f"Waiting on job/{job_name} (elapsed {elapsed}s, timeout {self.cfg.timeout_raw})")
         job_table = self.kube.run(
             [
                 "-n",
@@ -218,12 +216,10 @@ class BootstrapJobWaitService:
             failed = int(status.get("failed") or 0)
             conditions = status.get("conditions") or []
             complete = any(
-                c.get("type") == "Complete" and c.get("status") == "True"
-                for c in conditions
+                c.get("type") == "Complete" and c.get("status") == "True" for c in conditions
             )
             failed_condition = any(
-                c.get("type") == "Failed" and c.get("status") == "True"
-                for c in conditions
+                c.get("type") == "Failed" and c.get("status") == "True" for c in conditions
             )
             backoff = any(
                 c.get("reason") == "BackoffLimitExceeded" and c.get("status") == "True"

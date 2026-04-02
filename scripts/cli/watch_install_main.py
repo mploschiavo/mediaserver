@@ -47,7 +47,9 @@ def parse_config(argv: list[str] | None = None) -> WatchInstallConfig:
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
     parser.add_argument("--interval", type=int, default=int(os.environ.get("INTERVAL", "10")))
     parser.add_argument("--event-lines", type=int, default=int(os.environ.get("EVENT_LINES", "15")))
-    parser.add_argument("--job-log-lines", type=int, default=int(os.environ.get("JOB_LOG_LINES", "20")))
+    parser.add_argument(
+        "--job-log-lines", type=int, default=int(os.environ.get("JOB_LOG_LINES", "20"))
+    )
     parser.add_argument("--once", action="store_true", default=False)
     args = parser.parse_args(argv)
 
@@ -222,4 +224,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

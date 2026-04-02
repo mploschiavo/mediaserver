@@ -52,11 +52,7 @@ def _find_key_block_bounds(lines, start: int, end: int, key: str) -> Tuple[int, 
             #   enabled_providers:
             #   - opensubtitlescom
             # so we must also consume sibling-indented list items (`"  -"`).
-            if (
-                line.startswith("    ")
-                or line.startswith("  -")
-                or line.strip() == ""
-            ):
+            if line.startswith("    ") or line.startswith("  -") or line.strip() == "":
                 block_end += 1
                 continue
             break

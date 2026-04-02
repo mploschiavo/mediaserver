@@ -56,4 +56,3 @@ class CheckpointStateStore:
             entry["details"] = details
         phases[str(phase_name)] = entry
         self.save()
-

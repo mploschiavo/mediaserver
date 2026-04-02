@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 
-def resolve_schema_contract(service, prowlarr_url: str, prowlarr_key: str, implementation: str) -> dict[str, Any]:
+def resolve_schema_contract(
+    service, prowlarr_url: str, prowlarr_key: str, implementation: str
+) -> dict[str, Any]:
     status, data, body = service.http_request(
         prowlarr_url,
         "/api/v1/applications/schema",
@@ -54,7 +56,9 @@ def ensure_application(
     app_key: str,
 ) -> None:
     schema = resolve_schema_contract(service, prowlarr_url, prowlarr_key, implementation)
-    current = find_existing_application(service, prowlarr_url, prowlarr_key, implementation, app_url)
+    current = find_existing_application(
+        service, prowlarr_url, prowlarr_key, implementation, app_url
+    )
 
     values = service.field_map(schema.get("fields"))
     values["baseUrl"] = app_url
@@ -125,5 +129,6 @@ def trigger_sync(service, prowlarr_url: str, prowlarr_key: str) -> None:
     if status in (200, 201, 202):
         service.log("[OK] Prowlarr: triggered ApplicationIndexerSync")
         return
-    raise RuntimeError(f"Prowlarr: failed to trigger ApplicationIndexerSync (HTTP {status}): {body}")
-
+    raise RuntimeError(
+        f"Prowlarr: failed to trigger ApplicationIndexerSync (HTTP {status}): {body}"
+    )

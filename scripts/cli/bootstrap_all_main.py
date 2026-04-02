@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.exceptions import ConfigError, KubernetesError
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 from core.state_store import CheckpointStateStore
 
 from cli.bootstrap_component_resolver import (

@@ -331,9 +331,7 @@ class MaintainerrRuleTranslationService:
             )
         result_raw = data.get("result")
         if not isinstance(result_raw, str) or not result_raw.strip():
-            raise RuntimeError(
-                f"Maintainerr: YAML decode returned empty result for '{base_name}'."
-            )
+            raise RuntimeError(f"Maintainerr: YAML decode returned empty result for '{base_name}'.")
         try:
             decoded = json.loads(result_raw)
         except Exception as exc:
@@ -367,7 +365,9 @@ class MaintainerrRuleTranslationService:
     ) -> list[dict[str, str]]:
         requested_library_id = self._text(rule.get("libraryId") or rule.get("library_id"))
         if requested_library_id:
-            matches = [lib for lib in libraries if self._text(lib.get("id")) == requested_library_id]
+            matches = [
+                lib for lib in libraries if self._text(lib.get("id")) == requested_library_id
+            ]
             if not matches:
                 self.deps.log(
                     f"[WARN] Maintainerr: library id '{requested_library_id}' not found for rule '{rule_name}'."
@@ -394,7 +394,9 @@ class MaintainerrRuleTranslationService:
                 rule.get("dataType") or rule.get("mediaType")
             )
             if requested_media_type:
-                typed = [lib for lib in libraries if self._token(lib.get("type")) == requested_media_type]
+                typed = [
+                    lib for lib in libraries if self._token(lib.get("type")) == requested_media_type
+                ]
                 if typed:
                     return typed
             return libraries
@@ -514,7 +516,9 @@ class MaintainerrRuleTranslationService:
                 "notifications": json.loads(json.dumps(notifications)),
                 "collection": self._default_collection_config(
                     name=rule_name,
-                    overrides=rule.get("collection") if isinstance(rule.get("collection"), dict) else None,
+                    overrides=(
+                        rule.get("collection") if isinstance(rule.get("collection"), dict) else None
+                    ),
                 ),
             }
             if cron_schedule:

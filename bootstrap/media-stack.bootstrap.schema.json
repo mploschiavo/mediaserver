@@ -520,6 +520,10 @@
           },
           "additionalProperties": true
         },
+        "edge": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "microk8s_reconcile": {
           "type": "object",
           "required": ["phase_plan", "optional_deployments", "optional_manifest_paths"],

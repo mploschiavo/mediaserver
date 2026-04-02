@@ -22,8 +22,8 @@ This directory intentionally contains both:
 - Shared orchestration scripts must remain technology-neutral.
 - Runtime hook overrides are limited to event handlers, phase plans, bootstrap wrapper phase-script maps, and scale-policy/worker lists in `adapter_hooks`.
 - Concrete lifecycle events (`RunnerEvent`) drive orchestration; technologies provide handler bindings per event.
-- Legacy operator shell entrypoint names remain for backward compatibility (`ensure-qbit-credentials.sh`, etc.),
-  but app implementation modules live under `scripts/bootstrap_services/apps/<app>/cli/`.
+- Operator shell entrypoints are thin wrappers, and app implementation modules live under
+  `scripts/bootstrap_services/apps/<app>/cli/`.
 
 ## Stable Operator Entrypoints
 
@@ -47,17 +47,6 @@ This directory intentionally contains both:
 Playwright split:
 - `run-playwright-smoke.sh` -> fast ingress/UX assertions only
 - `run-playwright-screenshots.sh` -> screenshot artifact generation
-
-## Deprecated (Sunset Path)
-
-- `backup-configs.sh`
-  - Deprecated in favor of `backup-stack.sh` (full stack backup + secret export).
-- `post-install-checklist.sh`
-  - Deprecated in favor of `docs/first-run-wiring.md` and `docs/operations.md`.
-
-These scripts remain for backward compatibility and emit deprecation warnings.
-
----
 
 **Project Steward**
 Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)

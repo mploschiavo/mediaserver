@@ -67,7 +67,9 @@ class ArrIndexerSyncService:
             api_key=prowlarr_key,
         )
         if status != 200 or not isinstance(payload, list):
-            raise RuntimeError(f"Prowlarr: failed reading indexers for sync (HTTP {status}): {body}")
+            raise RuntimeError(
+                f"Prowlarr: failed reading indexers for sync (HTTP {status}): {body}"
+            )
 
         expected_names = {
             self._prowlarr_indexer_name(item)
@@ -76,7 +78,9 @@ class ArrIndexerSyncService:
         }
         expected_names = {name for name in expected_names if name}
 
-        prowlarr_host = str(prowlarr_url or "").split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        prowlarr_host = (
+            str(prowlarr_url or "").split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        )
         summary = {
             "apps": 0,
             "stale_found": 0,
@@ -91,10 +95,7 @@ class ArrIndexerSyncService:
             if not app_name or not app_url:
                 continue
             api_key = str(
-                app_keys.get(app_name)
-                or app_keys.get(impl)
-                or app_keys.get(impl.lower())
-                or ""
+                app_keys.get(app_name) or app_keys.get(impl) or app_keys.get(impl.lower()) or ""
             ).strip()
             if not api_key:
                 self.log(f"[WARN] {app_name}: missing API key for stale indexer reconciliation")
@@ -125,7 +126,9 @@ class ArrIndexerSyncService:
                 idx_id = item.get("id")
                 if not prune_stale:
                     summary["stale_kept"] += 1
-                    self.log(f"[WARN] {app_name}: stale Prowlarr-linked indexer kept (dry-run): {name}")
+                    self.log(
+                        f"[WARN] {app_name}: stale Prowlarr-linked indexer kept (dry-run): {name}"
+                    )
                     continue
                 if idx_id in (None, ""):
                     summary["stale_kept"] += 1
@@ -153,4 +156,3 @@ class ArrIndexerSyncService:
             f"stale_removed={summary['stale_removed']}, stale_kept={summary['stale_kept']}"
         )
         return summary
-

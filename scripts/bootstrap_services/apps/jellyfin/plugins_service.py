@@ -108,7 +108,9 @@ class JellyfinPluginsService:
             d.log("[OK] Jellyfin plugins: repositories updated")
             return
 
-        raise RuntimeError(f"Jellyfin plugins: failed updating repositories (HTTP {status}): {body}")
+        raise RuntimeError(
+            f"Jellyfin plugins: failed updating repositories (HTTP {status}): {body}"
+        )
 
     def find_package(
         self,

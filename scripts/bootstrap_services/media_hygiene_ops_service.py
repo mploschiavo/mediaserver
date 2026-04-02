@@ -74,4 +74,3 @@ class MediaHygieneOpsService:
         qb_password: str,
     ) -> dict[str, Any]:
         return run_qbit_queue_guardrails(self, qbit_cfg, qb_username, qb_password)
-

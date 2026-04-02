@@ -37,9 +37,7 @@ def _load_adapter_class_from_spec(spec: str) -> AdapterClass:
     if not inspect.isclass(adapter_cls):
         raise TypeError(f"Download-client adapter spec '{raw}' does not resolve to a class.")
     if not issubclass(adapter_cls, DownloadClientAdapterBase):
-        raise TypeError(
-            f"Download-client adapter '{raw}' must inherit DownloadClientAdapterBase."
-        )
+        raise TypeError(f"Download-client adapter '{raw}' must inherit DownloadClientAdapterBase.")
     return adapter_cls
 
 

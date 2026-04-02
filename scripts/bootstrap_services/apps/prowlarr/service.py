@@ -121,4 +121,6 @@ class ProwlarrService:
         exclude_name_tokens: list[str] | None = None,
         reputation_cfg: dict[str, Any] | None = None,
     ) -> None:
-        auto_add_tested_indexers(self, prowlarr_url, prowlarr_key, exclude_name_tokens, reputation_cfg)
+        auto_add_tested_indexers(
+            self, prowlarr_url, prowlarr_key, exclude_name_tokens, reputation_cfg
+        )

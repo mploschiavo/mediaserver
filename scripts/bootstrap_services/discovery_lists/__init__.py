@@ -13,4 +13,3 @@ __all__ = [
     "ensure_arr_discovery_lists_for_app",
     "trigger_arr_discovery_kickoff",
 ]
-

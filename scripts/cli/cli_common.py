@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from core.exceptions import MediaStackError
-from core.kube import resolve_kubectl_binary
+from core.platforms.kubernetes.kube_client import resolve_kubectl_binary
 
 
 def run_command(

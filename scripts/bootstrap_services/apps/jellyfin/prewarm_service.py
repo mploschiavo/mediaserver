@@ -65,10 +65,14 @@ class JellyfinPrewarmService:
     def _extract_epub_cover_bytes(epub_path: Path) -> bytes | None:
         return extract_epub_cover_bytes(epub_path)
 
-    def _resolve_books_root_path(self, sidecar_cfg: dict[str, Any]) -> tuple[Path | None, list[Path]]:
+    def _resolve_books_root_path(
+        self, sidecar_cfg: dict[str, Any]
+    ) -> tuple[Path | None, list[Path]]:
         return resolve_books_root_path(self, sidecar_cfg)
 
-    def _resolve_music_root_path(self, sidecar_cfg: dict[str, Any]) -> tuple[Path | None, list[Path]]:
+    def _resolve_music_root_path(
+        self, sidecar_cfg: dict[str, Any]
+    ) -> tuple[Path | None, list[Path]]:
         return resolve_music_root_path(self, sidecar_cfg)
 
     def _ensure_book_sidecar_artwork(self, prewarm_cfg: dict[str, Any]) -> None:

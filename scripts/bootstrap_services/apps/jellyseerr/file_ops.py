@@ -30,9 +30,7 @@ def configure_via_settings_file(
             raise RuntimeError(
                 "Jellyseerr file bootstrap: jellyfin.configure=true but Jellyfin API key could not be resolved."
             )
-        parsed_jf = svc.parse_service_url(
-            jellyfin_cfg.get("url", "http://jellyfin:8096"), 8096
-        )
+        parsed_jf = svc.parse_service_url(jellyfin_cfg.get("url", "http://jellyfin:8096"), 8096)
         jf = settings.setdefault("jellyfin", {})
         jf["name"] = jellyfin_cfg.get("name", "Jellyfin")
         jf["ip"] = parsed_jf["hostname"]

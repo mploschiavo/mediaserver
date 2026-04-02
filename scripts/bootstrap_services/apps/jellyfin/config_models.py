@@ -80,8 +80,16 @@ class JellyfinLiveTvConfig:
         src = dict(data or {})
         tuners_raw = src.get("tuners") or []
         guides_raw = src.get("guides") or []
-        tuners = [JellyfinLiveTvTunerConfig.from_dict(item) for item in tuners_raw if isinstance(item, dict)]
-        guides = [JellyfinLiveTvGuideConfig.from_dict(item) for item in guides_raw if isinstance(item, dict)]
+        tuners = [
+            JellyfinLiveTvTunerConfig.from_dict(item)
+            for item in tuners_raw
+            if isinstance(item, dict)
+        ]
+        guides = [
+            JellyfinLiveTvGuideConfig.from_dict(item)
+            for item in guides_raw
+            if isinstance(item, dict)
+        ]
         return cls(
             enabled=bool(src.get("enabled", False)),
             required=bool(src.get("required", False)),
@@ -189,9 +197,14 @@ class JellyfinBookSidecarArtworkConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "JellyfinBookSidecarArtworkConfig":
         src = dict(data or {})
         roots = src.get("books_root_paths")
-        root_list = [str(x).strip() for x in roots if str(x).strip()] if isinstance(roots, list) else []
+        root_list = (
+            [str(x).strip() for x in roots if str(x).strip()] if isinstance(roots, list) else []
+        )
         if src.get("books_root_path"):
-            root_list = [str(src.get("books_root_path")).strip(), *[x for x in root_list if x != str(src.get("books_root_path")).strip()]]
+            root_list = [
+                str(src.get("books_root_path")).strip(),
+                *[x for x in root_list if x != str(src.get("books_root_path")).strip()],
+            ]
         return cls(
             enabled=bool(src.get("enabled", True)),
             books_root_path=str(src.get("books_root_path", "/srv-stack/media/books")).strip(),
@@ -199,9 +212,14 @@ class JellyfinBookSidecarArtworkConfig:
             output_filename=str(src.get("output_filename", "folder.jpg")).strip() or "folder.jpg",
             replace_existing=bool(src.get("replace_existing", False)),
             write_per_book_sidecars=bool(src.get("write_per_book_sidecars", True)),
-            per_book_output_extension=str(src.get("per_book_output_extension", ".jpg")).strip() or ".jpg",
-            preferred_filenames=[str(x).strip() for x in (src.get("preferred_filenames") or []) if str(x).strip()],
-            image_extensions=[str(x).strip() for x in (src.get("image_extensions") or []) if str(x).strip()],
+            per_book_output_extension=str(src.get("per_book_output_extension", ".jpg")).strip()
+            or ".jpg",
+            preferred_filenames=[
+                str(x).strip() for x in (src.get("preferred_filenames") or []) if str(x).strip()
+            ],
+            image_extensions=[
+                str(x).strip() for x in (src.get("image_extensions") or []) if str(x).strip()
+            ],
             max_books_per_run=int(src.get("max_books_per_run", 500) or 500),
             raw=src,
         )
@@ -224,18 +242,29 @@ class JellyfinMusicSidecarArtworkConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "JellyfinMusicSidecarArtworkConfig":
         src = dict(data or {})
         roots = src.get("music_root_paths")
-        root_list = [str(x).strip() for x in roots if str(x).strip()] if isinstance(roots, list) else []
+        root_list = (
+            [str(x).strip() for x in roots if str(x).strip()] if isinstance(roots, list) else []
+        )
         if src.get("music_root_path"):
-            root_list = [str(src.get("music_root_path")).strip(), *[x for x in root_list if x != str(src.get("music_root_path")).strip()]]
+            root_list = [
+                str(src.get("music_root_path")).strip(),
+                *[x for x in root_list if x != str(src.get("music_root_path")).strip()],
+            ]
         return cls(
             enabled=bool(src.get("enabled", True)),
             music_root_path=str(src.get("music_root_path", "/srv-stack/media/music")).strip(),
             music_root_paths=root_list,
             output_filename=str(src.get("output_filename", "folder.jpg")).strip() or "folder.jpg",
             replace_existing=bool(src.get("replace_existing", False)),
-            preferred_filenames=[str(x).strip() for x in (src.get("preferred_filenames") or []) if str(x).strip()],
-            image_extensions=[str(x).strip() for x in (src.get("image_extensions") or []) if str(x).strip()],
-            audio_extensions=[str(x).strip() for x in (src.get("audio_extensions") or []) if str(x).strip()],
+            preferred_filenames=[
+                str(x).strip() for x in (src.get("preferred_filenames") or []) if str(x).strip()
+            ],
+            image_extensions=[
+                str(x).strip() for x in (src.get("image_extensions") or []) if str(x).strip()
+            ],
+            audio_extensions=[
+                str(x).strip() for x in (src.get("audio_extensions") or []) if str(x).strip()
+            ],
             max_albums_per_run=int(src.get("max_albums_per_run", 1000) or 1000),
             raw=src,
         )
@@ -263,7 +292,9 @@ class JellyfinMetadataBackfillConfig:
             libraries=[str(x).strip() for x in (src.get("libraries") or []) if str(x).strip()],
             refresh_missing_primary_image=bool(src.get("refresh_missing_primary_image", True)),
             refresh_missing_overview=bool(src.get("refresh_missing_overview", True)),
-            refresh_collection_folder_images=bool(src.get("refresh_collection_folder_images", True)),
+            refresh_collection_folder_images=bool(
+                src.get("refresh_collection_folder_images", True)
+            ),
             max_refresh_per_library=int(src.get("max_refresh_per_library", 80) or 80),
             sample_multiplier=int(src.get("sample_multiplier", 4) or 4),
             refresh_query=dict(src.get("refresh_query") or {}),
@@ -346,6 +377,8 @@ class JellyfinPrewarmConfig:
             book_sidecar_artwork_typed=JellyfinBookSidecarArtworkConfig.from_dict(book_sidecar),
             music_sidecar_artwork_typed=JellyfinMusicSidecarArtworkConfig.from_dict(music_sidecar),
             metadata_backfill_typed=JellyfinMetadataBackfillConfig.from_dict(metadata_backfill),
-            artwork_health_check_typed=JellyfinArtworkHealthCheckConfig.from_dict(artwork_health_check),
+            artwork_health_check_typed=JellyfinArtworkHealthCheckConfig.from_dict(
+                artwork_health_check
+            ),
             raw=src,
         )

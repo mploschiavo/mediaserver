@@ -50,14 +50,22 @@ def parse_config(argv: list[str] | None = None) -> BuildBootstrapRunnerImageConf
         prog="scripts/build-bootstrap-runner-image.sh",
         description="Build bootstrap-runner image used by k8s/bootstrap-job.yaml and CronJobs.",
     )
-    parser.add_argument("--image", default=os.environ.get("BOOTSTRAP_RUNNER_IMAGE", "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest"))
+    parser.add_argument(
+        "--image",
+        default=os.environ.get(
+            "BOOTSTRAP_RUNNER_IMAGE",
+            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+        ),
+    )
     push_default = _truthy(os.environ.get("PUSH_IMAGE"), True)
     parser.add_argument("--push", dest="push_image", action="store_true", default=push_default)
     parser.add_argument("--no-push", dest="push_image", action="store_false")
     parser.add_argument("--engine", default=os.environ.get("CONTAINER_ENGINE", ""))
     parser.add_argument(
         "--dockerfile",
-        default=os.environ.get("DOCKERFILE", str(root_dir / "docker" / "bootstrap-runner.Dockerfile")),
+        default=os.environ.get(
+            "DOCKERFILE", str(root_dir / "docker" / "bootstrap-runner.Dockerfile")
+        ),
     )
     args = parser.parse_args(argv)
 

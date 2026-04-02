@@ -78,7 +78,9 @@ class JellyseerrService:
         radarr_api_key: str,
         jelly_cfg: dict[str, Any],
     ) -> None:
-        _ops.ensure_radarr(self, jellyseerr_url, jellyseerr_key, radarr_app_cfg, radarr_api_key, jelly_cfg)
+        _ops.ensure_radarr(
+            self, jellyseerr_url, jellyseerr_key, radarr_app_cfg, radarr_api_key, jelly_cfg
+        )
 
     def ensure_sonarr(
         self,
@@ -88,7 +90,9 @@ class JellyseerrService:
         sonarr_api_key: str,
         jelly_cfg: dict[str, Any],
     ) -> None:
-        _ops.ensure_sonarr(self, jellyseerr_url, jellyseerr_key, sonarr_app_cfg, sonarr_api_key, jelly_cfg)
+        _ops.ensure_sonarr(
+            self, jellyseerr_url, jellyseerr_key, sonarr_app_cfg, sonarr_api_key, jelly_cfg
+        )
 
     def configure_via_settings_file(
         self,

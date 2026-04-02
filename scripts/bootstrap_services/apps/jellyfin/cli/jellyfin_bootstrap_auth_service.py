@@ -35,7 +35,9 @@ class JellyfinBootstrapAuthService:
             payload=payload,
             headers=headers,
         )
-        return bool(status == 200 and isinstance(data, dict) and str(data.get("AccessToken") or "").strip())
+        return bool(
+            status == 200 and isinstance(data, dict) and str(data.get("AccessToken") or "").strip()
+        )
 
     def authenticate_with_credentials(self, base_url: str, username: str, password: str):
         headers = {
@@ -211,7 +213,9 @@ class JellyfinBootstrapAuthService:
     def try_authenticate_jellyfin(self, base_url: str, username: str, password: str):
         token, user_id, status, _ = self._authenticate_jellyfin(base_url, username, password)
         if not token:
-            self.warn(f"Jellyfin authentication with stack admin credentials failed (HTTP {status}).")
+            self.warn(
+                f"Jellyfin authentication with stack admin credentials failed (HTTP {status})."
+            )
             return None
         self.info("Jellyfin authentication succeeded with stack admin credentials.")
         return token, user_id

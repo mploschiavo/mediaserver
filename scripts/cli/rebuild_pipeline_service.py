@@ -27,6 +27,9 @@ class RebuildPipelineConfig:
     apply_initial_preferences: str
     auto_download_content: str
     config_file: Path
+    auth_provider: str = ""
+    auth_middleware: str = ""
+    edge_router_provider: str = ""
 
 
 @dataclass
@@ -76,6 +79,9 @@ class RebuildPipelineService:
                 "APP_GATEWAY_HOST": self.cfg.app_gateway_host,
                 "APP_PATH_PREFIX": self.cfg.app_path_prefix,
                 "MEDIA_SERVER_DIRECT_HOST": self.cfg.media_server_direct_host,
+                "AUTH_PROVIDER": self.cfg.auth_provider,
+                "AUTH_MIDDLEWARE": self.cfg.auth_middleware,
+                "EDGE_ROUTER_PROVIDER": self.cfg.edge_router_provider,
                 "PRECONFIGURE_API_KEYS": self.cfg.preconfigure_api_keys,
                 "APPLY_INITIAL_PREFERENCES": self.cfg.apply_initial_preferences,
                 "FULLY_PRECONFIGURED": self.cfg.apply_initial_preferences,

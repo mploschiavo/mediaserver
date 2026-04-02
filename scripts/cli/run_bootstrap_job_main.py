@@ -14,7 +14,7 @@ from typing import Callable
 
 from bootstrap_services.top_level_config_model import TopLevelBootstrapConfig
 from core.exceptions import ConfigError, MediaStackError
-from core.kube import KubernetesClient
+from core.platforms.kubernetes.kube_client import KubernetesClient
 
 from cli.bootstrap_component_resolver import resolve_bootstrap_component_plan
 from cli.bootstrap_core_phases_service import (

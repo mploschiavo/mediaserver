@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 
 from core.exceptions import ConfigError, MediaStackError
-from core.kube import resolve_kubectl_binary
+from core.platforms.kubernetes.kube_client import resolve_kubectl_binary
 
 
 @dataclass(frozen=True)

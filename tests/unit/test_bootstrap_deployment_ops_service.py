@@ -60,7 +60,9 @@ class BootstrapDeploymentOpsServiceTests(unittest.TestCase):
         svc.restart_deployment("jellyfin", timeout_seconds=30)
         called = [" ".join(call) for call in kube.calls]
         self.assertTrue(any("rollout restart deployment/jellyfin" in c for c in called))
-        self.assertTrue(any("rollout status deployment/jellyfin --timeout=30s" in c for c in called))
+        self.assertTrue(
+            any("rollout status deployment/jellyfin --timeout=30s" in c for c in called)
+        )
 
 
 if __name__ == "__main__":

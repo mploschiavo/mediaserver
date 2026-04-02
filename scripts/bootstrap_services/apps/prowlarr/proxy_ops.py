@@ -41,11 +41,11 @@ def ensure_flaresolverr_proxy(
         api_key=prowlarr_key,
     )
     if status != 200 or not isinstance(schema_list, list):
-        raise RuntimeError(
-            f"Prowlarr: failed to read indexer proxy schema (HTTP {status}): {body}"
-        )
+        raise RuntimeError(f"Prowlarr: failed to read indexer proxy schema (HTTP {status}): {body}")
 
-    schema = next((item for item in schema_list if item.get("implementation") == "FlareSolverr"), None)
+    schema = next(
+        (item for item in schema_list if item.get("implementation") == "FlareSolverr"), None
+    )
     if not schema:
         raise RuntimeError("Prowlarr: FlareSolverr proxy schema not available.")
 
@@ -89,7 +89,9 @@ def ensure_flaresolverr_proxy(
             payload=payload,
         )
         if status not in (200, 201, 202):
-            raise RuntimeError(f"Prowlarr: failed updating FlareSolverr proxy (HTTP {status}): {body}")
+            raise RuntimeError(
+                f"Prowlarr: failed updating FlareSolverr proxy (HTTP {status}): {body}"
+            )
         resolved_proxy = response_data if isinstance(response_data, dict) else dict(payload)
         service.log(f"[OK] Prowlarr: updated FlareSolverr proxy '{proxy_name}' ({host})")
     else:
@@ -101,7 +103,9 @@ def ensure_flaresolverr_proxy(
             payload=payload,
         )
         if status not in (200, 201, 202):
-            raise RuntimeError(f"Prowlarr: failed creating FlareSolverr proxy (HTTP {status}): {body}")
+            raise RuntimeError(
+                f"Prowlarr: failed creating FlareSolverr proxy (HTTP {status}): {body}"
+            )
         resolved_proxy = response_data if isinstance(response_data, dict) else dict(payload)
         service.log(f"[OK] Prowlarr: created FlareSolverr proxy '{proxy_name}' ({host})")
 
@@ -119,4 +123,3 @@ def ensure_flaresolverr_proxy(
         service.log("[OK] Prowlarr: FlareSolverr proxy connection test passed")
         return
     raise RuntimeError(f"Prowlarr: FlareSolverr proxy test failed (HTTP {status}): {body}")
-

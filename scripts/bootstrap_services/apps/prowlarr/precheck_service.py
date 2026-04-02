@@ -48,4 +48,3 @@ class ProwlarrPrecheckService:
                 raise
             self.log(f"[WARN] Prowlarr: auth bootstrap skipped ({exc})")
         return prowlarr_api_base
-

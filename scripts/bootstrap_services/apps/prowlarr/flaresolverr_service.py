@@ -40,4 +40,3 @@ class ProwlarrFlareSolverrService:
         payload_cfg = dict(flaresolverr_cfg)
         payload_cfg["url"] = flaresolverr_url
         self.ensure_proxy(prowlarr_url, prowlarr_key, payload_cfg)
-

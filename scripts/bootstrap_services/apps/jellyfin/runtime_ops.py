@@ -64,7 +64,9 @@ def _jellyfin_service(cfg=None) -> JellyfinService:
 
 
 def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
-    service_cls = resolve_app_service_class("jellyfin_livetv_source_service", JellyfinLiveTvSourceService)
+    service_cls = resolve_app_service_class(
+        "jellyfin_livetv_source_service", JellyfinLiveTvSourceService
+    )
     return service_cls(
         coerce_list=coerce_list,
         candidate_config_roots=candidate_config_roots,
@@ -74,7 +76,9 @@ def _jellyfin_livetv_source_service(cfg=None) -> JellyfinLiveTvSourceService:
 
 
 def _jellyfin_livetv_state_service(cfg=None) -> JellyfinLiveTvStateService:
-    service_cls = resolve_app_service_class("jellyfin_livetv_state_service", JellyfinLiveTvStateService)
+    service_cls = resolve_app_service_class(
+        "jellyfin_livetv_state_service", JellyfinLiveTvStateService
+    )
     return service_cls(
         coerce_list=coerce_list,
         resolve_path=resolve_path,

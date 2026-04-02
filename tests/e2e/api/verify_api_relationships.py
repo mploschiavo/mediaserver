@@ -407,9 +407,7 @@ class Runner:
             try:
                 prewarm_cfg = self.cfg.get("jellyfin_prewarm") or {}
                 health_cfg = (
-                    prewarm_cfg.get("artwork_health_check")
-                    if isinstance(prewarm_cfg, dict)
-                    else {}
+                    prewarm_cfg.get("artwork_health_check") if isinstance(prewarm_cfg, dict) else {}
                 )
                 if not isinstance(health_cfg, dict):
                     health_cfg = {}
@@ -443,9 +441,15 @@ class Runner:
                                 continue
                             name = str(library.get("Name") or "").strip()
                             item_id = str(library.get("ItemId") or "").strip()
-                            collection_type = str(library.get("CollectionType") or "").strip().lower()
+                            collection_type = (
+                                str(library.get("CollectionType") or "").strip().lower()
+                            )
                             name_key = name.lower()
-                            if selected and collection_type not in selected and name_key not in selected:
+                            if (
+                                selected
+                                and collection_type not in selected
+                                and name_key not in selected
+                            ):
                                 continue
                             if not item_id:
                                 continue
@@ -464,10 +468,9 @@ class Runner:
                             )
                             rows = (
                                 payload.get("Items")
-                                if isinstance(payload, dict) and isinstance(payload.get("Items"), list)
-                                else payload
-                                if isinstance(payload, list)
-                                else []
+                                if isinstance(payload, dict)
+                                and isinstance(payload.get("Items"), list)
+                                else payload if isinstance(payload, list) else []
                             )
                             valid_rows = [row for row in rows if isinstance(row, dict)]
                             if not valid_rows:
@@ -497,10 +500,9 @@ class Runner:
                         )
                         live_rows = (
                             live_payload.get("Items")
-                            if isinstance(live_payload, dict) and isinstance(live_payload.get("Items"), list)
-                            else live_payload
-                            if isinstance(live_payload, list)
-                            else []
+                            if isinstance(live_payload, dict)
+                            and isinstance(live_payload.get("Items"), list)
+                            else live_payload if isinstance(live_payload, list) else []
                         )
                         valid_live = [row for row in live_rows if isinstance(row, dict)]
                         if not valid_live:
@@ -515,9 +517,7 @@ class Runner:
                                 f"{coverage:.1f}% ({with_art}/{len(valid_live)})"
                             )
                             if coverage < fail_below and required:
-                                self._fail(
-                                    summary + f" below required threshold {fail_below:.1f}%"
-                                )
+                                self._fail(summary + f" below required threshold {fail_below:.1f}%")
                             elif coverage < warn_below:
                                 self._warn(summary + f" below warning threshold {warn_below:.1f}%")
                             else:

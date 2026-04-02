@@ -136,7 +136,9 @@ class ArrQueueCleanupService:
             )
             if self.normalize_token(x)
         ]
-        page_size = self.to_int(app_overrides.get("page_size"), self.to_int(queue_cfg.get("page_size"), 250))
+        page_size = self.to_int(
+            app_overrides.get("page_size"), self.to_int(queue_cfg.get("page_size"), 250)
+        )
         if page_size is None or page_size <= 0:
             page_size = 250
         max_delete = self.to_int(

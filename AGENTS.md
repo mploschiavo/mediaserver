@@ -53,6 +53,16 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Avoid custom wrapper keys that duplicate native manifest fields.
 - During refactors, preserve native manifest readability and portability over framework-specific abstractions.
 
+## Runtime Artifact Replay Contract
+- Each rebuild/bootstrap run must emit target-separated runtime artifacts under `.state/runtime-artifacts/<run-id>/`.
+- Kubernetes runs must capture the resolved YAML payloads actually applied to the cluster (post-override values), plus minimal metadata for replay/audit.
+- Compose runs must capture:
+  - fully expanded Compose YAML (resolved env substitutions),
+  - selected/runtime Compose YAML used for deployment decisions,
+  - deployment plan metadata (project, service order, routing/auth posture).
+- Runtime artifacts must be organized by target (`kubernetes/`, `compose/`) and be reusable for replay, troubleshooting, and future migration work.
+- Logging must include artifact root/file paths for operator visibility, but must never print secret values or token contents.
+
 ## SDK-First Integration Policy
 - Prefer official, well-maintained vendor SDKs/clients before creating custom APIs, wrappers, or protocol layers.
 - Do not invent bespoke internal APIs when a best-practice SDK already covers the required behavior.
@@ -70,6 +80,13 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
   - `scripts/bootstrap_lib/`
 - Cross-cutting infrastructure helpers:
   - `scripts/core/`
+- Platform-specific runtime/adapters:
+  - `scripts/core/platforms/kubernetes/**`
+  - `scripts/core/platforms/compose/**`
+- Auth provider implementations:
+  - `scripts/core/auth/providers/<provider>/**`
+- Edge/router provider implementations:
+  - `scripts/core/edge/providers/<provider>/**`
 - Shell shared helpers:
   - `scripts/lib/`
 
@@ -117,8 +134,12 @@ Swapping deployment platforms/runtimes must be platform-local and config-driven,
 Primary binding points:
 - `platform_target` / `PLATFORM_TARGET` in rebuild CLI config (`scripts/cli/rebuild_cli_config_service.py`)
 - platform adapter factory in `scripts/core/platform_adapter.py`
-- platform adapter modules implementing `RebuildPlatformAdapter` (for example `scripts/core/kubernetes_rebuild_platform_adapter.py`, `scripts/core/compose_rebuild_platform_adapter.py`)
-- SDK/runtime adapters in `scripts/core/` (for example `kube.py`, `docker.py`)
+- platform adapter modules implementing `RebuildPlatformAdapter`:
+  - `scripts/core/platforms/kubernetes/**`
+  - `scripts/core/platforms/compose/**`
+- SDK/runtime adapters live under their platform folders:
+  - `scripts/core/platforms/kubernetes/kube_client.py`
+  - `scripts/core/platforms/compose/docker_client.py`
 
 Swap workflow:
 1. Add a new platform adapter module that implements the shared platform interface.
@@ -132,6 +153,16 @@ Swap workflow:
 - Do not add new target-specific branching in orchestration phases when behavior can live inside a platform adapter.
 - If adding/swapping a platform requires broad edits across shared orchestration modules, treat it as a design bug and refactor behind adapter boundaries before merge.
 - Prefer additive target plugins/adapters over mutating existing targets.
+- `scripts/core/platform_adapter.py` must remain a plugin discovery/dispatch layer only.
+  - Do not hardcode target branches like `if target == "k8s"` / `if target == "compose"` in this shared module.
+  - Resolve targets through plugin registry discovery under `scripts/core/platforms/*/plugin.py`.
+- `scripts/cli/rebuild_and_bootstrap_main.py` must not import platform-specific modules directly.
+  - It must bind to platform behavior via shared contracts/registry only.
+- Hard folder boundary for platform implementations:
+  - Kubernetes-specific Python code must live under `scripts/core/platforms/kubernetes/**`.
+  - Compose/Docker-specific Python code must live under `scripts/core/platforms/compose/**`.
+  - Shared `scripts/core/**` modules must stay platform-neutral and must not embed target-specific constants/branches.
+  - A platform swap should be achievable by adding/removing one platform folder plus declarative bindings, without editing unrelated platform folders.
 - Keep isolation on separate axes:
   - deployment target (`k8s`, `compose`, future targets)
   - container runtime (`docker`, `containerd`, future runtimes)
@@ -143,6 +174,14 @@ Swap workflow:
 - Reverse-proxy routing and auth provider wiring must be declarative and pluggable, not hard-coded into app services.
 - Shared orchestration must not embed provider-specific branches like `if auth_provider == ...`; use provider adapter bindings.
 - Shared orchestration must not embed provider allow-lists like `{none, authelia, authentik}`; allowed providers must come from declarative config/catalog.
+- Hard folder boundary for edge providers:
+  - Provider-specific implementation must live under `scripts/core/edge/providers/<provider>/**`.
+  - Shared modules may load providers via discovery/registry (`scripts/core/edge/provider_registry.py`), but must not hardcode provider behavior inline.
+  - Adding/removing an edge provider should primarily be folder add/delete + config updates.
+- Hard folder boundary for auth providers:
+  - Provider-specific implementation must live under `scripts/core/auth/providers/<provider>/**`.
+  - Shared modules may load providers via discovery/registry, but must not hardcode provider behavior inline.
+  - Adding/removing an auth provider should primarily be folder add/delete + config updates.
 - Route strategy (`subdomain` vs `path-prefix`) must be configurable and provider-agnostic.
 - Preserve device-critical direct host support for media servers (for example Jellyfin native TV/mobile clients) even when consolidated path-prefix routing is enabled for browser apps.
 - Default security posture for internet exposure:
@@ -198,19 +237,28 @@ Swap workflow:
 - Singleton-heavy designs
 - Abstract interfaces with one implementation and no boundary value
 
+## File Size And Decomposition Policy
+- Avoid monolithic source files across the entire repo.
+- For hand-written project files (Python, shell, YAML/JSON manifests, and configs), target `<= 500` lines per file.
+- Soft limit: `600` lines. If a change pushes a file above this, split cohesive domains into package-local modules/services in the same change.
+- Hard ceiling: avoid introducing or expanding non-generated files above `900` lines.
+- Existing oversized files are refactor debt: do not increase them, and prefer shrinking/splitting them whenever touched.
+- Prefer Kubernetes-style decomposition for platform code: small orchestration adapters plus service/helper modules grouped by concern.
+- If an exception is temporarily unavoidable, document owner + follow-up milestone in the same PR/commit message and schedule immediate extraction.
+
 ## Bash vs Python Policy
 Keep Bash when it is a tiny, stable wrapper.
 Migrate Bash to Python when logic includes non-trivial branching, loops, parsing, retries, JSON/YAML transforms, or needs tests.
 For Kubernetes and Docker runtime operations, Python SDK adapters are required; do not implement runtime behavior via CLI wrapper scripts.
 
 ## Kubernetes Client Policy
-- Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `scripts/core/kube.py`.
+- Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `scripts/core/platforms/kubernetes/kube_client.py`.
 - Use `KubernetesClient` naming in Python code; do not add new `KubectlClient` imports/usages.
 - Do not add new Python code that shells out to `kubectl`; use the Kubernetes API adapter instead.
 - Kubernetes orchestration/runtime behavior must be implemented in Python service/adapters, not CLI command wrappers.
 
 ## Docker Client Policy
-- Python Docker helpers must use the official Docker SDK for Python (`docker-py`) through `scripts/core/docker.py` adapter boundaries.
+- Python Docker helpers must use the official Docker SDK for Python (`docker-py`) through `scripts/core/platforms/compose/docker_client.py` adapter boundaries.
 - Do not add new Python code that shells out to `docker` or `docker compose`; use Docker SDK adapters/services instead.
 - Compose/runtime orchestration must be API/SDK-driven in Python, not wrappers around Docker CLI commands.
 - If an operator-facing shell wrapper exists, it must remain a thin entrypoint and must not be the implementation boundary for runtime logic.
@@ -279,7 +327,7 @@ Current key test suites:
 3. `ruff check scripts tests`
 4. `black --check scripts tests`
 5. `python3 -m unittest discover -s tests/unit -p 'test_*.py'`
-6. `rg -n "from core.kube import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
+6. `rg -n "from core.platforms.kubernetes.kube_client import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
 7. For modified Python files, verify no new subprocess/shell invocations execute `kubectl`, `docker`, or `docker compose`; use SDK adapters instead.
 8. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
 9. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" scripts/bootstrap_services scripts/core scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns no matches
@@ -288,9 +336,14 @@ Current key test suites:
 12. For new integrations, confirm official SDK/client options were evaluated and used unless explicitly documented otherwise.
 13. For platform/auth/routing changes, verify bindings remain declarative (target/runtime/router/auth provider) and no new provider-specific branching appears in shared orchestration modules.
 14. `rg -n -i "(traefik|authelia|authentik|nginx|caddy)" scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns only declarative adapter/binding definitions (no hardcoded provider branching or allow-lists).
-15. Live bootstrap smoke in cluster:
+15. `rg -n "if\\s+.*\\b(k8s|kubernetes|compose|docker-compose)\\b" scripts/core/platform_adapter.py scripts/cli/rebuild_and_bootstrap_main.py` returns no shared-orchestration hardcoded platform branches.
+16. `rg -n "from core\\.platforms\\.(kubernetes|compose)" scripts/cli/rebuild_and_bootstrap_main.py` returns no matches.
+17. `rg -n "from core\\.(edge|auth)\\.providers\\." scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/core/edge/provider_registry.py' --glob '!scripts/core/auth/provider_registry.py'` returns no matches.
+18. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
+19. For rebuild/bootstrap runs, verify runtime artifacts were written under `.state/runtime-artifacts/<run-id>/` with target-separated `kubernetes/` and/or `compose/` payloads and replay metadata.
+20. For modified non-generated files, verify `wc -l` shows no newly introduced file above `900` lines and no existing `>900` line file was expanded without same-change decomposition.
 
 ## Operational Safety Rules
 - Prefer additive/idempotent changes.
