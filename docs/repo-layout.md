@@ -5,7 +5,8 @@ The repository keeps deployable runtime assets in existing stable paths while in
 ## Current Runtime-Critical Paths
 
 - `k8s/`: Kubernetes manifests, profile overlays, bootstrap job manifests
-- `bootstrap/`: app-level configuration-as-code
+- `docker/`: Docker Compose runtime manifests and env templates
+- `bootstrap/`: app-level bootstrap JSON plus deployment bootstrap profile YAML/schema
 - `scripts/`: install, reconcile, diagnostics, and verification tooling
 - `tests/`: unit and e2e test suites
 - `docs/`: architecture, operations, and design documents

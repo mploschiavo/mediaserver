@@ -28,6 +28,8 @@ class PlatformAdapterTests(unittest.TestCase):
             smoke_test_service=mock.Mock(),
             info=mock.Mock(),
             run_kubectl=mock.Mock(),
+            compose_file=Path("/tmp/docker-compose.yml"),
+            docker_client=mock.Mock(),
         )
 
     def test_normalize_platform_target_maps_kubernetes_aliases(self):

@@ -14,7 +14,7 @@ class RebuildManifestApplyConfig:
     profile: str
     include_optional: str
     enable_components: str
-    kubectl: list[str]
+    kustomize_cmd: tuple[str, ...] = ("kustomize",)
     profile_scale_to_zero_apps: dict[str, tuple[str, ...]] | None = None
     profile_tls_hosts: dict[str, tuple[str, ...]] | None = None
     profile_tls_secret_names: dict[str, str] | None = None
@@ -42,6 +42,12 @@ class RebuildManifestApplyService:
         self.apply_manifest_file_with_overrides = apply_manifest_file_with_overrides
         self.subprocess_run = subprocess_run
 
+    def _kustomize_cmd(self) -> tuple[str, ...]:
+        cmd = tuple(str(item).strip() for item in self.cfg.kustomize_cmd if str(item).strip())
+        if cmd:
+            return cmd
+        return ("kustomize",)
+
     def apply_manifests_for_profile(self) -> None:
         profile_dir = self.cfg.root_dir / "k8s" / "profiles" / self.cfg.profile
         build_failed = False
@@ -53,9 +59,9 @@ class RebuildManifestApplyService:
             )
             proc = self.subprocess_run(
                 [
-                    *self.cfg.kubectl,
-                    "kustomize",
-                    "--load-restrictor=LoadRestrictionsNone",
+                    *self._kustomize_cmd(),
+                    "--load-restrictor",
+                    "LoadRestrictionsNone",
                     str(profile_dir),
                 ],
                 capture_output=True,
@@ -83,9 +89,9 @@ class RebuildManifestApplyService:
 
         proc = self.subprocess_run(
             [
-                *self.cfg.kubectl,
-                "kustomize",
-                "--load-restrictor=LoadRestrictionsNone",
+                *self._kustomize_cmd(),
+                "--load-restrictor",
+                "LoadRestrictionsNone",
                 str(self.cfg.root_dir / "k8s"),
             ],
             capture_output=True,
@@ -131,10 +137,8 @@ class RebuildManifestApplyService:
         }
         apps_to_scale = tuple(profile_scale_to_zero_apps.get(self.cfg.profile) or ())
         for app in apps_to_scale:
-            exists = self.subprocess_run(
-                [*self.cfg.kubectl, "-n", self.cfg.namespace, "get", "deploy", app],
-                capture_output=True,
-                text=True,
+            exists = self.run_kubectl(
+                ["-n", self.cfg.namespace, "get", "deploy", app],
                 check=False,
             )
             if exists.returncode == 0:

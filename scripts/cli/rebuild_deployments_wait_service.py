@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable
 
 InfoFn = Callable[[str], None]
 WarnFn = Callable[[str], None]
+RunKubeFn = Callable[..., object]
 
 
 @dataclass(frozen=True)
 class RebuildDeploymentsWaitConfig:
     namespace: str
     wait_timeout: str
-    kubectl: list[str]
 
 
 @dataclass
@@ -23,22 +22,10 @@ class RebuildDeploymentsWaitService:
     cfg: RebuildDeploymentsWaitConfig
     info: InfoFn
     warn: WarnFn
+    run_kube: RunKubeFn
 
     def wait_for_deployments(self) -> None:
-        proc = subprocess.run(
-            [
-                *self.cfg.kubectl,
-                "-n",
-                self.cfg.namespace,
-                "get",
-                "deploy",
-                "-o",
-                "jsonpath={range .items[*]}{.metadata.name}{'\\n'}{end}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        proc = self.run_kube(["-n", self.cfg.namespace, "get", "deploy"], check=False)
         if proc.returncode != 0:
             raise RuntimeError("Failed listing deployments.")
 
@@ -48,30 +35,34 @@ class RebuildDeploymentsWaitService:
 
         failures = 0
         for deploy in deploys:
-            replica_probe = subprocess.run(
+            replica_probe = self.run_kube(
                 [
-                    *self.cfg.kubectl,
                     "-n",
                     self.cfg.namespace,
                     "get",
                     "deploy",
                     deploy,
                     "-o",
-                    "jsonpath={.spec.replicas}",
+                    "json",
                 ],
-                capture_output=True,
-                text=True,
                 check=False,
             )
-            replicas = (replica_probe.stdout or "1").strip() or "1"
+            replicas = "1"
+            if replica_probe.returncode == 0 and replica_probe.stdout.strip():
+                try:
+                    import json
+
+                    payload = json.loads(replica_probe.stdout)
+                    replicas = str((payload.get("spec") or {}).get("replicas", 1))
+                except Exception:
+                    replicas = "1"
             if replicas == "0":
                 self.info(f"Skipping rollout wait for deploy/{deploy} (replicas=0)")
                 continue
 
             self.info(f"Waiting for deploy/{deploy} rollout")
-            rollout = subprocess.run(
+            rollout = self.run_kube(
                 [
-                    *self.cfg.kubectl,
                     "-n",
                     self.cfg.namespace,
                     "rollout",
@@ -79,8 +70,6 @@ class RebuildDeploymentsWaitService:
                     f"deploy/{deploy}",
                     f"--timeout={self.cfg.wait_timeout}",
                 ],
-                capture_output=True,
-                text=True,
                 check=False,
             )
             if rollout.stdout.strip():
@@ -92,8 +81,12 @@ class RebuildDeploymentsWaitService:
                 failures += 1
 
         if failures:
-            subprocess.run(
-                [*self.cfg.kubectl, "-n", self.cfg.namespace, "get", "pods", "-o", "wide"],
+            pods = self.run_kube(
+                ["-n", self.cfg.namespace, "get", "pods", "-o", "wide"],
                 check=False,
             )
+            if pods.stdout.strip():
+                print(pods.stdout.rstrip())
+            if pods.stderr.strip():
+                print(pods.stderr.rstrip(), file=sys.stderr)
             raise RuntimeError(f"{failures} deployment(s) failed readiness checks.")

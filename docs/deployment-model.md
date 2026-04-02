@@ -2,17 +2,30 @@
 
 ## Core Model
 
-The stack is deployed into a Kubernetes namespace and converged by a bootstrap pipeline.
+The stack supports two runtime targets:
+- Kubernetes namespace deployment (primary path)
+- Docker Compose project deployment (alternate path)
 
 ![Deployment model](diagrams/deployment-model.png)
 
-Flow:
+Kubernetes flow:
 1. Apply profile manifests.
 2. Generate or reconcile secrets.
 3. Wait for workloads.
 4. Run bootstrap job for cross-app wiring.
 5. Verify ingress and service integration.
 6. Keep drift low with periodic reconcile.
+
+Compose flow:
+1. Render native compose spec (`docker/docker-compose.yml` + env expansion).
+2. Recreate/update selected service containers via Docker SDK.
+3. Apply edge routing/auth labels from bootstrap profile/runtime config.
+4. Wait for running/healthy containers.
+5. Run compose smoke/status checks.
+
+Bootstrap deployment profile:
+- `bootstrap/media-stack.bootstrap.yaml` declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults.
+- Use `bash scripts/validate-bootstrap-profile.sh` to validate profile shape + semantics.
 
 ## Profiles
 
@@ -21,7 +34,7 @@ Flow:
 - `public-demo`: demo-safe defaults and reduced downloader automation.
 - `power-user`: full with additional operational guardrails.
 
-Profile manifests live in `k8s/profiles/*`.
+Profile manifests live in `k8s/profiles/*` (Kubernetes target).
 
 ## Storage Modes
 
@@ -50,20 +63,40 @@ The expected operating posture is rebuild-ready:
 - bootstrap wiring is re-runnable
 - verification scripts validate outcomes
 
-One command for full rebuild + verify:
+One command for full Kubernetes rebuild + verify:
 ```bash
 bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
+Compose rebuild example:
+```bash
+bash scripts/rebuild-and-bootstrap.sh \
+  --platform-target compose \
+  --namespace media-dev \
+  --compose-project-name media-dev
+```
+
+Compose rebuild with profile auto-defaults:
+```bash
+bash scripts/rebuild-and-bootstrap.sh --bootstrap-profile-file bootstrap/media-stack.bootstrap.yaml
+```
+
 ## Runtime Reconciliation
 
-- Bootstrap job config is supplied via ConfigMap from `bootstrap/media-stack.bootstrap.json`.
-- Optional reconcile CronJob can periodically re-apply desired application wiring.
-- Drift introduced in web UIs is intentionally overwritten by declarative configuration.
+- Kubernetes target:
+  - Bootstrap job config is supplied via ConfigMap from `bootstrap/media-stack.bootstrap.json`.
+  - Optional reconcile CronJob can periodically re-apply desired application wiring.
+  - Drift introduced in web UIs is intentionally overwritten by declarative configuration.
+- Compose target:
+  - Runtime deploy/rebuild is compose-spec + Docker SDK driven.
+  - Route strategy supports subdomain, path-prefix, or hybrid patterns through adapter-managed labels.
+  - Auth provider wiring stubs support `authelia` / `authentik` middleware references.
+  - Jellyfin direct-host routing remains available for native TV/mobile clients.
+  - Kubernetes bootstrap job/CronJob reconciliation is not used.
 
 ## Multi-Node / Remote Operator Note
 
-Default mode is StorageClass/PVC-driven, so remote operators can apply manifests from any machine with cluster access.
+Kubernetes mode is StorageClass/PVC-driven, so remote operators can apply manifests from any machine with cluster access.
 
 ---
 

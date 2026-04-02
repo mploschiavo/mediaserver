@@ -29,13 +29,11 @@ class RebuildSecretPreservationServiceTests(unittest.TestCase):
             cfg=RebuildSecretPreservationConfig(
                 namespace="media-stack",
                 secret_name="media-stack-secrets",
-                kubectl=["kubectl"],
             ),
             info=mock.Mock(),
-            run_kubectl=mock.Mock(),
+            run_kube=mock.Mock(return_value=_Result(0, json.dumps(payload))),
         )
-        with mock.patch("subprocess.run", return_value=_Result(0, json.dumps(payload))):
-            values = svc.backup_existing_values("1")
+        values = svc.backup_existing_values("1")
         self.assertEqual(values.get("STACK_ADMIN_PASSWORD"), "secret")
 
     def test_restore_values_noop_when_empty(self):
@@ -44,13 +42,14 @@ class RebuildSecretPreservationServiceTests(unittest.TestCase):
             cfg=RebuildSecretPreservationConfig(
                 namespace="media-stack",
                 secret_name="media-stack-secrets",
-                kubectl=["kubectl"],
             ),
             info=info,
-            run_kubectl=mock.Mock(),
+            run_kube=mock.Mock(),
         )
         svc.restore_values({})
-        self.assertTrue(any("No preserved secret values" in c.args[0] for c in info.call_args_list if c.args))
+        self.assertTrue(
+            any("No preserved secret values" in c.args[0] for c in info.call_args_list if c.args)
+        )
 
 
 if __name__ == "__main__":
