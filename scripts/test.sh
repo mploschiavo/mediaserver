@@ -6,13 +6,16 @@ RUN_PLAYWRIGHT="${RUN_PLAYWRIGHT:-0}"
 RUN_API_E2E="${RUN_API_E2E:-0}"
 STACK_NODE_IP="${STACK_NODE_IP:-}"
 NAMESPACE="${NAMESPACE:-media-stack}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 pushd "$ROOT_DIR" >/dev/null
 
-python3 -m unittest discover -s tests/unit -p 'test_*.py'
+bash scripts/lib/run-python-cli.sh run_unit_tests_main.py "$@"
 bash -n scripts/*.sh
-python3 -m py_compile \
+"$PYTHON_BIN" -m py_compile \
   scripts/bootstrap-apps.py \
+  scripts/cli/run_unit_tests_main.py \
+  scripts/cli/unit_test_runner_service.py \
   scripts/bootstrap_services/apps/jellyfin/cli/ensure_jellyfin_bootstrap_main.py
 bash scripts/validate-bootstrap-config.sh
 

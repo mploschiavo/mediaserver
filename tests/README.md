@@ -11,6 +11,21 @@
 bash scripts/test.sh
 ```
 
+Run only a subset and keep telemetry output focused:
+```bash
+UNIT_TEST_PATTERN='test_bootstrap_services_*.py' UNIT_TEST_TOP_N=15 bash scripts/test.sh
+```
+
+Add per-test timeout protection for runaway cases:
+```bash
+UNIT_TEST_TIMEOUT_SECONDS=30 UNIT_TEST_TOP_N=20 bash scripts/test.sh
+```
+
+Run the unit telemetry runner directly:
+```bash
+bash scripts/lib/run-python-cli.sh run_unit_tests_main.py --pattern 'test_*.py' --top-n 20
+```
+
 Run with Playwright against a live cluster ingress:
 ```bash
 RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash scripts/test.sh
