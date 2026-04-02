@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 
 def profile_actions(
     cfg: dict[str, object],
@@ -225,3 +223,21 @@ def compose_passthrough_env_vars(bootstrap_job_cfg: dict[str, object]) -> tuple[
     if not isinstance(raw, list):
         return ()
     return tuple(str(item or "").strip() for item in raw if str(item or "").strip())
+
+
+def compose_preflight_handlers(bootstrap_job_cfg: dict[str, object]) -> tuple[str, ...]:
+    raw = bootstrap_job_cfg.get("compose_preflight_handlers")
+    if not isinstance(raw, list):
+        return ()
+    handlers: list[str] = []
+    for item in raw:
+        spec = str(item or "").strip()
+        if not spec:
+            continue
+        if ":" not in spec:
+            raise ValueError(
+                "adapter_hooks.bootstrap_job.compose_preflight_handlers entries must be "
+                "module.path:Symbol"
+            )
+        handlers.append(spec)
+    return tuple(handlers)

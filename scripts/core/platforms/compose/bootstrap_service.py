@@ -59,6 +59,7 @@ class ComposeBootstrapConfig:
     runtime_config_policy_handler: str = ""
     runtime_config_policy_params: dict[str, object] = field(default_factory=dict)
     passthrough_env_vars: tuple[str, ...] = field(default_factory=tuple)
+    preflight_handler_specs: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -72,7 +73,7 @@ class ComposeBootstrapService:
         return project or str(self.cfg.namespace or "").strip() or "media-stack"
 
     @staticmethod
-    def _import_hook(spec: str) -> Callable[..., None]:
+    def _import_hook(spec: str) -> Callable[..., object]:
         if ":" not in spec:
             raise RuntimeError(f"Invalid compose runtime policy hook spec '{spec}'")
         module_name, symbol_name = spec.split(":", 1)
@@ -86,18 +87,17 @@ class ComposeBootstrapService:
 
     @staticmethod
     def _invoke_hook(
-        hook: Callable[..., None],
+        hook: Callable[..., object],
         *,
         hook_name: str,
         context: dict[str, object],
-    ) -> None:
+    ) -> object:
         signature = inspect.signature(hook)
         accepts_kwargs = any(
             param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
         )
         if accepts_kwargs:
-            hook(**context)
-            return
+            return hook(**context)
 
         accepted = {key: value for key, value in context.items() if key in signature.parameters}
         required_missing = [
@@ -113,7 +113,49 @@ class ComposeBootstrapService:
                 f"Compose runtime policy hook '{hook_name}' requires unsupported "
                 f"parameters: {', '.join(required_missing)}"
             )
-        hook(**accepted)
+        return hook(**accepted)
+
+    def _run_preflight_handlers(
+        self,
+        *,
+        compose_env: dict[str, str],
+        config_root: Path,
+        project_name: str,
+    ) -> dict[str, str]:
+        specs = tuple(self.cfg.preflight_handler_specs or ())
+        if not specs:
+            return {}
+        env_updates: dict[str, str] = {}
+        for spec in specs:
+            hook_spec = str(spec or "").strip()
+            if not hook_spec:
+                continue
+            hook = self._import_hook(hook_spec)
+            context: dict[str, object] = {
+                "compose_env": compose_env,
+                "compose_env_file": self.cfg.compose_env_file,
+                "compose_file": self.cfg.compose_file,
+                "config_root": config_root,
+                "project_name": project_name,
+                "namespace": self.cfg.namespace,
+                "docker": self.docker,
+                "info": self.info,
+            }
+            result = self._invoke_hook(
+                hook,
+                hook_name=hook_spec,
+                context=context,
+            )
+            if not isinstance(result, dict):
+                continue
+            for key, value in result.items():
+                env_key = str(key or "").strip()
+                env_value = str(value or "").strip()
+                if not env_key or not env_value:
+                    continue
+                compose_env[env_key] = env_value
+                env_updates[env_key] = env_value
+        return env_updates
 
     def _read_compose_env(self) -> dict[str, str]:
         out = dict(os.environ)
@@ -198,6 +240,11 @@ class ComposeBootstrapService:
 
         runtime_cfg_file = self._prepare_runtime_config()
         project_name = self._project_name()
+        preflight_env_updates = self._run_preflight_handlers(
+            compose_env=compose_env,
+            config_root=config_root,
+            project_name=project_name,
+        )
         network_name = f"{project_name}_default"
         container_name = f"{project_name}-bootstrap-runner"
         wait_seconds = _parse_wait_seconds(self.cfg.wait_timeout, default_seconds=600)
@@ -215,6 +262,8 @@ class ComposeBootstrapService:
             token = str(compose_env.get(key, "")).strip()
             if token:
                 bootstrap_env[key] = token
+        for key, value in preflight_env_updates.items():
+            bootstrap_env[str(key)] = str(value)
 
         self.info(
             "Compose bootstrap: running bootstrap-apps via bootstrap-runner container "

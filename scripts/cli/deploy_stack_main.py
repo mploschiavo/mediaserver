@@ -323,6 +323,14 @@ class DeployStackRunner:
             deduped.append(name)
         return tuple(deduped)
 
+    def _compose_preflight_handlers(self) -> tuple[str, ...]:
+        try:
+            return deploy_hook_config_resolver.compose_preflight_handlers(
+                self._bootstrap_job_hooks()
+            )
+        except ValueError as exc:
+            raise DeployError(str(exc)) from exc
+
     def _notification_service(self) -> BootstrapNotificationService:
         return BootstrapNotificationService(
             cfg=BootstrapNotificationConfig(

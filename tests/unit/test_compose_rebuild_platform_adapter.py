@@ -73,6 +73,28 @@ def _compose_text_with_edge_labels() -> str:
     )
 
 
+def _compose_text_with_user_bind_mount(mount_path: Path) -> str:
+    return (
+        "services:\n"
+        "  app:\n"
+        "    image: ghcr.io/example/app:latest\n"
+        "    container_name: app\n"
+        '    user: "1000:1000"\n'
+        f"    volumes:\n      - {mount_path}:/config\n"
+    )
+
+
+def _compose_text_with_unpackerr_placeholder_key() -> str:
+    return (
+        "services:\n"
+        "  unpackerr:\n"
+        "    image: ghcr.io/example/unpackerr:latest\n"
+        "    container_name: unpackerr\n"
+        "    environment:\n"
+        "      UN_LIDARR_0_API_KEY: replace-after-first-boot\n"
+    )
+
+
 class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
     def _adapter(
         self,
@@ -391,6 +413,62 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                     "envoy" in message and "stub/no-op compose label bindings" in message
                     for message in info_messages
                 )
+            )
+
+    def test_apply_environment_definition_precreates_missing_rw_bind_mount_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            mount_path = Path(tmp) / "config" / "app"
+            compose_file.write_text(
+                _compose_text_with_user_bind_mount(mount_path),
+                encoding="utf-8",
+            )
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(compose_file=compose_file, docker=docker)
+
+            adapter.apply_environment_definition()
+
+            self.assertTrue(mount_path.exists())
+            self.assertTrue(mount_path.is_dir())
+            docker.create_container.assert_called_once()
+
+    def test_apply_environment_definition_fails_fast_for_unwritable_user_bind_mount_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            mount_path = Path(tmp) / "config" / "app"
+            mount_path.mkdir(parents=True, exist_ok=True)
+            mount_path.chmod(0o555)
+            compose_file.write_text(
+                _compose_text_with_user_bind_mount(mount_path),
+                encoding="utf-8",
+            )
+            docker = mock.Mock()
+            adapter = self._adapter(compose_file=compose_file, docker=docker)
+
+            with self.assertRaisesRegex(RuntimeError, "not writable"):
+                adapter.apply_environment_definition()
+            docker.create_container.assert_not_called()
+
+    def test_apply_environment_definition_normalizes_unpackerr_placeholder_api_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(
+                _compose_text_with_unpackerr_placeholder_key(),
+                encoding="utf-8",
+            )
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(compose_file=compose_file, docker=docker)
+
+            adapter.apply_environment_definition()
+
+            create_kwargs = docker.create_container.call_args.kwargs
+            self.assertEqual(
+                (create_kwargs.get("environment") or {}).get("UN_LIDARR_0_API_KEY"),
+                "00000000000000000000000000000000",
             )
 
 

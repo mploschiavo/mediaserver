@@ -104,6 +104,7 @@ def _run_bootstrap(runner: object) -> None:
             runtime_config_policy_handler=runner._runtime_config_policy_handler_spec(),
             runtime_config_policy_params=runner._runtime_config_policy_params(),
             passthrough_env_vars=runner._compose_passthrough_env_vars(),
+            preflight_handler_specs=runner._compose_preflight_handlers(),
         ),
         info=runner.info_fn,
         docker=_docker_client(runner),
