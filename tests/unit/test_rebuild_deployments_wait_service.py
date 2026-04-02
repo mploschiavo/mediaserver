@@ -21,22 +21,23 @@ class _Result:
 
 class RebuildDeploymentsWaitServiceTests(unittest.TestCase):
     def test_wait_for_deployments_success(self):
+        run_kube = mock.Mock(
+            side_effect=[
+                _Result(0, "sonarr\n"),  # list deploys
+                _Result(0, '{"spec":{"replicas":1}}'),  # deployment json
+                _Result(0, "ok"),  # rollout status
+            ]
+        )
         svc = RebuildDeploymentsWaitService(
             cfg=RebuildDeploymentsWaitConfig(
                 namespace="media-stack",
                 wait_timeout="10m",
-                kubectl=["kubectl"],
             ),
             info=mock.Mock(),
             warn=mock.Mock(),
+            run_kube=run_kube,
         )
-        side_effect = [
-            _Result(0, "sonarr\n"),  # list deploys
-            _Result(0, "1"),  # replicas
-            _Result(0, "ok"),  # rollout status
-        ]
-        with mock.patch("subprocess.run", side_effect=side_effect):
-            svc.wait_for_deployments()
+        svc.wait_for_deployments()
 
 
 if __name__ == "__main__":

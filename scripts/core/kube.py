@@ -180,6 +180,7 @@ class KubernetesClient:
     _core_v1: Any = field(default=None, init=False, repr=False)
     _apps_v1: Any = field(default=None, init=False, repr=False)
     _batch_v1: Any = field(default=None, init=False, repr=False)
+    _networking_v1: Any = field(default=None, init=False, repr=False)
     _dynamic_client: Any = field(default=None, init=False, repr=False)
 
     @classmethod
@@ -235,6 +236,7 @@ class KubernetesClient:
         self._core_v1 = k8s_client.CoreV1Api(api_client)
         self._apps_v1 = k8s_client.AppsV1Api(api_client)
         self._batch_v1 = k8s_client.BatchV1Api(api_client)
+        self._networking_v1 = k8s_client.NetworkingV1Api(api_client)
         self._dynamic_client = k8s_dynamic.DynamicClient(api_client)
 
     def _result(
@@ -259,10 +261,16 @@ class KubernetesClient:
         check: bool = True,
         env: Mapping[str, str] | None = None,
         timeout: int | None = None,
+        input_text: str | None = None,
     ) -> CommandResult:
         command_args = list(args)
         try:
-            result = self._run_api_command(command_args, timeout=timeout, env=env)
+            result = self._run_api_command(
+                command_args,
+                timeout=timeout,
+                env=env,
+                input_text=input_text,
+            )
         except CommandExecutionError as exc:
             raise KubernetesError(str(exc)) from exc
         except Exception as exc:
@@ -296,6 +304,7 @@ class KubernetesClient:
         *,
         timeout: int | None,
         env: Mapping[str, str] | None = None,
+        input_text: str | None = None,
     ) -> CommandResult:
         del env  # kept for interface compatibility
         self._ensure_clients()
@@ -331,8 +340,16 @@ class KubernetesClient:
             return self._run_delete(args, ns, remainder)
         if command == "exec":
             return self._run_exec(args, ns, remainder)
+        if command == "scale":
+            return self._run_scale(args, ns, remainder)
         if command in ("apply", "create", "replace"):
-            return self._run_manifest_command(args, ns, command, remainder)
+            return self._run_manifest_command(
+                args,
+                ns,
+                command,
+                remainder,
+                input_text=input_text,
+            )
 
         return self._error_result(
             args,
@@ -348,9 +365,12 @@ class KubernetesClient:
         if not path.exists():
             raise ConfigError(f"Manifest path not found: {path}")
         raw = path.read_text(encoding="utf-8")
+        return self._iter_yaml_objects_from_text(raw, source=str(path))
+
+    def _iter_yaml_objects_from_text(self, raw: str, *, source: str) -> list[dict[str, Any]]:
         objects = [item for item in yaml.safe_load_all(raw) if isinstance(item, dict)]
         if not objects:
-            raise ConfigError(f"No Kubernetes objects found in manifest: {path}")
+            raise ConfigError(f"No Kubernetes objects found in manifest: {source}")
         return objects
 
     def _normalize_object_namespace(self, obj: dict[str, Any], namespace: str) -> dict[str, Any]:
@@ -425,6 +445,8 @@ class KubernetesClient:
         namespace: str,
         command: str,
         remainder: list[str],
+        *,
+        input_text: str | None,
     ) -> CommandResult:
         if command == "create" and remainder and remainder[0] == "configmap":
             return self._run_create_configmap(args, namespace, remainder[1:])
@@ -437,7 +459,16 @@ class KubernetesClient:
             )
 
         manifest_path = remainder[1]
-        objects = self._iter_yaml_objects(manifest_path)
+        if manifest_path == "-":
+            if input_text is None:
+                return self._error_result(
+                    args,
+                    "Manifest stdin payload required for '-f -'.",
+                    returncode=2,
+                )
+            objects = self._iter_yaml_objects_from_text(input_text, source="stdin")
+        else:
+            objects = self._iter_yaml_objects(manifest_path)
         messages: list[str] = []
         try:
             for obj in objects:
@@ -627,6 +658,29 @@ class KubernetesClient:
                     items = [item.to_dict() for item in payload.items or []]
                     return self._render_get_result(args, items, output, no_headers=no_headers)
                 obj = self._apps_v1.read_namespaced_deployment(name=name, namespace=namespace)
+                return self._render_get_result(args, obj.to_dict(), output, no_headers=no_headers)
+            if kind in ("namespace", "namespaces", "ns"):
+                if not name:
+                    payload = self._core_v1.list_namespace(label_selector=selector)
+                    items = [item.to_dict() for item in payload.items or []]
+                    return self._render_get_result(args, items, output, no_headers=no_headers)
+                obj = self._core_v1.read_namespace(name=name)
+                return self._render_get_result(args, obj.to_dict(), output, no_headers=no_headers)
+            if kind in ("ingress", "ingresses"):
+                if not name:
+                    payload = self._networking_v1.list_namespaced_ingress(
+                        namespace=namespace, label_selector=selector
+                    )
+                    items = [item.to_dict() for item in payload.items or []]
+                    return self._render_get_result(args, items, output, no_headers=no_headers)
+                obj = self._networking_v1.read_namespaced_ingress(name=name, namespace=namespace)
+                return self._render_get_result(args, obj.to_dict(), output, no_headers=no_headers)
+            if kind in ("ingressclass", "ingressclasses"):
+                if not name:
+                    payload = self._networking_v1.list_ingress_class()
+                    items = [item.to_dict() for item in payload.items or []]
+                    return self._render_get_result(args, items, output, no_headers=no_headers)
+                obj = self._networking_v1.read_ingress_class(name=name)
                 return self._render_get_result(args, obj.to_dict(), output, no_headers=no_headers)
         except Exception as exc:
             status, message = _format_api_error(exc)
@@ -881,13 +935,25 @@ class KubernetesClient:
             return self._error_result(args, f"Invalid patch payload: {exc}", returncode=2)
 
         if resource not in ("secret", "secrets"):
-            return self._error_result(args, f"Unsupported patch resource: {resource}", returncode=2)
+            if resource not in ("ingress", "ingresses"):
+                return self._error_result(
+                    args,
+                    f"Unsupported patch resource: {resource}",
+                    returncode=2,
+                )
         try:
-            self._core_v1.patch_namespaced_secret(name=name, namespace=namespace, body=body)
+            if resource in ("secret", "secrets"):
+                self._core_v1.patch_namespaced_secret(name=name, namespace=namespace, body=body)
+            else:
+                self._networking_v1.patch_namespaced_ingress(
+                    name=name, namespace=namespace, body=body
+                )
         except Exception as exc:
             status, message = _format_api_error(exc)
             return self._error_result(args, message, returncode=status or 1)
-        return self._result(args, stdout=f"secret/{name} patched\n")
+        if resource in ("secret", "secrets"):
+            return self._result(args, stdout=f"secret/{name} patched\n")
+        return self._result(args, stdout=f"ingress.networking.k8s.io/{name} patched\n")
 
     def _run_delete(self, args: list[str], namespace: str, remainder: list[str]) -> CommandResult:
         if len(remainder) < 2:
@@ -895,22 +961,74 @@ class KubernetesClient:
         resource = remainder[0]
         name = remainder[1]
         ignore_not_found = "--ignore-not-found" in remainder
-        if resource not in ("job", "jobs"):
-            return self._error_result(
-                args, f"Unsupported delete resource: {resource}", returncode=2
-            )
         try:
-            self._batch_v1.delete_namespaced_job(
-                name=name,
-                namespace=namespace,
-                propagation_policy="Background",
-            )
+            if resource in ("job", "jobs"):
+                self._batch_v1.delete_namespaced_job(
+                    name=name,
+                    namespace=namespace,
+                    propagation_policy="Background",
+                )
+            elif resource in ("namespace", "namespaces", "ns"):
+                self._core_v1.delete_namespace(name=name)
+            else:
+                return self._error_result(
+                    args,
+                    f"Unsupported delete resource: {resource}",
+                    returncode=2,
+                )
         except Exception as exc:
             status, message = _format_api_error(exc)
             if ignore_not_found and status == 404:
                 return self._result(args, stdout="")
             return self._error_result(args, message, returncode=status or 1)
-        return self._result(args, stdout=f"job.batch/{name} deleted\n")
+        if resource in ("job", "jobs"):
+            return self._result(args, stdout=f"job.batch/{name} deleted\n")
+        return self._result(args, stdout=f"namespace/{name} deleted\n")
+
+    def _run_scale(self, args: list[str], namespace: str, remainder: list[str]) -> CommandResult:
+        if not remainder:
+            return self._error_result(args, "scale requires target.", returncode=2)
+        target = str(remainder[0] or "").strip()
+        resource = ""
+        name = ""
+        cursor = 1
+        if "/" in target:
+            resource, name = target.split("/", 1)
+        else:
+            resource = target
+            if cursor < len(remainder):
+                name = str(remainder[cursor] or "").strip()
+                cursor += 1
+
+        replicas_value = ""
+        while cursor < len(remainder):
+            token = str(remainder[cursor] or "").strip()
+            if token.startswith("--replicas="):
+                replicas_value = token.split("=", 1)[1]
+                cursor += 1
+                continue
+            if token == "--replicas" and cursor + 1 < len(remainder):
+                replicas_value = str(remainder[cursor + 1] or "").strip()
+                cursor += 2
+                continue
+            cursor += 1
+
+        if resource not in ("deploy", "deployment", "deployments"):
+            return self._error_result(args, f"Unsupported scale resource: {resource}", returncode=2)
+        if not name:
+            return self._error_result(args, "scale requires deployment name.", returncode=2)
+        try:
+            replicas = int(replicas_value)
+        except Exception:
+            return self._error_result(args, "scale requires valid --replicas value.", returncode=2)
+
+        body = {"spec": {"replicas": replicas}}
+        try:
+            self._apps_v1.patch_namespaced_deployment(name=name, namespace=namespace, body=body)
+        except Exception as exc:
+            status, message = _format_api_error(exc)
+            return self._error_result(args, message, returncode=status or 1)
+        return self._result(args, stdout=f"deployment.apps/{name} scaled\n")
 
     def _pod_from_deployment(self, namespace: str, deployment_name: str) -> str:
         dep = self._apps_v1.read_namespaced_deployment(name=deployment_name, namespace=namespace)

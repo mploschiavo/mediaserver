@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import base64
 import json
-import subprocess
 from dataclasses import dataclass
 from typing import Callable
 
 InfoFn = Callable[[str], None]
-RunKubectlFn = Callable[..., subprocess.CompletedProcess[str]]
+RunKubeFn = Callable[..., object]
 
 
 @dataclass(frozen=True)
 class RebuildSecretPreservationConfig:
     namespace: str
     secret_name: str
-    kubectl: list[str]
     preserve_keys: tuple[str, ...] = ()
 
 
@@ -24,16 +22,15 @@ class RebuildSecretPreservationConfig:
 class RebuildSecretPreservationService:
     cfg: RebuildSecretPreservationConfig
     info: InfoFn
-    run_kubectl: RunKubectlFn
+    run_kube: RunKubeFn
 
     def backup_existing_values(self, preserve_secret_on_rebuild: str) -> dict[str, str]:
         if preserve_secret_on_rebuild != "1":
             self.info("Secret preservation disabled (PRESERVE_SECRET_ON_REBUILD=0).")
             return {}
 
-        proc = subprocess.run(
+        proc = self.run_kube(
             [
-                *self.cfg.kubectl,
                 "-n",
                 self.cfg.namespace,
                 "get",
@@ -42,8 +39,6 @@ class RebuildSecretPreservationService:
                 "-o",
                 "json",
             ],
-            capture_output=True,
-            text=True,
             check=False,
         )
         if proc.returncode != 0:
@@ -88,17 +83,14 @@ class RebuildSecretPreservationService:
             self.info("No preserved secret values to restore.")
             return
 
-        exists = subprocess.run(
+        exists = self.run_kube(
             [
-                *self.cfg.kubectl,
                 "-n",
                 self.cfg.namespace,
                 "get",
                 "secret",
                 self.cfg.secret_name,
             ],
-            capture_output=True,
-            text=True,
             check=False,
         )
         if exists.returncode != 0:
@@ -115,10 +107,10 @@ class RebuildSecretPreservationService:
                 "type: Opaque\n"
                 "stringData: {}\n"
             )
-            self.run_kubectl(["apply", "-f", "-"], input_text=manifest)
+            self.run_kube(["apply", "-f", "-"], input_text=manifest)
 
         patch_payload = json.dumps({"stringData": values})
-        self.run_kubectl(
+        self.run_kube(
             [
                 "-n",
                 self.cfg.namespace,

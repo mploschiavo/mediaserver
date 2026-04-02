@@ -23,3 +23,7 @@ class CommandExecutionError(MediaStackError):
 
 class KubernetesError(MediaStackError):
     """Raised when kubectl interactions fail."""
+
+
+class DockerError(MediaStackError):
+    """Raised when Docker SDK interactions fail."""

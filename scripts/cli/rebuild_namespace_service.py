@@ -2,36 +2,29 @@
 
 from __future__ import annotations
 
-import subprocess
 import time
 from dataclasses import dataclass
 from typing import Callable
 
 InfoFn = Callable[[str], None]
-RunKubectlFn = Callable[..., subprocess.CompletedProcess[str]]
+RunKubeFn = Callable[..., object]
 
 
 @dataclass(frozen=True)
 class RebuildNamespaceConfig:
     namespace: str
-    kubectl: list[str]
 
 
 @dataclass
 class RebuildNamespaceService:
     cfg: RebuildNamespaceConfig
     info: InfoFn
-    run_kubectl: RunKubectlFn
+    run_kube: RunKubeFn
 
     def wait_for_namespace_deleted(self, max_wait_seconds: int = 600) -> None:
         waited = 0
         while True:
-            probe = subprocess.run(
-                [*self.cfg.kubectl, "get", "namespace", self.cfg.namespace],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            probe = self.run_kube(["get", "namespace", self.cfg.namespace], check=False)
             if probe.returncode != 0:
                 return
             if waited >= max_wait_seconds:
@@ -46,17 +39,12 @@ class RebuildNamespaceService:
         if delete_namespace != "1":
             return False
 
-        exists = subprocess.run(
-            [*self.cfg.kubectl, "get", "namespace", self.cfg.namespace],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        exists = self.run_kube(["get", "namespace", self.cfg.namespace], check=False)
         if exists.returncode != 0:
             self.info(f"Namespace/{self.cfg.namespace} does not exist; continuing")
             return True
 
         self.info(f"Deleting namespace/{self.cfg.namespace}")
-        self.run_kubectl(["delete", "namespace", self.cfg.namespace, "--wait=false"])
+        self.run_kube(["delete", "namespace", self.cfg.namespace, "--wait=false"])
         self.wait_for_namespace_deleted()
         return True

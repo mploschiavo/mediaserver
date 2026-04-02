@@ -9,7 +9,11 @@ This platform follows a strict desired-state hierarchy.
 1. **Git-tracked manifests and configs**
   - `k8s/*.yaml`
   - `k8s/profiles/*`
+  - `docker/docker-compose.yml`
+  - `docker/.env.example`
   - `bootstrap/media-stack.bootstrap.json`
+  - `bootstrap/media-stack.bootstrap.yaml`
+  - `bootstrap/media-stack.bootstrap.profile.schema.json`
   - `scripts/bootstrap_defaults/plugins/*/manifest.json`
   - `scripts/bootstrap_defaults/runner_operation_plans.json`
   - `scripts/bootstrap_defaults/media_server_operation_plans.json`

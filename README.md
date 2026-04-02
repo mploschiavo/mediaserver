@@ -1,6 +1,6 @@
 # Media Automation Stack
 
-Declarative, Kubernetes-native media automation platform for a self-hosted streaming experience.
+Declarative, Kubernetes-first media automation platform with Docker Compose runtime support.
 
 This repository treats media infrastructure as code and application behavior as configuration code. A full teardown and rebuild should converge back to the same working state with minimal manual UI work.
 
@@ -34,6 +34,7 @@ See [docs/why-this-exists.md](docs/why-this-exists.md).
 
 - Primary architecture doc: [docs/architecture.md](docs/architecture.md)
 - Deployment model: [docs/deployment-model.md](docs/deployment-model.md)
+- Deployment bootstrap profile: [docs/bootstrap-profile.md](docs/bootstrap-profile.md)
 - Source-of-truth model: [docs/source-of-truth.md](docs/source-of-truth.md)
 - Technology swap guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 - Software design models: [docs/software-design-models.md](docs/software-design-models.md)
@@ -212,8 +213,10 @@ root-level `jellyfin_*` modules are retired.
 ## Deployment Model
 
 Supported paths:
-- Kubernetes (production-oriented): profile-driven deploy + bootstrap + verification
+- Kubernetes (primary path): profile-driven deploy + bootstrap + verification
+- Docker Compose (alternate runtime path): SDK-driven compose deploy + wait + smoke/status
 - Container image build/publish (tooling path): build and push bootstrap runner images used by Kubernetes Jobs/CronJobs
+- Distribution bootstrap profile (`bootstrap/media-stack.bootstrap.yaml`) can drive target/purpose/install/exposure/auth defaults across both runtime targets
 
 Kubernetes profiles:
 - `minimal`: core stack only
@@ -607,6 +610,7 @@ bash scripts/bootstrap-debug.sh
 - [docs/device-onboarding.md](docs/device-onboarding.md)
 - [docs/screenshots/README.md](docs/screenshots/README.md)
 - [docs/k8s-guide.md](docs/k8s-guide.md)
+- [docs/compose-guide.md](docs/compose-guide.md)
 - [docs/service-guide.md](docs/service-guide.md)
 - [docs/first-run-wiring.md](docs/first-run-wiring.md)
 
