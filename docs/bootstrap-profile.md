@@ -10,6 +10,7 @@ It is intentionally brief and strict:
 - install tier (`install_profile`: `minimal` | `standard` | `full`)
 - optional per-app overrides (`apps`)
 - routing/auth posture (`routing` + `auth`)
+- optional chaos recovery test window (`chaos`)
 - Live TV source defaults (`live_tv_defaults`)
 
 ## Files
@@ -31,7 +32,7 @@ metadata:
   purpose: dev
 
 resources:
-  disk_space_gb: 500
+  disk_space_gb: 50
   network_cidr: 192.168.1.0/24
 
 install_profile: standard
@@ -62,6 +63,15 @@ auth:
   enabled: false
   provider: none
 
+chaos:
+  enabled: false
+  duration_minutes: 5
+  interval_seconds: 60
+  actions:
+    - restart_container
+    - pause_container
+    - network_disconnect
+
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
@@ -71,7 +81,7 @@ live_tv_defaults:
 ## Install Tiers
 
 - `minimal`: Jellyfin/Jellyseerr/Prowlarr/qBittorrent/Homepage
-- `standard`: `minimal` + Sonarr/Radarr/Bazarr/SABnzbd/Maintainerr/Unpackerr
+- `standard`: `minimal` + Sonarr/Radarr/Bazarr/SABnzbd/Maintainerr/Unpackerr/FlareSolverr
 - `full`: all supported apps enabled
 
 Automatic content behavior policy:
@@ -86,6 +96,13 @@ Routing provider keys:
 
 - canonical values: `traefik`, `envoy`
 - set under `routing.provider`
+
+Chaos keys:
+
+- `chaos.enabled`: default `false`
+- `chaos.duration_minutes`: default `5`
+- `chaos.interval_seconds`: default `60`
+- `chaos.actions`: `restart_container`, `pause_container`, `network_disconnect`
 
 ## Profile Matrix Examples
 

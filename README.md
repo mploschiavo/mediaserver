@@ -236,6 +236,32 @@ When `--platform-target compose` and edge provider is `traefik`, deploy automati
 
 No manual host-side Traefik patch step is required for normal deploy runs.
 
+### Compose Preflight and Storage Guardrails
+
+Compose deploy now runs preflight checks before container recreation:
+
+- host published-port collision detection (fails fast if another running container already owns a required port)
+- stack storage budget guardrail using `resources.disk_space_gb` / `STACK_DISK_ALLOCATION_GB`
+  - budget report artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/storage-budget.report.json`
+  - guardrail behavior is intentional: this is an enforced budget check, not a filesystem quota primitive
+- Jellyfin first-run/bootstrap preflight so startup wizard and API key state are ready before bootstrap automation
+
+Compose persistent data roots are bind mounts (`CONFIG_ROOT`, `MEDIA_ROOT`, `DATA_ROOT`), so data survives:
+
+- container restarts
+- container recreation during deploy
+- compose project teardown/redeploy
+
+Data does not survive host/path deletion outside the stack.
+
+### Compose Chaos Recovery Tests
+
+Profile key: `chaos` (default disabled).
+
+- canonical actions: `restart_container`, `pause_container`, `network_disconnect`
+- schedule window defaults to 5 minutes and can be profile-tuned
+- deploy waits for workload health after each injected fault
+
 ### Compose Edge Provider Stubs
 
 - Built-in edge provider stubs now include `envoy` (provider discovery + validation).

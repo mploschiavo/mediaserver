@@ -314,6 +314,7 @@
       "runtime_config_policy_handler": "bootstrap_services.apps.stack.bootstrap_config_policy:apply_bootstrap_runtime_policy",
       "compose_preflight_handlers": [
         "bootstrap_services.apps.stack.compose_preflight:ensure_compose_stack_filesystem_paths",
+        "bootstrap_services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
         "bootstrap_services.apps.sabnzbd.compose_preflight:ensure_compose_sabnzbd_api_access",
         "bootstrap_services.apps.qbittorrent.compose_preflight:ensure_compose_torrent_client_credentials"
       ],

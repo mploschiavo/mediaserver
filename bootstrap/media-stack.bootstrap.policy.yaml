@@ -1,0 +1,37 @@
+schema_version: 1
+kind: bootstrap_runtime_policy_catalog
+
+selected_apps_policy:
+  app_toggle_sections:
+    homepage: homepage
+    jellyseerr: jellyseerr
+    bazarr: bazarr
+    maintainerr: maintainerr
+    tautulli: tautulli
+  arr_app_keys:
+    - sonarr
+    - radarr
+    - lidarr
+    - readarr
+  arr_disable_sections_when_unselected:
+    - arr_media_management
+    - arr_download_handling
+    - arr_quality_upgrade
+    - arr_discovery_lists
+    - disk_guardrails
+    - media_hygiene
+  arr_discovery_reserved_keys:
+    - enabled
+    - required
+    - trigger_initial_sync
+    - prune_unmanaged
+  jellyfin_disable_sections_when_unselected:
+    - jellyfin_libraries
+    - jellyfin_livetv
+    - jellyfin_plugins
+    - jellyfin_playback
+    - jellyfin_home_rails
+    - jellyfin_auto_collections
+    - jellyfin_prewarm
+  maintainerr_integrations_section: maintainerr.integrations
+  jellyfin_home_rails_cleanup_path: jellyfin_home_rails.cleanup_collections_when_disabled

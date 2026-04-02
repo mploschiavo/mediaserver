@@ -116,6 +116,9 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         edge_compose_provider_specs: dict[str, dict[str, str]] | None = None,
         runtime_artifacts_dir: Path | None = None,
     ) -> ComposeRebuildPlatformAdapter:
+        docker_client = docker or mock.Mock()
+        if isinstance(getattr(docker_client, "list_running_containers", None), mock.Mock):
+            docker_client.list_running_containers.return_value = []
         return ComposeRebuildPlatformAdapter(
             cfg=ComposeRebuildPlatformConfig(
                 environment_id="media-dev",
@@ -141,7 +144,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 runtime_artifacts_dir=runtime_artifacts_dir,
             ),
             info=mock.Mock(),
-            docker=docker or mock.Mock(),
+            docker=docker_client,
         )
 
     def test_environment_ref_uses_environment_id(self):
@@ -470,6 +473,36 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 (create_kwargs.get("environment") or {}).get("UN_LIDARR_0_API_KEY"),
                 "00000000000000000000000000000000",
             )
+
+    @mock.patch("core.platforms.compose.rebuild_platform_adapter.time.sleep", return_value=None)
+    def test_run_chaos_tests_executes_declared_actions(self, _sleep_mock):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text(), encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.get_container.return_value = container
+            docker.container_state.return_value = DockerContainerState(
+                name="app",
+                status="running",
+                health="healthy",
+                image="ghcr.io/example/app:latest",
+            )
+            network = mock.Mock()
+            docker.client.networks.get.return_value = network
+            adapter = self._adapter(compose_file=compose_file, docker=docker)
+
+            adapter.run_chaos_tests(
+                duration_minutes=5,
+                interval_seconds=0,
+                actions=("restart_container", "pause_container", "network_disconnect"),
+            )
+
+            container.restart.assert_called_once()
+            container.pause.assert_called_once()
+            container.unpause.assert_called_once()
+            network.disconnect.assert_called_once()
+            network.connect.assert_called_once()
 
 
 if __name__ == "__main__":

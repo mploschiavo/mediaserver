@@ -84,6 +84,11 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
                         "auth:",
                         "  enabled: true",
                         "  provider: authentik",
+                        "chaos:",
+                        "  enabled: true",
+                        "  duration_minutes: 5",
+                        "  interval_seconds: 30",
+                        "  actions: [restart_container, pause_container, network_disconnect]",
                     ]
                 ),
                 encoding="utf-8",
@@ -105,6 +110,13 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.ingress_domain, "media-prod.example.com")
         self.assertEqual(cfg.disk_allocation_gb, 2000)
         self.assertEqual(cfg.network_cidr, "10.44.0.0/24")
+        self.assertEqual(cfg.chaos_enabled, "1")
+        self.assertEqual(cfg.chaos_duration_minutes, 5)
+        self.assertEqual(cfg.chaos_interval_seconds, 30)
+        self.assertEqual(
+            cfg.chaos_actions,
+            "restart_container,pause_container,network_disconnect",
+        )
         self.assertIn("jellyfin", cfg.selected_apps)
         self.assertNotIn("sabnzbd", cfg.selected_apps)
 

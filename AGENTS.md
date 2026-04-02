@@ -39,9 +39,10 @@ Self-review checklist:
 
 ## Source Of Truth (Priority Order)
 1. Declarative config in `bootstrap/media-stack.bootstrap.json`
-2. Kubernetes manifests in `k8s/**/*.yaml`
-3. Typed/defaulted behavior in Python services under `scripts/bootstrap_services/`
-4. Runtime app state (UI edits) as temporary drift to be reconciled back into code
+2. Declarative catalogs/policy maps in `bootstrap/*.catalog.yaml` and `bootstrap/*.policy.yaml`
+3. Kubernetes manifests in `k8s/**/*.yaml`
+4. Typed/defaulted behavior in Python services under `scripts/bootstrap_services/`
+5. Runtime app state (UI edits) as temporary drift to be reconciled back into code
 
 If a behavior differs between UI and repo code, repo code wins after next reconcile/bootstrap.
 
@@ -52,6 +53,12 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - If higher-level config is needed for orchestration, it must map transparently to native manifests and must not obscure or replace native capability.
 - Avoid custom wrapper keys that duplicate native manifest fields.
 - During refactors, preserve native manifest readability and portability over framework-specific abstractions.
+
+## Config-Driven Mapping Policy
+- Keep static mapping data in declarative files under `bootstrap/`, not Python conditionals/maps.
+- Mappings include (non-exhaustive): install-profile app lists, app toggle->section maps, reserved-key lists, and policy path bindings.
+- Python policy modules should interpret config; they should not be the source of truth for mapping data.
+- If a mapping update requires code edits instead of config edits, stop and refactor before merge.
 
 ## Runtime Artifact Replay Contract
 - Each rebuild/bootstrap run must emit target-separated runtime artifacts under `.state/runtime-artifacts/<run-id>/`.
@@ -195,6 +202,10 @@ Swap workflow:
 - Compose target storage is host-bind driven (`CONFIG_ROOT`, `DATA_ROOT`, `MEDIA_ROOT`) and must not assume PVC semantics.
 - Do not reuse the same filesystem root for both targets during local workflows; use target-specific roots to avoid ownership/permission drift.
 - Compose runtime code must preflight bind mount paths (existence + writability for declared container user/group) before container start and fail fast with actionable remediation when invalid.
+- Compose runtime must preflight published host ports and hard-fail on collisions before container recreation.
+- `resources.disk_space_gb` / `STACK_DISK_ALLOCATION_GB` must be enforced as an explicit compose storage budget guardrail (not log-only).
+- Compose runs must emit a storage budget artifact in runtime artifacts for replay/audit.
+- Persistence behavior must be validated by tests for restart, recreate/redeploy, and delete/redeploy scenarios.
 
 ### Edge/Auth Isolation Contract
 - Reverse-proxy routing and auth provider wiring must be declarative and pluggable, not hard-coded into app services.
@@ -288,6 +299,25 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Do not add new Python code that shells out to `docker` or `docker compose`; use Docker SDK adapters/services instead.
 - Compose/runtime orchestration must be API/SDK-driven in Python, not wrappers around Docker CLI commands.
 - If an operator-facing shell wrapper exists, it must remain a thin entrypoint and must not be the implementation boundary for runtime logic.
+- Compose chaos/fault-injection flows must run through Docker SDK adapters, include healing verification, and remain platform-local.
+
+## Internal Communication Addressing Policy
+- Kubernetes internal app-to-app communication must use Kubernetes Service DNS (`http://<service>.<namespace>.svc.cluster.local:<port>` or same-namespace short service name), not Pod IPs.
+- Compose internal app-to-app communication must use Docker network service/container DNS (`http://<service>:<port>`), not host DNS names.
+- Treat Compose service DNS as the discovery contract analogous to Kubernetes Services; do not depend on bridge IP stability.
+- Never persist container bridge IP addresses in bootstrap config, profile defaults, manifests, or runtime policy mappings.
+- `.local` hosts (for example `homepage.local`, `jellyfin.local`) are edge/browser/device entrypoints, not internal service-to-service endpoints.
+- Loopback addressing (`127.0.0.1` / `localhost`) is allowed only when the caller and callee are the same container/process context:
+  - healthchecks inside that container,
+  - in-container preflight/repair scripts via `docker exec`,
+  - host/operator checks intentionally targeting published host ports.
+- Bootstrap/preflight containers attached to the Compose project network must call dependencies via service DNS first; host-loopback + Host-header routing is fallback-only and must be explicit in config.
+- If Compose runtime customizes container names/networks, ensure canonical service DNS aliases remain resolvable for all configured internal URLs.
+
+## Image Pinning Policy
+- Runtime workload images must not use floating `latest` tags.
+- Prefer digest-pinned image references for compose/k8s workload manifests.
+- If digest pinning is temporarily unavailable, use an explicit version tag and document the exception.
 
 ## Container Healthcheck Reliability Policy
 - Healthchecks are part of the runtime contract for long-running services; treat false-negative health states as production bugs.
@@ -297,6 +327,12 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Healthcheck probes must not depend on external DNS, host routing, or authenticated sessions.
 - During incident fixes, verify healthchecks from inside the container and inspect `.State.Health.Log` to confirm probe behavior matches runtime reality.
 - Compose deployment acceptance requires all services with declared healthchecks to converge to `healthy`; if a service is operational but stuck `starting`/`unhealthy`, fix the probe before merge.
+
+## Chaos Testing Policy
+- Chaos testing is declarative/profile-driven (`chaos.enabled`) and defaults to disabled.
+- Canonical compose chaos actions are `restart_container`, `pause_container`, and `network_disconnect`.
+- Each chaos action must be followed by readiness/healing verification before the next action.
+- Chaos scheduling parameters (`duration_minutes`, `interval_seconds`, `actions`) must remain config-driven and test-covered.
 
 ## Debug Artifact Policy
 - Do not add tracked `*debug*` wrapper/entrypoint files for bootstrap flows.
@@ -391,6 +427,10 @@ Current key test suites:
    - confirm final phase summary is all `ok`
 19. For rebuild/bootstrap runs, verify runtime artifacts were written under `.state/runtime-artifacts/<run-id>/` with target-separated `kubernetes/` and/or `compose/` payloads and replay metadata.
 20. For modified non-generated files, verify `wc -l` shows no newly introduced file above `900` lines and no existing `>900` line file was expanded without same-change decomposition.
+21. Compose changes: run/maintain unit coverage for host-port preflight collisions and storage budget guardrail behavior.
+22. Profile/catalog/policy changes: verify mappings changed declaratively (config files) with no new hardcoded map constants in shared policy modules.
+23. Chaos changes: verify profile examples keep `chaos.enabled: false` by default and compose chaos action paths are unit-tested.
+24. Internal communication changes: verify k8s URLs use Service DNS, compose URLs use service/container DNS, and loopback/container IP usage is limited to same-container probes or explicit operator-host access paths.
 
 ## Operational Safety Rules
 - Prefer additive/idempotent changes.

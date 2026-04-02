@@ -48,6 +48,8 @@ from cli.deploy_script_runner_service import (
     DeployScriptRunnerService,
 )
 
+_MIN_STACK_DISK_ALLOCATION_GB = 20
+
 
 def ts() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -537,6 +539,20 @@ class DeployStackRunner:
             return ()
         return tuple(token.strip() for token in raw.split(",") if token.strip())
 
+    def _chaos_actions(self) -> tuple[str, ...]:
+        raw = str(self.cfg.chaos_actions or "").strip()
+        if not raw:
+            return ()
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw.split(","):
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
+
     def _is_truthy(self, value: str) -> bool:
         token = str(value or "").strip().lower()
         return token in {"1", "true", "yes", "on", "y"}
@@ -591,6 +607,13 @@ class DeployStackRunner:
             info(f"Media-server direct host: {self.cfg.media_server_direct_host}")
         if platform_plugin.logs_bootstrap_runner_image:
             info(f"Compose bootstrap-runner image: {self.cfg.bootstrap_runner_image}")
+        info(
+            "Chaos testing: "
+            f"enabled={self.cfg.chaos_enabled}, "
+            f"duration_minutes={self.cfg.chaos_duration_minutes}, "
+            f"interval_seconds={self.cfg.chaos_interval_seconds}, "
+            f"actions={','.join(self._chaos_actions()) or '<none>'}"
+        )
 
         self.notify(
             "info",
@@ -655,6 +678,11 @@ class DeployStackRunner:
             self._run_phase("Run ingress smoke test", self.run_smoke_test)
         else:
             self._run_phase("Run ingress smoke test", lambda: None, enabled=False)
+
+        if self._is_truthy(self.cfg.chaos_enabled):
+            self._run_phase("Run chaos recovery tests", self.run_chaos_tests)
+        else:
+            self._run_phase("Run chaos recovery tests", lambda: None, enabled=False)
 
         self._run_phase("Collect final pod status", self.print_final_pod_status)
         self.tracker.summary()
@@ -742,8 +770,18 @@ class DeployStackRunner:
                 )
         if not str(self.cfg.bootstrap_runner_image or "").strip():
             raise DeployError("BOOTSTRAP_RUNNER_IMAGE cannot be empty.")
-        if self.cfg.disk_allocation_gb < 200:
-            raise DeployError("STACK_DISK_ALLOCATION_GB must be at least 200.")
+        if self.cfg.disk_allocation_gb < _MIN_STACK_DISK_ALLOCATION_GB:
+            raise DeployError(
+                "STACK_DISK_ALLOCATION_GB must be at least " f"{_MIN_STACK_DISK_ALLOCATION_GB}."
+            )
+        if self.cfg.chaos_duration_minutes < 1 or self.cfg.chaos_duration_minutes > 120:
+            raise DeployError("CHAOS_DURATION_MINUTES must be between 1 and 120.")
+        if self.cfg.chaos_interval_seconds < 0 or self.cfg.chaos_interval_seconds > 3600:
+            raise DeployError("CHAOS_INTERVAL_SECONDS must be between 0 and 3600.")
+        if self._is_truthy(self.cfg.chaos_enabled) and not self._chaos_actions():
+            raise DeployError(
+                "CHAOS_ACTIONS must include at least one action when chaos is enabled."
+            )
         try:
             network = ipaddress.ip_network(self.cfg.network_cidr, strict=False)
         except ValueError as exc:
@@ -868,6 +906,21 @@ class DeployStackRunner:
         self.cfg.node_ip = resolved or self.cfg.node_ip
         if not resolved:
             raise SkipPhase()
+
+    def run_chaos_tests(self) -> None:
+        adapter = self._platform_adapter()
+        runner = getattr(adapter, "run_chaos_tests", None)
+        if not callable(runner):
+            info(
+                "Chaos testing is enabled but this platform adapter does not implement chaos hooks; "
+                "skipping."
+            )
+            raise SkipPhase()
+        runner(
+            duration_minutes=int(self.cfg.chaos_duration_minutes),
+            interval_seconds=int(self.cfg.chaos_interval_seconds),
+            actions=self._chaos_actions(),
+        )
 
     def print_final_pod_status(self) -> None:
         self._platform_adapter().print_workload_status()

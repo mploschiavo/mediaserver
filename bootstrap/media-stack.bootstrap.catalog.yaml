@@ -65,6 +65,7 @@ apps:
     - maintainerr
     - unpackerr
     - homepage
+    - flaresolverr
   aliases:
     mainainerr: maintainerr
 
@@ -81,6 +82,7 @@ install_profiles:
       - jellyfin
       - jellyseerr
       - prowlarr
+      - flaresolverr
       - qbittorrent
       - homepage
       - sonarr
@@ -91,6 +93,15 @@ install_profiles:
       - unpackerr
   full:
     enabled_apps: "*"
+
+chaos_defaults:
+  enabled: false
+  duration_minutes: 5
+  interval_seconds: 60
+  actions:
+    - restart_container
+    - pause_container
+    - network_disconnect
 
 live_tv_defaults:
   tuner_urls:

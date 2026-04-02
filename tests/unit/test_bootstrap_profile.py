@@ -75,7 +75,7 @@ class BootstrapProfileTests(unittest.TestCase):
             BootstrapProfileConfig.from_dict({})
 
     def test_from_dict_rejects_small_disk_allocation(self):
-        with self.assertRaisesRegex(ValueError, "at least 200GB"):
+        with self.assertRaisesRegex(ValueError, "at least 20GB"):
             BootstrapProfileConfig.from_dict(
                 {
                     "schema_version": 1,
@@ -86,12 +86,43 @@ class BootstrapProfileTests(unittest.TestCase):
                         "purpose": "dev",
                     },
                     "resources": {
-                        "disk_space_gb": 100,
+                        "disk_space_gb": 10,
                         "network_cidr": "192.168.1.0/24",
                     },
                     "install_profile": "minimal",
                 }
             )
+
+    def test_from_dict_parses_chaos_config(self):
+        profile = BootstrapProfileConfig.from_dict(
+            {
+                "schema_version": 1,
+                "kind": "media_stack_profile",
+                "metadata": {
+                    "name": "media-dev",
+                    "platform": "compose",
+                    "purpose": "dev",
+                },
+                "resources": {
+                    "disk_space_gb": 50,
+                    "network_cidr": "192.168.1.0/24",
+                },
+                "install_profile": "standard",
+                "chaos": {
+                    "enabled": True,
+                    "duration_minutes": 5,
+                    "interval_seconds": 45,
+                    "actions": ["restart_container", "pause_container", "network_disconnect"],
+                },
+            }
+        )
+        self.assertTrue(profile.chaos.enabled)
+        self.assertEqual(profile.chaos.duration_minutes, 5)
+        self.assertEqual(profile.chaos.interval_seconds, 45)
+        self.assertEqual(
+            profile.chaos.actions,
+            ("restart_container", "pause_container", "network_disconnect"),
+        )
 
     def test_from_yaml_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -184,6 +215,10 @@ class BootstrapProfileTests(unittest.TestCase):
             profile.live_tv_default_program_icon_url,
             "https://raw.githubusercontent.com/iptv-org/logo/master/tv.png",
         )
+        self.assertFalse(profile.chaos.enabled)
+        self.assertEqual(profile.chaos.duration_minutes, 5)
+        self.assertEqual(profile.chaos.interval_seconds, 60)
+        self.assertIn("restart_container", profile.chaos.actions)
 
     def test_full_install_profile_defaults_auto_download_to_true(self):
         profile = BootstrapProfileConfig.from_dict(
@@ -203,6 +238,25 @@ class BootstrapProfileTests(unittest.TestCase):
             }
         )
         self.assertTrue(profile.auto_download_content)
+
+    def test_standard_install_profile_includes_flaresolverr(self):
+        profile = BootstrapProfileConfig.from_dict(
+            {
+                "schema_version": 1,
+                "kind": "media_stack_profile",
+                "metadata": {
+                    "name": "media-dev",
+                    "platform": "compose",
+                    "purpose": "dev",
+                },
+                "resources": {
+                    "disk_space_gb": 50,
+                    "network_cidr": "192.168.1.0/24",
+                },
+                "install_profile": "standard",
+            }
+        )
+        self.assertTrue(profile.install_apps["flaresolverr"])
 
     def test_catalog_file_allows_extending_apps_without_code_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,6 +14,12 @@ Edge routing provider selection is profile-driven via `routing.provider`.
 - canonical values: `traefik`, `envoy`
 - all examples default to `traefik`; switch a profile by changing that one field
 
+Chaos testing is profile-driven via `chaos`.
+
+- default is disabled in all examples (`chaos.enabled: false`)
+- when enabled, compose deploy runs scheduled chaos actions and waits for self-healing
+- canonical actions: `restart_container`, `pause_container`, `network_disconnect`
+
 Validate any profile with:
 
 ```bash

@@ -41,6 +41,7 @@ class ComposeRebuildPlatformConfig:
     media_server_service_names: tuple[str, ...] = ()
     wait_timeout: str = "20m"
     node_ip: str = ""
+    disk_allocation_gb: int = 500
     runtime_artifacts_dir: Path | None = None
     target: str = "compose"
 
@@ -103,6 +104,7 @@ class ComposeRebuildPlatformAdapter:
             docker=self.docker,
             spec_resolver=self.spec_resolver,
             label_service=self.label_service,
+            info=self.info,
         )
         self.artifacts_service = ComposeRuntimeArtifactService(
             runtime_artifacts_dir=self.cfg.runtime_artifacts_dir,
@@ -214,6 +216,16 @@ class ComposeRebuildPlatformAdapter:
         services = self._selected_services(dict(compose.get("services") or {}))
         if not services:
             raise RuntimeError("No compose services selected for deployment.")
+        storage_report = self.runtime_service.enforce_storage_budget(
+            services,
+            disk_allocation_gb=int(self.cfg.disk_allocation_gb),
+        )
+        self.artifacts_service.write_json_artifact(
+            "resolved/storage-budget.report.json",
+            storage_report,
+            label="Compose storage budget report artifact",
+        )
+        self.runtime_service.assert_host_ports_available(services)
         self._write_traefik_dynamic_config(services)
         self.artifacts_service.write_yaml_artifact(
             "resolved/docker-compose.selected.runtime.yaml",
@@ -257,6 +269,116 @@ class ComposeRebuildPlatformAdapter:
                 services[service_name],
                 default_network=default_network,
             )
+
+    def _chaos_target_services(self, services: dict[str, dict[str, Any]]) -> tuple[str, ...]:
+        router_service_names = {
+            str(item or "").strip()
+            for item in tuple(self.cfg.edge_router_service_names or ())
+            if str(item or "").strip()
+        }
+        candidates: list[str] = []
+        for service_name in self._service_order(services):
+            if service_name in router_service_names:
+                continue
+            candidates.append(service_name)
+        if not candidates:
+            candidates = list(self._service_order(services))
+        return tuple(candidates)
+
+    def _run_chaos_action(
+        self,
+        *,
+        action: str,
+        service_name: str,
+        service_spec: dict[str, Any],
+        default_network: str,
+    ) -> None:
+        container_name = self.spec_resolver.container_name(service_name, service_spec)
+        container = self.docker.get_container(container_name)
+        if container is None:
+            raise RuntimeError(
+                "Compose chaos action could not find target container "
+                f"'{container_name}' for service '{service_name}'."
+            )
+        action_token = str(action or "").strip().lower()
+        if action_token == "restart_container":
+            container.restart(timeout=10)
+            return
+        if action_token == "pause_container":
+            container.pause()
+            time.sleep(5)
+            container.unpause()
+            return
+        if action_token == "network_disconnect":
+            network_mode = str(service_spec.get("network_mode") or "").strip().lower()
+            if network_mode == "host":
+                self.info(
+                    "Compose chaos network_disconnect skipped for host-network service "
+                    f"'{service_name}'."
+                )
+                return
+            network = self.docker.client.networks.get(default_network)
+            network.disconnect(container, force=True)
+            time.sleep(3)
+            network.connect(container)
+            return
+        raise RuntimeError(f"Unsupported compose chaos action '{action}'.")
+
+    def run_chaos_tests(
+        self,
+        *,
+        duration_minutes: int,
+        interval_seconds: int,
+        actions: tuple[str, ...],
+    ) -> None:
+        compose = self._load_compose_spec()
+        services = self._selected_services(dict(compose.get("services") or {}))
+        if not services:
+            raise RuntimeError("Compose chaos tests require at least one selected service.")
+        resolved_actions = tuple(
+            str(item or "").strip().lower() for item in actions if str(item or "").strip()
+        )
+        if not resolved_actions:
+            raise RuntimeError("Compose chaos tests require at least one action.")
+        targets = self._chaos_target_services(services)
+        if not targets:
+            raise RuntimeError("Compose chaos tests could not resolve eligible target services.")
+
+        window_seconds = max(60, int(duration_minutes) * 60)
+        start = time.time()
+        deadline = start + window_seconds
+        spacing = max(0, int(interval_seconds))
+        default_network = f"{self._project_name()}_default"
+
+        self.info(
+            "Compose chaos schedule: "
+            f"duration_minutes={duration_minutes}, interval_seconds={spacing}, "
+            f"actions={','.join(resolved_actions)}, targets={','.join(targets)}"
+        )
+        for idx, action in enumerate(resolved_actions):
+            scheduled_at = start + (idx * spacing)
+            if scheduled_at > deadline:
+                self.info(
+                    "Compose chaos schedule window reached before running action "
+                    f"'{action}'; stopping early."
+                )
+                break
+            now = time.time()
+            if scheduled_at > now:
+                time.sleep(scheduled_at - now)
+            service_name = targets[idx % len(targets)]
+            self.info(
+                f"Compose chaos action starting: action={action}, service={service_name}, "
+                f"sequence={idx + 1}/{len(resolved_actions)}"
+            )
+            self._run_chaos_action(
+                action=action,
+                service_name=service_name,
+                service_spec=services[service_name],
+                default_network=default_network,
+            )
+            self.wait_for_workloads()
+            self.info(f"Compose chaos action healed: action={action}, service={service_name}")
 
     def reconcile_edge_routing(self) -> bool:
         # Compose networking/labels are applied as part of container creation.

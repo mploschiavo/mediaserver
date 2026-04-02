@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-_ARR_APP_KEYS = {"sonarr", "radarr", "lidarr", "readarr"}
-_RESERVED_DISCOVERY_KEYS = {"enabled", "required", "trigger_initial_sync", "prune_unmanaged"}
+import yaml
+
+_POLICY_CATALOG_PATH = (
+    Path(__file__).resolve().parents[4] / "bootstrap" / "media-stack.bootstrap.policy.yaml"
+)
 
 
 def _tokenize(value: str) -> str:
@@ -29,6 +34,95 @@ def _set_enabled(section: dict[str, Any] | None, enabled: bool) -> None:
         section["enabled"] = bool(enabled)
 
 
+def _walk_path(cfg: dict[str, object], path: str) -> dict[str, Any] | None:
+    token = str(path or "").strip()
+    if not token:
+        return None
+    current: Any = cfg
+    for segment in token.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(segment)
+    if isinstance(current, dict):
+        return current
+    return None
+
+
+def _set_bool_path(cfg: dict[str, object], path: str, value: bool) -> None:
+    token = str(path or "").strip()
+    if not token:
+        return
+    parent_path, _, leaf = token.rpartition(".")
+    leaf_name = str(leaf or "").strip()
+    if not leaf_name:
+        return
+    parent: Any = cfg if not parent_path else _walk_path(cfg, parent_path)
+    if not isinstance(parent, dict):
+        return
+    parent[leaf_name] = bool(value)
+
+
+@lru_cache(maxsize=1)
+def _load_policy_catalog() -> dict[str, Any]:
+    if not _POLICY_CATALOG_PATH.exists():
+        raise RuntimeError(
+            "Bootstrap runtime policy catalog file not found: " f"{_POLICY_CATALOG_PATH}"
+        )
+    payload = yaml.safe_load(_POLICY_CATALOG_PATH.read_text(encoding="utf-8"))
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise RuntimeError("Bootstrap runtime policy catalog must be an object")
+    return payload
+
+
+def _selected_apps_policy_cfg() -> dict[str, Any]:
+    payload = _load_policy_catalog()
+    policy = payload.get("selected_apps_policy")
+    if not isinstance(policy, dict):
+        raise RuntimeError(
+            "selected_apps_policy must be an object in bootstrap runtime policy catalog"
+        )
+    return policy
+
+
+def _policy_map(policy: dict[str, Any], key: str) -> dict[str, str]:
+    raw = policy.get(key)
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for raw_key, raw_value in raw.items():
+        token = _tokenize(str(raw_key or ""))
+        section = str(raw_value or "").strip()
+        if token and section:
+            out[token] = section
+    return out
+
+
+def _policy_set(policy: dict[str, Any], key: str) -> set[str]:
+    raw = policy.get(key)
+    if not isinstance(raw, list):
+        return set()
+    out: set[str] = set()
+    for item in raw:
+        token = _tokenize(str(item or ""))
+        if token:
+            out.add(token)
+    return out
+
+
+def _policy_list(policy: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw = policy.get(key)
+    if not isinstance(raw, list):
+        return ()
+    out: list[str] = []
+    for item in raw:
+        token = str(item or "").strip()
+        if token:
+            out.append(token)
+    return tuple(out)
+
+
 def _normalize_prefix(value: str) -> str:
     token = str(value or "").strip()
     if not token:
@@ -49,18 +143,25 @@ def _url_host(url: str) -> str:
 
 
 def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str) -> None:
+    policy = _selected_apps_policy_cfg()
+    app_toggle_sections = _policy_map(policy, "app_toggle_sections")
+    arr_app_keys = _policy_set(policy, "arr_app_keys")
+    arr_disable_sections = _policy_list(policy, "arr_disable_sections_when_unselected")
+    arr_discovery_reserved_keys = _policy_set(policy, "arr_discovery_reserved_keys")
+    jellyfin_disable_sections = _policy_list(policy, "jellyfin_disable_sections_when_unselected")
+    maintainerr_integrations_section = str(
+        policy.get("maintainerr_integrations_section") or ""
+    ).strip()
+    jellyfin_home_rails_cleanup_path = str(
+        policy.get("jellyfin_home_rails_cleanup_path") or ""
+    ).strip()
+
     selected = parse_selected_apps_csv(selected_apps_csv)
     if not selected:
         return
-    selected_arr = bool(_ARR_APP_KEYS.intersection(selected))
+    selected_arr = bool(arr_app_keys.intersection(selected))
 
-    for app_key, section_key in (
-        ("homepage", "homepage"),
-        ("jellyseerr", "jellyseerr"),
-        ("bazarr", "bazarr"),
-        ("maintainerr", "maintainerr"),
-        ("tautulli", "tautulli"),
-    ):
+    for app_key, section_key in app_toggle_sections.items():
         _set_enabled(cfg.get(section_key), app_key in selected)
 
     arr_apps = cfg.get("arr_apps")
@@ -75,20 +176,13 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
         cfg["arr_apps"] = filtered
 
     if not selected_arr:
-        for section in (
-            "arr_media_management",
-            "arr_download_handling",
-            "arr_quality_upgrade",
-            "arr_discovery_lists",
-            "disk_guardrails",
-            "media_hygiene",
-        ):
+        for section in arr_disable_sections:
             _set_enabled(cfg.get(section), False)
 
     arr_discovery_lists = cfg.get("arr_discovery_lists")
     if isinstance(arr_discovery_lists, dict):
         for key in list(arr_discovery_lists.keys()):
-            if key in _RESERVED_DISCOVERY_KEYS:
+            if _tokenize(key) in arr_discovery_reserved_keys:
                 continue
             token = _tokenize(key)
             if token and token not in selected:
@@ -139,28 +233,16 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
             technology_bindings["usenet_client"] = ""
 
     if "jellyfin" not in selected:
-        for section in (
-            "jellyfin_libraries",
-            "jellyfin_livetv",
-            "jellyfin_plugins",
-            "jellyfin_playback",
-            "jellyfin_home_rails",
-            "jellyfin_auto_collections",
-            "jellyfin_prewarm",
-        ):
+        for section in jellyfin_disable_sections:
             _set_enabled(cfg.get(section), False)
-        jellyfin_home_rails = cfg.get("jellyfin_home_rails")
-        if isinstance(jellyfin_home_rails, dict):
-            jellyfin_home_rails["cleanup_collections_when_disabled"] = False
+        _set_bool_path(cfg, jellyfin_home_rails_cleanup_path, False)
         if isinstance(jellyseerr, dict):
             jelly_cfg = jellyseerr.get("jellyfin")
             if isinstance(jelly_cfg, dict):
                 jelly_cfg["configure"] = False
 
     if "maintainerr" not in selected:
-        maintainerr_cfg = cfg.get("maintainerr")
-        if isinstance(maintainerr_cfg, dict):
-            _set_enabled(maintainerr_cfg.get("integrations"), False)
+        _set_enabled(_walk_path(cfg, maintainerr_integrations_section), False)
 
     app_auth = cfg.get("app_auth")
     if isinstance(app_auth, dict):
