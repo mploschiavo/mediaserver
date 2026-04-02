@@ -52,7 +52,9 @@ def _safe_b64decode(value: str | None) -> str:
         return ""
 
 
-def _run(cmd: list[str], *, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: list[str], *, check: bool = True, input_text: str | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
         check=check,
@@ -83,8 +85,12 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Generate/update Kubernetes media-stack secret and local env output.",
     )
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
-    parser.add_argument("--secret-name", default=os.environ.get("SECRET_NAME", "media-stack-secrets"))
-    parser.add_argument("--output-file", default=os.environ.get("OUTPUT_FILE", "./secrets.generated.env"))
+    parser.add_argument(
+        "--secret-name", default=os.environ.get("SECRET_NAME", "media-stack-secrets")
+    )
+    parser.add_argument(
+        "--output-file", default=os.environ.get("OUTPUT_FILE", "./secrets.generated.env")
+    )
     parser.add_argument(
         "--rotate-existing",
         action="store_true",
@@ -122,7 +128,9 @@ def parse_config(argv: list[str] | None = None) -> GenerateSecretsConfig:
 
 
 def _get_secret_payload(kubectl: list[str], namespace: str, secret_name: str) -> dict[str, str]:
-    proc = _run([*kubectl, "-n", namespace, "get", "secret", secret_name, "-o", "json"], check=False)
+    proc = _run(
+        [*kubectl, "-n", namespace, "get", "secret", secret_name, "-o", "json"], check=False
+    )
     if proc.returncode != 0:
         return {}
     try:
@@ -141,7 +149,10 @@ def _apply_secret(
     secret_name: str,
     values: dict[str, str],
 ) -> None:
-    ordered_keys = [*SECRET_KEY_DEFAULTS.keys(), *sorted(k for k in values.keys() if k not in SECRET_KEY_DEFAULTS)]
+    ordered_keys = [
+        *SECRET_KEY_DEFAULTS.keys(),
+        *sorted(k for k in values.keys() if k not in SECRET_KEY_DEFAULTS),
+    ]
     lines = [
         "apiVersion: v1",
         "kind: Secret",
@@ -165,11 +176,14 @@ def build_secret_values(
     stack_admin_user: str,
     pass_length: int,
     rotate_existing: bool,
+    namespace: str = "media-stack",
 ) -> dict[str, str]:
     values = {**SECRET_KEY_DEFAULTS, **{str(k): str(v) for k, v in current.items()}}
 
     stack_user = str(values.get("STACK_ADMIN_USERNAME", "")).strip()
     stack_pass = str(values.get("STACK_ADMIN_PASSWORD", "")).strip()
+    namespace_default_password = str(namespace or "").strip() or "media-stack"
+    legacy_default_password = "media-stack-admin"
     if rotate_existing:
         if not stack_admin_user:
             raise ConfigError(
@@ -184,6 +198,9 @@ def build_secret_values(
             )
         stack_user = stack_admin_user
 
+    # Use namespace-aligned credentials by default unless explicitly rotated.
+    if (not stack_pass or stack_pass == legacy_default_password) and not rotate_existing:
+        stack_pass = namespace_default_password
     if not stack_pass or rotate_existing:
         stack_pass = _rand_secret(pass_length)
 
@@ -227,6 +244,7 @@ def run(cfg: GenerateSecretsConfig) -> int:
         stack_admin_user=cfg.stack_admin_user,
         pass_length=cfg.pass_length,
         rotate_existing=cfg.rotate_existing,
+        namespace=cfg.namespace,
     )
 
     _apply_secret(kubectl, cfg.namespace, cfg.secret_name, values)

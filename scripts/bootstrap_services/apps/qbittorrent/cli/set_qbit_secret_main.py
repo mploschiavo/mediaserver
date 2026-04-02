@@ -39,16 +39,14 @@ def _build_parser() -> argparse.ArgumentParser:
 def parse_config(argv: list[str] | None = None) -> SetQbitSecretConfig:
     args = _build_parser().parse_args(argv)
 
-    namespace = str(__import__("os").environ.get("NAMESPACE", "media-stack")).strip() or "media-stack"
+    namespace = (
+        str(__import__("os").environ.get("NAMESPACE", "media-stack")).strip() or "media-stack"
+    )
     env = __import__("os").environ
-    username = str(args.username or env.get("STACK_ADMIN_USERNAME") or "").strip()
-    password = str(args.password or env.get("STACK_ADMIN_PASSWORD") or "").strip()
-
-    if not username or not password:
-        raise ConfigError(
-            "Provide USERNAME and PASSWORD args, or set both STACK_ADMIN_USERNAME and "
-            "STACK_ADMIN_PASSWORD in the environment."
-        )
+    username = str(args.username or env.get("STACK_ADMIN_USERNAME") or "admin").strip()
+    password = str(args.password or env.get("STACK_ADMIN_PASSWORD") or namespace).strip()
+    if not password:
+        password = namespace
 
     return SetQbitSecretConfig(
         namespace=namespace,
@@ -57,7 +55,9 @@ def parse_config(argv: list[str] | None = None) -> SetQbitSecretConfig:
     )
 
 
-def _run(cmd: list[str], *, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: list[str], *, check: bool = True, input_text: str | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
         check=check,

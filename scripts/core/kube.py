@@ -32,6 +32,13 @@ KUBECTL_RETRY_MAX_DELAY_SECONDS = float(
 KUBECTL_RETRY_BACKOFF = float(os.environ.get("MEDIA_STACK_KUBECTL_RETRY_BACKOFF", "2"))
 
 
+def _env_truthy(name: str, *, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _is_retryable_kubectl_error(exc: Exception) -> bool:
     text = str(exc).lower()
     retryable_markers = (
@@ -207,7 +214,19 @@ class KubernetesClient:
                     "config or kubeconfig."
                 ) from exc
 
-        api_client = k8s_client.ApiClient()
+        configuration = k8s_client.Configuration.get_default_copy()
+        verify_ssl = _env_truthy("MEDIA_STACK_K8S_VERIFY_SSL", default=True)
+        if not verify_ssl:
+            configuration.verify_ssl = False
+            if _env_truthy("MEDIA_STACK_K8S_SUPPRESS_INSECURE_WARNINGS", default=True):
+                try:
+                    import urllib3
+
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                except Exception:
+                    pass
+
+        api_client = k8s_client.ApiClient(configuration=configuration)
         self._k8s_client = k8s_client
         self._k8s_config = k8s_config
         self._k8s_dynamic = k8s_dynamic
@@ -630,7 +649,7 @@ class KubernetesClient:
         rows = payload if is_list else [payload]
 
         if output == "json":
-            return self._result(args, stdout=json.dumps(payload))
+            return self._result(args, stdout=json.dumps(payload, default=str))
 
         if output.startswith("jsonpath"):
             if is_list:

@@ -41,6 +41,11 @@ class RebuildManifestOverridesService:
             rf"\1.{self.cfg.ingress_domain}",
             out,
         )
+        out = re.sub(
+            r"(?m)^([ \t]*STACK_ADMIN_PASSWORD:[ \t]*).*$",
+            rf'\1"{self.cfg.namespace}"',
+            out,
+        )
         return out
 
     def inject_storage_class(self, text: str) -> str:

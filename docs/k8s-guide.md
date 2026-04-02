@@ -169,7 +169,7 @@ BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-bootstrap-runner:<tag> bash
 ```
 
 Set stack admin credentials in `k8s/secrets.example.yaml` for fully automated download-client wiring.
-Defaults are `admin` / `media-stack-admin`, and qBittorrent uses those same values by default.
+Defaults are `admin` / `<namespace>`, and qBittorrent uses those same values by default.
 `JELLYFIN_API_KEY` is optional; bootstrap can auto-discover/recover it from Jellyfin DB and persist it in the secret.
 Set/update live:
 ```bash

@@ -47,9 +47,30 @@ class SetQbitSecretCliTests(unittest.TestCase):
         self.assertEqual(cfg.username, "adminx")
         self.assertEqual(cfg.password, "passx")
 
-    def test_parse_config_rejects_partial_credentials(self):
-        with self.assertRaises(self.mod.ConfigError):
-            self.mod.parse_config(["only-user"])
+    def test_parse_config_defaults_to_namespace_password(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NAMESPACE": "media-dev",
+            },
+            clear=False,
+        ):
+            cfg = self.mod.parse_config([])
+        self.assertEqual(cfg.namespace, "media-dev")
+        self.assertEqual(cfg.username, "admin")
+        self.assertEqual(cfg.password, "media-dev")
+
+    def test_parse_config_with_username_only_uses_namespace_password(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NAMESPACE": "media-dev",
+            },
+            clear=False,
+        ):
+            cfg = self.mod.parse_config(["only-user"])
+        self.assertEqual(cfg.username, "only-user")
+        self.assertEqual(cfg.password, "media-dev")
 
     def test_run_patches_existing_secret_without_legacy_keys(self):
         cfg = self.mod.SetQbitSecretConfig(
