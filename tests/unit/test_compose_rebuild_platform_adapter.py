@@ -89,6 +89,9 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         internet_exposed: bool = False,
         auth_provider: str = "none",
         auth_middleware: str = "",
+        edge_router_provider: str = "traefik",
+        edge_router_service_names: tuple[str, ...] = ("traefik",),
+        edge_compose_provider_specs: dict[str, dict[str, str]] | None = None,
         runtime_artifacts_dir: Path | None = None,
     ) -> ComposeRebuildPlatformAdapter:
         return ComposeRebuildPlatformAdapter(
@@ -106,9 +109,11 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 internet_exposed=internet_exposed,
                 auth_provider=auth_provider,
                 auth_middleware=auth_middleware,
-                edge_router_provider="traefik",
-                edge_router_service_names=("traefik",),
-                edge_compose_provider_specs={"traefik": dict(_TRAEFIK_EDGE_SPEC)},
+                edge_router_provider=edge_router_provider,
+                edge_router_service_names=edge_router_service_names,
+                edge_compose_provider_specs=dict(
+                    edge_compose_provider_specs or {"traefik": dict(_TRAEFIK_EDGE_SPEC)}
+                ),
                 auth_provider_middleware_defaults=dict(_AUTH_MIDDLEWARE_DEFAULTS),
                 media_server_service_names=("jellyfin", "jellyfin-nvidia"),
                 runtime_artifacts_dir=runtime_artifacts_dir,
@@ -355,6 +360,37 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                     )[0]
                 ).get("url"),
                 "http://sonarr:8989",
+            )
+
+    def test_apply_environment_definition_envoy_stub_skips_traefik_patch_generation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text_with_edge_labels(), encoding="utf-8")
+            compose_env_file = Path(tmp) / ".env"
+            config_root = Path(tmp) / "config"
+            compose_env_file.write_text(f"CONFIG_ROOT={config_root}\n", encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                compose_env_file=compose_env_file,
+                docker=docker,
+                edge_router_provider="envoy",
+                edge_router_service_names=("envoy",),
+                edge_compose_provider_specs={"envoy": {}},
+            )
+
+            adapter.apply_environment_definition()
+
+            dynamic_path = config_root / "traefik" / "dynamic" / "media-stack.dynamic.yaml"
+            self.assertFalse(dynamic_path.exists())
+            info_messages = [call.args[0] for call in adapter.info.call_args_list if call.args]
+            self.assertTrue(
+                any(
+                    "envoy" in message and "stub/no-op compose label bindings" in message
+                    for message in info_messages
+                )
             )
 
 

@@ -236,6 +236,12 @@ When `--platform-target compose` and edge provider is `traefik`, deploy automati
 
 No manual host-side Traefik patch step is required for normal deploy runs.
 
+### Compose Edge Provider Stubs
+
+- Built-in edge provider stubs now include `envoy` (provider discovery + validation).
+- `envoy` is currently a stub for Compose: no Traefik-style label transforms or dynamic-file patch generation run yet.
+- To select it, set `adapter_hooks.edge.router_provider` to `envoy` in `bootstrap/media-stack.bootstrap.json`.
+
 ## Operator/User Prerequisites
 
 Use this list if you want to deploy and run the stack.
