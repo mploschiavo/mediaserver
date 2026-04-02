@@ -76,6 +76,28 @@ Swap workflow:
 
 Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
 
+## Platform Swap Contract
+Swapping deployment platforms/runtimes must be platform-local and config-driven, with the same isolation expectations as app swaps.
+
+Primary binding points:
+- `platform_target` / `PLATFORM_TARGET` in rebuild CLI config (`scripts/cli/rebuild_cli_config_service.py`)
+- platform adapter factory in `scripts/core/platform_adapter.py`
+- platform adapter modules implementing `RebuildPlatformAdapter` (for example `scripts/core/kubernetes_rebuild_platform_adapter.py`, `scripts/core/compose_rebuild_platform_adapter.py`)
+- SDK/runtime adapters in `scripts/core/` (for example `kube.py`, `docker.py`)
+
+Swap workflow:
+1. Add a new platform adapter module that implements the shared platform interface.
+2. Keep runtime definition native-first (Kubernetes YAML, Docker Compose YAML, or equivalent native spec for the target).
+3. Register target alias/dependencies in `scripts/core/platform_adapter.py` without leaking target logic into orchestration flows.
+4. Add/update SDK adapter boundaries for the target runtime (for example Docker, containerd-backed engines) before adding custom abstractions.
+5. Add unit tests for target normalization, adapter construction, and platform lifecycle behavior.
+
+### Platform Isolation Rules
+- Shared orchestration entrypoints (`scripts/cli/*.py`, `scripts/bootstrap_services/bootstrap_runner_service.py`) must remain platform-neutral; they may select a target and call adapter interfaces only.
+- Do not add new target-specific branching in orchestration phases when behavior can live inside a platform adapter.
+- If adding/swapping a platform requires broad edits across shared orchestration modules, treat it as a design bug and refactor behind adapter boundaries before merge.
+- Prefer additive target plugins/adapters over mutating existing targets.
+
 ### Non-Negotiable Isolation Rules
 - `scripts/bootstrap_services/bootstrap_runner_service.py` must remain orchestration-only.
 - App/technology-specific branching belongs in:
