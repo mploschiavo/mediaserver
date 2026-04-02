@@ -1,6 +1,8 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.core.bootstrap_profile import (
     BootstrapProfileConfig,
@@ -41,7 +43,7 @@ class BootstrapProfileTests(unittest.TestCase):
                     "gateway_host": "apps.media-dev.example.com",
                     "app_path_prefix": "/app",
                     "direct_hosts": {
-                        "jellyfin": "jellyfin.media-dev.example.com",
+                        "media_server": "jellyfin.media-dev.example.com",
                     },
                 },
                 "auth": {
@@ -62,7 +64,9 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertEqual(profile.exposure.auth_provider, "authelia")
         self.assertEqual(profile.exposure.auth_middleware, "authelia@docker")
         self.assertEqual(profile.exposure.gateway_host, "apps.media-dev.example.com")
-        self.assertEqual(profile.exposure.jellyfin_direct_host, "jellyfin.media-dev.example.com")
+        self.assertEqual(
+            profile.exposure.media_server_direct_host, "jellyfin.media-dev.example.com"
+        )
 
     def test_from_dict_rejects_missing_required_sections(self):
         with self.assertRaisesRegex(ValueError, "metadata must be an object"):
@@ -173,6 +177,72 @@ class BootstrapProfileTests(unittest.TestCase):
             }
         )
         self.assertTrue(profile.auto_download_content)
+
+    def test_catalog_file_allows_extending_apps_without_code_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog_file = Path(tmp) / "catalog.yaml"
+            catalog_file.write_text(
+                "\n".join(
+                    [
+                        "schema_version: 1",
+                        "kind: bootstrap_profile_catalog",
+                        "boolean_tokens:",
+                        "  true: ['1','true']",
+                        "  false: ['0','false']",
+                        "deployment_aliases:",
+                        "  k8s: k8s",
+                        "  compose: compose",
+                        "purpose_values: [dev, test, prod]",
+                        "route_strategy_aliases:",
+                        "  subdomain: subdomain",
+                        "  path-prefix: path-prefix",
+                        "  hybrid: hybrid",
+                        "  local: subdomain",
+                        "auth_providers: [none, authelia, authentik]",
+                        "apps:",
+                        "  keys: [jellyfin, customapp]",
+                        "  aliases: {}",
+                        "install_profiles:",
+                        "  minimal: { enabled_apps: [jellyfin] }",
+                        "  standard: { enabled_apps: [jellyfin] }",
+                        "  full: { enabled_apps: '*' }",
+                        "live_tv_defaults:",
+                        "  tuner_urls: ['https://example.com/tv.m3u']",
+                        "  guide_urls: ['https://example.com/guide.xml']",
+                        "  default_program_icon_url: https://example.com/icon.png",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"BOOTSTRAP_PROFILE_CATALOG_FILE": str(catalog_file)},
+                clear=False,
+            ):
+                self.assertEqual(
+                    normalize_selected_apps_csv("customapp,jellyfin"), "customapp,jellyfin"
+                )
+                profile = BootstrapProfileConfig.from_dict(
+                    {
+                        "schema_version": 1,
+                        "kind": "media_stack_profile",
+                        "metadata": {
+                            "name": "media-ext",
+                            "platform": "compose",
+                            "purpose": "dev",
+                        },
+                        "resources": {
+                            "disk_space_gb": 500,
+                            "network_cidr": "10.90.0.0/24",
+                        },
+                        "install_profile": "full",
+                        "apps": {
+                            "customapp": False,
+                        },
+                    }
+                )
+                self.assertIn("customapp", profile.install_apps)
+                self.assertFalse(profile.install_apps["customapp"])
 
 
 if __name__ == "__main__":

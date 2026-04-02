@@ -1,0 +1,93 @@
+schema_version: 1
+kind: bootstrap_profile_catalog
+
+boolean_tokens:
+  true:
+    - "1"
+    - "true"
+    - "yes"
+    - "on"
+    - "y"
+  false:
+    - "0"
+    - "false"
+    - "no"
+    - "off"
+    - "n"
+
+deployment_aliases:
+  k8s: k8s
+  kubernetes: k8s
+  microk8s: k8s
+  compose: compose
+  docker-compose: compose
+  docker_compose: compose
+  dockercompose: compose
+
+purpose_values:
+  - dev
+  - test
+  - prod
+
+route_strategy_aliases:
+  subdomain: subdomain
+  path-prefix: path-prefix
+  path_prefix: path-prefix
+  pathprefix: path-prefix
+  hybrid: hybrid
+  local: subdomain
+
+auth_providers:
+  - none
+  - authelia
+  - authentik
+
+apps:
+  keys:
+    - jellyfin
+    - jellyseerr
+    - sonarr
+    - radarr
+    - lidarr
+    - readarr
+    - bazarr
+    - prowlarr
+    - qbittorrent
+    - sabnzbd
+    - tautulli
+    - maintainerr
+    - unpackerr
+    - homepage
+  aliases:
+    mainainerr: maintainerr
+
+install_profiles:
+  minimal:
+    enabled_apps:
+      - jellyfin
+      - jellyseerr
+      - prowlarr
+      - qbittorrent
+      - homepage
+  standard:
+    enabled_apps:
+      - jellyfin
+      - jellyseerr
+      - prowlarr
+      - qbittorrent
+      - homepage
+      - sonarr
+      - radarr
+      - bazarr
+      - sabnzbd
+      - maintainerr
+      - unpackerr
+  full:
+    enabled_apps: "*"
+
+live_tv_defaults:
+  tuner_urls:
+    - https://iptv-org.github.io/iptv/countries/us.m3u
+  guide_urls:
+    - https://iptv-epg.org/files/epg-us.xml
+  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png

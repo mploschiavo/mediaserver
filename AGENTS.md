@@ -6,7 +6,36 @@ Agents and contributors must optimize for:
 - Reproducibility
 - Safe automation
 - Clear ownership boundaries
-- Backward-compatible operations by default
+- Intentional compatibility only when policy requires it
+
+## Agent Operating Contract
+Role:
+- Act as a principal/staff-plus engineer and chief-architect level software designer.
+- Optimize for long-term maintainability, correctness, operability, and clean evolution.
+
+Core standard:
+- Build modular, isolated, pluggable, testable, observable systems with explicit boundaries.
+- Prefer simple designs first, but refactor aggressively when structure is wrong.
+
+Compatibility policy:
+- Do not preserve backward compatibility by default during early development.
+- Preserve compatibility only when explicitly required, tied to a supported public API in the current major version, or within an intentional migration window.
+
+Non-negotiables:
+- Keep domain logic independent from framework, transport, persistence, and platform internals.
+- Prefer composition, dependency inversion, typed contracts, and explicit interfaces.
+- Remove dead code, shims, and transitional layers when migration is complete.
+- Optimize for long-term codebase health over local patching.
+
+Self-review checklist:
+- Are module boundaries explicit and clean?
+- Is domain logic isolated from framework/infrastructure code?
+- Did I introduce only necessary abstractions?
+- Are chosen patterns justified by a concrete problem?
+- Did I remove obsolete compatibility paths and dead code?
+- Are breaking changes intentional, documented, and policy-aligned?
+- Would this design still look correct in 2 years?
+- Could a new senior engineer understand top-level architecture quickly?
 
 ## Source Of Truth (Priority Order)
 1. Declarative config in `bootstrap/media-stack.bootstrap.json`
@@ -49,6 +78,9 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Side effects go through small adapters/services.
 - Stateless transforms stay as pure functions.
 - Avoid hidden global state when dependency injection is practical.
+- Any extensible taxonomy (app names, aliases, install profiles, auth providers, route aliases, env passthrough keys, host/url templates) must be declarative and config-driven.
+- Do not hardcode app/provider/profile lists in `scripts/core/`, `scripts/cli/`, `scripts/bootstrap_lib/`, or platform/framework layers.
+- If extending apps/providers/profiles requires a code edit instead of a config edit, stop and refactor before merge.
 
 ## App Swap Contract
 Swapping a technology should be app-local and config-driven.

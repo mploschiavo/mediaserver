@@ -16,6 +16,13 @@ class RebuildPipelineConfig:
     root_dir: Path
     prepare_host_root: str
     enable_components: str
+    selected_apps: str
+    internet_exposed: str
+    route_strategy: str
+    ingress_domain: str
+    app_gateway_host: str
+    app_path_prefix: str
+    media_server_direct_host: str
     preconfigure_api_keys: str
     apply_initial_preferences: str
     auto_download_content: str
@@ -62,8 +69,16 @@ class RebuildPipelineService:
                 "NAMESPACE": self.cfg.namespace,
                 "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
                 "ENABLE_COMPONENTS": self.cfg.enable_components,
+                "SELECTED_APPS": self.cfg.selected_apps,
+                "INTERNET_EXPOSED": self.cfg.internet_exposed,
+                "ROUTE_STRATEGY": self.cfg.route_strategy,
+                "INGRESS_DOMAIN": self.cfg.ingress_domain,
+                "APP_GATEWAY_HOST": self.cfg.app_gateway_host,
+                "APP_PATH_PREFIX": self.cfg.app_path_prefix,
+                "MEDIA_SERVER_DIRECT_HOST": self.cfg.media_server_direct_host,
                 "PRECONFIGURE_API_KEYS": self.cfg.preconfigure_api_keys,
                 "APPLY_INITIAL_PREFERENCES": self.cfg.apply_initial_preferences,
+                "FULLY_PRECONFIGURED": self.cfg.apply_initial_preferences,
                 "AUTO_DOWNLOAD_CONTENT": self.cfg.auto_download_content,
             },
         )

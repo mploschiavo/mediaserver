@@ -33,7 +33,7 @@ routing:
   gateway_host: apps.media-dev.local
   app_path_prefix: /app
   direct_hosts:
-    jellyfin: jellyfin.media-dev.local
+    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false
