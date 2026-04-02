@@ -40,7 +40,7 @@ Templates:
 Run with env file:
 ```bash
 bash scripts/with-env.sh <ENV_FILE> bash scripts/install.sh
-bash scripts/with-env.sh <ENV_FILE> bash scripts/rebuild-and-bootstrap.sh
+bash scripts/with-env.sh <ENV_FILE> bash scripts/deploy-stack.sh
 ```
 
 `scripts/with-env.sh` applies `DELETE_NAMESPACE=0` when unset, so destructive rebuilds stay opt-in.

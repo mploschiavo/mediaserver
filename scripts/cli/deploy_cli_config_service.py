@@ -12,6 +12,8 @@ try:  # pragma: no cover - import path depends on entrypoint context
         maybe_load_bootstrap_profile,
         normalize_selected_apps_csv,
     )
+    from core.platform_cli_defaults_registry import resolve_platform_cli_defaults
+    from core.platform_plugin_registry import normalize_platform_target
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.core.bootstrap_profile import (
         BootstrapProfileConfig,
@@ -19,10 +21,12 @@ except ModuleNotFoundError:  # pragma: no cover
         maybe_load_bootstrap_profile,
         normalize_selected_apps_csv,
     )
+    from scripts.core.platform_cli_defaults_registry import resolve_platform_cli_defaults
+    from scripts.core.platform_plugin_registry import normalize_platform_target
 
 
 @dataclass
-class RebuildBootstrapConfig:
+class DeployStackConfig:
     root_dir: Path
     platform_target: str = "k8s"
     namespace: str = "media-stack"
@@ -98,7 +102,7 @@ def _resolve_profile_path(
     return None
 
 
-def _purpose_to_rebuild_profile(purpose: str) -> str:
+def _purpose_to_deploy_profile(purpose: str) -> str:
     token = str(purpose or "").strip().lower()
     if token == "test":
         return "minimal"
@@ -133,7 +137,7 @@ def _resolve_profile_defaults(
         "auto_download_content": "1" if profile.auto_download_content else "0",
         "selected_apps": profile.selected_apps_csv,
         "purpose": profile.purpose,
-        "profile": _purpose_to_rebuild_profile(profile.purpose),
+        "profile": _purpose_to_deploy_profile(profile.purpose),
         "disk_allocation_gb": str(profile.disk_allocation_gb),
         "network_cidr": profile.network_cidr,
         "internet_exposed": "1" if profile.exposure.internet_exposed else "0",
@@ -147,7 +151,7 @@ def _resolve_profile_defaults(
     }
 
 
-def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> RebuildBootstrapConfig:
+def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStackConfig:
     profile_catalog = load_bootstrap_profile_catalog()
     route_values = tuple(dict.fromkeys(profile_catalog.route_strategy_aliases.values()))
     default_route_strategy = route_values[0] if route_values else "subdomain"
@@ -161,8 +165,8 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
     auth_provider_help_values = ", ".join(profile_catalog.auth_providers)
 
     parser = argparse.ArgumentParser(
-        prog="scripts/rebuild-and-bootstrap.sh",
-        description="Full automation helper for media-stack rebuild and bootstrap.",
+        prog="scripts/deploy-stack.sh",
+        description="Full automation helper for media-stack deployment and bootstrap.",
     )
     parser.add_argument("node_ip", nargs="?", default=None)
     parser.add_argument("--bootstrap-profile-file", default=None)
@@ -227,16 +231,31 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
     )
     profile = maybe_load_bootstrap_profile(profile_path)
     profile_defaults = _resolve_profile_defaults(profile)
+    requested_platform_target = _pick(
+        parsed.platform_target,
+        _env_value("PLATFORM_TARGET"),
+        profile_defaults.get("platform_target"),
+        default="k8s",
+    )
+    normalized_platform_target = normalize_platform_target(requested_platform_target)
+    platform_target = normalized_platform_target or str(requested_platform_target or "").strip()
+    platform_defaults = resolve_platform_cli_defaults(target=platform_target, root_dir=root_dir)
+    default_compose_file = platform_defaults.compose_file or (
+        root_dir / DeployStackConfig.compose_file
+    )
+    default_compose_env_file = platform_defaults.compose_env_file or (
+        root_dir / DeployStackConfig.compose_env_file
+    )
 
     compose_file = (
         Path(_pick(parsed.compose_file, _env_value("COMPOSE_FILE")))
         if _pick(parsed.compose_file, _env_value("COMPOSE_FILE"))
-        else root_dir / "docker" / "docker-compose.yml"
+        else default_compose_file
     )
     compose_env_file = (
         Path(_pick(parsed.compose_env_file, _env_value("COMPOSE_ENV_FILE")))
         if _pick(parsed.compose_env_file, _env_value("COMPOSE_ENV_FILE"))
-        else root_dir / "docker" / ".env"
+        else default_compose_env_file
     )
     selected_apps = normalize_selected_apps_csv(
         _pick(
@@ -247,14 +266,9 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
         )
     )
 
-    return RebuildBootstrapConfig(
+    return DeployStackConfig(
         root_dir=root_dir,
-        platform_target=_pick(
-            parsed.platform_target,
-            _env_value("PLATFORM_TARGET"),
-            profile_defaults.get("platform_target"),
-            default="k8s",
-        ),
+        platform_target=platform_target,
         namespace=_pick(
             parsed.namespace,
             _env_value("NAMESPACE"),

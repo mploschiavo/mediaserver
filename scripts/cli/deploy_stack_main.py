@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Python CLI for rebuild-and-bootstrap orchestration.
-
-Media Automation Stack by Matthew Loschiavo:
-https://matthewloschiavo.com
-"""
+"""Python CLI for deploy-stack orchestration."""
 
 from __future__ import annotations
 
@@ -40,15 +36,16 @@ from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
     BootstrapNotificationService,
 )
-from cli.rebuild_cli_config_service import (
-    RebuildBootstrapConfig,
-    parse_rebuild_bootstrap_config,
+from cli import deploy_hook_config_resolver
+from cli.deploy_cli_config_service import (
+    DeployStackConfig,
+    parse_deploy_stack_config,
 )
-from cli.rebuild_pipeline_service import RebuildPipelineConfig, RebuildPipelineService
-from cli.rebuild_profile_defaults_service import RebuildProfileDefaultsService
-from cli.rebuild_script_runner_service import (
-    RebuildScriptRunnerConfig,
-    RebuildScriptRunnerService,
+from cli.deploy_pipeline_service import DeployPipelineConfig, DeployPipelineService
+from cli.deploy_profile_defaults_service import DeployProfileDefaultsService
+from cli.deploy_script_runner_service import (
+    DeployScriptRunnerConfig,
+    DeployScriptRunnerService,
 )
 
 
@@ -64,12 +61,8 @@ def warn(message: str) -> None:
     print(f"[{ts()}] [WARN] {message}", file=sys.stderr, flush=True)
 
 
-def err(message: str) -> None:
-    print(f"[{ts()}] [ERR] {message}", file=sys.stderr, flush=True)
-
-
-class RebuildError(RuntimeError):
-    """Raised when rebuild/bootstrap orchestration fails."""
+class DeployError(RuntimeError):
+    """Raised when deploy/bootstrap orchestration fails."""
 
 
 class SkipPhase(RuntimeError):
@@ -77,8 +70,8 @@ class SkipPhase(RuntimeError):
 
 
 @dataclass
-class RebuildBootstrapRunner:
-    cfg: RebuildBootstrapConfig
+class DeployStackRunner:
+    cfg: DeployStackConfig
     kube: Any | None = None
     tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
     backup_secret_values: dict[str, str] = field(default_factory=dict)
@@ -96,7 +89,7 @@ class RebuildBootstrapRunner:
         if self._resolved_config_cache is None:
             payload = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
-                raise RebuildError(
+                raise DeployError(
                     f"Expected JSON object in bootstrap config file: {self.cfg.config_file}"
                 )
             self._resolved_config_cache = payload
@@ -113,125 +106,10 @@ class RebuildBootstrapRunner:
         tuple[str, ...],
         tuple[str, ...],
     ]:
-        cfg = self._resolved_bootstrap_config()
-        adapter_hooks = cfg.get("adapter_hooks")
-        if not isinstance(adapter_hooks, dict):
-            return {}, {}, {}, {}, (), (), ()
-        rebuild_hooks = adapter_hooks.get("rebuild")
-        if not isinstance(rebuild_hooks, dict):
-            return {}, {}, {}, {}, (), (), ()
-
-        scale_to_zero: dict[str, tuple[str, ...]] = {}
-        raw_scale_to_zero = rebuild_hooks.get("profile_scale_to_zero_apps")
-        if raw_scale_to_zero is not None:
-            if not isinstance(raw_scale_to_zero, dict):
-                raise RebuildError(
-                    "adapter_hooks.rebuild.profile_scale_to_zero_apps must be an object"
-                )
-            for profile, apps in raw_scale_to_zero.items():
-                profile_key = str(profile or "").strip()
-                if not profile_key:
-                    continue
-                if not isinstance(apps, list):
-                    raise RebuildError(
-                        "adapter_hooks.rebuild.profile_scale_to_zero_apps."
-                        f"{profile_key} must be an array"
-                    )
-                resolved_apps = tuple(
-                    str(app or "").strip() for app in apps if str(app or "").strip()
-                )
-                scale_to_zero[profile_key] = resolved_apps
-
-        tls_hosts: dict[str, tuple[str, ...]] = {}
-        tls_secret_names: dict[str, str] = {}
-        raw_tls_profiles = rebuild_hooks.get("profile_tls")
-        if raw_tls_profiles is not None:
-            if not isinstance(raw_tls_profiles, dict):
-                raise RebuildError("adapter_hooks.rebuild.profile_tls must be an object")
-            for profile, spec in raw_tls_profiles.items():
-                profile_key = str(profile or "").strip()
-                if not profile_key:
-                    continue
-                if not isinstance(spec, dict):
-                    raise RebuildError(
-                        f"adapter_hooks.rebuild.profile_tls.{profile_key} must be an object"
-                    )
-                raw_hosts = spec.get("hosts")
-                if raw_hosts is not None:
-                    if not isinstance(raw_hosts, list):
-                        raise RebuildError(
-                            f"adapter_hooks.rebuild.profile_tls.{profile_key}.hosts must be an array"
-                        )
-                    hosts = tuple(
-                        str(host or "").strip() for host in raw_hosts if str(host or "").strip()
-                    )
-                    tls_hosts[profile_key] = hosts
-                secret_name = str(spec.get("secret_name") or "").strip()
-                if secret_name:
-                    tls_secret_names[profile_key] = secret_name
-
-        profile_manifest_paths: dict[str, tuple[str, ...]] = {}
-        raw_profile_manifest_paths = rebuild_hooks.get("profile_manifest_paths")
-        if raw_profile_manifest_paths is not None:
-            if not isinstance(raw_profile_manifest_paths, dict):
-                raise RebuildError("adapter_hooks.rebuild.profile_manifest_paths must be an object")
-            for profile, manifests in raw_profile_manifest_paths.items():
-                profile_key = str(profile or "").strip()
-                if not profile_key:
-                    continue
-                if not isinstance(manifests, list):
-                    raise RebuildError(
-                        "adapter_hooks.rebuild.profile_manifest_paths."
-                        f"{profile_key} must be an array"
-                    )
-                profile_manifest_paths[profile_key] = tuple(
-                    str(item or "").strip() for item in manifests if str(item or "").strip()
-                )
-
-        component_enable_manifest_paths: tuple[str, ...] = ()
-        raw_component_manifest_paths = rebuild_hooks.get("component_enable_manifest_paths")
-        if raw_component_manifest_paths is not None:
-            if not isinstance(raw_component_manifest_paths, list):
-                raise RebuildError(
-                    "adapter_hooks.rebuild.component_enable_manifest_paths must be an array"
-                )
-            component_enable_manifest_paths = tuple(
-                str(item or "").strip()
-                for item in raw_component_manifest_paths
-                if str(item or "").strip()
-            )
-
-        preserve_secret_keys: tuple[str, ...] = ()
-        raw_preserve_secret_keys = rebuild_hooks.get("preserve_secret_keys")
-        if raw_preserve_secret_keys is not None:
-            if not isinstance(raw_preserve_secret_keys, list):
-                raise RebuildError("adapter_hooks.rebuild.preserve_secret_keys must be an array")
-            preserve_secret_keys = tuple(
-                str(item or "").strip()
-                for item in raw_preserve_secret_keys
-                if str(item or "").strip()
-            )
-
-        base_manifest_paths: tuple[str, ...] = ()
-        raw_base_manifest_paths = rebuild_hooks.get("base_manifest_paths")
-        if raw_base_manifest_paths is not None:
-            if not isinstance(raw_base_manifest_paths, list):
-                raise RebuildError("adapter_hooks.rebuild.base_manifest_paths must be an array")
-            base_manifest_paths = tuple(
-                str(item or "").strip()
-                for item in raw_base_manifest_paths
-                if str(item or "").strip()
-            )
-
-        return (
-            scale_to_zero,
-            tls_hosts,
-            tls_secret_names,
-            profile_manifest_paths,
-            component_enable_manifest_paths,
-            preserve_secret_keys,
-            base_manifest_paths,
-        )
+        try:
+            return deploy_hook_config_resolver.profile_actions(self._resolved_bootstrap_config())
+        except ValueError as exc:
+            raise DeployError(str(exc)) from exc
 
     def _bootstrap_job_hooks(self) -> dict[str, object]:
         cfg = self._resolved_bootstrap_config()
@@ -400,7 +278,7 @@ class RebuildBootstrapRunner:
         hooks = self._bootstrap_job_hooks()
         spec = str(hooks.get("runtime_config_policy_handler") or "").strip()
         if spec and ":" not in spec:
-            raise RebuildError(
+            raise DeployError(
                 "adapter_hooks.bootstrap_job.runtime_config_policy_handler "
                 "must be module.path:Symbol"
             )
@@ -560,20 +438,20 @@ class RebuildBootstrapRunner:
             label="Wrote runtime artifact run context",
         )
 
-    def _script_runner_service(self) -> RebuildScriptRunnerService:
-        return RebuildScriptRunnerService(
-            cfg=RebuildScriptRunnerConfig(
+    def _script_runner_service(self) -> DeployScriptRunnerService:
+        return DeployScriptRunnerService(
+            cfg=DeployScriptRunnerConfig(
                 root_dir=self.cfg.root_dir,
                 namespace=self.cfg.namespace,
             )
         )
 
-    def _profile_defaults_service(self) -> RebuildProfileDefaultsService:
-        return RebuildProfileDefaultsService()
+    def _profile_defaults_service(self) -> DeployProfileDefaultsService:
+        return DeployProfileDefaultsService()
 
-    def _pipeline_service(self) -> RebuildPipelineService:
-        return RebuildPipelineService(
-            cfg=RebuildPipelineConfig(
+    def _pipeline_service(self) -> DeployPipelineService:
+        return DeployPipelineService(
+            cfg=DeployPipelineConfig(
                 namespace=self.cfg.namespace,
                 root_dir=self.cfg.root_dir,
                 prepare_host_root=self.cfg.prepare_host_root,
@@ -601,7 +479,7 @@ class RebuildBootstrapRunner:
         if self._platform_plugin_cache is None:
             plugin = resolve_platform_plugin(self._resolved_platform_target())
             if plugin is None:
-                raise RebuildError(
+                raise DeployError(
                     f"Unsupported platform target '{self.cfg.platform_target}'. "
                     "No platform plugin could be resolved."
                 )
@@ -612,7 +490,7 @@ class RebuildBootstrapRunner:
         try:
             self._platform_plugin().configure_runner(self)
         except Exception as exc:
-            raise RebuildError(str(exc)) from exc
+            raise DeployError(str(exc)) from exc
 
     def _platform_adapter(self) -> RebuildPlatformAdapter:
         if self._platform_adapter_cache is None:
@@ -621,7 +499,7 @@ class RebuildBootstrapRunner:
                 request = RebuildPlatformAdapterBuildRequest(**request_payload)
                 self._platform_adapter_cache = build_rebuild_platform_adapter(request=request)
             except ValueError as exc:
-                raise RebuildError(str(exc)) from exc
+                raise DeployError(str(exc)) from exc
         return self._platform_adapter_cache
 
     def get_or_create_platform_client(
@@ -631,7 +509,7 @@ class RebuildBootstrapRunner:
     ) -> object:
         token = str(key or "").strip().lower()
         if not token:
-            raise RebuildError("Platform client cache key cannot be empty.")
+            raise DeployError("Platform client cache key cannot be empty.")
         if token not in self._platform_client_cache:
             self._platform_client_cache[token] = factory()
         return self._platform_client_cache[token]
@@ -655,7 +533,7 @@ class RebuildBootstrapRunner:
     def _resolved_platform_target(self) -> str:
         resolved = normalize_platform_target(self.cfg.platform_target)
         if not resolved:
-            raise RebuildError("PLATFORM_TARGET cannot be empty.")
+            raise DeployError("PLATFORM_TARGET cannot be empty.")
         return resolved
 
     def run(self) -> int:
@@ -665,7 +543,7 @@ class RebuildBootstrapRunner:
         target = self._resolved_platform_target()
         platform_plugin = self._platform_plugin()
 
-        info("Starting full media-stack rebuild/bootstrap")
+        info("Starting full media-stack deploy/bootstrap")
         self._run_phase("Resolve profile defaults", self.apply_profile_defaults)
         info(f"Namespace: {self.cfg.namespace}")
         info(f"Profile: {self.cfg.profile}")
@@ -705,7 +583,7 @@ class RebuildBootstrapRunner:
 
         self.notify(
             "info",
-            f"media-stack rebuild/bootstrap started (profile={self.cfg.profile}, namespace={self.cfg.namespace})",
+            f"media-stack deploy/bootstrap started (profile={self.cfg.profile}, namespace={self.cfg.namespace})",
         )
 
         self._run_phase(
@@ -773,7 +651,7 @@ class RebuildBootstrapRunner:
         print("\n[OK] Rebuild + bootstrap completed.")
         self.notify(
             "ok",
-            f"media-stack rebuild/bootstrap succeeded (profile={self.cfg.profile}, namespace={self.cfg.namespace})",
+            f"media-stack deploy/bootstrap succeeded (profile={self.cfg.profile}, namespace={self.cfg.namespace})",
         )
         return 0
 
@@ -793,38 +671,38 @@ class RebuildBootstrapRunner:
 
     def _validate_inputs(self) -> None:
         if not self.cfg.config_file.exists():
-            raise RebuildError(f"Config file not found: {self.cfg.config_file}")
+            raise DeployError(f"Config file not found: {self.cfg.config_file}")
         if not self.cfg.namespace.strip():
-            raise RebuildError("NAMESPACE cannot be empty.")
+            raise DeployError("NAMESPACE cannot be empty.")
         platform_plugin = self._platform_plugin()
         self.cfg.ingress_domain = self.cfg.ingress_domain.lstrip(".").strip()
         if not self.cfg.ingress_domain:
-            raise RebuildError("INGRESS_DOMAIN cannot be empty.")
+            raise DeployError("INGRESS_DOMAIN cannot be empty.")
         if (
             platform_plugin.requires_dynamic_pvc_storage_mode
             and self.cfg.storage_mode != "dynamic-pvc"
         ):
-            raise RebuildError(
+            raise DeployError(
                 f"Unsupported STORAGE_MODE '{self.cfg.storage_mode}'. "
                 "legacy-hostpath was removed; use dynamic-pvc."
             )
         if self.cfg.profile not in {"minimal", "full", "public-demo", "power-user"}:
-            raise RebuildError(
+            raise DeployError(
                 f"Unknown PROFILE '{self.cfg.profile}'. Supported: minimal, full, public-demo, power-user."
             )
         valid_route_strategies = set(self._valid_route_strategies())
         if self.cfg.route_strategy not in valid_route_strategies:
             allowed = ", ".join(sorted(valid_route_strategies))
-            raise RebuildError(f"ROUTE_STRATEGY must be one of: {allowed}.")
+            raise DeployError(f"ROUTE_STRATEGY must be one of: {allowed}.")
         valid_auth_providers = set(self._valid_auth_providers())
         if self.cfg.auth_provider not in valid_auth_providers:
             allowed = ", ".join(sorted(valid_auth_providers))
-            raise RebuildError(f"AUTH_PROVIDER must be one of: {allowed}.")
+            raise DeployError(f"AUTH_PROVIDER must be one of: {allowed}.")
         edge_router_provider = self._edge_router_provider()
         valid_edge_router_providers = set(self._valid_edge_router_providers())
         if edge_router_provider and edge_router_provider not in valid_edge_router_providers:
             allowed = ", ".join(sorted(valid_edge_router_providers))
-            raise RebuildError(f"adapter_hooks.edge.router_provider must be one of: {allowed}.")
+            raise DeployError(f"adapter_hooks.edge.router_provider must be one of: {allowed}.")
         if (
             self._resolved_platform_target() == "compose"
             and edge_router_provider
@@ -834,7 +712,7 @@ class RebuildBootstrapRunner:
                 self._edge_compose_provider_specs().get(edge_router_provider) or {}
             )
             if not provider_spec:
-                raise RebuildError(
+                raise DeployError(
                     "Compose edge provider bindings are missing for "
                     f"'{edge_router_provider}'. "
                     "Define adapter_hooks.edge.compose_provider_specs.<provider> or "
@@ -842,21 +720,21 @@ class RebuildBootstrapRunner:
                 )
         if platform_plugin.requires_runtime_config_policy_handler and self.cfg.run_bootstrap == "1":
             if not self._runtime_config_policy_handler_spec():
-                raise RebuildError(
+                raise DeployError(
                     "Compose bootstrap requires "
                     "adapter_hooks.bootstrap_job.runtime_config_policy_handler "
                     "in bootstrap config."
                 )
         if not str(self.cfg.bootstrap_runner_image or "").strip():
-            raise RebuildError("BOOTSTRAP_RUNNER_IMAGE cannot be empty.")
+            raise DeployError("BOOTSTRAP_RUNNER_IMAGE cannot be empty.")
         if self.cfg.disk_allocation_gb < 200:
-            raise RebuildError("STACK_DISK_ALLOCATION_GB must be at least 200.")
+            raise DeployError("STACK_DISK_ALLOCATION_GB must be at least 200.")
         try:
             network = ipaddress.ip_network(self.cfg.network_cidr, strict=False)
         except ValueError as exc:
-            raise RebuildError(f"Invalid STACK_NETWORK_CIDR '{self.cfg.network_cidr}'.") from exc
+            raise DeployError(f"Invalid STACK_NETWORK_CIDR '{self.cfg.network_cidr}'.") from exc
         if not network.is_private:
-            raise RebuildError("STACK_NETWORK_CIDR must be private (10/8, 172.16/12, 192.168/16).")
+            raise DeployError("STACK_NETWORK_CIDR must be private (10/8, 172.16/12, 192.168/16).")
 
     def apply_profile_defaults(self) -> None:
         try:
@@ -867,7 +745,7 @@ class RebuildBootstrapRunner:
                 run_bootstrap=self.cfg.run_bootstrap,
             )
         except RuntimeError as exc:
-            raise RebuildError(str(exc)) from exc
+            raise DeployError(str(exc)) from exc
         self.cfg.include_optional = resolved.include_optional
         self.cfg.enable_components = resolved.enable_components
         self.cfg.run_bootstrap = resolved.run_bootstrap
@@ -876,7 +754,7 @@ class RebuildBootstrapRunner:
         try:
             self._script_runner_service().run_script(script_name, *args, env=env)
         except RuntimeError as exc:
-            raise RebuildError(str(exc)) from exc
+            raise DeployError(str(exc)) from exc
 
     def _run_kubectl(
         self,
@@ -886,7 +764,7 @@ class RebuildBootstrapRunner:
         input_text: str | None = None,
     ) -> CommandResult:
         if self.kube is None:
-            raise RebuildError("Kubernetes client not configured for this platform target.")
+            raise DeployError("Kubernetes client not configured for this platform target.")
         if input_text is not None and self._is_k8s_apply_with_stdin(args):
             self._record_k8s_applied_manifest(args=args, manifest_text=input_text)
         proc = self.kube.run(
@@ -899,7 +777,7 @@ class RebuildBootstrapRunner:
         if proc.stderr.strip():
             print(proc.stderr.rstrip(), file=sys.stderr)
         if check and proc.returncode != 0:
-            raise RebuildError(
+            raise DeployError(
                 f"Kubernetes command failed ({proc.returncode}): "
                 f"{' '.join(shlex.quote(x) for x in proc.args)}"
             )
@@ -936,7 +814,7 @@ class RebuildBootstrapRunner:
         request_payload = self._platform_plugin().build_runner_request(self, self.info_fn)
         ingress_service = request_payload.get("ingress_service")
         if ingress_service is None or not hasattr(ingress_service, "pick_ingress_class"):
-            raise RebuildError("Ingress class selection is unavailable for this platform target.")
+            raise DeployError("Ingress class selection is unavailable for this platform target.")
         return str(ingress_service.pick_ingress_class() or "").strip()
 
     def patch_ingress_class(self) -> None:
@@ -948,7 +826,7 @@ class RebuildBootstrapRunner:
         try:
             self._platform_adapter().wait_for_workloads()
         except RuntimeError as exc:
-            raise RebuildError(str(exc)) from exc
+            raise DeployError(str(exc)) from exc
 
     def apply_scale_policy_guardrails(self) -> None:
         self._pipeline_service().apply_scale_policy_guardrails()
@@ -964,7 +842,7 @@ class RebuildBootstrapRunner:
         try:
             self._platform_plugin().run_bootstrap(self)
         except RuntimeError as exc:
-            raise RebuildError(str(exc)) from exc
+            raise DeployError(str(exc)) from exc
 
     def skip_bootstrap_pipeline(self) -> None:
         info("Bootstrap skipped by profile/policy.")
@@ -998,12 +876,12 @@ class RebuildBootstrapRunner:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     root_dir = Path(__file__).resolve().parents[2]
-    cfg = parse_rebuild_bootstrap_config(args, root_dir=root_dir)
-    runner = RebuildBootstrapRunner(cfg=cfg)
+    cfg = parse_deploy_stack_config(args, root_dir=root_dir)
+    runner = DeployStackRunner(cfg=cfg)
     try:
         return runner.run()
     except Exception as exc:
-        warn(f"Rebuild/bootstrap failed: {exc}")
+        warn(f"Deploy/bootstrap failed: {exc}")
         try:
             runner.emit_failure_status_snapshot()
         except Exception as snapshot_exc:
@@ -1011,7 +889,7 @@ def main(argv: list[str] | None = None) -> int:
         runner.tracker.summary()
         runner.notify(
             "error",
-            f"media-stack rebuild/bootstrap failed (profile={cfg.profile}, namespace={cfg.namespace})",
+            f"media-stack deploy/bootstrap failed (profile={cfg.profile}, namespace={cfg.namespace})",
         )
         return 1
 

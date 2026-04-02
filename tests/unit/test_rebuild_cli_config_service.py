@@ -1,14 +1,18 @@
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.cli.rebuild_cli_config_service import parse_rebuild_bootstrap_config
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from scripts.cli.deploy_cli_config_service import parse_deploy_stack_config
 
 
 class RebuildCliConfigServiceTests(unittest.TestCase):
-    def test_parse_rebuild_bootstrap_config(self):
+    def test_parse_deploy_stack_config(self):
         root_dir = Path("/tmp/media-stack-test")
         env = {
             "PROFILE": "full",
@@ -20,7 +24,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
             "CONFIG_FILE": "/tmp/media-stack-test/bootstrap/custom.json",
         }
         with patch.dict(os.environ, env, clear=False):
-            cfg = parse_rebuild_bootstrap_config(
+            cfg = parse_deploy_stack_config(
                 [
                     "192.168.1.60",
                     "--platform-target",
@@ -34,7 +38,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
                 ],
                 root_dir=root_dir,
             )
-        self.assertEqual(cfg.platform_target, "kubernetes")
+        self.assertEqual(cfg.platform_target, "k8s")
         self.assertEqual(cfg.namespace, "media-stack-dev")
         self.assertEqual(cfg.node_ip, "192.168.1.60")
         self.assertEqual(cfg.profile, "full")
@@ -47,7 +51,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.compose_file, root_dir / "docker" / "docker-compose.yml")
         self.assertEqual(cfg.compose_env_file, root_dir / "docker" / ".env")
 
-    def test_parse_rebuild_bootstrap_config_uses_bootstrap_profile_defaults(self):
+    def test_parse_deploy_stack_config_uses_bootstrap_profile_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
             bootstrap_dir = root_dir / "bootstrap"
@@ -83,7 +87,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            cfg = parse_rebuild_bootstrap_config([], root_dir=root_dir)
+            cfg = parse_deploy_stack_config([], root_dir=root_dir)
         self.assertEqual(cfg.platform_target, "compose")
         self.assertEqual(cfg.namespace, "media-prod")
         self.assertEqual(cfg.compose_project_name, "media-prod")

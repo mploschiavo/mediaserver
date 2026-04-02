@@ -8,16 +8,16 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from cli.rebuild_and_bootstrap_main import RebuildBootstrapRunner  # noqa: E402
-from cli.rebuild_cli_config_service import RebuildBootstrapConfig  # noqa: E402
+from cli.deploy_stack_main import DeployStackRunner  # noqa: E402
+from cli.deploy_cli_config_service import DeployStackConfig  # noqa: E402
 from core.subprocess_utils import CommandResult  # noqa: E402
 
 
 class RebuildRuntimeArtifactsTests(unittest.TestCase):
-    def _cfg(self, root_dir: Path, *, platform_target: str = "k8s") -> RebuildBootstrapConfig:
+    def _cfg(self, root_dir: Path, *, platform_target: str = "k8s") -> DeployStackConfig:
         config_file = root_dir / "bootstrap-config.json"
         config_file.write_text("{}\n", encoding="utf-8")
-        return RebuildBootstrapConfig(
+        return DeployStackConfig(
             root_dir=root_dir,
             platform_target=platform_target,
             config_file=config_file,
@@ -26,7 +26,7 @@ class RebuildRuntimeArtifactsTests(unittest.TestCase):
     def test_initialize_runtime_artifacts_writes_run_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
-            runner = RebuildBootstrapRunner(cfg=self._cfg(root_dir))
+            runner = DeployStackRunner(cfg=self._cfg(root_dir))
 
             runner._initialize_runtime_artifacts()
 
@@ -42,7 +42,7 @@ class RebuildRuntimeArtifactsTests(unittest.TestCase):
     def test_run_kubectl_captures_resolved_k8s_apply_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
-            runner = RebuildBootstrapRunner(cfg=self._cfg(root_dir))
+            runner = DeployStackRunner(cfg=self._cfg(root_dir))
             runner.runtime_artifacts_root = root_dir / ".state" / "runtime-artifacts" / "run"
             runner.runtime_artifacts_root.mkdir(parents=True, exist_ok=True)
             runner.kube = mock.Mock()

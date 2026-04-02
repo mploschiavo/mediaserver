@@ -35,14 +35,14 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/install.sh", proc.stdout)
 
-    def test_rebuild_wrapper_help_contract(self):
-        proc = run_wrapper("rebuild-and-bootstrap.sh", "--help")
+    def test_deploy_stack_wrapper_help_contract(self):
+        proc = run_wrapper("deploy-stack.sh", "--help")
         self.assertEqual(proc.returncode, 0)
-        self.assertIn("scripts/rebuild-and-bootstrap.sh", proc.stdout)
+        self.assertIn("scripts/deploy-stack.sh", proc.stdout)
 
-    def test_rebuild_wrapper_missing_config_file(self):
+    def test_deploy_stack_wrapper_missing_config_file(self):
         proc = run_wrapper(
-            "rebuild-and-bootstrap.sh",
+            "deploy-stack.sh",
             env_overrides={"CONFIG_FILE": "/tmp/does-not-exist-rebuild.json"},
         )
         self.assertNotEqual(proc.returncode, 0)
@@ -216,10 +216,10 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("scripts/apply-scale-policy.sh", proc.stdout)
 
-    def test_rebuild_verify_wrapper_help_contract(self):
-        proc = run_wrapper("rebuild-verify.sh", "--help")
+    def test_deploy_verify_wrapper_help_contract(self):
+        proc = run_wrapper("deploy-verify.sh", "--help")
         self.assertEqual(proc.returncode, 0)
-        self.assertIn("scripts/rebuild-verify.sh", proc.stdout)
+        self.assertIn("scripts/deploy-verify.sh", proc.stdout)
 
     def test_run_playwright_screenshots_wrapper_help_contract(self):
         proc = run_wrapper("run-playwright-screenshots.sh", "--help")

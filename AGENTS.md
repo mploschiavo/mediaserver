@@ -63,6 +63,23 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Runtime artifacts must be organized by target (`kubernetes/`, `compose/`) and be reusable for replay, troubleshooting, and future migration work.
 - Logging must include artifact root/file paths for operator visibility, but must never print secret values or token contents.
 
+## Machine Patch And Drift Control Policy
+- Host/machine patching must be declarative, versioned, and automated from repo code.
+- Do not rely on ad-hoc/manual host edits for Docker, Kubernetes, edge routing, auth providers, certificates, or filesystem prerequisites.
+- If a machine patch is required:
+  - encode it as platform/provider-owned code under the owning folder (`scripts/core/platforms/**`, `scripts/core/edge/providers/**`, `scripts/core/auth/providers/**`),
+  - document required inputs and idempotency behavior,
+  - emit structured logs for patch start/result and artifact path(s),
+  - persist replayable artifacts under `.state/runtime-artifacts/<run-id>/...` when applicable.
+- Any historically manual patch path must be migrated into code before merge; leaving “run this one-off command” instructions as the primary mechanism is not acceptable.
+- Repo automation is the source of truth for machine patch state; if manual break-glass intervention occurs, it must be reconciled back into declarative code immediately.
+
+## Shim Removal Policy
+- Compatibility shims are temporary and must have explicit removal intent.
+- Once migration completes, remove old shims/wrappers/re-export modules in the same or immediate follow-up change.
+- Do not retain stale alias modules (for example old `scripts/cli/rebuild_*` re-export stubs) after callers are moved.
+- New work must import/use canonical module paths only; do not introduce fresh compatibility indirection without explicit policy approval.
+
 ## SDK-First Integration Policy
 - Prefer official, well-maintained vendor SDKs/clients before creating custom APIs, wrappers, or protocol layers.
 - Do not invent bespoke internal APIs when a best-practice SDK already covers the required behavior.
@@ -132,7 +149,7 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 Swapping deployment platforms/runtimes must be platform-local and config-driven, with the same isolation expectations as app swaps.
 
 Primary binding points:
-- `platform_target` / `PLATFORM_TARGET` in rebuild CLI config (`scripts/cli/rebuild_cli_config_service.py`)
+- `platform_target` / `PLATFORM_TARGET` in deploy CLI config (`scripts/cli/deploy_cli_config_service.py`)
 - platform adapter factory in `scripts/core/platform_adapter.py`
 - platform adapter modules implementing `RebuildPlatformAdapter`:
   - `scripts/core/platforms/kubernetes/**`
@@ -156,7 +173,7 @@ Swap workflow:
 - `scripts/core/platform_adapter.py` must remain a plugin discovery/dispatch layer only.
   - Do not hardcode target branches like `if target == "k8s"` / `if target == "compose"` in this shared module.
   - Resolve targets through plugin registry discovery under `scripts/core/platforms/*/plugin.py`.
-- `scripts/cli/rebuild_and_bootstrap_main.py` must not import platform-specific modules directly.
+- `scripts/cli/deploy_stack_main.py` must not import platform-specific modules directly.
   - It must bind to platform behavior via shared contracts/registry only.
 - Hard folder boundary for platform implementations:
   - Kubernetes-specific Python code must live under `scripts/core/platforms/kubernetes/**`.
@@ -281,7 +298,7 @@ Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
 - `scripts/cli/*.py` must remain app/technology-neutral orchestration glue.
   - Do not hard-code technology/app names in `scripts/cli`.
   - If a CLI is app-specific or stack-composed, move it under `scripts/bootstrap_services/apps/<app>/cli/` (or `apps/stack/cli/` for stack-level UX flows).
-  - Shell wrappers may keep historical script names and should resolve via `scripts/lib/run-python-cli.sh`.
+  - Shell wrappers should use current canonical naming and resolve via `scripts/lib/run-python-cli.sh`.
 - Reconcile orchestration contract:
   - `adapter_hooks.microk8s_reconcile.phase_plan` is the source of truth for reconcile order/conditions.
   - Reconcile steps must declare `event` + `handler` and use `RunnerEvent`.
@@ -345,8 +362,8 @@ Current key test suites:
 12. For new integrations, confirm official SDK/client options were evaluated and used unless explicitly documented otherwise.
 13. For platform/auth/routing changes, verify bindings remain declarative (target/runtime/router/auth provider) and no new provider-specific branching appears in shared orchestration modules.
 14. `rg -n -i "(traefik|authelia|authentik|nginx|caddy)" scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns only declarative adapter/binding definitions (no hardcoded provider branching or allow-lists).
-15. `rg -n "if\\s+.*\\b(k8s|kubernetes|compose|docker-compose)\\b" scripts/core/platform_adapter.py scripts/cli/rebuild_and_bootstrap_main.py` returns no shared-orchestration hardcoded platform branches.
-16. `rg -n "from core\\.platforms\\.(kubernetes|compose)" scripts/cli/rebuild_and_bootstrap_main.py` returns no matches.
+15. `rg -n "if\\s+.*\\b(k8s|kubernetes|compose|docker-compose)\\b" scripts/core/platform_adapter.py scripts/cli/deploy_stack_main.py` returns no shared-orchestration hardcoded platform branches.
+16. `rg -n "from core\\.platforms\\.(kubernetes|compose)" scripts/cli/deploy_stack_main.py` returns no matches.
 17. `rg -n "from core\\.(edge|auth)\\.providers\\." scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/core/edge/provider_registry.py' --glob '!scripts/core/auth/provider_registry.py'` returns no matches.
 18. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`

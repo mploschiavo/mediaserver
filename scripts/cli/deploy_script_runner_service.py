@@ -1,4 +1,4 @@
-"""Shell script runner for rebuild/bootstrap orchestration."""
+"""Shell script runner for deploy/bootstrap orchestration."""
 
 from __future__ import annotations
 
@@ -11,14 +11,14 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
-class RebuildScriptRunnerConfig:
+class DeployScriptRunnerConfig:
     root_dir: Path
     namespace: str
 
 
 @dataclass
-class RebuildScriptRunnerService:
-    cfg: RebuildScriptRunnerConfig
+class DeployScriptRunnerService:
+    cfg: DeployScriptRunnerConfig
 
     def run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
         script_path = self.cfg.root_dir / "scripts" / script_name

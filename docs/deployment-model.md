@@ -65,12 +65,12 @@ The expected operating posture is rebuild-ready:
 
 One command for full Kubernetes rebuild + verify:
 ```bash
-bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Compose rebuild example:
 ```bash
-bash scripts/rebuild-and-bootstrap.sh \
+bash scripts/deploy-stack.sh \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev
@@ -78,7 +78,7 @@ bash scripts/rebuild-and-bootstrap.sh \
 
 Compose rebuild with profile auto-defaults:
 ```bash
-bash scripts/rebuild-and-bootstrap.sh --bootstrap-profile-file bootstrap/media-stack.bootstrap.yaml
+bash scripts/deploy-stack.sh --bootstrap-profile-file bootstrap/media-stack.bootstrap.yaml
 ```
 
 ## Runtime Reconciliation

@@ -7,7 +7,7 @@ bash scripts/fast-first-run.sh <NODE_IP>
 
 Full zero-to-usable automation:
 ```bash
-bash scripts/rebuild-and-bootstrap.sh <NODE_IP>
+bash scripts/deploy-stack.sh <NODE_IP>
 bash scripts/install.sh --profile full --node-ip <NODE_IP>
 ```
 

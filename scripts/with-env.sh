@@ -14,7 +14,7 @@ Examples:
   bash scripts/with-env.sh examples/environments/media-dev.env.example \
     bash scripts/install.sh
   bash scripts/with-env.sh examples/environments/media-dev.env.example \
-    bash scripts/rebuild-and-bootstrap.sh
+    bash scripts/deploy-stack.sh
 EOF
   if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     exit 0

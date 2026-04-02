@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from cli.rebuild_manifest_overrides_service import (  # noqa: E402
+from core.platforms.kubernetes.services.rebuild_manifest_overrides_service import (  # noqa: E402
     RebuildManifestOverridesConfig,
     RebuildManifestOverridesService,
 )

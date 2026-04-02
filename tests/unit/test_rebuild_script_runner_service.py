@@ -6,13 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from cli.rebuild_script_runner_service import (  # noqa: E402
-    RebuildScriptRunnerConfig,
-    RebuildScriptRunnerService,
+from cli.deploy_script_runner_service import (  # noqa: E402
+    DeployScriptRunnerConfig,
+    DeployScriptRunnerService,
 )
 
 
-class RebuildScriptRunnerServiceTests(unittest.TestCase):
+class DeployScriptRunnerServiceTests(unittest.TestCase):
     def test_run_script_executes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -22,8 +22,8 @@ class RebuildScriptRunnerServiceTests(unittest.TestCase):
             file.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
             file.chmod(0o755)
 
-            svc = RebuildScriptRunnerService(
-                cfg=RebuildScriptRunnerConfig(root_dir=root, namespace="media-stack")
+            svc = DeployScriptRunnerService(
+                cfg=DeployScriptRunnerConfig(root_dir=root, namespace="media-stack")
             )
             svc.run_script("ok.sh")
 
@@ -36,8 +36,8 @@ class RebuildScriptRunnerServiceTests(unittest.TestCase):
             file.write_text("#!/usr/bin/env bash\nexit 4\n", encoding="utf-8")
             file.chmod(0o755)
 
-            svc = RebuildScriptRunnerService(
-                cfg=RebuildScriptRunnerConfig(root_dir=root, namespace="media-stack")
+            svc = DeployScriptRunnerService(
+                cfg=DeployScriptRunnerConfig(root_dir=root, namespace="media-stack")
             )
             with self.assertRaises(RuntimeError):
                 svc.run_script("bad.sh")

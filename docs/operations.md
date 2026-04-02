@@ -19,7 +19,7 @@ bash scripts/install.sh --profile full --namespace media-stack-dev --storage-mod
 
 Use this regularly to prove recoverability:
 ```bash
-bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 ## Secrets Lifecycle

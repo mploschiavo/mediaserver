@@ -65,11 +65,11 @@ bash scripts/install.sh --profile full --node-ip <NODE_IP>
 bash scripts/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 
 # deterministic rebuild + verification (recommended for DR confidence)
-bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 
 # fully automatic rebuild + bootstrap + smoke test (recommended)
-bash scripts/rebuild-and-bootstrap.sh <NODE_IP>
-PROFILE=power-user bash scripts/rebuild-and-bootstrap.sh <NODE_IP>
+bash scripts/deploy-stack.sh <NODE_IP>
+PROFILE=power-user bash scripts/deploy-stack.sh <NODE_IP>
 
 # from repo root
 kubectl apply -k k8s
@@ -87,7 +87,7 @@ kubectl apply -k k8s/profiles/public-demo
 kubectl apply -k k8s/profiles/power-user
 ```
 Profile notes:
-- `public-demo` intentionally skips bootstrap in `rebuild-and-bootstrap.sh` and scales downloader automation down.
+- `public-demo` intentionally skips bootstrap in `deploy-stack.sh` and scales downloader automation down.
 
 If you get `evalsymlink failure ... /k8s/k8s`, you ran `kubectl apply -k k8s` while already inside `k8s/`.
 
@@ -133,7 +133,7 @@ bash scripts/sync-unpackerr-keys.sh
 # optional: auto-test all Prowlarr templates/presets and add the ones that pass
 bash scripts/run-prowlarr-auto-indexers.sh
 # full one-command flow from fresh namespace:
-bash scripts/rebuild-and-bootstrap.sh <NODE_IP>
+bash scripts/deploy-stack.sh <NODE_IP>
 # full one-command bootstrap on existing namespace:
 bash scripts/bootstrap-all.sh
 ```

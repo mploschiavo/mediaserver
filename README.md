@@ -226,6 +226,16 @@ Kubernetes profiles:
 
 See [docs/deployment-model.md](docs/deployment-model.md).
 
+### Compose Traefik Patch Automation
+
+When `--platform-target compose` and edge provider is `traefik`, deploy automation patches Traefik file-provider config automatically.
+
+- Runtime patch output: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
+- Replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
+- Owner code: `scripts/core/platforms/compose/services/traefik_patch_service.py`
+
+No manual host-side Traefik patch step is required for normal deploy runs.
+
 ## Operator/User Prerequisites
 
 Use this list if you want to deploy and run the stack.
@@ -317,18 +327,18 @@ Safe env-file pattern (recommended for repeat runs):
 ```bash
 cp examples/environments/media-dev.env.example ~/.config/media-stack/media-dev.env
 bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/install.sh
-bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/rebuild-and-bootstrap.sh
+bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/deploy-stack.sh
 ```
 
 Disaster-recovery style rebuild + verification:
 ```bash
-bash scripts/rebuild-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Examples:
 ```bash
-bash scripts/rebuild-verify.sh 192.168.1.60 media-stack full
-bash scripts/rebuild-verify.sh 192.168.1.60 media-stack-dev power-user
+bash scripts/deploy-verify.sh 192.168.1.60 media-stack full
+bash scripts/deploy-verify.sh 192.168.1.60 media-stack-dev power-user
 ```
 
 ## Bootstrap Runner Image
@@ -385,8 +395,9 @@ Overlay details:
 
 ## Container Build Tooling (Optional)
 
-This project does not use Docker Compose as the runtime deployment model.
-Docker is only used as build tooling for Kubernetes runner images.
+Docker is used both as:
+- Compose runtime engine for the alternate `platform_target=compose` deployment path
+- build tooling for bootstrap-runner images used by Kubernetes jobs
 
 Build and push the bootstrap runner image:
 ```bash
