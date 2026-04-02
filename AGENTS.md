@@ -230,6 +230,13 @@ Current key test suites:
 - `tests/unit/test_bootstrap_config_golden.py`
 - `tests/unit/test_core_decorators.py`
 
+## Test Execution Safety Rules
+- Default to targeted unit-test execution first; do not run the full suite when a narrower pattern can validate the change.
+- Use `scripts/cli/run_unit_tests_main.py` (or `bash scripts/test.sh`) so per-test resource telemetry is emitted.
+- Treat resource-heavy suites (full unit sweep, Playwright, API e2e) as opt-in and announce intent before running them on developer workstations.
+- When resource risk is unknown, run with constrained discovery (for example `UNIT_TEST_PATTERN=...`) and review telemetry offenders before broadening scope.
+- Prefer setting `UNIT_TEST_TIMEOUT_SECONDS` for workstation runs when investigating instability or potential hangs.
+
 ## Validation Checklist (Pre-Merge)
 1. `bash -n scripts/*.sh scripts/lib/*.sh`
 2. `python3 -m py_compile` for modified Python files
