@@ -45,6 +45,15 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             )
             runner._validate_inputs()
 
+    def test_explicit_config_provider_overrides_bootstrap_hook_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="traefik")
+            cfg.edge_router_provider = "envoy"
+            runner = DeployStackRunner(cfg=cfg)
+            self.assertEqual(runner._edge_router_provider(), "envoy")
+            runner._validate_inputs()
+
     def test_validate_inputs_rejects_non_builtin_provider_without_compose_bindings(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)

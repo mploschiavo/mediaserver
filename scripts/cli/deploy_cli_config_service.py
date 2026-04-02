@@ -68,6 +68,7 @@ class DeployStackConfig:
     media_server_direct_host: str = ""
     auth_provider: str = ""
     auth_middleware: str = ""
+    edge_router_provider: str = ""
     bootstrap_profile_file: Path | None = None
 
 
@@ -147,6 +148,7 @@ def _resolve_profile_defaults(
         "media_server_direct_host": profile.exposure.media_server_direct_host,
         "auth_provider": profile.exposure.auth_provider,
         "auth_middleware": profile.exposure.auth_middleware,
+        "edge_router_provider": profile.exposure.edge_router_provider,
         "ingress_domain": ingress_domain,
     }
 
@@ -207,6 +209,11 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
             "External auth provider key "
             f"(configured catalog values: {auth_provider_help_values})."
         ),
+    )
+    parser.add_argument(
+        "--edge-router-provider",
+        default=None,
+        help="Edge routing provider key (for example traefik or envoy).",
     )
     parser.add_argument(
         "--app-gateway-host",
@@ -407,5 +414,13 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
             profile_defaults.get("auth_middleware"),
             default="",
         ),
+        edge_router_provider=_pick(
+            parsed.edge_router_provider,
+            _env_value("EDGE_ROUTER_PROVIDER"),
+            profile_defaults.get("edge_router_provider"),
+            default="",
+        )
+        .strip()
+        .lower(),
         bootstrap_profile_file=profile_path,
     )

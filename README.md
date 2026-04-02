@@ -240,7 +240,10 @@ No manual host-side Traefik patch step is required for normal deploy runs.
 
 - Built-in edge provider stubs now include `envoy` (provider discovery + validation).
 - `envoy` is currently a stub for Compose: no Traefik-style label transforms or dynamic-file patch generation run yet.
-- To select it, set `adapter_hooks.edge.router_provider` to `envoy` in `bootstrap/media-stack.bootstrap.json`.
+- Provider selection precedence:
+  - `--edge-router-provider` / `EDGE_ROUTER_PROVIDER`
+  - `routing.provider` in `bootstrap/media-stack.bootstrap.yaml`
+  - `adapter_hooks.edge.router_provider` in `bootstrap/media-stack.bootstrap.json`
 
 ## Operator/User Prerequisites
 

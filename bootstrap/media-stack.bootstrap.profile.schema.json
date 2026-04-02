@@ -96,6 +96,11 @@
           "type": "string",
           "enum": ["subdomain", "path-prefix", "hybrid", "local", "path_prefix", "pathprefix"]
         },
+        "provider": {
+          "type": "string",
+          "description": "Canonical edge-router provider key.",
+          "enum": ["traefik", "envoy"]
+        },
         "base_domain": {
           "type": "string",
           "minLength": 1
@@ -109,7 +114,7 @@
         "direct_hosts": {
           "type": "object",
           "properties": {
-            "jellyfin": { "type": "string", "minLength": 1 }
+            "media_server": { "type": "string", "minLength": 1 }
           },
           "additionalProperties": true
         }

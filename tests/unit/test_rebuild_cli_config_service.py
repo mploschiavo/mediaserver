@@ -79,6 +79,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
                         "routing:",
                         "  internet_exposed: true",
                         "  strategy: path-prefix",
+                        "  provider: envoy",
                         "  base_domain: example.com",
                         "auth:",
                         "  enabled: true",
@@ -100,6 +101,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.route_strategy, "path-prefix")
         self.assertEqual(cfg.auth_provider, "authentik")
         self.assertEqual(cfg.auth_middleware, "authentik@docker")
+        self.assertEqual(cfg.edge_router_provider, "envoy")
         self.assertEqual(cfg.ingress_domain, "media-prod.example.com")
         self.assertEqual(cfg.disk_allocation_gb, 2000)
         self.assertEqual(cfg.network_cidr, "10.44.0.0/24")
