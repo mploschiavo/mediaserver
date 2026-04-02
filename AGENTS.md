@@ -116,6 +116,8 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Do not hardcode app/provider/profile lists in `scripts/core/`, `scripts/cli/`, `scripts/bootstrap_lib/`, or platform/framework layers.
 - If extending apps/providers/profiles requires a code edit instead of a config edit, stop and refactor before merge.
 - Provider identifiers (for example `traefik`, `authelia`, `authentik`, `nginx`, `caddy`) are data, not control flow constants.
+- Use canonical provider keys in declarative config/profile fields (for example `routing.provider`, `adapter_hooks.edge.router_provider`).
+  - For current edge router providers, canonical keys are `traefik` and `envoy` (no aliases/typos).
 - Shared orchestration/platform code must not define provider allow-lists, provider enums, or provider-specific default strings; resolve providers from declarative bindings/catalogs.
 - App/provider-specific env var names (for example `*_API_KEY`, middleware names, router label keys) must come from config manifests/hooks, not hardcoded lists in shared modules.
 

@@ -9,6 +9,11 @@ Canonical examples for both deployment targets and install tiers.
 - `media-k8s-standard.yaml`
 - `media-k8s-full.yaml`
 
+Edge routing provider selection is profile-driven via `routing.provider`.
+
+- canonical values: `traefik`, `envoy`
+- all examples default to `traefik`; switch a profile by changing that one field
+
 Validate any profile with:
 
 ```bash

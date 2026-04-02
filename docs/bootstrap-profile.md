@@ -50,12 +50,13 @@ bootstrap:
 routing:
   internet_exposed: false
   strategy: hybrid
+  provider: traefik
   base_domain: local
   stack_subdomain: media-dev
   gateway_host: apps.media-dev.local
   app_path_prefix: /app
   direct_hosts:
-    jellyfin: jellyfin.media-dev.local
+    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false
@@ -80,6 +81,11 @@ Automatic content behavior policy:
 - All tiers can still preconfigure API keys and initial app preferences
 
 Use `apps` for explicit overrides on top of the tier.
+
+Routing provider keys:
+
+- canonical values: `traefik`, `envoy`
+- set under `routing.provider`
 
 ## Profile Matrix Examples
 

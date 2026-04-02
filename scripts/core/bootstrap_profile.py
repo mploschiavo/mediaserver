@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from core.auth.provider_registry import merge_auth_provider_defaults
+from core.edge.provider_registry import load_builtin_edge_router_provider_specs
 
 _DEFAULT_PROFILE_CATALOG_PATH = (
     Path(__file__).resolve().parents[2] / "bootstrap" / "media-stack.bootstrap.catalog.yaml"
@@ -45,6 +46,7 @@ class BootstrapProfileCatalog:
 class BootstrapExposureSettings:
     internet_exposed: bool = False
     route_strategy: str = "subdomain"
+    edge_router_provider: str = ""
     base_domain: str = "local"
     stack_subdomain: str = "media-stack"
     gateway_host: str = ""
@@ -173,6 +175,16 @@ class BootstrapProfileConfig:
             routing.get("strategy") or "subdomain",
             active_catalog,
         )
+        edge_router_provider = str(routing.get("provider") or "").strip().lower()
+        if edge_router_provider:
+            valid_edge_router_providers = {
+                str(spec.key or "").strip().lower()
+                for spec in load_builtin_edge_router_provider_specs()
+                if str(spec.key or "").strip()
+            }
+            if edge_router_provider not in valid_edge_router_providers:
+                allowed = ", ".join(sorted(valid_edge_router_providers))
+                raise ValueError(f"routing.provider must be one of: {allowed}")
         internet_exposed = _as_bool(
             routing.get("internet_exposed"),
             default=False,
@@ -265,6 +277,7 @@ class BootstrapProfileConfig:
             exposure=BootstrapExposureSettings(
                 internet_exposed=internet_exposed,
                 route_strategy=route_strategy,
+                edge_router_provider=edge_router_provider,
                 base_domain=base_domain,
                 stack_subdomain=stack_subdomain,
                 gateway_host=gateway_host,

@@ -38,6 +38,7 @@ class BootstrapProfileTests(unittest.TestCase):
                 "routing": {
                     "internet_exposed": True,
                     "strategy": "hybrid",
+                    "provider": "traefik",
                     "base_domain": "example.com",
                     "stack_subdomain": "media-dev",
                     "gateway_host": "apps.media-dev.example.com",
@@ -61,6 +62,7 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertTrue(profile.preconfigure_api_keys)
         self.assertTrue(profile.apply_initial_preferences)
         self.assertFalse(profile.auto_download_content)
+        self.assertEqual(profile.exposure.edge_router_provider, "traefik")
         self.assertEqual(profile.exposure.auth_provider, "authelia")
         self.assertEqual(profile.exposure.auth_middleware, "authelia@docker")
         self.assertEqual(profile.exposure.gateway_host, "apps.media-dev.example.com")
@@ -109,6 +111,7 @@ class BootstrapProfileTests(unittest.TestCase):
                         "install_profile: minimal",
                         "routing:",
                         "  strategy: path-prefix",
+                        "  provider: envoy",
                         "  base_domain: local",
                     ]
                 ),
@@ -118,7 +121,30 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertEqual(profile.deployment_target, "k8s")
         self.assertEqual(profile.purpose, "test")
         self.assertEqual(profile.exposure.route_strategy, "path-prefix")
+        self.assertEqual(profile.exposure.edge_router_provider, "envoy")
         self.assertEqual(profile.exposure.gateway_host, "apps.media-test.local")
+
+    def test_from_dict_rejects_unknown_routing_provider(self):
+        with self.assertRaisesRegex(ValueError, "routing.provider must be one of"):
+            BootstrapProfileConfig.from_dict(
+                {
+                    "schema_version": 1,
+                    "kind": "media_stack_profile",
+                    "metadata": {
+                        "name": "media-dev",
+                        "platform": "compose",
+                        "purpose": "dev",
+                    },
+                    "resources": {
+                        "disk_space_gb": 500,
+                        "network_cidr": "192.168.1.0/24",
+                    },
+                    "install_profile": "minimal",
+                    "routing": {
+                        "provider": "traekif",
+                    },
+                }
+            )
 
     def test_normalize_selected_apps_csv(self):
         self.assertEqual(

@@ -21,6 +21,7 @@ bootstrap:
 routing:
   internet_exposed: true
   strategy: hybrid
+  provider: traefik
   base_domain: example.com
   stack_subdomain: media
   gateway_host: apps.media.example.com

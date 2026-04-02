@@ -21,6 +21,7 @@ bootstrap:
 routing:
   internet_exposed: false
   strategy: subdomain
+  provider: traefik
   base_domain: local
   stack_subdomain: media-dev
   direct_hosts:

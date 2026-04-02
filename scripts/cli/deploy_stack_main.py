@@ -147,6 +147,9 @@ class DeployStackRunner:
         return tuple(out)
 
     def _edge_router_provider(self) -> str:
+        explicit = str(self.cfg.edge_router_provider or "").strip().lower()
+        if explicit:
+            return explicit
         hooks = self._edge_hooks()
         return str(hooks.get("router_provider") or "").strip().lower()
 
@@ -702,7 +705,10 @@ class DeployStackRunner:
         valid_edge_router_providers = set(self._valid_edge_router_providers())
         if edge_router_provider and edge_router_provider not in valid_edge_router_providers:
             allowed = ", ".join(sorted(valid_edge_router_providers))
-            raise DeployError(f"adapter_hooks.edge.router_provider must be one of: {allowed}.")
+            raise DeployError(
+                "EDGE_ROUTER_PROVIDER (or adapter_hooks.edge.router_provider) "
+                f"must be one of: {allowed}."
+            )
         if (
             self._resolved_platform_target() == "compose"
             and edge_router_provider
