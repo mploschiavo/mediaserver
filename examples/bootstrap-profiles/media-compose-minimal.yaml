@@ -24,7 +24,7 @@ routing:
   base_domain: local
   stack_subdomain: media-dev
   direct_hosts:
-    jellyfin: jellyfin.media-dev.local
+    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false

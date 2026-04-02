@@ -26,7 +26,7 @@ routing:
   gateway_host: apps.media.example.com
   app_path_prefix: /app
   direct_hosts:
-    jellyfin: jellyfin.media.example.com
+    media_server: jellyfin.media.example.com
 
 auth:
   enabled: true
