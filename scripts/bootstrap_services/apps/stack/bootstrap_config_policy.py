@@ -115,6 +115,9 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
         cfg["trigger_indexer_sync"] = False
         cfg["prowlarr_auto_add_tested_indexers"] = False
 
+    if "flaresolverr" not in selected:
+        _set_enabled(cfg.get("flaresolverr"), False)
+
     download_clients = cfg.get("download_clients")
     if isinstance(download_clients, dict):
         if "qbittorrent" not in selected:
@@ -173,6 +176,7 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
 
 def apply_content_download_policy(cfg: dict[str, object], *, auto_download_content: bool) -> None:
     download_enabled = bool(auto_download_content)
+    cfg["prowlarr_auto_add_tested_indexers"] = download_enabled
 
     arr_discovery_lists = cfg.get("arr_discovery_lists")
     if isinstance(arr_discovery_lists, dict):

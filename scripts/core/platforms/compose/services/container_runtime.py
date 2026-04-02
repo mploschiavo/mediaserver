@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,13 @@ from typing import Any
 from core.platforms.compose.docker_client import DockerClient, DockerContainerState
 from core.platforms.compose.services.labels import ComposeLabelService
 from core.platforms.compose.services.spec import ComposeSpecResolver, parse_duration_nanoseconds
+
+
+@dataclass(frozen=True)
+class ComposeVolumeBind:
+    host_path: Path
+    container_path: str
+    mode: str = "rw"
 
 
 @dataclass
@@ -31,6 +39,17 @@ class ComposeContainerRuntimeService:
                     continue
                 key, _, value = token.partition("=")
                 env[key.strip()] = value
+        # Keep Unpackerr running before bootstrap key stitching by replacing
+        # legacy non-32-char placeholders with a syntactically valid sentinel.
+        placeholder = "replace-after-first-boot"
+        placeholder32 = "00000000000000000000000000000000"
+        for key, value in list(env.items()):
+            env_key = str(key or "").strip().upper()
+            env_value = str(value or "").strip()
+            if not env_key.startswith("UN_") or not env_key.endswith("_API_KEY"):
+                continue
+            if env_value.lower() == placeholder:
+                env[key] = placeholder32
         return env
 
     def _normalize_ports(self, spec: dict[str, Any]) -> dict[str, Any]:
@@ -68,9 +87,9 @@ class ComposeContainerRuntimeService:
                 out[key] = port_value
         return out
 
-    def _normalize_volumes(self, spec: dict[str, Any]) -> dict[str, dict[str, str]]:
-        out: dict[str, dict[str, str]] = {}
-        for raw in spec.get("volumes") or []:
+    def _volume_binds(self, spec: dict[str, Any]) -> list[ComposeVolumeBind]:
+        out: list[ComposeVolumeBind] = []
+        for raw in tuple(spec.get("volumes") or ()):
             token = str(raw or "").strip().strip('"').strip("'")
             if not token:
                 continue
@@ -83,8 +102,105 @@ class ComposeContainerRuntimeService:
             host_path = Path(host)
             if not host_path.is_absolute():
                 host_path = (self.compose_file.parent / host_path).resolve()
-            out[str(host_path)] = {"bind": container, "mode": mode}
+            out.append(
+                ComposeVolumeBind(
+                    host_path=host_path,
+                    container_path=str(container),
+                    mode=str(mode),
+                )
+            )
         return out
+
+    @staticmethod
+    def _is_read_only_mode(mode: str) -> bool:
+        tokens = {
+            str(item or "").strip().lower()
+            for item in str(mode or "rw").split(",")
+            if str(item or "").strip()
+        }
+        return "ro" in tokens
+
+    @staticmethod
+    def _parse_user_ids(spec: dict[str, Any]) -> tuple[int, int | None] | None:
+        raw = str(spec.get("user") or "").strip()
+        if not raw:
+            return None
+        if ":" not in raw:
+            if raw.isdigit():
+                return int(raw), None
+            return None
+        uid_raw, _, gid_raw = raw.partition(":")
+        if not uid_raw.isdigit():
+            return None
+        uid = int(uid_raw)
+        gid = int(gid_raw) if gid_raw.isdigit() else None
+        return uid, gid
+
+    @staticmethod
+    def _path_writable_for_user(path: Path, *, uid: int, gid: int | None) -> bool:
+        if uid == 0:
+            return True
+        st = path.stat()
+        mode = st.st_mode
+        need_exec = path.is_dir()
+
+        def _check(write_bit: int, exec_bit: int) -> bool:
+            writable = bool(mode & write_bit)
+            if not writable:
+                return False
+            if not need_exec:
+                return True
+            return bool(mode & exec_bit)
+
+        if uid == st.st_uid and _check(stat.S_IWUSR, stat.S_IXUSR):
+            return True
+        if gid is not None and gid == st.st_gid and _check(stat.S_IWGRP, stat.S_IXGRP):
+            return True
+        if _check(stat.S_IWOTH, stat.S_IXOTH):
+            return True
+        return False
+
+    def _normalize_volumes(
+        self, volume_binds: list[ComposeVolumeBind]
+    ) -> dict[str, dict[str, str]]:
+        out: dict[str, dict[str, str]] = {}
+        for bind in volume_binds:
+            out[str(bind.host_path)] = {
+                "bind": str(bind.container_path),
+                "mode": str(bind.mode),
+            }
+        return out
+
+    def _preflight_bind_mount_paths(
+        self,
+        service_name: str,
+        *,
+        volume_binds: list[ComposeVolumeBind],
+        user_ids: tuple[int, int | None] | None,
+    ) -> None:
+        for bind in volume_binds:
+            host_path = bind.host_path
+            read_only = self._is_read_only_mode(bind.mode)
+            if not host_path.exists():
+                if read_only:
+                    raise RuntimeError(
+                        f"Compose service '{service_name}' bind mount path is missing: "
+                        f"{host_path} (mode={bind.mode})."
+                    )
+                host_path.mkdir(parents=True, exist_ok=True)
+
+            if read_only or user_ids is None:
+                continue
+            uid, gid = user_ids
+            if self._path_writable_for_user(host_path, uid=uid, gid=gid):
+                continue
+            st = host_path.stat()
+            raise RuntimeError(
+                f"Compose service '{service_name}' bind mount path is not writable for "
+                f"user '{uid}:{gid if gid is not None else ''}': {host_path} "
+                f"(owner={st.st_uid}:{st.st_gid}, mode={oct(st.st_mode & 0o777)}). "
+                "Use target-specific compose bind roots or fix mount ownership/permissions."
+            )
 
     @staticmethod
     def _normalize_healthcheck(spec: dict[str, Any]) -> dict[str, Any] | None:
@@ -128,6 +244,12 @@ class ComposeContainerRuntimeService:
         if not image:
             raise RuntimeError(f"Compose service '{service_name}' is missing an image.")
         container_name = self.spec_resolver.container_name(service_name, spec)
+        volume_binds = self._volume_binds(spec)
+        self._preflight_bind_mount_paths(
+            service_name,
+            volume_binds=volume_binds,
+            user_ids=self._parse_user_ids(spec),
+        )
         self.docker.pull_image(image)
         self.docker.remove_container(container_name, force=True)
 
@@ -147,7 +269,7 @@ class ComposeContainerRuntimeService:
             "detach": True,
             "labels": self.label_service.normalize_labels(service_name, spec),
             "environment": self._normalize_environment(spec),
-            "volumes": self._normalize_volumes(spec),
+            "volumes": self._normalize_volumes(volume_binds),
             "ports": self._normalize_ports(spec),
             "devices": [str(item) for item in (spec.get("devices") or []) if str(item).strip()],
             "network_mode": network_mode or None,

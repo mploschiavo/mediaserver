@@ -187,7 +187,14 @@ Swap workflow:
   - container runtime (`docker`, `containerd`, future runtimes)
   - edge/router provider (ingress/traefik/nginx/etc.)
   - authN/authZ provider (`authelia`, `authentik`, future providers)
+  - storage binding model (k8s PVC/storageClass vs compose host bind mounts)
 - A change in one axis must not require code edits in the other axes beyond declarative binding/config.
+
+### Storage Binding Isolation Rules
+- Kubernetes target storage is PVC-driven (`storageClass`, claims, access modes) and must not assume host bind paths.
+- Compose target storage is host-bind driven (`CONFIG_ROOT`, `DATA_ROOT`, `MEDIA_ROOT`) and must not assume PVC semantics.
+- Do not reuse the same filesystem root for both targets during local workflows; use target-specific roots to avoid ownership/permission drift.
+- Compose runtime code must preflight bind mount paths (existence + writability for declared container user/group) before container start and fail fast with actionable remediation when invalid.
 
 ### Edge/Auth Isolation Contract
 - Reverse-proxy routing and auth provider wiring must be declarative and pluggable, not hard-coded into app services.
@@ -282,6 +289,15 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Compose/runtime orchestration must be API/SDK-driven in Python, not wrappers around Docker CLI commands.
 - If an operator-facing shell wrapper exists, it must remain a thin entrypoint and must not be the implementation boundary for runtime logic.
 
+## Container Healthcheck Reliability Policy
+- Healthchecks are part of the runtime contract for long-running services; treat false-negative health states as production bugs.
+- Prefer explicit loopback probes (`127.0.0.1`) over `localhost` in container healthchecks unless dual-stack behavior is intentionally validated.
+- Use service-specific lightweight readiness endpoints where available (for example `/health`, `/ping`, `/api/status`) instead of heavy UI pages.
+- Every healthcheck definition must set bounded `interval`, `timeout`, and `retries`; add `start_period` for known slow-start services.
+- Healthcheck probes must not depend on external DNS, host routing, or authenticated sessions.
+- During incident fixes, verify healthchecks from inside the container and inspect `.State.Health.Log` to confirm probe behavior matches runtime reality.
+- Compose deployment acceptance requires all services with declared healthchecks to converge to `healthy`; if a service is operational but stuck `starting`/`unhealthy`, fix the probe before merge.
+
 ## Debug Artifact Policy
 - Do not add tracked `*debug*` wrapper/entrypoint files for bootstrap flows.
 - Use runtime log levels (`MEDIA_STACK_LOG_LEVEL`) and structured logs instead of dedicated debug scripts.
@@ -346,6 +362,9 @@ Current key test suites:
 - Selected-app runs must be hard-gated end-to-end:
   - unselected technologies must have runtime inputs cleared (URLs/indexers/flags),
   - phase-plan steps must use `enabled_when_attr`/`enabled_attr` so unrelated prechecks never block bootstrap.
+- Profile intent must control download seeding behavior:
+  - `minimal`/`standard` profiles (or any profile with `auto_download_content=false`) must disable auto indexer seeding.
+  - `full` profiles (or any profile with `auto_download_content=true`) may enable tested-indexer auto add and initial content sync.
 - `RUN_BOOTSTRAP=1` validation requires a freshly built bootstrap-runner image whenever runtime imports or module paths changed.
 - Keep repo-wide formatting sweeps isolated from behavior changes; do not mix debt cleanup with incident fixes.
 
