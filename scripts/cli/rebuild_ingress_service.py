@@ -15,12 +15,13 @@ RunKubeFn = Callable[..., object]
 class RebuildIngressConfig:
     namespace: str
     ingress_class: str
+    ingress_class_priority: tuple[str, ...] = ()
     internet_exposed: str = "0"
     route_strategy: str = "subdomain"
     app_gateway_host: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
-    auth_provider: str = "none"
+    auth_provider: str = ""
     auth_middleware: str = ""
 
 
@@ -51,7 +52,7 @@ class RebuildIngressService:
         if media_server_direct_host:
             annotations["media-stack.io/media-server-direct-host"] = media_server_direct_host
 
-        auth_provider = str(self.cfg.auth_provider or "none").strip().lower() or "none"
+        auth_provider = str(self.cfg.auth_provider or "").strip().lower()
         annotations["media-stack.io/auth-provider"] = auth_provider
         auth_middleware = str(self.cfg.auth_middleware or "").strip()
         if auth_middleware:
@@ -89,7 +90,7 @@ class RebuildIngressService:
 
         proc = self.run_kube(["get", "ingressclass"], check=False)
         classes = sorted({x.strip() for x in (proc.stdout or "").splitlines() if x.strip()})
-        for target in ("public", "nginx"):
+        for target in tuple(self.cfg.ingress_class_priority or ()):
             if target in classes:
                 return target
         return classes[0] if classes else ""

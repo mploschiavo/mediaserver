@@ -43,6 +43,33 @@
         "flaresolverr"
       ]
     },
+    "edge": {
+      "router_provider": "traefik",
+      "router_service_names": [
+        "traefik"
+      ],
+      "media_server_service_names": [
+        "jellyfin",
+        "jellyfin-nvidia"
+      ],
+      "ingress_class_priority": [
+        "public",
+        "nginx"
+      ],
+      "compose_provider_specs": {
+        "traefik": {
+          "enable_label_key": "traefik.enable",
+          "router_label_prefix": "traefik.http.routers.",
+          "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
+          "router_service_key_template": "traefik.http.routers.{router_name}.service",
+          "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",
+          "strip_prefix_key_template": "traefik.http.middlewares.{middleware_name}.stripprefix.prefixes",
+          "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
+          "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
+          "direct_host_rule_template": "Host(`{direct_host}`)"
+        }
+      }
+    },
     "skip_flag_aliases": {
       "skip_torrent_client_ensure": {
         "options": [
@@ -532,6 +559,15 @@
       },
       "component_enable_manifest_paths": [
         "k8s/unpackerr.yaml"
+      ],
+      "base_manifest_paths": [
+        "k8s/namespace.yaml",
+        "k8s/hardening.yaml",
+        "k8s/secrets.example.yaml",
+        "k8s/storage-pvc.yaml",
+        "k8s/core.yaml",
+        "k8s/ingress-traefik.yaml",
+        "k8s/scale-policy.yaml"
       ],
       "profile_scale_to_zero_apps": {
         "public-demo": [

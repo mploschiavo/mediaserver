@@ -37,7 +37,6 @@ SERVICE_CATALOG: Dict[str, Tuple[str, str]] = {
     "tautulli": ("Tautulli", "Plex analytics"),
     "plex": ("Plex", "Optional media server"),
     "flaresolverr": ("FlareSolverr", "Indexer helper"),
-    "traefik": ("Traefik", "Ingress dashboard"),
 }
 
 PREFERRED_PREFIX_ORDER = [
@@ -56,7 +55,6 @@ PREFERRED_PREFIX_ORDER = [
     "tautulli",
     "plex",
     "flaresolverr",
-    "traefik",
 ]
 
 
