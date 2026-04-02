@@ -51,14 +51,18 @@ def profile_actions(
             if not profile_key:
                 continue
             if not isinstance(spec, dict):
-                raise ValueError(f"adapter_hooks.rebuild.profile_tls.{profile_key} must be an object")
+                raise ValueError(
+                    f"adapter_hooks.rebuild.profile_tls.{profile_key} must be an object"
+                )
             raw_hosts = spec.get("hosts")
             if raw_hosts is not None:
                 if not isinstance(raw_hosts, list):
                     raise ValueError(
                         f"adapter_hooks.rebuild.profile_tls.{profile_key}.hosts must be an array"
                     )
-                hosts = tuple(str(host or "").strip() for host in raw_hosts if str(host or "").strip())
+                hosts = tuple(
+                    str(host or "").strip() for host in raw_hosts if str(host or "").strip()
+                )
                 tls_hosts[profile_key] = hosts
             secret_name = str(spec.get("secret_name") or "").strip()
             if secret_name:
@@ -86,9 +90,13 @@ def profile_actions(
     raw_component_manifest_paths = rebuild_hooks.get("component_enable_manifest_paths")
     if raw_component_manifest_paths is not None:
         if not isinstance(raw_component_manifest_paths, list):
-            raise ValueError("adapter_hooks.rebuild.component_enable_manifest_paths must be an array")
+            raise ValueError(
+                "adapter_hooks.rebuild.component_enable_manifest_paths must be an array"
+            )
         component_enable_manifest_paths = tuple(
-            str(item or "").strip() for item in raw_component_manifest_paths if str(item or "").strip()
+            str(item or "").strip()
+            for item in raw_component_manifest_paths
+            if str(item or "").strip()
         )
 
     preserve_secret_keys: tuple[str, ...] = ()

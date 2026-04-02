@@ -45,9 +45,7 @@ class ComposeTraefikPatchService:
 
         config_root = self.spec_resolver.config_root()
         if config_root is None:
-            self.info(
-                "Compose Traefik patch skipped: CONFIG_ROOT/COMPOSE_CONFIG_ROOT not set."
-            )
+            self.info("Compose Traefik patch skipped: CONFIG_ROOT/COMPOSE_CONFIG_ROOT not set.")
             return ComposeTraefikPatchResult(applied=False, reason="missing-config-root")
 
         rendered = self.dynamic_config_service.render(services)
