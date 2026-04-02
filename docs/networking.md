@@ -29,6 +29,22 @@ bash scripts/install.sh --profile full --namespace media-stack-dev --ingress-dom
 bash scripts/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
 
+### Safe Env-File Workflow
+
+Use env templates to prevent namespace/domain drift and accidental teardown.
+
+Templates:
+- `examples/environments/media-dev.env.example`
+- `examples/environments/media-stack.env.example`
+
+Run with env file:
+```bash
+bash scripts/with-env.sh <ENV_FILE> bash scripts/install.sh
+bash scripts/with-env.sh <ENV_FILE> bash scripts/rebuild-and-bootstrap.sh
+```
+
+`scripts/with-env.sh` applies `DELETE_NAMESPACE=0` when unset, so destructive rebuilds stay opt-in.
+
 ## DNS/Hosts Automation
 
 Render local hosts entries:
