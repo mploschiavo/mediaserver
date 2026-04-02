@@ -53,6 +53,7 @@ Quick validation:
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install --upgrade pip
+python3 -m pip install docker kubernetes pyyaml requests
 python3 -m pip install ruff black
 npx -y @mermaid-js/mermaid-cli@10.9.1 -h
 bash scripts/test.sh

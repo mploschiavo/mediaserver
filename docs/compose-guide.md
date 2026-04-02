@@ -21,6 +21,8 @@ Not currently part of Compose target:
 ## Prerequisites
 
 - Docker Engine running and reachable by Docker SDK (`docker-py`)
+- Python runtime deps installed for automation entrypoints:
+  - `python3 -m pip install docker kubernetes pyyaml requests`
 - Optional: `docker/.env` for local overrides (defaults from process env when omitted)
 - Optional but recommended: `bootstrap/media-stack.bootstrap.yaml` for deployment/purpose/install/exposure/auth defaults
 
