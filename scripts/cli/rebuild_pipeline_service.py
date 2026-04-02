@@ -16,6 +16,9 @@ class RebuildPipelineConfig:
     root_dir: Path
     prepare_host_root: str
     enable_components: str
+    preconfigure_api_keys: str
+    apply_initial_preferences: str
+    auto_download_content: str
     config_file: Path
 
 
@@ -59,5 +62,8 @@ class RebuildPipelineService:
                 "NAMESPACE": self.cfg.namespace,
                 "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
                 "ENABLE_COMPONENTS": self.cfg.enable_components,
+                "PRECONFIGURE_API_KEYS": self.cfg.preconfigure_api_keys,
+                "APPLY_INITIAL_PREFERENCES": self.cfg.apply_initial_preferences,
+                "AUTO_DOWNLOAD_CONTENT": self.cfg.auto_download_content,
             },
         )

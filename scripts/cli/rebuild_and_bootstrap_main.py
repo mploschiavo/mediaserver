@@ -7,16 +7,17 @@ https://matthewloschiavo.com
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import shlex
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from core.kube import resolve_kubectl_binary
+from core.docker import DockerClient
+from core.kube import KubernetesClient
 from core.phase_tracker import PhaseTracker
 from core.platform_adapter import (
     RebuildPlatformAdapter,
@@ -24,6 +25,7 @@ from core.platform_adapter import (
     build_rebuild_platform_adapter,
     normalize_platform_target,
 )
+from core.subprocess_utils import CommandResult
 
 from cli.bootstrap_notification_service import (
     BootstrapNotificationConfig,
@@ -87,13 +89,14 @@ class SkipPhase(RuntimeError):
 @dataclass
 class RebuildBootstrapRunner:
     cfg: RebuildBootstrapConfig
-    kubectl: list[str]
+    kube: KubernetesClient | None = None
     tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
     backup_secret_values: dict[str, str] = field(default_factory=dict)
     _resolved_config_cache: dict[str, object] | None = field(default=None, init=False, repr=False)
     _platform_adapter_cache: RebuildPlatformAdapter | None = field(
         default=None, init=False, repr=False
     )
+    _docker_client_cache: DockerClient | None = field(default=None, init=False, repr=False)
 
     def _resolved_bootstrap_config(self) -> dict[str, object]:
         if self._resolved_config_cache is None:
@@ -244,21 +247,17 @@ class RebuildBootstrapRunner:
             cfg=RebuildSecretPreservationConfig(
                 namespace=self.cfg.namespace,
                 secret_name=self.cfg.secret_name,
-                kubectl=self.kubectl,
                 preserve_keys=preserve_secret_keys,
             ),
             info=info,
-            run_kubectl=self._run_kubectl,
+            run_kube=self._run_kubectl,
         )
 
     def _namespace_service(self) -> RebuildNamespaceService:
         return RebuildNamespaceService(
-            cfg=RebuildNamespaceConfig(
-                namespace=self.cfg.namespace,
-                kubectl=self.kubectl,
-            ),
+            cfg=RebuildNamespaceConfig(namespace=self.cfg.namespace),
             info=info,
-            run_kubectl=self._run_kubectl,
+            run_kube=self._run_kubectl,
         )
 
     def _manifest_overrides_service(self) -> RebuildManifestOverridesService:
@@ -288,7 +287,6 @@ class RebuildBootstrapRunner:
                 profile=self.cfg.profile,
                 include_optional=self.cfg.include_optional,
                 enable_components=self.cfg.enable_components,
-                kubectl=self.kubectl,
                 profile_scale_to_zero_apps=profile_scale_to_zero_apps,
                 profile_tls_hosts=profile_tls_hosts,
                 profile_tls_secret_names=profile_tls_secret_names,
@@ -310,11 +308,17 @@ class RebuildBootstrapRunner:
             cfg=RebuildIngressConfig(
                 namespace=self.cfg.namespace,
                 ingress_class=self.cfg.ingress_class,
-                kubectl=self.kubectl,
+                internet_exposed=self.cfg.internet_exposed,
+                route_strategy=self.cfg.route_strategy,
+                app_gateway_host=self.cfg.app_gateway_host,
+                app_path_prefix=self.cfg.app_path_prefix,
+                media_server_direct_host=self.cfg.media_server_direct_host,
+                auth_provider=self.cfg.auth_provider,
+                auth_middleware=self.cfg.auth_middleware,
             ),
             info=info,
             warn=warn,
-            run_script=self._run_script,
+            run_kube=self._run_kubectl,
         )
 
     def _deployments_wait_service(self) -> RebuildDeploymentsWaitService:
@@ -322,10 +326,10 @@ class RebuildBootstrapRunner:
             cfg=RebuildDeploymentsWaitConfig(
                 namespace=self.cfg.namespace,
                 wait_timeout=self.cfg.wait_timeout,
-                kubectl=self.kubectl,
             ),
             info=info,
             warn=warn,
+            run_kube=self._run_kubectl,
         )
 
     def _pipeline_service(self) -> RebuildPipelineService:
@@ -335,6 +339,9 @@ class RebuildBootstrapRunner:
                 root_dir=self.cfg.root_dir,
                 prepare_host_root=self.cfg.prepare_host_root,
                 enable_components=self.cfg.enable_components,
+                preconfigure_api_keys=self.cfg.preconfigure_api_keys,
+                apply_initial_preferences=self.cfg.apply_initial_preferences,
+                auto_download_content=self.cfg.auto_download_content,
                 config_file=self.cfg.config_file,
             ),
             info=info,
@@ -371,10 +378,52 @@ class RebuildBootstrapRunner:
                         smoke_test_service=self._smoke_test_service(),
                         run_kubectl=self._run_kubectl,
                     )
+                elif resolved_target == "compose":
+                    request = RebuildPlatformAdapterBuildRequest(
+                        target=resolved_target,
+                        environment_id=self.cfg.namespace,
+                        info=info,
+                        docker_client=self._docker_client(),
+                        compose_file=self.cfg.compose_file,
+                        compose_env_file=self.cfg.compose_env_file,
+                        compose_project_name=self.cfg.compose_project_name,
+                        compose_profiles=self._compose_profiles(),
+                        selected_apps=self._selected_apps(),
+                        internet_exposed=self._is_truthy(self.cfg.internet_exposed),
+                        route_strategy=self.cfg.route_strategy,
+                        app_gateway_host=self.cfg.app_gateway_host,
+                        app_path_prefix=self.cfg.app_path_prefix,
+                        media_server_direct_host=self.cfg.media_server_direct_host,
+                        auth_provider=self.cfg.auth_provider,
+                        auth_middleware=self.cfg.auth_middleware,
+                        wait_timeout=self.cfg.wait_timeout,
+                        node_ip=self.cfg.node_ip,
+                    )
                 self._platform_adapter_cache = build_rebuild_platform_adapter(request=request)
             except ValueError as exc:
                 raise RebuildError(str(exc)) from exc
         return self._platform_adapter_cache
+
+    def _docker_client(self) -> DockerClient:
+        if self._docker_client_cache is None:
+            self._docker_client_cache = DockerClient.from_environment()
+        return self._docker_client_cache
+
+    def _compose_profiles(self) -> tuple[str, ...]:
+        raw = str(self.cfg.compose_profiles or "").strip()
+        if not raw:
+            return ()
+        return tuple(token.strip() for token in raw.split(",") if token.strip())
+
+    def _selected_apps(self) -> tuple[str, ...]:
+        raw = str(self.cfg.selected_apps or "").strip()
+        if not raw:
+            return ()
+        return tuple(token.strip() for token in raw.split(",") if token.strip())
+
+    def _is_truthy(self, value: str) -> bool:
+        token = str(value or "").strip().lower()
+        return token in {"1", "true", "yes", "on", "y"}
 
     def _resolved_platform_target(self) -> str:
         resolved = normalize_platform_target(self.cfg.platform_target)
@@ -384,12 +433,17 @@ class RebuildBootstrapRunner:
 
     def run(self) -> int:
         self._validate_inputs()
+        target = self._resolved_platform_target()
+        is_k8s = target == "k8s"
 
         info("Starting full media-stack rebuild/bootstrap")
         self._run_phase("Resolve profile defaults", self.apply_profile_defaults)
         info(f"Namespace: {self.cfg.namespace}")
         info(f"Profile: {self.cfg.profile}")
-        info(f"Platform target: {self._resolved_platform_target()}")
+        info(f"Platform target: {target}")
+        info(f"Purpose: {self.cfg.purpose}")
+        info(f"Disk allocation (GB): {self.cfg.disk_allocation_gb}")
+        info(f"Network CIDR: {self.cfg.network_cidr}")
         info(f"Ingress domain: {self.cfg.ingress_domain}")
         info(f"Config: {self.cfg.config_file}")
         info(f"Delete namespace: {self.cfg.delete_namespace}")
@@ -401,8 +455,22 @@ class RebuildBootstrapRunner:
         info(f"Include optional: {self.cfg.include_optional}")
         info(f"Enable components: {self.cfg.enable_components}")
         info(f"Run bootstrap: {self.cfg.run_bootstrap}")
+        info(f"Preconfigure API keys: {self.cfg.preconfigure_api_keys}")
+        info(f"Apply initial preferences: {self.cfg.apply_initial_preferences}")
+        info(f"Auto-download content: {self.cfg.auto_download_content}")
         info(f"Generate secrets on rebuild: {self.cfg.generate_secrets_on_rebuild}")
         info(f"Preserve secret on rebuild: {self.cfg.preserve_secret_on_rebuild}")
+        info(f"Selected apps: {self.cfg.selected_apps or '<all>'}")
+        info(
+            "Exposure: "
+            f"internet={self.cfg.internet_exposed}, "
+            f"route_strategy={self.cfg.route_strategy}, "
+            f"auth_provider={self.cfg.auth_provider}"
+        )
+        if self.cfg.app_gateway_host:
+            info(f"App gateway host: {self.cfg.app_gateway_host}")
+        if self.cfg.media_server_direct_host:
+            info(f"Media-server direct host: {self.cfg.media_server_direct_host}")
 
         self.notify(
             "info",
@@ -421,20 +489,28 @@ class RebuildBootstrapRunner:
         else:
             self._run_phase("Prepare host directories", lambda: None, enabled=False)
 
-        self._run_phase("Backup existing credentials", self.backup_existing_secret_values)
+        self._run_phase(
+            "Backup existing credentials",
+            self.backup_existing_secret_values,
+            enabled=is_k8s,
+        )
         self._run_phase("Delete namespace (optional)", self.delete_namespace_optional)
         self._run_phase("Apply manifests for profile", self.apply_manifests_for_profile)
 
-        if self.cfg.generate_secrets_on_rebuild == "1":
+        if is_k8s and self.cfg.generate_secrets_on_rebuild == "1":
             self._run_phase("Generate secrets", self.generate_secrets)
         else:
             self._run_phase("Generate secrets", lambda: None, enabled=False)
 
-        self._run_phase("Restore preserved credentials", self.restore_secret_values_from_backup)
-        self._run_phase("Patch ingress class", self.patch_ingress_class)
+        self._run_phase(
+            "Restore preserved credentials",
+            self.restore_secret_values_from_backup,
+            enabled=is_k8s,
+        )
+        self._run_phase("Patch ingress class", self.patch_ingress_class, enabled=is_k8s)
         self._run_phase("Wait for deployments", self.wait_for_deployments)
 
-        if self.cfg.run_bootstrap == "1":
+        if is_k8s and self.cfg.run_bootstrap == "1":
             self._run_phase("Apply scale-policy guardrails", self.apply_scale_policy_guardrails)
             self._run_phase("Run bootstrap pipeline", self.run_bootstrap_pipeline)
         else:
@@ -481,7 +557,7 @@ class RebuildBootstrapRunner:
         self.cfg.ingress_domain = self.cfg.ingress_domain.lstrip(".").strip()
         if not self.cfg.ingress_domain:
             raise RebuildError("INGRESS_DOMAIN cannot be empty.")
-        if self.cfg.storage_mode != "dynamic-pvc":
+        if self._resolved_platform_target() == "k8s" and self.cfg.storage_mode != "dynamic-pvc":
             raise RebuildError(
                 f"Unsupported STORAGE_MODE '{self.cfg.storage_mode}'. "
                 "legacy-hostpath was removed; use dynamic-pvc."
@@ -490,6 +566,18 @@ class RebuildBootstrapRunner:
             raise RebuildError(
                 f"Unknown PROFILE '{self.cfg.profile}'. Supported: minimal, full, public-demo, power-user."
             )
+        if self.cfg.route_strategy not in {"subdomain", "path-prefix", "hybrid"}:
+            raise RebuildError("ROUTE_STRATEGY must be one of: subdomain, path-prefix, hybrid.")
+        if self.cfg.auth_provider not in {"none", "authelia", "authentik"}:
+            raise RebuildError("AUTH_PROVIDER must be one of: none, authelia, authentik.")
+        if self.cfg.disk_allocation_gb < 200:
+            raise RebuildError("STACK_DISK_ALLOCATION_GB must be at least 200.")
+        try:
+            network = ipaddress.ip_network(self.cfg.network_cidr, strict=False)
+        except ValueError as exc:
+            raise RebuildError(f"Invalid STACK_NETWORK_CIDR '{self.cfg.network_cidr}'.") from exc
+        if not network.is_private:
+            raise RebuildError("STACK_NETWORK_CIDR must be private (10/8, 172.16/12, 192.168/16).")
 
     def apply_profile_defaults(self) -> None:
         try:
@@ -504,6 +592,9 @@ class RebuildBootstrapRunner:
         self.cfg.include_optional = resolved.include_optional
         self.cfg.enable_components = resolved.enable_components
         self.cfg.run_bootstrap = resolved.run_bootstrap
+        if self._resolved_platform_target() != "k8s" and self.cfg.run_bootstrap == "1":
+            info("Non-k8s platform target selected; forcing RUN_BOOTSTRAP=0.")
+            self.cfg.run_bootstrap = "0"
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
         try:
@@ -517,13 +608,13 @@ class RebuildBootstrapRunner:
         *,
         check: bool = True,
         input_text: str | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        proc = subprocess.run(
-            [*self.kubectl, *args],
-            input=input_text,
-            capture_output=True,
-            text=True,
+    ) -> CommandResult:
+        if self.kube is None:
+            raise RebuildError("Kubernetes client not configured for this platform target.")
+        proc = self.kube.run(
+            args,
             check=False,
+            input_text=input_text,
         )
         if proc.stdout.strip():
             print(proc.stdout.rstrip())
@@ -531,8 +622,8 @@ class RebuildBootstrapRunner:
             print(proc.stderr.rstrip(), file=sys.stderr)
         if check and proc.returncode != 0:
             raise RebuildError(
-                f"kubectl command failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in [*self.kubectl, *args])}"
+                f"Kubernetes command failed ({proc.returncode}): "
+                f"{' '.join(shlex.quote(x) for x in proc.args)}"
             )
         return proc
 
@@ -613,24 +704,26 @@ def main(argv: list[str] | None = None) -> int:
     cfg = parse_rebuild_bootstrap_config(args, root_dir=root_dir)
     target = normalize_platform_target(cfg.platform_target)
 
-    kubectl: list[str] = []
+    kube: KubernetesClient | None = None
     if target == "k8s":
         try:
-            kubectl = resolve_kubectl_binary()
+            kube = KubernetesClient.from_environment()
         except Exception as exc:
             err(str(exc))
             return 2
 
-    runner = RebuildBootstrapRunner(cfg=cfg, kubectl=kubectl)
+    runner = RebuildBootstrapRunner(cfg=cfg, kube=kube)
     try:
         return runner.run()
     except Exception as exc:
         warn(f"Rebuild/bootstrap failed: {exc}")
-        if target == "k8s" and kubectl:
+        if target == "k8s" and kube is not None:
             warn("Pod status snapshot at failure:")
-            subprocess.run(
-                [*kubectl, "-n", cfg.namespace, "get", "pods", "-o", "wide"], check=False
-            )
+            result = kube.run(["-n", cfg.namespace, "get", "pods", "-o", "wide"], check=False)
+            if result.stdout.strip():
+                print(result.stdout.rstrip())
+            if result.stderr.strip():
+                print(result.stderr.rstrip(), file=sys.stderr)
         else:
             warn("Platform status snapshot at failure is not configured for this target.")
         runner.tracker.summary()

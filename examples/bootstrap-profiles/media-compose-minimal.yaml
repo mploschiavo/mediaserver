@@ -1,0 +1,36 @@
+schema_version: 1
+kind: media_stack_profile
+
+metadata:
+  name: media-dev
+  platform: compose
+  purpose: dev
+
+resources:
+  disk_space_gb: 500
+  network_cidr: 192.168.1.0/24
+
+install_profile: minimal
+
+bootstrap:
+  preconfigure_apps: true
+  preconfigure_api_keys: true
+  apply_initial_preferences: true
+  auto_download_content: false
+
+routing:
+  internet_exposed: false
+  strategy: subdomain
+  base_domain: local
+  stack_subdomain: media-dev
+  direct_hosts:
+    jellyfin: jellyfin.media-dev.local
+
+auth:
+  enabled: false
+  provider: none
+
+live_tv_defaults:
+  tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
+  guide_url: https://iptv-epg.org/files/epg-us.xml
+  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
