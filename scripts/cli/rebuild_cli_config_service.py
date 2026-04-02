@@ -9,6 +9,7 @@ from pathlib import Path
 @dataclass
 class RebuildBootstrapConfig:
     root_dir: Path
+    platform_target: str = "k8s"
     namespace: str = "media-stack"
     secret_name: str = "media-stack-secrets"
     wait_timeout: str = "20m"
@@ -37,6 +38,14 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
         description="Full automation helper for media-stack rebuild and bootstrap.",
     )
     parser.add_argument("node_ip", nargs="?", default=os.environ.get("NODE_IP", ""))
+    parser.add_argument(
+        "--platform-target",
+        default=os.environ.get("PLATFORM_TARGET", "k8s"),
+        help=(
+            "Runtime deployment target (k8s or compose). "
+            "Compose is recognized but currently not wired for rebuild runtime operations."
+        ),
+    )
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
     parser.add_argument("--ingress-domain", default=os.environ.get("INGRESS_DOMAIN", "local"))
     parser.add_argument("--storage-class", default=os.environ.get("PVC_STORAGE_CLASS", ""))
@@ -44,6 +53,7 @@ def parse_rebuild_bootstrap_config(argv: list[str], *, root_dir: Path) -> Rebuil
 
     return RebuildBootstrapConfig(
         root_dir=root_dir,
+        platform_target=parsed.platform_target,
         namespace=parsed.namespace,
         secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets"),
         wait_timeout=os.environ.get("WAIT_TIMEOUT", "20m"),

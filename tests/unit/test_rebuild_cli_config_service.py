@@ -17,9 +17,18 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         }
         with patch.dict(os.environ, env, clear=False):
             cfg = parse_rebuild_bootstrap_config(
-                ["192.168.1.60", "--namespace", "media-stack-dev", "--ingress-domain", "local"],
+                [
+                    "192.168.1.60",
+                    "--platform-target",
+                    "kubernetes",
+                    "--namespace",
+                    "media-stack-dev",
+                    "--ingress-domain",
+                    "local",
+                ],
                 root_dir=root_dir,
             )
+        self.assertEqual(cfg.platform_target, "kubernetes")
         self.assertEqual(cfg.namespace, "media-stack-dev")
         self.assertEqual(cfg.node_ip, "192.168.1.60")
         self.assertEqual(cfg.profile, "full")
