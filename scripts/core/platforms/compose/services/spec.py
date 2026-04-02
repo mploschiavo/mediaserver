@@ -95,6 +95,16 @@ class ComposeSpecResolver:
         out.update(self._read_env_file())
         return out
 
+    def compose_environment(self) -> dict[str, str]:
+        return self._compose_env()
+
+    def config_root(self) -> Path | None:
+        env = self._compose_env()
+        token = str(env.get("COMPOSE_CONFIG_ROOT") or env.get("CONFIG_ROOT") or "").strip()
+        if not token:
+            return None
+        return Path(token).expanduser()
+
     @staticmethod
     def _expand_string(value: str, env: dict[str, str]) -> str:
         def _replace(match: re.Match[str]) -> str:

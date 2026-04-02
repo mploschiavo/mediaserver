@@ -8,6 +8,10 @@ from core.platforms.compose.services.spec import (
     parse_duration_nanoseconds,
     parse_wait_seconds,
 )
+from core.platforms.compose.services.traefik_dynamic_config import (
+    TraefikDynamicConfigRender,
+    TraefikDynamicConfigService,
+)
 
 __all__ = [
     "ComposeContainerRuntimeService",
@@ -15,6 +19,8 @@ __all__ = [
     "ComposeLabelService",
     "ComposeRuntimeArtifactService",
     "ComposeSpecResolver",
+    "TraefikDynamicConfigRender",
+    "TraefikDynamicConfigService",
     "parse_duration_nanoseconds",
     "parse_wait_seconds",
 ]

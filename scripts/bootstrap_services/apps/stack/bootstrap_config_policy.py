@@ -52,6 +52,7 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
     selected = parse_selected_apps_csv(selected_apps_csv)
     if not selected:
         return
+    selected_arr = bool(_ARR_APP_KEYS.intersection(selected))
 
     for app_key, section_key in (
         ("homepage", "homepage"),
@@ -72,6 +73,17 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
             if app_key in selected:
                 filtered.append(item)
         cfg["arr_apps"] = filtered
+
+    if not selected_arr:
+        for section in (
+            "arr_media_management",
+            "arr_download_handling",
+            "arr_quality_upgrade",
+            "arr_discovery_lists",
+            "disk_guardrails",
+            "media_hygiene",
+        ):
+            _set_enabled(cfg.get(section), False)
 
     arr_discovery_lists = cfg.get("arr_discovery_lists")
     if isinstance(arr_discovery_lists, dict):
@@ -98,6 +110,8 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
             jellyseerr["enabled"] = False
 
     if "prowlarr" not in selected:
+        cfg["prowlarr_url"] = ""
+        cfg["prowlarr_indexers"] = []
         cfg["trigger_indexer_sync"] = False
         cfg["prowlarr_auto_add_tested_indexers"] = False
 
@@ -132,10 +146,18 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
             "jellyfin_prewarm",
         ):
             _set_enabled(cfg.get(section), False)
+        jellyfin_home_rails = cfg.get("jellyfin_home_rails")
+        if isinstance(jellyfin_home_rails, dict):
+            jellyfin_home_rails["cleanup_collections_when_disabled"] = False
         if isinstance(jellyseerr, dict):
             jelly_cfg = jellyseerr.get("jellyfin")
             if isinstance(jelly_cfg, dict):
                 jelly_cfg["configure"] = False
+
+    if "maintainerr" not in selected:
+        maintainerr_cfg = cfg.get("maintainerr")
+        if isinstance(maintainerr_cfg, dict):
+            _set_enabled(maintainerr_cfg.get("integrations"), False)
 
     app_auth = cfg.get("app_auth")
     if isinstance(app_auth, dict):

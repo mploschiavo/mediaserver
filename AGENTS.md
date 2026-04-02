@@ -321,6 +321,15 @@ Current key test suites:
 - When resource risk is unknown, run with constrained discovery (for example `UNIT_TEST_PATTERN=...`) and review telemetry offenders before broadening scope.
 - Prefer setting `UNIT_TEST_TIMEOUT_SECONDS` for workstation runs when investigating instability or potential hangs.
 
+## Lessons Learned (Operational)
+- Before long-running e2e flows, create a checkpoint commit of completed refactors; keep subsequent e2e fixes as isolated follow-up commits.
+- Compose edge routing must not rely on a single Docker-provider path; always emit inspectable runtime artifacts and a provider-fallback route config when available.
+- Selected-app runs must be hard-gated end-to-end:
+  - unselected technologies must have runtime inputs cleared (URLs/indexers/flags),
+  - phase-plan steps must use `enabled_when_attr`/`enabled_attr` so unrelated prechecks never block bootstrap.
+- `RUN_BOOTSTRAP=1` validation requires a freshly built bootstrap-runner image whenever runtime imports or module paths changed.
+- Keep repo-wide formatting sweeps isolated from behavior changes; do not mix debt cleanup with incident fixes.
+
 ## Validation Checklist (Pre-Merge)
 1. `bash -n scripts/*.sh scripts/lib/*.sh`
 2. `python3 -m py_compile` for modified Python files

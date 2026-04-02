@@ -104,6 +104,42 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         self.assertTrue(result.plan.configure_arr_clients)
         self.assertEqual(read_api_key.call_count, 2)
 
+    def test_full_mode_skips_prowlarr_key_when_prowlarr_url_disabled(self):
+        read_api_key = mock.Mock(side_effect=lambda _root, app: f"{app}-api")
+        factory = self._factory(read_api_key=read_api_key)
+        cfg = {
+            "config_version": 2,
+            "prowlarr_url": "",
+            "arr_apps": [
+                {
+                    "name": "Sonarr",
+                    "implementation": "sonarr",
+                    "url": "http://sonarr:8989",
+                    "root_folder": "/media/tv",
+                }
+            ],
+            "technology_bindings": {
+                "torrent_client": "qbittorrent",
+                "usenet_client": "sabnzbd",
+                "media_server": "jellyfin",
+            },
+            "download_clients": {
+                "qbittorrent": {
+                    "configure_arr_clients": True,
+                    "username_env": "STACK_ADMIN_USERNAME",
+                    "password_env": "STACK_ADMIN_PASSWORD",
+                },
+                "sabnzbd": {"configure_arr_clients": False},
+            },
+        }
+
+        with self._qbit_env():
+            result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
+
+        self.assertEqual(result.runtime.prowlarr_key, "")
+        self.assertEqual(result.runtime.app_keys.get("sonarr"), "sonarr-api")
+        self.assertEqual(read_api_key.call_count, 1)
+
     def test_non_full_mode_skips_api_key_reads(self):
         read_api_key = mock.Mock(return_value="unused")
         factory = self._factory(read_api_key=read_api_key)

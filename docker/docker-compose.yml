@@ -15,13 +15,13 @@ services:
   traefik:
     image: traefik@sha256:74d72c7a1345984f186bddbabcc462b2128d0d8054177dc84afaeac4db1f0f56
     container_name: traefik
-    environment:
-      DOCKER_API_VERSION: ${DOCKER_API_VERSION}
     command:
       - --api.dashboard=true
       - --api.insecure=true
-      - --providers.docker=true
+      - --providers.docker=false
       - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --ping=true
     ports:
@@ -29,6 +29,7 @@ services:
       - "${TRAEFIK_DASHBOARD_PORT}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${CONFIG_ROOT}/traefik/dynamic:/etc/traefik/dynamic:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
