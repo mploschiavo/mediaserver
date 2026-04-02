@@ -27,12 +27,17 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
     def test_stream_overrides_namespace_host_root_and_domain(self):
         svc = self._svc()
         rendered = svc.stream_with_manifest_overrides(
-            "namespace: media-stack\nname: media-stack\nhost: jellyfin.local\npath: /srv/media-stack\n"
+            "namespace: media-stack\n"
+            "name: media-stack\n"
+            "host: jellyfin.local\n"
+            "path: /srv/media-stack\n"
+            '  STACK_ADMIN_PASSWORD: "media-stack"\n'
         )
         self.assertIn("namespace: media-stack-dev", rendered)
         self.assertIn("name: media-stack-dev", rendered)
         self.assertIn("jellyfin.example.local", rendered)
         self.assertIn("/mnt/media", rendered)
+        self.assertIn('STACK_ADMIN_PASSWORD: "media-stack-dev"', rendered)
 
     def test_apply_manifest_text_calls_kubectl_with_patched_manifest(self):
         run_kubectl = mock.Mock()

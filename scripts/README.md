@@ -31,6 +31,7 @@ This directory intentionally contains both:
 - `rebuild-and-bootstrap.sh`
 - `bootstrap-all.sh`
 - `run-bootstrap-job.sh`
+- `with-env.sh` (load env-file + run command with safe defaults)
 - `ensure-qbit-credentials.sh`
 - `ensure-jellyfin-bootstrap.sh`
 - `ensure-sabnzbd-api-access.sh`

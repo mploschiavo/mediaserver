@@ -1,11 +1,9 @@
 # Examples
 
-Reserved for runnable examples and environment templates.
+Contains runnable examples and environment templates.
 
-Suggested future contents:
-- sample environment overrides
-- sample namespace promotion workflows
-- sample backup/restore drills
+Current:
+- `environments/`: namespace/domain env templates for safe install/rebuild workflows.
 
 ---
 
