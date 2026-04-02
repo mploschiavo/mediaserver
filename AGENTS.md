@@ -81,6 +81,9 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Any extensible taxonomy (app names, aliases, install profiles, auth providers, route aliases, env passthrough keys, host/url templates) must be declarative and config-driven.
 - Do not hardcode app/provider/profile lists in `scripts/core/`, `scripts/cli/`, `scripts/bootstrap_lib/`, or platform/framework layers.
 - If extending apps/providers/profiles requires a code edit instead of a config edit, stop and refactor before merge.
+- Provider identifiers (for example `traefik`, `authelia`, `authentik`, `nginx`, `caddy`) are data, not control flow constants.
+- Shared orchestration/platform code must not define provider allow-lists, provider enums, or provider-specific default strings; resolve providers from declarative bindings/catalogs.
+- App/provider-specific env var names (for example `*_API_KEY`, middleware names, router label keys) must come from config manifests/hooks, not hardcoded lists in shared modules.
 
 ## App Swap Contract
 Swapping a technology should be app-local and config-driven.
@@ -139,6 +142,7 @@ Swap workflow:
 ### Edge/Auth Isolation Contract
 - Reverse-proxy routing and auth provider wiring must be declarative and pluggable, not hard-coded into app services.
 - Shared orchestration must not embed provider-specific branches like `if auth_provider == ...`; use provider adapter bindings.
+- Shared orchestration must not embed provider allow-lists like `{none, authelia, authentik}`; allowed providers must come from declarative config/catalog.
 - Route strategy (`subdomain` vs `path-prefix`) must be configurable and provider-agnostic.
 - Preserve device-critical direct host support for media servers (for example Jellyfin native TV/mobile clients) even when consolidated path-prefix routing is enabled for browser apps.
 - Default security posture for internet exposure:
@@ -283,7 +287,8 @@ Current key test suites:
 11. For manifest/config changes, confirm no new bespoke manifest DSL was introduced where native Kubernetes/Compose YAML fields would suffice.
 12. For new integrations, confirm official SDK/client options were evaluated and used unless explicitly documented otherwise.
 13. For platform/auth/routing changes, verify bindings remain declarative (target/runtime/router/auth provider) and no new provider-specific branching appears in shared orchestration modules.
-14. Live bootstrap smoke in cluster:
+14. `rg -n -i "(traefik|authelia|authentik|nginx|caddy)" scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns only declarative adapter/binding definitions (no hardcoded provider branching or allow-lists).
+15. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 
