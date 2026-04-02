@@ -50,6 +50,9 @@ class RunBootstrapJobConfig:
     bootstrap_runner_image: str
     root_dir: Path
     config_file: Path
+    preconfigure_api_keys: bool = True
+    apply_initial_preferences: bool = True
+    auto_download_content: bool = False
     phase_skip_flags: dict[str, bool] = field(default_factory=dict)
 
     @property
@@ -192,5 +195,10 @@ def parse_run_bootstrap_job_config(
         or "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
         root_dir=root_dir,
         config_file=Path(str(args.config_file)),
+        preconfigure_api_keys=env_bool_candidates(("PRECONFIGURE_API_KEYS",), True),
+        apply_initial_preferences=env_bool_candidates(
+            ("APPLY_INITIAL_PREFERENCES", "FULLY_PRECONFIGURED"), True
+        ),
+        auto_download_content=env_bool_candidates(("AUTO_DOWNLOAD_CONTENT",), False),
         phase_skip_flags=phase_skip_flags,
     )

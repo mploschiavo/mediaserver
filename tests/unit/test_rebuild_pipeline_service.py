@@ -20,6 +20,9 @@ class RebuildPipelineServiceTests(unittest.TestCase):
                 root_dir=ROOT,
                 prepare_host_root="/srv/media-stack",
                 enable_components="1",
+                preconfigure_api_keys="1",
+                apply_initial_preferences="1",
+                auto_download_content="0",
                 config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
             ),
             info=mock.Mock(),
@@ -35,6 +38,18 @@ class RebuildPipelineServiceTests(unittest.TestCase):
         svc = self._svc(run_script)
         svc.generate_secrets()
         run_script.assert_called_once()
+
+    def test_run_bootstrap_pipeline_passes_profile_flags(self):
+        run_script = mock.Mock()
+        svc = self._svc(run_script)
+        svc.run_bootstrap_pipeline()
+        run_script.assert_called_once()
+        _script_name, _config_path = run_script.call_args.args
+        self.assertEqual(_script_name, "bootstrap-all.sh")
+        env = dict(run_script.call_args.kwargs.get("env") or {})
+        self.assertEqual(env.get("PRECONFIGURE_API_KEYS"), "1")
+        self.assertEqual(env.get("APPLY_INITIAL_PREFERENCES"), "1")
+        self.assertEqual(env.get("AUTO_DOWNLOAD_CONTENT"), "0")
 
 
 if __name__ == "__main__":

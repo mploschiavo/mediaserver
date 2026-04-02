@@ -186,6 +186,90 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
         self.assertEqual(written.get("config_version"), 2)
         self.assertIsInstance(written.get("adapter_hooks"), dict)
 
+    def test_prepare_bootstrap_job_config_disables_auto_download_for_manual_mode(self):
+        cfg = MODULE.RunBootstrapJobConfig(
+            namespace="media-stack",
+            timeout_raw="10m",
+            heartbeat_interval=15,
+            job_log_tail_lines=120,
+            alert_webhook_url="",
+            prepare_host_root="/srv/media-stack",
+            ingress_name="media-stack-ingress",
+            bootstrap_runner_image="registry.example/bootstrap:latest",
+            root_dir=ROOT,
+            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            auto_download_content=False,
+        )
+        runner = MODULE.RunBootstrapJobRunner(
+            cfg=cfg,
+            kube=_FakeKube(),
+            tracker=MODULE.PhaseTracker(),
+        )
+
+        runner.prepare_bootstrap_job_config()
+        written = json.loads(runner.artifacts.job_config_file.read_text(encoding="utf-8"))
+
+        discovery = dict(written.get("arr_discovery_lists") or {})
+        self.assertFalse(bool(discovery.get("trigger_initial_sync")))
+        radarr_lists = discovery.get("Radarr") or []
+        lidarr_lists = discovery.get("Lidarr") or []
+        if radarr_lists:
+            self.assertFalse(bool(radarr_lists[0].get("enable_auto")))
+            self.assertFalse(bool(radarr_lists[0].get("search_on_add")))
+        if lidarr_lists:
+            self.assertFalse(bool(lidarr_lists[0].get("enable_automatic_add")))
+            self.assertFalse(bool(lidarr_lists[0].get("should_search")))
+
+        sonarr_seed = dict(written.get("sonarr_seed_series") or {})
+        self.assertFalse(bool(sonarr_seed.get("enabled")))
+        self.assertFalse(bool(sonarr_seed.get("search_for_missing_episodes")))
+
+        jellyseerr = dict(written.get("jellyseerr") or {})
+        self.assertTrue(bool(dict(jellyseerr.get("radarr") or {}).get("prevent_search")))
+        self.assertTrue(bool(dict(jellyseerr.get("sonarr") or {}).get("prevent_search")))
+
+    def test_prepare_bootstrap_job_config_enables_auto_download_for_full_mode(self):
+        cfg = MODULE.RunBootstrapJobConfig(
+            namespace="media-stack",
+            timeout_raw="10m",
+            heartbeat_interval=15,
+            job_log_tail_lines=120,
+            alert_webhook_url="",
+            prepare_host_root="/srv/media-stack",
+            ingress_name="media-stack-ingress",
+            bootstrap_runner_image="registry.example/bootstrap:latest",
+            root_dir=ROOT,
+            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            auto_download_content=True,
+        )
+        runner = MODULE.RunBootstrapJobRunner(
+            cfg=cfg,
+            kube=_FakeKube(),
+            tracker=MODULE.PhaseTracker(),
+        )
+
+        runner.prepare_bootstrap_job_config()
+        written = json.loads(runner.artifacts.job_config_file.read_text(encoding="utf-8"))
+
+        discovery = dict(written.get("arr_discovery_lists") or {})
+        self.assertTrue(bool(discovery.get("trigger_initial_sync")))
+        radarr_lists = discovery.get("Radarr") or []
+        lidarr_lists = discovery.get("Lidarr") or []
+        if radarr_lists:
+            self.assertTrue(bool(radarr_lists[0].get("enable_auto")))
+            self.assertTrue(bool(radarr_lists[0].get("search_on_add")))
+        if lidarr_lists:
+            self.assertTrue(bool(lidarr_lists[0].get("enable_automatic_add")))
+            self.assertTrue(bool(lidarr_lists[0].get("should_search")))
+
+        sonarr_seed = dict(written.get("sonarr_seed_series") or {})
+        self.assertTrue(bool(sonarr_seed.get("enabled")))
+        self.assertTrue(bool(sonarr_seed.get("search_for_missing_episodes")))
+
+        jellyseerr = dict(written.get("jellyseerr") or {})
+        self.assertFalse(bool(dict(jellyseerr.get("radarr") or {}).get("prevent_search")))
+        self.assertFalse(bool(dict(jellyseerr.get("sonarr") or {}).get("prevent_search")))
+
     def test_prepare_bootstrap_job_config_rejects_non_object_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_file = Path(tmpdir) / "bad.json"

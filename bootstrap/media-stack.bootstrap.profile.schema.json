@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://media-stack.local/schemas/media-stack.bootstrap.profile.schema.json",
+  "title": "Media Stack Bootstrap Profile (v1)",
+  "description": "Canonical bootstrap profile for platform + install tier + routing/auth posture.",
+  "type": "object",
+  "required": ["schema_version", "kind", "metadata", "resources", "install_profile"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["media_stack_profile", "media_stack_config"]
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "platform", "purpose"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["k8s", "kubernetes", "microk8s", "compose", "dockercompose", "docker-compose"]
+        },
+        "purpose": {
+          "type": "string",
+          "enum": ["dev", "test", "prod"]
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resources": {
+      "type": "object",
+      "required": ["disk_space_gb", "network_cidr"],
+      "properties": {
+        "disk_space_gb": {
+          "description": "Minimum 200GB. Accepts integer or values like 500GB/1TB.",
+          "oneOf": [
+            { "type": "integer", "minimum": 200 },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "network_cidr": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "install_profile": {
+      "type": "string",
+      "enum": ["minimal", "standard", "full"]
+    },
+    "apps": {
+      "type": "object",
+      "properties": {
+        "jellyfin": { "type": "boolean" },
+        "jellyseerr": { "type": "boolean" },
+        "sonarr": { "type": "boolean" },
+        "radarr": { "type": "boolean" },
+        "lidarr": { "type": "boolean" },
+        "readarr": { "type": "boolean" },
+        "bazarr": { "type": "boolean" },
+        "prowlarr": { "type": "boolean" },
+        "qbittorrent": { "type": "boolean" },
+        "sabnzbd": { "type": "boolean" },
+        "tautulli": { "type": "boolean" },
+        "maintainerr": { "type": "boolean" },
+        "unpackerr": { "type": "boolean" },
+        "homepage": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "bootstrap": {
+      "type": "object",
+      "properties": {
+        "preconfigure_apps": { "type": "boolean" },
+        "preconfigure_api_keys": { "type": "boolean" },
+        "apply_initial_preferences": { "type": "boolean" },
+        "auto_download_content": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "internet_exposed": { "type": "boolean" },
+        "strategy": {
+          "type": "string",
+          "enum": ["subdomain", "path-prefix", "hybrid", "local", "path_prefix", "pathprefix"]
+        },
+        "base_domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stack_subdomain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gateway_host": { "type": "string" },
+        "app_path_prefix": { "type": "string" },
+        "direct_hosts": {
+          "type": "object",
+          "properties": {
+            "jellyfin": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": {
+          "type": "string",
+          "enum": ["none", "authelia", "authentik"]
+        },
+        "middleware": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "live_tv_defaults": {
+      "type": "object",
+      "properties": {
+        "tuner_url": { "type": "string", "minLength": 1 },
+        "tuner_urls": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "playlists": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "guide_url": { "type": "string", "minLength": 1 },
+        "guide_urls": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "guides": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "default_program_icon_url": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

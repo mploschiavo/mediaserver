@@ -15,6 +15,9 @@ class RunBootstrapJobCliConfigServiceTests(unittest.TestCase):
             "HEARTBEAT_INTERVAL": "20",
             "JOB_LOG_TAIL_LINES": "200",
             "BOOTSTRAP_RUNNER_IMAGE": "registry.local/bootstrap:dev",
+            "PRECONFIGURE_API_KEYS": "1",
+            "APPLY_INITIAL_PREFERENCES": "1",
+            "AUTO_DOWNLOAD_CONTENT": "0",
         }
         with patch.dict(os.environ, env, clear=False):
             cfg = parse_run_bootstrap_job_config([], root_dir=root_dir)
@@ -24,6 +27,9 @@ class RunBootstrapJobCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.heartbeat_interval, 20)
         self.assertEqual(cfg.job_log_tail_lines, 200)
         self.assertEqual(cfg.bootstrap_runner_image, "registry.local/bootstrap:dev")
+        self.assertTrue(cfg.preconfigure_api_keys)
+        self.assertTrue(cfg.apply_initial_preferences)
+        self.assertFalse(cfg.auto_download_content)
 
     def test_parse_dynamic_skip_flags_from_env(self):
         root_dir = Path("/tmp/media-stack")

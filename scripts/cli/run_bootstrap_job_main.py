@@ -436,6 +436,44 @@ class RunBootstrapJobRunner:
     def ensure_bootstrap_pvc_prereqs(self) -> None:
         self._manifest_service().ensure_bootstrap_pvc_prereqs()
 
+    @staticmethod
+    def _apply_content_download_policy(
+        cfg: dict[str, object], *, auto_download_content: bool
+    ) -> None:
+        download_enabled = bool(auto_download_content)
+
+        arr_discovery_lists = cfg.get("arr_discovery_lists")
+        if isinstance(arr_discovery_lists, dict):
+            arr_discovery_lists["trigger_initial_sync"] = download_enabled
+            for value in arr_discovery_lists.values():
+                if not isinstance(value, list):
+                    continue
+                for item in value:
+                    if not isinstance(item, dict):
+                        continue
+                    for key in (
+                        "enable_auto",
+                        "enable_automatic_add",
+                        "search_on_add",
+                        "should_search",
+                    ):
+                        if key in item:
+                            item[key] = download_enabled
+
+        sonarr_seed_series = cfg.get("sonarr_seed_series")
+        if isinstance(sonarr_seed_series, dict):
+            sonarr_seed_series["enabled"] = download_enabled
+            sonarr_seed_series["search_for_missing_episodes"] = download_enabled
+
+        for request_manager_key in ("jellyseerr", "openseerr"):
+            request_manager_cfg = cfg.get(request_manager_key)
+            if not isinstance(request_manager_cfg, dict):
+                continue
+            for app_key in ("radarr", "sonarr"):
+                app_cfg = request_manager_cfg.get(app_key)
+                if isinstance(app_cfg, dict):
+                    app_cfg["prevent_search"] = not download_enabled
+
     def prepare_bootstrap_job_config(self) -> None:
         payload = json.loads(self.cfg.config_file.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
@@ -444,9 +482,22 @@ class RunBootstrapJobRunner:
             cfg = TopLevelBootstrapConfig.from_dict(payload).to_dict()
         except ValueError as exc:
             raise ConfigError(f"Invalid bootstrap config at {self.cfg.config_file}: {exc}") from exc
+        self._apply_content_download_policy(
+            cfg,
+            auto_download_content=self.cfg.auto_download_content,
+        )
         self.artifacts.job_config_file.write_text(
             json.dumps(cfg, indent=2) + "\n",
             encoding="utf-8",
+        )
+        info(
+            "Bootstrap preconfigure flags: "
+            f"api_keys={'on' if self.cfg.preconfigure_api_keys else 'off'}, "
+            f"initial_preferences={'on' if self.cfg.apply_initial_preferences else 'off'}"
+        )
+        info(
+            "Bootstrap content mode: "
+            f"{'automatic download enabled' if self.cfg.auto_download_content else 'manual download mode'}"
         )
         info(f"Prepared bootstrap job config: {self.artifacts.job_config_file}")
 

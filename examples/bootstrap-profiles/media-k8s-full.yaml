@@ -1,0 +1,38 @@
+schema_version: 1
+kind: media_stack_profile
+
+metadata:
+  name: media-prod
+  platform: k8s
+  purpose: prod
+
+resources:
+  disk_space_gb: 1000
+  network_cidr: 10.42.0.0/24
+
+install_profile: full
+
+bootstrap:
+  preconfigure_apps: true
+  preconfigure_api_keys: true
+  apply_initial_preferences: true
+  auto_download_content: true
+
+routing:
+  internet_exposed: true
+  strategy: hybrid
+  base_domain: example.com
+  stack_subdomain: media
+  gateway_host: apps.media.example.com
+  app_path_prefix: /app
+  direct_hosts:
+    jellyfin: jellyfin.media.example.com
+
+auth:
+  enabled: true
+  provider: authentik
+
+live_tv_defaults:
+  tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
+  guide_url: https://iptv-epg.org/files/epg-us.xml
+  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
