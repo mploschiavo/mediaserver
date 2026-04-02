@@ -92,6 +92,7 @@
       {
         "event": "RUN",
         "handler": "run_prowlarr_indexer_pipeline",
+        "enabled_when_attr": "prowlarr_url",
         "args": [
           "cfg",
           "prowlarr_url",

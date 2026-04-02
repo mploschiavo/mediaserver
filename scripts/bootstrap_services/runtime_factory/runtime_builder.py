@@ -358,7 +358,7 @@ class BootstrapRuntimeBuilder:
                 app_keys[app.implementation] = api_key
                 app_keys[app.implementation.lower()] = api_key
 
-        if args.mode == BootstrapMode.FULL:
+        if args.mode == BootstrapMode.FULL and prowlarr_url:
             prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
 
         qb_user = self._resolve_optional_env_value(qbit_cfg, "username_env")

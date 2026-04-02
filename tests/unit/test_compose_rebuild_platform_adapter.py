@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -76,6 +78,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         self,
         *,
         compose_file: Path,
+        compose_env_file: Path | None = None,
         docker=None,
         compose_profiles: tuple[str, ...] = (),
         selected_apps: tuple[str, ...] = (),
@@ -92,6 +95,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
             cfg=ComposeRebuildPlatformConfig(
                 environment_id="media-dev",
                 compose_file=compose_file,
+                compose_env_file=compose_env_file,
                 compose_profiles=compose_profiles,
                 selected_apps=selected_apps,
                 node_ip=node_ip,
@@ -314,6 +318,44 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
             self.assertTrue(deploy_plan.exists())
             self.assertIn("services:", expanded.read_text(encoding="utf-8"))
             self.assertIn("ghcr.io/example/app:latest", selected.read_text(encoding="utf-8"))
+
+    def test_apply_environment_definition_writes_traefik_dynamic_file_provider_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text_with_edge_labels(), encoding="utf-8")
+            compose_env_file = Path(tmp) / ".env"
+            config_root = Path(tmp) / "config"
+            compose_env_file.write_text(f"CONFIG_ROOT={config_root}\n", encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                compose_env_file=compose_env_file,
+                docker=docker,
+            )
+
+            adapter.apply_environment_definition()
+
+            dynamic_path = config_root / "traefik" / "dynamic" / "media-stack.dynamic.yaml"
+            self.assertTrue(dynamic_path.exists())
+            rendered = yaml.safe_load(dynamic_path.read_text(encoding="utf-8")) or {}
+            http_cfg = rendered.get("http") or {}
+            routers = http_cfg.get("routers") or {}
+            services = http_cfg.get("services") or {}
+            self.assertEqual(
+                (routers.get("sonarr") or {}).get("rule"),
+                "Host(`sonarr.old.local`)",
+            )
+            self.assertEqual(
+                (
+                    (
+                        ((services.get("sonarr") or {}).get("loadBalancer") or {}).get("servers")
+                        or [{}]
+                    )[0]
+                ).get("url"),
+                "http://sonarr:8989",
+            )
 
 
 if __name__ == "__main__":

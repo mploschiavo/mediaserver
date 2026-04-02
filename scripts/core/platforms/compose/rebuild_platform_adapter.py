@@ -8,12 +8,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from core.platform_adapter import InfoFn, PlatformEnvironmentRef
 from core.platforms.compose.docker_client import DockerClient
 from core.platforms.compose.services.container_runtime import ComposeContainerRuntimeService
 from core.platforms.compose.services.labels import ComposeLabelConfig, ComposeLabelService
 from core.platforms.compose.services.runtime_artifacts import ComposeRuntimeArtifactService
 from core.platforms.compose.services.spec import ComposeSpecResolver, parse_wait_seconds
+from core.platforms.compose.services.traefik_dynamic_config import TraefikDynamicConfigService
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,10 @@ class ComposeRebuildPlatformAdapter:
     label_service: ComposeLabelService = field(init=False, repr=False)
     runtime_service: ComposeContainerRuntimeService = field(init=False, repr=False)
     artifacts_service: ComposeRuntimeArtifactService = field(init=False, repr=False)
+    traefik_dynamic_config_service: TraefikDynamicConfigService = field(
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -101,6 +108,10 @@ class ComposeRebuildPlatformAdapter:
             runtime_artifacts_dir=self.cfg.runtime_artifacts_dir,
             info=self.info,
         )
+        self.traefik_dynamic_config_service = TraefikDynamicConfigService(
+            label_service=self.label_service,
+            spec_resolver=self.spec_resolver,
+        )
 
     def _project_name(self) -> str:
         return self.spec_resolver.project_name()
@@ -142,6 +153,40 @@ class ComposeRebuildPlatformAdapter:
         payload["services"] = services_payload
         return payload
 
+    def _write_traefik_dynamic_config(
+        self,
+        services: dict[str, dict[str, Any]],
+    ) -> None:
+        if self.label_service.edge_router_provider() != "traefik":
+            return
+
+        config_root = self.spec_resolver.config_root()
+        if config_root is None:
+            self.info(
+                "Compose edge routing: CONFIG_ROOT/COMPOSE_CONFIG_ROOT not set; "
+                "skipping Traefik file-provider runtime config."
+            )
+            return
+
+        rendered = self.traefik_dynamic_config_service.render(services)
+        dynamic_file = config_root / "traefik" / "dynamic" / "media-stack.dynamic.yaml"
+        dynamic_file.parent.mkdir(parents=True, exist_ok=True)
+        dynamic_file.write_text(
+            yaml.safe_dump(rendered.payload, sort_keys=False),
+            encoding="utf-8",
+        )
+        self.info(
+            "Compose Traefik dynamic config: "
+            f"{dynamic_file} "
+            f"(routers={rendered.router_count}, services={rendered.service_count}, "
+            f"middlewares={rendered.middleware_count})."
+        )
+        self.artifacts_service.write_yaml_artifact(
+            "resolved/traefik.dynamic.runtime.yaml",
+            rendered.payload,
+            label="Compose Traefik dynamic config artifact",
+        )
+
     def delete_environment_optional(self, delete_environment: str) -> bool:
         if delete_environment != "1":
             return False
@@ -178,6 +223,7 @@ class ComposeRebuildPlatformAdapter:
         services = self._selected_services(dict(compose.get("services") or {}))
         if not services:
             raise RuntimeError("No compose services selected for deployment.")
+        self._write_traefik_dynamic_config(services)
         self.artifacts_service.write_yaml_artifact(
             "resolved/docker-compose.selected.runtime.yaml",
             self._runtime_selected_compose_payload(compose_spec=compose, services=services),
