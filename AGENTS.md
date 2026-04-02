@@ -97,6 +97,26 @@ Swap workflow:
 - Do not add new target-specific branching in orchestration phases when behavior can live inside a platform adapter.
 - If adding/swapping a platform requires broad edits across shared orchestration modules, treat it as a design bug and refactor behind adapter boundaries before merge.
 - Prefer additive target plugins/adapters over mutating existing targets.
+- Keep isolation on separate axes:
+  - deployment target (`k8s`, `compose`, future targets)
+  - container runtime (`docker`, `containerd`, future runtimes)
+  - edge/router provider (ingress/traefik/nginx/etc.)
+  - authN/authZ provider (`authelia`, `authentik`, future providers)
+- A change in one axis must not require code edits in the other axes beyond declarative binding/config.
+
+### Edge/Auth Isolation Contract
+- Reverse-proxy routing and auth provider wiring must be declarative and pluggable, not hard-coded into app services.
+- Shared orchestration must not embed provider-specific branches like `if auth_provider == ...`; use provider adapter bindings.
+- Route strategy (`subdomain` vs `path-prefix`) must be configurable and provider-agnostic.
+- Preserve device-critical direct host support for media servers (for example Jellyfin native TV/mobile clients) even when consolidated path-prefix routing is enabled for browser apps.
+- Default security posture for internet exposure:
+  - explicit exposure intent flag/config is required before enabling public routes
+  - centralized SSO/forward-auth policy is preferred over per-app bespoke auth config
+  - TLS and auth middleware references must come from platform/provider config, not app code constants
+- New provider/runtime integrations must ship with:
+  - adapter module
+  - declarative config binding
+  - contract tests proving no shared-orchestration code changes are required for provider swaps
 
 ### Non-Negotiable Isolation Rules
 - `scripts/bootstrap_services/bootstrap_runner_service.py` must remain orchestration-only.
@@ -223,7 +243,8 @@ Current key test suites:
 10. `rg -n -i "(jellyfin|jellyseerr|prowlarr|qbittorrent|qbit|sabnzbd|sonarr|radarr|lidarr|readarr|bazarr|unpackerr|maintainerr|tautulli|homepage|plex|emby|flaresolverr)" scripts/cli/*.py` returns no matches
 11. For manifest/config changes, confirm no new bespoke manifest DSL was introduced where native Kubernetes/Compose YAML fields would suffice.
 12. For new integrations, confirm official SDK/client options were evaluated and used unless explicitly documented otherwise.
-13. Live bootstrap smoke in cluster:
+13. For platform/auth/routing changes, verify bindings remain declarative (target/runtime/router/auth provider) and no new provider-specific branching appears in shared orchestration modules.
+14. Live bootstrap smoke in cluster:
    - `bash scripts/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 
