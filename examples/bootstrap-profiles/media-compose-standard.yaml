@@ -20,12 +20,14 @@ bootstrap:
 
 routing:
   internet_exposed: false
-  strategy: path-prefix
+  strategy: hybrid  #path-prefix
   provider: envoy
   base_domain: local
   stack_subdomain: media-dev
   gateway_host: apps.media-dev.local
   app_path_prefix: /app
+  direct_hosts:
+    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false
@@ -39,9 +41,7 @@ chaos:
     - restart_container
     - pause_container
     - network_disconnect
-
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
-  default_program_icon_urls:
-    - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
