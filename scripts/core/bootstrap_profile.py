@@ -56,6 +56,7 @@ class BootstrapExposureSettings:
     base_domain: str = "local"
     stack_subdomain: str = "media-stack"
     gateway_host: str = ""
+    gateway_port: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
     auth_provider: str = ""
@@ -226,6 +227,10 @@ class BootstrapProfileConfig:
         gateway_host = _normalize_host(routing.get("gateway_host"))
         if not gateway_host and route_strategy in {"path-prefix", "hybrid"}:
             gateway_host = _join_host("apps", stack_subdomain, base_domain)
+        gateway_port = _normalize_optional_port(
+            routing.get("gateway_port"),
+            field_name="routing.gateway_port",
+        )
 
         direct_hosts = routing.get("direct_hosts")
         if direct_hosts is not None and not isinstance(direct_hosts, dict):
@@ -334,6 +339,7 @@ class BootstrapProfileConfig:
                 base_domain=base_domain,
                 stack_subdomain=stack_subdomain,
                 gateway_host=gateway_host,
+                gateway_port=gateway_port,
                 app_path_prefix=app_path_prefix,
                 media_server_direct_host=media_server_direct_host,
                 auth_provider=auth_provider,
@@ -697,6 +703,19 @@ def _to_positive_int(
     if parsed < minimum or parsed > maximum:
         raise ValueError(f"{field_name} must be between {minimum} and {maximum}.")
     return parsed
+
+
+def _normalize_optional_port(value: Any, *, field_name: str) -> str:
+    if value is None or str(value).strip() == "":
+        return ""
+    parsed = _to_positive_int(
+        value,
+        default=0,
+        field_name=field_name,
+        minimum=1,
+        maximum=65535,
+    )
+    return str(parsed)
 
 
 def _normalize_string_list_allow_empty(

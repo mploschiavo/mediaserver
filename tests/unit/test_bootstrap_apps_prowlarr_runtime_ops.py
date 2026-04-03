@@ -10,7 +10,7 @@ from bootstrap_services.apps.prowlarr import runtime_ops  # noqa: E402
 
 
 class ProwlarrRuntimeOpsTests(unittest.TestCase):
-    def test_run_indexer_pipeline_uses_path_aware_prowlarr_url(self):
+    def test_run_indexer_pipeline_uses_direct_prowlarr_service_url(self):
         pipeline = mock.Mock()
         pipeline.run.return_value = "ok"
         cfg = {
@@ -20,7 +20,9 @@ class ProwlarrRuntimeOpsTests(unittest.TestCase):
                 }
             }
         }
-        with mock.patch.object(runtime_ops, "_prowlarr_indexer_pipeline_service", return_value=pipeline):
+        with mock.patch.object(
+            runtime_ops, "_prowlarr_indexer_pipeline_service", return_value=pipeline
+        ):
             result = runtime_ops.run_prowlarr_indexer_pipeline(
                 cfg=cfg,
                 prowlarr_url="http://prowlarr:9696",
@@ -37,10 +39,10 @@ class ProwlarrRuntimeOpsTests(unittest.TestCase):
         self.assertTrue(pipeline.run.called)
         self.assertEqual(
             pipeline.run.call_args.kwargs.get("prowlarr_url"),
-            "http://prowlarr:9696/app/prowlarr",
+            "http://prowlarr:9696",
         )
 
-    def test_ensure_ready_uses_path_aware_prowlarr_url(self):
+    def test_ensure_ready_uses_direct_prowlarr_service_url(self):
         precheck = mock.Mock()
         precheck.ensure_ready.return_value = "/api/v1"
         cfg = {
@@ -63,7 +65,7 @@ class ProwlarrRuntimeOpsTests(unittest.TestCase):
         self.assertTrue(precheck.ensure_ready.called)
         self.assertEqual(
             precheck.ensure_ready.call_args.kwargs.get("prowlarr_url"),
-            "http://prowlarr:9696/app/prowlarr",
+            "http://prowlarr:9696",
         )
 
 

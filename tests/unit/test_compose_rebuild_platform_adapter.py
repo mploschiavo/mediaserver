@@ -165,6 +165,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         node_ip: str = "",
         route_strategy: str = "subdomain",
         app_gateway_host: str = "",
+        app_gateway_port: str = "",
         media_server_direct_host: str = "",
         internet_exposed: bool = False,
         auth_provider: str = "none",
@@ -190,6 +191,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 route_strategy=route_strategy,
                 allowed_route_strategies=("subdomain", "path-prefix", "hybrid"),
                 app_gateway_host=app_gateway_host,
+                app_gateway_port=app_gateway_port,
                 media_server_direct_host=media_server_direct_host,
                 internet_exposed=internet_exposed,
                 auth_provider=auth_provider,
@@ -229,6 +231,18 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
             adapter = self._adapter(compose_file=compose_file, docker=docker)
             self.assertFalse(adapter.delete_environment_optional("0"))
             docker.ping.assert_not_called()
+
+    def test_gateway_port_override_is_propagated_into_compose_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text(), encoding="utf-8")
+            adapter = self._adapter(
+                compose_file=compose_file,
+                app_gateway_port="18080",
+            )
+            compose_env = adapter.spec_resolver.compose_environment()
+            self.assertEqual(str(compose_env.get("APP_GATEWAY_PORT") or ""), "18080")
+            self.assertEqual(str(compose_env.get("TRAEFIK_HTTP_PORT") or ""), "18080")
 
     def test_apply_environment_definition_deploys_selected_services(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -68,7 +68,7 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertTrue(bool(cfg.get("prowlarr_auto_add_tested_indexers")))
         self.assertTrue(bool((cfg.get("flaresolverr") or {}).get("enabled")))
 
-    def test_selected_apps_policy_expands_unpackerr_to_seed_all_arr_apps(self):
+    def test_selected_apps_policy_expands_unpackerr_to_seed_primary_arr_apps_only(self):
         cfg = {
             "arr_apps": [
                 {"implementation": "sonarr", "name": "Sonarr"},
@@ -89,12 +89,12 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             for item in (cfg.get("arr_apps") or [])
             if isinstance(item, dict)
         }
-        self.assertEqual(implementations, {"sonarr", "radarr", "lidarr", "readarr"})
+        self.assertEqual(implementations, {"sonarr", "radarr"})
         self.assertTrue(bool((cfg.get("arr_media_management") or {}).get("enabled")))
         include = ((cfg.get("app_auth") or {}).get("include")) or []
         self.assertEqual(
             {str(value).strip().lower() for value in include},
-            {"sonarr", "radarr", "lidarr", "readarr", "prowlarr"},
+            {"sonarr", "radarr", "prowlarr"},
         )
 
     def test_selected_apps_policy_prunes_homepage_hosts_to_selected_apps(self):

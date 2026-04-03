@@ -25,6 +25,7 @@ class DeployPipelineServiceTests(unittest.TestCase):
                 route_strategy="subdomain",
                 ingress_domain="local",
                 app_gateway_host="",
+                app_gateway_port="",
                 app_path_prefix="/app",
                 media_server_direct_host="",
                 preconfigure_api_keys="1",
@@ -63,6 +64,18 @@ class DeployPipelineServiceTests(unittest.TestCase):
         self.assertEqual(env.get("AUTH_PROVIDER"), "authelia")
         self.assertEqual(env.get("AUTH_MIDDLEWARE"), "authelia@docker")
         self.assertEqual(env.get("EDGE_ROUTER_PROVIDER"), "traefik")
+        self.assertIsNone(env.get("APP_GATEWAY_PORT"))
+
+    def test_run_bootstrap_pipeline_passes_gateway_port_when_configured(self):
+        run_script = mock.Mock()
+        svc = self._svc(run_script)
+        svc.cfg = DeployPipelineConfig(
+            **{**svc.cfg.__dict__, "app_gateway_port": "18080"}  # type: ignore[arg-type]
+        )
+        svc.run_bootstrap_pipeline()
+        env = dict(run_script.call_args.kwargs.get("env") or {})
+        self.assertEqual(env.get("APP_GATEWAY_PORT"), "18080")
+        self.assertEqual(env.get("TRAEFIK_HTTP_PORT"), "18080")
 
 
 if __name__ == "__main__":

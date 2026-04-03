@@ -38,6 +38,7 @@ class ComposeRebuildPlatformConfig:
     route_strategy: str = "subdomain"
     allowed_route_strategies: tuple[str, ...] = ()
     app_gateway_host: str = ""
+    app_gateway_port: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
     auth_provider: str = ""
@@ -113,6 +114,18 @@ class ComposeRebuildPlatformAdapter:
                 target=self.cfg.target,
             ),
         )
+        environment_overrides = {
+            "APP_GATEWAY_HOST": str(self.cfg.app_gateway_host or "").strip(),
+            "APP_PATH_PREFIX": str(self.cfg.app_path_prefix or "").strip(),
+            "MEDIA_SERVER_DIRECT_HOST": str(self.cfg.media_server_direct_host or "").strip(),
+            **self._path_prefix_service_env_overrides(),
+        }
+        app_gateway_port = str(self.cfg.app_gateway_port or "").strip()
+        if app_gateway_port:
+            environment_overrides["APP_GATEWAY_PORT"] = app_gateway_port
+            environment_overrides["EDGE_HTTP_PORT"] = app_gateway_port
+            environment_overrides["TRAEFIK_HTTP_PORT"] = app_gateway_port
+
         self.spec_resolver = ComposeSpecResolver(
             compose_file=self.cfg.compose_file,
             compose_env_file=self.cfg.compose_env_file,
@@ -121,12 +134,7 @@ class ComposeRebuildPlatformAdapter:
             compose_profiles=tuple(self.cfg.compose_profiles or ()),
             selected_apps=tuple(self.cfg.selected_apps or ()),
             edge_router_service_names=tuple(self.cfg.edge_router_service_names or ()),
-            environment_overrides={
-                "APP_GATEWAY_HOST": str(self.cfg.app_gateway_host or "").strip(),
-                "APP_PATH_PREFIX": str(self.cfg.app_path_prefix or "").strip(),
-                "MEDIA_SERVER_DIRECT_HOST": str(self.cfg.media_server_direct_host or "").strip(),
-                **self._path_prefix_service_env_overrides(),
-            },
+            environment_overrides=environment_overrides,
         )
         self.label_service = ComposeLabelService(
             cfg=ComposeLabelConfig(
@@ -205,11 +213,16 @@ class ComposeRebuildPlatformAdapter:
             if self.cfg.compose_env_file is not None
             else "<unset compose env file>"
         )
+        example_hint = str(
+            self.cfg.compose_file.parent / ".env.example"
+            if self.cfg.compose_env_file is not None
+            else "<see docker/.env.example>"
+        )
         raise RuntimeError(
             "Compose environment is missing required variables: "
             + ", ".join(missing)
-            + ". Configure these in your compose env file and rerun deploy. "
-            f"(compose_env_file={env_file_hint})"
+            + f". Create {env_file_hint} (see {example_hint} for reference) "
+            "and set the missing paths, then rerun deploy."
         )
 
     def _selected_services(self, services: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -276,6 +289,10 @@ class ComposeRebuildPlatformAdapter:
         if delete_environment != "1":
             return False
 
+        self.info(
+            f"[DESTRUCTIVE] Tearing down compose environment for project '{self._project_name()}' "
+            "(DELETE_NAMESPACE=1). All selected containers and the project network will be removed."
+        )
         self.docker.ping()
         compose = self._load_compose_spec()
         services = self._selected_services(dict(compose.get("services") or {}))
@@ -339,6 +356,7 @@ class ComposeRebuildPlatformAdapter:
                 "auth_provider": str(self.cfg.auth_provider or "").strip().lower(),
                 "edge_router_provider": self.label_service.edge_router_provider(),
                 "app_gateway_host": str(self.cfg.app_gateway_host or "").strip(),
+                "app_gateway_port": str(self.cfg.app_gateway_port or "").strip(),
                 "media_server_direct_host": str(self.cfg.media_server_direct_host or "").strip(),
             },
             label="Compose deploy plan artifact",
@@ -354,6 +372,8 @@ class ComposeRebuildPlatformAdapter:
         )
         if self.cfg.app_gateway_host:
             self.info(f"Compose edge gateway host: {self.cfg.app_gateway_host}")
+        if self.cfg.app_gateway_port:
+            self.info(f"Compose edge gateway port: {self.cfg.app_gateway_port}")
         if self.cfg.media_server_direct_host:
             self.info(f"Compose media-server direct host: {self.cfg.media_server_direct_host}")
         for service_name in order:

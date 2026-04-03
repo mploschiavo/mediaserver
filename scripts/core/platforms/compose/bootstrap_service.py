@@ -72,6 +72,7 @@ class ComposeBootstrapConfig:
     runtime_config_policy_params: dict[str, object] = field(default_factory=dict)
     passthrough_env_vars: tuple[str, ...] = field(default_factory=tuple)
     preflight_handler_specs: tuple[str, ...] = field(default_factory=tuple)
+    runtime_artifacts_dir: Path | None = None
 
 
 @dataclass
@@ -245,6 +246,14 @@ class ComposeBootstrapService:
             context=context,
         )
 
+        artifacts_dir = self.cfg.runtime_artifacts_dir
+        if artifacts_dir is not None:
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            artifact_file = artifacts_dir / "resolved" / "bootstrap.runtime.config.json"
+            artifact_file.parent.mkdir(parents=True, exist_ok=True)
+            artifact_file.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+            self.info(f"Compose bootstrap runtime config artifact: {artifact_file}")
+
         handle = tempfile.NamedTemporaryFile(
             mode="w",
             prefix="compose-bootstrap-config.",
@@ -264,6 +273,54 @@ class ComposeBootstrapService:
             except Exception:
                 pass
             raise
+
+    @staticmethod
+    def _image_pull_policy() -> str:
+        policy = (
+            str(
+                os.environ.get("COMPOSE_BOOTSTRAP_IMAGE_PULL_POLICY")
+                or os.environ.get("BOOTSTRAP_IMAGE_PULL_POLICY")
+                or "if-missing"
+            )
+            .strip()
+            .lower()
+        )
+        if policy not in {"always", "if-missing", "never"}:
+            return "if-missing"
+        return policy
+
+    def _prepare_bootstrap_runner_image(self) -> None:
+        image = str(self.cfg.bootstrap_runner_image or "").strip()
+        if not image:
+            raise RuntimeError("Compose bootstrap-runner image cannot be empty.")
+
+        pull_policy = self._image_pull_policy()
+        has_local = self.docker.image_exists(image)
+        self.info(
+            "Compose bootstrap-runner image policy: "
+            f"policy={pull_policy}, image={image}, local_present={int(has_local)}"
+        )
+
+        if pull_policy == "never":
+            if not has_local:
+                raise RuntimeError(
+                    "Compose bootstrap image pull policy is 'never' but image is missing locally: "
+                    f"{image}"
+                )
+            return
+
+        if pull_policy == "if-missing" and has_local:
+            self.info(f"Compose bootstrap: using local bootstrap-runner image '{image}'.")
+            return
+
+        try:
+            self.docker.pull_image(image)
+            self.info(f"Compose bootstrap: pulled bootstrap-runner image '{image}'.")
+        except Exception:
+            if self.docker.image_exists(image):
+                self.info("Compose bootstrap: pull failed; using local image " f"'{image}'.")
+            else:
+                raise
 
     def _container_logs(self, container: Any) -> str:
         try:
@@ -324,16 +381,7 @@ class ComposeBootstrapService:
         )
         self.docker.ping()
         self.docker.ensure_network(network_name)
-        try:
-            self.docker.pull_image(self.cfg.bootstrap_runner_image)
-        except Exception:
-            if self.docker.image_exists(self.cfg.bootstrap_runner_image):
-                self.info(
-                    "Compose bootstrap: pull failed; using local image "
-                    f"'{self.cfg.bootstrap_runner_image}'."
-                )
-            else:
-                raise
+        self._prepare_bootstrap_runner_image()
         self.docker.remove_container(container_name, force=True)
 
         try:

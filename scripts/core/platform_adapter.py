@@ -84,6 +84,7 @@ class RebuildPlatformAdapterBuildRequest:
     route_strategy: str = "subdomain"
     allowed_route_strategies: tuple[str, ...] = ()
     app_gateway_host: str = ""
+    app_gateway_port: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
     auth_provider: str = ""

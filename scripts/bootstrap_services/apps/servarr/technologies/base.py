@@ -178,12 +178,6 @@ class ServarrAdapterBase:
         root_url = self.deps.normalize_url(self.context.app_model.url or "")
         return self._join_url_base(root_url, configured_base)
 
-    def _path_aware_prowlarr_url(self) -> str:
-        configured_base = self._configured_url_base_for_keys(["prowlarr"])
-        if not configured_base:
-            return self.context.prowlarr_url
-        return self._join_url_base(self.context.prowlarr_url, configured_base)
-
     def _promote_path_aware_url_if_ready(self) -> None:
         candidate_url = self._candidate_path_aware_url()
         if not candidate_url or candidate_url == self.context.app_url:
@@ -357,7 +351,7 @@ class ServarrAdapterBase:
 
         if self.context.app_caps.supports_prowlarr_application:
             self.deps.ensure_prowlarr_application(
-                self._path_aware_prowlarr_url(),
+                self.context.prowlarr_url,
                 self.context.prowlarr_key,
                 self.context.app_name,
                 self.context.app_impl,

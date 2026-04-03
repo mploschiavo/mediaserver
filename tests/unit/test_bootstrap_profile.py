@@ -42,6 +42,7 @@ class BootstrapProfileTests(unittest.TestCase):
                     "base_domain": "example.com",
                     "stack_subdomain": "media-dev",
                     "gateway_host": "apps.media-dev.example.com",
+                    "gateway_port": 18080,
                     "app_path_prefix": "/app",
                     "direct_hosts": {
                         "media_server": "jellyfin.media-dev.example.com",
@@ -66,6 +67,7 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertEqual(profile.exposure.auth_provider, "authelia")
         self.assertEqual(profile.exposure.auth_middleware, "authelia@docker")
         self.assertEqual(profile.exposure.gateway_host, "apps.media-dev.example.com")
+        self.assertEqual(profile.exposure.gateway_port, "18080")
         self.assertEqual(
             profile.exposure.media_server_direct_host, "jellyfin.media-dev.example.com"
         )
@@ -173,6 +175,29 @@ class BootstrapProfileTests(unittest.TestCase):
                     "install_profile": "minimal",
                     "routing": {
                         "provider": "traekif",
+                    },
+                }
+            )
+
+    def test_from_dict_rejects_invalid_gateway_port(self):
+        with self.assertRaisesRegex(ValueError, "routing.gateway_port must be between 1 and 65535"):
+            BootstrapProfileConfig.from_dict(
+                {
+                    "schema_version": 1,
+                    "kind": "media_stack_profile",
+                    "metadata": {
+                        "name": "media-dev",
+                        "platform": "compose",
+                        "purpose": "dev",
+                    },
+                    "resources": {
+                        "disk_space_gb": 500,
+                        "network_cidr": "192.168.1.0/24",
+                    },
+                    "install_profile": "minimal",
+                    "routing": {
+                        "provider": "envoy",
+                        "gateway_port": 70000,
                     },
                 }
             )

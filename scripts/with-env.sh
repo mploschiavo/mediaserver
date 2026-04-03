@@ -9,6 +9,8 @@ Usage:
 Description:
   Sources ENV_FILE with exported variables, applies safe default
   DELETE_NAMESPACE=0 when unset, then executes COMMAND.
+  Teardown also requires DELETE_NAMESPACE_CONFIRM to be set to the
+  target namespace/project (or I_UNDERSTAND).
 
 Examples:
   bash scripts/with-env.sh examples/environments/media-dev.env.example \
@@ -38,6 +40,6 @@ set +a
 export DELETE_NAMESPACE="${DELETE_NAMESPACE:-0}"
 
 echo "[INFO] Loaded env: $ENV_FILE" >&2
-echo "[INFO] Namespace=${NAMESPACE:-<unset>} IngressDomain=${INGRESS_DOMAIN:-<unset>} DELETE_NAMESPACE=${DELETE_NAMESPACE}" >&2
+echo "[INFO] Namespace=${NAMESPACE:-<unset>} IngressDomain=${INGRESS_DOMAIN:-<unset>} DELETE_NAMESPACE=${DELETE_NAMESPACE} DELETE_NAMESPACE_CONFIRM=${DELETE_NAMESPACE_CONFIRM:-<unset>}" >&2
 
 exec "$@"

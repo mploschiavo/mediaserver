@@ -87,6 +87,7 @@ class DeployStackRunner:
     _platform_client_cache: dict[str, object] = field(default_factory=dict, init=False, repr=False)
     runtime_artifacts_root: Path | None = field(default=None, init=False, repr=False)
     _k8s_manifest_capture_counter: int = field(default=0, init=False, repr=False)
+    _delete_environment_enabled_cache: bool | None = field(default=None, init=False, repr=False)
 
     def _resolved_bootstrap_config(self) -> dict[str, object]:
         if self._resolved_config_cache is None:
@@ -365,6 +366,7 @@ class DeployStackRunner:
             "edge_router_provider": self._edge_router_provider(),
             "ingress_domain": self.cfg.ingress_domain,
             "app_gateway_host": self.cfg.app_gateway_host,
+            "app_gateway_port": self.cfg.app_gateway_port,
             "app_path_prefix": self.cfg.app_path_prefix,
             "media_server_direct_host": self.cfg.media_server_direct_host,
         }
@@ -539,6 +541,7 @@ class DeployStackRunner:
                 route_strategy=self.cfg.route_strategy,
                 ingress_domain=self.cfg.ingress_domain,
                 app_gateway_host=self.cfg.app_gateway_host,
+                app_gateway_port=self.cfg.app_gateway_port,
                 app_path_prefix=self.cfg.app_path_prefix,
                 media_server_direct_host=self.cfg.media_server_direct_host,
                 auth_provider=self.cfg.auth_provider,
@@ -650,6 +653,39 @@ class DeployStackRunner:
         token = str(value or "").strip().lower()
         return token in {"1", "true", "yes", "on", "y"}
 
+    def _delete_environment_requested(self) -> bool:
+        return self._is_truthy(self.cfg.delete_namespace)
+
+    def _delete_environment_confirmation_target(self) -> str:
+        target = self._resolved_platform_target()
+        if target == "compose":
+            candidate = str(self.cfg.compose_project_name or "").strip()
+            if candidate:
+                return candidate
+        return str(self.cfg.namespace or "").strip()
+
+    def _delete_environment_enabled(self) -> bool:
+        if self._delete_environment_enabled_cache is not None:
+            return self._delete_environment_enabled_cache
+        if not self._delete_environment_requested():
+            self._delete_environment_enabled_cache = False
+            return False
+        confirmation = str(self.cfg.delete_namespace_confirm or "").strip()
+        confirmation_target = self._delete_environment_confirmation_target()
+        if confirmation == "I_UNDERSTAND":
+            self._delete_environment_enabled_cache = True
+            return True
+        if confirmation and confirmation_target and confirmation == confirmation_target:
+            self._delete_environment_enabled_cache = True
+            return True
+        warn(
+            "Delete namespace requested but blocked by safeguard. "
+            "Set DELETE_NAMESPACE_CONFIRM to the environment identifier "
+            f"('{confirmation_target}') or 'I_UNDERSTAND' to allow teardown."
+        )
+        self._delete_environment_enabled_cache = False
+        return False
+
     def _resolved_platform_target(self) -> str:
         resolved = normalize_platform_target(self.cfg.platform_target)
         if not resolved:
@@ -673,7 +709,17 @@ class DeployStackRunner:
         info(f"Network CIDR: {self.cfg.network_cidr}")
         info(f"Ingress domain: {self.cfg.ingress_domain}")
         info(f"Config: {self.cfg.config_file}")
-        info(f"Delete namespace: {self.cfg.delete_namespace}")
+        delete_requested = self._delete_environment_requested()
+        delete_enabled = self._delete_environment_enabled()
+        if delete_enabled:
+            warn(
+                "Delete namespace: ENABLED — existing environment will be fully torn down "
+                "(DELETE_NAMESPACE=1 + DELETE_NAMESPACE_CONFIRM). Set DELETE_NAMESPACE=0 to skip teardown."
+            )
+        elif delete_requested:
+            warn("Delete namespace: requested but blocked by safety confirmation safeguard.")
+        else:
+            info("Delete namespace: disabled (set DELETE_NAMESPACE=1 to enable full teardown)")
         info(f"Storage mode: {self.cfg.storage_mode}")
         if self.cfg.pvc_storage_class:
             info(f"PVC storage class override: {self.cfg.pvc_storage_class}")
@@ -696,6 +742,8 @@ class DeployStackRunner:
         )
         if self.cfg.app_gateway_host:
             info(f"App gateway host: {self.cfg.app_gateway_host}")
+        if self.cfg.app_gateway_port:
+            info(f"App gateway port: {self.cfg.app_gateway_port}")
         if self.cfg.media_server_direct_host:
             info(f"Media-server direct host: {self.cfg.media_server_direct_host}")
         if platform_plugin.logs_bootstrap_runner_image:
@@ -818,9 +866,10 @@ class DeployStackRunner:
                 f"Unsupported STORAGE_MODE '{self.cfg.storage_mode}'. "
                 "legacy-hostpath was removed; use dynamic-pvc."
             )
-        if self.cfg.profile not in {"minimal", "full", "public-demo", "power-user"}:
+        if self.cfg.profile not in {"minimal", "standard", "full", "public-demo", "power-user"}:
             raise DeployError(
-                f"Unknown PROFILE '{self.cfg.profile}'. Supported: minimal, full, public-demo, power-user."
+                "Unknown PROFILE "
+                f"'{self.cfg.profile}'. Supported: minimal, standard, full, public-demo, power-user."
             )
         valid_route_strategies = set(self._valid_route_strategies())
         if self.cfg.route_strategy not in valid_route_strategies:
@@ -946,7 +995,8 @@ class DeployStackRunner:
         self._platform_adapter().restore_secret_values(self.backup_secret_values)
 
     def delete_namespace_optional(self) -> None:
-        handled = self._platform_adapter().delete_environment_optional(self.cfg.delete_namespace)
+        delete_flag = "1" if self._delete_environment_enabled() else "0"
+        handled = self._platform_adapter().delete_environment_optional(delete_flag)
         if not handled:
             raise SkipPhase()
 
