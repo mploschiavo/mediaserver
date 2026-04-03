@@ -86,7 +86,7 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
-        self.assertIn("http://apps.media-dev.local/app/homepage", rendered)
+        self.assertIn("http://homepage.local", rendered)
         self.assertIn("http://jellyfin.media-dev.local", rendered)
         self.assertIn("http://apps.media-dev.local/app/jellyseerr", rendered)
 

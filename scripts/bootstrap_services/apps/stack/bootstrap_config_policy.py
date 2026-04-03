@@ -160,6 +160,21 @@ def _homepage_host_token(value: str) -> str:
     return _tokenize(prefix)
 
 
+def _homepage_direct_host(value: str, *, internet_exposed: bool, ingress: str, token: str) -> str:
+    text = str(value or "").strip().lower()
+    parsed = parse.urlparse(text if "://" in text else f"http://{text}")
+    host = str(parsed.netloc or "").split(":", 1)[0].strip().lower()
+    if not host:
+        host = str(parsed.path or "").strip().split("/", 1)[0].strip().lower()
+    if not host:
+        if internet_exposed and ingress:
+            return f"{token}.{ingress}"
+        return f"{token}.local"
+    if internet_exposed and ingress and host.endswith(".local"):
+        return f"{host[:-6]}.{ingress}"
+    return host
+
+
 def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str) -> None:
     policy = _selected_apps_policy_cfg()
     app_toggle_sections = _policy_map(policy, "app_toggle_sections")
@@ -373,6 +388,21 @@ def apply_edge_url_policy(
                 continue
             if token == "jellyfin" and direct_host:
                 rewritten_hosts.append(direct_host)
+                continue
+            if token == "homepage":
+                homepage_host = _homepage_direct_host(
+                    str(raw_host or ""),
+                    internet_exposed=bool(internet_exposed),
+                    ingress=ingress,
+                    token=token,
+                )
+                if homepage_host == gateway_host:
+                    homepage_host = (
+                        f"{token}.{ingress}"
+                        if bool(internet_exposed) and ingress
+                        else f"{token}.local"
+                    )
+                rewritten_hosts.append(homepage_host)
                 continue
             rewritten_hosts.append(f"{gateway_host}{prefix}/{token}")
         if direct_host:

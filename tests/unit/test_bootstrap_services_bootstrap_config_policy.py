@@ -109,7 +109,7 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertEqual(
             homepage_hosts,
             [
-                "apps.media-dev.local/app/homepage",
+                "homepage.local",
                 "jellyfin.media-dev.local",
                 "apps.media-dev.local/app/jellyseerr",
             ],
