@@ -66,8 +66,6 @@ apps:
     - unpackerr
     - homepage
     - flaresolverr
-  aliases:
-    mainainerr: maintainerr
 
 install_profiles:
   minimal:
@@ -108,4 +106,5 @@ live_tv_defaults:
     - https://iptv-org.github.io/iptv/countries/us.m3u
   guide_urls:
     - https://iptv-epg.org/files/epg-us.xml
-  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+  default_program_icon_urls:
+    - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png

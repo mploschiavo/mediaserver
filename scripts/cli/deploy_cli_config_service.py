@@ -14,6 +14,10 @@ try:  # pragma: no cover - import path depends on entrypoint context
     )
     from core.platform_cli_defaults_registry import resolve_platform_cli_defaults
     from core.platform_plugin_registry import normalize_platform_target
+    from core.platforms.compose.deploy_cli_options import (
+        register_compose_cli_arguments,
+        resolve_compose_file_paths,
+    )
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.core.bootstrap_profile import (
         BootstrapProfileConfig,
@@ -23,6 +27,10 @@ except ModuleNotFoundError:  # pragma: no cover
     )
     from scripts.core.platform_cli_defaults_registry import resolve_platform_cli_defaults
     from scripts.core.platform_plugin_registry import normalize_platform_target
+    from scripts.core.platforms.compose.deploy_cli_options import (
+        register_compose_cli_arguments,
+        resolve_compose_file_paths,
+    )
 
 
 @dataclass
@@ -190,16 +198,7 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
     parser.add_argument("--namespace", default=None)
     parser.add_argument("--ingress-domain", default=None)
     parser.add_argument("--storage-class", default=None)
-    parser.add_argument("--compose-file", default=None)
-    parser.add_argument("--compose-env-file", default=None)
-    parser.add_argument(
-        "--compose-project-name",
-        default=None,
-    )
-    parser.add_argument(
-        "--compose-profiles",
-        default=None,
-    )
+    register_compose_cli_arguments(parser)
     parser.add_argument(
         "--selected-apps",
         default=None,
@@ -262,15 +261,13 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         root_dir / DeployStackConfig.compose_env_file
     )
 
-    compose_file = (
-        Path(_pick(parsed.compose_file, _env_value("COMPOSE_FILE")))
-        if _pick(parsed.compose_file, _env_value("COMPOSE_FILE"))
-        else default_compose_file
-    )
-    compose_env_file = (
-        Path(_pick(parsed.compose_env_file, _env_value("COMPOSE_ENV_FILE")))
-        if _pick(parsed.compose_env_file, _env_value("COMPOSE_ENV_FILE"))
-        else default_compose_env_file
+    compose_file, compose_env_file = resolve_compose_file_paths(
+        parsed_compose_file=parsed.compose_file,
+        parsed_compose_env_file=parsed.compose_env_file,
+        env_compose_file=_env_value("COMPOSE_FILE"),
+        env_compose_env_file=_env_value("COMPOSE_ENV_FILE"),
+        default_compose_file=default_compose_file,
+        default_compose_env_file=default_compose_env_file,
     )
     selected_apps = normalize_selected_apps_csv(
         _pick(

@@ -45,4 +45,5 @@ chaos:
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
-  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+  default_program_icon_urls:
+    - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png

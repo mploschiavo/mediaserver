@@ -7,6 +7,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from bootstrap_services.apps.stack.bootstrap_config_policy import (  # noqa: E402
     apply_content_download_policy,
+    apply_edge_url_policy,
     apply_selected_apps_policy,
 )
 
@@ -84,6 +85,78 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         apply_content_download_policy(cfg, auto_download_content=True)
         self.assertTrue(bool(cfg.get("prowlarr_auto_add_tested_indexers")))
         self.assertTrue(bool((cfg.get("arr_discovery_lists") or {}).get("trigger_initial_sync")))
+
+    def test_edge_url_policy_rewrites_local_hybrid_homepage_and_onboarding_hosts(self):
+        cfg = {
+            "jellyseerr": {"jellyfin": {}},
+            "homepage": {
+                "hosts": ["homepage.local", "jellyfin.local", "jellyseerr.local"],
+                "device_onboarding": {},
+            },
+        }
+
+        apply_edge_url_policy(
+            cfg,
+            internet_exposed=False,
+            route_strategy="hybrid",
+            ingress_domain="media-dev.local",
+            app_gateway_host="apps.media-dev.local",
+            app_path_prefix="/app",
+            media_server_direct_host="jellyfin.media-dev.local",
+        )
+
+        homepage_hosts = (cfg.get("homepage") or {}).get("hosts") or []
+        self.assertEqual(
+            homepage_hosts,
+            [
+                "apps.media-dev.local/app/homepage",
+                "jellyfin.media-dev.local",
+                "apps.media-dev.local/app/jellyseerr",
+            ],
+        )
+        onboarding = (cfg.get("homepage") or {}).get("device_onboarding") or {}
+        self.assertEqual(
+            onboarding.get("jellyfin_url"),
+            "http://jellyfin.media-dev.local",
+        )
+        self.assertEqual(
+            onboarding.get("jellyseerr_url"),
+            "http://apps.media-dev.local/app/jellyseerr",
+        )
+        jellyfin_cfg = ((cfg.get("jellyseerr") or {}).get("jellyfin")) or {}
+        self.assertEqual(
+            jellyfin_cfg.get("external_url"),
+            "http://jellyfin.media-dev.local",
+        )
+
+    def test_edge_url_policy_uses_https_when_internet_exposed(self):
+        cfg = {
+            "jellyseerr": {"jellyfin": {}},
+            "homepage": {
+                "hosts": ["homepage.local", "jellyfin.local"],
+                "device_onboarding": {},
+            },
+        }
+
+        apply_edge_url_policy(
+            cfg,
+            internet_exposed=True,
+            route_strategy="hybrid",
+            ingress_domain="media-dev.example.com",
+            app_gateway_host="apps.media-dev.example.com",
+            app_path_prefix="/app",
+            media_server_direct_host="jellyfin.media-dev.example.com",
+        )
+
+        onboarding = (cfg.get("homepage") or {}).get("device_onboarding") or {}
+        self.assertEqual(
+            onboarding.get("jellyfin_url"),
+            "https://jellyfin.media-dev.example.com",
+        )
+        self.assertEqual(
+            onboarding.get("jellyseerr_url"),
+            "https://apps.media-dev.example.com/app/jellyseerr",
+        )
 
 
 if __name__ == "__main__":

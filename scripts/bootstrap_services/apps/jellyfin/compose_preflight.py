@@ -77,6 +77,67 @@ def _resolve_bootstrap_endpoint(compose_env: dict[str, str]) -> tuple[str, str]:
     return f"http://{service_host}:{service_port}", ""
 
 
+def _container_network_ipv4(container: Any) -> str:
+    try:
+        reload_fn = getattr(container, "reload", None)
+        if callable(reload_fn):
+            reload_fn()
+    except Exception:
+        # Best effort only; continue with last-known attrs.
+        pass
+    attrs = dict(getattr(container, "attrs", {}) or {})
+    network_settings = attrs.get("NetworkSettings")
+    if not isinstance(network_settings, dict):
+        return ""
+    networks = network_settings.get("Networks")
+    if not isinstance(networks, dict):
+        return ""
+    for payload in networks.values():
+        if not isinstance(payload, dict):
+            continue
+        ip_addr = _text(payload.get("IPAddress"))
+        if ip_addr:
+            return ip_addr
+    return ""
+
+
+def _resolve_reachable_bootstrap_endpoint(
+    *,
+    compose_env: dict[str, str],
+    jellyfin_container: Any,
+    info: InfoFn,
+) -> tuple[str, str]:
+    base_url, host_header = _resolve_bootstrap_endpoint(compose_env)
+    status, payload, _ = _http_request(
+        base_url,
+        "/System/Info/Public",
+        host_header=host_header,
+        timeout=8,
+    )
+    if status == 200 and isinstance(payload, dict):
+        return base_url, host_header
+
+    ip_addr = _container_network_ipv4(jellyfin_container)
+    if not ip_addr:
+        return base_url, host_header
+
+    fallback_base_url = f"http://{ip_addr}:8096"
+    fallback_status, fallback_payload, _ = _http_request(
+        fallback_base_url,
+        "/System/Info/Public",
+        host_header="",
+        timeout=8,
+    )
+    if fallback_status == 200 and isinstance(fallback_payload, dict):
+        info(
+            "Compose Jellyfin preflight: fallback to container-network endpoint "
+            f"{fallback_base_url} after bootstrap endpoint {base_url} was unreachable."
+        )
+        return fallback_base_url, ""
+
+    return base_url, host_header
+
+
 def ensure_compose_jellyfin_bootstrap_access(
     *,
     compose_env: dict[str, str],
@@ -97,7 +158,11 @@ def ensure_compose_jellyfin_bootstrap_access(
     compose_env["STACK_ADMIN_USERNAME"] = stack_username
     compose_env["STACK_ADMIN_PASSWORD"] = stack_password
 
-    base_url, host_header = _resolve_bootstrap_endpoint(compose_env)
+    base_url, host_header = _resolve_reachable_bootstrap_endpoint(
+        compose_env=compose_env,
+        jellyfin_container=jellyfin_container,
+        info=info,
+    )
 
     def _request(
         base: str,
