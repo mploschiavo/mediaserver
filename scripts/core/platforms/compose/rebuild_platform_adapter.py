@@ -36,6 +36,7 @@ class ComposeRebuildPlatformConfig:
     auth_middleware: str = ""
     edge_router_provider: str = ""
     edge_router_service_names: tuple[str, ...] = ()
+    edge_path_prefix_redirect_service_names: tuple[str, ...] = ()
     edge_compose_provider_specs: dict[str, dict[str, str]] = field(default_factory=dict)
     auth_provider_middleware_defaults: dict[str, str] = field(default_factory=dict)
     media_server_service_names: tuple[str, ...] = ()
@@ -97,6 +98,9 @@ class ComposeRebuildPlatformAdapter:
                     self.cfg.auth_provider_middleware_defaults or {}
                 ),
                 media_server_service_names=tuple(self.cfg.media_server_service_names or ()),
+                path_prefix_redirect_service_names=tuple(
+                    self.cfg.edge_path_prefix_redirect_service_names or ()
+                ),
             )
         )
         self.runtime_service = ComposeContainerRuntimeService(

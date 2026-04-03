@@ -13,7 +13,18 @@ COMPOSE_LABEL_SPEC: dict[str, str] = {
     "strip_prefix_key_template": (
         "traefik.http.middlewares.{middleware_name}.stripprefix.prefixes"
     ),
+    "redirect_regex_key_template": (
+        "traefik.http.middlewares.{middleware_name}.redirectregex.regex"
+    ),
+    "redirect_replacement_key_template": (
+        "traefik.http.middlewares.{middleware_name}.redirectregex.replacement"
+    ),
+    "redirect_permanent_key_template": (
+        "traefik.http.middlewares.{middleware_name}.redirectregex.permanent"
+    ),
     "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
+    "path_redirect_regex_template": r"^https?://[^/:]+(:[0-9]+)?{path_prefix_regex}/?(.*)",
+    "path_redirect_replacement_template": "{scheme}://{redirect_host}$1/$2",
     "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
     "direct_host_rule_template": "Host(`{direct_host}`)",
 }

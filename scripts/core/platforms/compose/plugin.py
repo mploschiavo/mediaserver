@@ -39,6 +39,9 @@ def _build_adapter(request: object, require_dependency) -> object:
             auth_middleware=request.auth_middleware,
             edge_router_provider=request.edge_router_provider,
             edge_router_service_names=tuple(request.edge_router_service_names or ()),
+            edge_path_prefix_redirect_service_names=tuple(
+                request.edge_path_prefix_redirect_service_names or ()
+            ),
             edge_compose_provider_specs=dict(request.edge_compose_provider_specs or {}),
             auth_provider_middleware_defaults=dict(request.auth_provider_middleware_defaults or {}),
             media_server_service_names=tuple(request.media_server_service_names or ()),
@@ -75,6 +78,9 @@ def _build_runner_request(runner: object, info_fn) -> dict[str, object]:
         "auth_middleware": runner.cfg.auth_middleware,
         "edge_router_provider": runner._edge_router_provider(),
         "edge_router_service_names": runner._edge_router_service_names(),
+        "edge_path_prefix_redirect_service_names": (
+            runner._edge_path_prefix_redirect_service_names()
+        ),
         "edge_compose_provider_specs": runner._edge_compose_provider_specs(),
         "auth_provider_middleware_defaults": runner._auth_provider_middleware_defaults(),
         "media_server_service_names": runner._media_server_service_names(),

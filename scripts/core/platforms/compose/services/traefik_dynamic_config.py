@@ -19,6 +19,7 @@ _TOKEN_RENAMES = {
     "insecureskipverify": "insecureSkipVerify",
     "loadbalancer": "loadBalancer",
     "passhostheader": "passHostHeader",
+    "redirectregex": "redirectRegex",
     "stripprefix": "stripPrefix",
 }
 

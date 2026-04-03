@@ -387,6 +387,7 @@ Minimum for refactor PRs:
 - Wrapper contract tests for CLI parity
 - Golden tests for critical bootstrap config sections
 - Lint + format checks for modified Python scope
+- Rebuild required runtime images after code changes and before live testing (for example `scripts/build-bootstrap-runner-image.sh` before compose/k8s bootstrap validation).
 
 Current key test suites:
 - `tests/unit/test_shell_wrapper_contracts.py`

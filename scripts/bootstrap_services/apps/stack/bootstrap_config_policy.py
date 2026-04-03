@@ -143,6 +143,59 @@ def _url_host(url: str) -> str:
     return token.rstrip("/")
 
 
+def _normalize_port(value: object) -> str:
+    token = str(value or "").strip()
+    if token.startswith(":"):
+        token = token[1:]
+    if not token or not token.isdigit():
+        return ""
+    port = int(token)
+    if port < 1 or port > 65535:
+        return ""
+    return str(port)
+
+
+def _public_port(value: object, *, scheme: str) -> str:
+    token = _normalize_port(value)
+    if not token:
+        return ""
+    if scheme == "http" and token == "80":
+        return ""
+    if scheme == "https" and token == "443":
+        return ""
+    return token
+
+
+def _host_name(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    parsed = parse.urlparse(text if "://" in text else f"http://{text}")
+    return str(parsed.hostname or "").strip().lower()
+
+
+def _host_with_port(value: str, *, port: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if not port:
+        return text
+    parsed = parse.urlparse(text if "://" in text else f"http://{text}")
+    host = str(parsed.hostname or "").strip().lower()
+    if not host:
+        return text
+    selected_port = str(parsed.port) if parsed.port else port
+    path = str(parsed.path or "")
+    query = str(parsed.query or "")
+    fragment = str(parsed.fragment or "")
+    out = f"{host}:{selected_port}{path}"
+    if query:
+        out = f"{out}?{query}"
+    if fragment:
+        out = f"{out}#{fragment}"
+    return out
+
+
 def _homepage_host_token(value: str) -> str:
     text = str(value or "").strip().lower()
     if not text:
@@ -333,6 +386,7 @@ def apply_edge_url_policy(
     route_strategy: str,
     ingress_domain: str,
     app_gateway_host: str,
+    app_gateway_port: str = "",
     app_path_prefix: str,
     media_server_direct_host: str,
 ) -> None:
@@ -340,15 +394,18 @@ def apply_edge_url_policy(
     strategy = str(route_strategy or "").strip().lower()
     gateway_host = str(app_gateway_host or "").strip().lower()
     direct_host = str(media_server_direct_host or "").strip().lower()
+    public_port = _public_port(app_gateway_port, scheme=scheme)
+    gateway_host_with_port = _host_with_port(gateway_host, port=public_port)
+    direct_host_with_port = _host_with_port(direct_host, port=public_port)
     ingress = str(ingress_domain or "").strip().lower()
     prefix = _normalize_prefix(app_path_prefix)
 
     def _public_url(app_key: str) -> str:
         token = _tokenize(app_key)
-        if token == "jellyfin" and direct_host:
-            return f"{scheme}://{direct_host}"
-        if token != "jellyfin" and strategy in {"path-prefix", "hybrid"} and gateway_host:
-            return f"{scheme}://{gateway_host}{prefix}/{token}"
+        if token == "jellyfin" and direct_host_with_port:
+            return f"{scheme}://{direct_host_with_port}"
+        if token != "jellyfin" and strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
+            return f"{scheme}://{gateway_host_with_port}{prefix}/{token}"
         if not ingress:
             return ""
         return f"{scheme}://{token}.{ingress}"
@@ -381,13 +438,13 @@ def apply_edge_url_policy(
         return
 
     rewritten_hosts: list[str] = []
-    if strategy in {"path-prefix", "hybrid"} and gateway_host:
+    if strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
         for raw_host in hosts:
             token = _homepage_host_token(str(raw_host or ""))
             if not token:
                 continue
-            if token == "jellyfin" and direct_host:
-                rewritten_hosts.append(direct_host)
+            if token == "jellyfin" and direct_host_with_port:
+                rewritten_hosts.append(direct_host_with_port)
                 continue
             if token == "homepage":
                 homepage_host = _homepage_direct_host(
@@ -396,17 +453,17 @@ def apply_edge_url_policy(
                     ingress=ingress,
                     token=token,
                 )
-                if homepage_host == gateway_host:
+                if _host_name(homepage_host) == _host_name(gateway_host):
                     homepage_host = (
                         f"{token}.{ingress}"
                         if bool(internet_exposed) and ingress
                         else f"{token}.local"
                     )
-                rewritten_hosts.append(homepage_host)
+                rewritten_hosts.append(_host_with_port(homepage_host, port=public_port))
                 continue
-            rewritten_hosts.append(f"{gateway_host}{prefix}/{token}")
-        if direct_host:
-            rewritten_hosts.append(direct_host)
+            rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
+        if direct_host_with_port:
+            rewritten_hosts.append(direct_host_with_port)
     else:
         for raw_host in hosts:
             host = str(raw_host or "").strip().lower()
@@ -414,9 +471,9 @@ def apply_edge_url_policy(
                 continue
             if ingress and host.endswith(".local"):
                 host = f"{host[:-6]}.{ingress}"
-            rewritten_hosts.append(host)
-        if direct_host:
-            rewritten_hosts.append(direct_host)
+            rewritten_hosts.append(_host_with_port(host, port=public_port))
+        if direct_host_with_port:
+            rewritten_hosts.append(direct_host_with_port)
 
     deduped: list[str] = []
     seen: set[str] = set()
@@ -438,6 +495,7 @@ def apply_bootstrap_runtime_policy(
     route_strategy: str = "subdomain",
     ingress_domain: str = "local",
     app_gateway_host: str = "",
+    app_gateway_port: str = "",
     app_path_prefix: str = "/app",
     media_server_direct_host: str = "",
 ) -> None:
@@ -455,6 +513,7 @@ def apply_bootstrap_runtime_policy(
         route_strategy=route_strategy,
         ingress_domain=ingress_domain,
         app_gateway_host=app_gateway_host,
+        app_gateway_port=app_gateway_port,
         app_path_prefix=app_path_prefix,
         media_server_direct_host=media_server_direct_host,
     )

@@ -22,7 +22,16 @@ _TRAEFIK_EDGE_SPEC = {
     "router_service_key_template": "traefik.http.routers.{router_name}.service",
     "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",
     "strip_prefix_key_template": "traefik.http.middlewares.{middleware_name}.stripprefix.prefixes",
+    "redirect_regex_key_template": "traefik.http.middlewares.{middleware_name}.redirectregex.regex",
+    "redirect_replacement_key_template": (
+        "traefik.http.middlewares.{middleware_name}.redirectregex.replacement"
+    ),
+    "redirect_permanent_key_template": (
+        "traefik.http.middlewares.{middleware_name}.redirectregex.permanent"
+    ),
     "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
+    "path_redirect_regex_template": r"^https?://[^/:]+(:[0-9]+)?{path_prefix_regex}/?(.*)",
+    "path_redirect_replacement_template": "{scheme}://{redirect_host}$1/$2",
     "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
     "direct_host_rule_template": "Host(`{direct_host}`)",
 }
@@ -73,6 +82,22 @@ def _compose_text_with_edge_labels() -> str:
     )
 
 
+def _compose_text_with_homepage_edge_labels() -> str:
+    return (
+        "services:\n"
+        "  traefik:\n"
+        "    image: ghcr.io/example/traefik:latest\n"
+        "    container_name: traefik\n"
+        "  homepage:\n"
+        "    image: ghcr.io/example/homepage:latest\n"
+        "    container_name: homepage\n"
+        "    labels:\n"
+        "      - traefik.enable=true\n"
+        "      - traefik.http.routers.homepage.rule=Host(`homepage.old.local`)\n"
+        "      - traefik.http.services.homepage.loadbalancer.server.port=3000\n"
+    )
+
+
 def _compose_text_with_user_bind_mount(mount_path: Path) -> str:
     return (
         "services:\n"
@@ -113,6 +138,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         auth_middleware: str = "",
         edge_router_provider: str = "traefik",
         edge_router_service_names: tuple[str, ...] = ("traefik",),
+        edge_path_prefix_redirect_service_names: tuple[str, ...] = ("homepage",),
         edge_compose_provider_specs: dict[str, dict[str, str]] | None = None,
         runtime_artifacts_dir: Path | None = None,
     ) -> ComposeRebuildPlatformAdapter:
@@ -136,6 +162,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 auth_middleware=auth_middleware,
                 edge_router_provider=edge_router_provider,
                 edge_router_service_names=edge_router_service_names,
+                edge_path_prefix_redirect_service_names=edge_path_prefix_redirect_service_names,
                 edge_compose_provider_specs=dict(
                     edge_compose_provider_specs or {"traefik": dict(_TRAEFIK_EDGE_SPEC)}
                 ),
@@ -386,6 +413,54 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 ).get("url"),
                 "http://sonarr:8989",
             )
+
+    def test_apply_environment_definition_redirects_homepage_path_route_to_direct_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text_with_homepage_edge_labels(), encoding="utf-8")
+            compose_env_file = Path(tmp) / ".env"
+            config_root = Path(tmp) / "config"
+            compose_env_file.write_text(f"CONFIG_ROOT={config_root}\n", encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                compose_env_file=compose_env_file,
+                docker=docker,
+                route_strategy="hybrid",
+                app_gateway_host="apps.media-dev.example.com",
+                edge_path_prefix_redirect_service_names=("homepage",),
+            )
+
+            adapter.apply_environment_definition()
+
+            dynamic_path = config_root / "traefik" / "dynamic" / "media-stack.dynamic.yaml"
+            rendered = yaml.safe_load(dynamic_path.read_text(encoding="utf-8")) or {}
+            http_cfg = rendered.get("http") or {}
+            routers = http_cfg.get("routers") or {}
+            middlewares = http_cfg.get("middlewares") or {}
+
+            self.assertEqual(
+                (routers.get("homepage-path") or {}).get("rule"),
+                "Host(`apps.media-dev.example.com`) && PathPrefix(`/app/homepage`)",
+            )
+            self.assertIn(
+                "homepage-path-redirect",
+                (routers.get("homepage-path") or {}).get("middlewares") or [],
+            )
+            redirect_cfg = (middlewares.get("homepage-path-redirect") or {}).get(
+                "redirectRegex"
+            ) or {}
+            self.assertEqual(
+                redirect_cfg.get("regex"),
+                r"^https?://[^/:]+(:[0-9]+)?/app/homepage/?(.*)",
+            )
+            self.assertEqual(
+                redirect_cfg.get("replacement"),
+                "http://homepage.old.local$1/$2",
+            )
+            self.assertTrue(bool(redirect_cfg.get("permanent")))
 
     def test_apply_environment_definition_envoy_stub_skips_traefik_patch_generation(self):
         with tempfile.TemporaryDirectory() as tmp:
