@@ -34,7 +34,8 @@ class DeployStackConfig:
     namespace: str = "media-stack"
     secret_name: str = "media-stack-secrets"
     wait_timeout: str = "20m"
-    delete_namespace: str = "1"
+    delete_namespace: str = "0"
+    delete_namespace_confirm: str = ""
     include_optional: str = ""
     enable_components: str = ""
     run_bootstrap: str = ""
@@ -66,6 +67,7 @@ class DeployStackConfig:
     internet_exposed: str = "0"
     route_strategy: str = "subdomain"
     app_gateway_host: str = ""
+    app_gateway_port: str = ""
     app_path_prefix: str = "/app"
     media_server_direct_host: str = ""
     auth_provider: str = ""
@@ -109,15 +111,6 @@ def _resolve_profile_path(
     return None
 
 
-def _purpose_to_deploy_profile(purpose: str) -> str:
-    token = str(purpose or "").strip().lower()
-    if token == "test":
-        return "minimal"
-    if token == "prod":
-        return "power-user"
-    return "full"
-
-
 def _normalize_path_prefix(value: str) -> str:
     token = str(value or "").strip()
     if not token:
@@ -144,12 +137,13 @@ def _resolve_profile_defaults(
         "auto_download_content": "1" if profile.auto_download_content else "0",
         "selected_apps": profile.selected_apps_csv,
         "purpose": profile.purpose,
-        "profile": _purpose_to_deploy_profile(profile.purpose),
+        "profile": str(profile.install_profile or "").strip().lower(),
         "disk_allocation_gb": str(profile.disk_allocation_gb),
         "network_cidr": profile.network_cidr,
         "internet_exposed": "1" if profile.exposure.internet_exposed else "0",
         "route_strategy": profile.exposure.route_strategy,
         "app_gateway_host": profile.exposure.gateway_host,
+        "app_gateway_port": profile.exposure.gateway_port,
         "app_path_prefix": profile.exposure.normalized_app_path_prefix,
         "media_server_direct_host": profile.exposure.media_server_direct_host,
         "auth_provider": profile.exposure.auth_provider,
@@ -250,7 +244,8 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         ),
         secret_name=_pick(_env_value("SECRET_NAME"), default="media-stack-secrets"),
         wait_timeout=_pick(_env_value("WAIT_TIMEOUT"), default="20m"),
-        delete_namespace=_pick(_env_value("DELETE_NAMESPACE"), default="1"),
+        delete_namespace=_pick(_env_value("DELETE_NAMESPACE"), default="0"),
+        delete_namespace_confirm=_pick(_env_value("DELETE_NAMESPACE_CONFIRM"), default=""),
         include_optional=_pick(_env_value("INCLUDE_OPTIONAL"), default=""),
         enable_components=_pick(_env_value("ENABLE_COMPONENTS"), default=""),
         run_bootstrap=_pick(
@@ -343,6 +338,13 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         app_gateway_host=_pick(
             _env_value("APP_GATEWAY_HOST"),
             profile_defaults.get("app_gateway_host"),
+            default="",
+        ),
+        app_gateway_port=_pick(
+            _env_value("APP_GATEWAY_PORT"),
+            _env_value("EDGE_HTTP_PORT"),
+            _env_value("TRAEFIK_HTTP_PORT"),
+            profile_defaults.get("app_gateway_port"),
             default="",
         ),
         app_path_prefix=_normalize_path_prefix(

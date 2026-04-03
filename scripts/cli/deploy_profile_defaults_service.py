@@ -34,6 +34,12 @@ class DeployProfileDefaultsService:
                 enable_components=enable_components or "1",
                 run_bootstrap=run_bootstrap or "1",
             )
+        if profile == "standard":
+            return DeployProfileDefaultsResult(
+                include_optional=include_optional or "1",
+                enable_components=enable_components or "1",
+                run_bootstrap=run_bootstrap or "1",
+            )
         if profile == "public-demo":
             return DeployProfileDefaultsResult(
                 include_optional=include_optional or "1",

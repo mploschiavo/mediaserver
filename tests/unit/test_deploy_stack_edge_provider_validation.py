@@ -3,12 +3,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from cli.deploy_cli_config_service import DeployStackConfig  # noqa: E402
-from cli.deploy_stack_main import DeployError, DeployStackRunner  # noqa: E402
+from cli.deploy_stack_main import DeployError, DeployStackRunner, SkipPhase  # noqa: E402
 
 
 class DeployStackEdgeProviderValidationTests(unittest.TestCase):
@@ -43,6 +44,14 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             runner = DeployStackRunner(
                 cfg=self._cfg(root_dir, router_provider="envoy"),
             )
+            runner._validate_inputs()
+
+    def test_validate_inputs_allows_standard_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="envoy")
+            cfg.profile = "standard"
+            runner = DeployStackRunner(cfg=cfg)
             runner._validate_inputs()
 
     def test_explicit_config_provider_overrides_bootstrap_hook_provider(self):
@@ -115,6 +124,50 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             self.assertIn("homepage", selected)
             self.assertIn("envoy", selected)
             self.assertIn("authelia", selected)
+
+    def test_delete_environment_requires_confirmation_for_compose(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="envoy")
+            cfg.delete_namespace = "1"
+            cfg.compose_project_name = "media-dev"
+            runner = DeployStackRunner(cfg=cfg)
+            self.assertFalse(runner._delete_environment_enabled())
+
+    def test_delete_environment_allows_project_name_confirmation_for_compose(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="envoy")
+            cfg.delete_namespace = "1"
+            cfg.compose_project_name = "media-dev"
+            cfg.delete_namespace_confirm = "media-dev"
+            runner = DeployStackRunner(cfg=cfg)
+            self.assertTrue(runner._delete_environment_enabled())
+
+    def test_delete_environment_allows_namespace_confirmation_for_k8s(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="envoy")
+            cfg.platform_target = "k8s"
+            cfg.namespace = "media-stack-dev"
+            cfg.delete_namespace = "1"
+            cfg.delete_namespace_confirm = "media-stack-dev"
+            runner = DeployStackRunner(cfg=cfg)
+            self.assertTrue(runner._delete_environment_enabled())
+
+    def test_delete_namespace_optional_passes_safe_flag_when_confirmation_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="envoy")
+            cfg.delete_namespace = "1"
+            cfg.compose_project_name = "media-dev"
+            runner = DeployStackRunner(cfg=cfg)
+            adapter = mock.Mock()
+            adapter.delete_environment_optional.return_value = False
+            runner._platform_adapter = mock.Mock(return_value=adapter)  # type: ignore[method-assign]
+            with self.assertRaises(SkipPhase):
+                runner.delete_namespace_optional()
+            adapter.delete_environment_optional.assert_called_once_with("0")
 
 
 if __name__ == "__main__":

@@ -21,11 +21,22 @@ from .factory import (
 
 def detect_arr_api_base(app_name, app_url, api_key):
     for version in ("v3", "v1"):
-        status, _, _ = http_request(app_url, f"/api/{version}/system/status", api_key=api_key)
-        if status == 200:
+        status, parsed, body = http_request(
+            app_url, f"/api/{version}/system/status", api_key=api_key
+        )
+        if status == 200 and isinstance(parsed, dict):
             api_base = f"/api/{version}"
             log(f"[OK] {app_name}: detected API base {api_base}")
             return api_base
+        if status == 200 and not isinstance(parsed, dict):
+            # Sonarr/Radarr v4 returns HTTP 200 + HTML login page when Forms
+            # authentication is active and the API key is absent or invalid.
+            # Treat this as a failed probe, not a successful API detection.
+            log(
+                f"[WARN] {app_name}: /api/{version}/system/status returned HTTP 200 "
+                "but the response body is not JSON — possible Forms auth redirect. "
+                "Skipping this version."
+            )
 
     raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
 

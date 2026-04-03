@@ -72,6 +72,18 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Runtime artifacts must be organized by target (`kubernetes/`, `compose/`) and be reusable for replay, troubleshooting, and future migration work.
 - Logging must include artifact root/file paths for operator visibility, but must never print secret values or token contents.
 
+## Destructive Operation Policy
+- Destructive operations (environment teardown, namespace deletion, container removal, data wipe) must never be the default.
+- The default for any destructive flag must be the safe/no-op value (e.g., `DELETE_NAMESPACE=0`, `WIPE_DATA=0`).
+- Enabling a destructive operation requires explicit opt-in via an environment variable or CLI flag; it must never be inferred from the absence of arguments.
+- Destructive teardown paths must use two-step confirmation:
+  `DELETE_NAMESPACE=1` plus `DELETE_NAMESPACE_CONFIRM=<target-identifier>` (or `I_UNDERSTAND`).
+  Target identifier is namespace for Kubernetes and compose project name for Compose.
+- All destructive operations must emit a prominently labelled `[DESTRUCTIVE]` log line before executing that names what will be removed and how to disable it.
+- Calling a CLI script with no arguments must never trigger a destructive side effect; it must either show help, fail fast with a clear error, or perform a read-only/dry-run action.
+- If `scripts/with-env.sh` and the Python CLI have defaults for the same variable, they must agree. `with-env.sh` is the canonical shell default; the Python CLI must match it.
+- Automation/CI workflows that require teardown must set the relevant env var explicitly in their pipeline config — not rely on the CLI default.
+
 ## Machine Patch And Drift Control Policy
 - Host/machine patching must be declarative, versioned, and automated from repo code.
 - Do not rely on ad-hoc/manual host edits for Docker, Kubernetes, edge routing, auth providers, certificates, or filesystem prerequisites.
@@ -232,6 +244,8 @@ Swap workflow:
   - Shared modules may load providers via discovery/registry, but must not hardcode provider behavior inline.
   - Adding/removing an auth provider should primarily be folder add/delete + config updates.
 - Route strategy (`subdomain` vs `path-prefix`) must be configurable and provider-agnostic.
+- Gateway listener port must be declarative/config-driven (`routing.gateway_port` / `APP_GATEWAY_PORT`), not hardcoded.
+- Route/link validation must run against the configured gateway host+port (not fixed assumptions like `:80` or `:18080`).
 - Preserve device-critical direct host support for media servers (for example Jellyfin native TV/mobile clients) even when consolidated path-prefix routing is enabled for browser apps.
 - For path-prefix single-host routing, browser app links must resolve under the configured gateway path prefix (for example `/app/<service>`) unless explicitly configured otherwise.
 - Session affinity for root-relative app assets/API (for example `/assets/*`, `/system/*`, `/settings/*`) must avoid cross-app cookie collisions:
@@ -342,6 +356,7 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
   - in-container preflight/repair scripts via `docker exec`,
   - host/operator checks intentionally targeting published host ports.
 - Bootstrap/preflight containers attached to the Compose project network must call dependencies via service DNS first; host-loopback + Host-header routing is fallback-only and must be explicit in config.
+- Bootstrap API automation must not use edge/gateway path-prefix URLs (for example `/app/<service>`); use direct service DNS URLs only (for example `http://prowlarr:9696`) to avoid HTML/auth redirects during machine-to-machine calls.
 - If Compose runtime customizes container names/networks, ensure canonical service DNS aliases remain resolvable for all configured internal URLs.
 
 ## Image Pinning Policy
@@ -376,6 +391,10 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Credential/bootstrap scope (`app_auth.include`, app auth policies, startup seed hooks) must be computed from the effective deployed app set, not only the raw selected-app CSV.
 - If an app should remain unseeded by design, require an explicit declarative opt-out flag in bootstrap config/policy and test that behavior.
 - Add/maintain unit tests that prove representative deployed apps open in configured/authenticated mode (not registration/onboarding mode) after bootstrap policy transforms.
+- Add/maintain profile-driven bootstrap-flag tests that verify:
+  - `preconfigure_apps=true` enables bootstrap execution,
+  - `preconfigure_api_keys=true` and `apply_initial_preferences=true` produce seeded/configured app state,
+  - `auto_download_content=false` keeps automated downloading disabled.
 
 ## Chaos Testing Policy
 - Chaos testing is declarative/profile-driven (`chaos.enabled`) and defaults to disabled.
@@ -398,6 +417,10 @@ Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
 - Keep runtime Python under `scripts/` so `COPY scripts /opt/media-stack/scripts` captures required modules.
 - Validate runtime changes by rebuilding/pushing the bootstrap runner image before live bootstrap tests.
 - When code changes impact bootstrap/runtime behavior, rebuild the bootstrap runner image before manual compose/k8s verification to avoid stale-image false negatives.
+- Mandatory sequencing for image-backed validation:
+  - Rebuild image first, then run live verification. Never run live verification first.
+  - If image rebuild did not happen in the same iteration, treat runtime test results as invalid.
+  - Explicitly log the rebuild command/result before reporting compose/k8s runtime outcomes.
 
 ## Scripts Directory Policy
 - Keep `scripts/*.sh` as user/operator entrypoints and small compatibility wrappers.
@@ -447,6 +470,10 @@ Minimum for refactor PRs:
 - For optional integrations (for example Tautulli in Maintainerr), tests must cover partial-degrade behavior so one optional dependency failure does not block all integration/main-setting seeding.
 - For edge/path-prefix changes, add/maintain smoke coverage that validates browser-usable navigation (route + critical assets + homepage tile destinations), not only HTTP 200 checks.
 - Rebuild required runtime images after code changes and before live testing (for example `scripts/build-bootstrap-runner-image.sh` before compose/k8s bootstrap validation).
+- For compose gateway verification, validate all enabled app routes under `/app/<service>` and verify homepage tile links navigate to working destinations, not placeholder/broken URLs.
+- For profile-driven bootstrap behavior, add/maintain tests that assert:
+  - tile links resolve to working app destinations through the configured gateway path-prefix routes.
+  - when `bootstrap.preconfigure_apps=true`, `bootstrap.preconfigure_api_keys=true`, and `bootstrap.apply_initial_preferences=true`, runtime bootstrap flags/env produce configured apps (while `auto_download_content=false` keeps automatic downloading disabled).
 
 Current key test suites:
 - `tests/unit/test_shell_wrapper_contracts.py`
@@ -472,6 +499,7 @@ Current key test suites:
 - `RUN_BOOTSTRAP=1` validation requires a freshly built bootstrap-runner image whenever runtime imports or module paths changed.
 - Keep repo-wide formatting sweeps isolated from behavior changes; do not mix debt cleanup with incident fixes.
 - Path-prefix reverse-proxy routing for ARR-family apps is not sufficient by itself; server-side app `urlBase` must be seeded to `/app/<service>` or UI navigation can fail after login even when initial landing works.
+- Do not infer deploy profile from environment purpose (`dev`/`prod`); preserve explicit `install_profile` from bootstrap profile YAML so `minimal`/`standard`/`full` behavior remains deterministic.
 
 ## Validation Checklist (Pre-Merge)
 1. `bash -n scripts/*.sh scripts/lib/*.sh`
@@ -507,6 +535,10 @@ Current key test suites:
    - `/app/homepage`
    - `/app/bazarr`
    - `/app/jellyseerr`
+27. After runtime-impacting code changes in bootstrap/services/platform adapters:
+   - run `PUSH_IMAGE=0 bash scripts/build-bootstrap-runner-image.sh` before live checks
+   - run compose deploy/bootstrap verification after rebuild
+   - confirm homepage tile destinations and enabled app URLs are validated in the same post-rebuild run.
 
 ## Operational Safety Rules
 - Prefer additive/idempotent changes.

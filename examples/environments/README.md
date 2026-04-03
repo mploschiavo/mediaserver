@@ -41,3 +41,5 @@ bash scripts/with-env.sh ~/.config/media-stack/media-dev.env \
 
 - Keep `INGRESS_DOMAIN` unique per namespace (for example `media-dev.local`).
 - Set `DELETE_NAMESPACE=1` only for intentional destructive rebuilds.
+- Destructive teardown now requires explicit confirmation:
+  `DELETE_NAMESPACE_CONFIRM=<namespace-or-compose-project>` (or `I_UNDERSTAND`).

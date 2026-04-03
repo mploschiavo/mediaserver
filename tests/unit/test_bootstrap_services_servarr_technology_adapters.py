@@ -201,7 +201,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
         )
         self.assertEqual(adapter.context.app_url, "http://sonarr:8989/app/sonarr")
 
-    def test_configure_uses_path_aware_prowlarr_url_when_configured(self):
+    def test_configure_uses_direct_prowlarr_url_when_path_base_is_configured(self):
         deps = self._deps()
         factory = ServarrAdapterFactory(
             deps=deps,
@@ -227,7 +227,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
         deps.ensure_prowlarr_application.assert_called_once()
         self.assertEqual(
             deps.ensure_prowlarr_application.call_args.args[0],
-            "http://prowlarr:9696/app/prowlarr",
+            "http://prowlarr:9696",
         )
 
     def test_factory_supports_reflection_override_for_adapter_class(self):

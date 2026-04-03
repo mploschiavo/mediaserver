@@ -35,6 +35,18 @@ class DeployProfileDefaultsServiceTests(unittest.TestCase):
         self.assertEqual(resolved.enable_components, "0")
         self.assertEqual(resolved.run_bootstrap, "0")
 
+    def test_standard_profile_sets_expected_defaults(self):
+        svc = DeployProfileDefaultsService()
+        resolved = svc.apply(
+            profile="standard",
+            include_optional="",
+            enable_components="",
+            run_bootstrap="",
+        )
+        self.assertEqual(resolved.include_optional, "1")
+        self.assertEqual(resolved.enable_components, "1")
+        self.assertEqual(resolved.run_bootstrap, "1")
+
 
 if __name__ == "__main__":
     unittest.main()

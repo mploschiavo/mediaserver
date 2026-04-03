@@ -114,6 +114,12 @@
           "minLength": 1
         },
         "gateway_host": { "type": "string" },
+        "gateway_port": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1, "maximum": 65535 },
+            { "type": "string", "pattern": "^[0-9]{1,5}$" }
+          ]
+        },
         "app_path_prefix": { "type": "string" },
         "direct_hosts": {
           "type": "object",

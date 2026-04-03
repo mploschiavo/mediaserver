@@ -21,6 +21,7 @@ class DeployPipelineConfig:
     route_strategy: str
     ingress_domain: str
     app_gateway_host: str
+    app_gateway_port: str
     app_path_prefix: str
     media_server_direct_host: str
     preconfigure_api_keys: str
@@ -65,26 +66,31 @@ class DeployPipelineService:
 
     def run_bootstrap_pipeline(self) -> None:
         self.info("Running full bootstrap pipeline")
+        env = {
+            "NAMESPACE": self.cfg.namespace,
+            "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
+            "ENABLE_COMPONENTS": self.cfg.enable_components,
+            "SELECTED_APPS": self.cfg.selected_apps,
+            "INTERNET_EXPOSED": self.cfg.internet_exposed,
+            "ROUTE_STRATEGY": self.cfg.route_strategy,
+            "INGRESS_DOMAIN": self.cfg.ingress_domain,
+            "APP_GATEWAY_HOST": self.cfg.app_gateway_host,
+            "APP_PATH_PREFIX": self.cfg.app_path_prefix,
+            "MEDIA_SERVER_DIRECT_HOST": self.cfg.media_server_direct_host,
+            "AUTH_PROVIDER": self.cfg.auth_provider,
+            "AUTH_MIDDLEWARE": self.cfg.auth_middleware,
+            "EDGE_ROUTER_PROVIDER": self.cfg.edge_router_provider,
+            "PRECONFIGURE_API_KEYS": self.cfg.preconfigure_api_keys,
+            "APPLY_INITIAL_PREFERENCES": self.cfg.apply_initial_preferences,
+            "FULLY_PRECONFIGURED": self.cfg.apply_initial_preferences,
+            "AUTO_DOWNLOAD_CONTENT": self.cfg.auto_download_content,
+        }
+        gateway_port = str(self.cfg.app_gateway_port or "").strip()
+        if gateway_port:
+            env["APP_GATEWAY_PORT"] = gateway_port
+            env["TRAEFIK_HTTP_PORT"] = gateway_port
         self.run_script(
             "bootstrap-all.sh",
             str(self.cfg.config_file),
-            env={
-                "NAMESPACE": self.cfg.namespace,
-                "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
-                "ENABLE_COMPONENTS": self.cfg.enable_components,
-                "SELECTED_APPS": self.cfg.selected_apps,
-                "INTERNET_EXPOSED": self.cfg.internet_exposed,
-                "ROUTE_STRATEGY": self.cfg.route_strategy,
-                "INGRESS_DOMAIN": self.cfg.ingress_domain,
-                "APP_GATEWAY_HOST": self.cfg.app_gateway_host,
-                "APP_PATH_PREFIX": self.cfg.app_path_prefix,
-                "MEDIA_SERVER_DIRECT_HOST": self.cfg.media_server_direct_host,
-                "AUTH_PROVIDER": self.cfg.auth_provider,
-                "AUTH_MIDDLEWARE": self.cfg.auth_middleware,
-                "EDGE_ROUTER_PROVIDER": self.cfg.edge_router_provider,
-                "PRECONFIGURE_API_KEYS": self.cfg.preconfigure_api_keys,
-                "APPLY_INITIAL_PREFERENCES": self.cfg.apply_initial_preferences,
-                "FULLY_PRECONFIGURED": self.cfg.apply_initial_preferences,
-                "AUTO_DOWNLOAD_CONTENT": self.cfg.auto_download_content,
-            },
+            env=env,
         )

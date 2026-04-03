@@ -39,7 +39,9 @@ def _join_url_base(base_url: str, url_base: str) -> str:
 def _lookup_url_base(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
     if not isinstance(mapping, dict):
         return ""
-    lowered = {str(raw_key or "").strip().lower(): raw_value for raw_key, raw_value in mapping.items()}
+    lowered = {
+        str(raw_key or "").strip().lower(): raw_value for raw_key, raw_value in mapping.items()
+    }
     for key in keys:
         token = str(key or "").strip().lower()
         if not token:
@@ -54,17 +56,19 @@ def _lookup_url_base(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
 
 
 def _path_aware_prowlarr_url(cfg: dict[str, Any] | None, prowlarr_url: str) -> str:
-    payload = cfg if isinstance(cfg, dict) else {}
-    app_auth = payload.get("app_auth")
+    app_auth = cfg.get("app_auth") if isinstance(cfg, dict) else None
     if not isinstance(app_auth, dict):
-        return prowlarr_url
-    keys = ("prowlarr",)
-    configured = _lookup_url_base(app_auth.get("path_prefix_url_base_by_app") or {}, keys)
-    if not configured:
-        configured = _lookup_url_base(app_auth.get("url_base_by_app") or {}, keys)
-    if not configured:
-        return prowlarr_url
-    return _join_url_base(prowlarr_url, configured)
+        return str(prowlarr_url or "").strip()
+    path_base = _lookup_url_base(
+        app_auth.get("path_prefix_url_base_by_app") or {},
+        ("prowlarr",),
+    ) or _lookup_url_base(
+        app_auth.get("url_base_by_app") or {},
+        ("prowlarr",),
+    )
+    if not path_base:
+        return str(prowlarr_url or "").strip()
+    return _join_url_base(str(prowlarr_url or "").strip(), path_base)
 
 
 def _prowlarr_precheck_service(cfg=None) -> Any:
@@ -130,13 +134,12 @@ def run_prowlarr_indexer_pipeline(
     arr_apps_raw,
     app_keys,
 ):
-    runtime_prowlarr_url = _path_aware_prowlarr_url(
-        cfg if isinstance(cfg, dict) else None,
-        prowlarr_url,
-    )
     return _prowlarr_indexer_pipeline_service().run(
         cfg=cfg,
-        prowlarr_url=runtime_prowlarr_url,
+        # Bootstrap automation must use direct in-network service URLs.
+        # Gateway/path-prefix URLs are for browser routing and can return
+        # HTML/auth redirects that break API prechecks.
+        prowlarr_url=str(prowlarr_url or "").strip(),
         prowlarr_key=prowlarr_key,
         wait_timeout=wait_timeout,
         prowlarr_indexers=prowlarr_indexers,
@@ -148,12 +151,8 @@ def run_prowlarr_indexer_pipeline(
 
 
 def ensure_prowlarr_ready(cfg, prowlarr_url, prowlarr_key, app_auth_cfg, wait_timeout):
-    runtime_prowlarr_url = _path_aware_prowlarr_url(
-        cfg if isinstance(cfg, dict) else None,
-        prowlarr_url,
-    )
     return _prowlarr_precheck_service().ensure_ready(
-        prowlarr_url=runtime_prowlarr_url,
+        prowlarr_url=str(prowlarr_url or "").strip(),
         prowlarr_key=prowlarr_key,
         app_auth_cfg=app_auth_cfg,
         wait_timeout=wait_timeout,

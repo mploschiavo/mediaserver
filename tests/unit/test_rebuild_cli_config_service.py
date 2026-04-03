@@ -45,6 +45,36 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.compose_file, root_dir / "docker" / "docker-compose.yml")
         self.assertEqual(cfg.compose_env_file, root_dir / "docker" / ".env")
 
+    def test_delete_namespace_defaults_to_zero_when_env_unset(self):
+        """Teardown must be explicitly opted-in via DELETE_NAMESPACE=1; never the silent default."""
+        root_dir = Path("/tmp/media-stack-test")
+        env = {
+            "PLATFORM_TARGET": "kubernetes",
+            "NAMESPACE": "media-stack-dev",
+            "INGRESS_DOMAIN": "local",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("DELETE_NAMESPACE", None)
+                os.environ.pop("DELETE_NAMESPACE_CONFIRM", None)
+                cfg = parse_deploy_stack_config([], root_dir=root_dir)
+        self.assertEqual(cfg.delete_namespace, "0")
+        self.assertEqual(cfg.delete_namespace_confirm, "")
+
+    def test_delete_namespace_respected_when_set_to_one(self):
+        root_dir = Path("/tmp/media-stack-test")
+        env = {
+            "PLATFORM_TARGET": "kubernetes",
+            "NAMESPACE": "media-stack-dev",
+            "INGRESS_DOMAIN": "local",
+            "DELETE_NAMESPACE": "1",
+            "DELETE_NAMESPACE_CONFIRM": "media-stack-dev",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            cfg = parse_deploy_stack_config([], root_dir=root_dir)
+        self.assertEqual(cfg.delete_namespace, "1")
+        self.assertEqual(cfg.delete_namespace_confirm, "media-stack-dev")
+
     def test_parse_deploy_stack_config_uses_bootstrap_profile_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
@@ -75,6 +105,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
                         "  strategy: path-prefix",
                         "  provider: envoy",
                         "  base_domain: example.com",
+                        "  gateway_port: 18080",
                         "auth:",
                         "  enabled: true",
                         "  provider: authentik",
@@ -91,7 +122,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.platform_target, "compose")
         self.assertEqual(cfg.namespace, "media-prod")
         self.assertEqual(cfg.compose_project_name, "media-prod")
-        self.assertEqual(cfg.profile, "power-user")
+        self.assertEqual(cfg.profile, "standard")
         self.assertEqual(cfg.run_bootstrap, "1")
         self.assertEqual(cfg.preconfigure_api_keys, "1")
         self.assertEqual(cfg.apply_initial_preferences, "1")
@@ -101,6 +132,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.auth_provider, "authentik")
         self.assertEqual(cfg.auth_middleware, "authentik@docker")
         self.assertEqual(cfg.edge_router_provider, "envoy")
+        self.assertEqual(cfg.app_gateway_port, "18080")
         self.assertEqual(cfg.ingress_domain, "media-prod.example.com")
         self.assertEqual(cfg.disk_allocation_gb, 2000)
         self.assertEqual(cfg.network_cidr, "10.44.0.0/24")
@@ -113,6 +145,36 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         )
         self.assertIn("jellyfin", cfg.selected_apps)
         self.assertNotIn("sabnzbd", cfg.selected_apps)
+
+    def test_parse_deploy_stack_config_respects_preconfigure_apps_flag_for_run_bootstrap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            bootstrap_dir = root_dir / "bootstrap"
+            bootstrap_dir.mkdir(parents=True, exist_ok=True)
+            (bootstrap_dir / "media-stack.bootstrap.yaml").write_text(
+                "\n".join(
+                    [
+                        "schema_version: 1",
+                        "kind: media_stack_profile",
+                        "metadata:",
+                        "  name: media-dev",
+                        "  platform: compose",
+                        "  purpose: dev",
+                        "resources:",
+                        "  disk_space_gb: 50",
+                        "  network_cidr: 192.168.1.0/24",
+                        "install_profile: standard",
+                        "bootstrap:",
+                        "  preconfigure_apps: false",
+                        "  preconfigure_api_keys: true",
+                        "  apply_initial_preferences: true",
+                        "  auto_download_content: false",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cfg = parse_deploy_stack_config([], root_dir=root_dir)
+        self.assertEqual(cfg.run_bootstrap, "0")
 
 
 if __name__ == "__main__":

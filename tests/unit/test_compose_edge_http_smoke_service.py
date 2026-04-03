@@ -320,6 +320,46 @@ class ComposeEdgeHttpSmokeServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "final status 404"):
             service.run(services={})
 
+    def test_run_fails_when_homepage_tile_link_targets_unauthorized_route(self):
+        def http_get(host: str, port: int, path: str, headers: dict[str, str]):
+            responses = {
+                ("apps.media-dev.local", 18080, "/app/homepage"): ComposeEdgeHttpResponse(
+                    status=200,
+                    headers={"Content-Type": "text/html"},
+                    body="<html>ok</html>",
+                ),
+                ("apps.media-dev.local", 18080, "/app/homepage/api/services"): (
+                    ComposeEdgeHttpResponse(
+                        status=200,
+                        headers={"Content-Type": "application/json"},
+                        body=(
+                            '[{"name":"Media Stack","services":['
+                            '{"name":"qBittorrent","href":"http://apps.media-dev.local:18080/app/qbittorrent"}'
+                            "]}]"
+                        ),
+                    )
+                ),
+                ("apps.media-dev.local", 18080, "/app/qbittorrent"): ComposeEdgeHttpResponse(
+                    status=401,
+                    headers={"Content-Type": "text/plain"},
+                    body="unauthorized",
+                ),
+            }
+            return responses[(host, port, path)]
+
+        service = self._service(
+            route_strategy="path-prefix",
+            routers={
+                "homepage": {
+                    "rule": _route_rule(host="apps.media-dev.local", path_prefix="/app/homepage")
+                },
+            },
+            http_get=http_get,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "final status 401"):
+            service.run(services={})
+
     def test_run_fails_when_homepage_services_api_has_no_gateway_tile_links(self):
         def http_get(host: str, port: int, path: str, headers: dict[str, str]):
             responses = {

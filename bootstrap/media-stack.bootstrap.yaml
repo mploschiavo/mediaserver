@@ -32,6 +32,7 @@ routing:
   base_domain: local
   stack_subdomain: media-dev
   gateway_host: apps.media-dev.local
+  gateway_port: 18080
   app_path_prefix: /app
   direct_hosts:
     media_server: jellyfin.media-dev.local
