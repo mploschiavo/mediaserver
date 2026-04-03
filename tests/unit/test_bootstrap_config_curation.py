@@ -208,6 +208,24 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertEqual(int(flaresolverr.get("request_timeout_seconds", 0)), 60)
         self.assertTrue(bool(flaresolverr.get("test_connection")))
 
+    def test_compose_bootstrap_includes_jellyfin_preflight_configuration(self):
+        hooks = (self.cfg.get("adapter_hooks") or {}).get("bootstrap_job") or {}
+        preflight = hooks.get("compose_preflight_handlers") or []
+        self.assertIn(
+            "bootstrap_services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
+            preflight,
+        )
+
+    def test_homepage_defaults_include_homepage_and_jellyfin_hosts(self):
+        homepage = self.cfg.get("homepage") or {}
+        self.assertTrue(bool(homepage.get("enabled")))
+        hosts = {str(item).strip().lower() for item in (homepage.get("hosts") or []) if item}
+        self.assertIn("homepage.local", hosts)
+        self.assertIn("jellyfin.local", hosts)
+        onboarding = homepage.get("device_onboarding") or {}
+        self.assertTrue(bool(onboarding.get("enabled")))
+        self.assertIn("jellyfin.local", str(onboarding.get("jellyfin_url") or ""))
+
 
 if __name__ == "__main__":
     unittest.main()

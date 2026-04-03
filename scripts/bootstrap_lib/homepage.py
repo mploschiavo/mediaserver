@@ -74,11 +74,30 @@ def _prefix(host: str) -> str:
     return host.split(".", 1)[0].strip().lower()
 
 
+def _service_token(host_or_path: str) -> str:
+    text = str(host_or_path or "").strip().lower()
+    if not text:
+        return ""
+    parsed = parse.urlparse(text if "://" in text else f"http://{text}")
+    path = str(parsed.path or "").strip("/")
+    if path:
+        parts = [part for part in path.split("/") if part]
+        if parts:
+            if len(parts) >= 2 and parts[0] == "app":
+                token = parts[1].strip().lower()
+            else:
+                token = parts[-1].strip().lower()
+            if token:
+                return token
+    netloc = str(parsed.netloc or "").split(":", 1)[0].strip().lower()
+    return _prefix(netloc)
+
+
 def _service_meta(host: str) -> Tuple[str, str]:
-    prefix = _prefix(host)
-    if prefix in SERVICE_CATALOG:
-        return SERVICE_CATALOG[prefix]
-    title = prefix.replace("-", " ").title() or host
+    token = _service_token(host)
+    if token in SERVICE_CATALOG:
+        return SERVICE_CATALOG[token]
+    title = token.replace("-", " ").title() or host
     return title, f"{title} service"
 
 
@@ -87,7 +106,11 @@ def _ordered_hosts(hosts: Iterable[str]) -> List[str]:
     rank = {prefix: idx for idx, prefix in enumerate(PREFERRED_PREFIX_ORDER)}
     return sorted(
         normalized,
-        key=lambda h: (rank.get(_prefix(h), len(PREFERRED_PREFIX_ORDER)), _prefix(h), h),
+        key=lambda h: (
+            rank.get(_service_token(h), len(PREFERRED_PREFIX_ORDER)),
+            _service_token(h),
+            h,
+        ),
     )
 
 
@@ -208,7 +231,7 @@ def render_services_yaml(
     lines = ["---", "- Media Stack:"]
     for host in ordered:
         title, description = _service_meta(host)
-        href = f"{scheme}://{host}"
+        href = _normalize_target_url(host, scheme, host)
         lines.extend(
             [
                 f"    - {title}:",

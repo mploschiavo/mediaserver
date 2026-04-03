@@ -299,9 +299,14 @@ class BootstrapProfileConfig:
             or _coerce_url_list(live_tv_defaults.get("guide_url"))
             or active_catalog.live_tv_guide_urls
         )
+        live_tv_icon_urls = _coerce_url_list(
+            live_tv_defaults.get("default_program_icon_urls")
+            or live_tv_defaults.get("default_program_icon_url")
+        )
         live_tv_default_program_icon_url = str(
-            live_tv_defaults.get("default_program_icon_url")
-            or active_catalog.live_tv_default_program_icon_url
+            live_tv_icon_urls[0]
+            if live_tv_icon_urls
+            else active_catalog.live_tv_default_program_icon_url
         ).strip()
         if not live_tv_default_program_icon_url:
             live_tv_default_program_icon_url = active_catalog.live_tv_default_program_icon_url
@@ -553,15 +558,23 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
         or live_tv_defaults.get("guide_url")
         or live_tv_defaults.get("guides")
     )
-    live_tv_default_program_icon_url = str(
-        live_tv_defaults.get("default_program_icon_url") or ""
-    ).strip()
+    live_tv_default_program_icon_urls = _coerce_url_list(
+        live_tv_defaults.get("default_program_icon_urls")
+        or live_tv_defaults.get("default_program_icon_url")
+    )
+    live_tv_default_program_icon_url = (
+        str(live_tv_default_program_icon_urls[0]).strip()
+        if live_tv_default_program_icon_urls
+        else ""
+    )
     if not live_tv_tuner_urls:
         raise ValueError("live_tv_defaults must define at least one tuner URL")
     if not live_tv_guide_urls:
         raise ValueError("live_tv_defaults must define at least one guide URL")
     if not live_tv_default_program_icon_url:
-        raise ValueError("live_tv_defaults.default_program_icon_url is required")
+        raise ValueError(
+            "live_tv_defaults.default_program_icon_urls (or default_program_icon_url) is required"
+        )
 
     return BootstrapProfileCatalog(
         deployment_aliases=deployment_aliases,

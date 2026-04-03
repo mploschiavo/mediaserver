@@ -179,9 +179,11 @@ class BootstrapProfileTests(unittest.TestCase):
 
     def test_normalize_selected_apps_csv(self):
         self.assertEqual(
-            normalize_selected_apps_csv("  jellyfin, mainainerr ,sonarr "),
+            normalize_selected_apps_csv("  jellyfin, maintainerr ,sonarr "),
             "jellyfin,maintainerr,sonarr",
         )
+        with self.assertRaisesRegex(ValueError, "Unsupported app"):
+            normalize_selected_apps_csv("jellyfin,mainainerr")
         with self.assertRaisesRegex(ValueError, "Unsupported app"):
             normalize_selected_apps_csv("jellyfin,unknownapp")
 
@@ -219,6 +221,33 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertEqual(profile.chaos.duration_minutes, 5)
         self.assertEqual(profile.chaos.interval_seconds, 60)
         self.assertIn("restart_container", profile.chaos.actions)
+
+    def test_from_dict_accepts_default_program_icon_urls_array(self):
+        profile = BootstrapProfileConfig.from_dict(
+            {
+                "schema_version": 1,
+                "kind": "media_stack_profile",
+                "metadata": {
+                    "name": "media-dev",
+                    "platform": "compose",
+                    "purpose": "dev",
+                },
+                "resources": {
+                    "disk_space_gb": 50,
+                    "network_cidr": "192.168.1.0/24",
+                },
+                "install_profile": "minimal",
+                "live_tv_defaults": {
+                    "tuner_urls": ["https://example.test/tuner.m3u"],
+                    "guide_urls": ["https://example.test/guide.xml"],
+                    "default_program_icon_urls": ["https://example.test/icon.png"],
+                },
+            }
+        )
+        self.assertEqual(
+            profile.live_tv_default_program_icon_url,
+            "https://example.test/icon.png",
+        )
 
     def test_full_install_profile_defaults_auto_download_to_true(self):
         profile = BootstrapProfileConfig.from_dict(

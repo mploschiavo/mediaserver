@@ -6,6 +6,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib import parse
 
 import yaml
 
@@ -140,6 +141,23 @@ def _url_host(url: str) -> str:
     elif token.startswith("http://"):
         token = token[len("http://") :]
     return token.rstrip("/")
+
+
+def _homepage_host_token(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    parsed = parse.urlparse(text if "://" in text else f"http://{text}")
+    path = str(parsed.path or "").strip("/")
+    if path:
+        parts = [part for part in path.split("/") if part]
+        if parts:
+            if len(parts) >= 2 and parts[0] == "app":
+                return _tokenize(parts[1])
+            return _tokenize(parts[-1])
+    host = str(parsed.netloc or "").split(":", 1)[0]
+    prefix = host.split(".", 1)[0]
+    return _tokenize(prefix)
 
 
 def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str) -> None:
@@ -303,9 +321,7 @@ def apply_edge_url_policy(
     app_path_prefix: str,
     media_server_direct_host: str,
 ) -> None:
-    if not internet_exposed:
-        return
-
+    scheme = "https" if bool(internet_exposed) else "http"
     strategy = str(route_strategy or "").strip().lower()
     gateway_host = str(app_gateway_host or "").strip().lower()
     direct_host = str(media_server_direct_host or "").strip().lower()
@@ -315,12 +331,12 @@ def apply_edge_url_policy(
     def _public_url(app_key: str) -> str:
         token = _tokenize(app_key)
         if token == "jellyfin" and direct_host:
-            return f"https://{direct_host}"
+            return f"{scheme}://{direct_host}"
         if token != "jellyfin" and strategy in {"path-prefix", "hybrid"} and gateway_host:
-            return f"https://{gateway_host}{prefix}/{token}"
+            return f"{scheme}://{gateway_host}{prefix}/{token}"
         if not ingress:
             return ""
-        return f"https://{token}.{ingress}"
+        return f"{scheme}://{token}.{ingress}"
 
     jellyseerr_cfg = cfg.get("jellyseerr")
     if isinstance(jellyseerr_cfg, dict):
@@ -351,7 +367,14 @@ def apply_edge_url_policy(
 
     rewritten_hosts: list[str] = []
     if strategy in {"path-prefix", "hybrid"} and gateway_host:
-        rewritten_hosts.append(gateway_host)
+        for raw_host in hosts:
+            token = _homepage_host_token(str(raw_host or ""))
+            if not token:
+                continue
+            if token == "jellyfin" and direct_host:
+                rewritten_hosts.append(direct_host)
+                continue
+            rewritten_hosts.append(f"{gateway_host}{prefix}/{token}")
         if direct_host:
             rewritten_hosts.append(direct_host)
     else:

@@ -358,6 +358,14 @@ Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
   - Reconcile steps must declare `event` + `handler` and use `RunnerEvent`.
   - Do not add bespoke hard-coded reconcile sequencing in CLI modules.
 
+## Platform Keyword Ownership Policy
+- Files containing platform-specific implementation keywords (`kubelet`, `kubectl`, `kube`, `k8s`, `kubernetes`) should live under `scripts/core/platforms/kubernetes/**` unless they are thin compatibility wrappers.
+- Files containing compose/runtime-specific implementation keywords (`compose`, `docker`) should live under `scripts/core/platforms/compose/**` unless they are thin compatibility wrappers.
+- `scripts/cli/*.py` may orchestrate platform selection, but platform implementation logic must be delegated to platform-local modules.
+- If a CLI file accumulates platform implementation behavior, move that behavior into platform-local services/modules and keep the CLI as a boundary wrapper.
+- `scripts/cli/deploy_cli_config_service.py` must remain orchestration glue; compose-specific arg/path handling must be implemented in compose-platform helpers.
+- `scripts/cli/apply_scale_policy_main.py` must remain a compatibility wrapper only; kubernetes scale behavior belongs in kubernetes platform modules.
+
 ## Logging, Errors, and Secrets
 - Use structured logging via `scripts/core/logging_utils.py`.
 - Never log secrets, tokens, passwords, or API keys.
@@ -431,6 +439,9 @@ Current key test suites:
 22. Profile/catalog/policy changes: verify mappings changed declaratively (config files) with no new hardcoded map constants in shared policy modules.
 23. Chaos changes: verify profile examples keep `chaos.enabled: false` by default and compose chaos action paths are unit-tested.
 24. Internal communication changes: verify k8s URLs use Service DNS, compose URLs use service/container DNS, and loopback/container IP usage is limited to same-container probes or explicit operator-host access paths.
+25. Keyword ownership checks:
+   - search `kubelet|kube|k8s` and ensure implementation files are under kubernetes platform modules (or wrapper-justified).
+   - search `compose|docker` and ensure implementation files are under compose platform modules (or wrapper-justified).
 
 ## Operational Safety Rules
 - Prefer additive/idempotent changes.
