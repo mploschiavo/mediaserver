@@ -1,6 +1,11 @@
 """Compose runtime service helpers."""
 
 from core.platforms.compose.services.container_runtime import ComposeContainerRuntimeService
+from core.platforms.compose.services.edge_http_smoke import ComposeEdgeHttpSmokeService
+from core.platforms.compose.services.edge_route_graph import (
+    ComposeEdgeRouteGraphRender,
+    ComposeEdgeRouteGraphService,
+)
 from core.platforms.compose.services.labels import ComposeLabelConfig, ComposeLabelService
 from core.platforms.compose.services.runtime_artifacts import ComposeRuntimeArtifactService
 from core.platforms.compose.services.spec import (
@@ -8,25 +13,16 @@ from core.platforms.compose.services.spec import (
     parse_duration_nanoseconds,
     parse_wait_seconds,
 )
-from core.platforms.compose.services.traefik_dynamic_config import (
-    TraefikDynamicConfigRender,
-    TraefikDynamicConfigService,
-)
-from core.platforms.compose.services.traefik_patch_service import (
-    ComposeTraefikPatchResult,
-    ComposeTraefikPatchService,
-)
 
 __all__ = [
     "ComposeContainerRuntimeService",
+    "ComposeEdgeHttpSmokeService",
+    "ComposeEdgeRouteGraphRender",
+    "ComposeEdgeRouteGraphService",
     "ComposeLabelConfig",
     "ComposeLabelService",
     "ComposeRuntimeArtifactService",
     "ComposeSpecResolver",
-    "ComposeTraefikPatchResult",
-    "ComposeTraefikPatchService",
-    "TraefikDynamicConfigRender",
-    "TraefikDynamicConfigService",
     "parse_duration_nanoseconds",
     "parse_wait_seconds",
 ]

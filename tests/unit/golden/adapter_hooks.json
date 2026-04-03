@@ -34,25 +34,33 @@
   },
   "edge": {
     "router_provider": "traefik",
-    "router_service_names": [
-      "traefik"
-    ],
-    "path_prefix_redirect_service_names": [
-      "homepage",
-      "jellyfin",
-      "jellyseerr",
-      "sonarr",
-      "radarr",
-      "lidarr",
-      "readarr",
-      "bazarr",
-      "prowlarr",
-      "qbittorrent",
-      "sabnzbd",
-      "maintainerr",
-      "tautulli",
-      "plex"
-    ],
+    "router_service_names_by_provider": {
+      "traefik": [
+        "traefik"
+      ],
+      "envoy": [
+        "envoy"
+      ]
+    },
+    "path_prefix_redirect_service_names_by_provider": {
+      "traefik": [
+        "homepage",
+        "jellyfin",
+        "jellyseerr",
+        "sonarr",
+        "radarr",
+        "lidarr",
+        "readarr",
+        "bazarr",
+        "prowlarr",
+        "qbittorrent",
+        "sabnzbd",
+        "maintainerr",
+        "tautulli",
+        "plex"
+      ],
+      "envoy": []
+    },
     "media_server_service_names": [
       "jellyfin",
       "jellyfin-nvidia"
@@ -65,6 +73,26 @@
       "traefik": {
         "enable_label_key": "traefik.enable",
         "router_label_prefix": "traefik.http.routers.",
+        "service_label_prefix": "traefik.http.services.",
+        "middleware_label_prefix": "traefik.http.middlewares.",
+        "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
+        "router_service_key_template": "traefik.http.routers.{router_name}.service",
+        "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",
+        "strip_prefix_key_template": "traefik.http.middlewares.{middleware_name}.stripprefix.prefixes",
+        "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
+        "redirect_regex_key_template": "traefik.http.middlewares.{middleware_name}.redirectregex.regex",
+        "redirect_replacement_key_template": "traefik.http.middlewares.{middleware_name}.redirectregex.replacement",
+        "redirect_permanent_key_template": "traefik.http.middlewares.{middleware_name}.redirectregex.permanent",
+        "path_redirect_regex_template": "^https?://[^/:]+(:[0-9]+)?{path_prefix_regex}/?(.*)",
+        "path_redirect_replacement_template": "{scheme}://{redirect_host}$1/$2",
+        "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
+        "direct_host_rule_template": "Host(`{direct_host}`)"
+      },
+      "envoy": {
+        "enable_label_key": "traefik.enable",
+        "router_label_prefix": "traefik.http.routers.",
+        "service_label_prefix": "traefik.http.services.",
+        "middleware_label_prefix": "traefik.http.middlewares.",
         "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
         "router_service_key_template": "traefik.http.routers.{router_name}.service",
         "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",

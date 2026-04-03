@@ -1,0 +1,85 @@
+static_resources:
+  listeners:
+    - name: listener_http
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 80
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: AUTO
+                route_config:
+                  name: media_stack_routes
+                  virtual_hosts: []
+                http_filters:
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        function envoy_on_response(handle)
+                          local prefix = handle:headers():get("x-media-stack-prefix")
+                          if prefix == nil or prefix == "" then
+                            return
+                          end
+                          local host_hint = handle:headers():get("x-media-stack-host")
+                          local location = handle:headers():get("location")
+                          if location ~= nil and location ~= "" then
+                            local normalized = nil
+                            local is_absolute_uri = string.match(location, "^[a-zA-Z][a-zA-Z0-9+.-]*://") ~= nil
+                            local is_scheme_relative = string.sub(location, 1, 2) == "//"
+                            if not is_scheme_relative then
+                              if is_absolute_uri then
+                                if host_hint ~= nil and host_hint ~= "" then
+                                  local scheme_sep = string.find(location, "://", 1, true)
+                                  if scheme_sep ~= nil then
+                                    local authority_start = scheme_sep + 3
+                                    local path_start = string.find(location, "/", authority_start, true)
+                                    local authority = nil
+                                    if path_start ~= nil then
+                                      authority = string.sub(location, authority_start, path_start - 1)
+                                    else
+                                      authority = string.sub(location, authority_start)
+                                    end
+                                    local authority_lower = string.lower(authority or "")
+                                    local host_lower = string.lower(host_hint)
+                                    local host_port_prefix = host_lower .. ":"
+                                    if authority_lower == host_lower or string.sub(authority_lower, 1, string.len(host_port_prefix)) == host_port_prefix then
+                                      if path_start ~= nil then
+                                        normalized = string.sub(location, path_start)
+                                      else
+                                        normalized = "/"
+                                      end
+                                    end
+                                  end
+                                end
+                              else
+                                normalized = location
+                              end
+
+                              if normalized ~= nil and normalized ~= "" then
+                                if string.sub(normalized, 1, 1) ~= "/" then
+                                  normalized = "/" .. normalized
+                                end
+                                if string.sub(normalized, 1, string.len(prefix)) ~= prefix then
+                                  handle:headers():replace("location", prefix .. normalized)
+                                end
+                              end
+                            end
+                          end
+                          handle:headers():remove("x-media-stack-prefix")
+                          handle:headers():remove("x-media-stack-host")
+                        end
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters: []
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
+  access_log_path: /dev/null

@@ -155,6 +155,42 @@ class DeployStackRunner:
         hooks = self._edge_hooks()
         return str(hooks.get("router_provider") or "").strip().lower()
 
+    def _edge_provider_hook_values(
+        self,
+        *,
+        by_provider_key: str,
+        fallback_key: str,
+    ) -> tuple[str, ...]:
+        hooks = self._edge_hooks()
+        provider = self._edge_router_provider()
+        values: list[str] = []
+        seen: set[str] = set()
+
+        raw_by_provider = hooks.get(by_provider_key)
+        selected_from_provider_map = False
+        if isinstance(raw_by_provider, dict) and provider:
+            provider_values = raw_by_provider.get(provider)
+            if isinstance(provider_values, list):
+                selected_from_provider_map = True
+                for item in provider_values:
+                    token = str(item or "").strip().lower()
+                    if not token or token in seen:
+                        continue
+                    seen.add(token)
+                    values.append(token)
+
+        if not selected_from_provider_map:
+            raw_fallback = hooks.get(fallback_key)
+            if isinstance(raw_fallback, list):
+                for item in raw_fallback:
+                    token = str(item or "").strip().lower()
+                    if not token or token in seen:
+                        continue
+                    seen.add(token)
+                    values.append(token)
+
+        return tuple(values)
+
     def _edge_router_service_names(self) -> tuple[str, ...]:
         provider_defaults = router_service_names_by_provider()
         provider = self._edge_router_provider()
@@ -166,25 +202,24 @@ class DeployStackRunner:
                 continue
             seen.add(token)
             out.append(token)
-        hooks = self._edge_hooks()
-        raw = hooks.get("router_service_names")
-        if isinstance(raw, list):
-            for item in raw:
-                token = str(item or "").strip().lower()
-                if not token or token in seen:
-                    continue
-                seen.add(token)
-                out.append(token)
+        for item in self._edge_provider_hook_values(
+            by_provider_key="router_service_names_by_provider",
+            fallback_key="router_service_names",
+        ):
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
         return tuple(out)
 
     def _edge_path_prefix_redirect_service_names(self) -> tuple[str, ...]:
-        hooks = self._edge_hooks()
-        raw = hooks.get("path_prefix_redirect_service_names")
-        if not isinstance(raw, list):
-            return ()
         out: list[str] = []
         seen: set[str] = set()
-        for item in raw:
+        for item in self._edge_provider_hook_values(
+            by_provider_key="path_prefix_redirect_service_names_by_provider",
+            fallback_key="path_prefix_redirect_service_names",
+        ):
             token = str(item or "").strip().lower()
             if not token or token in seen:
                 continue

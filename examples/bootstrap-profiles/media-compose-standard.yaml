@@ -20,14 +20,12 @@ bootstrap:
 
 routing:
   internet_exposed: false
-  strategy: hybrid
-  provider: traefik
+  strategy: path-prefix
+  provider: envoy
   base_domain: local
   stack_subdomain: media-dev
   gateway_host: apps.media-dev.local
   app_path_prefix: /app
-  direct_hosts:
-    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false

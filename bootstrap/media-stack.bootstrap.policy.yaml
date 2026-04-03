@@ -13,6 +13,12 @@ selected_apps_policy:
     - radarr
     - lidarr
     - readarr
+  selected_app_expansions:
+    unpackerr:
+      - sonarr
+      - radarr
+      - lidarr
+      - readarr
   arr_disable_sections_when_unselected:
     - arr_media_management
     - arr_download_handling

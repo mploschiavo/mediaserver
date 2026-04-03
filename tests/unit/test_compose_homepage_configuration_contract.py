@@ -39,6 +39,7 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         env_cfg = homepage.get("environment") or {}
         allowed_hosts = str(env_cfg.get("HOMEPAGE_ALLOWED_HOSTS") or "")
         self.assertIn("${HOMEPAGE_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
+        self.assertIn("${APP_GATEWAY_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
 
     def test_bootstrap_homepage_config_includes_homepage_and_jellyfin_entries(self):
         cfg = json.loads((ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text("utf-8"))

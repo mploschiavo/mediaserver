@@ -12,10 +12,10 @@ from typing import Any, Callable
 
 import yaml
 
+from core.platforms.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
 from core.platforms.compose.services.labels import ComposeLabelService
 from core.platforms.compose.services.runtime_artifacts import ComposeRuntimeArtifactService
 from core.platforms.compose.services.spec import ComposeSpecResolver
-from core.platforms.compose.services.traefik_dynamic_config import TraefikDynamicConfigService
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class ComposeTraefikPatchResult:
 class ComposeTraefikPatchService:
     label_service: ComposeLabelService
     spec_resolver: ComposeSpecResolver
-    dynamic_config_service: TraefikDynamicConfigService
+    dynamic_config_service: ComposeEdgeRouteGraphService
     artifacts_service: ComposeRuntimeArtifactService
     info: Callable[[str], None]
 
@@ -40,9 +40,6 @@ class ComposeTraefikPatchService:
         self,
         services: dict[str, dict[str, Any]],
     ) -> ComposeTraefikPatchResult:
-        if self.label_service.edge_router_provider() != "traefik":
-            return ComposeTraefikPatchResult(applied=False, reason="edge-provider-not-traefik")
-
         config_root = self.spec_resolver.config_root()
         if config_root is None:
             self.info("Compose Traefik patch skipped: CONFIG_ROOT/COMPOSE_CONFIG_ROOT not set.")

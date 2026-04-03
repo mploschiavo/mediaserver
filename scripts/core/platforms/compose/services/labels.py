@@ -31,6 +31,9 @@ class ComposeLabelConfig:
 class ComposeLabelService:
     cfg: ComposeLabelConfig
 
+    def provider_spec(self) -> dict[str, str]:
+        return self._edge_provider_spec()
+
     def edge_router_provider(self) -> str:
         return str(self.cfg.edge_router_provider or "").strip().lower()
 
