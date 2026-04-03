@@ -177,6 +177,21 @@ class DeployStackRunner:
                 out.append(token)
         return tuple(out)
 
+    def _edge_path_prefix_redirect_service_names(self) -> tuple[str, ...]:
+        hooks = self._edge_hooks()
+        raw = hooks.get("path_prefix_redirect_service_names")
+        if not isinstance(raw, list):
+            return ()
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
+
     def _edge_compose_provider_specs(self) -> dict[str, dict[str, str]]:
         out: dict[str, dict[str, str]] = {
             provider: dict(spec) for provider, spec in compose_label_specs_by_provider().items()

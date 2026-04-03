@@ -43,7 +43,7 @@ services:
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
-      HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_HOST}
+      HOMEPAGE_ALLOWED_HOSTS: "${HOMEPAGE_HOST},${HOMEPAGE_HOST}:80,${HOMEPAGE_HOST}:${TRAEFIK_HTTP_PORT},${HOMEPAGE_HOST}:3000,localhost,localhost:3000,127.0.0.1,127.0.0.1:3000"
     volumes:
       - ${CONFIG_ROOT}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro

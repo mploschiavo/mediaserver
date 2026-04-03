@@ -158,6 +158,50 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             "https://apps.media-dev.example.com/app/jellyseerr",
         )
 
+    def test_edge_url_policy_rewrites_compose_hosts_with_explicit_gateway_port(self):
+        cfg = {
+            "jellyseerr": {"jellyfin": {}},
+            "homepage": {
+                "hosts": ["homepage.local", "jellyfin.local", "jellyseerr.local"],
+                "device_onboarding": {},
+            },
+        }
+
+        apply_edge_url_policy(
+            cfg,
+            internet_exposed=False,
+            route_strategy="hybrid",
+            ingress_domain="media-dev.local",
+            app_gateway_host="apps.media-dev.local",
+            app_gateway_port="18080",
+            app_path_prefix="/app",
+            media_server_direct_host="jellyfin.media-dev.local",
+        )
+
+        homepage_hosts = (cfg.get("homepage") or {}).get("hosts") or []
+        self.assertEqual(
+            homepage_hosts,
+            [
+                "homepage.local:18080",
+                "jellyfin.media-dev.local:18080",
+                "apps.media-dev.local:18080/app/jellyseerr",
+            ],
+        )
+        onboarding = (cfg.get("homepage") or {}).get("device_onboarding") or {}
+        self.assertEqual(
+            onboarding.get("jellyfin_url"),
+            "http://jellyfin.media-dev.local:18080",
+        )
+        self.assertEqual(
+            onboarding.get("jellyseerr_url"),
+            "http://apps.media-dev.local:18080/app/jellyseerr",
+        )
+        jellyfin_cfg = ((cfg.get("jellyseerr") or {}).get("jellyfin")) or {}
+        self.assertEqual(
+            jellyfin_cfg.get("external_url"),
+            "http://jellyfin.media-dev.local:18080",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

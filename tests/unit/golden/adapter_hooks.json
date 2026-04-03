@@ -37,6 +37,22 @@
     "router_service_names": [
       "traefik"
     ],
+    "path_prefix_redirect_service_names": [
+      "homepage",
+      "jellyfin",
+      "jellyseerr",
+      "sonarr",
+      "radarr",
+      "lidarr",
+      "readarr",
+      "bazarr",
+      "prowlarr",
+      "qbittorrent",
+      "sabnzbd",
+      "maintainerr",
+      "tautulli",
+      "plex"
+    ],
     "media_server_service_names": [
       "jellyfin",
       "jellyfin-nvidia"

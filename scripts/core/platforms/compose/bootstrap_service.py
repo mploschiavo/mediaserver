@@ -43,6 +43,18 @@ def _decode_logs(raw: Any) -> str:
     return str(raw or "")
 
 
+def _normalize_port(value: object) -> str:
+    token = str(value or "").strip()
+    if token.startswith(":"):
+        token = token[1:]
+    if not token or not token.isdigit():
+        return ""
+    port = int(token)
+    if port < 1 or port > 65535:
+        return ""
+    return str(port)
+
+
 @dataclass(frozen=True)
 class ComposeBootstrapConfig:
     namespace: str
@@ -178,7 +190,7 @@ class ComposeBootstrapService:
             return Path(token).expanduser()
         return Path("/srv/media-stack/config")
 
-    def _prepare_runtime_config(self) -> Path:
+    def _prepare_runtime_config(self, *, compose_env: dict[str, str]) -> Path:
         payload = json.loads(self.cfg.bootstrap_config_file.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise RuntimeError(
@@ -196,6 +208,15 @@ class ComposeBootstrapService:
         hook = self._import_hook(hook_spec)
         context: dict[str, object] = {"cfg": cfg}
         context.update(dict(self.cfg.runtime_config_policy_params or {}))
+        if "app_gateway_port" not in context:
+            inferred_gateway_port = _normalize_port(
+                compose_env.get("APP_GATEWAY_PORT")
+                or compose_env.get("TRAEFIK_HTTP_PORT")
+                or compose_env.get("EDGE_HTTP_PORT")
+                or ""
+            )
+            if inferred_gateway_port:
+                context["app_gateway_port"] = inferred_gateway_port
         self._invoke_hook(
             hook,
             hook_name="apply_runtime_config_policy",
@@ -238,7 +259,7 @@ class ComposeBootstrapService:
                 "Set CONFIG_ROOT in compose env and ensure volume paths exist before bootstrap."
             )
 
-        runtime_cfg_file = self._prepare_runtime_config()
+        runtime_cfg_file = self._prepare_runtime_config(compose_env=compose_env)
         project_name = self._project_name()
         preflight_env_updates = self._run_preflight_handlers(
             compose_env=compose_env,
