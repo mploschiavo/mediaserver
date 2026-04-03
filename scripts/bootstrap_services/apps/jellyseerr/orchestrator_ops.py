@@ -36,6 +36,15 @@ def configure(
         return
 
     jellyseerr_url = svc.normalize_url(jelly_cfg.get("url", "http://jellyseerr:5055"))
+    app_auth = cfg.get("app_auth") if isinstance(cfg.get("app_auth"), dict) else {}
+    path_base = (
+        (app_auth.get("path_prefix_url_base_by_app") or {}).get("jellyseerr")
+        or (app_auth.get("url_base_by_app") or {}).get("jellyseerr")
+        or ""
+    )
+    path_base = svc.normalize_base_path(str(path_base or ""))
+    if path_base:
+        jellyseerr_url = svc.normalize_url(jellyseerr_url.rstrip("/") + path_base)
     svc.wait_for_service("Jellyseerr", jellyseerr_url, "/api/v1/status", wait_timeout)
     # Seed local admin as soon as Jellyseerr is reachable so login survives
     # downstream integration/bootstrap failures.

@@ -294,6 +294,31 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             },
         )
 
+    def test_edge_url_policy_adds_jellyseerr_path_base_when_enabled(self):
+        cfg = {
+            "app_auth": {
+                "include": ["Sonarr"],
+            },
+            "jellyseerr": {
+                "enabled": True,
+            },
+        }
+
+        apply_edge_url_policy(
+            cfg,
+            internet_exposed=False,
+            route_strategy="path-prefix",
+            ingress_domain="media-dev.local",
+            app_gateway_host="apps.media-dev.local",
+            app_gateway_port="18080",
+            app_path_prefix="/app",
+            media_server_direct_host="",
+        )
+
+        path_map = ((cfg.get("app_auth") or {}).get("path_prefix_url_base_by_app")) or {}
+        self.assertEqual(path_map.get("sonarr"), "/app/sonarr")
+        self.assertEqual(path_map.get("jellyseerr"), "/app/jellyseerr")
+
     def test_edge_url_policy_adds_maintainerr_path_base_when_enabled(self):
         cfg = {
             "app_auth": {

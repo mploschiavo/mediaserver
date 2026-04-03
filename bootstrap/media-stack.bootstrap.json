@@ -80,7 +80,8 @@
           "lidarr",
           "readarr",
           "prowlarr",
-          "maintainerr"
+          "maintainerr",
+          "jellyseerr"
         ]
       },
       "media_server_service_names": [
