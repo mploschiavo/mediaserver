@@ -14,10 +14,7 @@ try:  # pragma: no cover - import path depends on entrypoint context
     )
     from core.platform_cli_defaults_registry import resolve_platform_cli_defaults
     from core.platform_plugin_registry import normalize_platform_target
-    from core.platforms.compose.deploy_cli_options import (
-        register_compose_cli_arguments,
-        resolve_compose_file_paths,
-    )
+    from core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.core.bootstrap_profile import (
         BootstrapProfileConfig,
@@ -27,10 +24,7 @@ except ModuleNotFoundError:  # pragma: no cover
     )
     from scripts.core.platform_cli_defaults_registry import resolve_platform_cli_defaults
     from scripts.core.platform_plugin_registry import normalize_platform_target
-    from scripts.core.platforms.compose.deploy_cli_options import (
-        register_compose_cli_arguments,
-        resolve_compose_file_paths,
-    )
+    from scripts.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 
 
 @dataclass
@@ -180,62 +174,31 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
             if profile_catalog.auth_providers
             else ""
         )
-    auth_provider_help_values = ", ".join(profile_catalog.auth_providers)
 
     parser = argparse.ArgumentParser(
         prog="scripts/deploy-stack.sh",
-        description="Full automation helper for media-stack deployment and bootstrap.",
-    )
-    parser.add_argument("node_ip", nargs="?", default=None)
-    parser.add_argument("--bootstrap-profile-file", default=None)
-    parser.add_argument(
-        "--platform-target",
-        default=None,
-        help=(
-            "Runtime deployment target (k8s or compose). " "Compose uses Docker SDK orchestration."
-        ),
-    )
-    parser.add_argument("--namespace", default=None)
-    parser.add_argument("--ingress-domain", default=None)
-    parser.add_argument("--storage-class", default=None)
-    register_compose_cli_arguments(parser)
-    parser.add_argument(
-        "--selected-apps",
-        default=None,
-        help="Comma-separated service/app list to install/enable (e.g. media-server,indexer,request-ui).",
-    )
-    parser.add_argument(
-        "--route-strategy",
-        default=None,
-        help="Edge routing strategy: subdomain, path-prefix, or hybrid.",
-    )
-    parser.add_argument(
-        "--auth-provider",
-        default=None,
-        help=(
-            "External auth provider key "
-            f"(configured catalog values: {auth_provider_help_values})."
+        description=(
+            "Deploy and bootstrap the media stack. "
+            "All deployment settings are sourced from the bootstrap profile YAML. "
+            "See examples/bootstrap-profiles/ for reference profiles."
         ),
     )
     parser.add_argument(
-        "--edge-router-provider",
+        "node_ip",
+        nargs="?",
         default=None,
-        help="Edge routing provider key (for example traefik or envoy).",
+        metavar="NODE_IP",
+        help="Cluster/host node IP (k8s only). Falls back to NODE_IP env var.",
     )
     parser.add_argument(
-        "--app-gateway-host",
+        "--bootstrap-profile-file",
         default=None,
-        help="Gateway host for path-prefix/hybrid routing (e.g. apps.stack.domain.tld).",
-    )
-    parser.add_argument(
-        "--app-path-prefix",
-        default=None,
-        help="Path prefix root for gateway routing (default /app).",
-    )
-    parser.add_argument(
-        "--media-server-direct-host",
-        default=None,
-        help="Direct media-server host for native device clients.",
+        metavar="FILE",
+        help=(
+            "Path to a bootstrap profile YAML (see examples/bootstrap-profiles/). "
+            "Falls back to BOOTSTRAP_PROFILE_FILE env var or "
+            "bootstrap/media-stack.bootstrap.yaml if present."
+        ),
     )
     parsed = parser.parse_args(argv)
 
@@ -245,8 +208,8 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
     )
     profile = maybe_load_bootstrap_profile(profile_path)
     profile_defaults = _resolve_profile_defaults(profile)
+
     requested_platform_target = _pick(
-        parsed.platform_target,
         _env_value("PLATFORM_TARGET"),
         profile_defaults.get("platform_target"),
         default="k8s",
@@ -262,8 +225,8 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
     )
 
     compose_file, compose_env_file = resolve_compose_file_paths(
-        parsed_compose_file=parsed.compose_file,
-        parsed_compose_env_file=parsed.compose_env_file,
+        parsed_compose_file=None,
+        parsed_compose_env_file=None,
         env_compose_file=_env_value("COMPOSE_FILE"),
         env_compose_env_file=_env_value("COMPOSE_ENV_FILE"),
         default_compose_file=default_compose_file,
@@ -271,7 +234,6 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
     )
     selected_apps = normalize_selected_apps_csv(
         _pick(
-            parsed.selected_apps,
             _env_value("SELECTED_APPS"),
             profile_defaults.get("selected_apps"),
             default="",
@@ -282,7 +244,6 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         root_dir=root_dir,
         platform_target=platform_target,
         namespace=_pick(
-            parsed.namespace,
             _env_value("NAMESPACE"),
             profile_defaults.get("namespace"),
             default="media-stack",
@@ -317,9 +278,8 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         skip_prepare_host=_pick(_env_value("SKIP_PREPARE_HOST"), default="0"),
         prepare_host_root=_pick(_env_value("PREPARE_HOST_ROOT"), default="/srv/media-stack"),
         storage_mode=_pick(_env_value("STORAGE_MODE"), default="dynamic-pvc"),
-        pvc_storage_class=_pick(parsed.storage_class, _env_value("PVC_STORAGE_CLASS"), default=""),
+        pvc_storage_class=_pick(_env_value("PVC_STORAGE_CLASS"), default=""),
         ingress_domain=_pick(
-            parsed.ingress_domain,
             _env_value("INGRESS_DOMAIN"),
             profile_defaults.get("ingress_domain"),
             default="local",
@@ -343,16 +303,11 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         compose_file=compose_file,
         compose_env_file=compose_env_file,
         compose_project_name=_pick(
-            parsed.compose_project_name,
             _env_value("COMPOSE_PROJECT_NAME"),
             profile_defaults.get("compose_project_name"),
             default="",
         ),
-        compose_profiles=_pick(
-            parsed.compose_profiles,
-            _env_value("COMPOSE_PROFILES"),
-            default="",
-        ),
+        compose_profiles=_pick(_env_value("COMPOSE_PROFILES"), default=""),
         bootstrap_runner_image=_pick(
             _env_value("BOOTSTRAP_RUNNER_IMAGE"),
             default="192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
@@ -379,7 +334,6 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
             default="0",
         ),
         route_strategy=_pick(
-            parsed.route_strategy,
             _env_value("ROUTE_STRATEGY"),
             profile_defaults.get("route_strategy"),
             default=default_route_strategy,
@@ -387,27 +341,23 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         .strip()
         .lower(),
         app_gateway_host=_pick(
-            parsed.app_gateway_host,
             _env_value("APP_GATEWAY_HOST"),
             profile_defaults.get("app_gateway_host"),
             default="",
         ),
         app_path_prefix=_normalize_path_prefix(
             _pick(
-                parsed.app_path_prefix,
                 _env_value("APP_PATH_PREFIX"),
                 profile_defaults.get("app_path_prefix"),
                 default="/app",
             )
         ),
         media_server_direct_host=_pick(
-            parsed.media_server_direct_host,
             _env_value("MEDIA_SERVER_DIRECT_HOST"),
             profile_defaults.get("media_server_direct_host"),
             default="",
         ),
         auth_provider=_pick(
-            parsed.auth_provider,
             _env_value("AUTH_PROVIDER"),
             profile_defaults.get("auth_provider"),
             default=default_auth_provider,
@@ -420,7 +370,6 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
             default="",
         ),
         edge_router_provider=_pick(
-            parsed.edge_router_provider,
             _env_value("EDGE_ROUTER_PROVIDER"),
             profile_defaults.get("edge_router_provider"),
             default="",
