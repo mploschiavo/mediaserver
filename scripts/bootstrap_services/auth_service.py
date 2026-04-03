@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -16,6 +17,72 @@ class AuthService:
     http_request: HttpRequestFn
     log: LogFn
     bool_cfg: BoolCfgFn
+
+    @staticmethod
+    def _tokenize(value: object) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+    @staticmethod
+    def _normalize_url_base(value: object) -> str:
+        token = str(value or "").strip()
+        if not token:
+            return ""
+        if not token.startswith("/"):
+            token = f"/{token}"
+        if token != "/":
+            token = token.rstrip("/")
+        return token
+
+    def _lookup_url_base_from_map(
+        self,
+        mapping: dict[str, Any],
+        *,
+        app_name: str,
+        implementation: str,
+    ) -> str:
+        if not isinstance(mapping, dict):
+            return ""
+        lookup_keys = (
+            str(app_name or "").strip(),
+            str(implementation or "").strip(),
+            str(app_name or "").strip().lower(),
+            str(implementation or "").strip().lower(),
+        )
+        for key in lookup_keys:
+            value = mapping.get(key)
+            if value is not None:
+                return self._normalize_url_base(value)
+
+        app_token = self._tokenize(app_name)
+        impl_token = self._tokenize(implementation)
+        for raw_key, raw_value in mapping.items():
+            key_token = self._tokenize(raw_key)
+            if key_token and key_token in {app_token, impl_token}:
+                return self._normalize_url_base(raw_value)
+        return ""
+
+    def _resolve_url_base(
+        self,
+        auth_cfg: dict[str, Any],
+        *,
+        app_name: str,
+        implementation: str,
+    ) -> str:
+        for map_key in ("url_base_by_app", "path_prefix_url_base_by_app"):
+            raw_map = auth_cfg.get(map_key)
+            if not isinstance(raw_map, dict):
+                continue
+            value = self._lookup_url_base_from_map(
+                raw_map,
+                app_name=app_name,
+                implementation=implementation,
+            )
+            if value or any(
+                self._tokenize(k) in {self._tokenize(app_name), self._tokenize(implementation)}
+                for k in raw_map
+            ):
+                return value
+        return ""
 
     def auth_scope_matches(
         self, auth_cfg: dict[str, Any], app_name: str, implementation: str
@@ -60,6 +127,18 @@ class AuthService:
 
         desired = dict(current)
         changed = False
+
+        desired_url_base = self._resolve_url_base(
+            auth_cfg,
+            app_name=app_name,
+            implementation=implementation,
+        )
+        if desired_url_base or "urlBase" in desired or "UrlBase" in desired:
+            for key in ("urlBase", "UrlBase"):
+                current_value = self._normalize_url_base(desired.get(key))
+                if current_value != desired_url_base:
+                    desired[key] = desired_url_base
+                    changed = True
 
         if str(desired.get("authenticationMethod")) != method:
             desired["authenticationMethod"] = method

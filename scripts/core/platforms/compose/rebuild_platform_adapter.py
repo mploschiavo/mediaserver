@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import socket
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from core.platform_adapter import InfoFn, PlatformEnvironmentRef
 from core.platforms.compose.docker_client import DockerClient
@@ -42,6 +45,7 @@ class ComposeRebuildPlatformConfig:
     edge_router_provider: str = ""
     edge_router_service_names: tuple[str, ...] = ()
     edge_path_prefix_redirect_service_names: tuple[str, ...] = ()
+    edge_path_prefix_preserve_service_names: tuple[str, ...] = ()
     edge_compose_provider_specs: dict[str, dict[str, str]] = field(default_factory=dict)
     auth_provider_middleware_defaults: dict[str, str] = field(default_factory=dict)
     media_server_service_names: tuple[str, ...] = ()
@@ -66,6 +70,40 @@ class ComposeRebuildPlatformAdapter:
     edge_http_smoke_service: ComposeEdgeHttpSmokeService = field(init=False, repr=False)
     edge_runtime_patchers: dict[str, ComposeEdgeRuntimePatchFn] = field(init=False, repr=False)
 
+    @staticmethod
+    def _service_env_token(service_name: str) -> str:
+        return re.sub(r"[^A-Za-z0-9]+", "_", str(service_name or "").strip()).strip("_").upper()
+
+    def _path_prefix_service_env_overrides(self) -> dict[str, str]:
+        strategy = str(self.cfg.route_strategy or "").strip().lower()
+        use_prefix_paths = strategy in {"path-prefix", "hybrid"}
+
+        app_prefix = str(self.cfg.app_path_prefix or "").strip() or "/app"
+        if not app_prefix.startswith("/"):
+            app_prefix = f"/{app_prefix}"
+        app_prefix = app_prefix.rstrip("/") or "/app"
+
+        try:
+            raw_payload = yaml.safe_load(self.cfg.compose_file.read_text(encoding="utf-8"))
+        except Exception:
+            raw_payload = {}
+        services = dict((raw_payload or {}).get("services") or {})
+
+        overrides: dict[str, str] = {}
+        for raw_service_name in services.keys():
+            service_name = str(raw_service_name or "").strip()
+            if not service_name:
+                continue
+            token = self._service_env_token(service_name)
+            if not token:
+                continue
+            key = f"{token}_BASE_PATH"
+            if use_prefix_paths:
+                overrides[key] = f"{app_prefix}/{service_name}".replace("//", "/")
+            else:
+                overrides[key] = ""
+        return overrides
+
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
@@ -87,6 +125,7 @@ class ComposeRebuildPlatformAdapter:
                 "APP_GATEWAY_HOST": str(self.cfg.app_gateway_host or "").strip(),
                 "APP_PATH_PREFIX": str(self.cfg.app_path_prefix or "").strip(),
                 "MEDIA_SERVER_DIRECT_HOST": str(self.cfg.media_server_direct_host or "").strip(),
+                **self._path_prefix_service_env_overrides(),
             },
         )
         self.label_service = ComposeLabelService(
@@ -108,6 +147,9 @@ class ComposeRebuildPlatformAdapter:
                 media_server_service_names=tuple(self.cfg.media_server_service_names or ()),
                 path_prefix_redirect_service_names=tuple(
                     self.cfg.edge_path_prefix_redirect_service_names or ()
+                ),
+                path_prefix_preserve_service_names=tuple(
+                    self.cfg.edge_path_prefix_preserve_service_names or ()
                 ),
             )
         )
@@ -147,6 +189,28 @@ class ComposeRebuildPlatformAdapter:
 
     def _load_compose_spec(self) -> dict[str, Any]:
         return self.spec_resolver.load_compose_spec()
+
+    def _validate_compose_environment_contract(self) -> None:
+        compose_text = self.cfg.compose_file.read_text(encoding="utf-8", errors="replace")
+        compose_env = self.spec_resolver.compose_environment()
+        required_keys: list[str] = []
+        for key in ("CONFIG_ROOT", "MEDIA_ROOT", "DATA_ROOT"):
+            if f"${{{key}}}" in compose_text or f"${{COMPOSE_{key}}}" in compose_text:
+                required_keys.append(key)
+        missing = [key for key in required_keys if not str(compose_env.get(key) or "").strip()]
+        if not missing:
+            return
+        env_file_hint = (
+            str(self.cfg.compose_env_file)
+            if self.cfg.compose_env_file is not None
+            else "<unset compose env file>"
+        )
+        raise RuntimeError(
+            "Compose environment is missing required variables: "
+            + ", ".join(missing)
+            + ". Configure these in your compose env file and rerun deploy. "
+            f"(compose_env_file={env_file_hint})"
+        )
 
     def _selected_services(self, services: dict[str, Any]) -> dict[str, dict[str, Any]]:
         return self.spec_resolver.selected_services(services)
@@ -235,6 +299,7 @@ class ComposeRebuildPlatformAdapter:
 
     def apply_environment_definition(self) -> None:
         self.docker.ping()
+        self._validate_compose_environment_contract()
         compose = self._load_compose_spec()
         self.artifacts_service.write_yaml_artifact(
             "resolved/docker-compose.expanded.yaml",

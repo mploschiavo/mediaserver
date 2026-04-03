@@ -90,7 +90,7 @@ bash scripts/deploy-stack.sh --bootstrap-profile-file bootstrap/media-stack.boot
 - Compose target:
   - Runtime deploy/rebuild is compose-spec + Docker SDK driven.
   - Route strategy supports subdomain, path-prefix, or hybrid patterns through adapter-managed labels.
-  - Auth provider wiring stubs support `authelia` / `authentik` middleware references.
+  - Auth provider runtime is pluggable (`none`, `authelia`, `authentik`) with provider-local compose services and middleware defaults.
   - Jellyfin direct-host routing remains available for native TV/mobile clients.
   - Kubernetes bootstrap job/CronJob reconciliation is not used.
 

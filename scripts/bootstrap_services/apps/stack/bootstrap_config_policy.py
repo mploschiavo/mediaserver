@@ -143,6 +143,43 @@ def _policy_list(policy: dict[str, Any], key: str) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _section_enabled(cfg: dict[str, object], path: str) -> bool:
+    section = _walk_path(cfg, path)
+    if not isinstance(section, dict):
+        return False
+    if "enabled" not in section:
+        return False
+    return bool(section.get("enabled"))
+
+
+def _path_prefix_url_base_tokens(cfg: dict[str, object], include_values: list[Any]) -> set[str]:
+    tokens: set[str] = set()
+    for item in include_values:
+        token = _tokenize(str(item or ""))
+        if token:
+            tokens.add(token)
+
+    policy = _selected_apps_policy_cfg()
+    app_toggle_sections = _policy_map(policy, "app_toggle_sections")
+    for app_token, section_path in app_toggle_sections.items():
+        if _section_enabled(cfg, section_path):
+            tokens.add(app_token)
+
+    arr_allowed = _policy_set(policy, "arr_app_keys")
+    arr_apps = cfg.get("arr_apps")
+    if isinstance(arr_apps, list):
+        for entry in arr_apps:
+            if not isinstance(entry, dict):
+                continue
+            enabled = entry.get("enabled")
+            if enabled is not None and not bool(enabled):
+                continue
+            token = _tokenize(str(entry.get("implementation") or entry.get("name") or ""))
+            if token and token in arr_allowed:
+                tokens.add(token)
+    return tokens
+
+
 def _normalize_prefix(value: str) -> str:
     token = str(value or "").strip()
     if not token:
@@ -247,11 +284,20 @@ def _homepage_direct_host(value: str, *, internet_exposed: bool, ingress: str, t
     return host
 
 
+def _path_prefix_url_base(token: str, prefix: str) -> str:
+    app_token = _tokenize(token)
+    if not app_token:
+        return ""
+    normalized_prefix = _normalize_prefix(prefix)
+    return f"{normalized_prefix}/{app_token}"
+
+
 def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str) -> None:
     policy = _selected_apps_policy_cfg()
     app_toggle_sections = _policy_map(policy, "app_toggle_sections")
     arr_app_keys = _policy_set(policy, "arr_app_keys")
     selected_app_expansions = _policy_map_of_sets(policy, "selected_app_expansions")
+    homepage_host_reserved_tokens = _policy_set(policy, "homepage_host_reserved_tokens")
     arr_disable_sections = _policy_list(policy, "arr_disable_sections_when_unselected")
     arr_discovery_reserved_keys = _policy_set(policy, "arr_discovery_reserved_keys")
     jellyfin_disable_sections = _policy_list(policy, "jellyfin_disable_sections_when_unselected")
@@ -275,6 +321,21 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
                 selected.add(expanded)
                 pending.append(expanded)
     selected_arr = bool(arr_app_keys.intersection(selected))
+
+    homepage_cfg = cfg.get("homepage")
+    if isinstance(homepage_cfg, dict):
+        hosts = homepage_cfg.get("hosts")
+        if isinstance(hosts, list):
+            filtered_hosts: list[str] = []
+            for raw_host in hosts:
+                host_text = str(raw_host or "").strip()
+                if not host_text:
+                    continue
+                token = _homepage_host_token(host_text)
+                if token and token not in selected and token not in homepage_host_reserved_tokens:
+                    continue
+                filtered_hosts.append(host_text)
+            homepage_cfg["hosts"] = filtered_hosts
 
     for app_key, section_key in app_toggle_sections.items():
         _set_enabled(cfg.get(section_key), app_key in selected)
@@ -447,6 +508,16 @@ def apply_edge_url_policy(
             if jellyfin_public:
                 jellyfin_cfg["external_url"] = jellyfin_public
 
+    app_auth_cfg = cfg.get("app_auth")
+    if isinstance(app_auth_cfg, dict):
+        include = app_auth_cfg.get("include")
+        include_values = include if isinstance(include, list) else []
+        path_prefix_url_bases: dict[str, str] = {}
+        if strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
+            for token in sorted(_path_prefix_url_base_tokens(cfg, include_values)):
+                path_prefix_url_bases[token] = _path_prefix_url_base(token, prefix)
+        app_auth_cfg["path_prefix_url_base_by_app"] = path_prefix_url_bases
+
     homepage_cfg = cfg.get("homepage")
     if not isinstance(homepage_cfg, dict):
         return
@@ -472,7 +543,7 @@ def apply_edge_url_policy(
             token = _homepage_host_token(str(raw_host or ""))
             if not token:
                 continue
-            if token == "jellyfin" and direct_host_with_port:
+            if token == "jellyfin" and direct_host_with_port and strategy == "hybrid":
                 rewritten_hosts.append(direct_host_with_port)
                 continue
             if token == "homepage" and strategy == "hybrid":
@@ -491,7 +562,7 @@ def apply_edge_url_policy(
                 rewritten_hosts.append(_host_with_port(homepage_host, port=public_port))
                 continue
             rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
-        if direct_host_with_port:
+        if direct_host_with_port and strategy == "hybrid":
             rewritten_hosts.append(direct_host_with_port)
     else:
         for raw_host in hosts:

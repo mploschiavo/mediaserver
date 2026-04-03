@@ -84,6 +84,38 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             runner = DeployStackRunner(cfg=cfg)
             self.assertEqual(runner._edge_router_service_names(), ("envoy",))
 
+    def test_path_prefix_preserve_service_names_can_be_selected_by_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(
+                root_dir,
+                router_provider="envoy",
+                edge_hook_overrides={
+                    "path_prefix_preserve_service_names_by_provider": {
+                        "traefik": [],
+                        "envoy": ["sonarr", "radarr", "prowlarr"],
+                    }
+                },
+            )
+            runner = DeployStackRunner(cfg=cfg)
+            self.assertEqual(
+                runner._edge_path_prefix_preserve_service_names(),
+                ("sonarr", "radarr", "prowlarr"),
+            )
+
+    def test_selected_apps_include_auth_provider_services_for_compose(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root_dir = Path(tmp)
+            cfg = self._cfg(root_dir, router_provider="envoy")
+            cfg.auth_provider = "authelia"
+            cfg.selected_apps = "jellyfin,homepage,envoy"
+            runner = DeployStackRunner(cfg=cfg)
+            selected = set(runner._selected_apps())
+            self.assertIn("jellyfin", selected)
+            self.assertIn("homepage", selected)
+            self.assertIn("envoy", selected)
+            self.assertIn("authelia", selected)
+
 
 if __name__ == "__main__":
     unittest.main()

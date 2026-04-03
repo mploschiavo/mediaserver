@@ -72,6 +72,17 @@
         ],
         "envoy": []
       },
+      "path_prefix_preserve_service_names_by_provider": {
+        "traefik": [],
+        "envoy": [
+          "sonarr",
+          "radarr",
+          "lidarr",
+          "readarr",
+          "prowlarr",
+          "maintainerr"
+        ]
+      },
       "media_server_service_names": [
         "jellyfin",
         "jellyfin-nvidia"
@@ -967,7 +978,10 @@
           "127.0.0.1/32",
           "::1/128"
         ],
-        "allow_open_world": false
+        "allow_open_world": false,
+        "host_header_validation_enabled": false,
+        "reverse_proxy_support_enabled": true,
+        "csrf_protection_enabled": false
       },
       "default_save_path": "/data/torrents/completed",
       "temp_path": "/data/torrents/incomplete",
@@ -1085,6 +1099,19 @@
       "api_key_env": "SABNZBD_API_KEY",
       "api_key_config_path": "sabnzbd/sabnzbd.ini",
       "api_key_required": false,
+      "seed_placeholder_server_if_empty": true,
+      "placeholder_server": {
+        "name": "bootstrap-placeholder",
+        "displayname": "Bootstrap Placeholder",
+        "host": "news.invalid",
+        "port": 119,
+        "connections": 1,
+        "ssl": false,
+        "enable": false,
+        "required": false,
+        "optional": true,
+        "notes": "Bootstrap placeholder server to bypass startup wizard"
+      },
       "remote_path_mappings": [
         {
           "host": "sabnzbd",
@@ -1132,6 +1159,8 @@
     "scheme": "http",
     "services_relative_path": "homepage/services.yaml",
     "hosts": [
+      "traefik.local",
+      "envoy.local",
       "homepage.local",
       "jellyfin.local",
       "jellyseerr.local",
@@ -1144,7 +1173,11 @@
       "qbittorrent.local",
       "sabnzbd.local",
       "maintainerr.local",
-      "tautulli.local"
+      "tautulli.local",
+      "flaresolverr.local",
+      "recyclarr.local",
+      "authelia.local",
+      "authentik.local"
     ],
     "device_onboarding": {
       "enabled": true,
@@ -1221,6 +1254,7 @@
     "url": "http://jellyseerr:5055",
     "enforce_settings_file": true,
     "set_media_server_type_jellyfin": true,
+    "enable_media_server_login": false,
     "radarr": {
       "enabled": true,
       "name": "Radarr",

@@ -142,6 +142,17 @@ def _compose_text_with_unpackerr_placeholder_key() -> str:
     )
 
 
+def _compose_text_with_service_base_path_env() -> str:
+    return (
+        "services:\n"
+        "  maintainerr:\n"
+        "    image: ghcr.io/example/maintainerr:latest\n"
+        "    container_name: maintainerr\n"
+        "    environment:\n"
+        "      BASE_PATH: ${MAINTAINERR_BASE_PATH}\n"
+    )
+
+
 class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
     def _adapter(
         self,
@@ -161,6 +172,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
         edge_router_provider: str = "traefik",
         edge_router_service_names: tuple[str, ...] = ("traefik",),
         edge_path_prefix_redirect_service_names: tuple[str, ...] = ("homepage",),
+        edge_path_prefix_preserve_service_names: tuple[str, ...] = (),
         edge_compose_provider_specs: dict[str, dict[str, str]] | None = None,
         runtime_artifacts_dir: Path | None = None,
     ) -> ComposeRebuildPlatformAdapter:
@@ -185,6 +197,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 edge_router_provider=edge_router_provider,
                 edge_router_service_names=edge_router_service_names,
                 edge_path_prefix_redirect_service_names=edge_path_prefix_redirect_service_names,
+                edge_path_prefix_preserve_service_names=edge_path_prefix_preserve_service_names,
                 edge_compose_provider_specs=dict(
                     edge_compose_provider_specs
                     or {
@@ -315,6 +328,85 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
             self.assertNotIn(
                 "authelia@docker",
                 jellyfin_labels.get("traefik.http.routers.jellyfin.middlewares", ""),
+            )
+
+    def test_apply_environment_definition_can_preserve_path_prefix_for_selected_services(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text_with_edge_labels(), encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                docker=docker,
+                route_strategy="path-prefix",
+                app_gateway_host="apps.media-dev.example.com",
+                edge_path_prefix_preserve_service_names=("sonarr",),
+            )
+
+            adapter.apply_environment_definition()
+
+            call_kwargs = [call.kwargs for call in docker.create_container.call_args_list]
+            sonarr_labels = {}
+            for kwargs in call_kwargs:
+                if kwargs.get("name") == "sonarr":
+                    sonarr_labels = dict(kwargs.get("labels") or {})
+
+            self.assertEqual(
+                sonarr_labels.get("traefik.http.routers.sonarr-path.rule"),
+                "Host(`apps.media-dev.example.com`) && PathPrefix(`/app/sonarr`)",
+            )
+            self.assertNotIn(
+                "traefik.http.middlewares.sonarr-stripprefix.stripprefix.prefixes",
+                sonarr_labels,
+            )
+            self.assertNotIn(
+                "sonarr-stripprefix",
+                sonarr_labels.get("traefik.http.routers.sonarr-path.middlewares", ""),
+            )
+
+    def test_apply_environment_definition_sets_service_base_path_env_for_path_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text_with_service_base_path_env(), encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                docker=docker,
+                route_strategy="path-prefix",
+                app_gateway_host="apps.media-dev.example.com",
+            )
+
+            adapter.apply_environment_definition()
+
+            create_kwargs = docker.create_container.call_args.kwargs
+            self.assertEqual(
+                (create_kwargs.get("environment") or {}).get("BASE_PATH"),
+                "/app/maintainerr",
+            )
+
+    def test_apply_environment_definition_clears_service_base_path_env_for_subdomain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose_file = Path(tmp) / "docker-compose.yml"
+            compose_file.write_text(_compose_text_with_service_base_path_env(), encoding="utf-8")
+            container = mock.Mock()
+            docker = mock.Mock()
+            docker.create_container.return_value = container
+            adapter = self._adapter(
+                compose_file=compose_file,
+                docker=docker,
+                route_strategy="subdomain",
+            )
+
+            adapter.apply_environment_definition()
+
+            create_kwargs = docker.create_container.call_args.kwargs
+            self.assertEqual(
+                (create_kwargs.get("environment") or {}).get("BASE_PATH"),
+                "",
             )
 
     def test_wait_for_workloads_succeeds_when_running_and_healthy(self):

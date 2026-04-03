@@ -51,7 +51,9 @@ Notes:
 - Services with `profiles:` are skipped unless selected via `--compose-profiles` / `COMPOSE_PROFILES`.
 - `install` toggles from bootstrap profile map to `selected_apps` filtering for Compose deployment.
 - Path-prefix and hybrid route strategies can publish browser apps under one gateway host (for example `/app/sonarr`) while keeping Jellyfin direct-host routing for TV/mobile clients.
-- `AUTH_PROVIDER` supports `none`, `authelia`, and `authentik` middleware wiring stubs in Compose labels.
+- `AUTH_PROVIDER` supports `none`, `authelia`, and `authentik`.
+  - provider services are selected automatically for compose runtime (`authelia`, `authentik`, `authentik-worker`)
+  - Traefik middleware defaults remain declarative (`authelia@docker`, `authentik@docker`)
 - `run_bootstrap` is forced off for non-Kubernetes targets.
 - Local browser access depends on your Traefik host-port binding (`TRAEFIK_HTTP_PORT`).
   - with default local compose env (`TRAEFIK_HTTP_PORT=18080`), Homepage is `http://apps.media-dev.local:18080/app/homepage`
@@ -59,10 +61,19 @@ Notes:
 - Traefik patching is automatic for Compose target when edge provider is `traefik`:
   - runtime patch file: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
   - replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
-  - implementation owner: `scripts/core/platforms/compose/services/traefik_patch_service.py`
-- `envoy` is available as a pluggable edge-provider stub for Compose discovery/validation.
-  - current stub behavior: no compose label rewrites and no Traefik dynamic-file patch generation
+  - implementation owner: `scripts/core/platforms/compose/edge/providers/traefik/patch_service.py`
+- Envoy is available as a first-class compose edge provider:
+  - runtime patch file: `${CONFIG_ROOT}/envoy/envoy.yaml`
+  - replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/envoy.runtime.yaml`
+  - implementation owner: `scripts/core/platforms/compose/edge/providers/envoy/patch_service.py`
   - selection source precedence: `--edge-router-provider` / `EDGE_ROUTER_PROVIDER` / `routing.provider` / `adapter_hooks.edge.router_provider`
+
+Auth provider notes:
+- `authelia` service defaults are seeded from `config/defaults/compose/auth/authelia/` on first start.
+- `authentik` uses the official compose server/worker + PostgreSQL pattern.
+- Google IdP is configured manually in provider UI/config after first start:
+  - Authentik: configure Google social login source + login flow binding.
+  - Authelia: update `${CONFIG_ROOT}/authelia/configuration.yml` to match your upstream federation design.
 
 See also:
 - [Bootstrap Profile](bootstrap-profile.md)

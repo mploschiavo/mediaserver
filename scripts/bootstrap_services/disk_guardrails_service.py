@@ -48,13 +48,23 @@ class DiskGuardrailsService:
             return
 
         monitor_path = str(guard_cfg.get("monitor_path") or "").strip()
+        if monitor_path and not Path(monitor_path).exists():
+            self.log(
+                "[WARN] Disk guardrails: configured monitor path does not exist; "
+                f"resolving fallback path (configured={monitor_path})."
+            )
+            monitor_path = ""
         if not monitor_path:
             candidates = [
                 str(os.environ.get("DISK_GUARDRAILS_MONITOR_PATH", "")).strip(),
+                str(os.environ.get("STACK_ROOT", "")).strip(),
+                str(Path("/srv-stack")),
                 str(Path("/srv-stack/media")),
+                str(Path("/srv-stack/data")),
                 str(Path("/srv-stack/data/torrents")),
                 str(Path("/srv-stack/data/usenet")),
-                str(Path("/srv-stack")),
+                str(os.environ.get("MEDIA_ROOT", "")).strip(),
+                str(os.environ.get("DATA_ROOT", "")).strip(),
                 str(config_root),
             ]
             for candidate in candidates:

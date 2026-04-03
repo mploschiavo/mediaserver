@@ -9,7 +9,9 @@ from bootstrap_lib.homepage import render_services_yaml as _lib_render_homepage_
 from bootstrap_services.runtime_platform import (
     bool_cfg,
     coerce_list,
+    http_request,
     log,
+    normalize_url,
     resolve_app_service_class,
     resolve_path,
 )
@@ -32,7 +34,30 @@ def _homepage_service(_cfg=None) -> HomepageService:
 
 
 def ensure_homepage_services_config(cfg, config_root):
-    return _homepage_service(cfg).ensure_services_config(cfg, config_root)
+    changed = _homepage_service(cfg).ensure_services_config(cfg, config_root)
+    if not changed:
+        return False
+
+    homepage_cfg = cfg.get("homepage") or {}
+    homepage_url = normalize_url(str(homepage_cfg.get("url") or "http://homepage:3000"))
+    try:
+        status, _, body = http_request(homepage_url, "/api/revalidate", timeout=15)
+    except Exception as exc:
+        log(
+            "[WARN] Homepage: services config changed but failed to trigger runtime revalidate "
+            f"({exc})."
+        )
+        return True
+
+    if 200 <= int(status) < 300:
+        log("[OK] Homepage: runtime cache revalidated after services config update.")
+        return True
+
+    log(
+        "[WARN] Homepage: services config changed but runtime revalidate returned "
+        f"HTTP {status}: {body}"
+    )
+    return True
 
 
 __all__ = ["ensure_homepage_services_config"]

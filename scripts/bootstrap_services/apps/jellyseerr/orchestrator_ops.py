@@ -11,6 +11,7 @@ from .api_ops import (
     ensure_sonarr,
 )
 from .file_ops import configure_via_settings_file
+from .local_admin_ops import ensure_local_admin_user
 
 
 def permission_error(exc: Exception) -> bool:
@@ -36,6 +37,9 @@ def configure(
 
     jellyseerr_url = svc.normalize_url(jelly_cfg.get("url", "http://jellyseerr:5055"))
     svc.wait_for_service("Jellyseerr", jellyseerr_url, "/api/v1/status", wait_timeout)
+    # Seed local admin as soon as Jellyseerr is reachable so login survives
+    # downstream integration/bootstrap failures.
+    ensure_local_admin_user(svc, cfg, config_root)
 
     jellyseerr_key = svc.read_jellyseerr_api_key(config_root, wait_timeout)
     radarr_app = svc.get_arr_app(arr_apps, "Radarr")

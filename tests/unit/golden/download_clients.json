@@ -20,7 +20,10 @@
         "127.0.0.1/32",
         "::1/128"
       ],
-      "allow_open_world": false
+      "allow_open_world": false,
+      "host_header_validation_enabled": false,
+      "reverse_proxy_support_enabled": true,
+      "csrf_protection_enabled": false
     },
     "default_save_path": "/data/torrents/completed",
     "temp_path": "/data/torrents/incomplete",
@@ -138,6 +141,19 @@
     "api_key_env": "SABNZBD_API_KEY",
     "api_key_config_path": "sabnzbd/sabnzbd.ini",
     "api_key_required": false,
+    "seed_placeholder_server_if_empty": true,
+    "placeholder_server": {
+      "name": "bootstrap-placeholder",
+      "displayname": "Bootstrap Placeholder",
+      "host": "news.invalid",
+      "port": 119,
+      "connections": 1,
+      "ssl": false,
+      "enable": false,
+      "required": false,
+      "optional": true,
+      "notes": "Bootstrap placeholder server to bypass startup wizard"
+    },
     "remote_path_mappings": [
       {
         "host": "sabnzbd",

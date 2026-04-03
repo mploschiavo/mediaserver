@@ -190,6 +190,28 @@ class ComposeBootstrapService:
             return Path(token).expanduser()
         return Path("/srv/media-stack/config")
 
+    def _resolve_stack_root(self, compose_env: dict[str, str]) -> Path | None:
+        explicit = str(compose_env.get("STACK_ROOT") or "").strip()
+        if explicit:
+            return Path(explicit).expanduser()
+
+        media_root = str(compose_env.get("MEDIA_ROOT") or "").strip()
+        data_root = str(compose_env.get("DATA_ROOT") or "").strip()
+        if not media_root or not data_root:
+            return None
+
+        media_path = Path(media_root).expanduser()
+        data_path = Path(data_root).expanduser()
+        try:
+            common = Path(os.path.commonpath([str(media_path), str(data_path)]))
+        except Exception:
+            return None
+        if not str(common).strip() or str(common) == "/":
+            return None
+        if media_path == common / "media" and data_path == common / "data":
+            return common
+        return None
+
     def _prepare_runtime_config(self, *, compose_env: dict[str, str]) -> Path:
         payload = json.loads(self.cfg.bootstrap_config_file.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
@@ -258,6 +280,9 @@ class ComposeBootstrapService:
                 f"Compose config root does not exist: {config_root}. "
                 "Set CONFIG_ROOT in compose env and ensure volume paths exist before bootstrap."
             )
+        stack_root = self._resolve_stack_root(compose_env)
+        if stack_root is not None:
+            stack_root.mkdir(parents=True, exist_ok=True)
 
         runtime_cfg_file = self._prepare_runtime_config(compose_env=compose_env)
         project_name = self._project_name()
@@ -285,6 +310,13 @@ class ComposeBootstrapService:
                 bootstrap_env[key] = token
         for key, value in preflight_env_updates.items():
             bootstrap_env[str(key)] = str(value)
+        volumes: dict[str, dict[str, str]] = {
+            str(runtime_cfg_file): {"bind": "/bootstrap/config.json", "mode": "ro"},
+            str(config_root): {"bind": "/srv-config", "mode": "rw"},
+        }
+        if stack_root is not None:
+            volumes[str(stack_root)] = {"bind": "/srv-stack", "mode": "rw"}
+            bootstrap_env.setdefault("DISK_GUARDRAILS_MONITOR_PATH", "/srv-stack")
 
         self.info(
             "Compose bootstrap: running bootstrap-apps via bootstrap-runner container "
@@ -310,10 +342,7 @@ class ComposeBootstrapService:
                 name=container_name,
                 detach=True,
                 network=network_name,
-                volumes={
-                    str(runtime_cfg_file): {"bind": "/bootstrap/config.json", "mode": "ro"},
-                    str(config_root): {"bind": "/srv-config", "mode": "rw"},
-                },
+                volumes=volumes,
                 environment=bootstrap_env,
                 labels={
                     "com.media-stack.operation": "compose-bootstrap",

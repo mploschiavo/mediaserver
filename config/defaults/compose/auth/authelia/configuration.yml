@@ -1,0 +1,46 @@
+---
+server:
+  address: tcp://0.0.0.0:9091
+
+log:
+  level: info
+
+theme: auto
+
+default_redirection_url: http://apps.media-dev.local:18080
+
+identity_validation:
+  reset_password:
+    jwt_secret: change-this-jwt-secret-with-32-or-more-characters
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain:
+        - "*.local"
+      policy: one_factor
+
+session:
+  secret: change-this-session-secret-with-32-or-more-characters
+  cookies:
+    - domain: local
+      authelia_url: http://authelia.local
+      default_redirection_url: http://apps.media-dev.local:18080
+
+regulation:
+  max_retries: 3
+  find_time: 120
+  ban_time: 300
+
+storage:
+  encryption_key: change-this-storage-key-with-32-or-more-characters
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /config/notification.txt

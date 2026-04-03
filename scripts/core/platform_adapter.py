@@ -91,6 +91,7 @@ class RebuildPlatformAdapterBuildRequest:
     edge_router_provider: str = ""
     edge_router_service_names: tuple[str, ...] = ()
     edge_path_prefix_redirect_service_names: tuple[str, ...] = ()
+    edge_path_prefix_preserve_service_names: tuple[str, ...] = ()
     edge_compose_provider_specs: dict[str, dict[str, str]] | None = None
     auth_provider_middleware_defaults: dict[str, str] | None = None
     media_server_service_names: tuple[str, ...] = ()

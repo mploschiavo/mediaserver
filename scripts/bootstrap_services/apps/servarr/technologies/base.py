@@ -113,6 +113,96 @@ class ServarrAdapterBase:
         self.context.app_url = self.deps.normalize_url(self.context.app_model.url or "")
         self.deps.log(f"[STEP] Processing {self.context.app_name} ({self.context.app_impl})")
 
+    @staticmethod
+    def _normalize_url_base(value: Any) -> str:
+        token = str(value or "").strip()
+        if not token or token == "/":
+            return ""
+        if not token.startswith("/"):
+            token = f"/{token}"
+        return token.rstrip("/")
+
+    @staticmethod
+    def _join_url_base(base_url: str, url_base: str) -> str:
+        root = str(base_url or "").rstrip("/")
+        base = ServarrAdapterBase._normalize_url_base(url_base)
+        if not base:
+            return root
+        return f"{root}{base}"
+
+    @staticmethod
+    def _mapping_lookup(mapping: dict[str, Any], keys: list[str]) -> str:
+        if not isinstance(mapping, dict):
+            return ""
+        key_map = {
+            str(raw_key or "").strip().lower(): raw_value for raw_key, raw_value in mapping.items()
+        }
+        for key in keys:
+            token = str(key or "").strip().lower()
+            if not token:
+                continue
+            raw_value = key_map.get(token)
+            if raw_value is None:
+                continue
+            value = ServarrAdapterBase._normalize_url_base(raw_value)
+            if value:
+                return value
+        return ""
+
+    def _configured_url_base_for_keys(self, keys: list[str]) -> str:
+        cfg = self.context.cfg if isinstance(self.context.cfg, dict) else {}
+        app_auth = cfg.get("app_auth") if isinstance(cfg.get("app_auth"), dict) else {}
+        return self._mapping_lookup(
+            app_auth.get("path_prefix_url_base_by_app") or {},
+            keys,
+        ) or self._mapping_lookup(
+            app_auth.get("url_base_by_app") or {},
+            keys,
+        )
+
+    def _configured_url_base(self) -> str:
+        return self._configured_url_base_for_keys(
+            [
+                str(self.context.app_impl or "").strip().lower(),
+                str(self.context.app_name or "").strip().lower(),
+                str(self.context.app_payload.get("implementation") or "").strip().lower(),
+                str(self.context.app_payload.get("name") or "").strip().lower(),
+                str(self.context.app_key or "").strip().lower(),
+            ]
+        )
+
+    def _candidate_path_aware_url(self) -> str:
+        configured_base = self._configured_url_base()
+        if not configured_base:
+            return ""
+        root_url = self.deps.normalize_url(self.context.app_model.url or "")
+        return self._join_url_base(root_url, configured_base)
+
+    def _path_aware_prowlarr_url(self) -> str:
+        configured_base = self._configured_url_base_for_keys(["prowlarr"])
+        if not configured_base:
+            return self.context.prowlarr_url
+        return self._join_url_base(self.context.prowlarr_url, configured_base)
+
+    def _promote_path_aware_url_if_ready(self) -> None:
+        candidate_url = self._candidate_path_aware_url()
+        if not candidate_url or candidate_url == self.context.app_url:
+            return
+        try:
+            candidate_api_base = self.deps.detect_arr_api_base(
+                self.context.app_name,
+                candidate_url,
+                self.context.app_key,
+            )
+        except Exception:
+            return
+        self.context.app_url = candidate_url
+        self.context.api_base = candidate_api_base
+        self.deps.log(
+            f"[OK] {self.context.app_name}: using path-aware app URL "
+            f"{self.context.app_url} for bootstrap operations"
+        )
+
     def _apply_auth_settings(self) -> None:
         try:
             self.deps.ensure_app_auth_settings(
@@ -124,6 +214,26 @@ class ServarrAdapterBase:
                 self.context.app_auth_cfg,
             )
         except Exception as exc:
+            if "http 307" in str(exc).lower():
+                candidate_url = self._candidate_path_aware_url()
+                if candidate_url and candidate_url != self.context.app_url:
+                    try:
+                        self.deps.ensure_app_auth_settings(
+                            self.context.app_name,
+                            self.context.app_impl,
+                            candidate_url,
+                            self.context.api_base,
+                            self.context.app_key,
+                            self.context.app_auth_cfg,
+                        )
+                        self.context.app_url = candidate_url
+                        self.deps.log(
+                            f"[OK] {self.context.app_name}: retried auth bootstrap with "
+                            f"path-aware URL {candidate_url}"
+                        )
+                        return
+                    except Exception as retry_exc:
+                        exc = retry_exc
             if bool((self.context.app_auth_cfg or {}).get("fail_on_error", False)):
                 raise
             self.deps.log(f"[WARN] {self.context.app_name}: auth bootstrap skipped ({exc})")
@@ -137,6 +247,7 @@ class ServarrAdapterBase:
 
         if self.context.app_caps.supports_auth:
             self._apply_auth_settings()
+            self._promote_path_aware_url_if_ready()
 
         self.before_common_hook(
             self.adapter_deps,
@@ -246,7 +357,7 @@ class ServarrAdapterBase:
 
         if self.context.app_caps.supports_prowlarr_application:
             self.deps.ensure_prowlarr_application(
-                self.context.prowlarr_url,
+                self._path_aware_prowlarr_url(),
                 self.context.prowlarr_key,
                 self.context.app_name,
                 self.context.app_impl,

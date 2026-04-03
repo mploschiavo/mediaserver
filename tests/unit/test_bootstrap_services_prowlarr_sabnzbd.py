@@ -215,6 +215,70 @@ class ProwlarrServiceTests(unittest.TestCase):
         self.assertNotIn("syncLevel", put_attempts[1])
         self.assertTrue(any("updated application link for Sonarr" in line for line in self.logs))
 
+    def test_ensure_application_reconciles_duplicate_name_conflict(self):
+        put_attempts = []
+        post_attempts = []
+
+        def stub(_base_url, path, _api_key, method, payload):
+            if path == "/api/v1/applications/schema" and method == "GET":
+                return (
+                    200,
+                    [
+                        {
+                            "implementation": "Sonarr",
+                            "configContract": "SonarrSettings",
+                            "fields": [
+                                {"name": "baseUrl", "value": ""},
+                                {"name": "apiKey", "value": ""},
+                            ],
+                        }
+                    ],
+                    "",
+                )
+            if path == "/api/v1/applications" and method == "GET":
+                return (
+                    200,
+                    [
+                        {
+                            "id": 42,
+                            "name": "Sonarr",
+                            "implementation": "Sonarr",
+                            "fields": [
+                                {"name": "baseUrl", "value": "http://apps.media-dev.local/app/sonarr"}
+                            ],
+                        }
+                    ],
+                    "",
+                )
+            if path == "/api/v1/applications" and method == "POST":
+                post_attempts.append(payload)
+                return 400, {}, "Name should be unique"
+            if path == "/api/v1/applications/42" and method == "PUT":
+                put_attempts.append(payload)
+                return 202, {}, ""
+            return 500, {}, f"unexpected {method} {path}"
+
+        service = self._service_with_stub(stub)
+        service.ensure_application(
+            prowlarr_url="http://prowlarr:9696",
+            prowlarr_key="key",
+            app_name="Sonarr",
+            implementation="Sonarr",
+            app_url="http://sonarr:8989",
+            app_key="arr-key",
+        )
+
+        self.assertEqual(len(post_attempts), 2)
+        self.assertIn("syncLevel", post_attempts[0] or {})
+        self.assertNotIn("syncLevel", post_attempts[1] or {})
+        self.assertEqual(len(put_attempts), 1)
+        self.assertTrue(
+            any(
+                "reconciled duplicate-name application link for Sonarr" in line
+                for line in self.logs
+            )
+        )
+
     def test_ensure_flaresolverr_proxy_creates_and_tests(self):
         calls = []
 

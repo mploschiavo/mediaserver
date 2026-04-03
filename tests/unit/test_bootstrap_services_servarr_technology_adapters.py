@@ -55,7 +55,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             ensure_readarr_metadata_source=mock.Mock(),
         )
 
-    def _context(self, implementation: str) -> ServarrAdapterContext:
+    def _context(self, implementation: str, *, cfg: dict | None = None) -> ServarrAdapterContext:
         app_model = ServarrAppConfig.from_dict(
             {
                 "name": implementation.capitalize(),
@@ -65,7 +65,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             }
         )
         return ServarrAdapterContext(
-            cfg={},
+            cfg=dict(cfg or {}),
             app_model=app_model,
             app_payload=dict(app_model.raw),
             app_key=f"{implementation}-key",
@@ -132,6 +132,103 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
 
         deps.detect_arr_api_base.assert_called_once()
         deps.ensure_app_auth_settings.assert_called_once()
+
+    def test_precheck_promotes_path_aware_url_when_configured_base_is_ready(self):
+        deps = self._deps()
+        deps.detect_arr_api_base.side_effect = ["/api/v3", "/api/v3"]
+        factory = ServarrAdapterFactory(
+            deps=deps,
+            adapter_deps=self._adapter_deps(),
+        )
+        adapter = factory.create(
+            self._context(
+                "sonarr",
+                cfg={
+                    "app_auth": {
+                        "path_prefix_url_base_by_app": {
+                            "sonarr": "/app/sonarr",
+                        }
+                    }
+                },
+            ),
+            noop_before_common_steps,
+        )
+        adapter.load()
+        adapter.precheck()
+
+        self.assertEqual(adapter.context.app_url, "http://sonarr:8989/app/sonarr")
+        self.assertEqual(adapter.context.api_base, "/api/v3")
+        self.assertEqual(deps.detect_arr_api_base.call_count, 2)
+
+    def test_precheck_retries_auth_with_path_aware_url_on_307(self):
+        deps = self._deps()
+        deps.detect_arr_api_base.side_effect = ["/api/v3", "/api/v3"]
+
+        def _auth_side_effect(app_name, app_impl, app_url, api_base, app_key, app_auth_cfg):
+            del app_name, app_impl, api_base, app_key, app_auth_cfg
+            if app_url == "http://sonarr:8989":
+                raise RuntimeError("HTTP 307")
+            return None
+
+        deps.ensure_app_auth_settings.side_effect = _auth_side_effect
+        factory = ServarrAdapterFactory(
+            deps=deps,
+            adapter_deps=self._adapter_deps(),
+        )
+        adapter = factory.create(
+            self._context(
+                "sonarr",
+                cfg={
+                    "app_auth": {
+                        "path_prefix_url_base_by_app": {
+                            "sonarr": "/app/sonarr",
+                        }
+                    }
+                },
+            ),
+            noop_before_common_steps,
+        )
+        adapter.load()
+        adapter.precheck()
+
+        called_urls = [call.args[2] for call in deps.ensure_app_auth_settings.call_args_list]
+        self.assertEqual(
+            called_urls,
+            [
+                "http://sonarr:8989",
+                "http://sonarr:8989/app/sonarr",
+            ],
+        )
+        self.assertEqual(adapter.context.app_url, "http://sonarr:8989/app/sonarr")
+
+    def test_configure_uses_path_aware_prowlarr_url_when_configured(self):
+        deps = self._deps()
+        factory = ServarrAdapterFactory(
+            deps=deps,
+            adapter_deps=self._adapter_deps(),
+        )
+        adapter = factory.create(
+            self._context(
+                "sonarr",
+                cfg={
+                    "app_auth": {
+                        "path_prefix_url_base_by_app": {
+                            "prowlarr": "/app/prowlarr",
+                        }
+                    }
+                },
+            ),
+            noop_before_common_steps,
+        )
+        adapter.load()
+        adapter.precheck()
+        adapter.configure()
+
+        deps.ensure_prowlarr_application.assert_called_once()
+        self.assertEqual(
+            deps.ensure_prowlarr_application.call_args.args[0],
+            "http://prowlarr:9696/app/prowlarr",
+        )
 
     def test_factory_supports_reflection_override_for_adapter_class(self):
         factory = ServarrAdapterFactory(

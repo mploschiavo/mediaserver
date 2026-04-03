@@ -19,6 +19,7 @@ selected_apps_policy:
       - radarr
       - lidarr
       - readarr
+  homepage_host_reserved_tokens: []
   arr_disable_sections_when_unselected:
     - arr_media_management
     - arr_download_handling

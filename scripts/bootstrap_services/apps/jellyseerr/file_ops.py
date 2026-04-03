@@ -21,6 +21,13 @@ def configure_via_settings_file(
     main_cfg = settings.setdefault("main", {})
     if svc.bool_cfg(jelly_cfg, "set_media_server_type_jellyfin", True):
         main_cfg["mediaServerType"] = 2
+    if svc.bool_cfg(jelly_cfg, "enable_local_login", True):
+        # Local login is required for seeded bootstrap credentials.
+        main_cfg["localLogin"] = True
+    media_server_login_enabled = svc.bool_cfg(jelly_cfg, "enable_media_server_login", False)
+    main_cfg["mediaServerLogin"] = bool(media_server_login_enabled)
+    if not media_server_login_enabled:
+        main_cfg["newPlexLogin"] = False
     settings.setdefault("public", {})["initialized"] = True
 
     jellyfin_cfg = jelly_cfg.get("jellyfin") or {}

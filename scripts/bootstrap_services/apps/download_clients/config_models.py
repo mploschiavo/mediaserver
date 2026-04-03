@@ -80,6 +80,9 @@ class QbitAuthBypassConfig:
     whitelist_enabled: bool
     whitelist_subnets: list[str] = field(default_factory=list)
     allow_open_world: bool = False
+    host_header_validation_enabled: bool = False
+    reverse_proxy_support_enabled: bool = True
+    csrf_protection_enabled: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -101,6 +104,9 @@ class QbitAuthBypassConfig:
             whitelist_enabled=bool(src.get("whitelist_enabled", True)),
             whitelist_subnets=whitelist_subnets,
             allow_open_world=bool(src.get("allow_open_world", False)),
+            host_header_validation_enabled=bool(src.get("host_header_validation_enabled", False)),
+            reverse_proxy_support_enabled=bool(src.get("reverse_proxy_support_enabled", True)),
+            csrf_protection_enabled=bool(src.get("csrf_protection_enabled", False)),
             raw=src,
         )
 

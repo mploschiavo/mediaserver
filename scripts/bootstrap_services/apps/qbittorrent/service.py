@@ -149,6 +149,9 @@ class QBittorrentService:
         auth_bypass = config.auth_bypass_typed
         bypass_local_auth = bool(auth_bypass.localhost)
         bypass_whitelist_enabled = bool(auth_bypass.whitelist_enabled)
+        host_header_validation_enabled = bool(auth_bypass.host_header_validation_enabled)
+        reverse_proxy_support_enabled = bool(auth_bypass.reverse_proxy_support_enabled)
+        csrf_protection_enabled = bool(auth_bypass.csrf_protection_enabled)
         whitelist_subnets = self._normalize_subnet_list(auth_bypass.whitelist_subnets)
         allow_open_world = bool(auth_bypass.allow_open_world)
         world_open_tokens = {"0.0.0.0", "0.0.0.0/0", "::/0"}
@@ -177,6 +180,9 @@ class QBittorrentService:
         prefs["bypass_auth_subnet_whitelist"] = (
             ",".join(whitelist_subnets) if bypass_whitelist_enabled else ""
         )
+        prefs["web_ui_host_header_validation_enabled"] = host_header_validation_enabled
+        prefs["web_ui_reverse_proxy_enabled"] = reverse_proxy_support_enabled
+        prefs["web_ui_csrf_protection_enabled"] = csrf_protection_enabled
 
         seeding_policy = config.seeding_policy_typed
         if seeding_policy.enabled:
@@ -212,6 +218,9 @@ class QBittorrentService:
             f"temp_path_enabled={temp_path_enabled}, auto_tmm_enabled={auto_tmm_enabled}, "
             f"bypass_local_auth={bypass_local_auth}, "
             f"bypass_auth_subnet_whitelist_enabled={bypass_whitelist_enabled}, "
+            f"host_header_validation_enabled={host_header_validation_enabled}, "
+            f"reverse_proxy_support_enabled={reverse_proxy_support_enabled}, "
+            f"csrf_protection_enabled={csrf_protection_enabled}, "
             f"whitelist_count={len(whitelist_subnets)})"
         )
 
