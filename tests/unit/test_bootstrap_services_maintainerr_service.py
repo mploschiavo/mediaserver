@@ -40,6 +40,43 @@ class MaintainerrServiceTests(unittest.TestCase):
         )
         http_request.assert_not_called()
 
+    def test_ensure_integrations_uses_path_aware_maintainerr_url_when_configured(self):
+        http_request = mock.Mock()
+        service = self._service(http_request)
+        service.ensure_integrations(
+            cfg={
+                "app_auth": {
+                    "path_prefix_url_base_by_app": {
+                        "maintainerr": "/app/maintainerr",
+                    }
+                },
+                "maintainerr": {
+                    "enabled": True,
+                    "url": "http://maintainerr:6246",
+                    "integrations": {
+                        "enabled": True,
+                        "sync_rules": False,
+                        "main": {"enabled": False},
+                        "radarr": {"enabled": False},
+                        "sonarr": {"enabled": False},
+                        "jellyseerr": {"enabled": False},
+                        "tautulli": {"enabled": False},
+                    },
+                },
+            },
+            config_root="/srv-config",
+            arr_apps=[],
+            wait_timeout=10,
+        )
+
+        service.wait_for_service.assert_called_once_with(
+            "Maintainerr",
+            "http://maintainerr:6246/app/maintainerr",
+            "/api/settings",
+            10,
+        )
+        http_request.assert_not_called()
+
     def test_ensure_integrations_skips_radarr_when_arr_app_missing_and_not_required(self):
         http_request = mock.Mock()
         service = self._service(http_request)
@@ -143,12 +180,12 @@ class MaintainerrServiceTests(unittest.TestCase):
                 config_root="/srv-config",
                 arr_apps=[
                     {
-                        "implementation": "radarr",
+                        "implementation": "Radarr",
                         "name": "Radarr",
                         "url": "http://radarr:7878",
                     },
                     {
-                        "implementation": "sonarr",
+                        "implementation": "Sonarr",
                         "name": "Sonarr",
                         "url": "http://sonarr:8989",
                     },
@@ -166,6 +203,56 @@ class MaintainerrServiceTests(unittest.TestCase):
         self.assertIn("/api/settings/test/sonarr", posted_paths)
         self.assertIn("/api/settings/test/seerr", posted_paths)
         self.assertIn("/api/settings/test/tautulli", posted_paths)
+
+    def test_ensure_integrations_skips_optional_tautulli_when_key_missing(self):
+        calls: list[tuple[str, str, dict | None]] = []
+
+        def http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=30):
+            del base_url, api_key, timeout
+            calls.append((method, path, payload))
+            if (method, path) == ("GET", "/api/settings"):
+                return 200, {}, "{}"
+            if method == "POST":
+                return 200, {"ok": True}, "{}"
+            raise AssertionError(f"unexpected request: {method} {path}")
+
+        service = self._service(http_request)
+        service.ensure_integrations(
+            cfg={
+                "maintainerr": {
+                    "enabled": True,
+                    "url": "http://maintainerr:6246",
+                    "integrations": {
+                        "enabled": True,
+                        "test_connections": False,
+                        "sync_rules": False,
+                        "radarr": {"enabled": False},
+                        "sonarr": {"enabled": False},
+                        "jellyseerr": {"enabled": False},
+                        "tautulli": {
+                            "enabled": True,
+                            "required": False,
+                            "api_key_env": "MISSING_TAUTULLI_KEY",
+                            "api_key_config_path": "tautulli/missing.ini",
+                        },
+                    },
+                }
+            },
+            config_root="/srv-config",
+            arr_apps=[],
+            wait_timeout=10,
+        )
+
+        posted_paths = [path for method, path, _payload in calls if method == "POST"]
+        self.assertIn("/api/settings", posted_paths)
+        self.assertNotIn("/api/settings/tautulli", posted_paths)
+        self.assertTrue(
+            any(
+                "optional tautulli" in str(call.args[0]).lower()
+                for call in service.log.call_args_list
+                if call.args
+            )
+        )
 
     def test_ensure_integrations_is_idempotent_when_already_configured(self):
         calls: list[tuple[str, str, dict | None]] = []
@@ -245,12 +332,12 @@ class MaintainerrServiceTests(unittest.TestCase):
                 config_root="/srv-config",
                 arr_apps=[
                     {
-                        "implementation": "radarr",
+                        "implementation": "Radarr",
                         "name": "Radarr",
                         "url": "http://radarr:7878",
                     },
                     {
-                        "implementation": "sonarr",
+                        "implementation": "Sonarr",
                         "name": "Sonarr",
                         "url": "http://sonarr:8989",
                     },

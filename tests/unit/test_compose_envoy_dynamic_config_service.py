@@ -40,6 +40,66 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         }
 
     @staticmethod
+    def _multi_app_payload() -> dict:
+        return {
+            "http": {
+                "routers": {
+                    "maintainerr-path": {
+                        "rule": "Host(`apps.media-dev.local`) && PathPrefix(`/app/maintainerr`)",
+                        "service": "maintainerr",
+                        "middlewares": ["maintainerr-stripprefix"],
+                    },
+                    "homepage-path": {
+                        "rule": "Host(`apps.media-dev.local`) && PathPrefix(`/app/homepage`)",
+                        "service": "homepage",
+                        "middlewares": ["homepage-stripprefix"],
+                    },
+                },
+                "middlewares": {
+                    "maintainerr-stripprefix": {
+                        "stripPrefix": {"prefixes": ["/app/maintainerr"]},
+                    },
+                    "homepage-stripprefix": {
+                        "stripPrefix": {"prefixes": ["/app/homepage"]},
+                    },
+                },
+                "services": {
+                    "maintainerr": {
+                        "loadBalancer": {
+                            "servers": [{"url": "http://maintainerr:6246"}],
+                        }
+                    },
+                    "homepage": {
+                        "loadBalancer": {
+                            "servers": [{"url": "http://homepage:3000"}],
+                        }
+                    },
+                },
+            }
+        }
+
+    @staticmethod
+    def _path_prefix_passthrough_payload() -> dict:
+        return {
+            "http": {
+                "routers": {
+                    "sonarr-path": {
+                        "rule": "Host(`apps.media-dev.local`) && PathPrefix(`/app/sonarr`)",
+                        "service": "sonarr",
+                    }
+                },
+                "middlewares": {},
+                "services": {
+                    "sonarr": {
+                        "loadBalancer": {
+                            "servers": [{"url": "http://sonarr:8989"}],
+                        }
+                    }
+                },
+            }
+        }
+
+    @staticmethod
     def _template_payload() -> dict:
         return {
             "static_resources": {
@@ -131,10 +191,49 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         self.assertEqual(len(virtual_hosts), 1)
         self.assertEqual((virtual_hosts[0].get("domains") or [None])[0], "apps.media-dev.local")
         routes = virtual_hosts[0].get("routes") or []
-        self.assertGreaterEqual(len(routes), 2)
-        primary_route = routes[0]
-        fallback_route = routes[1]
-        self.assertEqual((primary_route.get("match") or {}).get("prefix"), "/app/homepage")
+        self.assertGreaterEqual(len(routes), 3)
+        html_primary_route = next(
+            (
+                route
+                for route in routes
+                if (route.get("match") or {}).get("prefix") == "/app/homepage"
+                and any(
+                    str(header.get("name") or "") == "accept"
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            None,
+        )
+        self.assertIsNotNone(html_primary_route)
+        primary_route = next(
+            (
+                route
+                for route in routes
+                if (route.get("match") or {}).get("prefix") == "/app/homepage"
+                and not any(
+                    str(header.get("name") or "") == "accept"
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            None,
+        )
+        self.assertIsNotNone(primary_route)
+        fallback_route = next(
+            (
+                route
+                for route in routes
+                if (route.get("match") or {}).get("prefix") == "/"
+                and any(
+                    str(header.get("name") or "") == "referer"
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            None,
+        )
+        self.assertIsNotNone(fallback_route)
         self.assertEqual(
             (
                 ((primary_route.get("request_headers_to_add") or [{}])[0].get("header") or {}).get(
@@ -156,13 +255,23 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             for entry in (primary_route.get("response_headers_to_add") or [])
             if isinstance(entry, dict)
         ]
-        self.assertIn("set-cookie", response_header_keys)
-        self.assertEqual((fallback_route.get("match") or {}).get("prefix"), "/")
+        html_response_header_keys = [
+            str((entry.get("header") or {}).get("key") or "")
+            for entry in (html_primary_route.get("response_headers_to_add") or [])
+            if isinstance(entry, dict)
+        ]
+        self.assertNotIn("set-cookie", response_header_keys)
+        self.assertIn("set-cookie", html_response_header_keys)
         fallback_headers = (fallback_route.get("match") or {}).get("headers") or []
         self.assertTrue(bool(fallback_headers))
         self.assertIn(
             "/app/homepage",
             str((fallback_headers[0].get("safe_regex_match") or {}).get("regex") or ""),
+        )
+        fallback_rewrite = (fallback_route.get("route") or {}).get("regex_rewrite") or {}
+        self.assertEqual(
+            str(((fallback_rewrite.get("pattern") or {}).get("regex") or "")),
+            r"^/app/?(.*)$",
         )
         cookie_routes = [
             route
@@ -177,15 +286,22 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         cookie_regex = str(
             (
                 (
-                    (
-                        (cookie_routes[0].get("match") or {}).get("headers") or [{}]
-                    )[0].get("safe_regex_match")
+                    ((cookie_routes[0].get("match") or {}).get("headers") or [{}])[0].get(
+                        "safe_regex_match"
+                    )
                     or {}
                 ).get("regex")
                 or ""
             )
         )
-        self.assertIn("media_stack_app=homepage", cookie_regex)
+        self.assertIn("media_stack_app_homepage=1", cookie_regex)
+        self.assertTrue(cookie_regex.startswith(".*"))
+        self.assertTrue(cookie_regex.endswith(".*"))
+        cookie_rewrite = (cookie_routes[0].get("route") or {}).get("regex_rewrite") or {}
+        self.assertEqual(
+            str(((cookie_rewrite.get("pattern") or {}).get("regex") or "")),
+            r"^/app/?(.*)$",
+        )
         html_redirect_routes = [
             route
             for route in routes
@@ -235,12 +351,105 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "listener"):
             service.render(services={})
 
+    def test_referer_fallback_routes_have_precedence_over_cookie_routes(self):
+        template = self._template_payload()
+        service = self._service(template_loader=lambda _path: template)
+        service.route_graph_service.render.return_value = SimpleNamespace(
+            payload=self._multi_app_payload()
+        )
+        rendered = service.render(services={})
+        virtual_hosts = (
+            (
+                (
+                    ((rendered.payload.get("static_resources") or {}).get("listeners") or [{}])[
+                        0
+                    ].get("filter_chains")
+                    or [{}]
+                )[0].get("filters")
+                or [{}]
+            )[0]
+            .get("typed_config", {})
+            .get("route_config", {})
+            .get("virtual_hosts", [])
+        )
+        self.assertTrue(virtual_hosts)
+        routes = virtual_hosts[0].get("routes") or []
+        referer_homepage_idx = next(
+            (
+                idx
+                for idx, route in enumerate(routes)
+                if any(
+                    str(header.get("name") or "") == "referer"
+                    and "/app/homepage"
+                    in str((header.get("safe_regex_match") or {}).get("regex") or "")
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            -1,
+        )
+        cookie_maintainerr_idx = next(
+            (
+                idx
+                for idx, route in enumerate(routes)
+                if any(
+                    str(header.get("name") or "") == "cookie"
+                    and "media_stack_app_maintainerr=1"
+                    in str((header.get("safe_regex_match") or {}).get("regex") or "")
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            -1,
+        )
+        self.assertGreaterEqual(referer_homepage_idx, 0)
+        self.assertGreaterEqual(cookie_maintainerr_idx, 0)
+        self.assertLess(
+            referer_homepage_idx,
+            cookie_maintainerr_idx,
+            "Referer fallback routes must be evaluated before cross-app cookie routes.",
+        )
+
     def test_render_raises_when_template_file_missing(self):
         service = self._service(
             compose_env={"ENVOY_RUNTIME_TEMPLATE_FILE": "/tmp/does-not-exist/envoy.yaml"}
         )
         with self.assertRaisesRegex(RuntimeError, "not found"):
             service.render(services={})
+
+    def test_render_does_not_rewrite_path_prefix_when_strip_middleware_absent(self):
+        template = self._template_payload()
+        service = self._service(template_loader=lambda _path: template)
+        service.route_graph_service.render.return_value = SimpleNamespace(
+            payload=self._path_prefix_passthrough_payload()
+        )
+        rendered = service.render(services={})
+        virtual_hosts = (
+            (
+                (
+                    ((rendered.payload.get("static_resources") or {}).get("listeners") or [{}])[
+                        0
+                    ].get("filter_chains")
+                    or [{}]
+                )[0].get("filters")
+                or [{}]
+            )[0]
+            .get("typed_config", {})
+            .get("route_config", {})
+            .get("virtual_hosts", [])
+        )
+        self.assertTrue(virtual_hosts)
+        routes = virtual_hosts[0].get("routes") or []
+        primary_route = next(
+            (
+                route
+                for route in routes
+                if (route.get("match") or {}).get("prefix") == "/app/sonarr"
+            ),
+            None,
+        )
+        self.assertIsNotNone(primary_route)
+        self.assertNotIn("regex_rewrite", (primary_route.get("route") or {}))
 
 
 if __name__ == "__main__":

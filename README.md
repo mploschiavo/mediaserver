@@ -232,9 +232,17 @@ When `--platform-target compose` and edge provider is `traefik`, deploy automati
 
 - Runtime patch output: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
 - Replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
-- Owner code: `scripts/core/platforms/compose/services/traefik_patch_service.py`
+- Owner code: `scripts/core/platforms/compose/edge/providers/traefik/patch_service.py`
 
 No manual host-side Traefik patch step is required for normal deploy runs.
+
+### Compose Envoy Patch Automation
+
+When `--platform-target compose` and edge provider is `envoy`, deploy automation writes Envoy runtime config automatically.
+
+- Runtime patch output: `${CONFIG_ROOT}/envoy/envoy.yaml`
+- Replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/envoy.runtime.yaml`
+- Owner code: `scripts/core/platforms/compose/edge/providers/envoy/patch_service.py`
 
 ### Compose Preflight and Storage Guardrails
 
@@ -262,14 +270,30 @@ Profile key: `chaos` (default disabled).
 - schedule window defaults to 5 minutes and can be profile-tuned
 - deploy waits for workload health after each injected fault
 
-### Compose Edge Provider Stubs
+### Compose Edge/Auth Providers
 
-- Built-in edge provider stubs now include `envoy` (provider discovery + validation).
-- `envoy` is currently a stub for Compose: no Traefik-style label transforms or dynamic-file patch generation run yet.
+- Built-in edge providers include `traefik` and `envoy`.
+- Built-in auth providers include `none`, `authelia`, and `authentik`.
+- Compose auth provider services are provider-local and auto-selected when `AUTH_PROVIDER` is set:
+  - `authelia` -> `authelia`
+  - `authentik` -> `authentik`, `authentik-worker` (and dependency services)
 - Provider selection precedence:
   - `--edge-router-provider` / `EDGE_ROUTER_PROVIDER`
   - `routing.provider` in `bootstrap/media-stack.bootstrap.yaml`
   - `adapter_hooks.edge.router_provider` in `bootstrap/media-stack.bootstrap.json`
+
+### Google IdP Manual Setup (Compose)
+
+Authentik:
+1. Create a Google OAuth client in Google Cloud Console (redirect URI from your Authentik route).
+2. In Authentik, configure a Social Login source for Google and bind it to your login flow.
+3. Attach the Authentik forward-auth middleware (`authentik@docker`) to protected routes by enabling auth provider in the bootstrap profile.
+   - Reference: https://docs.goauthentik.io/install-config/install/docker-compose/
+
+Authelia:
+1. Authelia is wired here for local account + forward-auth by default.
+2. For Google federation, add your upstream identity pattern in Authelia config under `${CONFIG_ROOT}/authelia/` and update access/session policy before enabling internet exposure.
+   - Reference: https://www.authelia.com/integration/deployment/docker/
 
 ## Operator/User Prerequisites
 

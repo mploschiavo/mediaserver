@@ -61,6 +61,8 @@
     "apps": {
       "type": "object",
       "properties": {
+        "traefik": { "type": "boolean" },
+        "envoy": { "type": "boolean" },
         "jellyfin": { "type": "boolean" },
         "jellyseerr": { "type": "boolean" },
         "sonarr": { "type": "boolean" },
@@ -74,6 +76,7 @@
         "tautulli": { "type": "boolean" },
         "maintainerr": { "type": "boolean" },
         "unpackerr": { "type": "boolean" },
+        "recyclarr": { "type": "boolean" },
         "homepage": { "type": "boolean" },
         "flaresolverr": { "type": "boolean" }
       },

@@ -1,0 +1,10 @@
+---
+users:
+  admin:
+    disabled: false
+    displayname: Media Stack Admin
+    # Password is: media-dev
+    password: "$2b$12$jtEQeNxFD2c6LNINTFFutetzyw/5ncAmCwDYRA3ZGviUoQKBPUXL6"
+    email: admin@local
+    groups:
+      - admins

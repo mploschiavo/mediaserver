@@ -123,6 +123,69 @@ class SabnzbdService:
                 raise RuntimeError(f"SABnzbd: API rejected misc.{key} update request: {body}")
             self.log(f"[OK] SABnzbd: set {key}={desired_normalized}")
 
+        servers = self.get_config_section(sab_url, sab_api_key, "servers")
+        has_servers = isinstance(servers, list) and any(isinstance(item, dict) for item in servers)
+        seed_placeholder = bool(sab_cfg.get("seed_placeholder_server_if_empty", True))
+        if has_servers:
+            self.log("[OK] SABnzbd: server list already configured; startup wizard should be skipped")
+            return
+        if not seed_placeholder:
+            self.log(
+                "[WARN] SABnzbd: no servers configured and placeholder seeding disabled; "
+                "UI may redirect to /wizard/."
+            )
+            return
+
+        placeholder_cfg = sab_cfg.get("placeholder_server")
+        if not isinstance(placeholder_cfg, dict):
+            placeholder_cfg = {}
+        name = str(placeholder_cfg.get("name", "bootstrap-placeholder")).strip()
+        if not name:
+            name = "bootstrap-placeholder"
+        displayname = str(placeholder_cfg.get("displayname", "Bootstrap Placeholder")).strip()
+        if not displayname:
+            displayname = name
+        host = str(placeholder_cfg.get("host", "news.invalid")).strip()
+        if not host:
+            host = "news.invalid"
+
+        status, data, body = self.request(
+            sab_url,
+            sab_api_key,
+            {
+                "mode": "set_config",
+                "section": "servers",
+                "name": name,
+                "displayname": displayname,
+                "host": host,
+                "port": str(placeholder_cfg.get("port", 119)),
+                "connections": str(placeholder_cfg.get("connections", 1)),
+                "ssl": "1" if bool(placeholder_cfg.get("ssl", False)) else "0",
+                "enable": "1" if bool(placeholder_cfg.get("enable", False)) else "0",
+                "required": "1" if bool(placeholder_cfg.get("required", False)) else "0",
+                "optional": "1" if bool(placeholder_cfg.get("optional", True)) else "0",
+                "notes": str(
+                    placeholder_cfg.get(
+                        "notes",
+                        "Bootstrap placeholder server to bypass startup wizard",
+                    )
+                ).strip(),
+            },
+        )
+        if status != 200:
+            raise RuntimeError(
+                f"SABnzbd: failed seeding placeholder server for non-wizard startup (HTTP {status}): {body}"
+            )
+        if isinstance(data, dict) and data.get("status") is False:
+            raise RuntimeError(
+                "SABnzbd: API rejected placeholder server create request to bypass startup wizard: "
+                f"{body}"
+            )
+        self.log(
+            "[OK] SABnzbd: seeded placeholder server to bypass startup wizard "
+            f"(name={name}, host={host}, enabled={bool(placeholder_cfg.get('enable', False))})"
+        )
+
     def ensure_categories(
         self,
         arr_apps: list[dict[str, Any]],

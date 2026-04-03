@@ -39,6 +39,35 @@ class DiskGuardrailsTests(unittest.TestCase):
             MODULE.enforce_disk_guardrails(cfg, "/srv-config", qbit_cfg, "admin", "secret")
             login_mock.assert_not_called()
 
+    def test_guardrails_fall_back_when_configured_monitor_path_is_missing(self):
+        cfg = {
+            "disk_guardrails": {
+                "enabled": True,
+                "monitor_path": "/srv-stack",
+                "max_used_percent": 65,
+                "target_used_percent": 58,
+            }
+        }
+        qbit_cfg = {"url": "http://qbittorrent:8080"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fallback_path = Path(tmp) / "stack"
+            fallback_path.mkdir(parents=True, exist_ok=True)
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {"DISK_GUARDRAILS_MONITOR_PATH": str(fallback_path)},
+                    clear=False,
+                ),
+                mock.patch.object(
+                    HYGIENE_OPS, "_disk_usage_percent", return_value=(42.0, 1_000_000, 580_000)
+                ) as disk_mock,
+                mock.patch.object(HYGIENE_OPS, "qbit_login") as login_mock,
+            ):
+                MODULE.enforce_disk_guardrails(cfg, "/srv-config", qbit_cfg, "admin", "secret")
+                login_mock.assert_not_called()
+                disk_mock.assert_called_once_with(str(fallback_path))
+
     def test_guardrails_delete_old_completed_torrents_when_usage_is_high(self):
         cfg = {
             "disk_guardrails": {

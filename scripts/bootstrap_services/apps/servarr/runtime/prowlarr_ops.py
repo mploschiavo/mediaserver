@@ -17,6 +17,56 @@ from .arr_ops import detect_arr_api_base, ensure_app_auth_settings
 from .factory import _arr_indexer_sync_service, _prowlarr_service
 
 
+def _normalize_url_base(value: object) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    if not token.startswith("/"):
+        token = f"/{token}"
+    if token != "/":
+        token = token.rstrip("/")
+    return token
+
+
+def _join_url_base(base_url: str, url_base: str) -> str:
+    root = str(base_url or "").rstrip("/")
+    base = _normalize_url_base(url_base)
+    if not base:
+        return root
+    return f"{root}{base}"
+
+
+def _lookup_url_base(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
+    if not isinstance(mapping, dict):
+        return ""
+    lowered = {str(raw_key or "").strip().lower(): raw_value for raw_key, raw_value in mapping.items()}
+    for key in keys:
+        token = str(key or "").strip().lower()
+        if not token:
+            continue
+        candidate = lowered.get(token)
+        if candidate is None:
+            continue
+        value = _normalize_url_base(candidate)
+        if value:
+            return value
+    return ""
+
+
+def _path_aware_prowlarr_url(cfg: dict[str, Any] | None, prowlarr_url: str) -> str:
+    payload = cfg if isinstance(cfg, dict) else {}
+    app_auth = payload.get("app_auth")
+    if not isinstance(app_auth, dict):
+        return prowlarr_url
+    keys = ("prowlarr",)
+    configured = _lookup_url_base(app_auth.get("path_prefix_url_base_by_app") or {}, keys)
+    if not configured:
+        configured = _lookup_url_base(app_auth.get("url_base_by_app") or {}, keys)
+    if not configured:
+        return prowlarr_url
+    return _join_url_base(prowlarr_url, configured)
+
+
 def _prowlarr_precheck_service(cfg=None) -> Any:
     service_cls = resolve_app_service_class(
         "prowlarr_precheck_service",
@@ -80,9 +130,13 @@ def run_prowlarr_indexer_pipeline(
     arr_apps_raw,
     app_keys,
 ):
+    runtime_prowlarr_url = _path_aware_prowlarr_url(
+        cfg if isinstance(cfg, dict) else None,
+        prowlarr_url,
+    )
     return _prowlarr_indexer_pipeline_service().run(
         cfg=cfg,
-        prowlarr_url=prowlarr_url,
+        prowlarr_url=runtime_prowlarr_url,
         prowlarr_key=prowlarr_key,
         wait_timeout=wait_timeout,
         prowlarr_indexers=prowlarr_indexers,
@@ -94,9 +148,12 @@ def run_prowlarr_indexer_pipeline(
 
 
 def ensure_prowlarr_ready(cfg, prowlarr_url, prowlarr_key, app_auth_cfg, wait_timeout):
-    del cfg
+    runtime_prowlarr_url = _path_aware_prowlarr_url(
+        cfg if isinstance(cfg, dict) else None,
+        prowlarr_url,
+    )
     return _prowlarr_precheck_service().ensure_ready(
-        prowlarr_url=prowlarr_url,
+        prowlarr_url=runtime_prowlarr_url,
         prowlarr_key=prowlarr_key,
         app_auth_cfg=app_auth_cfg,
         wait_timeout=wait_timeout,

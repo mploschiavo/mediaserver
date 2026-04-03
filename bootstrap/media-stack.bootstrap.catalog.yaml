@@ -51,6 +51,8 @@ auth_provider_middleware_defaults:
 
 apps:
   keys:
+    - traefik
+    - envoy
     - jellyfin
     - jellyseerr
     - sonarr
@@ -64,33 +66,54 @@ apps:
     - tautulli
     - maintainerr
     - unpackerr
+    - recyclarr
     - homepage
     - flaresolverr
 
 install_profiles:
   minimal:
     enabled_apps:
+      - traefik
       - jellyfin
       - jellyseerr
       - prowlarr
+      - sonarr
+      - radarr
       - qbittorrent
       - homepage
   standard:
     enabled_apps:
+      - envoy
       - jellyfin
       - jellyseerr
       - prowlarr
       - flaresolverr
-      - qbittorrent
-      - homepage
       - sonarr
       - radarr
       - bazarr
+      - qbittorrent
       - sabnzbd
-      - maintainerr
       - unpackerr
+      - maintainerr
+      - homepage
   full:
-    enabled_apps: "*"
+    enabled_apps:
+      - envoy
+      - jellyfin
+      - jellyseerr
+      - prowlarr
+      - flaresolverr
+      - sonarr
+      - radarr
+      - bazarr
+      - readarr
+      - lidarr
+      - qbittorrent
+      - sabnzbd
+      - unpackerr
+      - maintainerr
+      - recyclarr
+      - homepage
 
 chaos_defaults:
   enabled: false
@@ -106,5 +129,4 @@ live_tv_defaults:
     - https://iptv-org.github.io/iptv/countries/us.m3u
   guide_urls:
     - https://iptv-epg.org/files/epg-us.xml
-  default_program_icon_urls:
-    - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+  default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png

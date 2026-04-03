@@ -286,6 +286,49 @@ class BootstrapProfileTests(unittest.TestCase):
             }
         )
         self.assertTrue(profile.install_apps["flaresolverr"])
+        self.assertTrue(profile.install_apps["envoy"])
+        self.assertFalse(profile.install_apps["traefik"])
+
+    def test_install_profile_app_matrix_matches_catalog_contract(self):
+        minimal = BootstrapProfileConfig.from_dict(
+            {
+                "schema_version": 1,
+                "kind": "media_stack_profile",
+                "metadata": {
+                    "name": "media-min",
+                    "platform": "compose",
+                    "purpose": "dev",
+                },
+                "resources": {
+                    "disk_space_gb": 50,
+                    "network_cidr": "192.168.1.0/24",
+                },
+                "install_profile": "minimal",
+            }
+        )
+        self.assertTrue(minimal.install_apps["traefik"])
+        self.assertFalse(minimal.install_apps["envoy"])
+        self.assertFalse(minimal.install_apps["flaresolverr"])
+
+        full = BootstrapProfileConfig.from_dict(
+            {
+                "schema_version": 1,
+                "kind": "media_stack_profile",
+                "metadata": {
+                    "name": "media-full",
+                    "platform": "compose",
+                    "purpose": "prod",
+                },
+                "resources": {
+                    "disk_space_gb": 1000,
+                    "network_cidr": "192.168.1.0/24",
+                },
+                "install_profile": "full",
+            }
+        )
+        self.assertTrue(full.install_apps["envoy"])
+        self.assertTrue(full.install_apps["recyclarr"])
+        self.assertFalse(full.install_apps["tautulli"])
 
     def test_catalog_file_allows_extending_apps_without_code_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

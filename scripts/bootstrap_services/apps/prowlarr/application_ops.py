@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -44,6 +45,55 @@ def find_existing_application(
         if app_base == base_url.rstrip("/"):
             return app
     return None
+
+
+def find_existing_application_by_name(
+    service,
+    prowlarr_url: str,
+    prowlarr_key: str,
+    implementation: str,
+    app_name: str,
+) -> dict[str, Any] | None:
+    status, data, body = service.http_request(
+        prowlarr_url,
+        "/api/v1/applications",
+        api_key=prowlarr_key,
+    )
+    if status != 200 or not isinstance(data, list):
+        raise RuntimeError(f"Prowlarr: failed to list applications (HTTP {status}): {body}")
+
+    expected = str(app_name or "").strip().lower()
+    for app in data:
+        if app.get("implementation") != implementation:
+            continue
+        name = str(app.get("name") or "").strip().lower()
+        if expected and name == expected:
+            return app
+    return None
+
+
+def _is_name_unique_conflict(status: int, body: str) -> bool:
+    if int(status) != 400:
+        return False
+    token = str(body or "").strip().lower()
+    if "name should be unique" in token:
+        return True
+    if "should be unique" in token and "propertyname" in token and "name" in token:
+        return True
+    try:
+        payload = json.loads(str(body or ""))
+    except Exception:
+        return False
+    if not isinstance(payload, list):
+        return False
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        property_name = str(item.get("propertyName") or "").strip().lower()
+        error_message = str(item.get("errorMessage") or "").strip().lower()
+        if property_name == "name" and "unique" in error_message:
+            return True
+    return False
 
 
 def ensure_application(
@@ -115,6 +165,30 @@ def ensure_application(
     if ok:
         service.log(f"[OK] Prowlarr: created application link for {app_name}")
         return
+    if _is_name_unique_conflict(status, body):
+        duplicate = find_existing_application_by_name(
+            service,
+            prowlarr_url,
+            prowlarr_key,
+            implementation,
+            app_name,
+        )
+        if duplicate and duplicate.get("id") is not None:
+            payload["id"] = duplicate.get("id")
+            ok2, status2, body2 = put_or_post(
+                "PUT",
+                f"/api/v1/applications/{duplicate.get('id')}",
+                payload,
+            )
+            if ok2:
+                service.log(
+                    f"[OK] Prowlarr: reconciled duplicate-name application link for {app_name}"
+                )
+                return
+            raise RuntimeError(
+                "Prowlarr: failed updating duplicate-name app "
+                f"{app_name} (HTTP {status2}): {body2}"
+            )
     raise RuntimeError(f"Prowlarr: failed creating app {app_name} (HTTP {status}): {body}")
 
 

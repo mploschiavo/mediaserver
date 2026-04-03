@@ -25,6 +25,7 @@ class ComposeLabelConfig:
     auth_provider_middleware_defaults: dict[str, str] = field(default_factory=dict)
     media_server_service_names: tuple[str, ...] = field(default_factory=tuple)
     path_prefix_redirect_service_names: tuple[str, ...] = field(default_factory=tuple)
+    path_prefix_preserve_service_names: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -142,6 +143,15 @@ class ComposeLabelService:
             if str(item or "").strip()
         }
         return bool(service_key and service_key in redirect_services)
+
+    def _is_path_prefix_preserve_service(self, service_name: str) -> bool:
+        service_key = str(service_name or "").strip().lower()
+        preserve_services = {
+            str(item or "").strip().lower()
+            for item in tuple(self.cfg.path_prefix_preserve_service_names or ())
+            if str(item or "").strip()
+        }
+        return bool(service_key and service_key in preserve_services)
 
     def _direct_route_host(self, labels: dict[str, str], service_name: str) -> str:
         key_template = str(self._edge_provider_spec().get("router_rule_key_template") or "").strip()
@@ -296,15 +306,16 @@ class ComposeLabelService:
                         labels[strip_key] = path_prefix
                     self._apply_router_middleware(labels, path_router, strip_name)
             else:
-                strip_name = f"{service_name}-stripprefix"
-                strip_key = self._format_template(
-                    strip_prefix_key_template,
-                    middleware_name=strip_name,
-                    service_name=service_name,
-                )
-                if strip_key:
-                    labels[strip_key] = path_prefix
-                self._apply_router_middleware(labels, path_router, strip_name)
+                if not self._is_path_prefix_preserve_service(service_name):
+                    strip_name = f"{service_name}-stripprefix"
+                    strip_key = self._format_template(
+                        strip_prefix_key_template,
+                        middleware_name=strip_name,
+                        service_name=service_name,
+                    )
+                    if strip_key:
+                        labels[strip_key] = path_prefix
+                    self._apply_router_middleware(labels, path_router, strip_name)
 
         if is_media_server:
             if direct_host:

@@ -43,6 +43,58 @@ class MaintainerrService:
     def _token(value: Any) -> str:
         return str(value or "").strip().lower()
 
+    @staticmethod
+    def _normalize_url_base(value: Any) -> str:
+        token = str(value or "").strip()
+        if not token:
+            return ""
+        if not token.startswith("/"):
+            token = f"/{token}"
+        token = token.rstrip("/")
+        return token if token else ""
+
+    def _join_url_base(self, base_url: str, url_base: str) -> str:
+        base = self._normalize_url_base(url_base)
+        if not base:
+            return self.normalize_url(base_url)
+        return self.normalize_url(f"{self.normalize_url(base_url)}{base}")
+
+    @staticmethod
+    def _lookup_url_base(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
+        for key in keys:
+            token = str(key or "").strip()
+            if not token:
+                continue
+            candidate = mapping.get(token)
+            if candidate is None:
+                candidate = mapping.get(token.lower())
+            if candidate is None:
+                candidate = mapping.get(token.upper())
+            normalized = MaintainerrService._normalize_url_base(candidate)
+            if normalized:
+                return normalized
+        return ""
+
+    def _resolve_path_aware_url(self, cfg: dict[str, Any], app_name: str, base_url: str) -> str:
+        app_auth = cfg.get("app_auth") or {}
+        if not isinstance(app_auth, dict):
+            return self.normalize_url(base_url)
+        keys = (
+            str(app_name or "").strip(),
+            str(app_name or "").strip().lower(),
+            str(app_name or "").strip().capitalize(),
+        )
+        configured = self._lookup_url_base(
+            app_auth.get("path_prefix_url_base_by_app") or {},
+            keys,
+        )
+        if not configured:
+            configured = self._lookup_url_base(
+                app_auth.get("url_base_by_app") or {},
+                keys,
+            )
+        return self._join_url_base(base_url, configured)
+
     def _ensure_enabled(self, cfg: dict[str, Any], key: str, default: bool = True) -> bool:
         return self.bool_cfg(cfg, key, default)
 
@@ -148,6 +200,27 @@ class MaintainerrService:
             f"skipping {integration_name} integration."
         )
         return False
+
+    def _get_arr_app(self, arr_apps: list[dict[str, Any]], implementation: str) -> dict[str, Any] | None:
+        token = self._text(implementation)
+        if not token:
+            return None
+        app = self.get_arr_app(arr_apps, token)
+        if isinstance(app, dict):
+            return app
+        app = self.get_arr_app(arr_apps, token.lower())
+        if isinstance(app, dict):
+            return app
+        app = self.get_arr_app(arr_apps, token.upper())
+        if isinstance(app, dict):
+            return app
+        target = token.lower()
+        for entry in arr_apps or []:
+            if not isinstance(entry, dict):
+                continue
+            if self._token(entry.get("implementation")) == target:
+                return entry
+        return None
 
     def _rule_sync_service(self) -> MaintainerrRuleSyncService:
         return MaintainerrRuleSyncService(
@@ -382,14 +455,22 @@ class MaintainerrService:
 
         tautulli_section = self._service_section(integrations_cfg, "tautulli")
         if self._ensure_enabled(tautulli_section, "enabled", True):
-            desired["tautulli_url"] = self._resolve_url(
-                tautulli_section,
-                self._text((cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"),
-            )
-            desired["tautulli_api_key"] = self._resolve_tautulli_key(
-                config_root=config_root,
-                section_cfg=tautulli_section,
-            )
+            tautulli_required = self._ensure_enabled(tautulli_section, "required", False)
+            try:
+                desired["tautulli_url"] = self._resolve_url(
+                    tautulli_section,
+                    self._text((cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"),
+                )
+                desired["tautulli_api_key"] = self._resolve_tautulli_key(
+                    config_root=config_root,
+                    section_cfg=tautulli_section,
+                )
+            except RuntimeError as exc:
+                if tautulli_required:
+                    raise
+                desired.pop("tautulli_url", None)
+                desired.pop("tautulli_api_key", None)
+                self.log("[WARN] Maintainerr: optional Tautulli main settings skipped. " f"{exc}")
 
         watched_fields = [
             "applicationUrl",
@@ -442,6 +523,7 @@ class MaintainerrService:
             integrations_cfg,
             self._text(maintainerr_cfg.get("url") or "http://maintainerr:6246"),
         )
+        maintainerr_url = self._resolve_path_aware_url(cfg, "maintainerr", maintainerr_url)
         self.wait_for_service("Maintainerr", maintainerr_url, "/api/settings", wait_timeout)
         test_connections = self._ensure_enabled(integrations_cfg, "test_connections", True)
 
@@ -456,7 +538,7 @@ class MaintainerrService:
 
         radarr_section = self._service_section(integrations_cfg, "radarr")
         if self._ensure_enabled(radarr_section, "enabled", True):
-            radarr_app = self.get_arr_app(arr_apps, "radarr")
+            radarr_app = self._get_arr_app(arr_apps, "radarr")
             if not isinstance(radarr_app, dict):
                 if not self._require_or_skip_missing_arr_app(
                     section_cfg=radarr_section,
@@ -492,7 +574,7 @@ class MaintainerrService:
 
         sonarr_section = self._service_section(integrations_cfg, "sonarr")
         if self._ensure_enabled(sonarr_section, "enabled", True):
-            sonarr_app = self.get_arr_app(arr_apps, "sonarr")
+            sonarr_app = self._get_arr_app(arr_apps, "sonarr")
             if not isinstance(sonarr_app, dict):
                 if not self._require_or_skip_missing_arr_app(
                     section_cfg=sonarr_section,
@@ -549,22 +631,31 @@ class MaintainerrService:
 
         tautulli_section = self._service_section(integrations_cfg, "tautulli")
         if self._ensure_enabled(tautulli_section, "enabled", True):
-            tautulli_payload = {
-                "url": self._resolve_url(
-                    tautulli_section,
-                    self._text((cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"),
-                ),
-                "api_key": self._resolve_tautulli_key(
-                    config_root=config_root,
-                    section_cfg=tautulli_section,
-                ),
-            }
-            self._ensure_single_endpoint_integration(
-                maintainerr_url,
-                "tautulli",
-                tautulli_payload,
-                test_connections=test_connections,
-            )
+            tautulli_required = self._ensure_enabled(tautulli_section, "required", False)
+            try:
+                tautulli_payload = {
+                    "url": self._resolve_url(
+                        tautulli_section,
+                        self._text(
+                            (cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"
+                        ),
+                    ),
+                    "api_key": self._resolve_tautulli_key(
+                        config_root=config_root,
+                        section_cfg=tautulli_section,
+                    ),
+                }
+            except RuntimeError as exc:
+                if tautulli_required:
+                    raise
+                self.log(f"[WARN] Maintainerr: optional tautulli integration skipped. {exc}")
+            else:
+                self._ensure_single_endpoint_integration(
+                    maintainerr_url,
+                    "tautulli",
+                    tautulli_payload,
+                    test_connections=test_connections,
+                )
 
         if self._ensure_enabled(integrations_cfg, "sync_rules", True):
             self._sync_policy_rules(

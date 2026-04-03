@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.auth.provider_registry import (
+    compose_service_names_by_provider,
     load_builtin_auth_provider_specs,
     merge_auth_provider_defaults,
 )
@@ -219,6 +220,20 @@ class DeployStackRunner:
         for item in self._edge_provider_hook_values(
             by_provider_key="path_prefix_redirect_service_names_by_provider",
             fallback_key="path_prefix_redirect_service_names",
+        ):
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
+
+    def _edge_path_prefix_preserve_service_names(self) -> tuple[str, ...]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in self._edge_provider_hook_values(
+            by_provider_key="path_prefix_preserve_service_names_by_provider",
+            fallback_key="path_prefix_preserve_service_names",
         ):
             token = str(item or "").strip().lower()
             if not token or token in seen:
@@ -585,9 +600,37 @@ class DeployStackRunner:
 
     def _selected_apps(self) -> tuple[str, ...]:
         raw = str(self.cfg.selected_apps or "").strip()
-        if not raw:
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw.split(",") if raw else ():
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+
+        for service_name in self._auth_provider_service_names():
+            token = str(service_name or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
+
+    def _auth_provider_service_names(self) -> tuple[str, ...]:
+        provider = str(self.cfg.auth_provider or "").strip().lower()
+        if not provider or provider == "none":
             return ()
-        return tuple(token.strip() for token in raw.split(",") if token.strip())
+        service_names = tuple(compose_service_names_by_provider().get(provider) or ())
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in service_names:
+            token = str(item or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+        return tuple(out)
 
     def _chaos_actions(self) -> tuple[str, ...]:
         raw = str(self.cfg.chaos_actions or "").strip()

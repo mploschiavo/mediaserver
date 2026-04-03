@@ -37,6 +37,117 @@ services:
       timeout: 10s
       retries: 5
 
+  authelia:
+    image: authelia/authelia:4.39
+    container_name: authelia
+    profiles: ["auth-authelia"]
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /config/configuration.yml ]; then
+          cp /defaults/configuration.yml /config/configuration.yml
+        fi
+        if [ ! -f /config/users_database.yml ]; then
+          cp /defaults/users_database.yml /config/users_database.yml
+        fi
+        exec authelia --config /config/configuration.yml
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/authelia:/config
+      - ../config/defaults/compose/auth/authelia:/defaults:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authelia.rule=Host(`${AUTHELIA_HOST}`)
+      - traefik.http.services.authelia.loadbalancer.server.port=9091
+      - traefik.http.middlewares.authelia.forwardauth.address=http://authelia:9091/api/authz/forward-auth
+      - traefik.http.middlewares.authelia.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.authelia.forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
+
+  authentik-postgresql:
+    image: docker.io/library/postgres:16-alpine
+    container_name: authentik-postgresql
+    profiles: ["auth-authentik"]
+    environment:
+      POSTGRES_DB: ${AUTHENTIK_PG_DB:-authentik}
+      POSTGRES_USER: ${AUTHENTIK_PG_USER:-authentik}
+      POSTGRES_PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
+    volumes:
+      - ${DATA_ROOT}/authentik/postgresql:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  authentik:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2-rc1}
+    container_name: authentik
+    profiles: ["auth-authentik"]
+    command: ["server"]
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-replace-this-authentik-secret-key}
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
+    volumes:
+      - ${CONFIG_ROOT}/authentik/data:/data
+      - ${CONFIG_ROOT}/authentik/custom-templates:/templates
+    restart: unless-stopped
+    shm_size: 512mb
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/-/health/live/"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authentik.rule=Host(`${AUTHENTIK_HOST}`)
+      - traefik.http.services.authentik.loadbalancer.server.port=9000
+      - traefik.http.middlewares.authentik.forwardauth.address=http://authentik:9000/outpost.goauthentik.io/auth/traefik
+      - traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid
+
+  authentik-worker:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2-rc1}
+    container_name: authentik-worker
+    profiles: ["auth-authentik"]
+    command: ["worker"]
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-replace-this-authentik-secret-key}
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CONFIG_ROOT}/authentik/data:/data
+      - ${CONFIG_ROOT}/authentik/certs:/certs
+      - ${CONFIG_ROOT}/authentik/custom-templates:/templates
+    restart: unless-stopped
+    shm_size: 512mb
+
   envoy:
     image: envoyproxy/envoy:v1.31.2
     container_name: envoy
@@ -58,6 +169,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.envoy.rule=Host(`${ENVOY_HOST}`)
+      - traefik.http.services.envoy.loadbalancer.server.port=9901
 
   homepage:
     image: ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c
@@ -297,6 +412,19 @@ services:
     restart: unless-stopped
     depends_on: [sonarr, radarr, lidarr, readarr]
 
+  recyclarr:
+    image: hashicorp/http-echo:1.0.0
+    container_name: recyclarr
+    profiles: ["recyclarr"]
+    command:
+      - "-text=Recyclarr stub endpoint. Enable and configure a real Recyclarr runtime when ready."
+      - "-listen=:80"
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.recyclarr.rule=Host(`${RECYCLARR_HOST}`)
+      - traefik.http.services.recyclarr.loadbalancer.server.port=80
+
   maintainerr:
     image: ghcr.io/maintainerr/maintainerr:3.3.0
     container_name: maintainerr
@@ -304,11 +432,12 @@ services:
       TZ: ${TZ}
       UI_HOSTNAME: 0.0.0.0
       UI_PORT: 6246
+      BASE_PATH: ${MAINTAINERR_BASE_PATH}
     volumes:
       - ${CONFIG_ROOT}/maintainerr:/opt/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:6246/"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${BASE_PATH:-/}"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -380,6 +509,10 @@ services:
       TZ: ${TZ}
       LOG_LEVEL: info
     restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.flaresolverr.rule=Host(`${FLARESOLVERR_HOST}`)
+      - traefik.http.services.flaresolverr.loadbalancer.server.port=8191
 
   jellyfin-nvidia:
     image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85

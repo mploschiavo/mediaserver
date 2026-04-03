@@ -209,6 +209,16 @@ Swap workflow:
 - Compose runs must emit a storage budget artifact in runtime artifacts for replay/audit.
 - Persistence behavior must be validated by tests for restart, recreate/redeploy, and delete/redeploy scenarios.
 
+### Cross-Platform Runtime Support Policy
+- Compose is the cross-platform runtime target for developer workstations:
+  - Linux, macOS, and Windows are supported through Docker Engine/Docker Desktop.
+- Kubernetes local-target assumptions are OS-scoped:
+  - MicroK8s is Linux-first; do not assume MicroK8s on Windows/macOS.
+  - Keep kubernetes target logic cluster-API-driven, not distro-specific shell assumptions.
+- Cross-platform changes must avoid hardcoding Linux-only host paths in shared orchestration logic.
+- Add/update unit tests for path/env normalization and target capability selection when introducing platform-sensitive behavior.
+- If a runtime feature is Linux-only, document it explicitly in user docs and fail fast with actionable errors on unsupported hosts.
+
 ### Edge/Auth Isolation Contract
 - Reverse-proxy routing and auth provider wiring must be declarative and pluggable, not hard-coded into app services.
 - Shared orchestration must not embed provider-specific branches like `if auth_provider == ...`; use provider adapter bindings.
@@ -223,6 +233,10 @@ Swap workflow:
   - Adding/removing an auth provider should primarily be folder add/delete + config updates.
 - Route strategy (`subdomain` vs `path-prefix`) must be configurable and provider-agnostic.
 - Preserve device-critical direct host support for media servers (for example Jellyfin native TV/mobile clients) even when consolidated path-prefix routing is enabled for browser apps.
+- For path-prefix single-host routing, browser app links must resolve under the configured gateway path prefix (for example `/app/<service>`) unless explicitly configured otherwise.
+- Session affinity for root-relative app assets/API (for example `/assets/*`, `/system/*`, `/settings/*`) must avoid cross-app cookie collisions:
+  - do not use one shared mutable cookie key for all apps
+  - only stamp app-routing cookies on HTML document navigations, not every API/static response
 - Default security posture for internet exposure:
   - explicit exposure intent flag/config is required before enabling public routes
   - centralized SSO/forward-auth policy is preferred over per-app bespoke auth config
@@ -243,6 +257,7 @@ Swap workflow:
 - Local/dev default mapping example: `127.0.0.1 apps.media-dev.local`.
 - Required operator URL pattern is `http://<gateway-host>:<edge-port>/app/<service>` (for example `/app/homepage`, `/app/bazarr`, `/app/jellyseerr`).
 - Prefer rewrite/header strategies in the selected edge provider over cross-host redirects for browser app routing.
+- For ARR-family apps and Prowlarr behind path-prefix routing, bootstrap must set app host `urlBase`/`UrlBase` to `/app/<service>` so post-login navigation and API calls (for example `/system/status`) stay on the correct app route.
 - Acceptance must validate representative app pages render as usable UIs from the gateway path-prefix URLs (not just HTTP 200).
 
 ### Non-Negotiable Isolation Rules
@@ -349,6 +364,12 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - For HTML responses, smoke checks must probe first-party static asset references and fail on local asset 4xx responses.
 - Path-prefix compose validation must probe via the configured gateway host + published edge port with Host-header routing.
 - Add/maintain unit tests for the "200 but unusable page" class (redirect escapes, missing local assets, broken base-path behavior).
+- Validate Homepage tile links during compose edge smoke:
+  - tile URLs must only target deployed/selected apps for the active profile,
+  - each internal tile URL must resolve to a usable page through the configured gateway/base-path contract,
+  - 4xx and auth/forbidden terminal responses on internal tile links are failures.
+- For ARR-family and Prowlarr routes in path-prefix mode, include post-login/deep-link checks for `/system/status` and fail when API loads break after navigation.
+- If homepage config artifacts change during bootstrap, trigger homepage runtime revalidation so rendered tile links match generated config.
 
 ## App Seeding And First-Run Policy
 - Any app that is deployed for a profile (including dependency-expanded services) must be seeded out of first-run/setup-wizard state during bootstrap.
@@ -362,6 +383,11 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Each chaos action must be followed by readiness/healing verification before the next action.
 - Chaos scheduling parameters (`duration_minutes`, `interval_seconds`, `actions`) must remain config-driven and test-covered.
 
+## Compose Environment Contract
+- Compose deploys must fail fast when required host-path env bindings are missing (`CONFIG_ROOT`, `MEDIA_ROOT`, `DATA_ROOT` when referenced by compose spec).
+- Do not silently expand missing compose env vars into root-level paths (for example `/media`, `/config`) because this causes configuration drift and misleading storage-guardrail outcomes.
+- Storage guardrails are scoped to configured stack storage roots, not whole-disk free space; keep logs/errors/tests explicit about that distinction.
+
 ## Debug Artifact Policy
 - Do not add tracked `*debug*` wrapper/entrypoint files for bootstrap flows.
 - Use runtime log levels (`MEDIA_STACK_LOG_LEVEL`) and structured logs instead of dedicated debug scripts.
@@ -371,6 +397,7 @@ Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
 - Any new module imported by `scripts/bootstrap-apps.py` must be included by the image build context.
 - Keep runtime Python under `scripts/` so `COPY scripts /opt/media-stack/scripts` captures required modules.
 - Validate runtime changes by rebuilding/pushing the bootstrap runner image before live bootstrap tests.
+- When code changes impact bootstrap/runtime behavior, rebuild the bootstrap runner image before manual compose/k8s verification to avoid stale-image false negatives.
 
 ## Scripts Directory Policy
 - Keep `scripts/*.sh` as user/operator entrypoints and small compatibility wrappers.
@@ -415,6 +442,10 @@ Minimum for refactor PRs:
 - Wrapper contract tests for CLI parity
 - Golden tests for critical bootstrap config sections
 - Lint + format checks for modified Python scope
+- For compose `path-prefix` edge routing, include automated smoke validation for ARR system-status APIs through gateway URLs (`/app/<arr>/api/.../system/status`) using seeded API keys from runtime config.
+- For request-manager auth bootstrap (Jellyseerr/OpenSeerr), include tests that prove local-admin credential seeding still happens when downstream integration/config calls fail.
+- For optional integrations (for example Tautulli in Maintainerr), tests must cover partial-degrade behavior so one optional dependency failure does not block all integration/main-setting seeding.
+- For edge/path-prefix changes, add/maintain smoke coverage that validates browser-usable navigation (route + critical assets + homepage tile destinations), not only HTTP 200 checks.
 - Rebuild required runtime images after code changes and before live testing (for example `scripts/build-bootstrap-runner-image.sh` before compose/k8s bootstrap validation).
 
 Current key test suites:
@@ -440,6 +471,7 @@ Current key test suites:
   - `full` profiles (or any profile with `auto_download_content=true`) may enable tested-indexer auto add and initial content sync.
 - `RUN_BOOTSTRAP=1` validation requires a freshly built bootstrap-runner image whenever runtime imports or module paths changed.
 - Keep repo-wide formatting sweeps isolated from behavior changes; do not mix debt cleanup with incident fixes.
+- Path-prefix reverse-proxy routing for ARR-family apps is not sufficient by itself; server-side app `urlBase` must be seeded to `/app/<service>` or UI navigation can fail after login even when initial landing works.
 
 ## Validation Checklist (Pre-Merge)
 1. `bash -n scripts/*.sh scripts/lib/*.sh`

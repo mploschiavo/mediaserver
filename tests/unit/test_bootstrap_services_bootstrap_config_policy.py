@@ -97,6 +97,27 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             {"sonarr", "radarr", "lidarr", "readarr", "prowlarr"},
         )
 
+    def test_selected_apps_policy_prunes_homepage_hosts_to_selected_apps(self):
+        cfg = {
+            "homepage": {
+                "enabled": True,
+                "hosts": [
+                    "homepage.local",
+                    "sonarr.local",
+                    "radarr.local",
+                    "tautulli.local",
+                    "flaresolverr.local",
+                ],
+            }
+        }
+
+        apply_selected_apps_policy(cfg, selected_apps_csv="homepage,sonarr,radarr")
+
+        self.assertEqual(
+            (cfg.get("homepage") or {}).get("hosts"),
+            ["homepage.local", "sonarr.local", "radarr.local"],
+        )
+
     def test_content_download_policy_disables_auto_indexers_when_downloads_disabled(self):
         cfg = {
             "prowlarr_auto_add_tested_indexers": True,
@@ -234,10 +255,13 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
     def test_edge_url_policy_path_prefix_uses_single_gateway_for_browser_apps(self):
         cfg = {
             "homepage": {
-                "hosts": ["homepage.local", "bazarr.local", "jellyseerr.local"],
+                "hosts": ["homepage.local", "jellyfin.local", "bazarr.local", "jellyseerr.local"],
                 "device_onboarding": {},
             },
             "jellyseerr": {"jellyfin": {}},
+            "app_auth": {
+                "include": ["Sonarr", "Radarr", "Lidarr", "Readarr", "Prowlarr"],
+            },
         }
 
         apply_edge_url_policy(
@@ -253,9 +277,47 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
 
         homepage_hosts = (cfg.get("homepage") or {}).get("hosts") or []
         self.assertIn("apps.media-dev.local:18080/app/homepage", homepage_hosts)
+        self.assertIn("apps.media-dev.local:18080/app/jellyfin", homepage_hosts)
         self.assertIn("apps.media-dev.local:18080/app/bazarr", homepage_hosts)
         self.assertIn("apps.media-dev.local:18080/app/jellyseerr", homepage_hosts)
         self.assertNotIn("homepage.local:18080", homepage_hosts)
+        self.assertNotIn("media.media-dev.local:18080", homepage_hosts)
+        path_map = ((cfg.get("app_auth") or {}).get("path_prefix_url_base_by_app")) or {}
+        self.assertEqual(
+            path_map,
+            {
+                "sonarr": "/app/sonarr",
+                "radarr": "/app/radarr",
+                "lidarr": "/app/lidarr",
+                "readarr": "/app/readarr",
+                "prowlarr": "/app/prowlarr",
+            },
+        )
+
+    def test_edge_url_policy_adds_maintainerr_path_base_when_enabled(self):
+        cfg = {
+            "app_auth": {
+                "include": ["Sonarr"],
+            },
+            "maintainerr": {
+                "enabled": True,
+            },
+        }
+
+        apply_edge_url_policy(
+            cfg,
+            internet_exposed=False,
+            route_strategy="path-prefix",
+            ingress_domain="media-dev.local",
+            app_gateway_host="apps.media-dev.local",
+            app_gateway_port="18080",
+            app_path_prefix="/app",
+            media_server_direct_host="",
+        )
+
+        path_map = ((cfg.get("app_auth") or {}).get("path_prefix_url_base_by_app")) or {}
+        self.assertEqual(path_map.get("sonarr"), "/app/sonarr")
+        self.assertEqual(path_map.get("maintainerr"), "/app/maintainerr")
 
 
 if __name__ == "__main__":

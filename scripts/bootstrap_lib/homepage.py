@@ -6,6 +6,8 @@ from typing import Dict, Iterable, List, Tuple
 from urllib import parse
 
 DEFAULT_HOSTS = [
+    "traefik.local",
+    "envoy.local",
     "homepage.local",
     "jellyfin.local",
     "jellyseerr.local",
@@ -19,11 +21,18 @@ DEFAULT_HOSTS = [
     "sabnzbd.local",
     "maintainerr.local",
     "tautulli.local",
+    "flaresolverr.local",
+    "recyclarr.local",
+    "authelia.local",
+    "authentik.local",
 ]
 
 SERVICE_CATALOG: Dict[str, Tuple[str, str]] = {
+    "traefik": ("Traefik", "Edge router"),
+    "envoy": ("Envoy", "Edge router"),
     "homepage": ("Homepage", "Dashboard"),
     "jellyfin": ("Jellyfin", "Primary media server"),
+    "media": ("Jellyfin", "Primary media server"),
     "jellyseerr": ("Jellyseerr", "Request management"),
     "sonarr": ("Sonarr", "TV automation"),
     "radarr": ("Radarr", "Movie automation"),
@@ -37,11 +46,17 @@ SERVICE_CATALOG: Dict[str, Tuple[str, str]] = {
     "tautulli": ("Tautulli", "Plex analytics"),
     "plex": ("Plex", "Optional media server"),
     "flaresolverr": ("FlareSolverr", "Indexer helper"),
+    "recyclarr": ("Recyclarr", "Sync policy automation"),
+    "authelia": ("Authelia", "Authentication provider"),
+    "authentik": ("Authentik", "Authentication provider"),
 }
 
 PREFERRED_PREFIX_ORDER = [
+    "traefik",
+    "envoy",
     "homepage",
     "jellyfin",
+    "media",
     "jellyseerr",
     "sonarr",
     "radarr",
@@ -55,6 +70,9 @@ PREFERRED_PREFIX_ORDER = [
     "tautulli",
     "plex",
     "flaresolverr",
+    "recyclarr",
+    "authelia",
+    "authentik",
 ]
 
 

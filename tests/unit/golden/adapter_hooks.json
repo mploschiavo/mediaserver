@@ -61,6 +61,16 @@
       ],
       "envoy": []
     },
+    "path_prefix_preserve_service_names_by_provider": {
+      "traefik": [],
+      "envoy": [
+        "sonarr",
+        "radarr",
+        "lidarr",
+        "readarr",
+        "prowlarr"
+      ]
+    },
     "media_server_service_names": [
       "jellyfin",
       "jellyfin-nvidia"

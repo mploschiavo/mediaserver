@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import http.client
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 from urllib import parse
 
@@ -17,6 +19,28 @@ _PATH_PREFIX_RULE_RE = re.compile(r"PathPrefix\((?P<body>[^)]*)\)", flags=re.IGN
 _BACKTICK_TOKEN_RE = re.compile(r"`([^`]+)`")
 _ASSET_ATTR_RE = re.compile(r"""(?:src|href)=["']([^"'#][^"']*)["']""", flags=re.IGNORECASE)
 _EXTERNAL_SCHEME_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//", flags=re.IGNORECASE)
+_OPTIONAL_ASSET_BASENAMES = {
+    "apple-touch-icon.png",
+    "favicon-16x16.png",
+    "favicon-32x32.png",
+    "safari-pinned-tab.svg",
+    "site.webmanifest",
+}
+_SERVARR_STATUS_API_VERSION = {
+    "sonarr": "v3",
+    "radarr": "v3",
+    "lidarr": "v1",
+    "readarr": "v1",
+    "prowlarr": "v1",
+}
+_SERVARR_APP_NAME = {
+    "sonarr": "Sonarr",
+    "radarr": "Radarr",
+    "lidarr": "Lidarr",
+    "readarr": "Readarr",
+    "prowlarr": "Prowlarr",
+}
+_XML_API_KEY_RE = re.compile(r"<ApiKey>([^<]+)</ApiKey>", flags=re.IGNORECASE)
 
 
 def _extract_backtick_tokens(value: str) -> tuple[str, ...]:
@@ -67,6 +91,14 @@ def _response_header(headers: dict[str, str], key: str) -> str:
         if str(raw_key or "").strip().lower() == token:
             return str(raw_value or "")
     return ""
+
+
+def _asset_is_optional(asset_ref: str) -> bool:
+    path = parse.urlparse(str(asset_ref or "")).path
+    base = str(path or "").rstrip("/").rsplit("/", 1)[-1].strip().lower()
+    if not base:
+        return False
+    return base in _OPTIONAL_ASSET_BASENAMES
 
 
 @dataclass(frozen=True)
@@ -123,6 +155,13 @@ class ComposeEdgeHttpSmokeService:
             or env.get("TRAEFIK_HTTP_PORT")
             or "80"
         )
+
+    def _compose_config_root(self) -> Path | None:
+        env = self.spec_resolver.compose_environment()
+        token = str(env.get("CONFIG_ROOT") or "").strip()
+        if not token:
+            return None
+        return Path(token)
 
     def _path_prefix_routes(self, services: dict[str, dict[str, Any]]) -> tuple[str, ...]:
         rendered = self.route_graph_service.render(services)
@@ -207,6 +246,238 @@ class ComposeEdgeHttpSmokeService:
             hops += 1
         return path, response, visited
 
+    def _check_path(
+        self,
+        *,
+        host_header: str,
+        gateway_port: int,
+        route_path: str,
+        failures: list[str],
+    ) -> None:
+        final_path, response, visited = self._follow_redirects(
+            host_header=host_header,
+            port=gateway_port,
+            initial_path=route_path,
+        )
+        if response.status in {401, 403}:
+            failures.append(
+                f"{route_path}: final status {response.status} (visited={','.join(visited)})"
+            )
+            return
+        if response.status >= 400:
+            failures.append(
+                f"{route_path}: final status {response.status} (visited={','.join(visited)})"
+            )
+            return
+
+        if not final_path.startswith(route_path):
+            failures.append(
+                f"{route_path}: redirect/path escape to '{final_path}' "
+                f"(visited={','.join(visited)})"
+            )
+            return
+
+        final_path_lower = final_path.lower()
+        if "/wizard/" in final_path_lower or final_path_lower.endswith("/wizard"):
+            failures.append(
+                f"{route_path}: landed on startup/setup wizard path '{final_path}' "
+                f"(visited={','.join(visited)})"
+            )
+            return
+
+        if not self._is_html_response(response.headers):
+            return
+
+        base_url = f"http://{host_header}:{gateway_port}{final_path}"
+        for asset_ref in self._asset_candidates(response.body):
+            resolved_url = parse.urljoin(base_url, asset_ref)
+            resolved_path = self._path_from_url(resolved_url)
+            if parse.urlparse(resolved_url).hostname not in {"", host_header}:
+                continue
+            asset_response = self._http_get(
+                host_header=host_header,
+                port=gateway_port,
+                path=resolved_path,
+                headers={
+                    "Accept": "*/*",
+                    "Referer": base_url,
+                },
+            )
+            if asset_response.status in {401, 403}:
+                failures.append(
+                    f"{route_path}: asset '{asset_ref}' failed with "
+                    f"HTTP {asset_response.status} via '{resolved_path}'"
+                )
+                return
+            if asset_response.status == 404 and _asset_is_optional(asset_ref):
+                continue
+            if asset_response.status >= 400:
+                failures.append(
+                    f"{route_path}: asset '{asset_ref}' failed with "
+                    f"HTTP {asset_response.status} via '{resolved_path}'"
+                )
+                return
+
+    @staticmethod
+    def _route_service_name(route_path: str) -> str:
+        token = str(route_path or "").strip().rstrip("/")
+        if not token:
+            return ""
+        return token.rsplit("/", 1)[-1].strip().lower()
+
+    def _read_servarr_api_key(self, *, config_root: Path, service_name: str) -> str:
+        config_path = config_root / service_name / "config.xml"
+        if not config_path.exists():
+            return ""
+        text = config_path.read_text(encoding="utf-8", errors="replace")
+        match = _XML_API_KEY_RE.search(text)
+        if not match:
+            return ""
+        return str(match.group(1) or "").strip()
+
+    def _check_servarr_system_status_api(
+        self,
+        *,
+        host_header: str,
+        gateway_port: int,
+        route_path: str,
+        config_root: Path | None,
+        failures: list[str],
+    ) -> None:
+        service_name = self._route_service_name(route_path)
+        api_version = _SERVARR_STATUS_API_VERSION.get(service_name)
+        if not api_version:
+            return
+        if config_root is None:
+            failures.append(
+                f"{route_path}: cannot validate system status API; CONFIG_ROOT is missing."
+            )
+            return
+        api_key = self._read_servarr_api_key(config_root=config_root, service_name=service_name)
+        if not api_key:
+            failures.append(
+                f"{route_path}: cannot validate system status API; "
+                f"ApiKey missing in {config_root / service_name / 'config.xml'}."
+            )
+            return
+
+        status_path = (
+            f"{route_path}/api/{api_version}/system/status?apikey={parse.quote(api_key, safe='')}"
+        )
+        response = self._http_get(
+            host_header=host_header,
+            port=gateway_port,
+            path=status_path,
+            headers={"Accept": "application/json"},
+        )
+        if response.status >= 400:
+            failures.append(
+                f"{route_path}: system status API failed with "
+                f"HTTP {response.status} via '{status_path}'"
+            )
+            return
+        content_type = _response_header(response.headers, "content-type").lower()
+        if "json" not in content_type:
+            failures.append(
+                f"{route_path}: system status API returned non-JSON content-type "
+                f"'{content_type or '<missing>'}' via '{status_path}'"
+            )
+            return
+        try:
+            payload = json.loads(str(response.body or ""))
+        except Exception:
+            failures.append(
+                f"{route_path}: system status API returned invalid JSON via '{status_path}'"
+            )
+            return
+        if not isinstance(payload, dict):
+            failures.append(
+                f"{route_path}: system status API returned non-object payload via '{status_path}'"
+            )
+            return
+        version = str(payload.get("version") or "").strip()
+        if not version:
+            failures.append(
+                f"{route_path}: system status API payload missing version via '{status_path}'"
+            )
+            return
+        expected_name = _SERVARR_APP_NAME.get(service_name, "")
+        app_name = str(payload.get("appName") or "").strip()
+        if expected_name and app_name and app_name.lower() != expected_name.lower():
+            failures.append(
+                f"{route_path}: system status API returned appName='{app_name}' "
+                f"(expected '{expected_name}') via '{status_path}'"
+            )
+            return
+
+    def _homepage_tile_paths(
+        self,
+        *,
+        gateway_host: str,
+        gateway_port: int,
+        app_prefix: str,
+    ) -> tuple[str, ...]:
+        api_path = f"{app_prefix}/homepage/api/services"
+        response = self._http_get(
+            host_header=gateway_host,
+            port=gateway_port,
+            path=api_path,
+            headers={"Accept": "application/json"},
+        )
+        if response.status >= 400:
+            raise RuntimeError(
+                "Compose homepage tile validation failed: "
+                f"services API returned HTTP {response.status} at {api_path}."
+            )
+        try:
+            payload = json.loads(str(response.body or ""))
+        except Exception as exc:
+            raise RuntimeError(
+                "Compose homepage tile validation failed: "
+                f"services API payload is not valid JSON ({exc})."
+            ) from exc
+        if not isinstance(payload, list):
+            raise RuntimeError(
+                "Compose homepage tile validation failed: " "services API payload is not a list."
+            )
+
+        out: list[str] = []
+        discovered_hrefs: list[str] = []
+        seen: set[str] = set()
+        for group in payload:
+            if not isinstance(group, dict):
+                continue
+            services = group.get("services")
+            if not isinstance(services, list):
+                continue
+            for service in services:
+                if not isinstance(service, dict):
+                    continue
+                href = str(service.get("href") or "").strip()
+                if not href:
+                    continue
+                discovered_hrefs.append(href)
+                parsed = parse.urlparse(href if "://" in href else f"http://{href}")
+                href_host = str(parsed.hostname or "").strip().lower()
+                if href_host != gateway_host:
+                    continue
+                link_path = self._path_from_url(href)
+                if not link_path.startswith(f"{app_prefix}/"):
+                    continue
+                if link_path in seen:
+                    continue
+                seen.add(link_path)
+                out.append(link_path)
+        if not out:
+            sample = ", ".join(discovered_hrefs[:5]) if discovered_hrefs else "<none>"
+            raise RuntimeError(
+                "Compose homepage tile validation failed: "
+                "services API returned no gateway path-prefix tile links "
+                f"(expected host={gateway_host} with prefix {app_prefix}/..., "
+                f"sample_hrefs={sample})."
+            )
+        return tuple(out)
+
     def run(self, services: dict[str, dict[str, Any]]) -> None:
         strategy = self.label_service.route_strategy()
         gateway_host = str(self.label_service.cfg.app_gateway_host or "").strip().lower()
@@ -218,60 +489,52 @@ class ComposeEdgeHttpSmokeService:
             return
 
         gateway_port = self._compose_gateway_http_port()
+        app_prefix = str(self.label_service.cfg.app_path_prefix or "").strip()
+        if not app_prefix:
+            app_prefix = "/app"
+        if not app_prefix.startswith("/"):
+            app_prefix = f"/{app_prefix}"
+        app_prefix = app_prefix.rstrip("/") or "/app"
         failures: list[str] = []
         checked_routes = 0
+        config_root = self._compose_config_root()
         for route_path in routes:
             checked_routes += 1
-            final_path, response, visited = self._follow_redirects(
+            self._check_path(
                 host_header=gateway_host,
-                port=gateway_port,
-                initial_path=route_path,
+                gateway_port=gateway_port,
+                route_path=route_path,
+                failures=failures,
             )
-            if response.status in {401, 403}:
-                continue
-            if response.status >= 400:
-                failures.append(
-                    f"{route_path}: final status {response.status} (visited={','.join(visited)})"
-                )
-                continue
+            self._check_servarr_system_status_api(
+                host_header=gateway_host,
+                gateway_port=gateway_port,
+                route_path=route_path,
+                config_root=config_root,
+                failures=failures,
+            )
 
-            if not final_path.startswith(route_path):
-                failures.append(
-                    f"{route_path}: redirect/path escape to '{final_path}' "
-                    f"(visited={','.join(visited)})"
-                )
-                continue
-
-            if not self._is_html_response(response.headers):
-                continue
-
-            base_url = f"http://{gateway_host}:{gateway_port}{final_path}"
-            for asset_ref in self._asset_candidates(response.body):
-                resolved_url = parse.urljoin(base_url, asset_ref)
-                resolved_path = self._path_from_url(resolved_url)
-                if parse.urlparse(resolved_url).hostname not in {"", gateway_host}:
-                    continue
-                asset_response = self._http_get(
+        homepage_path = f"{app_prefix}/homepage"
+        checked_links = 0
+        if homepage_path in set(routes):
+            tile_paths = self._homepage_tile_paths(
+                gateway_host=gateway_host,
+                gateway_port=gateway_port,
+                app_prefix=app_prefix,
+            )
+            for tile_path in tile_paths:
+                checked_links += 1
+                self._check_path(
                     host_header=gateway_host,
-                    port=gateway_port,
-                    path=resolved_path,
-                    headers={
-                        "Accept": "*/*",
-                        "Referer": base_url,
-                    },
+                    gateway_port=gateway_port,
+                    route_path=tile_path,
+                    failures=failures,
                 )
-                if asset_response.status in {401, 403}:
-                    continue
-                if asset_response.status >= 400:
-                    failures.append(
-                        f"{route_path}: asset '{asset_ref}' failed with "
-                        f"HTTP {asset_response.status} via '{resolved_path}'"
-                    )
-                    break
 
         self.info(
             "Compose edge HTTP smoke check: "
-            f"validated {checked_routes} path route(s) via {gateway_host}:{gateway_port}."
+            f"validated {checked_routes} path route(s) and {checked_links} homepage tile link(s) "
+            f"via {gateway_host}:{gateway_port}."
         )
         if failures:
             sample = "; ".join(failures[:5])

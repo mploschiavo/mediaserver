@@ -76,6 +76,9 @@ class QBittorrentStorageDefaultsTests(unittest.TestCase):
         prefs = captured["prefs"]
         self.assertTrue(prefs.get("bypass_local_auth"))
         self.assertTrue(prefs.get("bypass_auth_subnet_whitelist_enabled"))
+        self.assertFalse(prefs.get("web_ui_host_header_validation_enabled"))
+        self.assertTrue(prefs.get("web_ui_reverse_proxy_enabled"))
+        self.assertFalse(prefs.get("web_ui_csrf_protection_enabled"))
         whitelist = str(prefs.get("bypass_auth_subnet_whitelist") or "")
         self.assertIn("10.0.0.0/8", whitelist)
         self.assertIn("172.16.0.0/12", whitelist)
