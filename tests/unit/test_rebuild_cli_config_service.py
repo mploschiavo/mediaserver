@@ -15,6 +15,10 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
     def test_parse_deploy_stack_config(self):
         root_dir = Path("/tmp/media-stack-test")
         env = {
+            "PLATFORM_TARGET": "kubernetes",
+            "NAMESPACE": "media-stack-dev",
+            "INGRESS_DOMAIN": "local",
+            "COMPOSE_PROJECT_NAME": "media-dev",
             "PROFILE": "full",
             "RUN_BOOTSTRAP": "1",
             "PRECONFIGURE_API_KEYS": "0",
@@ -25,17 +29,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         }
         with patch.dict(os.environ, env, clear=False):
             cfg = parse_deploy_stack_config(
-                [
-                    "192.168.1.60",
-                    "--platform-target",
-                    "kubernetes",
-                    "--namespace",
-                    "media-stack-dev",
-                    "--ingress-domain",
-                    "local",
-                    "--compose-project-name",
-                    "media-dev",
-                ],
+                ["192.168.1.60"],
                 root_dir=root_dir,
             )
         self.assertEqual(cfg.platform_target, "k8s")
