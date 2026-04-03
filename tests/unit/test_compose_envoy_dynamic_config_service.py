@@ -417,6 +417,65 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "not found"):
             service.render(services={})
 
+    @staticmethod
+    def _jellyseerr_preserve_payload() -> dict:
+        return {
+            "http": {
+                "routers": {
+                    "jellyseerr-path": {
+                        "rule": "Host(`apps.media-dev.local`) && PathPrefix(`/app/jellyseerr`)",
+                        "service": "jellyseerr",
+                    }
+                },
+                "middlewares": {},
+                "services": {
+                    "jellyseerr": {
+                        "loadBalancer": {
+                            "servers": [{"url": "http://jellyseerr:5055"}],
+                        }
+                    }
+                },
+            }
+        }
+
+    def test_render_does_not_rewrite_path_prefix_for_jellyseerr_preserve(self):
+        template = self._template_payload()
+        service = self._service(template_loader=lambda _path: template)
+        service.route_graph_service.render.return_value = SimpleNamespace(
+            payload=self._jellyseerr_preserve_payload()
+        )
+        rendered = service.render(services={})
+        virtual_hosts = (
+            (
+                (
+                    (
+                        (rendered.payload.get("static_resources") or {}).get("listeners") or [{}]
+                    )[0].get("filter_chains")
+                    or [{}]
+                )[0].get("filters")
+                or [{}]
+            )[0]
+            .get("typed_config", {})
+            .get("route_config", {})
+            .get("virtual_hosts", [])
+        )
+        self.assertTrue(virtual_hosts)
+        routes = virtual_hosts[0].get("routes") or []
+        primary_route = next(
+            (
+                route
+                for route in routes
+                if (route.get("match") or {}).get("prefix") == "/app/jellyseerr"
+            ),
+            None,
+        )
+        self.assertIsNotNone(primary_route, "Primary route for /app/jellyseerr must exist")
+        self.assertNotIn(
+            "regex_rewrite",
+            (primary_route.get("route") or {}),
+            "Preserve service jellyseerr must not have regex_rewrite stripping its path prefix",
+        )
+
     def test_render_does_not_rewrite_path_prefix_when_strip_middleware_absent(self):
         template = self._template_payload()
         service = self._service(template_loader=lambda _path: template)
