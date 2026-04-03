@@ -18,6 +18,8 @@ from core.platforms.compose.docker_client import DockerContainerState  # noqa: E
 _TRAEFIK_EDGE_SPEC = {
     "enable_label_key": "traefik.enable",
     "router_label_prefix": "traefik.http.routers.",
+    "service_label_prefix": "traefik.http.services.",
+    "middleware_label_prefix": "traefik.http.middlewares.",
     "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
     "router_service_key_template": "traefik.http.routers.{router_name}.service",
     "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",
@@ -32,6 +34,20 @@ _TRAEFIK_EDGE_SPEC = {
     "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
     "path_redirect_regex_template": r"^https?://[^/:]+(:[0-9]+)?{path_prefix_regex}/?(.*)",
     "path_redirect_replacement_template": "{scheme}://{redirect_host}$1/$2",
+    "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
+    "direct_host_rule_template": "Host(`{direct_host}`)",
+}
+
+_ENVOY_EDGE_SPEC = {
+    "enable_label_key": "traefik.enable",
+    "router_label_prefix": "traefik.http.routers.",
+    "service_label_prefix": "traefik.http.services.",
+    "middleware_label_prefix": "traefik.http.middlewares.",
+    "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
+    "router_service_key_template": "traefik.http.routers.{router_name}.service",
+    "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",
+    "strip_prefix_key_template": "traefik.http.middlewares.{middleware_name}.stripprefix.prefixes",
+    "path_rule_template": "Host(`{gateway_host}`) && PathPrefix(`{path_prefix}`)",
     "media_server_rule_key_template": "traefik.http.routers.{service_name}.rule",
     "direct_host_rule_template": "Host(`{direct_host}`)",
 }
@@ -65,6 +81,9 @@ def _compose_text_with_edge_labels() -> str:
         "  traefik:\n"
         "    image: ghcr.io/example/traefik:latest\n"
         "    container_name: traefik\n"
+        "  envoy:\n"
+        "    image: ghcr.io/example/envoy:latest\n"
+        "    container_name: envoy\n"
         "  jellyfin:\n"
         "    image: ghcr.io/example/jellyfin:latest\n"
         "    container_name: jellyfin\n"
@@ -88,6 +107,9 @@ def _compose_text_with_homepage_edge_labels() -> str:
         "  traefik:\n"
         "    image: ghcr.io/example/traefik:latest\n"
         "    container_name: traefik\n"
+        "  envoy:\n"
+        "    image: ghcr.io/example/envoy:latest\n"
+        "    container_name: envoy\n"
         "  homepage:\n"
         "    image: ghcr.io/example/homepage:latest\n"
         "    container_name: homepage\n"
@@ -164,7 +186,11 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 edge_router_service_names=edge_router_service_names,
                 edge_path_prefix_redirect_service_names=edge_path_prefix_redirect_service_names,
                 edge_compose_provider_specs=dict(
-                    edge_compose_provider_specs or {"traefik": dict(_TRAEFIK_EDGE_SPEC)}
+                    edge_compose_provider_specs
+                    or {
+                        "traefik": dict(_TRAEFIK_EDGE_SPEC),
+                        "envoy": dict(_ENVOY_EDGE_SPEC),
+                    }
                 ),
                 auth_provider_middleware_defaults=dict(_AUTH_MIDDLEWARE_DEFAULTS),
                 media_server_service_names=("jellyfin", "jellyfin-nvidia"),
@@ -322,7 +348,9 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 docker=docker,
                 node_ip="192.168.1.10",
             )
+            adapter.edge_http_smoke_service = mock.Mock()
             self.assertEqual(adapter.run_smoke_test(), "192.168.1.10")
+            adapter.edge_http_smoke_service.run.assert_called_once()
 
     def test_print_workload_status_emits_service_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -462,7 +490,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
             )
             self.assertTrue(bool(redirect_cfg.get("permanent")))
 
-    def test_apply_environment_definition_envoy_stub_skips_traefik_patch_generation(self):
+    def test_apply_environment_definition_writes_envoy_runtime_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             compose_file = Path(tmp) / "docker-compose.yml"
             compose_file.write_text(_compose_text_with_edge_labels(), encoding="utf-8")
@@ -478,17 +506,24 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 docker=docker,
                 edge_router_provider="envoy",
                 edge_router_service_names=("envoy",),
-                edge_compose_provider_specs={"envoy": {}},
+                edge_compose_provider_specs={"envoy": dict(_ENVOY_EDGE_SPEC)},
             )
 
             adapter.apply_environment_definition()
 
-            dynamic_path = config_root / "traefik" / "dynamic" / "media-stack.dynamic.yaml"
-            self.assertFalse(dynamic_path.exists())
+            envoy_path = config_root / "envoy" / "envoy.yaml"
+            self.assertTrue(envoy_path.exists())
+            rendered = yaml.safe_load(envoy_path.read_text(encoding="utf-8")) or {}
+            clusters = (
+                ((rendered.get("static_resources") or {}).get("clusters") or [])
+                if isinstance(rendered, dict)
+                else []
+            )
+            self.assertGreaterEqual(len(clusters), 2)
             info_messages = [call.args[0] for call in adapter.info.call_args_list if call.args]
             self.assertTrue(
                 any(
-                    "envoy" in message and "stub/no-op compose label bindings" in message
+                    "Compose Envoy config applied automatically" in message
                     for message in info_messages
                 )
             )

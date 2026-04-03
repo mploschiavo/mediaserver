@@ -37,13 +37,35 @@ services:
       timeout: 10s
       retries: 5
 
+  envoy:
+    image: envoyproxy/envoy:v1.31.2
+    container_name: envoy
+    command:
+      - -c
+      - /etc/envoy/envoy.yaml
+      - --service-cluster
+      - media-stack-edge
+      - --log-level
+      - info
+    ports:
+      - "${TRAEFIK_HTTP_PORT}:80"
+      - "${TRAEFIK_DASHBOARD_PORT}:9901"
+    volumes:
+      - ${CONFIG_ROOT}/envoy:/etc/envoy:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   homepage:
     image: ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c
     container_name: homepage
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
-      HOMEPAGE_ALLOWED_HOSTS: "${HOMEPAGE_HOST},${HOMEPAGE_HOST}:80,${HOMEPAGE_HOST}:${TRAEFIK_HTTP_PORT},${HOMEPAGE_HOST}:3000,localhost,localhost:3000,127.0.0.1,127.0.0.1:3000"
+      HOMEPAGE_ALLOWED_HOSTS: "${HOMEPAGE_HOST},${HOMEPAGE_HOST}:80,${HOMEPAGE_HOST}:${TRAEFIK_HTTP_PORT},${HOMEPAGE_HOST}:3000,${APP_GATEWAY_HOST},${APP_GATEWAY_HOST}:80,${APP_GATEWAY_HOST}:${TRAEFIK_HTTP_PORT},localhost,localhost:3000,127.0.0.1,127.0.0.1:3000"
     volumes:
       - ${CONFIG_ROOT}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro

@@ -7,6 +7,8 @@ ROUTER_SERVICE_NAMES: tuple[str, ...] = ("traefik",)
 COMPOSE_LABEL_SPEC: dict[str, str] = {
     "enable_label_key": "traefik.enable",
     "router_label_prefix": "traefik.http.routers.",
+    "service_label_prefix": "traefik.http.services.",
+    "middleware_label_prefix": "traefik.http.middlewares.",
     "router_rule_key_template": "traefik.http.routers.{router_name}.rule",
     "router_service_key_template": "traefik.http.routers.{router_name}.service",
     "router_middleware_key_template": "traefik.http.routers.{router_name}.middlewares",

@@ -10,12 +10,17 @@ from typing import Any
 
 from core.platform_adapter import InfoFn, PlatformEnvironmentRef
 from core.platforms.compose.docker_client import DockerClient
+from core.platforms.compose.edge.provider_contract import (
+    ComposeEdgeProviderRuntimeContext,
+    ComposeEdgeRuntimePatchFn,
+)
+from core.platforms.compose.edge.provider_registry import build_compose_edge_runtime_patchers
 from core.platforms.compose.services.container_runtime import ComposeContainerRuntimeService
+from core.platforms.compose.services.edge_http_smoke import ComposeEdgeHttpSmokeService
+from core.platforms.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
 from core.platforms.compose.services.labels import ComposeLabelConfig, ComposeLabelService
 from core.platforms.compose.services.runtime_artifacts import ComposeRuntimeArtifactService
 from core.platforms.compose.services.spec import ComposeSpecResolver, parse_wait_seconds
-from core.platforms.compose.services.traefik_dynamic_config import TraefikDynamicConfigService
-from core.platforms.compose.services.traefik_patch_service import ComposeTraefikPatchService
 
 
 @dataclass(frozen=True)
@@ -57,11 +62,9 @@ class ComposeRebuildPlatformAdapter:
     label_service: ComposeLabelService = field(init=False, repr=False)
     runtime_service: ComposeContainerRuntimeService = field(init=False, repr=False)
     artifacts_service: ComposeRuntimeArtifactService = field(init=False, repr=False)
-    traefik_dynamic_config_service: TraefikDynamicConfigService = field(
-        init=False,
-        repr=False,
-    )
-    traefik_patch_service: ComposeTraefikPatchService = field(init=False, repr=False)
+    edge_route_graph_service: ComposeEdgeRouteGraphService = field(init=False, repr=False)
+    edge_http_smoke_service: ComposeEdgeHttpSmokeService = field(init=False, repr=False)
+    edge_runtime_patchers: dict[str, ComposeEdgeRuntimePatchFn] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -80,6 +83,11 @@ class ComposeRebuildPlatformAdapter:
             compose_profiles=tuple(self.cfg.compose_profiles or ()),
             selected_apps=tuple(self.cfg.selected_apps or ()),
             edge_router_service_names=tuple(self.cfg.edge_router_service_names or ()),
+            environment_overrides={
+                "APP_GATEWAY_HOST": str(self.cfg.app_gateway_host or "").strip(),
+                "APP_PATH_PREFIX": str(self.cfg.app_path_prefix or "").strip(),
+                "MEDIA_SERVER_DIRECT_HOST": str(self.cfg.media_server_direct_host or "").strip(),
+            },
         )
         self.label_service = ComposeLabelService(
             cfg=ComposeLabelConfig(
@@ -114,16 +122,24 @@ class ComposeRebuildPlatformAdapter:
             runtime_artifacts_dir=self.cfg.runtime_artifacts_dir,
             info=self.info,
         )
-        self.traefik_dynamic_config_service = TraefikDynamicConfigService(
+        self.edge_route_graph_service = ComposeEdgeRouteGraphService(
             label_service=self.label_service,
             spec_resolver=self.spec_resolver,
         )
-        self.traefik_patch_service = ComposeTraefikPatchService(
+        self.edge_http_smoke_service = ComposeEdgeHttpSmokeService(
             label_service=self.label_service,
             spec_resolver=self.spec_resolver,
-            dynamic_config_service=self.traefik_dynamic_config_service,
-            artifacts_service=self.artifacts_service,
+            route_graph_service=self.edge_route_graph_service,
             info=self.info,
+        )
+        self.edge_runtime_patchers = build_compose_edge_runtime_patchers(
+            ComposeEdgeProviderRuntimeContext(
+                label_service=self.label_service,
+                spec_resolver=self.spec_resolver,
+                route_graph_service=self.edge_route_graph_service,
+                artifacts_service=self.artifacts_service,
+                info=self.info,
+            )
         )
 
     def _project_name(self) -> str:
@@ -166,14 +182,16 @@ class ComposeRebuildPlatformAdapter:
         payload["services"] = services_payload
         return payload
 
-    def _write_traefik_dynamic_config(
+    def _write_edge_runtime_config(
         self,
         services: dict[str, dict[str, Any]],
     ) -> None:
-        result = self.traefik_patch_service.apply_dynamic_file_patch(services)
         provider = self.label_service.edge_router_provider()
+        patcher = self.edge_runtime_patchers.get(provider)
+        result = patcher(services) if patcher is not None else None
         if (
-            not result.applied
+            result is not None
+            and not result.applied
             and provider
             and provider != "none"
             and not self.label_service.edge_provider_has_compose_label_spec()
@@ -182,6 +200,12 @@ class ComposeRebuildPlatformAdapter:
                 "Compose edge provider "
                 f"'{provider}' is active with stub/no-op compose label bindings; "
                 "routing labels and dynamic edge patch generation are skipped."
+            )
+        if result is None and provider and provider != "none":
+            self.info(
+                "Compose edge provider "
+                f"'{provider}' has no registered runtime patch plugin; "
+                "edge runtime patch generation is skipped."
             )
 
     def delete_environment_optional(self, delete_environment: str) -> bool:
@@ -230,7 +254,7 @@ class ComposeRebuildPlatformAdapter:
             label="Compose storage budget report artifact",
         )
         self.runtime_service.assert_host_ports_available(services)
-        self._write_traefik_dynamic_config(services)
+        self._write_edge_runtime_config(services)
         self.artifacts_service.write_yaml_artifact(
             "resolved/docker-compose.selected.runtime.yaml",
             self._runtime_selected_compose_payload(compose_spec=compose, services=services),
@@ -425,6 +449,7 @@ class ComposeRebuildPlatformAdapter:
         self.info(
             f"Compose smoke check: {running}/{len(states)} selected service containers are running."
         )
+        self.edge_http_smoke_service.run(services)
         node_ip = str(self.cfg.node_ip or "").strip()
         if node_ip:
             return node_ip

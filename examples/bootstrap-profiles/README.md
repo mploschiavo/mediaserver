@@ -12,7 +12,17 @@ Canonical examples for both deployment targets and install tiers.
 Edge routing provider selection is profile-driven via `routing.provider`.
 
 - canonical values: `traefik`, `envoy`
-- all examples default to `traefik`; switch a profile by changing that one field
+- `media-compose-standard.yaml` defaults to `envoy`
+- other examples default to `traefik`; switch a profile by changing that one field
+
+Compose standard profile uses a single gateway DNS host with path-prefix routing.
+
+- create one local DNS/hosts entry: `127.0.0.1 apps.media-dev.local`
+- access apps through `http://apps.media-dev.local:18080/app/<service>`
+- representative URLs:
+  - `http://apps.media-dev.local:18080/app/homepage`
+  - `http://apps.media-dev.local:18080/app/bazarr`
+  - `http://apps.media-dev.local:18080/app/jellyseerr`
 
 Chaos testing is profile-driven via `chaos`.
 

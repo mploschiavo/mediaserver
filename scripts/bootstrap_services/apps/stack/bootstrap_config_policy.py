@@ -112,6 +112,25 @@ def _policy_set(policy: dict[str, Any], key: str) -> set[str]:
     return out
 
 
+def _policy_map_of_sets(policy: dict[str, Any], key: str) -> dict[str, set[str]]:
+    raw = policy.get(key)
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, set[str]] = {}
+    for raw_key, raw_values in raw.items():
+        token = _tokenize(str(raw_key or ""))
+        if not token or not isinstance(raw_values, list):
+            continue
+        values: set[str] = set()
+        for item in raw_values:
+            item_token = _tokenize(str(item or ""))
+            if item_token:
+                values.add(item_token)
+        if values:
+            out[token] = values
+    return out
+
+
 def _policy_list(policy: dict[str, Any], key: str) -> tuple[str, ...]:
     raw = policy.get(key)
     if not isinstance(raw, list):
@@ -232,6 +251,7 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
     policy = _selected_apps_policy_cfg()
     app_toggle_sections = _policy_map(policy, "app_toggle_sections")
     arr_app_keys = _policy_set(policy, "arr_app_keys")
+    selected_app_expansions = _policy_map_of_sets(policy, "selected_app_expansions")
     arr_disable_sections = _policy_list(policy, "arr_disable_sections_when_unselected")
     arr_discovery_reserved_keys = _policy_set(policy, "arr_discovery_reserved_keys")
     jellyfin_disable_sections = _policy_list(policy, "jellyfin_disable_sections_when_unselected")
@@ -245,6 +265,15 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
     selected = parse_selected_apps_csv(selected_apps_csv)
     if not selected:
         return
+    if selected_app_expansions:
+        pending = list(selected)
+        while pending:
+            token = pending.pop()
+            for expanded in selected_app_expansions.get(token, set()):
+                if expanded in selected:
+                    continue
+                selected.add(expanded)
+                pending.append(expanded)
     selected_arr = bool(arr_app_keys.intersection(selected))
 
     for app_key, section_key in app_toggle_sections.items():
@@ -446,7 +475,7 @@ def apply_edge_url_policy(
             if token == "jellyfin" and direct_host_with_port:
                 rewritten_hosts.append(direct_host_with_port)
                 continue
-            if token == "homepage":
+            if token == "homepage" and strategy == "hybrid":
                 homepage_host = _homepage_direct_host(
                     str(raw_host or ""),
                     internet_exposed=bool(internet_exposed),

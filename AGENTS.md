@@ -59,6 +59,8 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Mappings include (non-exhaustive): install-profile app lists, app toggle->section maps, reserved-key lists, and policy path bindings.
 - Python policy modules should interpret config; they should not be the source of truth for mapping data.
 - If a mapping update requires code edits instead of config edits, stop and refactor before merge.
+- Do not embed structured runtime payload templates (JSON/YAML bodies) as Python dict literals in services.
+- Keep payload templates in declarative config files (for example under `bootstrap/` or `config/defaults/`) and load/patch them in code.
 
 ## Runtime Artifact Replay Contract
 - Each rebuild/bootstrap run must emit target-separated runtime artifacts under `.state/runtime-artifacts/<run-id>/`.
@@ -229,6 +231,19 @@ Swap workflow:
   - adapter module
   - declarative config binding
   - contract tests proving no shared-orchestration code changes are required for provider swaps
+- Compose edge providers must be plugin-discovered from provider-local modules under `scripts/core/platforms/compose/edge/providers/<provider>/`.
+- `scripts/core/platforms/compose/rebuild_platform_adapter.py` must not hardcode provider branches (`traefik`/`envoy`) or import provider implementation classes directly.
+- Provider swaps (add/remove/change) must be achievable by provider folder/config changes plus tests, without editing shared compose adapter orchestration.
+- Provider-specific runtime implementation files must not live under `scripts/core/platforms/compose/services/`; keep them inside provider folders only.
+- Removing an unused provider (for example deleting `edge/providers/traefik` or `edge/providers/envoy`) must not require shared compose service/orchestration edits beyond declarative config selection updates.
+- New edge providers (for example `nginx`) must be introduced by adding a new provider folder + plugin + tests, not by adding shared-layer branching.
+
+### Compose Single-DNS Path-Prefix Contract
+- Compose path-prefix deployments must support a single gateway DNS entry (`apps.<stack>.<domain>`) for browser apps.
+- Local/dev default mapping example: `127.0.0.1 apps.media-dev.local`.
+- Required operator URL pattern is `http://<gateway-host>:<edge-port>/app/<service>` (for example `/app/homepage`, `/app/bazarr`, `/app/jellyseerr`).
+- Prefer rewrite/header strategies in the selected edge provider over cross-host redirects for browser app routing.
+- Acceptance must validate representative app pages render as usable UIs from the gateway path-prefix URLs (not just HTTP 200).
 
 ### Non-Negotiable Isolation Rules
 - `scripts/bootstrap_services/bootstrap_runner_service.py` must remain orchestration-only.
@@ -327,6 +342,19 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Healthcheck probes must not depend on external DNS, host routing, or authenticated sessions.
 - During incident fixes, verify healthchecks from inside the container and inspect `.State.Health.Log` to confirm probe behavior matches runtime reality.
 - Compose deployment acceptance requires all services with declared healthchecks to converge to `healthy`; if a service is operational but stuck `starting`/`unhealthy`, fix the probe before merge.
+
+## Edge Page Usability Validation Policy
+- Edge/gateway smoke tests must validate browser usability, not only HTTP 200 status codes.
+- For routed UI endpoints, smoke checks must follow redirects and fail when the final path escapes the configured route/base-path contract.
+- For HTML responses, smoke checks must probe first-party static asset references and fail on local asset 4xx responses.
+- Path-prefix compose validation must probe via the configured gateway host + published edge port with Host-header routing.
+- Add/maintain unit tests for the "200 but unusable page" class (redirect escapes, missing local assets, broken base-path behavior).
+
+## App Seeding And First-Run Policy
+- Any app that is deployed for a profile (including dependency-expanded services) must be seeded out of first-run/setup-wizard state during bootstrap.
+- Credential/bootstrap scope (`app_auth.include`, app auth policies, startup seed hooks) must be computed from the effective deployed app set, not only the raw selected-app CSV.
+- If an app should remain unseeded by design, require an explicit declarative opt-out flag in bootstrap config/policy and test that behavior.
+- Add/maintain unit tests that prove representative deployed apps open in configured/authenticated mode (not registration/onboarding mode) after bootstrap policy transforms.
 
 ## Chaos Testing Policy
 - Chaos testing is declarative/profile-driven (`chaos.enabled`) and defaults to disabled.
@@ -443,6 +471,10 @@ Current key test suites:
 25. Keyword ownership checks:
    - search `kubelet|kube|k8s` and ensure implementation files are under kubernetes platform modules (or wrapper-justified).
    - search `compose|docker` and ensure implementation files are under compose platform modules (or wrapper-justified).
+26. Compose path-prefix/browser routing changes: verify representative single-gateway URLs render usable pages (not just 200), including:
+   - `/app/homepage`
+   - `/app/bazarr`
+   - `/app/jellyseerr`
 
 ## Operational Safety Rules
 - Prefer additive/idempotent changes.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +69,7 @@ class ComposeSpecResolver:
     compose_profiles: tuple[str, ...] = ()
     selected_apps: tuple[str, ...] = ()
     edge_router_service_names: tuple[str, ...] = ()
+    environment_overrides: dict[str, str] = field(default_factory=dict)
 
     def project_name(self) -> str:
         project = str(self.compose_project_name or "").strip()
@@ -93,6 +94,11 @@ class ComposeSpecResolver:
     def _compose_env(self) -> dict[str, str]:
         out = dict(os.environ)
         out.update(self._read_env_file())
+        for raw_key, raw_value in dict(self.environment_overrides or {}).items():
+            key = str(raw_key or "").strip()
+            if not key:
+                continue
+            out[key] = str(raw_value or "").strip()
         return out
 
     def compose_environment(self) -> dict[str, str]:

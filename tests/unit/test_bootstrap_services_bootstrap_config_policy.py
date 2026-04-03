@@ -68,6 +68,35 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertTrue(bool(cfg.get("prowlarr_auto_add_tested_indexers")))
         self.assertTrue(bool((cfg.get("flaresolverr") or {}).get("enabled")))
 
+    def test_selected_apps_policy_expands_unpackerr_to_seed_all_arr_apps(self):
+        cfg = {
+            "arr_apps": [
+                {"implementation": "sonarr", "name": "Sonarr"},
+                {"implementation": "radarr", "name": "Radarr"},
+                {"implementation": "lidarr", "name": "Lidarr"},
+                {"implementation": "readarr", "name": "Readarr"},
+            ],
+            "arr_media_management": {"enabled": True},
+            "app_auth": {
+                "include": ["sonarr", "radarr", "lidarr", "readarr", "prowlarr"],
+            },
+        }
+
+        apply_selected_apps_policy(cfg, selected_apps_csv="unpackerr,prowlarr")
+
+        implementations = {
+            str((item or {}).get("implementation") or "").strip().lower()
+            for item in (cfg.get("arr_apps") or [])
+            if isinstance(item, dict)
+        }
+        self.assertEqual(implementations, {"sonarr", "radarr", "lidarr", "readarr"})
+        self.assertTrue(bool((cfg.get("arr_media_management") or {}).get("enabled")))
+        include = ((cfg.get("app_auth") or {}).get("include")) or []
+        self.assertEqual(
+            {str(value).strip().lower() for value in include},
+            {"sonarr", "radarr", "lidarr", "readarr", "prowlarr"},
+        )
+
     def test_content_download_policy_disables_auto_indexers_when_downloads_disabled(self):
         cfg = {
             "prowlarr_auto_add_tested_indexers": True,
@@ -201,6 +230,32 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             jellyfin_cfg.get("external_url"),
             "http://jellyfin.media-dev.local:18080",
         )
+
+    def test_edge_url_policy_path_prefix_uses_single_gateway_for_browser_apps(self):
+        cfg = {
+            "homepage": {
+                "hosts": ["homepage.local", "bazarr.local", "jellyseerr.local"],
+                "device_onboarding": {},
+            },
+            "jellyseerr": {"jellyfin": {}},
+        }
+
+        apply_edge_url_policy(
+            cfg,
+            internet_exposed=False,
+            route_strategy="path-prefix",
+            ingress_domain="media-dev.local",
+            app_gateway_host="apps.media-dev.local",
+            app_gateway_port="18080",
+            app_path_prefix="/app",
+            media_server_direct_host="",
+        )
+
+        homepage_hosts = (cfg.get("homepage") or {}).get("hosts") or []
+        self.assertIn("apps.media-dev.local:18080/app/homepage", homepage_hosts)
+        self.assertIn("apps.media-dev.local:18080/app/bazarr", homepage_hosts)
+        self.assertIn("apps.media-dev.local:18080/app/jellyseerr", homepage_hosts)
+        self.assertNotIn("homepage.local:18080", homepage_hosts)
 
 
 if __name__ == "__main__":
