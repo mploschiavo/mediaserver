@@ -55,6 +55,7 @@ def run_preflight(
     *,
     config_root: str = "/srv-config",
     log: Any = None,
+    **kwargs: Any,
 ) -> dict[str, str]:
     """Discover API keys from app config files.
 

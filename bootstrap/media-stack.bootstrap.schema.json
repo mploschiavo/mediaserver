@@ -24,12 +24,29 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["name", "implementation", "url", "root_folder"],
+        "required": [
+          "name",
+          "implementation",
+          "url",
+          "root_folder"
+        ],
         "properties": {
-          "name": {"type": "string", "minLength": 1},
-          "implementation": {"type": "string", "minLength": 1},
-          "url": {"type": "string", "minLength": 1},
-          "root_folder": {"type": "string", "minLength": 1}
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "implementation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "root_folder": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "additionalProperties": true
       }
@@ -39,43 +56,91 @@
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["url", "host", "port", "name", "implementation"],
+        "required": [
+          "url",
+          "host",
+          "port",
+          "name",
+          "implementation"
+        ],
         "properties": {
-          "url": {"type": "string", "minLength": 1},
-          "host": {"type": "string", "minLength": 1},
-          "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-          "name": {"type": "string", "minLength": 1},
-          "implementation": {"type": "string", "minLength": 1},
-          "queue_guardrails": {"type": "object"}
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "implementation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "queue_guardrails": {
+            "type": "object"
+          }
         },
         "additionalProperties": true
       }
     },
     "technology_bindings": {
       "type": "object",
-      "required": ["media_server"],
+      "required": [
+        "media_server"
+      ],
       "properties": {
-        "torrent_client": {"type": "string", "minLength": 1},
-        "usenet_client": {"type": "string", "minLength": 1},
-        "media_server": {"type": "string", "minLength": 1},
-        "request_manager": {"type": "string", "minLength": 1}
+        "torrent_client": {
+          "type": "string",
+          "minLength": 1
+        },
+        "usenet_client": {
+          "type": "string",
+          "minLength": 1
+        },
+        "media_server": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_manager": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "additionalProperties": true
     },
     "arr_quality_upgrade": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "allow_upgrades": {"type": "boolean"},
+        "enabled": {
+          "type": "boolean"
+        },
+        "allow_upgrades": {
+          "type": "boolean"
+        },
         "disallow_quality_name_tokens": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "cutoff_preferred_name_tokens": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
-        "by_app": {"type": "object"}
+        "by_app": {
+          "type": "object"
+        }
       },
       "additionalProperties": true
     },
@@ -106,100 +171,199 @@
     "jellyfin_prewarm": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "required": {"type": "boolean"},
-        "url": {"type": "string"},
-        "refresh_library": {"type": "boolean"},
-        "refresh_channels": {"type": "boolean"},
-        "refresh_guide": {"type": "boolean"},
-        "book_sidecar_artwork": {"type": "object"},
-        "music_sidecar_artwork": {"type": "object"},
-        "metadata_backfill": {"type": "object"},
-        "artwork_health_check": {"type": "object"},
-        "library_refresh_query": {"type": "object"}
+        "enabled": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        },
+        "refresh_library": {
+          "type": "boolean"
+        },
+        "refresh_channels": {
+          "type": "boolean"
+        },
+        "refresh_guide": {
+          "type": "boolean"
+        },
+        "book_sidecar_artwork": {
+          "type": "object"
+        },
+        "music_sidecar_artwork": {
+          "type": "object"
+        },
+        "metadata_backfill": {
+          "type": "object"
+        },
+        "artwork_health_check": {
+          "type": "object"
+        },
+        "library_refresh_query": {
+          "type": "object"
+        }
       },
       "additionalProperties": true
     },
     "jellyfin_livetv": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "required": {"type": "boolean"},
-        "refresh_on_bootstrap": {"type": "boolean"},
-        "cleanup_duplicates": {"type": "boolean"},
-        "recreate_managed_guides": {"type": "boolean"},
-        "prune_unmanaged_tuners": {"type": "boolean"},
-        "prune_unmanaged_guides": {"type": "boolean"},
-        "fallback_enable_all_tuners_when_mapping_missing": {"type": "boolean"},
-        "url": {"type": "string"},
+        "enabled": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "refresh_on_bootstrap": {
+          "type": "boolean"
+        },
+        "cleanup_duplicates": {
+          "type": "boolean"
+        },
+        "recreate_managed_guides": {
+          "type": "boolean"
+        },
+        "prune_unmanaged_tuners": {
+          "type": "boolean"
+        },
+        "prune_unmanaged_guides": {
+          "type": "boolean"
+        },
+        "fallback_enable_all_tuners_when_mapping_missing": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        },
         "tuners": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "normalize_tvg_id_suffix": {"type": "boolean"},
-              "filter_to_guide_channels": {"type": "boolean"},
-              "filter_guide_path": {"type": "string"},
-              "materialized_output_path": {"type": "string"}
+              "normalize_tvg_id_suffix": {
+                "type": "boolean"
+              },
+              "filter_to_guide_channels": {
+                "type": "boolean"
+              },
+              "filter_guide_path": {
+                "type": "string"
+              },
+              "materialized_output_path": {
+                "type": "string"
+              }
             },
             "additionalProperties": true
           }
         },
-        "guides": {"type": "array"}
+        "guides": {
+          "type": "array"
+        }
       },
       "additionalProperties": true
     },
     "media_hygiene": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "required": {"type": "boolean"},
-        "cleanup_arr_failed_queue": {"type": "boolean"},
-        "arr_failed_queue_cleanup": {"type": "object"},
-        "qbit_ipfilter": {"type": "object"},
-        "filesystem": {"type": "object"}
+        "enabled": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "cleanup_arr_failed_queue": {
+          "type": "boolean"
+        },
+        "arr_failed_queue_cleanup": {
+          "type": "object"
+        },
+        "qbit_ipfilter": {
+          "type": "object"
+        },
+        "filesystem": {
+          "type": "object"
+        }
       },
       "additionalProperties": true
     },
     "maintainerr": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "required": {"type": "boolean"},
-        "url": {"type": "string"},
+        "enabled": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        },
         "integrations": {
           "type": "object",
           "properties": {
-            "enabled": {"type": "boolean"},
-            "required": {"type": "boolean"},
-            "test_connections": {"type": "boolean"},
-            "main": {"type": "object"},
-            "radarr": {"type": "object"},
-            "sonarr": {"type": "object"},
-            "jellyseerr": {"type": "object"},
-            "tautulli": {"type": "object"}
-          },
-          "additionalProperties": true
-        },
-        "policy_relative_path": {"type": "string"},
-        "rules_library": {
-          "type": "object",
-          "properties": {
-            "enabled": {"type": "boolean"},
-            "include_defaults": {"type": "boolean"},
-            "relative_path": {"type": "string"},
-            "merge_mode": {
-              "type": "string",
-              "enum": ["append", "replace"]
+            "enabled": {
+              "type": "boolean"
             },
-            "enabled_files": {
-              "type": "array",
-              "items": {"type": "string"}
+            "required": {
+              "type": "boolean"
+            },
+            "test_connections": {
+              "type": "boolean"
+            },
+            "main": {
+              "type": "object"
+            },
+            "radarr": {
+              "type": "object"
+            },
+            "sonarr": {
+              "type": "object"
+            },
+            "jellyseerr": {
+              "type": "object"
+            },
+            "tautulli": {
+              "type": "object"
             }
           },
           "additionalProperties": true
         },
-        "policy": {"type": "object"}
+        "policy_relative_path": {
+          "type": "string"
+        },
+        "rules_library": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "include_defaults": {
+              "type": "boolean"
+            },
+            "relative_path": {
+              "type": "string"
+            },
+            "merge_mode": {
+              "type": "string",
+              "enum": [
+                "append",
+                "replace"
+              ]
+            },
+            "enabled_files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "policy": {
+          "type": "object"
+        }
       },
       "additionalProperties": true
     },
@@ -283,15 +447,29 @@
     "flaresolverr": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "required": {"type": "boolean"},
-        "url": {"type": "string"},
-        "proxy_name": {"type": "string"},
-        "request_timeout_seconds": {"type": "integer"},
-        "test_connection": {"type": "boolean"},
+        "enabled": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        },
+        "proxy_name": {
+          "type": "string"
+        },
+        "request_timeout_seconds": {
+          "type": "integer"
+        },
+        "test_connection": {
+          "type": "boolean"
+        },
         "tags": {
           "type": "array",
-          "items": {"type": "integer"}
+          "items": {
+            "type": "integer"
+          }
         }
       },
       "additionalProperties": true
@@ -303,42 +481,69 @@
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "additionalProperties": {"type": "string"}
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         },
         "operation_handlers": {
           "type": "object",
-          "additionalProperties": {"type": "string"}
+          "additionalProperties": {
+            "type": "string"
+          }
         },
-        "runner_event_plans": {"type": "object"},
-        "runner_operation_plans": {"type": "object"},
-        "media_server_event_plans": {"type": "object"},
-        "media_server_operation_plans": {"type": "object"},
+        "runner_event_plans": {
+          "type": "object"
+        },
+        "runner_operation_plans": {
+          "type": "object"
+        },
+        "media_server_event_plans": {
+          "type": "object"
+        },
+        "media_server_operation_plans": {
+          "type": "object"
+        },
         "runner_phase_scripts": {
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "additionalProperties": {"type": "string"}
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         },
         "bootstrap_all": {
           "type": "object",
-          "required": ["phase_plan", "components"],
+          "required": [
+            "phase_plan",
+            "components"
+          ],
           "properties": {
             "enable_components": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             },
             "components": {
               "type": "object",
               "additionalProperties": {
                 "oneOf": [
-                  {"type": "string"},
+                  {
+                    "type": "string"
+                  },
                   {
                     "type": "object",
                     "properties": {
-                      "binding": {"type": "string", "minLength": 1},
-                      "technology": {"type": "string", "minLength": 1}
+                      "binding": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "technology": {
+                        "type": "string",
+                        "minLength": 1
+                      }
                     },
                     "additionalProperties": false
                   }
@@ -349,24 +554,46 @@
               "type": "array",
               "items": {
                 "oneOf": [
-                  {"type": "string", "minLength": 1},
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   {
                     "type": "object",
-                    "required": ["operation"],
+                    "required": [
+                      "operation"
+                    ],
                     "properties": {
-                      "operation": {"type": "string", "minLength": 1},
-                      "skip_flag": {"type": "string", "minLength": 1},
-                      "phase_name": {"type": "string", "minLength": 1},
-                      "enabled": {"type": "boolean"},
+                      "operation": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "skip_flag": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "phase_name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
                       "params": {
                         "type": "object",
                         "additionalProperties": true
                       },
                       "when": {
                         "oneOf": [
-                          {"type": "boolean"},
-                          {"type": "object"},
-                          {"type": "array"}
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array"
+                          }
                         ]
                       }
                     },
@@ -377,29 +604,44 @@
             },
             "component_manifests": {
               "type": "object",
-              "additionalProperties": {"type": "string"}
+              "additionalProperties": {
+                "type": "string"
+              }
             },
             "component_deployments": {
               "type": "object",
-              "additionalProperties": {"type": "string"}
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           },
           "additionalProperties": true
         },
         "bootstrap_job": {
           "type": "object",
-          "required": ["phase_plan", "components"],
+          "required": [
+            "phase_plan",
+            "components"
+          ],
           "properties": {
             "components": {
               "type": "object",
               "additionalProperties": {
                 "oneOf": [
-                  {"type": "string"},
+                  {
+                    "type": "string"
+                  },
                   {
                     "type": "object",
                     "properties": {
-                      "binding": {"type": "string", "minLength": 1},
-                      "technology": {"type": "string", "minLength": 1}
+                      "binding": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "technology": {
+                        "type": "string",
+                        "minLength": 1
+                      }
                     },
                     "additionalProperties": false
                   }
@@ -410,24 +652,46 @@
               "type": "array",
               "items": {
                 "oneOf": [
-                  {"type": "string", "minLength": 1},
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   {
                     "type": "object",
-                    "required": ["operation"],
+                    "required": [
+                      "operation"
+                    ],
                     "properties": {
-                      "operation": {"type": "string", "minLength": 1},
-                      "skip_flag": {"type": "string", "minLength": 1},
-                      "phase_name": {"type": "string", "minLength": 1},
-                      "enabled": {"type": "boolean"},
+                      "operation": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "skip_flag": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "phase_name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
                       "params": {
                         "type": "object",
                         "additionalProperties": true
                       },
                       "when": {
                         "oneOf": [
-                          {"type": "boolean"},
-                          {"type": "object"},
-                          {"type": "array"}
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array"
+                          }
                         ]
                       }
                     },
@@ -440,7 +704,9 @@
               "type": "object",
               "additionalProperties": {
                 "type": "array",
-                "items": {"type": "string"}
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -453,11 +719,15 @@
             "properties": {
               "options": {
                 "type": "array",
-                "items": {"type": "string"}
+                "items": {
+                  "type": "string"
+                }
               },
               "env_vars": {
                 "type": "array",
-                "items": {"type": "string"}
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "additionalProperties": false
@@ -465,15 +735,21 @@
         },
         "scale_policy": {
           "type": "object",
-          "required": ["apps"],
+          "required": [
+            "apps"
+          ],
           "properties": {
             "apps": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             },
             "scale_to_zero_apps": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             }
           },
           "additionalProperties": true
@@ -483,24 +759,32 @@
           "properties": {
             "preserve_secret_keys": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             },
             "profile_manifest_paths": {
               "type": "object",
               "additionalProperties": {
                 "type": "array",
-                "items": {"type": "string"}
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "component_enable_manifest_paths": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             },
             "profile_scale_to_zero_apps": {
               "type": "object",
               "additionalProperties": {
                 "type": "array",
-                "items": {"type": "string"}
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "profile_tls": {
@@ -508,10 +792,14 @@
               "additionalProperties": {
                 "type": "object",
                 "properties": {
-                  "secret_name": {"type": "string"},
+                  "secret_name": {
+                    "type": "string"
+                  },
                   "hosts": {
                     "type": "array",
-                    "items": {"type": "string"}
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": true
@@ -526,23 +814,44 @@
         },
         "microk8s_reconcile": {
           "type": "object",
-          "required": ["phase_plan", "optional_deployments", "optional_manifest_paths"],
+          "required": [
+            "phase_plan",
+            "optional_deployments",
+            "optional_manifest_paths"
+          ],
           "properties": {
             "phase_plan": {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["event", "handler"],
+                "required": [
+                  "event",
+                  "handler"
+                ],
                 "properties": {
-                  "phase_name": {"type": "string"},
-                  "event": {"type": "string"},
-                  "handler": {"type": "string"},
-                  "enabled": {"type": "boolean"},
+                  "phase_name": {
+                    "type": "string"
+                  },
+                  "event": {
+                    "type": "string"
+                  },
+                  "handler": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
                   "when": {
                     "oneOf": [
-                      {"type": "boolean"},
-                      {"type": "object"},
-                      {"type": "array"}
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "object"
+                      },
+                      {
+                        "type": "array"
+                      }
                     ]
                   }
                 },
@@ -551,21 +860,34 @@
             },
             "optional_deployments": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             },
             "optional_manifest_paths": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {
+                "type": "string"
+              }
             },
             "conditional_manifests": {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["deployment", "manifest_path"],
+                "required": [
+                  "deployment",
+                  "manifest_path"
+                ],
                 "properties": {
-                  "deployment": {"type": "string"},
-                  "manifest_path": {"type": "string"},
-                  "message": {"type": "string"}
+                  "deployment": {
+                    "type": "string"
+                  },
+                  "manifest_path": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
                 },
                 "additionalProperties": false
               }
@@ -575,6 +897,61 @@
         }
       },
       "additionalProperties": false
+    },
+    "container_preflight_handlers": {
+      "type": "array",
+      "description": "Declarative preflight handlers run inside the bootstrap runner container before the main pipeline.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "handler": {
+            "type": "string",
+            "description": "module.path:function_name"
+          },
+          "args": {
+            "type": "object"
+          },
+          "export_env": {
+            "type": "boolean"
+          },
+          "optional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "handler"
+        ]
+      }
+    },
+    "container_post_bootstrap_handlers": {
+      "type": "array",
+      "description": "Declarative post-bootstrap handlers run after the main pipeline completes.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "handler": {
+            "type": "string",
+            "description": "module.path:function_name"
+          },
+          "args": {
+            "type": "object"
+          },
+          "optional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "handler"
+        ]
+      }
     }
   },
   "additionalProperties": false

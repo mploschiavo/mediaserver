@@ -16,6 +16,7 @@ def write_config_and_restart(
     config_root: str = "/srv-config",
     container_name: str = "unpackerr",
     log: Any = None,
+    **kwargs: Any,
 ) -> None:
     """Write Unpackerr config with discovered API keys and restart."""
 

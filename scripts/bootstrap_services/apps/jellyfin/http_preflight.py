@@ -57,6 +57,7 @@ def run_preflight(
     api_key_name: str = "media-stack-bootstrap",
     wait_timeout: int = 120,
     log: Any = None,
+    **kwargs: Any,
 ) -> dict[str, str]:
     """Run Jellyfin startup wizard + API key provisioning.
 

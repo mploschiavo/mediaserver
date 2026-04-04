@@ -131,6 +131,7 @@ def run_preflight(
     container_name: str = "qbittorrent",
     wait_timeout: int = 60,
     log: Any = None,
+    **kwargs: Any,
 ) -> dict[str, str]:
     """Sync qBittorrent credentials to match stack admin creds.
 
