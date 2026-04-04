@@ -2,7 +2,7 @@ schema_version: 1
 kind: media_stack_profile
 
 metadata:
-  name: media-dev
+  name: media-stack
   platform: compose
   purpose: dev
 
@@ -28,9 +28,6 @@ routing:
   strategy: subdomain
   provider: traefik
   base_domain: local
-  stack_subdomain: media-dev
-  direct_hosts:
-    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false

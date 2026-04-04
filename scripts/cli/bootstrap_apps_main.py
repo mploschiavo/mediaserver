@@ -286,12 +286,21 @@ def _run_serve(args: argparse.Namespace) -> None:
     run_requested = threading.Event()
     run_overrides: dict = {}
 
+    # Supported runtime overrides — mapped to env vars the pipeline reads.
+    _OVERRIDE_ENV_MAP = {
+        "auto_download_content": "AUTO_DOWNLOAD_CONTENT",
+        "preconfigure_api_keys": "PRECONFIGURE_API_KEYS",
+        "apply_initial_preferences": "APPLY_INITIAL_PREFERENCES",
+        "auto_prowlarr_indexers": "AUTO_PROWLARR_INDEXERS",
+    }
+
     def trigger_run(overrides: dict | None = None) -> None:
         nonlocal run_overrides
         run_overrides = dict(overrides or {})
-        # Apply runtime overrides as env vars so the pipeline picks them up.
-        if run_overrides.get("auto_download_content"):
-            os.environ["AUTO_DOWNLOAD_CONTENT"] = "1"
+        state.run_overrides = dict(run_overrides)
+        for key, env_var in _OVERRIDE_ENV_MAP.items():
+            if key in run_overrides:
+                os.environ[env_var] = "1" if run_overrides[key] else "0"
         run_requested.set()
 
     server = start_api_server(state, port=port, run_trigger=trigger_run)

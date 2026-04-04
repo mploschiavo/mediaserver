@@ -2,7 +2,7 @@ schema_version: 1
 kind: media_stack_profile
 
 metadata:
-  name: media-dev
+  name: media-stack
   platform: k8s
   purpose: dev
 
@@ -28,11 +28,7 @@ routing:
   strategy: hybrid
   provider: traefik
   base_domain: local
-  stack_subdomain: media-dev
-  gateway_host: apps.media-dev.local
   app_path_prefix: /app
-  direct_hosts:
-    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false
