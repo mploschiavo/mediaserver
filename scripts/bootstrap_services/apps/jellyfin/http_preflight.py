@@ -72,9 +72,12 @@ def run_preflight(
     if not _wait_ready(jellyfin_url, timeout=wait_timeout):
         raise RuntimeError(f"Jellyfin not reachable at {jellyfin_url} within {wait_timeout}s")
 
-    # Check if startup wizard is needed.
+    # Check if startup wizard is needed by checking system info first.
+    _, sys_info = _http(jellyfin_url, "/System/Info/Public")
+    wizard_completed = isinstance(sys_info, dict) and sys_info.get("StartupWizardCompleted") is True
+
     status, data = _http(jellyfin_url, "/Startup/Configuration")
-    if status == 200:
+    if status == 200 and not wizard_completed:
         info("Jellyfin startup wizard detected — completing initial setup")
         _http(jellyfin_url, "/Startup/Configuration", method="POST", payload={
             "UICulture": "en-US",
@@ -96,14 +99,25 @@ def run_preflight(
 
         _time.sleep(3)
 
-    # Authenticate.
-    status, auth_data = _http(jellyfin_url, "/Users/AuthenticateByName", method="POST", payload={
-        "Username": admin_username,
-        "Pw": admin_password,
-    }, headers={"X-Emby-Authorization": 'MediaBrowser Client="Bootstrap", Device="Server", DeviceId="bootstrap", Version="1.0"'})
+    # Authenticate — retry up to 30s after wizard completion since Jellyfin
+    # may still be initializing the user database.
+    import time as _time
 
-    if status != 200 or not isinstance(auth_data, dict):
-        raise RuntimeError(f"Jellyfin authentication failed (HTTP {status})")
+    auth_data = None
+    auth_deadline = _time.time() + 30
+    last_status = 0
+    while _time.time() < auth_deadline:
+        last_status, auth_data = _http(jellyfin_url, "/Users/AuthenticateByName", method="POST", payload={
+            "Username": admin_username,
+            "Pw": admin_password,
+        }, headers={"X-Emby-Authorization": 'MediaBrowser Client="Bootstrap", Device="Server", DeviceId="bootstrap", Version="1.0"'})
+        if last_status == 200 and isinstance(auth_data, dict):
+            break
+        info(f"Jellyfin auth attempt returned {last_status}, retrying...")
+        _time.sleep(3)
+
+    if last_status != 200 or not isinstance(auth_data, dict):
+        raise RuntimeError(f"Jellyfin authentication failed (HTTP {last_status})")
 
     access_token = auth_data.get("AccessToken", "")
     user_id = auth_data.get("User", {}).get("Id", "")

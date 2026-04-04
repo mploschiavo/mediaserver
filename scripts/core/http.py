@@ -28,7 +28,7 @@ class RetryableHttpStatusError(RuntimeError):
 
 
 def _is_retryable_http_error(exc: Exception) -> bool:
-    return isinstance(exc, (error.URLError, RetryableHttpStatusError))
+    return isinstance(exc, (error.URLError, RetryableHttpStatusError, ConnectionError, OSError))
 
 
 def _default_normalize_url(url: str) -> str:
