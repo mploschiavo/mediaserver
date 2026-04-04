@@ -230,9 +230,10 @@ services:
     image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
     container_name: jellyfin
     user: "${PUID:-1000}:${PGID:-1000}"
-    group_add: ["44","109"]
-    devices:
-      - /dev/dri:/dev/dri
+    # Hardware transcoding: uncomment on Linux with Intel QSV/VA-API GPU.
+    # group_add: ["44","109"]
+    # devices:
+    #   - /dev/dri:/dev/dri
     environment:
       TZ: ${TZ:-UTC}
       JELLYFIN_PublishedServerUrl: ""
