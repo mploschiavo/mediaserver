@@ -168,12 +168,12 @@ services:
       COMPOSE_FILE: /compose/docker-compose.yml
       CONFIG_ROOT: /runtime-config
       BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
-      BOOTSTRAP_CONFIG_FILE: /bootstrap/config.json
+      BOOTSTRAP_CONFIG_FILE: /bootstrap/media-stack.bootstrap.json
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
-      - ${BOOTSTRAP_PROFILE_FILE:-./examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
+      - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT:-./config}:/runtime-config:rw
-      - ${CONFIG_ROOT:-./config}/bootstrap:/bootstrap:ro
+      - ../bootstrap:/bootstrap:ro
     restart: "no"
 
   envoy:
@@ -567,7 +567,7 @@ services:
       - --serve
       - --auto-run
       - --config
-      - /bootstrap/config.json
+      - /bootstrap/media-stack.bootstrap.json
       - --config-root
       - /srv-config
       - --wait-timeout
@@ -578,9 +578,10 @@ services:
       STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
       STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
     volumes:
-      - ${BOOTSTRAP_PROFILE_FILE:-./examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
-      - ${CONFIG_ROOT:-./config}/bootstrap:/bootstrap:ro
+      - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
+      - ../bootstrap:/bootstrap:ro
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       jellyfin:
         condition: service_healthy
@@ -593,7 +594,7 @@ services:
       qbittorrent:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9100/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9100/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5

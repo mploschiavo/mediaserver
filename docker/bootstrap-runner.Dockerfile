@@ -16,4 +16,4 @@ COPY bootstrap/media-stack.bootstrap.catalog.yaml /opt/media-stack/bootstrap/med
 EXPOSE 9100
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:9100/healthz || exit 1
+  CMD wget -qO- http://127.0.0.1:9100/healthz || exit 1
