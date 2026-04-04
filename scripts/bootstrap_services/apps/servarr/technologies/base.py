@@ -257,6 +257,40 @@ class ServarrAdapterBase:
     def prepare(self) -> None:
         return
 
+    def _register_prowlarr_application(self) -> None:
+        """Register this app with Prowlarr, retrying with path-aware URL on HTTP 307."""
+        effective_prowlarr_url = self.context.prowlarr_url
+        try:
+            self.deps.ensure_prowlarr_application(
+                effective_prowlarr_url,
+                self.context.prowlarr_key,
+                self.context.app_name,
+                self.context.app_impl,
+                self.context.app_url,
+                self.context.app_key,
+            )
+        except Exception as exc:
+            if "http 307" not in str(exc).lower():
+                raise
+            path_aware_prowlarr_url = self._join_url_base(
+                self.context.prowlarr_url,
+                self._configured_url_base_for_keys(["prowlarr"]),
+            )
+            if not path_aware_prowlarr_url or path_aware_prowlarr_url == effective_prowlarr_url:
+                raise
+            self.deps.ensure_prowlarr_application(
+                path_aware_prowlarr_url,
+                self.context.prowlarr_key,
+                self.context.app_name,
+                self.context.app_impl,
+                self.context.app_url,
+                self.context.app_key,
+            )
+            self.deps.log(
+                f"[OK] {self.context.app_name}: retried Prowlarr application "
+                f"registration with path-aware URL {path_aware_prowlarr_url}"
+            )
+
     def _configure_download_clients(self) -> None:
         run_cfg = self.context.run_cfg
         if (
@@ -350,14 +384,7 @@ class ServarrAdapterBase:
             )
 
         if self.context.app_caps.supports_prowlarr_application:
-            self.deps.ensure_prowlarr_application(
-                self.context.prowlarr_url,
-                self.context.prowlarr_key,
-                self.context.app_name,
-                self.context.app_impl,
-                self.context.app_url,
-                self.context.app_key,
-            )
+            self._register_prowlarr_application()
 
         self._configure_download_clients()
 

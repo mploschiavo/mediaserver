@@ -27,18 +27,20 @@ class ProwlarrPrecheckService:
         prowlarr_key: str,
         app_auth_cfg: dict[str, Any],
         wait_timeout: int,
+        api_url: str = "",
     ) -> str:
         self.wait_for_service("Prowlarr", prowlarr_url, "/ping", wait_timeout)
+        effective_api_url = str(api_url or "").strip() or prowlarr_url
         prowlarr_api_base = self.detect_arr_api_base(
             "Prowlarr",
-            prowlarr_url,
+            effective_api_url,
             prowlarr_key,
         )
         try:
             self.ensure_app_auth_settings(
                 "Prowlarr",
                 "Prowlarr",
-                prowlarr_url,
+                effective_api_url,
                 prowlarr_api_base,
                 prowlarr_key,
                 app_auth_cfg,

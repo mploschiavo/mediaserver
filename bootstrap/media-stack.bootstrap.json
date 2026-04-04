@@ -44,7 +44,7 @@
       ]
     },
     "edge": {
-      "router_provider": "traefik",
+      "router_provider": "envoy",
       "router_service_names_by_provider": {
         "traefik": [
           "traefik"
@@ -80,8 +80,9 @@
           "lidarr",
           "readarr",
           "prowlarr",
-          "maintainerr",
-          "jellyseerr"
+          "bazarr",
+          "sabnzbd",
+          "maintainerr"
         ]
       },
       "media_server_service_names": [
@@ -379,7 +380,8 @@
         "radarr",
         "lidarr",
         "readarr",
-        "prowlarr"
+        "prowlarr",
+        "bazarr"
       ],
       "secret_priming_targets": {
         "usenet_client": {
@@ -1092,6 +1094,7 @@
       "port": 8080,
       "implementation": "Sabnzbd",
       "name": "SABnzbd",
+      "url_base": "/app/sabnzbd",
       "configure_arr_clients": true,
       "set_categories_in_sab": true,
       "incomplete_dir": "/data/usenet/incomplete",
@@ -1141,7 +1144,7 @@
   },
   "app_auth": {
     "enabled": true,
-    "method": "None",
+    "method": "Forms",
     "required": "DisabledForLocalAddresses",
     "fail_on_error": false,
     "username_env": "STACK_ADMIN_USERNAME",
@@ -1151,7 +1154,8 @@
       "Radarr",
       "Lidarr",
       "Readarr",
-      "Prowlarr"
+      "Prowlarr",
+      "Bazarr"
     ]
   },
   "homepage": {
@@ -1183,16 +1187,17 @@
     "device_onboarding": {
       "enabled": true,
       "qr_size": 220,
-      "jellyfin_url": "http://jellyfin.local",
-      "jellyfin_short_link": "jellyfin.local",
-      "jellyseerr_url": "http://jellyseerr.local",
-      "jellyseerr_short_link": "jellyseerr.local"
+      "jellyfin_url": "http://apps.media-dev.local:18080/app/jellyfin",
+      "jellyfin_short_link": "apps.media-dev.local:18080/app/jellyfin",
+      "jellyseerr_url": "http://apps.media-dev.local:18080/app/jellyseerr",
+      "jellyseerr_short_link": "apps.media-dev.local:18080/app/jellyseerr"
     }
   },
   "bazarr": {
     "enabled": true,
     "required": false,
     "url": "http://bazarr:6767",
+    "base_url": "/app/bazarr",
     "config_relative_path": "bazarr/config/config.yaml",
     "subtitle_defaults": {
       "enabled": true,
@@ -1253,6 +1258,7 @@
     "enabled": true,
     "required": false,
     "url": "http://jellyseerr:5055",
+    "application_url": "http://apps.media-dev.local:18080/app/jellyseerr",
     "enforce_settings_file": true,
     "set_media_server_type_jellyfin": true,
     "enable_media_server_login": false,
@@ -1295,7 +1301,7 @@
     "jellyfin": {
       "configure": true,
       "url": "http://jellyfin:8096",
-      "external_url": "http://jellyfin.local",
+      "external_url": "http://jellyfin.media-dev.local:18080",
       "api_key_env": "JELLYFIN_API_KEY",
       "auto_discover_api_key_from_db": true,
       "api_key_db_path": "jellyfin/data/jellyfin.db",

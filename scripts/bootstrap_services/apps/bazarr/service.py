@@ -65,6 +65,10 @@ class BazarrService:
             )
 
         updates: dict[str, Any] = {"general": {}}
+        bazarr_base_url = str(bazarr_cfg.get("base_url", "")).strip()
+        if bazarr_base_url:
+            updates["general"]["base_url"] = bazarr_base_url
+
         if sonarr_cfg and sonarr_key:
             parsed = self.parse_service_url(sonarr_cfg["url"], 8989)
             updates["general"]["use_sonarr"] = True

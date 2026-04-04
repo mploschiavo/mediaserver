@@ -386,6 +386,25 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - For ARR-family and Prowlarr routes in path-prefix mode, include post-login/deep-link checks for `/system/status` and fail when API loads break after navigation.
 - If homepage config artifacts change during bootstrap, trigger homepage runtime revalidation so rendered tile links match generated config.
 
+## Browser E2E Test Policy
+- E2E tests must validate real browser behavior: DOM element rendering, navigation, button clicks, form submission — not just HTTP status codes.
+- Use Playwright with a real Chromium browser for all UI/navigation tests. HTTP-only API checks belong in separate `ux-smoke.spec.ts` / `ingress.spec.ts` files.
+- Test structure:
+  - `tests/e2e/playwright/tests/ux-smoke.spec.ts` — HTTP-level smoke (status codes, API reachability, tile link validation)
+  - `tests/e2e/playwright/tests/app-navigation.spec.ts` — Browser-level tests (page rendering, navigation, login, button clicks, asset integrity)
+  - `tests/e2e/playwright/tests/ingress.spec.ts` — Host-routing validation for subdomain mode
+  - `tests/e2e/playwright/tests/screenshot-capture.spec.ts` — Automated UI screenshots
+- Every app routed through the edge proxy must have browser tests that verify:
+  1. Initial page load renders real UI elements (not a blank page with 200 status)
+  2. In-app navigation (Settings, sub-pages) stays within the app's base path
+  3. Static assets (JS, CSS, images) load without 404 errors
+  4. Login flows succeed where applicable (ARR apps, qBittorrent, Jellyseerr)
+- Tests must use environment variables for all runtime config (gateway IP, host, port, credentials). Never hardcode hostnames or ports.
+- For path-prefix routed apps, verify that clicking internal links (e.g., Settings) navigates to the correct path under `/app/<service>/`, not to a bare `/config/` or `/settings/`.
+- For apps with `url_base` configured (SABnzbd, ARR apps), verify that the app generates links with the correct base path.
+- When a routing or proxy fix is made, add or update the corresponding browser test to prevent regression.
+- Run browser tests after every deploy: `cd tests/e2e/playwright && npx playwright test --project=browser`.
+
 ## App Seeding And First-Run Policy
 - Any app that is deployed for a profile (including dependency-expanded services) must be seeded out of first-run/setup-wizard state during bootstrap.
 - Credential/bootstrap scope (`app_auth.include`, app auth policies, startup seed hooks) must be computed from the effective deployed app set, not only the raw selected-app CSV.
@@ -500,6 +519,31 @@ Current key test suites:
 - Keep repo-wide formatting sweeps isolated from behavior changes; do not mix debt cleanup with incident fixes.
 - Path-prefix reverse-proxy routing for ARR-family apps is not sufficient by itself; server-side app `urlBase` must be seeded to `/app/<service>` or UI navigation can fail after login even when initial landing works.
 - Do not infer deploy profile from environment purpose (`dev`/`prod`); preserve explicit `install_profile` from bootstrap profile YAML so `minimal`/`standard`/`full` behavior remains deterministic.
+
+## Bootstrap Image Dev Workflow
+
+Use this sequence whenever making changes to code that runs inside the bootstrap runner container (`scripts/bootstrap_services/**`, `scripts/bootstrap-apps.py`, or any module imported by the bootstrap runner).
+
+```
+# 1. Make code changes
+# 2. Rebuild the bootstrap runner image locally (no registry push)
+PUSH_IMAGE=0 bash scripts/build-bootstrap-runner-image.sh
+
+# 3. Deploy and run bootstrap against the compose stack
+bash scripts/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
+```
+
+If you need a clean slate (full teardown + redeploy):
+```
+DELETE_NAMESPACE=1 DELETE_NAMESPACE_CONFIRM=<compose_project_name> \
+  bash scripts/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
+```
+
+Key rules:
+- Never test bootstrap runtime behavior with a stale image. Rebuild first, validate second.
+- `PUSH_IMAGE=0` builds and loads the image locally without pushing to the registry.
+- Changes to `scripts/cli/`, `scripts/core/`, or `scripts/bootstrap_services/apps/stack/bootstrap_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
+- Changes to `scripts/bootstrap_services/runtime_factory/`, `scripts/bootstrap_services/apps/*/`, or `scripts/bootstrap-apps.py` **do** require an image rebuild.
 
 ## Validation Checklist (Pre-Merge)
 1. `bash -n scripts/*.sh scripts/lib/*.sh`

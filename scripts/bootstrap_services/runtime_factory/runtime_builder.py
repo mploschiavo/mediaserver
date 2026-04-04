@@ -271,7 +271,9 @@ class BootstrapRuntimeBuilder:
 
         app_auth_model = AppAuthConfig.from_dict(cfg.get("app_auth") or {})
         app_auth_cfg = dict(app_auth_model.raw)
-        fully_preconfigured = self.deps.env_truthy("FULLY_PRECONFIGURED", False)
+        fully_preconfigured = self.deps.env_truthy(
+            "FULLY_PRECONFIGURED", False
+        ) or self.deps.env_truthy("APPLY_INITIAL_PREFERENCES", False)
         if fully_preconfigured and not app_auth_cfg:
             include_apps = [str(app.name or app.implementation).strip() for app in arr_apps]
             include_apps = [name for name in include_apps if name]

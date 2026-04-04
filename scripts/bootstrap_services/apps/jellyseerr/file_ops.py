@@ -28,6 +28,9 @@ def configure_via_settings_file(
     main_cfg["mediaServerLogin"] = bool(media_server_login_enabled)
     if not media_server_login_enabled:
         main_cfg["newPlexLogin"] = False
+    application_url = str(jelly_cfg.get("application_url", "")).strip()
+    if application_url:
+        main_cfg["applicationUrl"] = application_url
     settings.setdefault("public", {})["initialized"] = True
 
     jellyfin_cfg = jelly_cfg.get("jellyfin") or {}

@@ -358,6 +358,7 @@ class DeployStackRunner:
     def _runtime_config_policy_params(self) -> dict[str, object]:
         return {
             "selected_apps_csv": self.cfg.selected_apps,
+            "preconfigure_api_keys": self._is_truthy(self.cfg.preconfigure_api_keys),
             "auto_download_content": self._is_truthy(self.cfg.auto_download_content),
             "internet_exposed": self._is_truthy(self.cfg.internet_exposed),
             "route_strategy": self.cfg.route_strategy,

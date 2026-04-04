@@ -143,10 +143,10 @@ def run_prowlarr_indexer_pipeline(
 ):
     return _prowlarr_indexer_pipeline_service().run(
         cfg=cfg,
-        # Bootstrap automation must use direct in-network service URLs.
-        # Gateway/path-prefix URLs are for browser routing and can return
-        # HTML/auth redirects that break API prechecks.
-        prowlarr_url=str(prowlarr_url or "").strip(),
+        # Use the path-aware URL so that POST/PUT API calls reach Prowlarr correctly
+        # when urlBase is set (e.g. /app/prowlarr). This is still a direct in-network
+        # Docker service URL — it does not route through Envoy.
+        prowlarr_url=_path_aware_prowlarr_url(cfg, str(prowlarr_url or "").strip()),
         prowlarr_key=prowlarr_key,
         wait_timeout=wait_timeout,
         prowlarr_indexers=prowlarr_indexers,
@@ -158,13 +158,17 @@ def run_prowlarr_indexer_pipeline(
 
 
 def ensure_prowlarr_ready(cfg, prowlarr_url, prowlarr_key, app_auth_cfg, wait_timeout):
+    direct_url = str(prowlarr_url or "").strip()
+    # Ping/readiness probe uses the direct service URL; path-prefix routes are for browsers.
+    # API mutation calls (auth settings) use the path-aware URL so that Prowlarr instances
+    # with urlBase already set don't return HTTP 307 on bootstrap retries.
+    path_aware_url = _path_aware_prowlarr_url(cfg, direct_url)
     return _prowlarr_precheck_service().ensure_ready(
-        # Keep readiness probes on direct service URL; path-prefix API routes may return
-        # HTML/login responses during early bootstrap before URL-base/auth settle.
-        prowlarr_url=str(prowlarr_url or "").strip(),
+        prowlarr_url=direct_url,
         prowlarr_key=prowlarr_key,
         app_auth_cfg=app_auth_cfg,
         wait_timeout=wait_timeout,
+        api_url=path_aware_url,
     )
 
 
