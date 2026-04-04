@@ -6,6 +6,11 @@ metadata:
   platform: compose
   purpose: prod
 
+storage:
+  config_root: /srv/media-stack/config
+  media_root: /srv/media-stack
+  data_root: /srv/media-stack/data
+
 resources:
   disk_space_gb: 1000
   network_cidr: 192.168.1.0/24

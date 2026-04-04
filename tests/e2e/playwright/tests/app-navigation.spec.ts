@@ -178,16 +178,17 @@ test.describe('App browser navigation tests', () => {
   // Jellyseerr
   // -------------------------------------------------------------------------
   test.describe('Jellyseerr', () => {
-    // Helper: login to Jellyseerr and wait for Discover page.
+    // Helper: login to Jellyseerr with retry on error.
     async function jellyseerrLogin(page: Page) {
-      await gotoApp(page, '/app/jellyseerr/login');
-      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-      const emailInput = page
-        .locator('input[type="text"][name="email"]')
-        .or(page.locator('input[type="email"]'))
-        .or(page.locator('input[id="email"]'))
-        .first();
-      if (await emailInput.isVisible().catch(() => false)) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await gotoApp(page, '/app/jellyseerr/login');
+        await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+        const emailInput = page
+          .locator('input[type="text"][name="email"]')
+          .or(page.locator('input[type="email"]'))
+          .or(page.locator('input[id="email"]'))
+          .first();
+        if (!(await emailInput.isVisible().catch(() => false))) break;
         await emailInput.fill(adminUser);
         await page.locator('input[type="password"]').first().fill(adminPass);
         await page
@@ -196,6 +197,13 @@ test.describe('App browser navigation tests', () => {
           .first()
           .click();
         await page.waitForTimeout(5000);
+        // Check for login error and retry if needed.
+        const errorMsg = page.locator('text=Something went wrong');
+        if (await errorMsg.isVisible().catch(() => false)) {
+          await page.waitForTimeout(3000);
+          continue;
+        }
+        break;
       }
     }
 

@@ -427,19 +427,9 @@ services:
     container_name: unpackerr
     environment:
       TZ: ${TZ:-UTC}
-      UN_SONARR_0_URL: http://sonarr:8989
-      UN_SONARR_0_API_KEY: ${UNPACKERR_SONARR_API_KEY:-}
-      UN_SONARR_0_PATHS_0: /data/torrents/completed/tv
-      UN_RADARR_0_URL: http://radarr:7878
-      UN_RADARR_0_API_KEY: ${UNPACKERR_RADARR_API_KEY:-}
-      UN_RADARR_0_PATHS_0: /data/torrents/completed/movies
-      UN_LIDARR_0_URL: http://lidarr:8686
-      UN_LIDARR_0_API_KEY: ${UNPACKERR_LIDARR_API_KEY:-}
-      UN_LIDARR_0_PATHS_0: /data/torrents/completed/music
-      UN_READARR_0_URL: http://readarr:8787
-      UN_READARR_0_API_KEY: ${UNPACKERR_READARR_API_KEY:-}
-      UN_READARR_0_PATHS_0: /data/torrents/completed/books
+      UN_CONFIG_FILE: /etc/unpackerr/unpackerr.conf
     volumes:
+      - ${CONFIG_ROOT:-./config}/unpackerr:/etc/unpackerr:ro
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
     restart: unless-stopped
@@ -582,7 +572,7 @@ services:
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ../bootstrap:/bootstrap:ro
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       jellyfin:
         condition: service_healthy
