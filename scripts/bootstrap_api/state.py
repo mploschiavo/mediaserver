@@ -19,6 +19,8 @@ class BootstrapState:
     error: str | None = None
     phases_completed: list[str] = field(default_factory=list)
     preflight_results: dict[str, dict[str, Any]] = field(default_factory=dict)
+    app_status: dict[str, dict[str, Any]] = field(default_factory=dict)
+    run_overrides: dict[str, Any] = field(default_factory=dict)
 
     def start(self) -> None:
         with self._lock:
@@ -42,6 +44,10 @@ class BootstrapState:
         with self._lock:
             self.preflight_results[name] = dict(result)
 
+    def record_app_status(self, app_name: str, status: str, **details: Any) -> None:
+        with self._lock:
+            self.app_status[app_name] = {"status": status, **details}
+
     @property
     def is_running(self) -> bool:
         return self.phase == "running"
@@ -64,4 +70,6 @@ class BootstrapState:
                 "error": self.error,
                 "phases_completed": list(self.phases_completed),
                 "preflight_results": dict(self.preflight_results),
+                "app_status": dict(self.app_status),
+                "run_overrides": dict(self.run_overrides),
             }

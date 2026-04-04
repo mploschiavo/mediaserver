@@ -8,3 +8,6 @@ tests/e2e/playwright/test-results/
 secrets.generated.env
 .state/
 docker/.env
+node_modules/
+package.json
+package-lock.json

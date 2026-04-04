@@ -35,10 +35,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="card">
   <b>Actions</b><br>
   <button onclick="triggerRun({})">Run Bootstrap</button>
-  <button onclick="triggerRun({auto_download_content:true})">Run + Enable Downloads</button>
+  <button onclick="triggerRun({auto_download_content:true})">Enable Downloads</button>
+  <button onclick="triggerRun({auto_prowlarr_indexers:true})">Auto-Add Indexers</button>
+  <button onclick="triggerRun({apply_initial_preferences:true})">Apply Preferences</button>
   <button class="secondary" onclick="location.reload()">Refresh</button>
   <div id="error"></div>
 </div>
+<div class="card" id="apps" style="display:none"><b>App Status</b><div id="applist"></div></div>
 <div class="card"><b>Raw Status</b><pre id="raw"></pre></div>
 <script>
 async function load(){
@@ -60,7 +63,23 @@ async function load(){
         h+='</div>';
       }
     }
+    if(d.run_overrides&&Object.keys(d.run_overrides).length)
+      h+='<div style="margin-top:8px"><b>Overrides:</b> '+JSON.stringify(d.run_overrides)+'</div>';
     document.getElementById('status').innerHTML=h;
+    const apps=d.app_status||{};
+    const appEl=document.getElementById('apps');
+    const appList=document.getElementById('applist');
+    if(Object.keys(apps).length){
+      appEl.style.display='block';
+      let ah='';
+      for(const[k,v]of Object.entries(apps)){
+        const s=v.status||'?';
+        ah+='<div class="preflight"><span class="dot '+(s==='ok'?'ok':'error')+'"></span>'+k+': '+s;
+        if(v.error)ah+=' — '+v.error;
+        ah+='</div>';
+      }
+      appList.innerHTML=ah;
+    }
     document.getElementById('raw').textContent=JSON.stringify(d,null,2);
   }catch(e){document.getElementById('status').innerHTML='<div class="error">'+e+'</div>';}
 }

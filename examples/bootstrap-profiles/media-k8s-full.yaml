@@ -2,7 +2,7 @@ schema_version: 1
 kind: media_stack_profile
 
 metadata:
-  name: media-prod
+  name: media-stack
   platform: k8s
   purpose: prod
 

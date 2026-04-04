@@ -213,9 +213,13 @@ class BootstrapProfileConfig:
         base_domain = _normalize_host(routing.get("base_domain") or "local")
         if not base_domain:
             raise ValueError("routing.base_domain must be a non-empty string")
-        stack_subdomain = _normalize_host(routing.get("stack_subdomain") or stack_name)
-        if not stack_subdomain:
-            raise ValueError("routing.stack_subdomain resolved empty")
+        raw_subdomain = routing.get("stack_subdomain")
+        if raw_subdomain is not None:
+            # Explicit value in profile — empty string means no subdomain.
+            stack_subdomain = _normalize_host(raw_subdomain)
+        else:
+            # Not specified — derive from metadata.name.
+            stack_subdomain = _normalize_host(stack_name)
 
         app_path_prefix = str(routing.get("app_path_prefix") or "/app").strip()
         if not app_path_prefix:

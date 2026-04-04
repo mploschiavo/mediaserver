@@ -2,7 +2,7 @@ schema_version: 1
 kind: media_stack_profile
 
 metadata:
-  name: media-dev
+  name: media-stack
   platform: compose
   purpose: prod
 

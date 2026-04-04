@@ -2,7 +2,7 @@ schema_version: 1
 kind: media_stack_profile
 
 metadata:
-  name: media-dev
+  name: media-stack
   platform: compose
   purpose: dev
 
@@ -25,15 +25,11 @@ bootstrap:
 
 routing:
   internet_exposed: false
-  strategy: hybrid  #path-prefix
+  strategy: hybrid
   provider: envoy
   base_domain: local
-  stack_subdomain: media-dev
-  gateway_host: apps.media-dev.local
   gateway_port: 18080
   app_path_prefix: /app
-  direct_hosts:
-    media_server: jellyfin.media-dev.local
 
 auth:
   enabled: false
@@ -47,6 +43,7 @@ chaos:
     - restart_container
     - pause_container
     - network_disconnect
+
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
