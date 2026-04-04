@@ -206,6 +206,18 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             None,
         )
         self.assertIsNotNone(html_primary_route)
+        html_request_headers = html_primary_route.get("request_headers_to_add") or []
+        self.assertIn(
+            {
+                "header": {
+                    "key": "accept-encoding",
+                    "value": "identity",
+                },
+                "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
+            },
+            html_request_headers,
+            "HTML document routes must disable upstream compression so the Lua prefix patch can rewrite the response body.",
+        )
         primary_route = next(
             (
                 route
@@ -225,6 +237,7 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
                 route
                 for route in routes
                 if (route.get("match") or {}).get("prefix") == "/"
+                and "route" in route
                 and any(
                     str(header.get("name") or "") == "referer"
                     for header in ((route.get("match") or {}).get("headers") or [])
@@ -276,6 +289,7 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         cookie_routes = [
             route
             for route in routes
+            if "route" in route
             if any(
                 str(header.get("name") or "") == "cookie"
                 for header in ((route.get("match") or {}).get("headers") or [])
@@ -302,10 +316,65 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             str(((cookie_rewrite.get("pattern") or {}).get("regex") or "")),
             r"^/app/?(.*)$",
         )
+        referer_html_redirect_routes = [
+            route
+            for route in routes
+            if "redirect" in route
+            and any(
+                str(header.get("name") or "") == "referer"
+                for header in ((route.get("match") or {}).get("headers") or [])
+                if isinstance(header, dict)
+            )
+            and any(
+                str(header.get("name") or "") == "accept"
+                for header in ((route.get("match") or {}).get("headers") or [])
+                if isinstance(header, dict)
+            )
+        ]
+        self.assertTrue(referer_html_redirect_routes)
+        referer_redirect_rewrite = (
+            (referer_html_redirect_routes[0].get("redirect") or {}).get("regex_rewrite") or {}
+        )
+        self.assertEqual(
+            str(((referer_redirect_rewrite.get("pattern") or {}).get("regex") or "")),
+            r"^/(.*)$",
+        )
+        self.assertEqual(
+            str(referer_redirect_rewrite.get("substitution") or ""),
+            r"/app/homepage/\1",
+        )
+        cookie_html_redirect_routes = [
+            route
+            for route in routes
+            if "redirect" in route
+            and any(
+                str(header.get("name") or "") == "cookie"
+                for header in ((route.get("match") or {}).get("headers") or [])
+                if isinstance(header, dict)
+            )
+            and any(
+                str(header.get("name") or "") == "accept"
+                for header in ((route.get("match") or {}).get("headers") or [])
+                if isinstance(header, dict)
+            )
+        ]
+        self.assertTrue(cookie_html_redirect_routes)
+        cookie_redirect_rewrite = (
+            (cookie_html_redirect_routes[0].get("redirect") or {}).get("regex_rewrite") or {}
+        )
+        self.assertEqual(
+            str(((cookie_redirect_rewrite.get("pattern") or {}).get("regex") or "")),
+            r"^/(.*)$",
+        )
+        self.assertEqual(
+            str(cookie_redirect_rewrite.get("substitution") or ""),
+            r"/app/homepage/\1",
+        )
         html_redirect_routes = [
             route
             for route in routes
             if "redirect" in route
+            and (route.get("redirect") or {}).get("path_redirect")
             and any(
                 str(header.get("name") or "") == "accept"
                 for header in ((route.get("match") or {}).get("headers") or [])
@@ -374,10 +443,11 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         )
         self.assertTrue(virtual_hosts)
         routes = virtual_hosts[0].get("routes") or []
-        referer_homepage_idx = next(
+        referer_homepage_redirect_idx = next(
             (
                 idx
                 for idx, route in enumerate(routes)
+                if "redirect" in route
                 if any(
                     str(header.get("name") or "") == "referer"
                     and "/app/homepage"
@@ -388,13 +458,14 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             ),
             -1,
         )
-        cookie_maintainerr_idx = next(
+        cookie_homepage_redirect_idx = next(
             (
                 idx
                 for idx, route in enumerate(routes)
+                if "redirect" in route
                 if any(
                     str(header.get("name") or "") == "cookie"
-                    and "media_stack_app_maintainerr=1"
+                    and "media_stack_app_homepage=1"
                     in str((header.get("safe_regex_match") or {}).get("regex") or "")
                     for header in ((route.get("match") or {}).get("headers") or [])
                     if isinstance(header, dict)
@@ -402,12 +473,49 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             ),
             -1,
         )
-        self.assertGreaterEqual(referer_homepage_idx, 0)
-        self.assertGreaterEqual(cookie_maintainerr_idx, 0)
+        referer_homepage_proxy_idx = next(
+            (
+                idx
+                for idx, route in enumerate(routes)
+                if "route" in route
+                if any(
+                    str(header.get("name") or "") == "referer"
+                    and "/app/homepage"
+                    in str((header.get("safe_regex_match") or {}).get("regex") or "")
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            -1,
+        )
+        cookie_homepage_proxy_idx = next(
+            (
+                idx
+                for idx, route in enumerate(routes)
+                if "route" in route
+                if any(
+                    str(header.get("name") or "") == "cookie"
+                    and "media_stack_app_homepage=1"
+                    in str((header.get("safe_regex_match") or {}).get("regex") or "")
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            -1,
+        )
+        self.assertGreaterEqual(referer_homepage_redirect_idx, 0)
+        self.assertGreaterEqual(cookie_homepage_redirect_idx, 0)
+        self.assertGreaterEqual(referer_homepage_proxy_idx, 0)
+        self.assertGreaterEqual(cookie_homepage_proxy_idx, 0)
         self.assertLess(
-            referer_homepage_idx,
-            cookie_maintainerr_idx,
-            "Referer fallback routes must be evaluated before cross-app cookie routes.",
+            referer_homepage_redirect_idx,
+            cookie_homepage_redirect_idx,
+            "Referer HTML redirect routes must be evaluated before cookie redirect routes for the same app.",
+        )
+        self.assertLess(
+            referer_homepage_proxy_idx,
+            cookie_homepage_proxy_idx,
+            "Referer fallback routes must be evaluated before cookie routes for the same app.",
         )
 
     def test_render_raises_when_template_file_missing(self):
@@ -418,16 +526,23 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             service.render(services={})
 
     @staticmethod
-    def _jellyseerr_preserve_payload() -> dict:
+    def _jellyseerr_path_prefix_payload() -> dict:
         return {
             "http": {
                 "routers": {
                     "jellyseerr-path": {
                         "rule": "Host(`apps.media-dev.local`) && PathPrefix(`/app/jellyseerr`)",
                         "service": "jellyseerr",
+                        "middlewares": ["jellyseerr-stripprefix"],
                     }
                 },
-                "middlewares": {},
+                "middlewares": {
+                    "jellyseerr-stripprefix": {
+                        "stripPrefix": {
+                            "prefixes": ["/app/jellyseerr"],
+                        }
+                    }
+                },
                 "services": {
                     "jellyseerr": {
                         "loadBalancer": {
@@ -438,11 +553,11 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             }
         }
 
-    def test_render_does_not_rewrite_path_prefix_for_jellyseerr_preserve(self):
+    def test_render_rewrites_path_prefix_for_jellyseerr(self):
         template = self._template_payload()
         service = self._service(template_loader=lambda _path: template)
         service.route_graph_service.render.return_value = SimpleNamespace(
-            payload=self._jellyseerr_preserve_payload()
+            payload=self._jellyseerr_path_prefix_payload()
         )
         rendered = service.render(services={})
         virtual_hosts = (
@@ -470,10 +585,115 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             None,
         )
         self.assertIsNotNone(primary_route, "Primary route for /app/jellyseerr must exist")
-        self.assertNotIn(
-            "regex_rewrite",
-            (primary_route.get("route") or {}),
-            "Preserve service jellyseerr must not have regex_rewrite stripping its path prefix",
+        html_primary_route = next(
+            (
+                route
+                for route in routes
+                if (route.get("match") or {}).get("prefix") == "/app/jellyseerr"
+                and any(
+                    str(header.get("name") or "") == "accept"
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            None,
+        )
+        self.assertIsNotNone(
+            html_primary_route,
+            "HTML primary route for /app/jellyseerr must exist",
+        )
+        self.assertIn(
+            {
+                "header": {
+                    "key": "accept-encoding",
+                    "value": "identity",
+                },
+                "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
+            },
+            html_primary_route.get("request_headers_to_add") or [],
+            "Jellyseerr HTML document routes must disable upstream compression so the Lua prefix patch reaches the browser.",
+        )
+        self.assertEqual(
+            (primary_route.get("route") or {}).get("regex_rewrite"),
+            {
+                "pattern": {
+                    "google_re2": {},
+                    "regex": "^/app/jellyseerr/?(.*)$",
+                },
+                "substitution": r"/\1",
+            },
+            "Jellyseerr must strip /app/jellyseerr before proxying to the upstream app",
+        )
+        cookie_route = next(
+            (
+                route
+                for route in routes
+                if "route" in route
+                if any(
+                    str(header.get("name") or "") == "cookie"
+                    and "media_stack_app_jellyseerr=1"
+                    in str((header.get("safe_regex_match") or {}).get("regex") or "")
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            None,
+        )
+        self.assertIsNotNone(cookie_route, "Jellyseerr must include cookie fallback routing")
+        self.assertEqual(
+            (cookie_route.get("route") or {}).get("regex_rewrite"),
+            {
+                "pattern": {
+                    "google_re2": {},
+                    "regex": "^/app/?(.*)$",
+                },
+                "substitution": r"/\1",
+            },
+            "Jellyseerr root-relative follow-up requests must be rewritten back to upstream root paths",
+        )
+        cookie_rewrite = (cookie_route.get("route") or {}).get("regex_rewrite") or {}
+        self.assertEqual(
+            str(((cookie_rewrite.get("pattern") or {}).get("regex") or "")),
+            r"^/app/?(.*)$",
+        )
+        self.assertEqual(
+            str(cookie_rewrite.get("substitution") or ""),
+            r"/\1",
+        )
+        cookie_html_redirect_route = next(
+            (
+                route
+                for route in routes
+                if "redirect" in route
+                and any(
+                    str(header.get("name") or "") == "cookie"
+                    and "media_stack_app_jellyseerr=1"
+                    in str((header.get("safe_regex_match") or {}).get("regex") or "")
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+                and any(
+                    str(header.get("name") or "") == "accept"
+                    for header in ((route.get("match") or {}).get("headers") or [])
+                    if isinstance(header, dict)
+                )
+            ),
+            None,
+        )
+        self.assertIsNotNone(
+            cookie_html_redirect_route,
+            "Jellyseerr HTML document navigations must redirect back into the app base path",
+        )
+        cookie_html_redirect_rewrite = (
+            (cookie_html_redirect_route.get("redirect") or {}).get("regex_rewrite") or {}
+        )
+        self.assertEqual(
+            str(((cookie_html_redirect_rewrite.get("pattern") or {}).get("regex") or "")),
+            r"^/(.*)$",
+        )
+        self.assertEqual(
+            str(cookie_html_redirect_rewrite.get("substitution") or ""),
+            r"/app/jellyseerr/\1",
         )
 
     def test_render_does_not_rewrite_path_prefix_when_strip_middleware_absent(self):

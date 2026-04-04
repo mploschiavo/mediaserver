@@ -20,6 +20,7 @@ _BACKTICK_TOKEN_RE = re.compile(r"`([^`]+)`")
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 _DEFAULT_TEMPLATE_RELATIVE_PATH = Path("config/defaults/compose/envoy.runtime.base.yaml")
 _PRIMARY_ROUTE_RANK_BASE = 3000
+_HTML_FALLBACK_REDIRECT_ROUTE_RANK_BASE = 2500
 _REFERER_FALLBACK_ROUTE_RANK_BASE = 2000
 _COOKIE_FALLBACK_ROUTE_RANK_BASE = 1000
 _DEFAULT_HTML_REDIRECT_ROUTE_RANK = 0
@@ -247,9 +248,32 @@ class EnvoyDynamicConfigService:
 
     @staticmethod
     def _route_headers(
-        path_prefix: str, host: str, *, include_session_cookie: bool = False
+        path_prefix: str,
+        host: str,
+        *,
+        include_session_cookie: bool = False,
+        prefer_uncompressed_upstream: bool = False,
     ) -> dict[str, Any]:
         app_slug = _path_prefix_app_slug(path_prefix)
+        request_headers_to_add: list[dict[str, Any]] = [
+            {
+                "header": {
+                    "key": "x-forwarded-prefix",
+                    "value": path_prefix,
+                },
+                "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
+            }
+        ]
+        if prefer_uncompressed_upstream:
+            request_headers_to_add.append(
+                {
+                    "header": {
+                        "key": "accept-encoding",
+                        "value": "identity",
+                    },
+                    "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
+                }
+            )
         response_headers_to_add: list[dict[str, Any]] = [
             {
                 "header": {
@@ -277,15 +301,7 @@ class EnvoyDynamicConfigService:
                 }
             )
         return {
-            "request_headers_to_add": [
-                {
-                    "header": {
-                        "key": "x-forwarded-prefix",
-                        "value": path_prefix,
-                    },
-                    "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
-                }
-            ],
+            "request_headers_to_add": request_headers_to_add,
             "response_headers_to_add": response_headers_to_add,
         }
 
@@ -297,6 +313,7 @@ class EnvoyDynamicConfigService:
         path_prefix: str,
         cluster_name: str,
         include_session_cookie: bool = False,
+        prefer_uncompressed_upstream: bool = False,
     ) -> dict[str, Any]:
         route_cfg: dict[str, Any] = {
             "match": {"prefix": path_prefix},
@@ -310,9 +327,82 @@ class EnvoyDynamicConfigService:
                 path_prefix,
                 host,
                 include_session_cookie=include_session_cookie,
+                prefer_uncompressed_upstream=prefer_uncompressed_upstream,
             )
         )
         return route_cfg
+
+    @classmethod
+    def _fallback_regex_rewrite(
+        cls,
+        *,
+        path_prefix: str,
+        strip_prefix: str,
+    ) -> dict[str, Any] | None:
+        normalized_prefix = str(path_prefix or "").strip()
+        if not normalized_prefix or normalized_prefix == "/":
+            return None
+
+        normalized_strip = str(strip_prefix or "").strip()
+        if normalized_strip and normalized_strip == normalized_prefix:
+            # Strip-prefix mode: route fallback requests under the shared app root
+            # (for example /app/<service>) back to upstream root paths.
+            fallback_prefix = _path_prefix_root(normalized_prefix)
+            if not fallback_prefix or fallback_prefix == "/":
+                return None
+            return {
+                "pattern": {
+                    "google_re2": {},
+                    "regex": f"^{re.escape(fallback_prefix)}/?(.*)$",
+                },
+                "substitution": r"/\1",
+            }
+
+        if not normalized_strip:
+            # Preserve-prefix mode: when browsers emit root-relative navigations
+            # (for example /login), re-prefix to the app path prefix so the
+            # upstream still receives /app/<service>/... routes.
+            return {
+                "pattern": {
+                    "google_re2": {},
+                    "regex": r"^/(.*)$",
+                },
+                "substitution": f"{normalized_prefix}/\\1",
+            }
+
+        return None
+
+    @classmethod
+    def _html_fallback_redirect_rewrite(
+        cls,
+        *,
+        path_prefix: str,
+        strip_prefix: str,
+    ) -> dict[str, Any] | None:
+        normalized_prefix = str(path_prefix or "").strip()
+        if not normalized_prefix or normalized_prefix == "/":
+            return None
+
+        normalized_strip = str(strip_prefix or "").strip()
+        if normalized_strip and normalized_strip == normalized_prefix:
+            return {
+                "pattern": {
+                    "google_re2": {},
+                    "regex": r"^/(.*)$",
+                },
+                "substitution": f"{normalized_prefix}/\\1",
+            }
+        return None
+
+    @staticmethod
+    def _html_accept_header_match() -> dict[str, Any]:
+        return {
+            "name": "accept",
+            "safe_regex_match": {
+                "google_re2": {},
+                "regex": r"(?i).*text/html.*",
+            },
+        }
 
     @classmethod
     def _referer_fallback_route_cfg(
@@ -321,8 +411,8 @@ class EnvoyDynamicConfigService:
         host: str,
         path_prefix: str,
         cluster_name: str,
+        regex_rewrite: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        fallback_prefix = _path_prefix_root(path_prefix)
         route_cfg: dict[str, Any] = {
             "match": {
                 "prefix": "/",
@@ -344,14 +434,8 @@ class EnvoyDynamicConfigService:
                 "timeout": "0s",
             },
         }
-        if fallback_prefix and fallback_prefix != "/":
-            route_cfg["route"]["regex_rewrite"] = {
-                "pattern": {
-                    "google_re2": {},
-                    "regex": f"^{re.escape(fallback_prefix)}/?(.*)$",
-                },
-                "substitution": r"/\1",
-            }
+        if regex_rewrite is not None:
+            route_cfg["route"]["regex_rewrite"] = dict(regex_rewrite)
         route_cfg.update(cls._route_headers(path_prefix, host))
         return route_cfg
 
@@ -362,12 +446,12 @@ class EnvoyDynamicConfigService:
         host: str,
         path_prefix: str,
         cluster_name: str,
+        regex_rewrite: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         app_slug = _path_prefix_app_slug(path_prefix)
         if not app_slug:
             return {}
         cookie_name = _session_cookie_name(path_prefix)
-        fallback_prefix = _path_prefix_root(path_prefix)
         route_cfg: dict[str, Any] = {
             "match": {
                 "prefix": "/",
@@ -388,16 +472,70 @@ class EnvoyDynamicConfigService:
                 "timeout": "0s",
             },
         }
-        if fallback_prefix and fallback_prefix != "/":
-            route_cfg["route"]["regex_rewrite"] = {
-                "pattern": {
-                    "google_re2": {},
-                    "regex": f"^{re.escape(fallback_prefix)}/?(.*)$",
-                },
-                "substitution": r"/\1",
-            }
+        if regex_rewrite is not None:
+            route_cfg["route"]["regex_rewrite"] = dict(regex_rewrite)
         route_cfg.update(cls._route_headers(path_prefix, host, include_session_cookie=False))
         return route_cfg
+
+    @classmethod
+    def _referer_html_redirect_fallback_route_cfg(
+        cls,
+        *,
+        host: str,
+        path_prefix: str,
+        regex_rewrite: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "match": {
+                "prefix": "/",
+                "headers": [
+                    {
+                        "name": "referer",
+                        "safe_regex_match": {
+                            "google_re2": {},
+                            "regex": (
+                                f"^https?://{re.escape(str(host or '').strip())}"
+                                rf"(?:\:[0-9]+)?{re.escape(path_prefix)}(?:/.*)?$"
+                            ),
+                        },
+                    },
+                    cls._html_accept_header_match(),
+                ],
+            },
+            "redirect": {
+                "regex_rewrite": dict(regex_rewrite),
+            },
+        }
+
+    @classmethod
+    def _cookie_html_redirect_fallback_route_cfg(
+        cls,
+        *,
+        path_prefix: str,
+        regex_rewrite: dict[str, Any],
+    ) -> dict[str, Any]:
+        app_slug = _path_prefix_app_slug(path_prefix)
+        if not app_slug:
+            return {}
+        cookie_name = _session_cookie_name(path_prefix)
+        return {
+            "match": {
+                "prefix": "/",
+                "headers": [
+                    {
+                        "name": "cookie",
+                        "safe_regex_match": {
+                            "google_re2": {},
+                            "regex": (rf".*(?:^|;\s*){re.escape(cookie_name)}=1(?:;|$).*"),
+                        },
+                    },
+                    cls._html_accept_header_match(),
+                ],
+            },
+            "redirect": {
+                "regex_rewrite": dict(regex_rewrite),
+            },
+        }
 
     def render(self, services: dict[str, dict[str, Any]]) -> EnvoyDynamicConfigRender:
         route_graph = self.route_graph_service.render(services)
@@ -458,6 +596,7 @@ class EnvoyDynamicConfigService:
             rank = len(path_prefix)
             primary_rank = _PRIMARY_ROUTE_RANK_BASE + rank
             html_primary_rank = primary_rank + 1
+            html_fallback_redirect_rank = _HTML_FALLBACK_REDIRECT_ROUTE_RANK_BASE + rank
             referer_fallback_rank = _REFERER_FALLBACK_ROUTE_RANK_BASE + rank
             cookie_fallback_rank = _COOKIE_FALLBACK_ROUTE_RANK_BASE + rank
             for host in hosts:
@@ -478,6 +617,7 @@ class EnvoyDynamicConfigService:
                     path_prefix=path_prefix,
                     cluster_name=cluster_name,
                     include_session_cookie=True,
+                    prefer_uncompressed_upstream=True,
                 )
                 if regex_rewrite is not None:
                     html_route_cfg["route"]["regex_rewrite"] = dict(regex_rewrite)
@@ -508,10 +648,36 @@ class EnvoyDynamicConfigService:
                     elif slug == "homepage" and existing_slug != "jellyfin":
                         default_html_redirect_by_host[host_token] = path_prefix
                 if path_prefix and path_prefix != "/":
+                    fallback_regex_rewrite = self._fallback_regex_rewrite(
+                        path_prefix=path_prefix,
+                        strip_prefix=strip_prefix,
+                    )
+                    html_fallback_redirect_rewrite = self._html_fallback_redirect_rewrite(
+                        path_prefix=path_prefix,
+                        strip_prefix=strip_prefix,
+                    )
+                    if html_fallback_redirect_rewrite is not None:
+                        html_referer_redirect_route = self._referer_html_redirect_fallback_route_cfg(
+                            host=host_token,
+                            path_prefix=path_prefix,
+                            regex_rewrite=html_fallback_redirect_rewrite,
+                        )
+                        routes_by_host.setdefault(host_token, []).append(
+                            (html_fallback_redirect_rank, html_referer_redirect_route)
+                        )
+                        html_cookie_redirect_route = self._cookie_html_redirect_fallback_route_cfg(
+                            path_prefix=path_prefix,
+                            regex_rewrite=html_fallback_redirect_rewrite,
+                        )
+                        if html_cookie_redirect_route:
+                            routes_by_host.setdefault(host_token, []).append(
+                                (html_fallback_redirect_rank, html_cookie_redirect_route)
+                            )
                     fallback_route = self._referer_fallback_route_cfg(
                         host=host_token,
                         path_prefix=path_prefix,
                         cluster_name=cluster_name,
+                        regex_rewrite=fallback_regex_rewrite,
                     )
                     routes_by_host.setdefault(host_token, []).append(
                         (referer_fallback_rank, fallback_route)
@@ -520,6 +686,7 @@ class EnvoyDynamicConfigService:
                         host=host_token,
                         path_prefix=path_prefix,
                         cluster_name=cluster_name,
+                        regex_rewrite=fallback_regex_rewrite,
                     )
                     if cookie_fallback_route:
                         routes_by_host.setdefault(host_token, []).append(
