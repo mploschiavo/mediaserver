@@ -148,9 +148,39 @@ services:
     restart: unless-stopped
     shm_size: 512mb
 
+  envoy-config-init:
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
+    command:
+      - python3
+      - /opt/media-stack/scripts/cli/generate_envoy_config_main.py
+    environment:
+      COMPOSE_FILE: /compose/docker-compose.yml
+      COMPOSE_ENV_FILE: /compose/.env
+      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:-media-dev}"
+      CONFIG_ROOT: /runtime-config
+      APP_GATEWAY_HOST: "${APP_GATEWAY_HOST}"
+      APP_GATEWAY_PORT: "${APP_GATEWAY_PORT:-}"
+      APP_PATH_PREFIX: "${APP_PATH_PREFIX:-/app}"
+      ROUTE_STRATEGY: "${ROUTE_STRATEGY:-hybrid}"
+      INTERNET_EXPOSED: "${INTERNET_EXPOSED:-0}"
+      MEDIA_SERVER_DIRECT_HOST: "${MEDIA_SERVER_DIRECT_HOST:-}"
+      AUTH_PROVIDER: "${AUTH_PROVIDER:-}"
+      AUTH_MIDDLEWARE: "${AUTH_MIDDLEWARE:-}"
+      BOOTSTRAP_CONFIG_FILE: /bootstrap/config.json
+    volumes:
+      - ./docker-compose.yml:/compose/docker-compose.yml:ro
+      - ${CONFIG_ROOT}/../.env:/compose/.env:ro
+      - ${CONFIG_ROOT}:/runtime-config:rw
+      - ${CONFIG_ROOT}/bootstrap:/bootstrap:ro
+    restart: "no"
+
   envoy:
     image: envoyproxy/envoy:v1.31.2
     container_name: envoy
+    depends_on:
+      envoy-config-init:
+        condition: service_completed_successfully
     command:
       - -c
       - /etc/envoy/envoy.yaml

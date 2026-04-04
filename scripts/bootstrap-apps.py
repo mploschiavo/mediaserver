@@ -33,7 +33,10 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
     These replace the host-side docker-exec-based preflights with HTTP API
     calls and direct file I/O over the shared config mount.
     """
-    from bootstrap_api.preflight import jellyfin, qbittorrent, sabnzbd
+    from bootstrap_api.preflight import api_keys
+    from bootstrap_services.apps.jellyfin import http_preflight as jellyfin_preflight
+    from bootstrap_services.apps.qbittorrent import http_preflight as qbittorrent_preflight
+    from bootstrap_services.apps.sabnzbd import http_preflight as sabnzbd_preflight
 
     config_root = args.config_root
     admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
@@ -42,7 +45,7 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
     # Jellyfin: startup wizard + API key provisioning.
     try:
         runtime_platform.log("[PREFLIGHT] Jellyfin: starting")
-        result = jellyfin.run_preflight(
+        result = jellyfin_preflight.run_preflight(
             admin_username=admin_user,
             admin_password=admin_pass,
             log=runtime_platform.log,
@@ -60,7 +63,7 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
     # qBittorrent: credential sync.
     try:
         runtime_platform.log("[PREFLIGHT] qBittorrent: starting")
-        qbittorrent.run_preflight(
+        qbittorrent_preflight.run_preflight(
             admin_username=admin_user,
             admin_password=admin_pass,
             config_root=config_root,
@@ -78,7 +81,7 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
         # Build whitelist from container hostname + common aliases.
         host_whitelist = "sabnzbd,localhost"
         local_ranges = "172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
-        sabnzbd.run_preflight(
+        sabnzbd_preflight.run_preflight(
             config_root=config_root,
             host_whitelist=host_whitelist,
             local_ranges=local_ranges,
@@ -89,6 +92,19 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
     except Exception as exc:
         state.record_preflight("sabnzbd", {"status": "error", "error": str(exc)})
         runtime_platform.log(f"[PREFLIGHT] SABnzbd: failed ({exc})")
+
+    # API key discovery: read keys from app config files on shared mount.
+    try:
+        runtime_platform.log("[PREFLIGHT] API keys: discovering from config files")
+        keys = api_keys.run_preflight(config_root=config_root, log=runtime_platform.log)
+        state.record_preflight("api_keys", {"status": "ok", "count": len(keys)})
+        for key, value in keys.items():
+            if value and not os.environ.get(key):
+                os.environ[key] = value
+        runtime_platform.log(f"[PREFLIGHT] API keys: {len(keys)} keys discovered")
+    except Exception as exc:
+        state.record_preflight("api_keys", {"status": "error", "error": str(exc)})
+        runtime_platform.log(f"[PREFLIGHT] API keys: failed ({exc})")
 
 
 def _build_runner(args: argparse.Namespace) -> tuple:
