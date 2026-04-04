@@ -27,6 +27,70 @@ from bootstrap_services.runtime_factory import (
 )
 
 
+def _run_preflights(state: object, args: argparse.Namespace) -> None:
+    """Run preflight handlers inside the bootstrap runner container.
+
+    These replace the host-side docker-exec-based preflights with HTTP API
+    calls and direct file I/O over the shared config mount.
+    """
+    from bootstrap_api.preflight import jellyfin, qbittorrent, sabnzbd
+
+    config_root = args.config_root
+    admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-dev")
+
+    # Jellyfin: startup wizard + API key provisioning.
+    try:
+        runtime_platform.log("[PREFLIGHT] Jellyfin: starting")
+        result = jellyfin.run_preflight(
+            admin_username=admin_user,
+            admin_password=admin_pass,
+            log=runtime_platform.log,
+        )
+        state.record_preflight("jellyfin", {"status": "ok", **result})
+        # Export discovered keys as env vars for the bootstrap runner.
+        for key, value in result.items():
+            if value:
+                os.environ[key] = value
+        runtime_platform.log(f"[PREFLIGHT] Jellyfin: complete ({len(result)} keys)")
+    except Exception as exc:
+        state.record_preflight("jellyfin", {"status": "error", "error": str(exc)})
+        runtime_platform.log(f"[PREFLIGHT] Jellyfin: failed ({exc})")
+
+    # qBittorrent: credential sync.
+    try:
+        runtime_platform.log("[PREFLIGHT] qBittorrent: starting")
+        qbittorrent.run_preflight(
+            admin_username=admin_user,
+            admin_password=admin_pass,
+            config_root=config_root,
+            log=runtime_platform.log,
+        )
+        state.record_preflight("qbittorrent", {"status": "ok"})
+        runtime_platform.log("[PREFLIGHT] qBittorrent: complete")
+    except Exception as exc:
+        state.record_preflight("qbittorrent", {"status": "error", "error": str(exc)})
+        runtime_platform.log(f"[PREFLIGHT] qBittorrent: failed ({exc})")
+
+    # SABnzbd: config reconciliation.
+    try:
+        runtime_platform.log("[PREFLIGHT] SABnzbd: starting")
+        # Build whitelist from container hostname + common aliases.
+        host_whitelist = "sabnzbd,localhost"
+        local_ranges = "172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
+        sabnzbd.run_preflight(
+            config_root=config_root,
+            host_whitelist=host_whitelist,
+            local_ranges=local_ranges,
+            log=runtime_platform.log,
+        )
+        state.record_preflight("sabnzbd", {"status": "ok"})
+        runtime_platform.log("[PREFLIGHT] SABnzbd: complete")
+    except Exception as exc:
+        state.record_preflight("sabnzbd", {"status": "error", "error": str(exc)})
+        runtime_platform.log(f"[PREFLIGHT] SABnzbd: failed ({exc})")
+
+
 def _build_runner(args: argparse.Namespace) -> tuple:
     """Build the bootstrap runner and runtime state from CLI args."""
     servarr_runtime_arr_ops = importlib.import_module(
@@ -106,6 +170,12 @@ def _run_serve(args: argparse.Namespace) -> None:
 
     try:
         state.start()
+
+        # Run preflights inside the container (HTTP + file I/O, no docker exec).
+        run_preflights = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
+        if run_preflights:
+            _run_preflights(state, args)
+
         runner, runtime_state = _build_runner(args)
         runner.run(runtime_state)
         state.finish()
