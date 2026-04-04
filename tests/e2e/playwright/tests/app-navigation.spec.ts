@@ -292,6 +292,94 @@ test.describe('App browser navigation tests', () => {
       }
     });
 
+    test('L4: login → Settings → click General sub-page', async ({ page }) => {
+      await jellyseerrLogin(page);
+      const settingsLink = page
+        .locator('a[href="/settings"]')
+        .or(page.locator('a:has-text("Settings")'))
+        .first();
+      if (await settingsLink.isVisible().catch(() => false)) {
+        await settingsLink.click();
+        await page.waitForTimeout(3000);
+      }
+      // Click General settings (the main settings page)
+      const generalLink = page
+        .locator('a[href="/settings/main"]')
+        .or(page.locator('a:has-text("General")'))
+        .first();
+      if (await generalLink.isVisible().catch(() => false)) {
+        await generalLink.click();
+        await page.waitForTimeout(3000);
+        const body = await page.content();
+        expect(body).not.toContain('"status_code": 404');
+        expect(body).not.toContain('This page could not be found');
+        expect(
+          body.toLowerCase().includes('general') || body.toLowerCase().includes('application'),
+          'General settings should render',
+        ).toBeTruthy();
+      }
+    });
+
+    test('L5: Homepage → Jellyseerr → login → Settings → Notifications → Webhook', async ({
+      page,
+    }) => {
+      // Full 5-level deep flow from Homepage
+      await gotoApp(page, '/app/homepage');
+      await page.waitForTimeout(2000);
+      // Click Jellyseerr tile
+      const jellyseerrTile = page.locator('a[href*="jellyseerr"]').first();
+      await expect(jellyseerrTile).toBeVisible({ timeout: 10_000 });
+      await jellyseerrTile.click();
+      await page.waitForTimeout(3000);
+      // Should be on login page — login
+      const emailInput = page
+        .locator('input[type="text"][name="email"]')
+        .or(page.locator('input[type="email"]'))
+        .or(page.locator('input[id="email"]'))
+        .first();
+      if (await emailInput.isVisible().catch(() => false)) {
+        await emailInput.fill(adminUser);
+        await page.locator('input[type="password"]').first().fill(adminPass);
+        await page
+          .locator('button[type="submit"]')
+          .or(page.locator('button:has-text("Sign In")'))
+          .first()
+          .click();
+        await page.waitForTimeout(5000);
+      }
+      // Click Settings
+      const settingsLink = page
+        .locator('a[href="/settings"]')
+        .or(page.locator('a:has-text("Settings")'))
+        .first();
+      if (await settingsLink.isVisible().catch(() => false)) {
+        await settingsLink.click();
+        await page.waitForTimeout(3000);
+      }
+      // Click Notifications
+      const notifLink = page
+        .locator('a[href="/settings/notifications"]')
+        .or(page.locator('a[href*="notifications"]:has-text("Notification")'))
+        .first();
+      if (await notifLink.isVisible().catch(() => false)) {
+        await notifLink.click();
+        await page.waitForTimeout(3000);
+      }
+      // Click Webhook sub-page
+      const webhookLink = page
+        .locator('a[href*="webhook"]')
+        .or(page.locator('a:has-text("Webhook")'))
+        .first();
+      if (await webhookLink.isVisible().catch(() => false)) {
+        await webhookLink.click();
+        await page.waitForTimeout(3000);
+      }
+      // Verify no crash
+      const body = await page.content();
+      expect(body).not.toContain('"status_code": 404');
+      expect(body).not.toContain('This page could not be found');
+    });
+
     test('L3: login → click Requests page', async ({ page }) => {
       await jellyseerrLogin(page);
       const requestsLink = page
