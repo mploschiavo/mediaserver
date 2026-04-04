@@ -50,6 +50,22 @@ def _load_bootstrap_edge_hooks(config_file: str | None) -> dict:
         return {}
 
 
+def _load_profile(profile_file: str | None) -> dict:
+    """Load the bootstrap profile YAML — single source of truth for routing config."""
+    if not profile_file:
+        return {}
+    path = Path(profile_file)
+    if not path.exists():
+        return {}
+    try:
+        import yaml
+
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
 def main() -> None:
     compose_file_str = os.environ.get("COMPOSE_FILE", "")
     config_root_str = os.environ.get("CONFIG_ROOT", "")
@@ -66,19 +82,23 @@ def main() -> None:
     compose_env_file_str = os.environ.get("COMPOSE_ENV_FILE", "")
     compose_env_file = Path(compose_env_file_str) if compose_env_file_str else None
 
-    # Load edge hooks from bootstrap config if available.
+    # Load bootstrap config edge hooks and profile YAML.
     bootstrap_config = os.environ.get("BOOTSTRAP_CONFIG_FILE", "")
     edge_hooks = _load_bootstrap_edge_hooks(bootstrap_config)
+    profile = _load_profile(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+    routing = profile.get("routing") or {}
 
-    gateway_host = os.environ.get("APP_GATEWAY_HOST", "")
-    gateway_port = os.environ.get("APP_GATEWAY_PORT", "")
-    path_prefix = os.environ.get("APP_PATH_PREFIX", "/app")
-    route_strategy = os.environ.get("ROUTE_STRATEGY", "hybrid")
-    internet_exposed = os.environ.get("INTERNET_EXPOSED", "0") == "1"
-    media_server_direct_host = os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
-    auth_provider = os.environ.get("AUTH_PROVIDER", "")
-    auth_middleware = os.environ.get("AUTH_MIDDLEWARE", "")
-    project_name = os.environ.get("COMPOSE_PROJECT_NAME", "media-dev")
+    # Routing config: profile YAML is the source of truth; env vars are fallback.
+    gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
+    gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
+    path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
+    route_strategy = routing.get("strategy") or os.environ.get("ROUTE_STRATEGY", "hybrid")
+    internet_exposed = bool(routing.get("internet_exposed")) or os.environ.get("INTERNET_EXPOSED", "0") == "1"
+    media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", "")) or os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
+    auth_cfg = profile.get("auth") or {}
+    auth_provider = str(auth_cfg.get("provider", "")) or os.environ.get("AUTH_PROVIDER", "")
+    auth_middleware = str(auth_cfg.get("middleware", "")) or os.environ.get("AUTH_MIDDLEWARE", "")
+    project_name = str((profile.get("metadata") or {}).get("name", "")) or os.environ.get("COMPOSE_PROJECT_NAME", "media-dev")
 
     # Service name lists — from env or bootstrap config edge hooks.
     preserve_names = _csv(os.environ.get("EDGE_PATH_PREFIX_PRESERVE", ""))
