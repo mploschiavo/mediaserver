@@ -49,6 +49,8 @@ SERVICE_CATALOG: Dict[str, Tuple[str, str]] = {
     "recyclarr": ("Recyclarr", "Sync policy automation"),
     "authelia": ("Authelia", "Authentication provider"),
     "authentik": ("Authentik", "Authentication provider"),
+    "bootstrap_runner": ("Bootstrap", "Stack configuration & status"),
+    "bootstrap-runner": ("Bootstrap", "Stack configuration & status"),
 }
 
 PREFERRED_PREFIX_ORDER = [

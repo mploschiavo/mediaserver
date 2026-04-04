@@ -1215,6 +1215,7 @@
       "maintainerr.local",
       "tautulli.local",
       "flaresolverr.local",
+      "bootstrap-runner.local",
       "recyclarr.local",
       "authelia.local",
       "authentik.local"

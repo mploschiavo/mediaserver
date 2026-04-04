@@ -551,7 +551,7 @@ services:
 
   bootstrap-runner:
     image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}
-    container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-bootstrap-runner
+    container_name: bootstrap-runner
     command:
       - python3
       - /opt/media-stack/scripts/bootstrap-apps.py
@@ -591,3 +591,7 @@ services:
       retries: 5
       start_period: 30s
     restart: "no"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.bootstrap-runner.rule=Host(`bootstrap.local`)
+      - traefik.http.services.bootstrap-runner.loadbalancer.server.port=9100
