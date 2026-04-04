@@ -71,34 +71,70 @@ test.describe('App browser navigation tests', () => {
       expect(count, 'Homepage should render multiple app tile links').toBeGreaterThanOrEqual(3);
     });
 
-    test('L2: Jellyfin tile links to /app/jellyfin', async ({ page }) => {
+    test('L2: clicking Sonarr tile opens correct URL (not double-prefixed)', async ({
+      page,
+      context,
+    }) => {
+      await gotoApp(page, '/app/homepage');
+      await page.waitForTimeout(3000);
+      const sonarrLink = page.locator('a[href*="/app/sonarr"]').first();
+      await expect(sonarrLink).toBeVisible({ timeout: 10_000 });
+      // Homepage tiles have target="_blank" — intercept the new tab.
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page', { timeout: 10_000 }),
+        sonarrLink.click(),
+      ]);
+      await newPage.waitForLoadState('domcontentloaded', { timeout: 20_000 });
+      expect(
+        newPage.url(),
+        `Sonarr tile opened ${newPage.url()} — should be /app/sonarr`,
+      ).toContain('/app/sonarr');
+      expect(newPage.url()).not.toContain('/app/homepage/app/');
+      await newPage.close();
+    });
+
+    test('L2: clicking Radarr tile opens correct URL', async ({ page, context }) => {
+      await gotoApp(page, '/app/homepage');
+      await page.waitForTimeout(3000);
+      const radarrLink = page.locator('a[href*="/app/radarr"]').first();
+      await expect(radarrLink).toBeVisible({ timeout: 10_000 });
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page', { timeout: 10_000 }),
+        radarrLink.click(),
+      ]);
+      await newPage.waitForLoadState('domcontentloaded', { timeout: 20_000 });
+      expect(newPage.url()).toContain('/app/radarr');
+      expect(newPage.url()).not.toContain('/app/homepage/app/');
+      await newPage.close();
+    });
+
+    test('L2: clicking Jellyfin tile opens correct URL', async ({ page, context }) => {
       await gotoApp(page, '/app/homepage');
       await page.waitForTimeout(3000);
       const jellyfinLink = page.locator('a[href*="/app/jellyfin"]').first();
       await expect(jellyfinLink).toBeVisible({ timeout: 10_000 });
-      await jellyfinLink.click();
-      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 });
-      const body = await page.content();
-      expect(body.toLowerCase()).toContain('jellyfin');
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page', { timeout: 10_000 }),
+        jellyfinLink.click(),
+      ]);
+      await newPage.waitForLoadState('domcontentloaded', { timeout: 20_000 });
+      expect(newPage.url()).toContain('/app/jellyfin');
+      expect(newPage.url()).not.toContain('/app/homepage/app/');
+      await newPage.close();
     });
 
-    test('L2: tile links navigate to correct apps', async ({ page }) => {
+    test('L2: no tile links contain double /app/homepage/app/ prefix', async ({ page }) => {
       await gotoApp(page, '/app/homepage');
       await page.waitForTimeout(3000);
-      const hrefs = await page.locator('a[href*="/app/"]').evaluateAll((els) =>
-        els
-          .map((el) => el.getAttribute('href'))
-          .filter((h): h is string => h !== null && !h.includes('homepage')),
+      // Check ALL tile link hrefs in the DOM
+      const allHrefs = await page.locator('a[href*="/app/"]').evaluateAll((els) =>
+        els.map((el) => ({ text: el.textContent?.trim() || '', href: el.getAttribute('href') || '' })),
       );
-      expect(hrefs.length, 'Expected multiple app tile links').toBeGreaterThanOrEqual(3);
-      // Spot-check the first non-homepage tile link loads a page.
-      const firstHref = hrefs[0];
-      const url = firstHref.startsWith('http') ? firstHref : `${gateway}${firstHref}`;
-      const response = await page.goto(url, {
-        waitUntil: 'domcontentloaded',
-        timeout: 20_000,
-      });
-      expect(response?.status(), `Tile link ${firstHref} should load`).toBeLessThan(400);
+      const broken = allHrefs.filter((l) => l.href.includes('/app/homepage/app/'));
+      expect(
+        broken,
+        `These tile links have double prefix:\n${broken.map((l) => `  ${l.text}: ${l.href}`).join('\n')}`,
+      ).toHaveLength(0);
     });
   });
 

@@ -696,6 +696,21 @@ class EnvoyDynamicConfigService:
                     },
                 )
             )
+            # Bare app-root redirect: /app and /app/ → /app/homepage so users
+            # who type the prefix root into the browser get the dashboard.
+            app_root = _path_prefix_root(path_prefix)
+            if app_root and app_root != "/":
+                homepage_path = f"{app_root}/homepage"
+                for bare_path in (app_root, f"{app_root}/"):
+                    routes_by_host.setdefault(host_token, []).append(
+                        (
+                            _PRIMARY_ROUTE_RANK_BASE + len(bare_path) + 1,
+                            {
+                                "match": {"path": bare_path},
+                                "redirect": {"path_redirect": homepage_path},
+                            },
+                        )
+                    )
             # Exact root match: proxy "/" (exact) to the default app (media
             # server) at a rank above cookie fallback routes. This ensures
             # TV apps and browsers hitting the bare root always reach Jellyfin,
