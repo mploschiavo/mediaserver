@@ -529,3 +529,51 @@ services:
       - ${DATA_ROOT}/transcode:/cache
       - ${MEDIA_ROOT}/media:/media
     restart: unless-stopped
+
+  bootstrap-runner:
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-bootstrap-runner
+    profiles: ["bootstrap"]
+    command:
+      - python3
+      - /opt/media-stack/scripts/bootstrap-apps.py
+      - --serve
+      - --auto-run
+      - --config
+      - /bootstrap/config.json
+      - --config-root
+      - /srv-config
+      - --wait-timeout
+      - "${BOOTSTRAP_WAIT_TIMEOUT:-600}"
+      - --env
+      - "${MEDIA_STACK_ENV:-prod}"
+    environment:
+      FULLY_PRECONFIGURED: "${FULLY_PRECONFIGURED:-1}"
+      PRECONFIGURE_API_KEYS: "${PRECONFIGURE_API_KEYS:-1}"
+      APPLY_INITIAL_PREFERENCES: "${APPLY_INITIAL_PREFERENCES:-1}"
+      AUTO_DOWNLOAD_CONTENT: "${AUTO_DOWNLOAD_CONTENT:-0}"
+      MEDIA_STACK_ENV: "${MEDIA_STACK_ENV:-prod}"
+      BOOTSTRAP_API_PORT: "${BOOTSTRAP_API_PORT:-9100}"
+      STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
+      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-dev}"
+    volumes:
+      - ${CONFIG_ROOT}/bootstrap:/bootstrap:ro
+      - ${CONFIG_ROOT}:/srv-config:rw
+    depends_on:
+      jellyfin:
+        condition: service_healthy
+      prowlarr:
+        condition: service_healthy
+      sonarr:
+        condition: service_healthy
+      radarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9100/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: "no"

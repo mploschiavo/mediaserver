@@ -105,10 +105,27 @@ spec:
           command:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py
+            - --serve
+            - --auto-run
             - --config
             - /bootstrap-config/config.json
             - --config-root
             - /srv-config
+          ports:
+            - containerPort: 9100
+              name: api
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 10
           volumeMounts:
             - name: bootstrap-config
               mountPath: /bootstrap-config
