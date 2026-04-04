@@ -66,18 +66,69 @@ def _load_profile(profile_file: str | None) -> dict:
         return {}
 
 
+# Known services with their default ports — used when compose file is unavailable (K8s).
+_DEFAULT_SERVICE_PORTS: dict[str, int] = {
+    "envoy": 9901,
+    "homepage": 3000,
+    "jellyfin": 8096,
+    "jellyseerr": 5055,
+    "sonarr": 8989,
+    "radarr": 7878,
+    "lidarr": 8686,
+    "readarr": 8787,
+    "prowlarr": 9696,
+    "qbittorrent": 8080,
+    "sabnzbd": 8080,
+    "bazarr": 6767,
+    "maintainerr": 6246,
+    "flaresolverr": 8191,
+    "tautulli": 8181,
+    "unpackerr": 5656,
+    "recyclarr": 80,
+    "bootstrap-runner": 9100,
+}
+
+
+def _build_synthetic_services(
+    gateway_host: str,
+    compose_provider_specs: dict,
+) -> dict[str, dict]:
+    """Build compose-compatible service dicts from known services.
+
+    Used when no compose file is available (K8s mode). Generates
+    the same label structure that the compose label service expects.
+    """
+    spec = compose_provider_specs.get("envoy") or compose_provider_specs.get("traefik") or {}
+    enable_key = spec.get("enable_label_key", "traefik.enable")
+    router_rule_tpl = spec.get("router_rule_key_template", "traefik.http.routers.{router_name}.rule")
+    router_svc_tpl = spec.get("router_service_key_template", "traefik.http.routers.{router_name}.service")
+    svc_port_tpl = spec.get("service_label_prefix", "traefik.http.services.")
+
+    services: dict[str, dict] = {}
+    for svc_name, port in _DEFAULT_SERVICE_PORTS.items():
+        labels = {
+            enable_key: "true",
+            router_rule_tpl.replace("{router_name}", svc_name): f"Host(`{svc_name}.local`)",
+            router_svc_tpl.replace("{router_name}", svc_name): svc_name,
+            f"{svc_port_tpl}{svc_name}.loadbalancer.server.port": str(port),
+        }
+        services[svc_name] = {
+            "container_name": svc_name,
+            "labels": labels,
+        }
+    return services
+
+
 def main() -> None:
     compose_file_str = os.environ.get("COMPOSE_FILE", "")
     config_root_str = os.environ.get("CONFIG_ROOT", "")
-    if not compose_file_str or not config_root_str:
-        print("ERROR: COMPOSE_FILE and CONFIG_ROOT env vars are required", file=sys.stderr)
+    if not config_root_str:
+        print("ERROR: CONFIG_ROOT env var is required", file=sys.stderr)
         sys.exit(1)
 
-    compose_file = Path(compose_file_str)
+    compose_file = Path(compose_file_str) if compose_file_str and compose_file_str != "/dev/null" else None
     config_root = Path(config_root_str)
-    if not compose_file.exists():
-        print(f"ERROR: COMPOSE_FILE not found: {compose_file}", file=sys.stderr)
-        sys.exit(1)
+    k8s_mode = compose_file is None or not compose_file.exists()
 
     compose_env_file_str = os.environ.get("COMPOSE_ENV_FILE", "")
     compose_env_file = Path(compose_env_file_str) if compose_env_file_str else None
@@ -89,12 +140,23 @@ def main() -> None:
     routing = profile.get("routing") or {}
 
     # Routing config: profile YAML is the source of truth; env vars are fallback.
-    gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
-    gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
-    path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
     route_strategy = routing.get("strategy") or os.environ.get("ROUTE_STRATEGY", "hybrid")
+    base_domain = routing.get("base_domain") or "local"
+    path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
+    gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
+    stack_name = str((profile.get("metadata") or {}).get("name", "")).strip()
+    stack_subdomain = routing.get("stack_subdomain") or stack_name
+
+    # Derive gateway_host from metadata.name + base_domain if not explicit.
+    gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
+    if not gateway_host and route_strategy in ("hybrid", "path-prefix") and stack_subdomain:
+        parts = [p for p in ["apps", stack_subdomain, base_domain] if p]
+        gateway_host = ".".join(parts).lower()
     internet_exposed = bool(routing.get("internet_exposed")) or os.environ.get("INTERNET_EXPOSED", "0") == "1"
     media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", "")) or os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
+    if not media_server_direct_host and stack_subdomain and base_domain:
+        parts = [p for p in ["jellyfin", stack_subdomain, base_domain] if p]
+        media_server_direct_host = ".".join(parts).lower()
     auth_cfg = profile.get("auth") or {}
     auth_provider = str(auth_cfg.get("provider", "")) or os.environ.get("AUTH_PROVIDER", "")
     auth_middleware = str(auth_cfg.get("middleware", "")) or os.environ.get("AUTH_MIDDLEWARE", "")
@@ -157,8 +219,9 @@ def main() -> None:
     # Router service names for envoy.
     router_service_names = ("envoy",)
 
+    # In K8s mode, use a dummy compose file path (won't be read).
     spec_resolver = ComposeSpecResolver(
-        compose_file=compose_file,
+        compose_file=compose_file or Path("/dev/null"),
         compose_env_file=compose_env_file,
         compose_project_name=project_name,
         compose_profiles=(),
@@ -203,17 +266,31 @@ def main() -> None:
         spec_resolver=spec_resolver,
     )
 
-    # Load services from compose spec.
-    compose_spec = spec_resolver.load_compose_spec()
-    services = dict(compose_spec.get("services") or {})
-
-    # Select services (exclude non-selected profiles, include router services).
-    selected = spec_resolver.selected_services(services)
+    # Load services — from compose spec or synthetic (K8s mode).
+    if k8s_mode:
+        print("[INFO] K8s mode: building synthetic services from known app list")
+        services = _build_synthetic_services(gateway_host, compose_provider_specs)
+        selected = dict(services)
+    else:
+        compose_spec = spec_resolver.load_compose_spec()
+        services = dict(compose_spec.get("services") or {})
+        selected = spec_resolver.selected_services(services)
     print(f"[INFO] Generating Envoy config for {len(selected)} services")
 
     # Render the Envoy config.
     render_result = dynamic_config_service.render(selected)
     payload = render_result.payload
+
+    # Override listener port if specified (K8s needs non-privileged port).
+    listener_port = int(os.environ.get("ENVOY_LISTENER_PORT", "0"))
+    if listener_port > 0:
+        try:
+            listeners = payload.get("static_resources", {}).get("listeners", [])
+            if listeners:
+                addr = listeners[0].get("address", {}).get("socket_address", {})
+                addr["port_value"] = listener_port
+        except Exception:
+            pass
 
     # Write output.
     envoy_dir = config_root / "envoy"
