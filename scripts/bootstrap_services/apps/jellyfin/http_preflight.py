@@ -91,6 +91,10 @@ def run_preflight(
         })
         _http(jellyfin_url, "/Startup/Complete", method="POST")
         info("Jellyfin startup wizard completed")
+        # Give Jellyfin time to initialize after wizard completion.
+        import time as _time
+
+        _time.sleep(3)
 
     # Authenticate.
     status, auth_data = _http(jellyfin_url, "/Users/AuthenticateByName", method="POST", payload={
