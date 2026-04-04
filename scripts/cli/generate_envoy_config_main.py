@@ -169,6 +169,7 @@ def main() -> None:
 
     label_service = ComposeLabelService(
         cfg=ComposeLabelConfig(
+            project_name=project_name,
             edge_router_provider="envoy",
             route_strategy=route_strategy,
             internet_exposed=internet_exposed,
@@ -177,8 +178,8 @@ def main() -> None:
             media_server_direct_host=media_server_direct_host,
             auth_provider=auth_provider,
             auth_middleware=auth_middleware,
-            edge_path_prefix_redirect_service_names=redirect_names,
-            edge_path_prefix_preserve_service_names=preserve_names,
+            path_prefix_redirect_service_names=redirect_names,
+            path_prefix_preserve_service_names=preserve_names,
             edge_compose_provider_specs=compose_provider_specs,
             auth_provider_middleware_defaults={},
             media_server_service_names=media_server_names,
@@ -193,7 +194,7 @@ def main() -> None:
     artifacts_dir = config_root / "envoy" / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     artifacts_service = ComposeRuntimeArtifactService(
-        artifacts_dir=artifacts_dir,
+        runtime_artifacts_dir=artifacts_dir,
         info=lambda msg: print(f"[INFO] {msg}"),
     )
 

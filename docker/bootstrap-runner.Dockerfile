@@ -9,6 +9,7 @@ WORKDIR /opt/media-stack
 RUN pip install --no-cache-dir bcrypt docker kubernetes pyyaml requests
 
 COPY scripts /opt/media-stack/scripts
+COPY config/defaults /opt/media-stack/config/defaults
 
 EXPOSE 9100
 
