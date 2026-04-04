@@ -168,6 +168,23 @@ Swap workflow:
 
 Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
 
+## Deployment Target Contract
+The target deployment experience for each platform:
+- **Compose:** `docker compose --profile standard up -d` (or equivalent profile flag) stands up the full stack including bootstrap.
+- **Kubernetes:** `kubectl apply -k k8s/profiles/standard/` stands up the full stack including bootstrap Job.
+- Both platforms must converge on the same bootstrap runner image and codebase. Platform-specific entry point wiring (compose service vs K8s Job) is allowed; platform-specific bootstrap logic is not.
+- Host-side Python CLI orchestration (`deploy-stack.sh` / `deploy_stack_main.py`) is a power-user/CI tool, not the primary deployment path. The primary path must be platform-native.
+- Do not introduce Helm charts, Helm values files, or Helm template logic. Use Kustomize overlays for Kubernetes profile management and native Compose profiles for Docker Compose.
+
+### Bootstrap Runner as HTTP API Service
+- The bootstrap runner must be a first-class HTTP API service, not only a one-shot script.
+- Expose HTTP endpoints for bootstrap status, progress, and telemetry.
+- HTTP endpoints are thin wrappers over existing (and future) Python service classes — the API layer must not contain domain logic, only dispatch to service classes.
+- Include a lightweight webserver for real-time bootstrap observability (health, phase progress, errors).
+- Both `docker compose` and `kubectl` entry points run through the same bootstrap runner image and API — do not fork platform-specific bootstrap logic.
+- Credential preflight (Jellyfin wizard, qBittorrent password, SABnzbd config) must use HTTP API calls to running services over the container network, not `docker exec` from the host.
+- The bootstrap runner must be declared in the compose file (with a profile) and in the K8s manifests (as a Job), not created ad-hoc by host-side Python.
+
 ## Platform Swap Contract
 Swapping deployment platforms/runtimes must be platform-local and config-driven, with the same isolation expectations as app swaps.
 
@@ -337,6 +354,7 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Use `KubernetesClient` naming in Python code; do not add new `KubectlClient` imports/usages.
 - Do not add new Python code that shells out to `kubectl`; use the Kubernetes API adapter instead.
 - Kubernetes orchestration/runtime behavior must be implemented in Python service/adapters, not CLI command wrappers.
+- Do not use Helm. Use Kustomize overlays (`k8s/profiles/*/kustomization.yaml`) for profile-driven manifest management. Helm charts, values.yaml, and Chart.yaml are prohibited.
 
 ## Docker Client Policy
 - Python Docker helpers must use the official Docker SDK for Python (`docker-py`) through `scripts/core/platforms/compose/docker_client.py` adapter boundaries.
@@ -420,6 +438,10 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Canonical compose chaos actions are `restart_container`, `pause_container`, and `network_disconnect`.
 - Each chaos action must be followed by readiness/healing verification before the next action.
 - Chaos scheduling parameters (`duration_minutes`, `interval_seconds`, `actions`) must remain config-driven and test-covered.
+
+## Commit Message Policy
+- Do not include `Co-Authored-By` lines, AI/LLM tool attributions, or references to Claude, Anthropic, or any AI assistant in git commit messages.
+- Commit messages should describe the change, not the tooling used to produce it.
 
 ## Compose Environment Contract
 - Compose deploys must fail fast when required host-path env bindings are missing (`CONFIG_ROOT`, `MEDIA_ROOT`, `DATA_ROOT` when referenced by compose spec).
