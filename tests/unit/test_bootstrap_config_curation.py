@@ -224,7 +224,17 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertIn("jellyfin.local", hosts)
         onboarding = homepage.get("device_onboarding") or {}
         self.assertTrue(bool(onboarding.get("enabled")))
-        self.assertIn("jellyfin.local", str(onboarding.get("jellyfin_url") or ""))
+        self.assertIn("/app/jellyfin", str(onboarding.get("jellyfin_url") or ""))
+
+    def test_envoy_path_prefix_preserve_services_exclude_jellyseerr(self):
+        edge_cfg = ((self.cfg.get("adapter_hooks") or {}).get("edge") or {})
+        preserve_by_provider = edge_cfg.get("path_prefix_preserve_service_names_by_provider") or {}
+        envoy_services = {
+            str(item).strip().lower()
+            for item in (preserve_by_provider.get("envoy") or [])
+            if str(item).strip()
+        }
+        self.assertNotIn("jellyseerr", envoy_services)
 
 
 if __name__ == "__main__":
