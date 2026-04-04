@@ -1,10 +1,22 @@
-name: media-automation-stack-v4
+name: ${COMPOSE_PROJECT_NAME:-media-stack}
 # Image references are digest-pinned as of 2026-03-28.
+#
+# Required user config (set in .env or shell environment):
+#   CONFIG_ROOT  — host path for app config volumes (e.g. /srv/media-stack/config)
+#   MEDIA_ROOT   — host path for media library (e.g. /srv/media-stack)
+#   DATA_ROOT    — host path for download data (e.g. /srv/media-stack/data)
+#
+# Optional (all have defaults):
+#   STACK_ADMIN_USERNAME / STACK_ADMIN_PASSWORD — admin creds (default: admin/media-stack)
+#   TZ — timezone (default: UTC)
+#   PUID / PGID — container user/group (default: 1000)
+#   APP_GATEWAY_HOST — gateway hostname for path-prefix routing
+#   TRAEFIK_HTTP_PORT — edge proxy listen port (default: 80)
 
 x-arr-env: &arr-env
-  PUID: ${PUID}
-  PGID: ${PGID}
-  TZ: ${TZ}
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  TZ: ${TZ:-UTC}
 
 x-media-vols: &media-vols
   - ${MEDIA_ROOT}/media:/media
@@ -156,21 +168,12 @@ services:
       - /opt/media-stack/scripts/cli/generate_envoy_config_main.py
     environment:
       COMPOSE_FILE: /compose/docker-compose.yml
-      COMPOSE_ENV_FILE: /compose/.env
-      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:-media-dev}"
       CONFIG_ROOT: /runtime-config
-      APP_GATEWAY_HOST: "${APP_GATEWAY_HOST}"
-      APP_GATEWAY_PORT: "${APP_GATEWAY_PORT:-}"
-      APP_PATH_PREFIX: "${APP_PATH_PREFIX:-/app}"
-      ROUTE_STRATEGY: "${ROUTE_STRATEGY:-hybrid}"
-      INTERNET_EXPOSED: "${INTERNET_EXPOSED:-0}"
-      MEDIA_SERVER_DIRECT_HOST: "${MEDIA_SERVER_DIRECT_HOST:-}"
-      AUTH_PROVIDER: "${AUTH_PROVIDER:-}"
-      AUTH_MIDDLEWARE: "${AUTH_MIDDLEWARE:-}"
+      BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
       BOOTSTRAP_CONFIG_FILE: /bootstrap/config.json
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
-      - ${CONFIG_ROOT}/../.env:/compose/.env:ro
+      - ${BOOTSTRAP_PROFILE_FILE:-./examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT}:/runtime-config:rw
       - ${CONFIG_ROOT}/bootstrap:/bootstrap:ro
     restart: "no"
@@ -574,19 +577,14 @@ services:
       - --config-root
       - /srv-config
       - --wait-timeout
-      - "${BOOTSTRAP_WAIT_TIMEOUT:-600}"
-      - --env
-      - "${MEDIA_STACK_ENV:-prod}"
+      - "600"
     environment:
-      FULLY_PRECONFIGURED: "${FULLY_PRECONFIGURED:-1}"
-      PRECONFIGURE_API_KEYS: "${PRECONFIGURE_API_KEYS:-1}"
-      APPLY_INITIAL_PREFERENCES: "${APPLY_INITIAL_PREFERENCES:-1}"
-      AUTO_DOWNLOAD_CONTENT: "${AUTO_DOWNLOAD_CONTENT:-0}"
-      MEDIA_STACK_ENV: "${MEDIA_STACK_ENV:-prod}"
-      BOOTSTRAP_API_PORT: "${BOOTSTRAP_API_PORT:-9100}"
+      BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
+      BOOTSTRAP_API_PORT: "9100"
       STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
-      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-dev}"
+      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
     volumes:
+      - ${BOOTSTRAP_PROFILE_FILE:-./examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT}/bootstrap:/bootstrap:ro
       - ${CONFIG_ROOT}:/srv-config:rw
     depends_on:
