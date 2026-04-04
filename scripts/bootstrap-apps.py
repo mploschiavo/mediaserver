@@ -177,7 +177,11 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
 
     # Runtime config policy: apply path_prefix_url_base_by_app, Homepage URLs, etc.
     # This transforms the static config.json with routing/URL policy derived from
-    # the profile YAML — the same transform the host-side CLI does.
+    # the profile YAML — the same transform the host-side CLI does in
+    # ComposeBootstrapService._prepare_runtime_config().
+    # TODO: Register as a declarative RunnerEvent.PREFLIGHT handler in the plugin
+    # manifest system instead of calling inline. Both host-side CLI and container-side
+    # serve mode should resolve this through the event registry, not procedural code.
     try:
         runtime_platform.log("[PREFLIGHT] Config policy: applying runtime transforms")
         _apply_config_policy(args)
@@ -287,8 +291,13 @@ def _run_serve(args: argparse.Namespace) -> None:
     from bootstrap_api.server import start_api_server
     from bootstrap_api.state import BootstrapState
 
-    # Load profile and populate env vars before anything else.
-    _apply_profile_env(os.environ.get("BOOTSTRAP_PROFILE_FILE"))
+    # Validate and load profile before anything else.
+    profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
+    if profile_file:
+        from bootstrap_api.preflight.profile_validation import validate_profile
+
+        validate_profile(profile_file, log=runtime_platform.log)
+    _apply_profile_env(profile_file)
 
     state = BootstrapState()
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
@@ -317,6 +326,18 @@ def _run_serve(args: argparse.Namespace) -> None:
 
         runner, runtime_state = _build_runner(args)
         runner.run(runtime_state)
+
+        # Post-bootstrap: write Unpackerr config with discovered API keys and restart.
+        try:
+            from bootstrap_api.preflight.unpackerr import write_config_and_restart
+
+            write_config_and_restart(
+                config_root=args.config_root,
+                log=runtime_platform.log,
+            )
+        except Exception as exc:
+            runtime_platform.log(f"[WARN] Unpackerr post-bootstrap: {exc}")
+
         state.finish()
         runtime_platform.log("[OK] Bootstrap completed successfully")
     except Exception as exc:
