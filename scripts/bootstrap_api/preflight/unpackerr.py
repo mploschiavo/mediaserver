@@ -83,13 +83,36 @@ def write_config_and_restart(
     conf_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     info(f"Unpackerr: wrote config with {keys_found} API keys to {conf_path}")
 
-    # Restart Unpackerr to pick up the config file.
+    # Restart Unpackerr — Docker SDK (compose) or K8s pod delete.
+    restarted = False
     try:
         import docker
 
         client = docker.from_env()
         container = client.containers.get(container_name)
         container.restart(timeout=15)
+        restarted = True
+    except Exception:
+        pass
+    if not restarted:
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+
+            try:
+                k8s_config.load_incluster_config()
+            except k8s_config.ConfigException:
+                k8s_config.load_kube_config()
+            v1 = k8s_client.CoreV1Api()
+            namespace = __import__("os").environ.get("K8S_NAMESPACE", "media-stack")
+            pods = v1.list_namespaced_pod(
+                namespace=namespace, label_selector=f"app={container_name}"
+            )
+            for pod in pods.items:
+                v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
+            restarted = True
+        except Exception:
+            pass
+    if restarted:
         info(f"Unpackerr: restarted {container_name}")
-    except Exception as exc:
-        info(f"Unpackerr: restart skipped ({exc})")
+    else:
+        info(f"Unpackerr: restart skipped (no Docker or K8s access)")

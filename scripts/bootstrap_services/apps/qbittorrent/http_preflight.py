@@ -22,7 +22,7 @@ def _wait_ready(base_url: str, timeout: int = 60) -> bool:
     while time.time() < deadline:
         try:
             resp = requests.get(f"{base_url}/api/v2/app/version", timeout=5)
-            if resp.status_code == 200:
+            if resp.status_code in (200, 403):
                 return True
         except requests.ConnectionError:
             pass
@@ -61,21 +61,68 @@ def _set_preferences(base_url: str, sid: str, prefs: dict[str, Any]) -> bool:
 
 
 def _read_temp_password_from_logs(container_name: str = "qbittorrent") -> str | None:
-    """Extract temporary password from qBittorrent container logs via Docker SDK."""
+    """Extract temporary password from qBittorrent logs.
+
+    Tries Docker SDK first (compose), then Kubernetes API (k8s).
+    """
+    password = _read_temp_password_docker(container_name)
+    if password:
+        return password
+    return _read_temp_password_k8s(container_name)
+
+
+def _read_temp_password_docker(container_name: str) -> str | None:
+    """Read temp password from Docker container logs."""
     try:
         import docker
 
         client = docker.from_env()
         container = client.containers.get(container_name)
         log_text = container.logs(tail=100).decode("utf-8", errors="replace")
-        match = re.search(
-            r"temporary password.*?:\s*(\S+)",
-            log_text,
-            flags=re.IGNORECASE,
-        )
-        return match.group(1) if match else None
+        return _extract_temp_password(log_text)
     except Exception:
         return None
+
+
+def _read_temp_password_k8s(app_name: str) -> str | None:
+    """Read temp password from Kubernetes pod logs."""
+    try:
+        from kubernetes import client, config
+
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+
+        v1 = client.CoreV1Api()
+        # Find the namespace from env or default.
+        namespace = __import__("os").environ.get("K8S_NAMESPACE", "media-stack")
+        # List pods matching the app label.
+        pods = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=f"app={app_name}",
+        )
+        if not pods.items:
+            return None
+        pod_name = pods.items[0].metadata.name
+        log_text = v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=namespace,
+            tail_lines=100,
+        )
+        return _extract_temp_password(log_text or "")
+    except Exception:
+        return None
+
+
+def _extract_temp_password(log_text: str) -> str | None:
+    """Extract temp password from log text."""
+    match = re.search(
+        r"temporary password.*?:\s*(\S+)",
+        log_text,
+        flags=re.IGNORECASE,
+    )
+    return match.group(1) if match else None
 
 
 def _reset_auth_in_config(config_root: Path) -> bool:
@@ -111,13 +158,35 @@ def _reset_auth_in_config(config_root: Path) -> bool:
 
 
 def _restart_container(container_name: str = "qbittorrent") -> None:
-    """Restart qBittorrent container via Docker SDK."""
+    """Restart qBittorrent — tries Docker SDK (compose), then K8s pod delete."""
+    # Try Docker first.
     try:
         import docker
 
         client = docker.from_env()
         container = client.containers.get(container_name)
         container.restart(timeout=15)
+        return
+    except Exception:
+        pass
+    # Try K8s pod delete (Deployment will recreate).
+    try:
+        from kubernetes import client, config
+
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+
+        v1 = client.CoreV1Api()
+        namespace = __import__("os").environ.get("K8S_NAMESPACE", "media-stack")
+        pods = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=f"app={container_name}",
+        )
+        for pod in pods.items:
+            v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
+        return
     except Exception as exc:
         raise RuntimeError(f"Failed to restart {container_name}: {exc}") from exc
 

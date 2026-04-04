@@ -31,13 +31,33 @@ def _wait_ready(base_url: str, timeout: int = 60) -> bool:
 
 
 def _restart_container(container_name: str = "sabnzbd") -> None:
-    """Restart SABnzbd container via Docker SDK."""
+    """Restart container — tries Docker SDK (compose), then K8s pod delete."""
     try:
         import docker
 
         client = docker.from_env()
         container = client.containers.get(container_name)
         container.restart(timeout=15)
+        return
+    except Exception:
+        pass
+    try:
+        from kubernetes import client, config
+
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+
+        v1 = client.CoreV1Api()
+        namespace = __import__("os").environ.get("K8S_NAMESPACE", "media-stack")
+        pods = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=f"app={container_name}",
+        )
+        for pod in pods.items:
+            v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
+        return
     except Exception as exc:
         raise RuntimeError(f"Failed to restart {container_name}: {exc}") from exc
 
