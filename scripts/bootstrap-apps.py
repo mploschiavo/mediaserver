@@ -27,6 +27,75 @@ from bootstrap_services.runtime_factory import (
 )
 
 
+def _apply_config_policy(args: argparse.Namespace) -> None:
+    """Apply runtime config policy to the bootstrap config JSON.
+
+    Reads the profile YAML for routing params and mutates the config file
+    with path_prefix_url_base_by_app, Homepage tile URLs, Jellyseerr
+    external URLs, etc. — the same transform the host-side CLI does.
+    """
+    import json
+
+    from bootstrap_services.apps.stack.bootstrap_config_policy import (
+        apply_bootstrap_runtime_policy,
+    )
+
+    config_path = __import__("pathlib").Path(args.config)
+    if not config_path.exists():
+        return
+
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(cfg, dict):
+        return
+
+    # Read routing params from profile YAML or env vars.
+    profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+    profile = {}
+    if profile_file:
+        path = __import__("pathlib").Path(profile_file)
+        if path.exists():
+            import yaml
+
+            with open(path) as f:
+                profile = yaml.safe_load(f) or {}
+
+    routing = profile.get("routing") or {}
+    gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
+    gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
+    path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
+    route_strategy = routing.get("strategy") or os.environ.get("ROUTE_STRATEGY", "hybrid")
+    internet_exposed = bool(routing.get("internet_exposed")) or os.environ.get("INTERNET_EXPOSED", "0") == "1"
+    base_domain = routing.get("base_domain") or "local"
+    media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", ""))
+
+    apply_bootstrap_runtime_policy(
+        cfg,
+        selected_apps_csv="",
+        preconfigure_api_keys=os.environ.get("PRECONFIGURE_API_KEYS", "1") == "1",
+        auto_download_content=os.environ.get("AUTO_DOWNLOAD_CONTENT", "0") == "1",
+        internet_exposed=internet_exposed,
+        route_strategy=route_strategy,
+        ingress_domain=base_domain,
+        app_gateway_host=gateway_host,
+        app_gateway_port=gateway_port,
+        app_path_prefix=path_prefix,
+        media_server_direct_host=media_server_direct_host,
+    )
+
+    # Write the transformed config to a writable temp location.
+    # The original mount may be read-only, so write next to it or in /tmp.
+    import tempfile
+
+    tmp_dir = __import__("pathlib").Path(tempfile.mkdtemp(prefix="bootstrap-"))
+    out_path = tmp_dir / "config.json"
+    out_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    # Point the args to the transformed config for _build_runner.
+    args.config = str(out_path)
+    runtime_platform.log(
+        f"[PREFLIGHT] Config policy: wrote transformed config to {out_path}"
+    )
+
+
 def _run_preflights(state: object, args: argparse.Namespace) -> None:
     """Run preflight handlers inside the bootstrap runner container.
 
@@ -105,6 +174,18 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
     except Exception as exc:
         state.record_preflight("api_keys", {"status": "error", "error": str(exc)})
         runtime_platform.log(f"[PREFLIGHT] API keys: failed ({exc})")
+
+    # Runtime config policy: apply path_prefix_url_base_by_app, Homepage URLs, etc.
+    # This transforms the static config.json with routing/URL policy derived from
+    # the profile YAML — the same transform the host-side CLI does.
+    try:
+        runtime_platform.log("[PREFLIGHT] Config policy: applying runtime transforms")
+        _apply_config_policy(args)
+        state.record_preflight("config_policy", {"status": "ok"})
+        runtime_platform.log("[PREFLIGHT] Config policy: applied")
+    except Exception as exc:
+        state.record_preflight("config_policy", {"status": "error", "error": str(exc)})
+        runtime_platform.log(f"[PREFLIGHT] Config policy: failed ({exc})")
 
 
 def _build_runner(args: argparse.Namespace) -> tuple:
