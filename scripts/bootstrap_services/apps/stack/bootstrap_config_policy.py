@@ -543,17 +543,28 @@ def apply_edge_url_policy(
     if not isinstance(hosts, list):
         return
 
+    # Determine the active edge router so the inactive one is excluded from tiles.
+    active_edge_provider = _tokenize(
+        str((cfg.get("adapter_hooks") or {}).get("edge", {}).get("router_provider", ""))
+    )
+    edge_router_tokens = {"traefik", "envoy"}
+
     rewritten_hosts: list[str] = []
     if strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
         for raw_host in hosts:
             token = _homepage_host_token(str(raw_host or ""))
             if not token:
                 continue
+            if token in edge_router_tokens and token != active_edge_provider:
+                continue
             rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
     else:
         for raw_host in hosts:
             host = str(raw_host or "").strip().lower()
             if not host:
+                continue
+            token = _homepage_host_token(host)
+            if token in edge_router_tokens and token != active_edge_provider:
                 continue
             if ingress and host.endswith(".local"):
                 host = f"{host[:-6]}.{ingress}"
