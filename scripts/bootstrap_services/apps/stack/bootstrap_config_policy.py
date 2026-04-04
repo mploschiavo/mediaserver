@@ -549,21 +549,6 @@ def apply_edge_url_policy(
             token = _homepage_host_token(str(raw_host or ""))
             if not token:
                 continue
-            if token == "homepage" and strategy == "hybrid":
-                homepage_host = _homepage_direct_host(
-                    str(raw_host or ""),
-                    internet_exposed=bool(internet_exposed),
-                    ingress=ingress,
-                    token=token,
-                )
-                if _host_name(homepage_host) == _host_name(gateway_host):
-                    homepage_host = (
-                        f"{token}.{ingress}"
-                        if bool(internet_exposed) and ingress
-                        else f"{token}.local"
-                    )
-                rewritten_hosts.append(_host_with_port(homepage_host, port=public_port))
-                continue
             rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
     else:
         for raw_host in hosts:
