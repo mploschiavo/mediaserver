@@ -329,6 +329,159 @@ class ComposeBootstrapService:
             return ""
         return _decode_logs(raw)
 
+    def _run_api_mode(
+        self,
+        *,
+        compose_env: dict[str, str],
+        config_root: Path,
+        runtime_cfg_file: Path,
+        project_name: str,
+        wait_seconds: int,
+    ) -> None:
+        """Run bootstrap via the API server (--serve mode).
+
+        Creates a bootstrap-runner container with --serve --auto-run flags,
+        then polls the /status API endpoint instead of container state.
+        Preflights run inside the container, not on the host.
+        """
+        network_name = f"{project_name}_default"
+        container_name = f"{project_name}-bootstrap-runner"
+        api_port = 9100
+        bootstrap_env: dict[str, str] = {
+            "FULLY_PRECONFIGURED": "1" if self.cfg.apply_initial_preferences else "0",
+            "PRECONFIGURE_API_KEYS": "1" if self.cfg.preconfigure_api_keys else "0",
+            "APPLY_INITIAL_PREFERENCES": "1" if self.cfg.apply_initial_preferences else "0",
+            "AUTO_DOWNLOAD_CONTENT": "1" if self.cfg.auto_download_content else "0",
+            "MEDIA_STACK_ENV": str(self.cfg.purpose or "dev"),
+            "BOOTSTRAP_API_PORT": str(api_port),
+            "BOOTSTRAP_RUN_PREFLIGHTS": "1",
+        }
+        for env_name in self.cfg.passthrough_env_vars:
+            key = str(env_name or "").strip()
+            if not key:
+                continue
+            token = str(compose_env.get(key, "")).strip()
+            if token:
+                bootstrap_env[key] = token
+        volumes: dict[str, dict[str, str]] = {
+            str(runtime_cfg_file): {"bind": "/bootstrap/config.json", "mode": "ro"},
+            str(config_root): {"bind": "/srv-config", "mode": "rw"},
+        }
+        stack_root = self._resolve_stack_root(compose_env)
+        if stack_root is not None:
+            volumes[str(stack_root)] = {"bind": "/srv-stack", "mode": "rw"}
+            bootstrap_env.setdefault("DISK_GUARDRAILS_MONITOR_PATH", "/srv-stack")
+        # Mount Docker socket for preflight container operations (restart, logs).
+        docker_sock = "/var/run/docker.sock"
+        if os.path.exists(docker_sock):
+            volumes[docker_sock] = {"bind": docker_sock, "mode": "ro"}
+
+        self.docker.ping()
+        self.docker.ensure_network(network_name)
+        self._prepare_bootstrap_runner_image()
+        self.docker.remove_container(container_name, force=True)
+
+        try:
+            self.docker.create_container(
+                image=self.cfg.bootstrap_runner_image,
+                name=container_name,
+                detach=True,
+                network=network_name,
+                volumes=volumes,
+                environment=bootstrap_env,
+                labels={
+                    "com.media-stack.operation": "compose-bootstrap-api",
+                    "com.docker.compose.project": project_name,
+                },
+                command=[
+                    "python3",
+                    "/opt/media-stack/scripts/bootstrap-apps.py",
+                    "--serve",
+                    "--auto-run",
+                    "--config",
+                    "/bootstrap/config.json",
+                    "--config-root",
+                    "/srv-config",
+                    "--wait-timeout",
+                    str(wait_seconds),
+                    "--env",
+                    str(self.cfg.purpose or "dev"),
+                ],
+            )
+            self.docker.start_container(container_name)
+
+            # Resolve container IP for API polling.
+            api_base = self._resolve_container_api_base(container_name, api_port)
+            self._poll_api_status(api_base, container_name, wait_seconds)
+        finally:
+            self.docker.remove_container(container_name, force=True)
+            try:
+                runtime_cfg_file.unlink()
+            except Exception:
+                pass
+
+    def _resolve_container_api_base(
+        self, container_name: str, port: int
+    ) -> str:
+        """Get the bootstrap-runner container's network IP for API polling."""
+        import time as _time
+
+        deadline = _time.time() + 30
+        while _time.time() < deadline:
+            container = self.docker.get_container(container_name)
+            if container is not None:
+                try:
+                    container.reload()
+                    networks = (
+                        container.attrs.get("NetworkSettings", {}).get("Networks", {})
+                    )
+                    for net_info in networks.values():
+                        ip = str(net_info.get("IPAddress", "")).strip()
+                        if ip:
+                            return f"http://{ip}:{port}"
+                except Exception:
+                    pass
+            _time.sleep(1)
+        return f"http://{container_name}:{port}"
+
+    def _poll_api_status(
+        self, api_base: str, container_name: str, timeout: int
+    ) -> None:
+        """Poll the bootstrap runner's /status API until complete or error."""
+        from urllib import error as _error
+        from urllib import request as _request
+
+        deadline = time.time() + timeout
+        self.info(f"Compose bootstrap: polling API at {api_base}/status")
+        while time.time() < deadline:
+            try:
+                req = _request.Request(f"{api_base}/status", method="GET")
+                with _request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                phase = str(data.get("phase", "")).strip()
+                if phase == "complete":
+                    self.info("Compose bootstrap completed successfully.")
+                    return
+                if phase == "error":
+                    error_msg = data.get("error", "unknown error")
+                    raise RuntimeError(
+                        f"Compose bootstrap failed: {error_msg}"
+                    )
+            except _error.URLError:
+                pass  # Container not ready yet.
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+            time.sleep(3)
+
+        # Timeout — try to get status one more time.
+        container = self.docker.get_container(container_name)
+        logs = self._container_logs(container) if container is not None else ""
+        raise RuntimeError(
+            f"Compose bootstrap API timed out (timeout={timeout}s).\n{logs.strip()}"
+        )
+
     def run(self) -> None:
         compose_env = self._read_compose_env()
         config_root = self._resolve_config_root(compose_env)
@@ -343,6 +496,21 @@ class ComposeBootstrapService:
 
         runtime_cfg_file = self._prepare_runtime_config(compose_env=compose_env)
         project_name = self._project_name()
+
+        # API mode: use --serve + poll /status. Preflights run inside the container.
+        use_api_mode = os.environ.get("BOOTSTRAP_API_MODE", "0") == "1"
+        if use_api_mode:
+            wait_seconds = _parse_wait_seconds(self.cfg.wait_timeout, default_seconds=600)
+            self._run_api_mode(
+                compose_env=compose_env,
+                config_root=config_root,
+                runtime_cfg_file=runtime_cfg_file,
+                project_name=project_name,
+                wait_seconds=wait_seconds,
+            )
+            return
+
+        # Legacy mode: host-side preflights + one-shot container.
         preflight_env_updates = self._run_preflight_handlers(
             compose_env=compose_env,
             config_root=config_root,
