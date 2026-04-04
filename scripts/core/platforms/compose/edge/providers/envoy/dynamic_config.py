@@ -677,6 +677,9 @@ class EnvoyDynamicConfigService:
             path_prefix = str(default_path_prefix or "").strip()
             if not host_token or not path_prefix or path_prefix == "/":
                 continue
+            default_slug = _path_prefix_app_slug(path_prefix)
+            default_cluster = f"service_{default_slug}"
+            # HTML browsers: redirect to the default app's path-prefix URL.
             routes_by_host.setdefault(host_token, []).append(
                 (
                     _DEFAULT_HTML_REDIRECT_ROUTE_RANK,
@@ -689,6 +692,41 @@ class EnvoyDynamicConfigService:
                         },
                         "redirect": {
                             "path_redirect": path_prefix,
+                        },
+                    },
+                )
+            )
+            # Exact root match: proxy "/" (exact) to the default app (media
+            # server) at a rank above cookie fallback routes. This ensures
+            # TV apps and browsers hitting the bare root always reach Jellyfin,
+            # even when stale app-routing cookies are present. Sets the media
+            # server session cookie so Jellyfin's sub-path redirects (e.g.
+            # / → /web/index.html) get routed back via cookie fallback.
+            # Exact root match: redirect "/" to the default app path for all
+            # request types (browsers and TV apps). Rank above cookie fallback
+            # so stale app cookies don't hijack root. TV apps that follow
+            # redirects will land on /app/jellyfin which proxies correctly.
+            routes_by_host.setdefault(host_token, []).append(
+                (
+                    _COOKIE_FALLBACK_ROUTE_RANK_BASE + 9999,
+                    {
+                        "match": {"path": "/"},
+                        "redirect": {
+                            "path_redirect": path_prefix,
+                        },
+                    },
+                )
+            )
+            # Non-HTML catch-all: proxy all remaining unmatched requests to
+            # the default app so paths without cookie/referer still work.
+            routes_by_host.setdefault(host_token, []).append(
+                (
+                    _DEFAULT_HTML_REDIRECT_ROUTE_RANK - 1,
+                    {
+                        "match": {"prefix": "/"},
+                        "route": {
+                            "cluster": default_cluster,
+                            "timeout": "0s",
                         },
                     },
                 )
