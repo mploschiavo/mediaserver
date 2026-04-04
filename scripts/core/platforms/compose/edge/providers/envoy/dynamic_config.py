@@ -652,27 +652,6 @@ class EnvoyDynamicConfigService:
                         path_prefix=path_prefix,
                         strip_prefix=strip_prefix,
                     )
-                    html_fallback_redirect_rewrite = self._html_fallback_redirect_rewrite(
-                        path_prefix=path_prefix,
-                        strip_prefix=strip_prefix,
-                    )
-                    if html_fallback_redirect_rewrite is not None:
-                        html_referer_redirect_route = self._referer_html_redirect_fallback_route_cfg(
-                            host=host_token,
-                            path_prefix=path_prefix,
-                            regex_rewrite=html_fallback_redirect_rewrite,
-                        )
-                        routes_by_host.setdefault(host_token, []).append(
-                            (html_fallback_redirect_rank, html_referer_redirect_route)
-                        )
-                        html_cookie_redirect_route = self._cookie_html_redirect_fallback_route_cfg(
-                            path_prefix=path_prefix,
-                            regex_rewrite=html_fallback_redirect_rewrite,
-                        )
-                        if html_cookie_redirect_route:
-                            routes_by_host.setdefault(host_token, []).append(
-                                (html_fallback_redirect_rank, html_cookie_redirect_route)
-                            )
                     fallback_route = self._referer_fallback_route_cfg(
                         host=host_token,
                         path_prefix=path_prefix,
@@ -705,13 +684,7 @@ class EnvoyDynamicConfigService:
                         "match": {
                             "prefix": "/",
                             "headers": [
-                                {
-                                    "name": "accept",
-                                    "safe_regex_match": {
-                                        "google_re2": {},
-                                        "regex": r"(?i).*text/html.*",
-                                    },
-                                }
+                                self._html_accept_header_match(),
                             ],
                         },
                         "redirect": {
