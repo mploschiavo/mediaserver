@@ -432,6 +432,14 @@ def apply_selected_apps_policy(cfg: dict[str, object], *, selected_apps_csv: str
             app_auth["include"] = filtered
 
 
+def apply_api_key_policy(cfg: dict[str, object], *, preconfigure_api_keys: bool) -> None:
+    """Disable app auth setup when API key provisioning is opted out."""
+    if not preconfigure_api_keys:
+        app_auth = cfg.get("app_auth")
+        if isinstance(app_auth, dict):
+            app_auth["enabled"] = False
+
+
 def apply_content_download_policy(cfg: dict[str, object], *, auto_download_content: bool) -> None:
     download_enabled = bool(auto_download_content)
     cfg["prowlarr_auto_add_tested_indexers"] = download_enabled
@@ -492,9 +500,7 @@ def apply_edge_url_policy(
 
     def _public_url(app_key: str) -> str:
         token = _tokenize(app_key)
-        if token == "jellyfin" and direct_host_with_port:
-            return f"{scheme}://{direct_host_with_port}"
-        if token != "jellyfin" and strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
+        if strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
             return f"{scheme}://{gateway_host_with_port}{prefix}/{token}"
         if not ingress:
             return ""
@@ -543,9 +549,6 @@ def apply_edge_url_policy(
             token = _homepage_host_token(str(raw_host or ""))
             if not token:
                 continue
-            if token == "jellyfin" and direct_host_with_port and strategy == "hybrid":
-                rewritten_hosts.append(direct_host_with_port)
-                continue
             if token == "homepage" and strategy == "hybrid":
                 homepage_host = _homepage_direct_host(
                     str(raw_host or ""),
@@ -562,8 +565,6 @@ def apply_edge_url_policy(
                 rewritten_hosts.append(_host_with_port(homepage_host, port=public_port))
                 continue
             rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
-        if direct_host_with_port and strategy == "hybrid":
-            rewritten_hosts.append(direct_host_with_port)
     else:
         for raw_host in hosts:
             host = str(raw_host or "").strip().lower()
@@ -590,6 +591,7 @@ def apply_bootstrap_runtime_policy(
     cfg: dict[str, object],
     *,
     selected_apps_csv: str = "",
+    preconfigure_api_keys: bool = True,
     auto_download_content: bool = False,
     internet_exposed: bool = False,
     route_strategy: str = "subdomain",
@@ -602,6 +604,10 @@ def apply_bootstrap_runtime_policy(
     apply_selected_apps_policy(
         cfg,
         selected_apps_csv=selected_apps_csv,
+    )
+    apply_api_key_policy(
+        cfg,
+        preconfigure_api_keys=preconfigure_api_keys,
     )
     apply_content_download_policy(
         cfg,

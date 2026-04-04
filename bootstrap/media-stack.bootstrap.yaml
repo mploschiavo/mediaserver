@@ -28,7 +28,7 @@ bootstrap:
 routing:
   internet_exposed: false
   strategy: hybrid
-  provider: traefik
+  provider: envoy
   base_domain: local
   stack_subdomain: media-dev
   gateway_host: apps.media-dev.local

@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
@@ -8,4 +8,20 @@ export default defineConfig({
   use: {
     ignoreHTTPSErrors: true,
   },
+  projects: [
+    {
+      name: 'api',
+      testMatch: ['ux-smoke.spec.ts', 'ingress.spec.ts'],
+    },
+    {
+      name: 'browser',
+      testMatch: ['app-navigation.spec.ts'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'screenshots',
+      testMatch: ['screenshot-capture.spec.ts'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
 });

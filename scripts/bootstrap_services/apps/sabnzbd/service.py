@@ -90,6 +90,9 @@ class SabnzbdService:
         }
         if "auto_browser" in sab_cfg:
             desired_misc["auto_browser"] = "1" if bool(sab_cfg.get("auto_browser")) else "0"
+        url_base = str(sab_cfg.get("url_base", "")).strip()
+        if url_base:
+            desired_misc["url_base"] = url_base
 
         for key, desired in desired_misc.items():
             if not desired:

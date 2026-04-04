@@ -498,10 +498,14 @@ class EnvoyDynamicConfigService:
                     (html_primary_rank, html_route_cfg)
                 )
                 if path_prefix and path_prefix != "/":
+                    slug = _path_prefix_app_slug(path_prefix)
                     existing_default = default_html_redirect_by_host.get(host_token, "")
+                    existing_slug = _path_prefix_app_slug(existing_default)
                     if not existing_default:
                         default_html_redirect_by_host[host_token] = path_prefix
-                    elif _path_prefix_app_slug(path_prefix) == "homepage":
+                    elif slug == "jellyfin":
+                        default_html_redirect_by_host[host_token] = path_prefix
+                    elif slug == "homepage" and existing_slug != "jellyfin":
                         default_html_redirect_by_host[host_token] = path_prefix
                 if path_prefix and path_prefix != "/":
                     fallback_route = self._referer_fallback_route_cfg(
