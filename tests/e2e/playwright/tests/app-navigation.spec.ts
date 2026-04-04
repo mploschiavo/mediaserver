@@ -26,7 +26,9 @@ const edgePort = process.env.STACK_COMPOSE_EDGE_PORT || '18080';
 const adminUser = process.env.STACK_ADMIN_USERNAME || 'admin';
 const adminPass = process.env.STACK_ADMIN_PASSWORD || 'media-dev';
 
-const gateway = `http://${gatewayHost}:${edgePort}`;
+// Omit port from URL when it's the default for the scheme.
+const portSuffix = edgePort === '80' || edgePort === '443' ? '' : `:${edgePort}`;
+const gateway = `http://${gatewayHost}${portSuffix}`;
 
 // Helper: navigate to an app through the gateway.
 async function gotoApp(page: Page, path: string) {

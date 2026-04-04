@@ -102,6 +102,10 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
+            - name: BOOTSTRAP_PROFILE_FILE
+              value: /profile/profile.yaml
+            - name: BOOTSTRAP_CONFIG_FILE
+              value: /bootstrap-config/config.json
           command:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py
@@ -129,6 +133,9 @@ spec:
           volumeMounts:
             - name: bootstrap-config
               mountPath: /bootstrap-config
+              readOnly: true
+            - name: bootstrap-profile
+              mountPath: /profile
               readOnly: true
             - name: cfg-jellyfin
               mountPath: /srv-config/jellyfin
@@ -164,6 +171,9 @@ spec:
         - name: bootstrap-config
           configMap:
             name: media-stack-bootstrap-config
+        - name: bootstrap-profile
+          configMap:
+            name: media-stack-bootstrap-profile
         - name: cfg-jellyfin
           persistentVolumeClaim:
             claimName: media-stack-config-jellyfin
