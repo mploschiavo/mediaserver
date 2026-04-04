@@ -15,11 +15,15 @@ from .models import (
 from .runtime_builder import BootstrapRuntimeBuilder
 
 
+ConfigPolicyFn = Any  # Callable[[dict[str, Any]], None] — mutates cfg in place
+
+
 @dataclass
 class BootstrapRuntimeFactoryService:
     """Composition root for runtime config loading + runtime object assembly."""
 
     deps: BootstrapRuntimeFactoryDependencies
+    config_policy: ConfigPolicyFn | None = None
     _config_loader: BootstrapConfigLoader = field(init=False, repr=False)
     _runtime_builder: BootstrapRuntimeBuilder = field(init=False, repr=False)
 
@@ -34,6 +38,8 @@ class BootstrapRuntimeFactoryService:
 
     def build_from_cli(self, args: BootstrapCliArgs) -> BootstrapRuntimeBuildResult:
         resolved_cfg = self.load_config(args.config_path, runtime_env=args.runtime_env)
+        if self.config_policy is not None:
+            self.config_policy(resolved_cfg)
         return self.build(args, resolved_cfg)
 
     def build(self, args: BootstrapCliArgs, cfg: dict[str, Any]) -> BootstrapRuntimeBuildResult:

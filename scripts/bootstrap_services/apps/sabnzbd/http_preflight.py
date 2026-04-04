@@ -101,6 +101,7 @@ def run_preflight(
     local_ranges: str = "",
     wait_timeout: int = 60,
     log: Any = None,
+    **kwargs: Any,
 ) -> dict[str, str]:
     """Reconcile SABnzbd host_whitelist and local_ranges config.
 

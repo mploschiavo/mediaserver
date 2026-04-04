@@ -27,169 +27,150 @@ from bootstrap_services.runtime_factory import (
 )
 
 
-def _apply_config_policy(args: argparse.Namespace) -> None:
-    """Apply runtime config policy to the bootstrap config JSON.
 
-    Reads the profile YAML for routing params and mutates the config file
-    with path_prefix_url_base_by_app, Homepage tile URLs, Jellyseerr
-    external URLs, etc. — the same transform the host-side CLI does.
+def _load_handler_specs(key: str) -> list[dict]:
+    """Load handler specs from bootstrap config by key name.
+
+    Used for both container_preflight_handlers and container_post_bootstrap_handlers.
+    Each spec declares a module:function to import and call.
     """
     import json
 
-    from bootstrap_services.apps.stack.bootstrap_config_policy import (
-        apply_bootstrap_runtime_policy,
-    )
+    main_config = os.environ.get("BOOTSTRAP_CONFIG_FILE", "/bootstrap/media-stack.bootstrap.json")
+    path = __import__("pathlib").Path(main_config)
+    if not path.exists():
+        return []
+    try:
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+        return cfg.get(key) or []
+    except Exception:
+        return []
 
-    config_path = __import__("pathlib").Path(args.config)
-    if not config_path.exists():
-        return
 
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
-    if not isinstance(cfg, dict):
-        return
+def _run_handler_specs(
+    specs: list[dict],
+    state: object,
+    args: argparse.Namespace,
+    *,
+    phase_label: str = "HANDLER",
+) -> None:
+    """Run a list of handler specs with standard context injection."""
+    config_root = args.config_root
+    admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-dev")
 
-    # Read routing params from profile YAML or env vars.
+    context = {
+        "config_root": config_root,
+        "admin_username": admin_user,
+        "admin_password": admin_pass,
+        "log": runtime_platform.log,
+    }
+
+    for spec in specs:
+        name = str(spec.get("name", "unknown")).strip()
+        handler_path = str(spec.get("handler", "")).strip()
+        extra_args = dict(spec.get("args") or {})
+        export_env = bool(spec.get("export_env", False))
+        optional = bool(spec.get("optional", True))
+
+        if not handler_path:
+            continue
+
+        try:
+            runtime_platform.log(f"[{phase_label}] {name}: starting")
+            handler_fn = _resolve_handler(handler_path)
+            call_args = {**context, **extra_args}
+            result = handler_fn(**call_args)
+            result_dict = dict(result) if isinstance(result, dict) else {}
+            state.record_preflight(name, {"status": "ok", **result_dict})
+            if export_env and result_dict:
+                for key, value in result_dict.items():
+                    if value and not os.environ.get(key):
+                        os.environ[key] = str(value)
+            runtime_platform.log(f"[{phase_label}] {name}: complete")
+        except Exception as exc:
+            state.record_preflight(name, {"status": "error", "error": str(exc)})
+            runtime_platform.log(f"[{phase_label}] {name}: failed ({exc})")
+            if not optional:
+                raise
+
+
+def _resolve_handler(spec: str):
+    """Import a handler from 'module.path:function_name' spec."""
+    if ":" in spec:
+        module_path, _, attr_name = spec.partition(":")
+    else:
+        module_path = spec.rsplit(".", 1)[0]
+        attr_name = spec.rsplit(".", 1)[1] if "." in spec else spec
+    module = importlib.import_module(module_path)
+    return getattr(module, attr_name)
+
+
+def _run_preflights(state: object, args: argparse.Namespace) -> None:
+    """Run preflight handlers declared in container_preflight_handlers config."""
+    specs = _load_handler_specs("container_preflight_handlers")
+    _run_handler_specs(specs, state, args, phase_label="PREFLIGHT")
+
+
+def _run_post_bootstrap(state: object, args: argparse.Namespace) -> None:
+    """Run post-bootstrap handlers declared in container_post_bootstrap_handlers config."""
+    specs = _load_handler_specs("container_post_bootstrap_handlers")
+    _run_handler_specs(specs, state, args, phase_label="POST-BOOTSTRAP")
+
+
+def _build_config_policy() -> object | None:
+    """Build a config policy callable from the profile YAML.
+
+    Returns a function that mutates a config dict with routing/URL policy,
+    or None if no profile is configured. Injected into the runtime factory
+    as a pluggable transform between config loading and runtime building.
+    """
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
-    profile = {}
-    if profile_file:
-        path = __import__("pathlib").Path(profile_file)
-        if path.exists():
-            import yaml
+    if not profile_file:
+        return None
 
-            with open(path) as f:
-                profile = yaml.safe_load(f) or {}
+    path = __import__("pathlib").Path(profile_file)
+    if not path.exists():
+        return None
+
+    try:
+        import yaml
+
+        with open(path) as f:
+            profile = yaml.safe_load(f) or {}
+    except Exception:
+        return None
 
     routing = profile.get("routing") or {}
     gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
     gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
     path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
     route_strategy = routing.get("strategy") or os.environ.get("ROUTE_STRATEGY", "hybrid")
-    internet_exposed = bool(routing.get("internet_exposed")) or os.environ.get("INTERNET_EXPOSED", "0") == "1"
+    internet_exposed = bool(routing.get("internet_exposed"))
     base_domain = routing.get("base_domain") or "local"
     media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", ""))
 
-    apply_bootstrap_runtime_policy(
-        cfg,
-        selected_apps_csv="",
-        preconfigure_api_keys=os.environ.get("PRECONFIGURE_API_KEYS", "1") == "1",
-        auto_download_content=os.environ.get("AUTO_DOWNLOAD_CONTENT", "0") == "1",
-        internet_exposed=internet_exposed,
-        route_strategy=route_strategy,
-        ingress_domain=base_domain,
-        app_gateway_host=gateway_host,
-        app_gateway_port=gateway_port,
-        app_path_prefix=path_prefix,
-        media_server_direct_host=media_server_direct_host,
+    from bootstrap_services.apps.stack.bootstrap_config_policy import (
+        apply_bootstrap_runtime_policy,
     )
 
-    # Write the transformed config to a writable temp location.
-    # The original mount may be read-only, so write next to it or in /tmp.
-    import tempfile
-
-    tmp_dir = __import__("pathlib").Path(tempfile.mkdtemp(prefix="bootstrap-"))
-    out_path = tmp_dir / "config.json"
-    out_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
-    # Point the args to the transformed config for _build_runner.
-    args.config = str(out_path)
-    runtime_platform.log(
-        f"[PREFLIGHT] Config policy: wrote transformed config to {out_path}"
-    )
-
-
-def _run_preflights(state: object, args: argparse.Namespace) -> None:
-    """Run preflight handlers inside the bootstrap runner container.
-
-    These replace the host-side docker-exec-based preflights with HTTP API
-    calls and direct file I/O over the shared config mount.
-    """
-    from bootstrap_api.preflight import api_keys
-    from bootstrap_services.apps.jellyfin import http_preflight as jellyfin_preflight
-    from bootstrap_services.apps.qbittorrent import http_preflight as qbittorrent_preflight
-    from bootstrap_services.apps.sabnzbd import http_preflight as sabnzbd_preflight
-
-    config_root = args.config_root
-    admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-    admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-dev")
-
-    # Jellyfin: startup wizard + API key provisioning.
-    try:
-        runtime_platform.log("[PREFLIGHT] Jellyfin: starting")
-        result = jellyfin_preflight.run_preflight(
-            admin_username=admin_user,
-            admin_password=admin_pass,
-            log=runtime_platform.log,
+    def policy(cfg: dict) -> None:
+        apply_bootstrap_runtime_policy(
+            cfg,
+            selected_apps_csv="",
+            preconfigure_api_keys=os.environ.get("PRECONFIGURE_API_KEYS", "1") == "1",
+            auto_download_content=os.environ.get("AUTO_DOWNLOAD_CONTENT", "0") == "1",
+            internet_exposed=internet_exposed,
+            route_strategy=route_strategy,
+            ingress_domain=base_domain,
+            app_gateway_host=gateway_host,
+            app_gateway_port=gateway_port,
+            app_path_prefix=path_prefix,
+            media_server_direct_host=media_server_direct_host,
         )
-        state.record_preflight("jellyfin", {"status": "ok", **result})
-        # Export discovered keys as env vars for the bootstrap runner.
-        for key, value in result.items():
-            if value:
-                os.environ[key] = value
-        runtime_platform.log(f"[PREFLIGHT] Jellyfin: complete ({len(result)} keys)")
-    except Exception as exc:
-        state.record_preflight("jellyfin", {"status": "error", "error": str(exc)})
-        runtime_platform.log(f"[PREFLIGHT] Jellyfin: failed ({exc})")
+        runtime_platform.log("[OK] Config policy applied via runtime factory")
 
-    # qBittorrent: credential sync.
-    try:
-        runtime_platform.log("[PREFLIGHT] qBittorrent: starting")
-        qbittorrent_preflight.run_preflight(
-            admin_username=admin_user,
-            admin_password=admin_pass,
-            config_root=config_root,
-            log=runtime_platform.log,
-        )
-        state.record_preflight("qbittorrent", {"status": "ok"})
-        runtime_platform.log("[PREFLIGHT] qBittorrent: complete")
-    except Exception as exc:
-        state.record_preflight("qbittorrent", {"status": "error", "error": str(exc)})
-        runtime_platform.log(f"[PREFLIGHT] qBittorrent: failed ({exc})")
-
-    # SABnzbd: config reconciliation.
-    try:
-        runtime_platform.log("[PREFLIGHT] SABnzbd: starting")
-        # Build whitelist from container hostname + common aliases.
-        host_whitelist = "sabnzbd,localhost"
-        local_ranges = "172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
-        sabnzbd_preflight.run_preflight(
-            config_root=config_root,
-            host_whitelist=host_whitelist,
-            local_ranges=local_ranges,
-            log=runtime_platform.log,
-        )
-        state.record_preflight("sabnzbd", {"status": "ok"})
-        runtime_platform.log("[PREFLIGHT] SABnzbd: complete")
-    except Exception as exc:
-        state.record_preflight("sabnzbd", {"status": "error", "error": str(exc)})
-        runtime_platform.log(f"[PREFLIGHT] SABnzbd: failed ({exc})")
-
-    # API key discovery: read keys from app config files on shared mount.
-    try:
-        runtime_platform.log("[PREFLIGHT] API keys: discovering from config files")
-        keys = api_keys.run_preflight(config_root=config_root, log=runtime_platform.log)
-        state.record_preflight("api_keys", {"status": "ok", "count": len(keys)})
-        for key, value in keys.items():
-            if value and not os.environ.get(key):
-                os.environ[key] = value
-        runtime_platform.log(f"[PREFLIGHT] API keys: {len(keys)} keys discovered")
-    except Exception as exc:
-        state.record_preflight("api_keys", {"status": "error", "error": str(exc)})
-        runtime_platform.log(f"[PREFLIGHT] API keys: failed ({exc})")
-
-    # Runtime config policy: apply path_prefix_url_base_by_app, Homepage URLs, etc.
-    # This transforms the static config.json with routing/URL policy derived from
-    # the profile YAML — the same transform the host-side CLI does in
-    # ComposeBootstrapService._prepare_runtime_config().
-    # TODO: Register as a declarative RunnerEvent.PREFLIGHT handler in the plugin
-    # manifest system instead of calling inline. Both host-side CLI and container-side
-    # serve mode should resolve this through the event registry, not procedural code.
-    try:
-        runtime_platform.log("[PREFLIGHT] Config policy: applying runtime transforms")
-        _apply_config_policy(args)
-        state.record_preflight("config_policy", {"status": "ok"})
-        runtime_platform.log("[PREFLIGHT] Config policy: applied")
-    except Exception as exc:
-        state.record_preflight("config_policy", {"status": "error", "error": str(exc)})
-        runtime_platform.log(f"[PREFLIGHT] Config policy: failed ({exc})")
+    return policy
 
 
 def _build_runner(args: argparse.Namespace) -> tuple:
@@ -211,7 +192,8 @@ def _build_runner(args: argparse.Namespace) -> tuple:
             env_truthy=runtime_platform.env_truthy,
             read_api_key=runtime_secrets.read_api_key,
             build_sab_remote_path_mappings=build_sab_remote_path_mappings,
-        )
+        ),
+        config_policy=_build_config_policy(),
     )
     build_result = runtime_factory.build_from_cli(
         BootstrapCliArgs(
@@ -327,16 +309,8 @@ def _run_serve(args: argparse.Namespace) -> None:
         runner, runtime_state = _build_runner(args)
         runner.run(runtime_state)
 
-        # Post-bootstrap: write Unpackerr config with discovered API keys and restart.
-        try:
-            from bootstrap_api.preflight.unpackerr import write_config_and_restart
-
-            write_config_and_restart(
-                config_root=args.config_root,
-                log=runtime_platform.log,
-            )
-        except Exception as exc:
-            runtime_platform.log(f"[WARN] Unpackerr post-bootstrap: {exc}")
+        # Post-bootstrap handlers: config-driven, same pattern as preflights.
+        _run_post_bootstrap(state, args)
 
         state.finish()
         runtime_platform.log("[OK] Bootstrap completed successfully")

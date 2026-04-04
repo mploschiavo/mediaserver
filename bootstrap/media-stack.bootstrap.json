@@ -1,5 +1,40 @@
 {
   "config_version": 2,
+  "container_preflight_handlers": [
+    {
+      "name": "jellyfin",
+      "handler": "bootstrap_services.apps.jellyfin.http_preflight:run_preflight",
+      "export_env": true,
+      "optional": true
+    },
+    {
+      "name": "qbittorrent",
+      "handler": "bootstrap_services.apps.qbittorrent.http_preflight:run_preflight",
+      "optional": true
+    },
+    {
+      "name": "sabnzbd",
+      "handler": "bootstrap_services.apps.sabnzbd.http_preflight:run_preflight",
+      "args": {
+        "host_whitelist": "sabnzbd,localhost",
+        "local_ranges": "172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
+      },
+      "optional": true
+    },
+    {
+      "name": "api_keys",
+      "handler": "bootstrap_api.preflight.api_keys:run_preflight",
+      "export_env": true,
+      "optional": true
+    }
+  ],
+  "container_post_bootstrap_handlers": [
+    {
+      "name": "unpackerr",
+      "handler": "bootstrap_api.preflight.unpackerr:write_config_and_restart",
+      "optional": true
+    }
+  ],
   "prowlarr_url": "http://prowlarr:9696",
   "trigger_indexer_sync": true,
   "refresh_health_after_bootstrap": true,
