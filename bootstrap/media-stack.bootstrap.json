@@ -22,6 +22,11 @@
       "optional": true
     },
     {
+      "name": "arr_auth",
+      "handler": "bootstrap_services.apps.servarr.http_preflight:run_preflight",
+      "optional": true
+    },
+    {
       "name": "api_keys",
       "handler": "bootstrap_api.preflight.api_keys:run_preflight",
       "export_env": true,

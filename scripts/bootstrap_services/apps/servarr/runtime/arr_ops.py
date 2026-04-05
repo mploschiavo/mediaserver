@@ -29,14 +29,16 @@ def detect_arr_api_base(app_name, app_url, api_key):
             log(f"[OK] {app_name}: detected API base {api_base}")
             return api_base
         if status == 200 and not isinstance(parsed, dict):
-            # Sonarr/Radarr v4 returns HTTP 200 + HTML login page when Forms
-            # authentication is active and the API key is absent or invalid.
-            # Treat this as a failed probe, not a successful API detection.
+            # App returns HTTP 200 + HTML (setup wizard or Forms auth page).
+            # The API version exists but the app needs auth/setup first.
+            # Default to this version — ensure_app_auth_settings will configure
+            # auth, then subsequent API calls will work.
+            api_base = f"/api/{version}"
             log(
                 f"[WARN] {app_name}: /api/{version}/system/status returned HTTP 200 "
-                "but the response body is not JSON — possible Forms auth redirect. "
-                "Skipping this version."
+                f"but not JSON (setup/auth page). Defaulting to {api_base}."
             )
+            return api_base
 
     raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
 

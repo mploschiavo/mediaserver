@@ -1,0 +1,136 @@
+"""ARR app preflight: complete setup wizard if needed.
+
+Sonarr/Radarr/Lidarr/Readarr/Prowlarr v4+ start with
+AuthenticationRequired=Enabled by default. The API returns HTML
+until the setup wizard is completed. This preflight patches the
+config.xml to disable auth requirements so the bootstrap pipeline
+can use the API.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+import requests
+
+
+_ARR_APPS = {
+    "sonarr": 8989,
+    "radarr": 7878,
+    "lidarr": 8686,
+    "readarr": 8787,
+    "prowlarr": 9696,
+}
+
+
+def run_preflight(
+    *,
+    config_root: str = "/srv-config",
+    log: Any = None,
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Patch ARR app config.xml files to disable auth for bootstrap.
+
+    Sets AuthenticationRequired=DisabledForLocalAddresses so the API
+    is accessible from the bootstrap runner without completing the
+    setup wizard.
+    """
+
+    def info(msg: str) -> None:
+        if log:
+            log(msg)
+
+    root = Path(config_root)
+    patched: list[str] = []
+
+    for app_name in _ARR_APPS:
+        config_path = root / app_name / "config.xml"
+        if not config_path.exists():
+            continue
+
+        text = config_path.read_text(encoding="utf-8", errors="replace")
+        original = text
+
+        # Dismiss the setup wizard and disable auth completely so the
+        # bootstrap API calls work. The bootstrap's ensure_app_auth_settings
+        # will configure proper auth via API after initial setup.
+        # Sonarr/Radarr v4 requires AuthenticationMethod != None AND
+        # valid Username to dismiss the wizard page.
+        text = re.sub(
+            r"<AuthenticationMethod>[^<]*</AuthenticationMethod>",
+            "<AuthenticationMethod>External</AuthenticationMethod>",
+            text,
+        )
+        text = re.sub(
+            r"<AuthenticationRequired>[^<]*</AuthenticationRequired>",
+            "<AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>",
+            text,
+        )
+
+        if text != original:
+            config_path.write_text(text, encoding="utf-8")
+            patched.append(app_name)
+            info(f"ARR preflight: patched {app_name} AuthenticationRequired=DisabledForLocalAddresses")
+
+    if patched:
+        info(f"ARR preflight: patched {len(patched)} apps, restarting...")
+        # Restart patched apps so they pick up the config change.
+        for app_name in patched:
+            _restart_app(app_name, log=info)
+        # Wait for apps to be ready.
+        import time
+
+        for app_name in patched:
+            port = _ARR_APPS[app_name]
+            url = f"http://{app_name}:{port}/ping"
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                try:
+                    resp = requests.get(url, timeout=5)
+                    if resp.status_code == 200:
+                        break
+                except Exception:
+                    pass
+                time.sleep(3)
+    else:
+        info("ARR preflight: all apps already have correct auth settings")
+
+    return {}
+
+
+def _restart_app(app_name: str, log: Any = None) -> None:
+    """Restart an app — Docker SDK or K8s pod delete."""
+    try:
+        import docker
+
+        client = docker.from_env()
+        container = client.containers.get(app_name)
+        container.restart(timeout=15)
+        if log:
+            log(f"ARR preflight: restarted {app_name} (Docker)")
+        return
+    except Exception:
+        pass
+    try:
+        import os
+
+        from kubernetes import client, config
+
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+        v1 = client.CoreV1Api()
+        namespace = os.environ.get("K8S_NAMESPACE", "media-stack")
+        pods = v1.list_namespaced_pod(
+            namespace=namespace, label_selector=f"app={app_name}"
+        )
+        for pod in pods.items:
+            v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
+        if log:
+            log(f"ARR preflight: restarted {app_name} (K8s pod delete)")
+    except Exception:
+        if log:
+            log(f"ARR preflight: could not restart {app_name}")
