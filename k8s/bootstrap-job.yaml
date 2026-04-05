@@ -212,9 +212,11 @@ spec:
         - name: bootstrap-config
           configMap:
             name: media-stack-bootstrap-config
+            optional: true
         - name: bootstrap-profile
           configMap:
             name: media-stack-bootstrap-profile
+            optional: true
         - name: cfg-jellyfin
           persistentVolumeClaim:
             claimName: media-stack-config-jellyfin

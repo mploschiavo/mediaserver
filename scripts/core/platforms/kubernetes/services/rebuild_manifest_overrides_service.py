@@ -148,6 +148,12 @@ class RebuildManifestOverridesService:
 
     def apply_manifest_text_with_overrides(self, text: str) -> None:
         patched = self.inject_storage_class(self.stream_with_manifest_overrides(text))
+        # Ensure namespace exists before applying namespaced resources.
+        if self.cfg.namespace:
+            self.run_kubectl(
+                ["create", "namespace", self.cfg.namespace],
+                check=False,
+            )
         for job_name in self._extract_named_kinds(patched, kind="Job"):
             self.run_kubectl(
                 ["-n", self.cfg.namespace, "delete", "job", job_name, "--ignore-not-found"],
