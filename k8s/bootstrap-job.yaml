@@ -131,6 +131,10 @@ spec:
                   name: media-stack-secrets
                   key: PROWLARR_API_KEY
                   optional: true
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS

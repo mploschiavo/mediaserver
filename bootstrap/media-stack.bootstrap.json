@@ -16,7 +16,7 @@
       "name": "sabnzbd",
       "handler": "bootstrap_services.apps.sabnzbd.http_preflight:run_preflight",
       "args": {
-        "host_whitelist": "sabnzbd,localhost",
+        "host_whitelist": "sabnzbd,localhost,sabnzbd.media-stack.svc.cluster.local,sabnzbd.media-dev.svc.cluster.local,sabnzbd.media-stack,sabnzbd.media-dev",
         "local_ranges": "172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
       },
       "optional": true

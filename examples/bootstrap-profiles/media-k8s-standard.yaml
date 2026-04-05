@@ -2,7 +2,7 @@ schema_version: 1
 kind: media_stack_profile
 
 metadata:
-  name: media-stack
+  name: media-dev
   platform: k8s
   purpose: dev
 
@@ -26,7 +26,7 @@ bootstrap:
 routing:
   internet_exposed: false
   strategy: hybrid
-  provider: traefik
+  provider: envoy
   base_domain: local
   app_path_prefix: /app
 
