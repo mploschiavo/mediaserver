@@ -76,48 +76,96 @@ def run_preflight(
     _, sys_info = _http(jellyfin_url, "/System/Info/Public")
     wizard_completed = isinstance(sys_info, dict) and sys_info.get("StartupWizardCompleted") is True
 
-    status, data = _http(jellyfin_url, "/Startup/Configuration")
-    if status == 200 and not wizard_completed:
+    import time as _time
+
+    emby_header = {"X-Emby-Authorization": 'MediaBrowser Client="Bootstrap", Device="Server", DeviceId="bootstrap", Version="1.0"'}
+
+    if not wizard_completed:
         info("Jellyfin startup wizard detected — completing initial setup")
+        # Step 1: Set configuration.
         _http(jellyfin_url, "/Startup/Configuration", method="POST", payload={
             "UICulture": "en-US",
             "MetadataCountryCode": "US",
             "PreferredMetadataLanguage": "en",
         })
+        # Step 2: Create the startup user (password may not be honored).
         _http(jellyfin_url, "/Startup/User", method="POST", payload={
             "Name": admin_username,
             "Password": admin_password,
         })
+        # Step 3: Set remote access.
         _http(jellyfin_url, "/Startup/RemoteAccess", method="POST", payload={
             "EnableRemoteAccess": True,
             "EnableAutomaticPortMapping": False,
         })
+        # Step 4: Complete the wizard.
         _http(jellyfin_url, "/Startup/Complete", method="POST")
         info("Jellyfin startup wizard completed")
-        # Give Jellyfin time to initialize after wizard completion.
-        import time as _time
-
         _time.sleep(3)
 
-    # Authenticate — retry up to 30s after wizard completion since Jellyfin
-    # may still be initializing the user database.
-    import time as _time
-
+    # Authenticate — try desired password, then empty password.
+    # Jellyfin startup may create user with empty password regardless of
+    # what was posted to /Startup/User.
     auth_data = None
-    auth_deadline = _time.time() + 30
     last_status = 0
-    while _time.time() < auth_deadline:
-        last_status, auth_data = _http(jellyfin_url, "/Users/AuthenticateByName", method="POST", payload={
-            "Username": admin_username,
-            "Pw": admin_password,
-        }, headers={"X-Emby-Authorization": 'MediaBrowser Client="Bootstrap", Device="Server", DeviceId="bootstrap", Version="1.0"'})
-        if last_status == 200 and isinstance(auth_data, dict):
+    password_used = ""
+    for attempt_pass in (admin_password, ""):
+        deadline = _time.time() + 15
+        while _time.time() < deadline:
+            last_status, auth_data = _http(
+                jellyfin_url, "/Users/AuthenticateByName", method="POST",
+                payload={"Username": admin_username, "Pw": attempt_pass},
+                headers=emby_header,
+            )
+            if last_status == 200 and isinstance(auth_data, dict):
+                password_used = attempt_pass
+                break
+            _time.sleep(3)
+        if last_status == 200:
             break
-        info(f"Jellyfin auth attempt returned {last_status}, retrying...")
-        _time.sleep(3)
+
+    # If all auth attempts fail, Jellyfin v10.11+ may not have created the
+    # user in the database. Create it via /Users/New API (requires no auth
+    # on fresh installs).
+    if last_status != 200 or not isinstance(auth_data, dict):
+        info("Jellyfin: auth failed, trying to create user via API")
+        create_status, create_data = _http(jellyfin_url, "/Users/New", method="POST", payload={
+            "Name": admin_username,
+            "Password": admin_password,
+        })
+        if create_status in (200, 201) and isinstance(create_data, dict):
+            info(f"Jellyfin: created user {admin_username} via /Users/New")
+            _time.sleep(2)
+            # Try auth again.
+            last_status, auth_data = _http(
+                jellyfin_url, "/Users/AuthenticateByName", method="POST",
+                payload={"Username": admin_username, "Pw": admin_password},
+                headers=emby_header,
+            )
 
     if last_status != 200 or not isinstance(auth_data, dict):
         raise RuntimeError(f"Jellyfin authentication failed (HTTP {last_status})")
+
+    access_token = auth_data.get("AccessToken", "")
+    user_id = auth_data.get("User", {}).get("Id", "")
+
+    # If we authenticated with empty/wrong password, change to desired.
+    if password_used and password_used != admin_password:
+        info(f"Jellyfin: setting password (authenticated with {'empty' if not password_used else 'default'} password)")
+        _http(jellyfin_url, f"/Users/{user_id}/Password", method="POST", payload={
+            "CurrentPw": password_used,
+            "NewPw": admin_password,
+        }, headers={"X-Emby-Token": access_token})
+        # Re-authenticate.
+        last_status, auth_data = _http(
+            jellyfin_url, "/Users/AuthenticateByName", method="POST",
+            payload={"Username": admin_username, "Pw": admin_password},
+            headers=emby_header,
+        )
+        if last_status != 200 or not isinstance(auth_data, dict):
+            raise RuntimeError(f"Jellyfin password change failed (HTTP {last_status})")
+        access_token = auth_data.get("AccessToken", "")
+        user_id = auth_data.get("User", {}).get("Id", "")
 
     access_token = auth_data.get("AccessToken", "")
     user_id = auth_data.get("User", {}).get("Id", "")

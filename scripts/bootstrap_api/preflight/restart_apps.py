@@ -47,7 +47,7 @@ def write_config_and_restart(
 
     if restarted:
         info(f"App restart: restarted {len(restarted)} apps, waiting for readiness...")
-        time.sleep(15)
+        time.sleep(10)
         for app_name, port in _APPS_TO_RESTART:
             if app_name not in restarted:
                 continue
