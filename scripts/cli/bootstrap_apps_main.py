@@ -333,10 +333,19 @@ def _run_serve(args: argparse.Namespace) -> None:
             _run_preflights(state, args)
 
         runner, runtime_state = _build_runner(args)
-        runner.run(runtime_state)
+        bootstrap_error = None
+        try:
+            runner.run(runtime_state)
+        except Exception as run_exc:
+            bootstrap_error = run_exc
+            runtime_platform.log(f"[ERR] Bootstrap pipeline: {run_exc}")
 
-        # Post-bootstrap handlers: config-driven, same pattern as preflights.
+        # Post-bootstrap handlers run even on partial success — apps may
+        # need restarts to pick up config changes made before the failure.
         _run_post_bootstrap(state, args)
+
+        if bootstrap_error:
+            raise bootstrap_error
 
         state.finish()
         runtime_platform.log("[OK] Bootstrap completed successfully")

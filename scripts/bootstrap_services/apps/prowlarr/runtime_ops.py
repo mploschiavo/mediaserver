@@ -141,12 +141,24 @@ def run_prowlarr_indexer_pipeline(
     arr_apps_raw,
     app_keys,
 ):
+    # Use path-aware URL if Prowlarr has urlBase active; fall back to direct URL
+    # if the path-aware URL doesn't respond (fresh install, not yet restarted).
+    direct_url = str(prowlarr_url or "").strip()
+    path_aware_url = _path_aware_prowlarr_url(cfg, direct_url)
+    effective_url = path_aware_url
+    if path_aware_url and path_aware_url != direct_url:
+        try:
+            from bootstrap_services.runtime_platform import http_request as _hr
+
+            status, parsed, _ = _hr(path_aware_url, "/ping")
+            if status != 200:
+                effective_url = direct_url
+        except Exception:
+            effective_url = direct_url
+
     return _prowlarr_indexer_pipeline_service().run(
         cfg=cfg,
-        # Use the path-aware URL so that POST/PUT API calls reach Prowlarr correctly
-        # when urlBase is set (e.g. /app/prowlarr). This is still a direct in-network
-        # Docker service URL — it does not route through Envoy.
-        prowlarr_url=_path_aware_prowlarr_url(cfg, str(prowlarr_url or "").strip()),
+        prowlarr_url=effective_url,
         prowlarr_key=prowlarr_key,
         wait_timeout=wait_timeout,
         prowlarr_indexers=prowlarr_indexers,
