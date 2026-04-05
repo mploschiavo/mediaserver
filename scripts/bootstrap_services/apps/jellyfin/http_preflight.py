@@ -1,7 +1,8 @@
-"""Jellyfin preflight: startup wizard, auth, and API key provisioning via HTTP.
+"""Jellyfin preflight: startup wizard, auth, and API key provisioning.
 
-Replaces the compose_preflight.py docker-exec-based approach with pure HTTP
-calls over the Docker network (http://jellyfin:8096).
+Uses the same JellyfinBootstrapAuthService as the compose preflight
+for exact parity. Runs inside the bootstrap runner container with
+HTTP access to jellyfin:8096 and file access to /srv-config/jellyfin.
 """
 
 from __future__ import annotations
@@ -20,7 +21,8 @@ def _http(
     payload: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     timeout: int = 15,
-) -> tuple[int, Any]:
+) -> tuple[int, Any, str]:
+    """HTTP request returning (status, parsed_data, body_str) 3-tuple."""
     url = f"{base_url.rstrip('/')}{path}"
     data = json.dumps(payload).encode("utf-8") if payload else None
     hdrs = {"Content-Type": "application/json", **(headers or {})}
@@ -29,20 +31,20 @@ def _http(
         with request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             try:
-                return resp.status, json.loads(body)
+                return resp.status, json.loads(body), body
             except (json.JSONDecodeError, ValueError):
-                return resp.status, body
+                return resp.status, body, body
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-        return exc.code, body
+        return exc.code, None, body
     except Exception:
-        return 0, None
+        return 0, None, ""
 
 
-def _wait_ready(base_url: str, timeout: int = 120) -> bool:
-    deadline = time.time() + timeout
+def _wait_ready(base_url: str, timeout_seconds: int = 120) -> bool:
+    deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        status, _ = _http(base_url, "/System/Info/Public")
+        status, _, _ = _http(base_url, "/System/Info/Public")
         if status == 200:
             return True
         time.sleep(3)
@@ -61,6 +63,7 @@ def run_preflight(
 ) -> dict[str, str]:
     """Run Jellyfin startup wizard + API key provisioning.
 
+    Uses JellyfinBootstrapAuthService for exact parity with compose preflight.
     Returns dict with JELLYFIN_API_KEY and JELLYFIN_USER_ID if successful.
     """
 
@@ -69,143 +72,77 @@ def run_preflight(
             log(msg)
 
     info(f"Jellyfin preflight: waiting for {jellyfin_url}")
-    if not _wait_ready(jellyfin_url, timeout=wait_timeout):
+    if not _wait_ready(jellyfin_url, timeout_seconds=wait_timeout):
         raise RuntimeError(f"Jellyfin not reachable at {jellyfin_url} within {wait_timeout}s")
 
-    # Check if startup wizard is needed by checking system info first.
-    _, sys_info = _http(jellyfin_url, "/System/Info/Public")
-    wizard_completed = isinstance(sys_info, dict) and sys_info.get("StartupWizardCompleted") is True
+    # Use the SAME auth service as the compose preflight.
+    from .cli.jellyfin_bootstrap_auth_service import JellyfinBootstrapAuthService
 
-    import time as _time
+    auth_service = JellyfinBootstrapAuthService(
+        http_request=_http,
+        info=info,
+        warn=info,
+        fail=lambda msg: (_ for _ in ()).throw(RuntimeError(msg)),
+    )
 
-    emby_header = {"X-Emby-Authorization": 'MediaBrowser Client="Bootstrap", Device="Server", DeviceId="bootstrap", Version="1.0"'}
+    # Step 1: Complete wizard if needed.
+    auth_service.startup_wizard_if_needed(
+        jellyfin_url,
+        username=admin_username,
+        password=admin_password,
+    )
 
-    if not wizard_completed:
-        info("Jellyfin startup wizard detected — completing initial setup")
-        # Step 1: Set configuration.
-        _http(jellyfin_url, "/Startup/Configuration", method="POST", payload={
-            "UICulture": "en-US",
-            "MetadataCountryCode": "US",
-            "PreferredMetadataLanguage": "en",
-        })
-        # Step 2: Create the startup user (password may not be honored).
-        _http(jellyfin_url, "/Startup/User", method="POST", payload={
-            "Name": admin_username,
-            "Password": admin_password,
-        })
-        # Step 3: Set remote access.
-        _http(jellyfin_url, "/Startup/RemoteAccess", method="POST", payload={
-            "EnableRemoteAccess": True,
-            "EnableAutomaticPortMapping": False,
-        })
-        # Step 4: Complete the wizard.
-        _http(jellyfin_url, "/Startup/Complete", method="POST")
-        info("Jellyfin startup wizard completed")
-        _time.sleep(3)
+    # Step 2: Authenticate — try stack admin, then startup user with empty password.
+    startup_auth = auth_service.try_authenticate_startup_user(jellyfin_url, admin_password)
+    if startup_auth is None:
+        raise RuntimeError("Jellyfin: could not authenticate after wizard completion")
 
-    # Authenticate — try desired password, then empty password.
-    # Jellyfin startup may create user with empty password regardless of
-    # what was posted to /Startup/User.
-    auth_data = None
-    last_status = 0
-    password_used = ""
-    for attempt_pass in (admin_password, ""):
-        deadline = _time.time() + 15
-        while _time.time() < deadline:
-            last_status, auth_data = _http(
-                jellyfin_url, "/Users/AuthenticateByName", method="POST",
-                payload={"Username": admin_username, "Pw": attempt_pass},
-                headers=emby_header,
-            )
-            if last_status == 200 and isinstance(auth_data, dict):
-                password_used = attempt_pass
-                break
-            _time.sleep(3)
-        if last_status == 200:
-            break
+    access_token = str(startup_auth.get("token", ""))
+    user_id = str(startup_auth.get("user_id", ""))
+    password_used = str(startup_auth.get("password_used", ""))
 
-    # If all auth attempts fail, Jellyfin v10.11+ may not have created the
-    # user in the database. Create it via /Users/New API (requires no auth
-    # on fresh installs).
-    if last_status != 200 or not isinstance(auth_data, dict):
-        info("Jellyfin: auth failed, trying to create user via API")
-        create_status, create_data = _http(jellyfin_url, "/Users/New", method="POST", payload={
-            "Name": admin_username,
-            "Password": admin_password,
-        })
-        if create_status in (200, 201) and isinstance(create_data, dict):
-            info(f"Jellyfin: created user {admin_username} via /Users/New")
-            _time.sleep(2)
-            # Try auth again.
-            last_status, auth_data = _http(
-                jellyfin_url, "/Users/AuthenticateByName", method="POST",
-                payload={"Username": admin_username, "Pw": admin_password},
-                headers=emby_header,
-            )
-
-    if last_status != 200 or not isinstance(auth_data, dict):
-        raise RuntimeError(f"Jellyfin authentication failed (HTTP {last_status})")
-
-    access_token = auth_data.get("AccessToken", "")
-    user_id = auth_data.get("User", {}).get("Id", "")
-
-    # If we authenticated with empty/wrong password, change to desired.
-    if password_used and password_used != admin_password:
-        info(f"Jellyfin: setting password (authenticated with {'empty' if not password_used else 'default'} password)")
-        _http(jellyfin_url, f"/Users/{user_id}/Password", method="POST", payload={
-            "CurrentPw": password_used,
-            "NewPw": admin_password,
-        }, headers={"X-Emby-Token": access_token})
-        # Re-authenticate.
-        last_status, auth_data = _http(
-            jellyfin_url, "/Users/AuthenticateByName", method="POST",
-            payload={"Username": admin_username, "Pw": admin_password},
-            headers=emby_header,
+    # Step 3: Rotate password if needed.
+    if password_used != admin_password:
+        info(f"Jellyfin: rotating password to stack admin credentials")
+        auth_service.update_user_password(
+            jellyfin_url, access_token, user_id, password_used, admin_password,
         )
-        if last_status != 200 or not isinstance(auth_data, dict):
-            raise RuntimeError(f"Jellyfin password change failed (HTTP {last_status})")
-        access_token = auth_data.get("AccessToken", "")
-        user_id = auth_data.get("User", {}).get("Id", "")
+        startup_auth = auth_service.try_authenticate_startup_user(jellyfin_url, admin_password)
+        if startup_auth is None:
+            raise RuntimeError("Jellyfin: authentication failed after password rotation")
+        access_token = str(startup_auth.get("token", ""))
+        user_id = str(startup_auth.get("user_id", ""))
 
-    access_token = auth_data.get("AccessToken", "")
-    user_id = auth_data.get("User", {}).get("Id", "")
-    info(f"Jellyfin authentication succeeded (user_id={user_id})")
+    info(f"Jellyfin: authenticated as user_id={user_id}")
 
-    # Check for existing API key.
+    # Step 4: Create or find API key.
     auth_header = {"X-Emby-Token": access_token}
-    status, keys_data = _http(jellyfin_url, "/Auth/Keys", headers=auth_header)
+    _, keys_data, _ = _http(jellyfin_url, "/Auth/Keys", headers=auth_header)
     existing_key = ""
-    if status == 200 and isinstance(keys_data, dict):
+    if isinstance(keys_data, dict):
         for item in keys_data.get("Items", []):
             if isinstance(item, dict) and item.get("AppName") == api_key_name:
                 existing_key = item.get("AccessToken", "")
                 break
 
     if existing_key:
-        info(f"Jellyfin API key already exists for app '{api_key_name}'")
+        info(f"Jellyfin: API key already exists for '{api_key_name}'")
         return {"JELLYFIN_API_KEY": existing_key, "JELLYFIN_USER_ID": user_id}
 
     # Create new API key.
-    status, _ = _http(
-        jellyfin_url,
-        f"/Auth/Keys?app={api_key_name}",
-        method="POST",
-        headers=auth_header,
-    )
-    if status not in (200, 204):
-        raise RuntimeError(f"Jellyfin API key creation failed (HTTP {status})")
+    _http(jellyfin_url, f"/Auth/Keys?app={api_key_name}", method="POST", headers=auth_header)
 
     # Re-fetch to get the key value.
-    status, keys_data = _http(jellyfin_url, "/Auth/Keys", headers=auth_header)
+    _, keys_data, _ = _http(jellyfin_url, "/Auth/Keys", headers=auth_header)
     api_key = ""
-    if status == 200 and isinstance(keys_data, dict):
+    if isinstance(keys_data, dict):
         for item in keys_data.get("Items", []):
             if isinstance(item, dict) and item.get("AppName") == api_key_name:
                 api_key = item.get("AccessToken", "")
                 break
 
     if not api_key:
-        raise RuntimeError("Jellyfin API key created but could not be retrieved")
+        raise RuntimeError("Jellyfin: API key created but could not be retrieved")
 
-    info(f"Jellyfin API key created for app '{api_key_name}'")
+    info(f"Jellyfin: API key created for '{api_key_name}'")
     return {"JELLYFIN_API_KEY": api_key, "JELLYFIN_USER_ID": user_id}

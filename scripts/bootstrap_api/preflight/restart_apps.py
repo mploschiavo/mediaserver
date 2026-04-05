@@ -21,6 +21,7 @@ _APPS_TO_RESTART = [
     ("readarr", 8787),
     ("prowlarr", 9696),
     ("bazarr", 6767),
+    ("jellyseerr", 5055),
     ("homepage", 3000),
 ]
 
