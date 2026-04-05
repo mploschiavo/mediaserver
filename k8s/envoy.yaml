@@ -89,9 +89,11 @@ spec:
         - name: bootstrap-config
           configMap:
             name: media-stack-bootstrap-config
+            optional: true
         - name: bootstrap-profile
           configMap:
             name: media-stack-bootstrap-profile
+            optional: true
 ---
 apiVersion: apps/v1
 kind: Deployment
