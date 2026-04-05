@@ -15,6 +15,7 @@ import requests
 
 
 _APPS_TO_RESTART = [
+    ("jellyfin", 8096),
     ("sonarr", 8989),
     ("radarr", 7878),
     ("lidarr", 8686),
