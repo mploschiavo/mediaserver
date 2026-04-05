@@ -75,6 +75,7 @@ def build_kubernetes_runner_request(runner: Any, info_fn: InfoFn) -> dict[str, o
                 profile=runner.cfg.profile,
                 include_optional=runner.cfg.include_optional,
                 enable_components=runner.cfg.enable_components,
+                kustomize_cmd=tuple((*runner.kube.cmd_prefix, "kustomize")),
                 profile_scale_to_zero_apps=profile_scale_to_zero_apps,
                 profile_tls_hosts=profile_tls_hosts,
                 profile_tls_secret_names=profile_tls_secret_names,

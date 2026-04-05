@@ -84,6 +84,39 @@ class RebuildManifestApplyServiceTests(unittest.TestCase):
             self.assertEqual(applied_text, ["kind: ConfigMap\n"])
             self.assertEqual(applied_files, [])
 
+    def test_empty_kustomize_cmd_defaults_to_kubectl_kustomize(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile_dir = root / "k8s" / "profiles" / "full"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            observed_cmds: list[list[str]] = []
+
+            def _subprocess_run(cmd, **_kwargs):
+                observed_cmds.append(list(cmd))
+                return _Proc(returncode=0, stdout="kind: ConfigMap\n")
+
+            service = RebuildManifestApplyService(
+                cfg=RebuildManifestApplyConfig(
+                    root_dir=root,
+                    namespace="media-stack",
+                    profile="full",
+                    include_optional="",
+                    enable_components="",
+                    kustomize_cmd=(),
+                ),
+                info=lambda _msg: None,
+                warn=lambda _msg: None,
+                run_kubectl=lambda *_args, **_kwargs: _Proc(returncode=0),
+                apply_manifest_text_with_overrides=lambda _text: None,
+                apply_manifest_file_with_overrides=lambda _path: None,
+                subprocess_run=_subprocess_run,
+            )
+
+            service.apply_manifests_for_profile()
+
+            self.assertTrue(observed_cmds)
+            self.assertEqual(observed_cmds[0][:2], ["kubectl", "kustomize"])
+
 
 if __name__ == "__main__":
     unittest.main()

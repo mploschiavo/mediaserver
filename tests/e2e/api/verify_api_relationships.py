@@ -99,7 +99,7 @@ class Runner:
         return self._kns("exec", self.pod_name, "--", *cmd, check=check)
 
     def curl_text(self, url: str, headers: dict[str, str] | None = None) -> str:
-        args = ["curl", "-fsS", "--connect-timeout", "8", "--max-time", "30"]
+        args = ["curl", "-fsSL", "--connect-timeout", "8", "--max-time", "30"]
         for key, value in (headers or {}).items():
             args.extend(["-H", f"{key}: {value}"])
         args.append(url)

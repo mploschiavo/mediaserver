@@ -40,12 +40,90 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
         self.assertIn('STACK_ADMIN_PASSWORD: "media-stack-dev"', rendered)
 
     def test_apply_manifest_text_calls_kubectl_with_patched_manifest(self):
-        run_kubectl = mock.Mock()
+        run_kubectl = mock.Mock(return_value=mock.Mock(returncode=0, stdout="", stderr=""))
         svc = self._svc(run_kubectl=run_kubectl)
         svc.apply_manifest_text_with_overrides(
             "kind: PersistentVolumeClaim\nspec:\n  resources:\n    requests:\n      storage: 1Gi\n"
         )
         run_kubectl.assert_called_once()
+
+    def test_apply_manifest_text_deletes_existing_jobs_before_apply(self):
+        run_kubectl = mock.Mock(return_value=mock.Mock(returncode=0, stdout="", stderr=""))
+        svc = self._svc(run_kubectl=run_kubectl)
+        svc.apply_manifest_text_with_overrides(
+            "apiVersion: batch/v1\n"
+            "kind: Job\n"
+            "metadata:\n"
+            "  name: media-stack-bootstrap\n"
+            "  namespace: media-stack\n"
+            "---\n"
+            "apiVersion: v1\n"
+            "kind: ConfigMap\n"
+            "metadata:\n"
+            "  name: sample\n"
+            "  namespace: media-stack\n"
+        )
+        self.assertEqual(run_kubectl.call_count, 2)
+        self.assertEqual(
+            run_kubectl.call_args_list[0].args[0],
+            ["-n", "media-stack-dev", "delete", "job", "media-stack-bootstrap", "--ignore-not-found"],
+        )
+        self.assertEqual(run_kubectl.call_args_list[0].kwargs.get("check"), False)
+        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["apply", "-f", "-"])
+
+    def test_apply_manifest_text_conflict_falls_back_to_replace_create(self):
+        run_kubectl = mock.Mock(
+            side_effect=[
+                mock.Mock(returncode=1, stdout="", stderr="Conflict"),
+                mock.Mock(returncode=0, stdout="", stderr=""),
+                mock.Mock(returncode=1, stdout="", stderr="NotFound"),
+                mock.Mock(returncode=0, stdout="", stderr=""),
+            ]
+        )
+        svc = self._svc(run_kubectl=run_kubectl)
+        svc.apply_manifest_text_with_overrides(
+            "apiVersion: v1\n"
+            "kind: ConfigMap\n"
+            "metadata:\n"
+            "  name: first\n"
+            "  namespace: media-stack\n"
+            "---\n"
+            "apiVersion: v1\n"
+            "kind: Secret\n"
+            "metadata:\n"
+            "  name: second\n"
+            "  namespace: media-stack\n"
+            "type: Opaque\n"
+        )
+        self.assertEqual(run_kubectl.call_args_list[0].args[0], ["apply", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[0].kwargs.get("check"), False)
+        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["replace", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[2].args[0], ["replace", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[3].args[0], ["create", "-f", "-"])
+
+    def test_apply_manifest_text_conflict_tolerates_existing_immutable_objects(self):
+        run_kubectl = mock.Mock(
+            side_effect=[
+                mock.Mock(returncode=1, stdout="", stderr="Conflict"),
+                mock.Mock(returncode=1, stdout="", stderr="spec is immutable"),
+                mock.Mock(returncode=1, stdout="", stderr="already exists"),
+            ]
+        )
+        svc = self._svc(run_kubectl=run_kubectl)
+        svc.apply_manifest_text_with_overrides(
+            "apiVersion: v1\n"
+            "kind: PersistentVolumeClaim\n"
+            "metadata:\n"
+            "  name: media-stack-config-bazarr\n"
+            "  namespace: media-stack\n"
+            "spec:\n"
+            "  resources:\n"
+            "    requests:\n"
+            "      storage: 5Gi\n"
+        )
+        self.assertEqual(run_kubectl.call_count, 3)
+        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["replace", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[2].args[0], ["create", "-f", "-"])
 
 
 if __name__ == "__main__":

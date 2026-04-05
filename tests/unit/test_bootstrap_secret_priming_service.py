@@ -35,6 +35,11 @@ class _Kube:
         if cmd[:5] == ["-n", "media-stack", "get", "secret", "media-stack-secrets"]:
             return _Result(0 if self.secret_exists else 1, "ok")
         if cmd[:5] == ["-n", "media-stack", "exec", "deploy/jellyseerr", "--"]:
+            command_text = " ".join(str(part) for part in cmd[5:])
+            if "Users?api_key" in command_text:
+                return _Result(0, "jellyfin-user-id\n")
+            if "d.jellyfin" in command_text:
+                return _Result(0, "jellyfin-key\n")
             return _Result(0, "jellyseerr-key\n")
         if cmd[:5] == ["-n", "media-stack", "exec", "deploy/tautulli", "--"]:
             return _Result(0, "tautulli-key\n")
@@ -106,6 +111,52 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
                 payloads.append(json.loads(call[-1]))
         self.assertIn({"stringData": {"JELLYSEERR_API_KEY": "jellyseerr-key"}}, payloads)
         self.assertIn({"stringData": {"TAUTULLI_API_KEY": "tautulli-key"}}, payloads)
+
+    def test_primes_media_server_key_and_user_id(self):
+        kube = _Kube()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = _write_bootstrap_cfg(
+                tmpdir,
+                {
+                    "adapter_hooks": {
+                        "bootstrap_job": {
+                            "secret_priming_targets": {
+                                "media_server_api_key": {
+                                    "env_key": "JELLYFIN_API_KEY",
+                                    "env_var": "JELLYFIN_API_KEY",
+                                    "deployment": "jellyseerr",
+                                    "extract_command": "node -e \"const d={jellyfin:{apiKey:'x'}}; process.stdout.write(String((((d.jellyfin||{}).apiKey)||'')).trim());\"",
+                                },
+                                "media_server_user_id": {
+                                    "env_key": "JELLYFIN_USER_ID",
+                                    "env_var": "JELLYFIN_USER_ID",
+                                    "deployment": "jellyseerr",
+                                    "extract_command": "node -e \"const d={jellyfin:{apiKey:'x'}}; http.get('http://jellyfin:8096/Users?api_key='+encodeURIComponent('x'));\"",
+                                },
+                            }
+                        }
+                    }
+                },
+            )
+            svc = BootstrapSecretPrimingService(
+                cfg=BootstrapSecretPrimingConfig(
+                    namespace="media-stack",
+                    bootstrap_config_file=cfg_path,
+                ),
+                kube=kube,
+                info=mock.Mock(),
+                warn=mock.Mock(),
+            )
+            svc.prime_media_server_api_key()
+            svc.prime_media_server_user_id()
+
+        payloads = [
+            json.loads(call[-1])
+            for call in kube.calls
+            if call[:5] == ["-n", "media-stack", "patch", "secret", "media-stack-secrets"]
+        ]
+        self.assertIn({"stringData": {"JELLYFIN_API_KEY": "jellyfin-key"}}, payloads)
+        self.assertIn({"stringData": {"JELLYFIN_USER_ID": "jellyfin-user-id"}}, payloads)
 
     def test_primes_all_configured_api_keys(self):
         kube = _Kube()

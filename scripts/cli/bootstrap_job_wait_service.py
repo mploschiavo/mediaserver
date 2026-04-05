@@ -34,6 +34,10 @@ class BootstrapJobWaitService:
     warn: LogFn
     now: NowFn = lambda: int(time.time())
     sleep: SleepFn = time.sleep
+    success_markers: tuple[str, ...] = (
+        "[OK] Bootstrap completed successfully",
+        "[OK] Bootstrap complete.",
+    )
 
     def _get_job(self, job_name: str) -> dict[str, Any] | None:
         result = self.kube.run(
@@ -134,6 +138,22 @@ class BootstrapJobWaitService:
             for line in logs.stdout.rstrip().splitlines():
                 print(f"[JOB] {line}")
 
+    def _logs_contain_success_marker(self, job_name: str) -> bool:
+        logs = self.kube.run(
+            [
+                "-n",
+                self.cfg.namespace,
+                "logs",
+                f"job/{job_name}",
+                "--tail=300",
+            ],
+            check=False,
+        )
+        if logs.returncode != 0:
+            return False
+        output = str(logs.stdout or "")
+        return any(marker in output for marker in self.success_markers)
+
     def _print_failure_context(self, job_name: str, selector: str) -> None:
         describe_job = self.kube.run(
             ["-n", self.cfg.namespace, "describe", "job", job_name],
@@ -186,6 +206,7 @@ class BootstrapJobWaitService:
         start = self.now()
         last_heartbeat = -self.cfg.heartbeat_interval
         last_pending_dump = -99999
+        last_success_probe = -self.cfg.heartbeat_interval
         job_last_seen_elapsed: int | None = None
 
         while True:
@@ -232,6 +253,12 @@ class BootstrapJobWaitService:
                 self.warn("Job failed before completion.")
                 self._print_failure_context(job_name, selector)
                 raise KubernetesError("Bootstrap job failed")
+
+            if elapsed - last_success_probe >= self.cfg.heartbeat_interval:
+                if self._logs_contain_success_marker(job_name):
+                    self.info(f"Detected bootstrap success marker in logs for job/{job_name}.")
+                    return
+                last_success_probe = elapsed
 
             pods = self._get_pods(f"job-name={job_name}")
             job_uid = str((job.get("metadata") or {}).get("uid") or "")

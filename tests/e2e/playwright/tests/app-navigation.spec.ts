@@ -366,6 +366,66 @@ test.describe('App browser navigation tests', () => {
       }
     });
 
+    test('L4: Homepage → Jellyseerr → login → Settings → Network', async ({
+      page,
+      context,
+    }) => {
+      await gotoApp(page, '/app/homepage');
+      await page.waitForTimeout(2000);
+      const jellyseerrTile = page.locator('a[href*="jellyseerr"]').first();
+      await expect(jellyseerrTile).toBeVisible({ timeout: 10_000 });
+      const [jellyseerrPage] = await Promise.all([
+        context.waitForEvent('page', { timeout: 10_000 }),
+        jellyseerrTile.click(),
+      ]);
+      await jellyseerrPage.waitForLoadState('domcontentloaded', { timeout: 20_000 });
+
+      const emailInput = jellyseerrPage
+        .locator('input[type="text"][name="email"]')
+        .or(jellyseerrPage.locator('input[type="email"]'))
+        .or(jellyseerrPage.locator('input[id="email"]'))
+        .first();
+      if (await emailInput.isVisible().catch(() => false)) {
+        await emailInput.fill(adminUser);
+        await jellyseerrPage.locator('input[type="password"]').first().fill(adminPass);
+        await jellyseerrPage
+          .locator('button[type="submit"]')
+          .or(jellyseerrPage.locator('button:has-text("Sign In")'))
+          .first()
+          .click();
+        await jellyseerrPage.waitForTimeout(5000);
+      }
+
+      const settingsLink = jellyseerrPage
+        .locator('a[href="/settings"]')
+        .or(jellyseerrPage.locator('a:has-text("Settings")'))
+        .first();
+      await expect(settingsLink).toBeVisible({ timeout: 10_000 });
+      await settingsLink.click();
+      await jellyseerrPage.waitForTimeout(3000);
+
+      const networkLink = jellyseerrPage
+        .locator('a[href="/settings/network"]')
+        .or(jellyseerrPage.locator('a[href*="network"]'))
+        .or(jellyseerrPage.locator('a:has-text("Network")'))
+        .first();
+      await expect(networkLink).toBeVisible({ timeout: 10_000 });
+      await networkLink.click();
+      await jellyseerrPage.waitForTimeout(3000);
+
+      expect(jellyseerrPage.url()).toContain('/app/jellyseerr/settings/network');
+      const body = await jellyseerrPage.content();
+      expect(body).not.toContain('"status_code": 404');
+      expect(body).not.toContain('This page could not be found');
+      expect(
+        body.toLowerCase().includes('network settings') ||
+          body.toLowerCase().includes('enable proxy support'),
+        'Network settings should render',
+      ).toBeTruthy();
+
+      await jellyseerrPage.close();
+    });
+
     test('L5: Homepage → Jellyseerr → login → Settings → Notifications → Webhook', async ({
       page,
     }) => {

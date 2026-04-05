@@ -441,6 +441,18 @@
           "deployment": "jellyseerr",
           "extract_command": "node -e \"const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); process.stdout.write(String(((d.main||{}).apiKey||'')).trim());\""
         },
+        "media_server_api_key": {
+          "env_key": "JELLYFIN_API_KEY",
+          "env_var": "JELLYFIN_API_KEY",
+          "deployment": "jellyseerr",
+          "extract_command": "node -e \"const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); process.stdout.write(String((((d.jellyfin||{}).apiKey)||'')).trim());\""
+        },
+        "media_server_user_id": {
+          "env_key": "JELLYFIN_USER_ID",
+          "env_var": "JELLYFIN_USER_ID",
+          "deployment": "jellyseerr",
+          "extract_command": "node -e \"const fs=require('fs'); const http=require('http'); const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); const apiKey=String((((d.jellyfin||{}).apiKey)||'')).trim(); if(!apiKey){process.exit(0)} http.get('http://jellyfin:8096/Users?api_key='+encodeURIComponent(apiKey),(res)=>{let body=''; res.on('data',(chunk)=>body+=chunk); res.on('end',()=>{try{const users=JSON.parse(body); const list=Array.isArray(users)?users:[]; const user=list.find((item)=>String(item&&item.Name||'').trim().toLowerCase()==='admin') || list.find((item)=>Boolean(item&&item.Policy&&item.Policy.IsAdministrator)); process.stdout.write(String(user&&user.Id||'').trim());}catch(_err){}});}).on('error',()=>{});\""
+        },
         "analytics": {
           "env_key": "TAUTULLI_API_KEY",
           "env_var": "TAUTULLI_API_KEY",
@@ -616,6 +628,36 @@
           "phase_name": "Wait for bootstrap Job completion",
           "params": {
             "handler": "wait_for_bootstrap_job"
+          }
+        },
+        {
+          "operation": "call_handler",
+          "phase_name": "Prime media server API key into secret ({component|unbound})",
+          "when": {
+            "var": "bindings.media_server",
+            "in": [
+              "jellyfin"
+            ]
+          },
+          "params": {
+            "handler": "prime_media_server_api_key_secret",
+            "component": "media_server",
+            "binding": "media_server"
+          }
+        },
+        {
+          "operation": "call_handler",
+          "phase_name": "Prime media server user id into secret ({component|unbound})",
+          "when": {
+            "var": "bindings.media_server",
+            "in": [
+              "jellyfin"
+            ]
+          },
+          "params": {
+            "handler": "prime_media_server_user_id_secret",
+            "component": "media_server",
+            "binding": "media_server"
           }
         },
         {

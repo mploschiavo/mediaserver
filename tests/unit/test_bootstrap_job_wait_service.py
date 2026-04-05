@@ -24,9 +24,16 @@ class _Result:
 class _Kube:
     cmd_prefix = ["kubectl"]
 
-    def __init__(self, *, job_exists: bool = True, succeeded: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        job_exists: bool = True,
+        succeeded: bool = True,
+        log_output: str = "",
+    ) -> None:
         self.job_exists = job_exists
         self.succeeded = succeeded
+        self.log_output = log_output
         self.calls: list[list[str]] = []
 
     def run(self, args, **_kwargs):
@@ -68,6 +75,8 @@ class _Kube:
             and cmd[6] == "job-name=media-stack-bootstrap"
         ):
             return _Result(0, json.dumps({"items": []}))
+        if len(cmd) >= 5 and cmd[2] == "logs" and cmd[3] == "job/media-stack-bootstrap":
+            return _Result(0, self.log_output)
         return _Result(0, "")
 
 
@@ -97,6 +106,30 @@ class BootstrapJobWaitServiceTests(unittest.TestCase):
         svc = self._svc(_Kube(job_exists=False, succeeded=False))
         with self.assertRaises(KubernetesError):
             svc.wait_for_job(job_name="media-stack-bootstrap", selector="app=media-stack-bootstrap")
+
+    def test_wait_for_job_returns_when_success_marker_appears_in_logs(self):
+        times = iter([0, 0, 15, 15])
+        svc = BootstrapJobWaitService(
+            cfg=BootstrapJobWaitConfig(
+                namespace="media-stack",
+                timeout_seconds=60,
+                timeout_raw="1m",
+                heartbeat_interval=15,
+                job_discovery_grace_seconds=0,
+                job_missing_timeout_seconds=0,
+            ),
+            kube=_Kube(
+                job_exists=True,
+                succeeded=False,
+                log_output="[2026-04-05T22:42:24+0000] [OK] Bootstrap completed successfully",
+            ),
+            info=mock.Mock(),
+            warn=mock.Mock(),
+            now=lambda: next(times),
+            sleep=lambda _seconds: None,
+        )
+
+        svc.wait_for_job(job_name="media-stack-bootstrap", selector="app=media-stack-bootstrap")
 
 
 if __name__ == "__main__":

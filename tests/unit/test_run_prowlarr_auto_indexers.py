@@ -2,6 +2,7 @@ import importlib
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -17,6 +18,12 @@ class _FakeKube:
 
 
 class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
+    def test_parse_config_uses_namespace_env_by_default(self):
+        with mock.patch.dict("os.environ", {"NAMESPACE": "media-dev"}, clear=False):
+            cfg = MODULE.parse_config([])
+
+        self.assertEqual(cfg.namespace, "media-dev")
+
     def test_timeout_seconds_parsing(self):
         self.assertEqual(
             MODULE.AutoIndexerConfig(
