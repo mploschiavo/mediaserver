@@ -29,16 +29,10 @@ def detect_arr_api_base(app_name, app_url, api_key):
             log(f"[OK] {app_name}: detected API base {api_base}")
             return api_base
         if status == 200 and not isinstance(parsed, dict):
-            # App returns HTTP 200 + HTML (setup wizard or Forms auth page).
-            # The API version exists but the app needs auth/setup first.
-            # Default to this version — ensure_app_auth_settings will configure
-            # auth, then subsequent API calls will work.
-            api_base = f"/api/{version}"
             log(
                 f"[WARN] {app_name}: /api/{version}/system/status returned HTTP 200 "
-                f"but not JSON (setup/auth page). Defaulting to {api_base}."
+                "but the response body is not JSON — possible auth redirect."
             )
-            return api_base
 
     raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
 

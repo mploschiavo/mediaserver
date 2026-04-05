@@ -31,11 +31,27 @@ class ProwlarrPrecheckService:
     ) -> str:
         self.wait_for_service("Prowlarr", prowlarr_url, "/ping", wait_timeout)
         effective_api_url = str(api_url or "").strip() or prowlarr_url
-        prowlarr_api_base = self.detect_arr_api_base(
-            "Prowlarr",
-            effective_api_url,
-            prowlarr_key,
-        )
+        # Try path-aware URL first, fall back to direct URL if it returns HTML
+        # (happens when urlBase is configured in bootstrap config but Prowlarr
+        # hasn't been restarted yet to pick it up).
+        try:
+            prowlarr_api_base = self.detect_arr_api_base(
+                "Prowlarr",
+                effective_api_url,
+                prowlarr_key,
+            )
+        except RuntimeError:
+            if effective_api_url != prowlarr_url:
+                self.log(
+                    f"[WARN] Prowlarr: path-aware URL failed, falling back to {prowlarr_url}"
+                )
+                prowlarr_api_base = self.detect_arr_api_base(
+                    "Prowlarr",
+                    prowlarr_url,
+                    prowlarr_key,
+                )
+            else:
+                raise
         try:
             self.ensure_app_auth_settings(
                 "Prowlarr",
