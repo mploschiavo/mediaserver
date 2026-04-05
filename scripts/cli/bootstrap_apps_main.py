@@ -142,13 +142,23 @@ def _build_config_policy() -> object | None:
         return None
 
     routing = profile.get("routing") or {}
-    gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
-    gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
-    path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
     route_strategy = routing.get("strategy") or os.environ.get("ROUTE_STRATEGY", "hybrid")
-    internet_exposed = bool(routing.get("internet_exposed"))
     base_domain = routing.get("base_domain") or "local"
+    path_prefix = routing.get("app_path_prefix") or os.environ.get("APP_PATH_PREFIX", "/app")
+    gateway_port = str(routing.get("gateway_port", "")) or os.environ.get("APP_GATEWAY_PORT", "")
+    internet_exposed = bool(routing.get("internet_exposed"))
+    stack_name = str((profile.get("metadata") or {}).get("name", "")).strip()
+    stack_subdomain = routing.get("stack_subdomain") or stack_name
+
+    # Derive gateway_host and media_server_direct_host from profile if not explicit.
+    gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
+    if not gateway_host and route_strategy in ("hybrid", "path-prefix") and stack_subdomain:
+        parts = [p for p in ["apps", stack_subdomain, base_domain] if p]
+        gateway_host = ".".join(parts).lower()
     media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", ""))
+    if not media_server_direct_host and stack_subdomain and base_domain:
+        parts = [p for p in ["jellyfin", stack_subdomain, base_domain] if p]
+        media_server_direct_host = ".".join(parts).lower()
 
     from bootstrap_services.apps.stack.bootstrap_config_policy import (
         apply_bootstrap_runtime_policy,
