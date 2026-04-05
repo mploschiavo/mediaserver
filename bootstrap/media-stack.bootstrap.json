@@ -35,6 +35,11 @@
   ],
   "container_post_bootstrap_handlers": [
     {
+      "name": "restart_apps",
+      "handler": "bootstrap_api.preflight.restart_apps:write_config_and_restart",
+      "optional": true
+    },
+    {
       "name": "unpackerr",
       "handler": "bootstrap_api.preflight.unpackerr:write_config_and_restart",
       "optional": true
