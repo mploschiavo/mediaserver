@@ -75,25 +75,31 @@ def run_preflight(
             info(f"ARR preflight: patched {app_name} AuthenticationRequired=DisabledForLocalAddresses")
 
     if patched:
-        info(f"ARR preflight: patched {len(patched)} apps, restarting...")
-        # Restart patched apps so they pick up the config change.
-        for app_name in patched:
-            _restart_app(app_name, log=info)
-        # Wait for apps to be ready.
         import time
 
+        info(f"ARR preflight: patched {len(patched)} apps, restarting...")
+        for app_name in patched:
+            _restart_app(app_name, log=info)
+
+        # In K8s, pod deletion + recreation takes 30-60s. Wait for DNS
+        # to go away (old pod terminating) then wait for new pod to respond.
+        info("ARR preflight: waiting 15s for pod recreation...")
+        time.sleep(15)
+
+        # Wait for all patched apps to respond to /ping.
         for app_name in patched:
             port = _ARR_APPS[app_name]
             url = f"http://{app_name}:{port}/ping"
-            deadline = time.time() + 60
+            deadline = time.time() + 90
             while time.time() < deadline:
                 try:
                     resp = requests.get(url, timeout=5)
                     if resp.status_code == 200:
+                        info(f"ARR preflight: {app_name} ready")
                         break
                 except Exception:
                     pass
-                time.sleep(3)
+                time.sleep(5)
     else:
         info("ARR preflight: all apps already have correct auth settings")
 
