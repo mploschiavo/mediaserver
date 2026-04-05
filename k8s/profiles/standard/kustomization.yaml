@@ -11,3 +11,4 @@ resources:
   - ../../ingress-traefik.yaml
   - ../../unpackerr.yaml
   - ../../scale-policy.yaml
+  - ../../bootstrap-job.yaml
