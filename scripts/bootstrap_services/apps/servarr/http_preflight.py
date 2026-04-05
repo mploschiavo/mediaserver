@@ -60,7 +60,7 @@ def run_preflight(
         # valid Username to dismiss the wizard page.
         text = re.sub(
             r"<AuthenticationMethod>[^<]*</AuthenticationMethod>",
-            "<AuthenticationMethod>External</AuthenticationMethod>",
+            "<AuthenticationMethod>Forms</AuthenticationMethod>",
             text,
         )
         text = re.sub(
