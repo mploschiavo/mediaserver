@@ -53,11 +53,9 @@ def run_preflight(
         text = config_path.read_text(encoding="utf-8", errors="replace")
         original = text
 
-        # Dismiss the setup wizard and disable auth completely so the
-        # bootstrap API calls work. The bootstrap's ensure_app_auth_settings
-        # will configure proper auth via API after initial setup.
-        # Sonarr/Radarr v4 requires AuthenticationMethod != None AND
-        # valid Username to dismiss the wizard page.
+        # Dismiss the setup wizard and set urlBase for path-prefix routing.
+        # AuthenticationMethod=Forms + DisabledForLocalAddresses allows
+        # API access from pod IPs without credentials.
         text = re.sub(
             r"<AuthenticationMethod>[^<]*</AuthenticationMethod>",
             "<AuthenticationMethod>Forms</AuthenticationMethod>",
@@ -68,6 +66,15 @@ def run_preflight(
             "<AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>",
             text,
         )
+        # Set UrlBase for path-prefix routing (/app/<service>).
+        desired_url_base = f"/app/{app_name}"
+        current_url_base = re.search(r"<UrlBase>([^<]*)</UrlBase>", text)
+        if current_url_base and current_url_base.group(1) != desired_url_base:
+            text = re.sub(
+                r"<UrlBase>[^<]*</UrlBase>",
+                f"<UrlBase>{desired_url_base}</UrlBase>",
+                text,
+            )
 
         if text != original:
             config_path.write_text(text, encoding="utf-8")
