@@ -406,6 +406,8 @@ class RunBootstrapJobRunner:
                 "prime_usenet_client_api_key_secret": self.prime_usenet_client_api_key_secret,
                 "prime_request_manager_api_key_secret": self.prime_request_manager_api_key_secret,
                 "prime_analytics_api_key_secret": self.prime_analytics_api_key_secret,
+                "prime_media_server_api_key_secret": self.prime_media_server_api_key_secret,
+                "prime_media_server_user_id_secret": self.prime_media_server_user_id_secret,
                 "update_bootstrap_configmaps": self.update_bootstrap_configmaps,
                 "recreate_bootstrap_job": self.recreate_bootstrap_job,
                 "wait_for_bootstrap_job": self.wait_for_bootstrap_job,
@@ -516,6 +518,12 @@ class RunBootstrapJobRunner:
 
     def prime_analytics_api_key_secret(self) -> None:
         self._secret_priming_service().prime_analytics_api_key()
+
+    def prime_media_server_api_key_secret(self) -> None:
+        self._secret_priming_service().prime_media_server_api_key()
+
+    def prime_media_server_user_id_secret(self) -> None:
+        self._secret_priming_service().prime_media_server_user_id()
 
     def update_bootstrap_configmaps(self) -> None:
         self._manifest_service().update_bootstrap_configmaps()

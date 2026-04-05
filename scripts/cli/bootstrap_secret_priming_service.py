@@ -257,3 +257,9 @@ class BootstrapSecretPrimingService:
 
     def prime_analytics_api_key(self) -> None:
         self._prime_named_target("analytics")
+
+    def prime_media_server_api_key(self) -> None:
+        self._prime_named_target("media_server_api_key")
+
+    def prime_media_server_user_id(self) -> None:
+        self._prime_named_target("media_server_user_id")

@@ -27,7 +27,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "those that pass."
         ),
     )
-    parser.add_argument("--namespace", default="media-stack")
+    parser.add_argument("--namespace", default=os.getenv("NAMESPACE", "media-stack"))
     parser.add_argument("--timeout", default="20m")
     parser.add_argument("--heartbeat-interval", type=int, default=15)
     parser.add_argument("--prepare-host-root", default="/srv/media-stack")

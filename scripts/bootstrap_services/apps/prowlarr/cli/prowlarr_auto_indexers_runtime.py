@@ -189,6 +189,7 @@ class ProwlarrAutoIndexerRunner:
     def update_auto_configmap(self) -> None:
         info("Updating temporary bootstrap config ConfigMap")
         config_payload = {
+            "config_version": 2,
             "prowlarr_url": "http://prowlarr:9696",
             "trigger_indexer_sync": True,
             "arr_apps": [],
@@ -260,7 +261,7 @@ class ProwlarrAutoIndexerRunner:
         except json.JSONDecodeError:
             return None
 
-    def _get_pods(self, selector: str) -> dict[str, Any]:
+    def _get_pods(self, selector: str) -> dict[str, Any] | list[dict[str, Any]]:
         result = self.kube.run(
             ["-n", self.cfg.namespace, "get", "pods", "-l", selector, "-o", "json"],
             check=False,
@@ -271,6 +272,15 @@ class ProwlarrAutoIndexerRunner:
             return json.loads(result.stdout or "{}")
         except json.JSONDecodeError:
             return {"items": []}
+
+    @staticmethod
+    def _pod_items(payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, dict):
+            items = payload.get("items")
+            return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        return []
 
     def _describe_tail(self, kind: str, name: str) -> str:
         result = self.kube.run(
@@ -320,6 +330,25 @@ class ProwlarrAutoIndexerRunner:
             if condition.get("type") == "PodScheduled":
                 return str(condition.get("message") or "")
         return ""
+
+    def _pods_for_job(self, job_name: str, job: dict[str, Any] | None) -> list[dict[str, Any]]:
+        pods = self._pod_items(self._get_pods(f"job-name={job_name}"))
+        job_uid = str(((job or {}).get("metadata") or {}).get("uid") or "")
+        if not job_uid:
+            return pods
+        filtered = [
+            item
+            for item in pods
+            if str(
+                ((item.get("metadata") or {}).get("labels") or {}).get(
+                    "batch.kubernetes.io/controller-uid"
+                )
+                or ((item.get("metadata") or {}).get("labels") or {}).get("controller-uid")
+                or ""
+            )
+            == job_uid
+        ]
+        return filtered or pods
 
     def _print_pending_events(self, pod_name: str) -> None:
         describe = self._describe_tail("pod", pod_name)
@@ -377,7 +406,7 @@ class ProwlarrAutoIndexerRunner:
                 self._print_failure_context(job_name, selector)
                 raise KubernetesError("Auto-indexer job failed")
 
-            pods = self._get_pods(f"job-name={job_name}").get("items") or []
+            pods = self._pods_for_job(job_name, job)
             pod = pods[0] if pods else None
             pod_name = str((pod or {}).get("metadata", {}).get("name") or "")
             pod_phase = str((pod or {}).get("status", {}).get("phase") or "")
@@ -431,7 +460,7 @@ class ProwlarrAutoIndexerRunner:
 
             failed_pods = [
                 item
-                for item in (self._get_pods(f"job-name={job_name}").get("items") or [])
+                for item in self._pods_for_job(job_name, job)
                 if str((item or {}).get("status", {}).get("phase") or "") == "Failed"
             ]
             if failed_pods:
@@ -460,7 +489,7 @@ class ProwlarrAutoIndexerRunner:
         if pods_wide.stdout.strip():
             print(pods_wide.stdout.rstrip())
 
-        pods = self._get_pods(selector).get("items") or []
+        pods = self._pod_items(self._get_pods(selector))
         if pods:
             pod_name = str(pods[0].get("metadata", {}).get("name") or "")
             if pod_name:

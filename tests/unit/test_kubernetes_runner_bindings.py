@@ -55,6 +55,7 @@ class _FakeRunner:
             secret_name="media-stack-secrets",
         )
         self.tracker = SimpleNamespace(warn=mock.Mock())
+        self.kube = SimpleNamespace(cmd_prefix=["kubectl"])
         self._run_kubectl = mock.Mock()
         self._run_script = mock.Mock()
 
@@ -101,10 +102,12 @@ class KubernetesRunnerBindingsTests(unittest.TestCase):
                 request.get("secret_preservation_service"), RebuildSecretPreservationService
             )
             secret_service = request["secret_preservation_service"]
+            manifest_service = request["manifest_apply_service"]
             self.assertEqual(
                 secret_service.cfg.preserve_keys,
                 ("STACK_ADMIN_USERNAME", "STACK_ADMIN_PASSWORD"),
             )
+            self.assertEqual(manifest_service.cfg.kustomize_cmd, ("kubectl", "kustomize"))
 
 
 if __name__ == "__main__":

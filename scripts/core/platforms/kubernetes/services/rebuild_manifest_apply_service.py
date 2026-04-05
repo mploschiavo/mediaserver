@@ -14,7 +14,7 @@ class RebuildManifestApplyConfig:
     profile: str
     include_optional: str
     enable_components: str
-    kustomize_cmd: tuple[str, ...] = ("kustomize",)
+    kustomize_cmd: tuple[str, ...] = ("kubectl", "kustomize")
     profile_scale_to_zero_apps: dict[str, tuple[str, ...]] | None = None
     profile_tls_hosts: dict[str, tuple[str, ...]] | None = None
     profile_tls_secret_names: dict[str, str] | None = None
@@ -47,7 +47,7 @@ class RebuildManifestApplyService:
         cmd = tuple(str(item).strip() for item in self.cfg.kustomize_cmd if str(item).strip())
         if cmd:
             return cmd
-        return ("kustomize",)
+        return ("kubectl", "kustomize")
 
     def apply_manifests_for_profile(self) -> None:
         profile_dir = self.cfg.root_dir / "k8s" / "profiles" / self.cfg.profile
