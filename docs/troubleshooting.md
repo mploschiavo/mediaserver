@@ -70,12 +70,17 @@ If name resolution works but UI still fails:
 bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 ```
 
-## 1) Bootstrap Job Fails
+## 1) Bootstrap Service Fails
 
 Check:
 ```bash
-kubectl -n <NAMESPACE> describe job media-stack-bootstrap
-kubectl -n <NAMESPACE> logs job/media-stack-bootstrap --tail=300
+# Check bootstrap service status via API
+curl http://localhost:9100/status
+# Or via kubectl
+kubectl -n <NAMESPACE> logs deploy/media-stack-bootstrap --tail=300
+# Dashboard
+open http://localhost:9100/
+# Re-trigger with debug logging
 MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
 ```
 

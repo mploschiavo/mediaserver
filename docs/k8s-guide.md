@@ -115,7 +115,7 @@ kubectl -n media-stack scale deploy/unpackerr --replicas=1
 ```
 
 ## Configuration-as-code bootstrap
-Build/push bootstrap runner image first (used by bootstrap Job + cronjobs):
+Build/push bootstrap runner image first (used by bootstrap Deployment + CronJobs):
 ```bash
 bash scripts/build-bootstrap-runner-image.sh
 ```
@@ -160,7 +160,7 @@ Declarative config and job files:
 - `bootstrap/media-stack.bootstrap.json`
 - `bootstrap/prowlarr-indexers.example.json`
 - `scripts/bootstrap-apps.py`
-- `k8s/bootstrap-job.yaml`
+- `k8s/bootstrap.yaml`
 - `docker/bootstrap-runner.Dockerfile`
 - `scripts/build-bootstrap-runner-image.sh`
 

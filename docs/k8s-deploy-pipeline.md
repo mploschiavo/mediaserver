@@ -60,9 +60,9 @@ deploy-stack.sh
 | `unpackerr.yaml` | Deployment (replicas: 0) |
 | `scale-policy.yaml` | 9 PodDisruptionBudgets |
 
-**NOT in kustomization** (applied later by bootstrap phases):
-- `bootstrap-job.yaml` — needs ConfigMaps that don't exist yet
-- `prowlarr-auto-indexers-job.yaml` — needs its own ConfigMap
+**Note:** `bootstrap.yaml` (Deployment + Service + RBAC) IS in the standard kustomization.
+The bootstrap service starts idle and is triggered via HTTP after ConfigMaps are created.
+The separate `prowlarr-auto-indexers-job.yaml` has been replaced by `POST /actions/auto-indexers`.
 
 ---
 

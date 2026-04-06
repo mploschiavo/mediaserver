@@ -52,16 +52,7 @@ from cli.deploy_script_runner_service import (
 _MIN_STACK_DISK_ALLOCATION_GB = 20
 
 
-def ts() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
-
-
-def info(message: str) -> None:
-    print(f"[{ts()}] [INFO] {message}", flush=True)
-
-
-def warn(message: str) -> None:
-    print(f"[{ts()}] [WARN] {message}", file=sys.stderr, flush=True)
+from cli.cli_common import info, ts, warn  # noqa: E402
 
 
 class DeployError(RuntimeError):

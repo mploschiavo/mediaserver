@@ -124,12 +124,12 @@ class BootstrapManifestService:
                 missing.append(pvc)
 
         if missing:
-            self.warn(f"Missing required PVC(s) for bootstrap job: {' '.join(missing)}")
+            self.warn(f"Missing required PVC(s) for bootstrap service: {' '.join(missing)}")
             self.warn(
                 "Apply storage PVCs and retry: "
                 f"{' '.join(self.kube.cmd_prefix)} apply -f {self.cfg.root_dir / 'k8s' / 'storage-pvc.yaml'}"
             )
-            raise ConfigError("Missing required PVCs for bootstrap job")
+            raise ConfigError("Missing required PVCs for bootstrap service")
 
         self.info("Bootstrap PVC prerequisites are present.")
 

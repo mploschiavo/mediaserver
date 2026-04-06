@@ -48,7 +48,7 @@ def parse_config(argv: list[str] | None = None) -> BuildBootstrapRunnerImageConf
     root_dir = repo_root_from_script_file(__file__)
     parser = argparse.ArgumentParser(
         prog="scripts/build-bootstrap-runner-image.sh",
-        description="Build bootstrap-runner image used by k8s/bootstrap-job.yaml and CronJobs.",
+        description="Build bootstrap-runner image used by k8s/bootstrap.yaml, docker-compose.yml, and CronJobs.",
     )
     parser.add_argument(
         "--image",
