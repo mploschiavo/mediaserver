@@ -23,7 +23,7 @@ DEFAULT_HOSTS = [
     "tautulli.local",
     "flaresolverr.local",
     "recyclarr.local",
-    "bootstrap-runner.local",
+    "media-stack-bootstrap.local",
     "authelia.local",
     "authentik.local",
 ]
@@ -52,6 +52,7 @@ SERVICE_CATALOG: Dict[str, Tuple[str, str]] = {
     "authentik": ("Authentik", "Authentication provider"),
     "bootstrap_runner": ("Bootstrap", "Stack configuration & status"),
     "bootstrap-runner": ("Bootstrap", "Stack configuration & status"),
+    "media-stack-bootstrap": ("Bootstrap", "Stack configuration & status"),
 }
 
 PREFERRED_PREFIX_ORDER = [
@@ -74,7 +75,7 @@ PREFERRED_PREFIX_ORDER = [
     "plex",
     "flaresolverr",
     "recyclarr",
-    "bootstrap-runner",
+    "media-stack-bootstrap",
     "authelia",
     "authentik",
 ]

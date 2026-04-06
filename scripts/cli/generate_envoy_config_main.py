@@ -86,7 +86,7 @@ _DEFAULT_SERVICE_PORTS: dict[str, int] = {
     "plex": 32400,
     "unpackerr": 5656,
     "recyclarr": 80,
-    "bootstrap-runner": 9100,
+    "media-stack-bootstrap": 9100,
 }
 
 
