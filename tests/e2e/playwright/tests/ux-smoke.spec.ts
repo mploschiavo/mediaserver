@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 const nodeIp = process.env.STACK_NODE_IP || '';
+const ingressPort = process.env.STACK_INGRESS_PORT || '80';
+const ingressPortSuffix = ingressPort === '80' ? '' : `:${ingressPort}`;
 const testSkipReason =
   nodeIp.length === 0
     ? 'STACK_NODE_IP is not set; export STACK_NODE_IP=<cluster node ip> before running Playwright UX smoke tests.'
@@ -19,8 +21,8 @@ const arrApiKeys: Record<string, string> = {
 const arrApiVersion: Record<string, string> = {
   sonarr: 'v3',
   radarr: 'v3',
-  lidarr: 'v3',
-  readarr: 'v3',
+  lidarr: 'v1',
+  readarr: 'v1',
   prowlarr: 'v1',
 };
 
@@ -39,7 +41,7 @@ test.describe('UX smoke checks', () => {
   test.skip(Boolean(testSkipReason), testSkipReason);
 
   test('Jellyfin web shell renders', async ({ request }) => {
-    const response = await request.get(`http://${nodeIp}/web/index.html`, {
+    const response = await request.get(`http://${nodeIp}${ingressPortSuffix}/web/index.html`, {
       headers: { Host: 'jellyfin.local' },
       maxRedirects: 1,
     });
@@ -49,7 +51,7 @@ test.describe('UX smoke checks', () => {
   });
 
   test('Jellyseerr login shell renders', async ({ request }) => {
-    const response = await request.get(`http://${nodeIp}/login`, {
+    const response = await request.get(`http://${nodeIp}${ingressPortSuffix}/login`, {
       headers: { Host: 'jellyseerr.local' },
       maxRedirects: 1,
     });
@@ -59,7 +61,7 @@ test.describe('UX smoke checks', () => {
   });
 
   test('Homepage root renders dashboard shell', async ({ request }) => {
-    const response = await request.get(`http://${nodeIp}/`, {
+    const response = await request.get(`http://${nodeIp}${ingressPortSuffix}/`, {
       headers: { Host: 'homepage.local' },
       maxRedirects: 1,
     });

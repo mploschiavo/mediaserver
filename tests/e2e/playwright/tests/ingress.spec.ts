@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 const nodeIp = process.env.STACK_NODE_IP || '';
+const ingressPort = process.env.STACK_INGRESS_PORT || '80';
+const portSuffix = ingressPort === '80' ? '' : `:${ingressPort}`;
 const hostCsv =
   process.env.STACK_HOSTS ||
   [
@@ -34,7 +36,7 @@ test.describe('Ingress host routing', () => {
 
   for (const host of hosts) {
     test(`${host} returns an expected HTTP status`, async ({ request }) => {
-      const response = await request.get(`http://${nodeIp}/`, {
+      const response = await request.get(`http://${nodeIp}${portSuffix}/`, {
         headers: { Host: host },
         maxRedirects: 0,
       });
@@ -56,7 +58,7 @@ test.describe('Ingress host routing', () => {
   });
 
   test('homepage.local should expose stack services in /api/services', async ({ request }) => {
-    const response = await request.get(`http://${nodeIp}/api/services`, {
+    const response = await request.get(`http://${nodeIp}${portSuffix}/api/services`, {
       headers: { Host: 'homepage.local' },
       maxRedirects: 0,
     });
