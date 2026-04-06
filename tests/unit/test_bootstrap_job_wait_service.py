@@ -53,7 +53,7 @@ class _Kube:
             and cmd[2] == "get"
             and cmd[3] == "pods"
             and cmd[5] == "-l"
-            and cmd[6] == "app=media-stack-bootstrap"
+            and cmd[6] == "app=media-stack-controller"
         ):
             return _Result(0, "")
         if (
@@ -72,10 +72,10 @@ class _Kube:
             and cmd[2] == "get"
             and cmd[3] == "pods"
             and cmd[5] == "-l"
-            and cmd[6] == "job-name=media-stack-bootstrap"
+            and cmd[6] == "job-name=media-stack-controller"
         ):
             return _Result(0, json.dumps({"items": []}))
-        if len(cmd) >= 5 and cmd[2] == "logs" and cmd[3] == "job/media-stack-bootstrap":
+        if len(cmd) >= 5 and cmd[2] == "logs" and cmd[3] == "job/media-stack-controller":
             return _Result(0, self.log_output)
         return _Result(0, "")
 
@@ -100,12 +100,12 @@ class BootstrapJobWaitServiceTests(unittest.TestCase):
 
     def test_wait_for_job_returns_when_succeeded(self):
         svc = self._svc(_Kube(job_exists=True, succeeded=True))
-        svc.wait_for_job(job_name="media-stack-bootstrap", selector="app=media-stack-bootstrap")
+        svc.wait_for_job(job_name="media-stack-controller", selector="app=media-stack-controller")
 
     def test_wait_for_job_raises_when_job_missing(self):
         svc = self._svc(_Kube(job_exists=False, succeeded=False))
         with self.assertRaises(KubernetesError):
-            svc.wait_for_job(job_name="media-stack-bootstrap", selector="app=media-stack-bootstrap")
+            svc.wait_for_job(job_name="media-stack-controller", selector="app=media-stack-controller")
 
     def test_wait_for_job_returns_when_success_marker_appears_in_logs(self):
         times = iter([0, 0, 15, 15])
@@ -129,7 +129,7 @@ class BootstrapJobWaitServiceTests(unittest.TestCase):
             sleep=lambda _seconds: None,
         )
 
-        svc.wait_for_job(job_name="media-stack-bootstrap", selector="app=media-stack-bootstrap")
+        svc.wait_for_job(job_name="media-stack-controller", selector="app=media-stack-controller")
 
 
 if __name__ == "__main__":

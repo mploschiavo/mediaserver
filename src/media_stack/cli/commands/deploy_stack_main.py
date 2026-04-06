@@ -741,7 +741,7 @@ class DeployStackRunner:
         if self.cfg.media_server_direct_host:
             info(f"Media-server direct host: {self.cfg.media_server_direct_host}")
         if platform_plugin.logs_bootstrap_runner_image:
-            info(f"Compose bootstrap-runner image: {self.cfg.bootstrap_runner_image}")
+            info(f"Compose controller image: {self.cfg.bootstrap_runner_image}")
         info(
             "Chaos testing: "
             f"enabled={self.cfg.chaos_enabled}, "

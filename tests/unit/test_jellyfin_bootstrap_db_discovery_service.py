@@ -25,7 +25,7 @@ class JellyfinBootstrapDbDiscoveryServiceTests(unittest.TestCase):
                 ["kubectl"],
                 "media-stack",
                 "jellyfin",
-                ["media-stack-bootstrap"],
+                ["media-stack-controller"],
                 "admin",
                 warn=lambda msg: warnings.append(msg),
             )

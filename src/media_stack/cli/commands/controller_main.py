@@ -16,9 +16,9 @@ import traceback
 
 import media_stack.services.runtime_platform as runtime_platform
 import media_stack.services.runtime_secrets as runtime_secrets
-from media_stack.services.bootstrap_runner_service import (
-    BootstrapRunnerDependencies,
-    BootstrapRunnerService,
+from media_stack.services.controller_service import (
+    ControllerDependencies,
+    ControllerService,
 )
 from media_stack.services.enums import BootstrapMode
 from media_stack.services.operation_wiring import build_runner_event_registry
@@ -258,8 +258,8 @@ def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = Fa
         event_handler_specs=(runtime_state.adapter_hooks_cfg or {}).get("event_handlers"),
     )
 
-    runner = BootstrapRunnerService(
-        deps=BootstrapRunnerDependencies(
+    runner = ControllerService(
+        deps=ControllerDependencies(
             log=runtime_platform.log,
             bool_cfg=runtime_platform.bool_cfg,
             normalize_url=runtime_platform.normalize_url,

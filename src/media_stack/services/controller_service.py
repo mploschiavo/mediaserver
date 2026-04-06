@@ -1,4 +1,4 @@
-"""Bootstrap orchestration runner extracted from bootstrap-apps entrypoint."""
+"""Controller orchestration service extracted from controller entrypoint."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ StepActionFn = Callable[[], None]
 
 
 @dataclass
-class BootstrapRunnerDependencies:
+class ControllerDependencies:
     log: LogFn
     bool_cfg: BoolCfgFn
     normalize_url: NormalizeUrlFn
@@ -40,8 +40,8 @@ class BootstrapRunnerDependencies:
 
 
 @dataclass
-class BootstrapRunnerService:
-    deps: BootstrapRunnerDependencies
+class ControllerService:
+    deps: ControllerDependencies
     _download_client_prepare_result: DownloadClientPipelineResult | None = None
 
     def _invoke_handler(

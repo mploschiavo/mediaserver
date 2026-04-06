@@ -80,24 +80,24 @@ python deploy.py k8s
 ```bash
 kubectl create namespace media-dev
 kubectl apply -k k8s/profiles/standard
-kubectl -n media-dev create configmap media-stack-bootstrap-config \
+kubectl -n media-dev create configmap media-stack-controller-config \
   --from-file=config.json=contracts/media-stack.config.json --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n media-dev create configmap media-stack-bootstrap-profile \
+kubectl -n media-dev create configmap media-stack-controller-profile \
   --from-file=profile.yaml=examples/bootstrap-profiles/media-k8s-standard.yaml --dry-run=client -o yaml | kubectl apply -f -
 # Wait for pods, then trigger bootstrap:
-kubectl -n media-dev port-forward svc/media-stack-bootstrap 9100:9100 &
+kubectl -n media-dev port-forward svc/media-stack-controller 9100:9100 &
 curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
 ```
 
 That's it. The deploy script:
 1. Starts all services (Jellyfin, Sonarr, Radarr, Prowlarr, qBittorrent, and 15+ more)
 2. Waits for everything to be healthy
-3. Triggers the bootstrap service to auto-configure all apps
+3. Triggers the controller service to auto-configure all apps
 4. Prints the dashboard URL when done
 
 Bootstrap takes 3-5 minutes. Watch progress at the dashboard:
 - **Compose:** http://localhost:9100/
-- **K8s:** `kubectl -n media-dev port-forward svc/media-stack-bootstrap 9100:9100` then http://localhost:9100/
+- **K8s:** `kubectl -n media-dev port-forward svc/media-stack-controller 9100:9100` then http://localhost:9100/
 
 ---
 
@@ -129,7 +129,7 @@ bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
 | **Homepage** (start here) | http://apps.media-stack.local/app/homepage | http://apps.media-dev.local:30180/app/homepage |
 | **Jellyfin** (watch stuff) | http://jellyfin.media-stack.local | http://jellyfin.media-dev.local:30180 |
 | **Jellyseerr** (request stuff) | http://apps.media-stack.local/app/jellyseerr | http://apps.media-dev.local:30180/app/jellyseerr |
-| **Bootstrap Dashboard** | http://localhost:9100/ | http://localhost:9100/ (with port-forward) |
+| **Controller Dashboard** | http://localhost:9100/ | http://localhost:9100/ (with port-forward) |
 
 ![Homepage dashboard](docs/screenshots/apps/homepage_local.png)
 
@@ -233,7 +233,7 @@ curl -X POST http://localhost:9100/config \
   -d '{"auto_download_content": false}'
 ```
 
-Or do it from the bootstrap dashboard at http://localhost:9100/.
+Or do it from the controller dashboard at http://localhost:9100/.
 
 ---
 
@@ -259,7 +259,7 @@ The standard profile deploys and configures **19 services**:
 | **Maintainerr** | Library retention policies |
 | **Unpackerr** | Auto-extract downloads |
 | **FlareSolverr** | Indexer proxy for protected sites |
-| **Bootstrap Service** | Stack config API + dashboard on :9100 |
+| **Controller Service** | Stack config API + dashboard on :9100 |
 | **Plex** | Optional alternate media server |
 | **Recyclarr** | Quality profile sync (stub) |
 

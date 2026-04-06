@@ -177,9 +177,9 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertIn("bin/reset-qbit-webui-auth.sh", proc.stdout)
 
     def test_build_bootstrap_runner_image_wrapper_help_contract(self):
-        proc = run_wrapper("build-bootstrap-runner-image.sh", "--help")
+        proc = run_wrapper("build-controller-image.sh", "--help")
         self.assertEqual(proc.returncode, 0)
-        self.assertIn("bin/build-bootstrap-runner-image.sh", proc.stdout)
+        self.assertIn("bin/build-controller-image.sh", proc.stdout)
 
     def test_microk8s_reconcile_wrapper_help_contract(self):
         proc = run_wrapper("microk8s-reconcile.sh", "--help")

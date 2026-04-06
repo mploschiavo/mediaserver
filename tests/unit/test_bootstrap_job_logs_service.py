@@ -37,7 +37,7 @@ class BootstrapJobLogsServiceTests(unittest.TestCase):
             svc = BootstrapJobLogsService(
                 cfg=BootstrapJobLogsConfig(
                     namespace="media-stack",
-                    job_name="media-stack-bootstrap",
+                    job_name="media-stack-controller",
                     log_file=log_file,
                     tail_lines=5,
                 ),

@@ -56,7 +56,7 @@ def run_preflight(
     jellyfin_url: str = "http://jellyfin:8096",
     admin_username: str = "admin",
     admin_password: str = "media-dev",
-    api_key_name: str = "media-stack-bootstrap",
+    api_key_name: str = "media-stack-controller",
     wait_timeout: int = 120,
     log: Any = None,
     **kwargs: Any,
@@ -92,26 +92,55 @@ def run_preflight(
         password=admin_password,
     )
 
-    # Step 2: Authenticate — try stack admin, then startup user with empty password.
-    startup_auth = auth_service.try_authenticate_startup_user(jellyfin_url, admin_password)
-    if startup_auth is None:
+    # Step 2: Authenticate — try stack admin credentials first (the user we
+    # just created in the wizard), then fall back to startup-user resolution
+    # which uses /Startup/FirstUser endpoints that are unreliable post-wizard.
+    auth_result, _, _ = auth_service.authenticate_with_credentials(
+        jellyfin_url, admin_username, admin_password,
+    )
+    if auth_result is None:
+        # Fallback: try empty password (Jellyfin default before password set).
+        info("Jellyfin: stack admin auth failed, trying empty password fallback")
+        auth_result, _, _ = auth_service.authenticate_with_credentials(
+            jellyfin_url, admin_username, "",
+        )
+        if auth_result:
+            auth_result["password_used"] = ""
+
+    if auth_result is None:
+        # Last resort: try startup-user endpoint resolution.
+        info("Jellyfin: direct auth failed, trying startup-user resolution")
+        auth_result = auth_service.try_authenticate_startup_user(
+            jellyfin_url, admin_password,
+        )
+
+    if auth_result is None:
         raise RuntimeError("Jellyfin: could not authenticate after wizard completion")
 
-    access_token = str(startup_auth.get("token", ""))
-    user_id = str(startup_auth.get("user_id", ""))
-    password_used = str(startup_auth.get("password_used", ""))
+    access_token = str(auth_result.get("token", ""))
+    user_id = str(auth_result.get("user_id", ""))
+    password_used = str(auth_result.get("password_used", admin_password))
 
-    # Step 3: Rotate password if needed.
+    # Step 3: Rotate password if authenticated with empty/different password.
     if password_used != admin_password:
-        info(f"Jellyfin: rotating password to stack admin credentials")
-        auth_service.update_user_password(
-            jellyfin_url, access_token, user_id, password_used, admin_password,
+        info("Jellyfin: rotating password to stack admin credentials")
+        try:
+            auth_service.update_user_password(
+                jellyfin_url, access_token, user_id, password_used, admin_password,
+            )
+        except RuntimeError as exc:
+            info(f"Jellyfin: password rotation returned error ({exc}), verifying auth")
+        # Re-authenticate with the target password regardless of rotation result.
+        auth_result, _, _ = auth_service.authenticate_with_credentials(
+            jellyfin_url, admin_username, admin_password,
         )
-        startup_auth = auth_service.try_authenticate_startup_user(jellyfin_url, admin_password)
-        if startup_auth is None:
-            raise RuntimeError("Jellyfin: authentication failed after password rotation")
-        access_token = str(startup_auth.get("token", ""))
-        user_id = str(startup_auth.get("user_id", ""))
+        if auth_result is None:
+            # Password rotation failed and admin password doesn't work.
+            # Continue with the original token we already have.
+            info("Jellyfin: password rotation did not take effect, continuing with current session")
+        else:
+            access_token = str(auth_result.get("token", ""))
+            user_id = str(auth_result.get("user_id", ""))
 
     info(f"Jellyfin: authenticated as user_id={user_id}")
 

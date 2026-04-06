@@ -427,7 +427,7 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: media-stack-bootstrap-reconcile
+  name: media-stack-controller-reconcile
   namespace: media-stack
 spec:
   # Re-run idempotent bootstrap periodically so curation/integration self-heals over time.
@@ -442,12 +442,12 @@ spec:
       template:
         metadata:
           labels:
-            app: media-stack-bootstrap-reconcile
+            app: media-stack-controller-reconcile
         spec:
           restartPolicy: Never
           containers:
             - name: bootstrap-reconcile
-              image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
+              image: 192.168.1.60:30002/library/media-stack-controller:latest
               imagePullPolicy: Always
               env:
                 - name: SABNZBD_API_KEY
@@ -490,7 +490,7 @@ spec:
                   value: "1"
               command:
                 - python3
-                - /opt/media-stack/bin/bootstrap-apps.py
+                - /opt/media-stack/bin/controller.py
                 - --config
                 - /bootstrap-config/config.json
                 - --config-root
@@ -532,7 +532,7 @@ spec:
           volumes:
             - name: bootstrap-config
               configMap:
-                name: media-stack-bootstrap-config
+                name: media-stack-controller-config
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin
@@ -603,7 +603,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: jellyfin-prewarm
-              image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
+              image: 192.168.1.60:30002/library/media-stack-controller:latest
               imagePullPolicy: Always
               env:
                 - name: JELLYFIN_API_KEY
@@ -630,7 +630,7 @@ spec:
                   value: "15"
               command:
                 - python3
-                - /opt/media-stack/bin/bootstrap-apps.py
+                - /opt/media-stack/bin/controller.py
                 - --mode
                 - jellyfin-prewarm
                 - --config
@@ -648,7 +648,7 @@ spec:
           volumes:
             - name: bootstrap-config
               configMap:
-                name: media-stack-bootstrap-config
+                name: media-stack-controller-config
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin
@@ -680,7 +680,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: media-hygiene
-              image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
+              image: 192.168.1.60:30002/library/media-stack-controller:latest
               imagePullPolicy: Always
               env:
                 - name: STACK_ADMIN_USERNAME
@@ -731,7 +731,7 @@ spec:
                   value: "15"
               command:
                 - python3
-                - /opt/media-stack/bin/bootstrap-apps.py
+                - /opt/media-stack/bin/controller.py
                 - --mode
                 - media-hygiene
                 - --config
@@ -775,7 +775,7 @@ spec:
           volumes:
             - name: bootstrap-config
               configMap:
-                name: media-stack-bootstrap-config
+                name: media-stack-controller-config
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin

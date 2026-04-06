@@ -70,14 +70,14 @@ If name resolution works but UI still fails:
 bash bin/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 ```
 
-## 1) Bootstrap Service Fails
+## 1) Controller Service Fails
 
 Check:
 ```bash
-# Check bootstrap service status via API
+# Check controller service status via API
 curl http://localhost:9100/status
 # Or via kubectl
-kubectl -n <NAMESPACE> logs deploy/media-stack-bootstrap --tail=300
+kubectl -n <NAMESPACE> logs deploy/media-stack-controller --tail=300
 # Dashboard
 open http://localhost:9100/
 # Re-trigger with debug logging
@@ -173,7 +173,7 @@ Checklist:
 
 ```bash
 bash bin/run-bootstrap-job.sh
-kubectl -n <NAMESPACE> logs job/media-stack-bootstrap --tail=300 | grep -E "Jellyfin Live TV"
+kubectl -n <NAMESPACE> logs job/media-stack-controller --tail=300 | grep -E "Jellyfin Live TV"
 ```
 
 ## 7) Ingress Routes Return 404
@@ -210,7 +210,7 @@ This stack includes `disk_guardrails` (default 65% max used on `/srv-stack`) wit
 
 Check:
 ```bash
-kubectl -n <NAMESPACE> logs job/media-stack-bootstrap --tail=300 | grep -E "Disk guardrails"
+kubectl -n <NAMESPACE> logs job/media-stack-controller --tail=300 | grep -E "Disk guardrails"
 ```
 
 Tune policy:

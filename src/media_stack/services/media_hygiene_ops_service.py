@@ -1,4 +1,4 @@
-"""Media hygiene operation facade extracted from bootstrap-apps."""
+"""Media hygiene operation facade extracted from controller."""
 
 from __future__ import annotations
 

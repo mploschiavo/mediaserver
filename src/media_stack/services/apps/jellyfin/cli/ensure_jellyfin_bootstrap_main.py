@@ -260,7 +260,7 @@ def main(argv=None):
                 kubectl,
                 namespace,
                 service_name,
-                [app_name, "Jellyfin", "Jellyseerr", "media-stack-bootstrap"],
+                [app_name, "Jellyfin", "Jellyseerr", "media-stack-controller"],
                 stack_user,
                 warn=warn,
             )

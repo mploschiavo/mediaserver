@@ -38,7 +38,7 @@ bash bin/set-qbit-secret.sh <USERNAME> <PASSWORD>
 
 ## Bootstrap and Reconcile
 
-The bootstrap runner is a persistent HTTP API service on both platforms.
+The controller is a persistent HTTP API service on both platforms.
 
 ### Bootstrap API (port 9100)
 
@@ -111,7 +111,7 @@ Runtime overlays:
 
 Optional periodic reconcile is available through Kubernetes CronJob manifests.
 Default scheduled jobs in `full` profile:
-- `media-stack-bootstrap-reconcile`: full idempotent reconcile loop
+- `media-stack-controller-reconcile`: full idempotent reconcile loop
 - `media-stack-jellyfin-prewarm`: metadata/artwork + guide/channel prewarm refresh
 - `media-stack-media-hygiene`: failed queue cleanup + filesystem hygiene pass + qB IP filter reconcile
 

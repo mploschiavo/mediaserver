@@ -2,12 +2,12 @@
 
 This platform is organized as a control plane plus a data plane.
 
-- **Control plane**: deployment scripts, persistent bootstrap HTTP API service, reconcile logic, and verification tooling.
+- **Control plane**: deployment scripts, persistent controller HTTP API service, reconcile logic, and verification tooling.
 - **Data plane**: downloader clients, Arr import pipeline, media libraries, and playback services.
 
-## Bootstrap HTTP API Service
+## Controller HTTP API Service
 
-The bootstrap runner is a persistent Deployment (not a one-shot Job) exposing an HTTP API on port 9100.
+The controller is a persistent Deployment (not a one-shot Job) exposing an HTTP API on port 9100.
 It serves as the operational control surface for both Kubernetes and Docker Compose.
 
 Key endpoints:
@@ -39,7 +39,7 @@ The runtime is intentionally layered so technologies can be swapped locally with
 3. **App/technology implementation layer**
    `src/media_stack/services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `apps/servarr/technologies/`.
 4. **Shared orchestration layer**
-   `bootstrap-apps.py`, `runtime_factory/*`, and `bootstrap_runner_service.py` stay technology-neutral.
+   `controller.py`, `runtime_factory/*`, and `bootstrap_runner_service.py` stay technology-neutral.
 
 Contract rules:
 - Registration is manifest-first, not runtime-config overrides.
@@ -146,7 +146,7 @@ flowchart LR
 flowchart TD
   GIT[Git Config + Plugin Manifests] --> INSTALL[Install and Rebuild Scripts]
   INSTALL --> K8S[Kubernetes Resources]
-  INSTALL --> BOOT[Bootstrap Service API]
+  INSTALL --> BOOT[Controller Service API]
   BOOT --> ACTIONS[On-Demand Actions via HTTP]
   ACTIONS --> APPS[Manifest-Bound Runtime Operations]
   APPS --> VERIFY[verify-flow and Playwright tests]

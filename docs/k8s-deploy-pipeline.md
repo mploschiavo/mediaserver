@@ -61,7 +61,7 @@ deploy-stack.sh
 | `scale-policy.yaml` | 9 PodDisruptionBudgets |
 
 **Note:** `bootstrap.yaml` (Deployment + Service + RBAC) IS in the standard kustomization.
-The bootstrap service starts idle and is triggered via HTTP after ConfigMaps are created.
+The controller service starts idle and is triggered via HTTP after ConfigMaps are created.
 The separate `prowlarr-auto-indexers-job.yaml` has been replaced by `POST /actions/auto-indexers`.
 
 ---
@@ -79,7 +79,7 @@ kubectl -n <namespace> rollout status deploy/<name> --timeout=20m
 
 ## Phase 12: Bootstrap Pipeline
 
-**File:** `src/media_stack/cli/commands/deploy_pipeline_service.py` → `bootstrap-all.sh` → `bootstrap_all_main.py`
+**File:** `src/media_stack/cli/commands/deploy_pipeline_service.py` → `bootstrap-all.sh` → `controller_main.py`
 
 ### State file isolation
 
@@ -90,7 +90,7 @@ This prevents compose and K8s runs from sharing checkpoint state.
 ### Phase Plan (from `contracts/media-stack.config.json`)
 
 ```
-bootstrap_all_main.py
+controller_main.py
   │
   ├─ Phase 1: Ensure torrent client bootstrap access (qbittorrent)
   │    └─ Script: ensure-qbit-credentials.sh
@@ -147,11 +147,11 @@ run_bootstrap_job_main.py
   ├─ Step 6: Prime analytics API key into secret (tautulli, if enabled)
   │
   ├─ Step 7: Update bootstrap ConfigMaps ← CRITICAL
-  │    └─ Create ConfigMap: media-stack-bootstrap-config (from prepared JSON)
-  │    └─ Create ConfigMap: media-stack-bootstrap-profile (from profile YAML)
+  │    └─ Create ConfigMap: media-stack-controller-config (from prepared JSON)
+  │    └─ Create ConfigMap: media-stack-controller-profile (from profile YAML)
   │
   ├─ Step 8: Recreate bootstrap Job
-  │    └─ kubectl delete job media-stack-bootstrap --ignore-not-found
+  │    └─ kubectl delete job media-stack-controller --ignore-not-found
   │    └─ kubectl apply -f k8s/bootstrap-job.yaml (with overrides)
   │
   ├─ Step 9: Wait for bootstrap Job completion
@@ -169,13 +169,13 @@ run_bootstrap_job_main.py
 ### What the Bootstrap Job Pod Does
 
 **Manifest:** `k8s/bootstrap-job.yaml`
-**Entrypoint:** `bootstrap_apps_main.py --serve --auto-run`
+**Entrypoint:** `controller_main.py --serve --auto-run`
 **Port:** 9100 (HTTP API)
 
 The Job pod starts an HTTP server and auto-triggers the bootstrap:
 
 ```
-bootstrap_apps_main.py (inside K8s Job pod)
+controller_main.py (inside K8s Job pod)
   │
   ├─ Start HTTP API server on :9100
   │    └─ GET  /healthz  — liveness
@@ -213,14 +213,14 @@ prowlarr_auto_indexers_runtime.py
   │
   ├─ Step 1: Ensure PVC prerequisites (media-stack-config-prowlarr)
   │
-  ├─ Step 2: Create ConfigMap: media-stack-bootstrap-config-auto
+  ├─ Step 2: Create ConfigMap: media-stack-controller-config-auto
   │    └─ Minimal JSON with: technology_bindings, prowlarr_url, arr_apps, exclusions
   │
   ├─ Step 3: Delete + apply prowlarr-auto-indexers Job
   │    └─ Manifest: k8s/prowlarr-auto-indexers-job.yaml
-  │    └─ Image: bootstrap-runner
+  │    └─ Image: controller
   │    └─ Command: --auto-prowlarr-indexers
-  │    └─ Volume: ConfigMap media-stack-bootstrap-config-auto + prowlarr PVC
+  │    └─ Volume: ConfigMap media-stack-controller-config-auto + prowlarr PVC
   │
   ├─ Step 4: Wait for Job completion (poll every 3s)
   │
@@ -233,9 +233,9 @@ prowlarr_auto_indexers_runtime.py
 
 | ConfigMap | Created By | When | Used By |
 |-----------|-----------|------|---------|
-| `media-stack-bootstrap-config` | run_bootstrap_job_main.py Step 7 | During bootstrap pipeline Phase 4 | bootstrap Job pod, CronJobs |
-| `media-stack-bootstrap-profile` | run_bootstrap_job_main.py Step 7 | During bootstrap pipeline Phase 4 | bootstrap Job pod |
-| `media-stack-bootstrap-config-auto` | prowlarr_auto_indexers_runtime.py Step 2 | During bootstrap pipeline Phase 6 | auto-indexer Job pod |
+| `media-stack-controller-config` | run_bootstrap_job_main.py Step 7 | During bootstrap pipeline Phase 4 | bootstrap Job pod, CronJobs |
+| `media-stack-controller-profile` | run_bootstrap_job_main.py Step 7 | During bootstrap pipeline Phase 4 | bootstrap Job pod |
+| `media-stack-controller-config-auto` | prowlarr_auto_indexers_runtime.py Step 2 | During bootstrap pipeline Phase 6 | auto-indexer Job pod |
 | `media-stack-envoy-base-template` | kustomize apply (Phase 6 of deploy) | During manifest apply | envoy-config-init Job |
 
 **Critical ordering:** The envoy-config-init Job and bootstrap Job reference ConfigMaps as volumes.
@@ -271,7 +271,7 @@ because both use namespace `media-dev`. Resume mode (default) skips completed ph
 | `src/media_stack/cli/commands/run_bootstrap_job_main.py` | Bootstrap K8s Job orchestrator |
 | `src/media_stack/cli/commands/bootstrap_manifest_service.py` | ConfigMap + Job creation |
 | `src/media_stack/cli/commands/bootstrap_job_wait_service.py` | Job status polling |
-| `src/media_stack/cli/commands/bootstrap_apps_main.py` | Bootstrap HTTP API (runs inside Job pod) |
+| `src/media_stack/cli/commands/controller_main.py` | Controller HTTP API (runs inside Job pod) |
 | `contracts/media-stack.config.json` | Phase plan config |
 
 ### K8s Platform

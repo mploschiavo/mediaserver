@@ -59,7 +59,7 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
             "apiVersion: batch/v1\n"
             "kind: Job\n"
             "metadata:\n"
-            "  name: media-stack-bootstrap\n"
+            "  name: media-stack-controller\n"
             "  namespace: media-stack\n"
             "---\n"
             "apiVersion: v1\n"
@@ -71,7 +71,7 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
         self.assertEqual(run_kubectl.call_count, 3)
         self.assertEqual(
             run_kubectl.call_args_list[1].args[0],
-            ["-n", "media-stack-dev", "delete", "job", "media-stack-bootstrap", "--ignore-not-found"],
+            ["-n", "media-stack-dev", "delete", "job", "media-stack-controller", "--ignore-not-found"],
         )
         self.assertEqual(run_kubectl.call_args_list[1].kwargs.get("check"), False)
         self.assertEqual(run_kubectl.call_args_list[2].args[0], ["apply", "-f", "-"])

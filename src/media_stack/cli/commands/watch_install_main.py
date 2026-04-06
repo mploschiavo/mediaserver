@@ -177,7 +177,7 @@ def _snapshot(kubectl: list[str], cfg: WatchInstallConfig) -> None:
             "get",
             "pods",
             "-l",
-            "app=media-stack-bootstrap",
+            "app=media-stack-controller",
             "-o",
             "jsonpath={.items[0].metadata.name}",
         ],

@@ -159,7 +159,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-controller:latest}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -548,9 +548,9 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
     restart: unless-stopped
 
-  media-stack-bootstrap:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}
-    container_name: media-stack-bootstrap
+  media-stack-controller:
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-controller:latest}
+    container_name: media-stack-controller
     command:
       - python3
       - /opt/media-stack/bin/bootstrap-apps.py
@@ -608,5 +608,5 @@ services:
     stop_grace_period: 10s
     labels:
       - traefik.enable=true
-      - traefik.http.routers.media-stack-bootstrap.rule=Host(`bootstrap.local`)
-      - traefik.http.services.media-stack-bootstrap.loadbalancer.server.port=9100
+      - traefik.http.routers.media-stack-controller.rule=Host(`controller.local`)
+      - traefik.http.services.media-stack-controller.loadbalancer.server.port=9100

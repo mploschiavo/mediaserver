@@ -7,7 +7,7 @@ class RuntimeManifestsPvcOnlyTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         manifests = [
             root / "k8s" / "core.yaml",
-            root / "k8s" / "bootstrap.yaml",
+            root / "k8s" / "controller.yaml",
             root / "k8s" / "optional.yaml",
             root / "k8s" / "envoy.yaml",
         ]

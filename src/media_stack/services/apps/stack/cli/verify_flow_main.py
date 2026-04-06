@@ -172,7 +172,7 @@ class FlowVerifier:
                 [
                     "get",
                     "cronjob",
-                    "media-stack-bootstrap-reconcile",
+                    "media-stack-controller-reconcile",
                     "-o",
                     "jsonpath={.spec.schedule}",
                 ]
@@ -241,7 +241,7 @@ Interpretation:
         if ns_probe.returncode != 0:
             raise ConfigError(f"Namespace '{self.cfg.namespace}' is not reachable")
 
-        boot_log = self._kube_stdout(["logs", "job/media-stack-bootstrap", "--tail=500"])
+        boot_log = self._kube_stdout(["logs", "job/media-stack-controller", "--tail=500"])
         if not boot_log.strip():
             raise MediaStackError("No bootstrap logs found. Run: bash bin/run-bootstrap-job.sh")
         self.bootstrap_log = boot_log

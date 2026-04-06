@@ -49,7 +49,7 @@ tmp_body="/tmp/qb-login-body.$$"
 code="$(curl -sS -o "$tmp_body" -w "%{http_code}" \
   -H "Origin: http://127.0.0.1:8080" \
   -H "Referer: http://127.0.0.1:8080/" \
-  -H "User-Agent: media-stack-bootstrap/1.0" \
+  -H "User-Agent: media-stack-controller/1.0" \
   --data-urlencode "username=$QB_USER" \
   --data-urlencode "password=$QB_PASS" \
   "http://127.0.0.1:8080/api/v2/auth/login" 2>/dev/null || true)"
@@ -94,7 +94,7 @@ code_login="$(curl -sS -o "$tmp_login" -w "%{http_code}" \
   -c "$cookie" \
   -H "Origin: http://127.0.0.1:8080" \
   -H "Referer: http://127.0.0.1:8080/" \
-  -H "User-Agent: media-stack-bootstrap/1.0" \
+  -H "User-Agent: media-stack-controller/1.0" \
   --data-urlencode "username=$AUTH_USER" \
   --data-urlencode "password=$AUTH_PASS" \
   "http://127.0.0.1:8080/api/v2/auth/login" 2>/dev/null || true)"
@@ -107,7 +107,7 @@ code_pref="$(curl -sS -o "$tmp_pref" -w "%{http_code}" \
   -b "$cookie" \
   -H "Origin: http://127.0.0.1:8080" \
   -H "Referer: http://127.0.0.1:8080/" \
-  -H "User-Agent: media-stack-bootstrap/1.0" \
+  -H "User-Agent: media-stack-controller/1.0" \
   --data-urlencode "json=$PREFERENCES_JSON" \
   "http://127.0.0.1:8080/api/v2/app/setPreferences" 2>/dev/null || true)"
 rm -f "$tmp_login" "$tmp_pref" "$cookie" >/dev/null 2>&1 || true

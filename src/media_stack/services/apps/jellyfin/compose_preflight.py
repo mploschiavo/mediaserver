@@ -257,7 +257,7 @@ def ensure_compose_jellyfin_bootstrap_access(
     api_key = ensure_api_key(
         base_url,
         session_token,
-        "media-stack-bootstrap",
+        "media-stack-controller",
         http_request=_request,
         info=info,
         warn=_warn,

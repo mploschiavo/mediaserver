@@ -110,7 +110,7 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 ## Architecture Layers
 - Orchestration entrypoints:
   - Bash wrappers in `scripts/*.sh` (thin only)
-  - Python CLIs in `scripts/cli/*.py` (and `scripts/bootstrap-apps.py` composition root)
+  - Python CLIs in `scripts/cli/*.py` (and `scripts/controller.py` composition root)
 - Domain/service logic:
   - `scripts/bootstrap_services/`
   - App-scoped compatibility/service modules in `scripts/bootstrap_services/apps/<app>/`
@@ -163,28 +163,28 @@ Swap workflow:
 1. Add/replace app adapter/service module under `scripts/bootstrap_services/apps/<app>/...`
 2. Register the technology in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
 3. Bind the role in `technology_bindings`
-3. Rebuild and push the bootstrap runner image (`scripts/build-bootstrap-runner-image.sh`)
+3. Rebuild and push the controller image (`scripts/build-controller-image.sh`)
 4. Run unit tests + live bootstrap smoke
 
 Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
 
 ## Deployment Target Contract
 The target deployment experience for each platform:
-- **Compose:** `docker compose --profile standard up -d` (or equivalent profile flag) stands up the full stack including bootstrap.
-- **Kubernetes:** `kubectl apply -k k8s/profiles/standard/` stands up the full stack including bootstrap Deployment with HTTP API.
-- Both platforms must converge on the same bootstrap runner image and codebase. The bootstrap runner is a persistent Deployment (not a Job) on both platforms, exposing an HTTP API on port 9100 with `--serve --auto-run`. Platform-specific entry point wiring is allowed; platform-specific bootstrap logic is not.
+- **Compose:** `docker compose --profile standard up -d` (or equivalent profile flag) stands up the full stack including controller.
+- **Kubernetes:** `kubectl apply -k k8s/profiles/standard/` stands up the full stack including controller Deployment with HTTP API.
+- Both platforms must converge on the same controller image and codebase. The controller is a persistent Deployment (not a Job) on both platforms, exposing an HTTP API on port 9100 with `--serve --auto-run`. Platform-specific entry point wiring is allowed; platform-specific bootstrap logic is not.
 - Host-side Python CLI orchestration (`deploy-stack.sh` / `deploy_stack_main.py`) is a power-user/CI tool, not the primary deployment path. The primary path must be platform-native.
 - Do not introduce Helm charts, Helm values files, or Helm template logic. Use Kustomize overlays for Kubernetes profile management and native Compose profiles for Docker Compose.
 
-### Bootstrap Runner as HTTP API Service
-- The bootstrap runner is a persistent Deployment (not a Job) exposing an HTTP API on port 9100.
+### Controller as HTTP API Service
+- The controller is a persistent Deployment (not a Job) exposing an HTTP API on port 9100.
 - Endpoints: `/actions/{name}`, `/status`, `/config`, `/logs/stream` (SSE), `/webhooks`, `/reload`, `/healthz`, `/readyz`, `/` (dashboard).
 - Actions: `bootstrap`, `auto-indexers`, `restart-apps`, `sync-indexers`, `envoy-config`, `reconcile`.
 - Features: action-level retry with exponential backoff, parallel phase execution (`"parallel": true` in phase config), webhook notifications on action complete/error, runtime config toggles via `/config`, SSE log streaming.
 - HTTP endpoints are thin wrappers over existing Python service classes — the API layer must not contain domain logic, only dispatch to service classes.
-- Both `docker compose` and `kubectl` entry points run through the same bootstrap runner image and API — do not fork platform-specific bootstrap logic.
+- Both `docker compose` and `kubectl` entry points run through the same controller image and API — do not fork platform-specific bootstrap logic.
 - Credential preflight (Jellyfin wizard, qBittorrent password, SABnzbd config) must use HTTP API calls to running services over the container network, not `docker exec` from the host.
-- The bootstrap runner must be declared in the compose file and in the K8s manifests (as a Deployment), not created ad-hoc by host-side Python.
+- The controller must be declared in the compose file and in the K8s manifests (as a Deployment), not created ad-hoc by host-side Python.
 
 ## Platform Swap Contract
 Swapping deployment platforms/runtimes must be platform-local and config-driven, with the same isolation expectations as app swaps.
@@ -317,7 +317,7 @@ Swap workflow:
 - Plugin manifests register handlers under `event_handlers.<EVENT>.<handler_key>`.
 - Runner/media-server phase plans must declare `event` + `handler` (legacy `operation` is compatibility-only).
 - Do not re-introduce bespoke per-operation wiring classes in orchestration layers.
-- `scripts/bootstrap-apps.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
+- `scripts/controller.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
 - Runtime binding context must be sourced from `technology_bindings` (config/manifests), not hard-coded role maps in entrypoints.
 - Keep app-specific runtime modules under `scripts/bootstrap_services/apps/<app>/runtime/*`; shared runtime modules must stay technology-neutral, and pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) plus declarative RunnerEvent config.
 - `TechnologyLifecycle*` orchestration classes are obsolete in this repo; lifecycle flow must be expressed through `RunnerEvent` plans and handlers.
@@ -453,12 +453,12 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Do not add tracked `*debug*` wrapper/entrypoint files for bootstrap flows.
 - Use runtime log levels (`MEDIA_STACK_LOG_LEVEL`) and structured logs instead of dedicated debug scripts.
 
-## Bootstrap Image Packaging Contract
-The bootstrap service runs from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
-- Any new module imported by `scripts/bootstrap-apps.py` must be included by the image build context.
+## Controller Image Packaging Contract
+The controller service runs from a prebuilt image (`docker/controller.Dockerfile`).
+- Any new module imported by `scripts/controller.py` must be included by the image build context.
 - Keep runtime Python under `scripts/` so `COPY scripts /opt/media-stack/scripts` captures required modules.
-- Validate runtime changes by rebuilding/pushing the bootstrap runner image before live bootstrap tests.
-- When code changes impact bootstrap/runtime behavior, rebuild the bootstrap runner image before manual compose/k8s verification to avoid stale-image false negatives.
+- Validate runtime changes by rebuilding/pushing the controller image before live bootstrap tests.
+- When code changes impact bootstrap/runtime behavior, rebuild the controller image before manual compose/k8s verification to avoid stale-image false negatives.
 - Mandatory sequencing for image-backed validation:
   - Rebuild image first, then run live verification. Never run live verification first.
   - If image rebuild did not happen in the same iteration, treat runtime test results as invalid.
@@ -511,7 +511,7 @@ Minimum for refactor PRs:
 - For request-manager auth bootstrap (Jellyseerr/OpenSeerr), include tests that prove local-admin credential seeding still happens when downstream integration/config calls fail.
 - For optional integrations (for example Tautulli in Maintainerr), tests must cover partial-degrade behavior so one optional dependency failure does not block all integration/main-setting seeding.
 - For edge/path-prefix changes, add/maintain smoke coverage that validates browser-usable navigation (route + critical assets + homepage tile destinations), not only HTTP 200 checks.
-- Rebuild required runtime images after code changes and before live testing (for example `scripts/build-bootstrap-runner-image.sh` before compose/k8s bootstrap validation).
+- Rebuild required runtime images after code changes and before live testing (for example `scripts/build-controller-image.sh` before compose/k8s bootstrap validation).
 - For compose gateway verification, validate all enabled app routes under `/app/<service>` and verify homepage tile links navigate to working destinations, not placeholder/broken URLs.
 - For profile-driven bootstrap behavior, add/maintain tests that assert:
   - tile links resolve to working app destinations through the configured gateway path-prefix routes.
@@ -538,19 +538,19 @@ Current key test suites:
 - Profile intent must control download seeding behavior:
   - `minimal`/`standard` profiles (or any profile with `auto_download_content=false`) must disable auto indexer seeding.
   - `full` profiles (or any profile with `auto_download_content=true`) may enable tested-indexer auto add and initial content sync.
-- `RUN_BOOTSTRAP=1` validation requires a freshly built bootstrap-runner image whenever runtime imports or module paths changed.
+- `RUN_BOOTSTRAP=1` validation requires a freshly built controller image whenever runtime imports or module paths changed.
 - Keep repo-wide formatting sweeps isolated from behavior changes; do not mix debt cleanup with incident fixes.
 - Path-prefix reverse-proxy routing for ARR-family apps is not sufficient by itself; server-side app `urlBase` must be seeded to `/app/<service>` or UI navigation can fail after login even when initial landing works.
 - Do not infer deploy profile from environment purpose (`dev`/`prod`); preserve explicit `install_profile` from bootstrap profile YAML so `minimal`/`standard`/`full` behavior remains deterministic.
 
-## Bootstrap Image Dev Workflow
+## Controller Image Dev Workflow
 
-Use this sequence whenever making changes to code that runs inside the bootstrap runner container (`scripts/bootstrap_services/**`, `scripts/bootstrap-apps.py`, or any module imported by the bootstrap runner).
+Use this sequence whenever making changes to code that runs inside the controller container (`scripts/bootstrap_services/**`, `scripts/controller.py`, or any module imported by the controller).
 
 ```
 # 1. Make code changes
-# 2. Rebuild the bootstrap runner image locally (no registry push)
-PUSH_IMAGE=0 bash scripts/build-bootstrap-runner-image.sh
+# 2. Rebuild the controller image locally (no registry push)
+PUSH_IMAGE=0 bash scripts/build-controller-image.sh
 
 # 3. Deploy and run bootstrap against the compose stack
 bash scripts/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
@@ -566,7 +566,7 @@ Key rules:
 - Never test bootstrap runtime behavior with a stale image. Rebuild first, validate second.
 - `PUSH_IMAGE=0` builds and loads the image locally without pushing to the registry.
 - Changes to `scripts/cli/`, `scripts/core/`, or `scripts/bootstrap_services/apps/stack/bootstrap_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
-- Changes to `scripts/bootstrap_services/runtime_factory/`, `scripts/bootstrap_services/apps/*/`, or `scripts/bootstrap-apps.py` **do** require an image rebuild.
+- Changes to `scripts/bootstrap_services/runtime_factory/`, `scripts/bootstrap_services/apps/*/`, or `scripts/controller.py` **do** require an image rebuild.
 
 ## Validation Checklist (Pre-Merge)
 1. `bash -n scripts/*.sh scripts/lib/*.sh`
@@ -603,7 +603,7 @@ Key rules:
    - `/app/bazarr`
    - `/app/jellyseerr`
 27. After runtime-impacting code changes in bootstrap/services/platform adapters:
-   - run `PUSH_IMAGE=0 bash scripts/build-bootstrap-runner-image.sh` before live checks
+   - run `PUSH_IMAGE=0 bash scripts/build-controller-image.sh` before live checks
    - run compose deploy/bootstrap verification after rebuild
    - confirm homepage tile destinations and enabled app URLs are validated in the same post-rebuild run.
 
@@ -618,7 +618,7 @@ Key rules:
 
 ## Refactor Sequencing (Ongoing)
 High-value next slices:
-1. Continue reducing `scripts/bootstrap-apps.py` by extracting remaining cohesive domains.
+1. Continue reducing `scripts/controller.py` by extracting remaining cohesive domains.
 2. Keep moving subprocess/network/file IO behind `scripts/core/` adapters.
 3. Expand contract tests for additional shell wrappers and job-manifest parity.
 4. Promote typed config models incrementally for bootstrap JSON sections.

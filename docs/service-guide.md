@@ -82,15 +82,15 @@ plus integrations for Radarr, Sonarr, Jellyseerr, and Tautulli with API-level te
 Policy rules are maintained as a config-as-code library (one file per rule) under
 `src/media_stack/contracts/maintainerr_rules/{json,yaml}/` and rendered to `/srv-config/maintainerr/policy.json`.
 
-## Bootstrap Runner
+## Controller
 Persistent HTTP API service for stack configuration and operational control.
 Exposes an interactive dashboard, action dispatch, SSE log streaming, webhook notifications,
 runtime config toggles, and action retry on port 9100.
-Available at `bootstrap-runner.local`, `bootstrap-runner.<stack>.local`, or `/app/bootstrap-runner`.
+Available at `controller.local`, `controller.<stack>.local`, or `/app/controller`.
 
 ## Envoy
 Edge gateway proxy for path-prefix and host-based routing.
-Automatically configured by the bootstrap service from the bootstrap profile.
+Automatically configured by the controller service from the bootstrap profile.
 Every app gets three route patterns: `app.local`, `app.<stack>.local`, and `/app/<name>`.
 
 ## Tautulli

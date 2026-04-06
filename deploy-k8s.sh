@@ -51,10 +51,10 @@ kubectl kustomize "$PROFILE_DIR" --load-restrictor LoadRestrictionsNone \
 
 # Create ConfigMaps.
 echo "  Creating ConfigMaps..."
-kubectl -n "$NAMESPACE" create configmap media-stack-bootstrap-config \
+kubectl -n "$NAMESPACE" create configmap media-stack-controller-config \
   --from-file=config.json="$SCRIPT_DIR/contracts/media-stack.config.json" \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n "$NAMESPACE" create configmap media-stack-bootstrap-profile \
+kubectl -n "$NAMESPACE" create configmap media-stack-controller-profile \
   --from-file=profile.yaml="$PROFILE_PATH" \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -74,10 +74,10 @@ for i in $(seq 1 30); do
 done
 
 # Trigger bootstrap via HTTP API.
-echo "  Waiting for bootstrap service..."
+echo "  Waiting for controller service..."
 POD=""
 for i in $(seq 1 40); do
-    POD=$(kubectl -n "$NAMESPACE" get pods -l app=media-stack-bootstrap -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    POD=$(kubectl -n "$NAMESPACE" get pods -l app=media-stack-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
     if [[ -n "$POD" ]]; then
         HEALTH=$(kubectl -n "$NAMESPACE" exec "$POD" -- wget -qO- http://127.0.0.1:9100/healthz 2>/dev/null || echo "")
         [[ -n "$HEALTH" ]] && break
@@ -86,7 +86,7 @@ for i in $(seq 1 40); do
     sleep 3
 done
 if [[ -z "$POD" ]]; then
-    echo "  ERROR: Bootstrap service pod not found within 120s" >&2
+    echo "  ERROR: Controller service pod not found within 120s" >&2
     exit 1
 fi
 
@@ -106,5 +106,5 @@ done
 
 echo ""
 echo "Deploy complete: $NAMESPACE"
-echo "  Dashboard: http://apps.${NAMESPACE}.local:30180/app/media-stack-bootstrap/"
+echo "  Dashboard: http://apps.${NAMESPACE}.local:30180/app/media-stack-controller/"
 echo "  Homepage:  http://apps.${NAMESPACE}.local:30180/app/homepage"
