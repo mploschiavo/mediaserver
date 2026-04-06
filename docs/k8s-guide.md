@@ -60,6 +60,52 @@ bash bin/test.sh
 ```
 
 ## Apply
+
+### One-command deploy (recommended)
+
+**Linux / macOS:**
+```bash
+./deploy-k8s.sh                                              # default profile
+./deploy-k8s.sh examples/bootstrap-profiles/media-k8s-standard.yaml
+./deploy-k8s.sh my-profile.yaml --delete                     # teardown + redeploy
+```
+
+**Any OS (cross-platform, requires Python 3.11+):**
+```bash
+python deploy.py k8s                                         # default profile
+python deploy.py k8s examples/bootstrap-profiles/media-k8s-standard.yaml
+python deploy.py k8s --delete                                # teardown + redeploy
+```
+
+### Manual kubectl commands (works on any OS with kubectl)
+```bash
+# from repo root — applies all manifests via kustomize
+kubectl apply -k k8s/profiles/standard
+
+# profile variants
+kubectl apply -k k8s/profiles/minimal
+kubectl apply -k k8s/profiles/full
+kubectl apply -k k8s/profiles/public-demo
+kubectl apply -k k8s/profiles/power-user
+
+# from repo root (core only, no optional services)
+kubectl apply -k k8s
+```
+
+### Full manual deploy (any OS)
+```bash
+kubectl create namespace media-dev
+kubectl apply -k k8s/profiles/standard
+kubectl -n media-dev create configmap media-stack-bootstrap-config \
+  --from-file=config.json=contracts/media-stack.config.json --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n media-dev create configmap media-stack-bootstrap-profile \
+  --from-file=profile.yaml=examples/bootstrap-profiles/media-k8s-standard.yaml --dry-run=client -o yaml | kubectl apply -f -
+# Wait for pods to start, then trigger bootstrap:
+kubectl -n media-dev port-forward svc/media-stack-bootstrap 9100:9100 &
+curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
+```
+
+### Advanced deploy scripts
 ```bash
 # installer wizard with profile selection
 bash bin/install.sh --profile full --node-ip <NODE_IP>
@@ -71,21 +117,6 @@ bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 # fully automatic rebuild + bootstrap + smoke test (recommended)
 bash bin/deploy-stack.sh <NODE_IP>
 PROFILE=power-user bash bin/deploy-stack.sh <NODE_IP>
-
-# from repo root
-kubectl apply -k k8s
-
-# if already in k8s/
-kubectl apply -k .
-
-# core + optional + unpackerr manifests together
-kubectl apply -k k8s/all
-
-# profile manifests
-kubectl apply -k k8s/profiles/minimal
-kubectl apply -k k8s/profiles/full
-kubectl apply -k k8s/profiles/public-demo
-kubectl apply -k k8s/profiles/power-user
 ```
 Profile notes:
 - `public-demo` intentionally skips bootstrap in `deploy-stack.sh` and scales downloader automation down.

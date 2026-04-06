@@ -46,13 +46,47 @@ cd mediaserver
 ```
 
 ### Option A: Docker Compose (simplest)
+
+**Linux / macOS:**
 ```bash
 ./deploy-compose.sh
 ```
 
-### Option B: Kubernetes
+**Any OS (cross-platform):**
 ```bash
-./deploy-k8s.sh examples/bootstrap-profiles/media-k8s-standard.yaml
+python deploy.py compose
+```
+
+**Manual (step-by-step):**
+```bash
+docker compose -f docker/docker-compose.yml up -d
+# Wait for bootstrap to be healthy, then trigger:
+curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
+```
+
+### Option B: Kubernetes
+
+**Linux / macOS:**
+```bash
+./deploy-k8s.sh
+```
+
+**Any OS (cross-platform):**
+```bash
+python deploy.py k8s
+```
+
+**Manual (step-by-step):**
+```bash
+kubectl create namespace media-dev
+kubectl apply -k k8s/profiles/standard
+kubectl -n media-dev create configmap media-stack-bootstrap-config \
+  --from-file=config.json=contracts/media-stack.config.json --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n media-dev create configmap media-stack-bootstrap-profile \
+  --from-file=profile.yaml=examples/bootstrap-profiles/media-k8s-standard.yaml --dry-run=client -o yaml | kubectl apply -f -
+# Wait for pods, then trigger bootstrap:
+kubectl -n media-dev port-forward svc/media-stack-bootstrap 9100:9100 &
+curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
 ```
 
 That's it. The deploy script:

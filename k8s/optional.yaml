@@ -283,15 +283,15 @@ spec:
           volumeMounts:
             - {name: config, mountPath: /opt/data}
           readinessProbe:
-            httpGet: {path: /, port: 6246}
+            httpGet: {path: /app/maintainerr/api/settings, port: 6246}
             initialDelaySeconds: 20
             periodSeconds: 15
           livenessProbe:
-            httpGet: {path: /, port: 6246}
+            httpGet: {path: /app/maintainerr/api/settings, port: 6246}
             initialDelaySeconds: 60
             periodSeconds: 30
           startupProbe:
-            httpGet: {path: /, port: 6246}
+            httpGet: {path: /app/maintainerr/api/settings, port: 6246}
             failureThreshold: 60
             periodSeconds: 10
       volumes:

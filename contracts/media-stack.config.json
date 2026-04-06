@@ -1256,7 +1256,7 @@
       "maintainerr.local",
       "tautulli.local",
       "flaresolverr.local",
-      "bootstrap-runner.local",
+      "media-stack-bootstrap.local",
       "recyclarr.local",
       "authelia.local",
       "authentik.local"

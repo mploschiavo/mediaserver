@@ -223,7 +223,7 @@ def _build_config_policy() -> object | None:
 def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = False) -> tuple:
     """Build the bootstrap runner and runtime state from CLI args."""
     servarr_runtime_arr_ops = importlib.import_module(
-        "bootstrap_services.apps.servarr.runtime.arr_ops"
+        "media_stack.services.apps.servarr.runtime.arr_ops"
     )
     build_sab_remote_path_mappings = getattr(
         servarr_runtime_arr_ops,
