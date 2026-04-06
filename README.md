@@ -2,7 +2,13 @@
 
 Declarative, Kubernetes-first media automation platform with Docker Compose runtime support.
 
-This repository treats media infrastructure as code and application behavior as configuration code. A full teardown and rebuild should converge back to the same working state with minimal manual UI work.
+**New here? Start with the [Getting Started guide](GETTING-STARTED.md)** — install, stream your first movie, and connect your TV in under 10 minutes.
+
+```bash
+git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
+./deploy-compose.sh   # Docker Compose
+./deploy-k8s.sh       # Kubernetes
+```
 
 Maintainer:
 - Matthew Loschiavo
