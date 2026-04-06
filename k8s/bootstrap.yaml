@@ -138,14 +138,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: FULLY_PRECONFIGURED
+              value: "1"
+            - name: BOOTSTRAP_API_PORT
+              value: "9100"
             - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
             - name: AUTO_INDEXER_HEARTBEAT_EVERY
               value: "25"
-            - name: FULLY_PRECONFIGURED
-              value: "1"
             - name: BOOTSTRAP_PROFILE_FILE
               value: /profile/profile.yaml
             - name: BOOTSTRAP_CONFIG_FILE
@@ -154,10 +156,13 @@ spec:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py
             - --serve
+            - --auto-run
             - --config
             - /bootstrap-config/config.json
             - --config-root
             - /srv-config
+            - --wait-timeout
+            - "600"
           ports:
             - containerPort: 9100
               name: api
