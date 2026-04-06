@@ -338,87 +338,42 @@ class ComposeBootstrapService:
         project_name: str,
         wait_seconds: int,
     ) -> None:
-        """Run bootstrap via the API server (--serve mode).
+        """Run bootstrap via the existing compose service HTTP API.
 
-        Creates a bootstrap-runner container with --serve --auto-run flags,
-        then polls the /status API endpoint instead of container state.
-        Preflights run inside the container, not on the host.
+        Uses the same flow as K8s: find the running media-stack-bootstrap
+        service, trigger bootstrap via POST /actions/bootstrap, poll /status.
+        The compose service is defined in docker-compose.yml and started by
+        ``docker compose up``.
         """
-        network_name = f"{project_name}_default"
         container_name = f"{project_name}-media-stack-bootstrap"
         api_port = 9100
-        bootstrap_env: dict[str, str] = {
-            "FULLY_PRECONFIGURED": "1" if self.cfg.apply_initial_preferences else "0",
-            "PRECONFIGURE_API_KEYS": "1" if self.cfg.preconfigure_api_keys else "0",
-            "APPLY_INITIAL_PREFERENCES": "1" if self.cfg.apply_initial_preferences else "0",
-            "AUTO_DOWNLOAD_CONTENT": "1" if self.cfg.auto_download_content else "0",
-            "MEDIA_STACK_ENV": str(self.cfg.purpose or "dev"),
-            "BOOTSTRAP_API_PORT": str(api_port),
-            "BOOTSTRAP_RUN_PREFLIGHTS": "1",
-        }
-        for env_name in self.cfg.passthrough_env_vars:
-            key = str(env_name or "").strip()
-            if not key:
-                continue
-            token = str(compose_env.get(key, "")).strip()
-            if token:
-                bootstrap_env[key] = token
-        volumes: dict[str, dict[str, str]] = {
-            str(runtime_cfg_file): {"bind": "/bootstrap/config.json", "mode": "ro"},
-            str(config_root): {"bind": "/srv-config", "mode": "rw"},
-        }
-        stack_root = self._resolve_stack_root(compose_env)
-        if stack_root is not None:
-            volumes[str(stack_root)] = {"bind": "/srv-stack", "mode": "rw"}
-            bootstrap_env.setdefault("DISK_GUARDRAILS_MONITOR_PATH", "/srv-stack")
-        # Mount Docker socket for preflight container operations (restart, logs).
-        docker_sock = "/var/run/docker.sock"
-        if os.path.exists(docker_sock):
-            volumes[docker_sock] = {"bind": docker_sock, "mode": "ro"}
 
+        # Ensure the bootstrap service container is running.
         self.docker.ping()
-        self.docker.ensure_network(network_name)
-        self._prepare_bootstrap_runner_image()
-        self.docker.remove_container(container_name, force=True)
+        api_base = self._resolve_container_api_base(container_name, api_port)
 
+        # Trigger bootstrap action via HTTP (same as deploy-k8s.sh / deploy-compose.sh).
+        self.info(f"Compose bootstrap: triggering via {api_base}/actions/bootstrap")
+        overrides: dict[str, object] = {}
+        if self.cfg.auto_download_content:
+            overrides["auto_download_content"] = True
+        trigger_body = json.dumps(overrides).encode("utf-8")
         try:
-            self.docker.create_container(
-                image=self.cfg.bootstrap_runner_image,
-                name=container_name,
-                detach=True,
-                network=network_name,
-                volumes=volumes,
-                environment=bootstrap_env,
-                labels={
-                    "com.media-stack.operation": "compose-bootstrap-api",
-                    "com.docker.compose.project": project_name,
-                },
-                command=[
-                    "python3",
-                    "/opt/media-stack/scripts/bootstrap-apps.py",
-                    "--serve",
-                    "--auto-run",
-                    "--config",
-                    "/bootstrap/config.json",
-                    "--config-root",
-                    "/srv-config",
-                    "--wait-timeout",
-                    str(wait_seconds),
-                    "--env",
-                    str(self.cfg.purpose or "dev"),
-                ],
-            )
-            self.docker.start_container(container_name)
+            from urllib import request as _request
 
-            # Resolve container IP for API polling.
-            api_base = self._resolve_container_api_base(container_name, api_port)
-            self._poll_api_status(api_base, container_name, wait_seconds)
-        finally:
-            self.docker.remove_container(container_name, force=True)
-            try:
-                runtime_cfg_file.unlink()
-            except Exception:
-                pass
+            req = _request.Request(
+                f"{api_base}/actions/bootstrap",
+                data=trigger_body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with _request.urlopen(req, timeout=10) as resp:
+                self.info(f"Bootstrap trigger response: {resp.read().decode()}")
+        except Exception as exc:
+            self.info(f"Bootstrap trigger warning: {exc}")
+
+        # Poll /status until complete or error (same as K8s flow).
+        self._poll_api_status(api_base, container_name, wait_seconds)
 
     def _resolve_container_api_base(
         self, container_name: str, port: int

@@ -39,60 +39,7 @@ from cli.bootstrap_component_resolver import (
 )
 
 
-def ts() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
-
-
-def info(message: str) -> None:
-    print(f"[{ts()}] [INFO] {message}", flush=True)
-
-
-def warn(message: str) -> None:
-    print(f"[{ts()}] [WARN] {message}", file=sys.stderr, flush=True)
-
-
-def err(message: str) -> None:
-    print(f"[{ts()}] [ERR] {message}", file=sys.stderr, flush=True)
-
-
-@dataclass
-class PhaseTracker:
-    run_start_epoch: int = field(default_factory=lambda: int(time.time()))
-    current_phase: str = ""
-    current_start: int = 0
-    names: list[str] = field(default_factory=list)
-    results: list[str] = field(default_factory=list)
-    seconds: list[int] = field(default_factory=list)
-
-    def start(self, phase_name: str) -> None:
-        self.current_phase = phase_name
-        self.current_start = int(time.time())
-        info(f"[PHASE] START: {phase_name}")
-
-    def end(self, result: str) -> None:
-        now = int(time.time())
-        if self.current_phase:
-            elapsed = now - self.current_start
-            self.names.append(self.current_phase)
-            self.results.append(result)
-            self.seconds.append(elapsed)
-            if result == "ok":
-                info(f"[PHASE] DONE: {self.current_phase} ({elapsed}s)")
-            elif result == "skipped":
-                info(f"[PHASE] SKIP: {self.current_phase} ({elapsed}s)")
-            else:
-                warn(f"[PHASE] FAIL: {self.current_phase} ({elapsed}s)")
-        self.current_phase = ""
-        self.current_start = 0
-
-    def summary(self) -> None:
-        total = int(time.time()) - self.run_start_epoch
-        info(f"Phase Summary (total {total}s)")
-        if not self.names:
-            info("  (no phases recorded)")
-            return
-        for idx, name in enumerate(self.names):
-            info(f"  {name} => {self.results[idx]} ({self.seconds[idx]}s)")
+from cli.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
 
 
 @dataclass(frozen=True)

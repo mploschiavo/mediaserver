@@ -246,33 +246,49 @@ class ProwlarrAutoIndexerRunner:
             )
 
     def recreate_job(self) -> None:
-        self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "delete",
-                "job",
-                "media-stack-prowlarr-auto-indexers",
-                "--ignore-not-found",
-            ],
+        """Trigger auto-indexers via the bootstrap service HTTP API.
+
+        The bootstrap service handles auto-indexer discovery as an action
+        (POST /actions/auto-indexers). This replaces the old pattern of
+        creating a separate K8s Job from a manifest.
+        """
+        info("Triggering auto-indexers via bootstrap service API")
+        pod_name = self._find_bootstrap_pod()
+        if not pod_name:
+            raise KubernetesError(
+                "Bootstrap service pod not found — ensure media-stack-bootstrap "
+                "Deployment is running"
+            )
+        trigger_script = (
+            "import urllib.request; "
+            "req=urllib.request.Request("
+            "'http://127.0.0.1:9100/actions/auto-indexers',"
+            "data=b'{}',"
+            "headers={'Content-Type':'application/json'}); "
+            "r=urllib.request.urlopen(req,timeout=10); "
+            "print(r.read().decode())"
+        )
+        result = self.kube.run(
+            ["-n", self.cfg.namespace, "exec", pod_name, "--",
+             "python3", "-c", trigger_script],
             check=False,
         )
-        info("Creating auto-indexer Job")
-
-        manifest_path = self.cfg.root_dir / "k8s" / "prowlarr-auto-indexers-job.yaml"
-        with TemporaryDirectory(prefix="media-stack-auto-indexer-job-") as tmpdir:
-            patched = Path(tmpdir) / "prowlarr-auto-indexers-job.yaml"
-            patched.write_text(
-                self.manifest_overrides(manifest_path.read_text(encoding="utf-8")),
-                encoding="utf-8",
+        if result.stdout:
+            info(f"Auto-indexer trigger response: {result.stdout.strip()}")
+        if result.returncode != 0:
+            raise KubernetesError(
+                f"Auto-indexer trigger failed: {result.stderr or result.stdout}"
             )
-            result = self.kube.run(["apply", "-f", str(patched)], check=False)
-            if result.stdout.strip():
-                print(result.stdout.rstrip())
-            if result.stderr.strip():
-                print(result.stderr.rstrip(), file=sys.stderr)
-            if result.returncode != 0:
-                raise KubernetesError(result.stderr or result.stdout)
+
+    def _find_bootstrap_pod(self) -> str | None:
+        result = self.kube.run(
+            ["-n", self.cfg.namespace, "get", "pods",
+             "-l", "app=media-stack-bootstrap",
+             "-o", "jsonpath={.items[0].metadata.name}"],
+            check=False,
+        )
+        name = (result.stdout or "").strip()
+        return name if name and result.returncode == 0 else None
 
     def _get_job(self, job_name: str) -> dict[str, Any] | None:
         result = self.kube.run(

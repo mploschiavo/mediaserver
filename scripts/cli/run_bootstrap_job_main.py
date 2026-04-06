@@ -61,60 +61,7 @@ from cli.run_bootstrap_job_cli_config_service import (
 )
 
 
-def ts() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
-
-
-def info(message: str) -> None:
-    print(f"[{ts()}] [INFO] {message}", flush=True)
-
-
-def warn(message: str) -> None:
-    print(f"[{ts()}] [WARN] {message}", file=sys.stderr, flush=True)
-
-
-def err(message: str) -> None:
-    print(f"[{ts()}] [ERR] {message}", file=sys.stderr, flush=True)
-
-
-@dataclass
-class PhaseTracker:
-    run_start_epoch: int = field(default_factory=lambda: int(time.time()))
-    current_phase: str = ""
-    current_phase_start: int = 0
-    phase_names: list[str] = field(default_factory=list)
-    phase_results: list[str] = field(default_factory=list)
-    phase_seconds: list[int] = field(default_factory=list)
-
-    def start(self, phase_name: str) -> None:
-        self.current_phase = phase_name
-        self.current_phase_start = int(time.time())
-        info(f"[PHASE] START: {phase_name}")
-
-    def end(self, result: str = "ok") -> None:
-        now = int(time.time())
-        if self.current_phase and self.current_phase_start > 0:
-            elapsed = now - self.current_phase_start
-            self.phase_names.append(self.current_phase)
-            self.phase_results.append(result)
-            self.phase_seconds.append(elapsed)
-            if result == "ok":
-                info(f"[PHASE] DONE: {self.current_phase} ({elapsed}s)")
-            elif result == "skipped":
-                info(f"[PHASE] SKIP: {self.current_phase} ({elapsed}s)")
-            else:
-                warn(f"[PHASE] FAIL: {self.current_phase} ({elapsed}s)")
-        self.current_phase = ""
-        self.current_phase_start = 0
-
-    def print_summary(self) -> None:
-        total = int(time.time()) - self.run_start_epoch
-        info(f"Phase Summary (total {total}s)")
-        if not self.phase_names:
-            info("  (no phases recorded)")
-            return
-        for idx, name in enumerate(self.phase_names):
-            info(f"  {name} => {self.phase_results[idx]} ({self.phase_seconds[idx]}s)")
+from cli.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
 
 
 class RunBootstrapJobRunner:
