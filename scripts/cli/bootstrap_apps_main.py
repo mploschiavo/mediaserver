@@ -428,9 +428,12 @@ def _action_envoy_config(args: argparse.Namespace, state: object) -> None:
     from cli.generate_envoy_config_main import main as generate_envoy_config
 
     # Set env vars expected by the envoy config generator.
+    # On K8s, Envoy listens on non-privileged 8080; on compose, it listens on 80.
+    is_k8s = bool(os.environ.get("K8S_NAMESPACE"))
+    default_listener_port = "8080" if is_k8s else "80"
     os.environ.setdefault("COMPOSE_FILE", "/dev/null")
     os.environ.setdefault("CONFIG_ROOT", args.config_root)
-    os.environ.setdefault("ENVOY_LISTENER_PORT", "8080")
+    os.environ.setdefault("ENVOY_LISTENER_PORT", default_listener_port)
     runtime_platform.log("[INFO] Generating Envoy config")
     generate_envoy_config()
     runtime_platform.log("[OK] Envoy config written")

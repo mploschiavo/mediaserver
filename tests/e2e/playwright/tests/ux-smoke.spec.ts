@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 const nodeIp = process.env.STACK_NODE_IP || '';
 const ingressPort = process.env.STACK_INGRESS_PORT || '80';
 const ingressPortSuffix = ingressPort === '80' ? '' : `:${ingressPort}`;
+const jellyfinHost = process.env.STACK_JELLYFIN_HOST || 'jellyfin.media-stack.local';
 const testSkipReason =
   nodeIp.length === 0
     ? 'STACK_NODE_IP is not set; export STACK_NODE_IP=<cluster node ip> before running Playwright UX smoke tests.'
@@ -42,7 +43,7 @@ test.describe('UX smoke checks', () => {
 
   test('Jellyfin web shell renders', async ({ request }) => {
     const response = await request.get(`http://${nodeIp}${ingressPortSuffix}/web/index.html`, {
-      headers: { Host: 'jellyfin.local' },
+      headers: { Host: jellyfinHost },
       maxRedirects: 1,
     });
     expect([200, 304]).toContain(response.status());
@@ -78,11 +79,14 @@ test.describe('Compose path-prefix smoke checks', () => {
 
   const gatewayBase = `http://${gatewayIp}:${edgePort}`;
   const hostHeader = { Host: gatewayHost };
+  // Jellyseerr (Next.js) sends gzip with chunked transfer-encoding which can
+  // corrupt the stream through Envoy. Request uncompressed to avoid this.
+  const jellyseerrHeaders = { ...hostHeader, 'Accept-Encoding': 'identity' };
 
   test('Jellyseerr /app/jellyseerr root does not escape base path', async ({ request }) => {
     // Follow redirects: the final URL must remain under /app/jellyseerr.
     const response = await request.get(`${gatewayBase}/app/jellyseerr`, {
-      headers: hostHeader,
+      headers: jellyseerrHeaders,
       maxRedirects: 5,
     });
     expect([200, 304]).toContain(response.status());
@@ -98,7 +102,7 @@ test.describe('Compose path-prefix smoke checks', () => {
   test('Jellyseerr /app/jellyseerr/login is directly reachable', async ({ request }) => {
     // With BASE_URL set, /app/jellyseerr/login must be a valid route — not a 404.
     const response = await request.get(`${gatewayBase}/app/jellyseerr/login`, {
-      headers: hostHeader,
+      headers: jellyseerrHeaders,
       maxRedirects: 3,
     });
     expect(
@@ -122,7 +126,7 @@ test.describe('Compose path-prefix smoke checks', () => {
 
   test('Jellyseerr first-party static assets are reachable via base path', async ({ request }) => {
     const mainResponse = await request.get(`${gatewayBase}/app/jellyseerr`, {
-      headers: hostHeader,
+      headers: jellyseerrHeaders,
       maxRedirects: 5,
     });
     expect([200, 304]).toContain(mainResponse.status());

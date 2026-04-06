@@ -3,11 +3,14 @@ import { expect, test } from '@playwright/test';
 const nodeIp = process.env.STACK_NODE_IP || '';
 const ingressPort = process.env.STACK_INGRESS_PORT || '80';
 const portSuffix = ingressPort === '80' ? '' : `:${ingressPort}`;
+// Jellyfin gets a "direct host" derived from the stack name (e.g. jellyfin.media-stack.local).
+// Override via STACK_JELLYFIN_HOST if your profile uses a different host.
+const jellyfinHost = process.env.STACK_JELLYFIN_HOST || 'jellyfin.media-stack.local';
 const hostCsv =
   process.env.STACK_HOSTS ||
   [
     'homepage.local',
-    'jellyfin.local',
+    jellyfinHost,
     'jellyseerr.local',
     'sonarr.local',
     'radarr.local',
@@ -48,9 +51,9 @@ test.describe('Ingress host routing', () => {
     });
   }
 
-  test('jellyfin.local should not redirect to startup wizard path', async ({ request }) => {
-    const response = await request.get(`http://${nodeIp}/`, {
-      headers: { Host: 'jellyfin.local' },
+  test('jellyfin should not redirect to startup wizard path', async ({ request }) => {
+    const response = await request.get(`http://${nodeIp}${portSuffix}/`, {
+      headers: { Host: jellyfinHost },
       maxRedirects: 0,
     });
     const location = response.headers()['location'] || '';
