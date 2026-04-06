@@ -483,7 +483,7 @@ def _run_serve(args: argparse.Namespace) -> None:
     The server stays alive indefinitely, processing actions from a queue.
     Actions are triggered via POST /actions/{name} or POST /run.
     """
-    from bootstrap_api.server import start_api_server
+    from bootstrap_api.server import _fire_webhooks, start_api_server
     from bootstrap_api.state import BootstrapState
 
     # Load profile if available (ConfigMap may not be mounted yet on first start).
@@ -505,14 +505,37 @@ def _run_serve(args: argparse.Namespace) -> None:
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
     action_queue: queue.Queue[tuple[str, dict]] = queue.Queue()
     action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
+    max_retries = int(os.environ.get("BOOTSTRAP_ACTION_MAX_RETRIES", "0"))
 
     def action_trigger(action_name: str, overrides: dict) -> None:
         action_queue.put((action_name, overrides))
 
-    server = start_api_server(state, port=port, action_trigger=action_trigger)
+    # Wrap runtime_platform.log to also feed the SSE ring buffer.
+    _original_log = runtime_platform.log
+
+    def _instrumented_log(msg: str) -> None:
+        _original_log(msg)
+        state.append_log(msg)
+
+    runtime_platform.log = _instrumented_log
+
+    def reload_config() -> None:
+        """Reload profile YAML and re-apply env vars."""
+        pf = os.environ.get("BOOTSTRAP_PROFILE_FILE")
+        if pf:
+            from bootstrap_api.preflight.profile_validation import validate_profile
+
+            validate_profile(pf, log=runtime_platform.log)
+            _apply_profile_env(pf)
+        runtime_platform.log("[OK] Config reloaded from profile")
+
+    server = start_api_server(
+        state, port=port, action_trigger=action_trigger, reload_config=reload_config,
+    )
     runtime_platform.log(f"[INFO] Bootstrap service listening on :{port}")
     runtime_platform.log(f"[INFO] Dashboard: http://127.0.0.1:{port}/")
     runtime_platform.log(f"[INFO] Actions: POST /actions/{{name}} | GET /status")
+    runtime_platform.log(f"[INFO] SSE log stream: GET /logs/stream")
 
     if args.auto_run:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
@@ -527,42 +550,79 @@ def _run_serve(args: argparse.Namespace) -> None:
             server.shutdown()
             return
 
-        action_record = state.start_action(
-            action_name, overrides=overrides, timeout_seconds=action_timeout
-        )
-        runtime_platform.log(
-            f"[ACTION] {action_name} [{action_record.id}]: dispatching "
-            f"(timeout={action_timeout}s)"
-        )
+        # Retry support: allow per-action retry via override or env default.
+        retry_limit = int(overrides.pop("retry", max_retries))
+        attempt = 0
 
-        try:
-            _dispatch_action(action_name, overrides, args, state)
-            state.finish_action()
+        while True:
+            attempt += 1
+            action_record = state.start_action(
+                action_name, overrides=overrides, timeout_seconds=action_timeout
+            )
+            suffix = f" (attempt {attempt}/{retry_limit + 1})" if retry_limit > 0 else ""
+            runtime_platform.log(
+                f"[ACTION] {action_name} [{action_record.id}]: dispatching "
+                f"(timeout={action_timeout}s){suffix}"
+            )
 
-            # Mark initial bootstrap done on first successful bootstrap.
-            if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                state.initial_bootstrap_done = True
-                runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
+            try:
+                _dispatch_action(action_name, overrides, args, state)
+                state.finish_action()
 
-                # Auto-generate envoy config after first bootstrap.
-                runtime_platform.log("[INFO] Auto-queuing envoy-config after bootstrap")
-                action_queue.put(("envoy-config", {}))
+                # Fire webhooks on success.
+                _fire_webhooks(state, "action_complete", {
+                    "action": action_name,
+                    "status": "complete",
+                    "elapsed_seconds": action_record.elapsed_seconds,
+                })
 
-        except Exception as exc:
-            state.finish_action(error=str(exc))
-            runtime_platform.log(f"[ERR] Action {action_name} failed: {exc}")
-            trace = traceback.format_exc().strip()
-            if trace:
-                for line in trace.splitlines():
-                    runtime_platform.log(f"[TRACE] {line}")
+                # Mark initial bootstrap done on first successful bootstrap.
+                if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                    state.initial_bootstrap_done = True
+                    runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
 
-            # Still mark initial bootstrap done if it was the bootstrap action
-            # and the error was in post-bootstrap (apps were configured).
-            if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                state.initial_bootstrap_done = True
-                runtime_platform.log(
-                    "[WARN] Initial bootstrap had errors but service is marked ready"
-                )
+                    # Auto-generate envoy config after first bootstrap.
+                    runtime_platform.log("[INFO] Auto-queuing envoy-config after bootstrap")
+                    action_queue.put(("envoy-config", {}))
+
+                break  # Success — exit retry loop.
+
+            except Exception as exc:
+                state.finish_action(error=str(exc))
+                runtime_platform.log(f"[ERR] Action {action_name} failed: {exc}")
+                trace = traceback.format_exc().strip()
+                if trace:
+                    for line in trace.splitlines():
+                        runtime_platform.log(f"[TRACE] {line}")
+
+                # Still mark initial bootstrap done if it was the bootstrap action
+                # and the error was in post-bootstrap (apps were configured).
+                if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                    state.initial_bootstrap_done = True
+                    runtime_platform.log(
+                        "[WARN] Initial bootstrap had errors but service is marked ready"
+                    )
+
+                # Retry if attempts remain.
+                if attempt <= retry_limit:
+                    delay = min(10.0, 2.0 ** (attempt - 1))
+                    runtime_platform.log(
+                        f"[RETRY] {action_name}: retrying in {delay:.0f}s "
+                        f"(attempt {attempt}/{retry_limit + 1})"
+                    )
+                    import time as _time
+
+                    _time.sleep(delay)
+                    continue
+
+                # Fire webhooks on final failure.
+                _fire_webhooks(state, "action_error", {
+                    "action": action_name,
+                    "status": "error",
+                    "error": str(exc),
+                    "elapsed_seconds": action_record.elapsed_seconds,
+                })
+                break  # Exhausted retries.
 
 
 # ---------------------------------------------------------------------------

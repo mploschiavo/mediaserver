@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from .enums import RunnerEvent
@@ -80,18 +81,21 @@ def _resolve_step_args(
 
 def _resolve_steps_for_phase(
     plan_cfg: dict[str, Any], phase_name: str
-) -> tuple[list[dict[str, Any]], str]:
+) -> tuple[list[dict[str, Any]], str, bool]:
     phase_cfg = plan_cfg.get(phase_name)
     if isinstance(phase_cfg, list):
-        return [item for item in phase_cfg if isinstance(item, dict)], ""
+        return [item for item in phase_cfg if isinstance(item, dict)], "", False
     if not isinstance(phase_cfg, dict):
-        return [], ""
+        return [], "", False
     steps = phase_cfg.get("steps")
+    parallel = bool(phase_cfg.get("parallel", False))
     if not isinstance(steps, list):
-        return [], str(phase_cfg.get("complete_message") or "").strip()
-    return [item for item in steps if isinstance(item, dict)], str(
-        phase_cfg.get("complete_message") or ""
-    ).strip()
+        return [], str(phase_cfg.get("complete_message") or "").strip(), parallel
+    return (
+        [item for item in steps if isinstance(item, dict)],
+        str(phase_cfg.get("complete_message") or "").strip(),
+        parallel,
+    )
 
 
 def _resolve_step_event_and_handler(step_cfg: dict[str, Any]) -> tuple[str, str]:
@@ -111,6 +115,64 @@ def _resolve_step_event_and_handler(step_cfg: dict[str, Any]) -> tuple[str, str]
     return event_key, handler_raw
 
 
+def _resolve_step_callable(
+    step: dict[str, Any],
+    *,
+    runtime: Any,
+    invoke: InvokeEventFn,
+    run_optional_step: RunOptionalStepFn,
+    resolved_tokens: dict[str, str],
+) -> Callable[[], None] | None:
+    """Resolve a single step config into a callable (or None if disabled/skipped)."""
+    event_name, handler_name = _resolve_step_event_and_handler(step)
+    if not event_name or not handler_name:
+        return None
+    args = _resolve_step_args(runtime, step, arg_token_attrs=resolved_tokens)
+
+    enabled = bool(step.get("enabled", True))
+    enabled_attr = str(step.get("enabled_attr") or "").strip()
+    if enabled_attr:
+        enabled = _resolve_runtime_bool_attr(runtime, enabled_attr, False)
+    enabled_when_attr = str(step.get("enabled_when_attr") or "").strip()
+    if enabled_when_attr:
+        enabled = enabled and _has_runtime_value(runtime, enabled_when_attr)
+
+    required = bool(step.get("required", False))
+    required_attr = str(step.get("required_attr") or "").strip()
+    if required_attr:
+        required = _resolve_runtime_bool_attr(runtime, required_attr, False)
+
+    use_optional = bool(step.get("optional", False)) or bool(enabled_attr or required_attr)
+    if use_optional:
+        warning_message = str(step.get("warning_message") or "").strip()
+        if not warning_message:
+            warning_message = (
+                f"[WARN] Runner handler '{handler_name}' skipped. "
+                "Set corresponding *.required=true to fail the bootstrap instead."
+            )
+
+        def _run_optional(
+            evt=event_name, key=handler_name, op_args=args,
+            _en=enabled, _req=required, _msg=warning_message,
+        ) -> None:
+            run_optional_step(
+                enabled=_en,
+                required=_req,
+                action=lambda: invoke(evt, key, *op_args),
+                warning_message=_msg,
+            )
+
+        return _run_optional
+
+    if not enabled:
+        return None
+
+    def _run_step(evt=event_name, key=handler_name, op_args=args) -> None:
+        invoke(evt, key, *op_args)
+
+    return _run_step
+
+
 def run_phase_plan(
     *,
     runtime: Any,
@@ -126,9 +188,13 @@ def run_phase_plan(
 
     The plan format mirrors media-server operation plans so behavior remains
     declarative and technology-specific choices stay in config.
+
+    When the phase config sets ``"parallel": true``, all resolved steps
+    execute concurrently via ThreadPoolExecutor.  Otherwise they run
+    sequentially (the original behaviour).
     """
 
-    steps, complete_message = _resolve_steps_for_phase(plan_cfg, phase_name)
+    steps, complete_message, parallel = _resolve_steps_for_phase(plan_cfg, phase_name)
     if not steps:
         return False
 
@@ -144,49 +210,38 @@ def run_phase_plan(
 
     resolved_tokens = arg_token_attrs or DEFAULT_ARG_TOKEN_ATTRS
 
+    # Resolve all steps into callables.
+    callables: list[tuple[str, Callable[[], None]]] = []
     for step in steps:
-        event_name, handler_name = _resolve_step_event_and_handler(step)
-        if not event_name or not handler_name:
-            continue
-        args = _resolve_step_args(runtime, step, arg_token_attrs=resolved_tokens)
+        handler_name = str(step.get("handler") or step.get("operation") or "?")
+        fn = _resolve_step_callable(
+            step,
+            runtime=runtime,
+            invoke=invoke,
+            run_optional_step=run_optional_step,
+            resolved_tokens=resolved_tokens,
+        )
+        if fn is not None:
+            callables.append((handler_name, fn))
 
-        enabled = bool(step.get("enabled", True))
-        enabled_attr = str(step.get("enabled_attr") or "").strip()
-        if enabled_attr:
-            enabled = _resolve_runtime_bool_attr(runtime, enabled_attr, False)
-        enabled_when_attr = str(step.get("enabled_when_attr") or "").strip()
-        if enabled_when_attr:
-            enabled = enabled and _has_runtime_value(runtime, enabled_when_attr)
-
-        required = bool(step.get("required", False))
-        required_attr = str(step.get("required_attr") or "").strip()
-        if required_attr:
-            required = _resolve_runtime_bool_attr(runtime, required_attr, False)
-
-        use_optional = bool(step.get("optional", False)) or bool(enabled_attr or required_attr)
-        if use_optional:
-            warning_message = str(step.get("warning_message") or "").strip()
-            if not warning_message:
-                warning_message = (
-                    f"[WARN] Runner handler '{handler_name}' skipped. "
-                    "Set corresponding *.required=true to fail the bootstrap instead."
-                )
-            run_optional_step(
-                enabled=enabled,
-                required=required,
-                action=lambda evt=event_name, key=handler_name, op_args=args: invoke(
-                    evt,
-                    key,
-                    *op_args,
-                ),
-                warning_message=warning_message,
+    if parallel and len(callables) > 1:
+        log(f"[INFO] Phase '{phase_name}': running {len(callables)} steps in parallel")
+        errors: list[str] = []
+        with ThreadPoolExecutor(max_workers=min(6, len(callables))) as pool:
+            futures = {pool.submit(fn): name for name, fn in callables}
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    errors.append(f"{name}: {exc}")
+        if errors:
+            raise RuntimeError(
+                f"Phase '{phase_name}' had parallel step failures: {'; '.join(errors)}"
             )
-            continue
-
-        if not enabled:
-            continue
-
-        invoke(event_name, handler_name, *args)
+    else:
+        for _, fn in callables:
+            fn()
 
     if complete_message:
         log(complete_message)

@@ -70,7 +70,21 @@ class DownloadClientPipelineService:
             invoke_handler=self._dispatch_invoke,
         )
 
+    def _run_adapter_pipeline(
+        self, adapter_factory: DownloadClientAdapterFactory, key: str, context: DownloadClientAdapterContext,
+    ) -> dict[str, Any]:
+        """Run the full adapter lifecycle: load → precheck → prepare → configure → ensure → status."""
+        adapter = adapter_factory.create(key, context)
+        adapter.load()
+        adapter.precheck()
+        adapter.prepare()
+        adapter.configure()
+        adapter.ensure()
+        return adapter.status_check()
+
     def run_prepare(self, inputs: DownloadClientPipelineInputs) -> DownloadClientPipelineResult:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         adapter_factory = DownloadClientAdapterFactory(
             deps=self._dependencies(),
             adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get(
@@ -80,7 +94,10 @@ class DownloadClientPipelineService:
 
         torrent_key = str(inputs.torrent_client_key or "").strip().lower()
         usenet_key = str(inputs.usenet_client_key or "").strip().lower()
-        torrent_status: dict[str, Any] = {}
+
+        futures: dict[Any, str] = {}
+        clients_to_run = []
+
         if torrent_key:
             torrent_context = DownloadClientAdapterContext(
                 key=torrent_key,
@@ -96,15 +113,8 @@ class DownloadClientPipelineService:
                 username=inputs.qbit_username,
                 password=inputs.qbit_password,
             )
-            torrent_adapter = adapter_factory.create(torrent_key, torrent_context)
-            torrent_adapter.load()
-            torrent_adapter.precheck()
-            torrent_adapter.prepare()
-            torrent_adapter.configure()
-            torrent_adapter.ensure()
-            torrent_status = torrent_adapter.status_check()
+            clients_to_run.append(("torrent", torrent_key, torrent_context))
 
-        sab_status: dict[str, Any] = {}
         if usenet_key:
             sab_context = DownloadClientAdapterContext(
                 key=usenet_key,
@@ -116,13 +126,25 @@ class DownloadClientPipelineService:
                 fully_preconfigured=inputs.fully_preconfigured,
                 configure_arr_clients=inputs.configure_sab_arr_clients,
             )
-            sab_adapter = adapter_factory.create(usenet_key, sab_context)
-            sab_adapter.load()
-            sab_adapter.precheck()
-            sab_adapter.prepare()
-            sab_adapter.configure()
-            sab_adapter.ensure()
-            sab_status = sab_adapter.status_check()
+            clients_to_run.append(("usenet", usenet_key, sab_context))
+
+        results: dict[str, dict[str, Any]] = {}
+
+        if len(clients_to_run) > 1:
+            self.log("[INFO] Preparing download clients in parallel...")
+            with ThreadPoolExecutor(max_workers=len(clients_to_run)) as pool:
+                for label, key, ctx in clients_to_run:
+                    future = pool.submit(self._run_adapter_pipeline, adapter_factory, key, ctx)
+                    futures[future] = label
+                for future in as_completed(futures):
+                    label = futures[future]
+                    results[label] = future.result()
+        else:
+            for label, key, ctx in clients_to_run:
+                results[label] = self._run_adapter_pipeline(adapter_factory, key, ctx)
+
+        torrent_status = results.get("torrent", {})
+        sab_status = results.get("usenet", {})
 
         return DownloadClientPipelineResult(
             qbit_login_ok=bool(torrent_status.get("login_ok", False)),

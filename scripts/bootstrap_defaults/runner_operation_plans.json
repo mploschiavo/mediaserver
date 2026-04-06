@@ -18,6 +18,7 @@
     ]
   },
   "post_servarr_pre_media_steps": {
+    "parallel": true,
     "steps": [
       {
         "event": "ENSURE",
@@ -46,6 +47,7 @@
     ]
   },
   "post_servarr_post_media_steps": {
+    "parallel": true,
     "steps": [
       {
         "event": "ENSURE",

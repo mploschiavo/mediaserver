@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import enum
 import threading
 import time
@@ -112,6 +113,19 @@ class BootstrapState:
     current_action: ActionRecord | None = None
     action_history: list[ActionRecord] = field(default_factory=list)
 
+    # Runtime config overrides (persisted across actions, togglable via /config).
+    runtime_config: dict[str, Any] = field(default_factory=dict)
+
+    # Log ring buffer for SSE streaming.
+    _log_buffer: collections.deque = field(
+        default_factory=lambda: collections.deque(maxlen=2000), repr=False
+    )
+    _log_seq: int = field(default=0, repr=False)
+    _log_event: threading.Event = field(default_factory=threading.Event, repr=False)
+
+    # Webhook URLs notified on action completion/error.
+    webhook_urls: list[str] = field(default_factory=list)
+
     # --- legacy single-run interface (used by first bootstrap via _run_serve) ---
 
     def start(self) -> None:
@@ -212,6 +226,45 @@ class BootstrapState:
                     return record
             return None
 
+    # --- log streaming ---
+
+    def append_log(self, line: str) -> None:
+        """Append a log line to the ring buffer and notify SSE waiters."""
+        with self._lock:
+            self._log_seq += 1
+            self._log_buffer.append((self._log_seq, time.time(), line))
+            self._log_event.set()
+            self._log_event.clear()
+
+    def get_logs_since(self, after_seq: int = 0) -> list[tuple[int, float, str]]:
+        """Return log entries with sequence > after_seq."""
+        with self._lock:
+            return [(seq, ts, msg) for seq, ts, msg in self._log_buffer if seq > after_seq]
+
+    @property
+    def log_seq(self) -> int:
+        return self._log_seq
+
+    def wait_for_log(self, timeout: float = 30.0) -> bool:
+        """Block until a new log line is appended (or timeout)."""
+        return self._log_event.wait(timeout)
+
+    # --- runtime config ---
+
+    def set_config(self, key: str, value: Any) -> None:
+        with self._lock:
+            self.runtime_config[key] = value
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        with self._lock:
+            return self.runtime_config.get(key, default)
+
+    def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """Merge updates into runtime_config, return the full config."""
+        with self._lock:
+            self.runtime_config.update(updates)
+            return dict(self.runtime_config)
+
     # --- serialization ---
 
     def to_dict(self) -> dict[str, Any]:
@@ -231,6 +284,8 @@ class BootstrapState:
                 "app_status": dict(self.app_status),
                 "run_overrides": dict(self.run_overrides),
                 "initial_bootstrap_done": self.initial_bootstrap_done,
+                "runtime_config": dict(self.runtime_config),
+                "webhook_urls": list(self.webhook_urls),
                 "current_action": self.current_action.to_dict() if self.current_action else None,
                 "action_history": [a.to_dict() for a in self.action_history],
             }

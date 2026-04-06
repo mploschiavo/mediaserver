@@ -7,6 +7,8 @@ import logging
 import signal
 import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
@@ -15,6 +17,23 @@ from .state import BootstrapState
 logger = logging.getLogger("bootstrap_api")
 
 ActionTriggerFn = Callable[[str, dict[str, Any]], None]
+
+
+def _fire_webhooks(state: BootstrapState, event: str, payload: dict[str, Any]) -> None:
+    """POST JSON to all registered webhook URLs (fire-and-forget)."""
+    urls = list(state.webhook_urls)
+    if not urls:
+        return
+    body = json.dumps({"event": event, **payload}, default=str).encode("utf-8")
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url, data=body, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=8)
+        except Exception as exc:
+            logger.debug("Webhook delivery failed for %s: %s", url, exc)
 
 KNOWN_ACTIONS = frozenset({
     "bootstrap",
@@ -135,6 +154,7 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
 
     state: BootstrapState
     action_trigger: ActionTriggerFn | None = None
+    reload_config: Callable[[], None] | None = None
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -165,28 +185,68 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    def _sse_response(self) -> None:
+        """Send Server-Sent Events stream of log lines."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        # Parse ?after_seq=N from query string.
+        after_seq = 0
+        if "?" in self.path:
+            qs = self.path.split("?", 1)[1]
+            for part in qs.split("&"):
+                if part.startswith("after_seq="):
+                    try:
+                        after_seq = int(part.split("=", 1)[1])
+                    except ValueError:
+                        pass
+
+        try:
+            while True:
+                entries = self.state.get_logs_since(after_seq)
+                for seq, ts, msg in entries:
+                    ts_str = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts))
+                    data = json.dumps({"seq": seq, "ts": ts_str, "msg": msg})
+                    self.wfile.write(f"id: {seq}\ndata: {data}\n\n".encode())
+                    after_seq = seq
+                self.wfile.flush()
+                # Block until next log line or timeout (long-poll).
+                self.state.wait_for_log(timeout=30.0)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/healthz":
+        path = self.path.split("?")[0]  # strip query string for routing
+
+        if path == "/healthz":
             self._json_response(200, {"status": "ok"})
-        elif self.path == "/readyz":
-            # Service is ready as soon as it's listening — actions are triggered via HTTP.
+        elif path == "/readyz":
             self._json_response(200, {
                 "status": "ready",
                 "initial_bootstrap_done": self.state.initial_bootstrap_done,
                 "phase": self.state.phase,
             })
-        elif self.path == "/status":
+        elif path == "/status":
             self._json_response(200, self.state.to_dict())
-        elif self.path == "/apps":
+        elif path == "/apps":
             self._json_response(200, {"apps": dict(self.state.app_status)})
-        elif self.path.startswith("/apps/") and self.path.count("/") == 2:
-            app_name = self.path.split("/")[2]
+        elif path.startswith("/apps/") and path.count("/") == 2:
+            app_name = path.split("/")[2]
             info = self.state.app_status.get(app_name)
             if info:
                 self._json_response(200, {app_name: info})
             else:
                 self._json_response(404, {"error": f"app '{app_name}' not found"})
-        elif self.path == "/" or self.path == "/dashboard":
+        elif path == "/config":
+            self._json_response(200, {"config": dict(self.state.runtime_config)})
+        elif path == "/webhooks":
+            self._json_response(200, {"webhook_urls": list(self.state.webhook_urls)})
+        elif path == "/logs/stream":
+            self._sse_response()
+        elif path == "/" or path == "/dashboard":
             self._html_response(200, _DASHBOARD_HTML)
         else:
             self._json_response(404, {"error": "not found"})
@@ -206,6 +266,42 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 )
                 return
             self._handle_action(action_name)
+            return
+
+        # POST /config — update runtime config toggles
+        if self.path == "/config":
+            body = self._read_json_body()
+            if not body:
+                self._json_response(400, {"error": "JSON body required"})
+                return
+            updated = self.state.update_config(body)
+            logger.info("Config updated: %s", body)
+            self._json_response(200, {"status": "updated", "config": updated})
+            return
+
+        # POST /webhooks — register a webhook URL
+        if self.path == "/webhooks":
+            body = self._read_json_body()
+            url = str(body.get("url", "")).strip()
+            if not url:
+                self._json_response(400, {"error": "url field required"})
+                return
+            if url not in self.state.webhook_urls:
+                self.state.webhook_urls.append(url)
+            logger.info("Webhook registered: %s", url)
+            self._json_response(200, {"status": "registered", "webhook_urls": list(self.state.webhook_urls)})
+            return
+
+        # POST /reload — reload profile and apply config policy
+        if self.path == "/reload":
+            if self.reload_config is not None:
+                try:
+                    self.reload_config()
+                    self._json_response(200, {"status": "reloaded"})
+                except Exception as exc:
+                    self._json_response(500, {"error": f"reload failed: {exc}"})
+            else:
+                self._json_response(503, {"error": "no reload handler configured"})
             return
 
         # POST /reset — reset state for re-run
@@ -250,6 +346,16 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 self.state.cancel_action()
                 self._json_response(200, {"status": "cancel_requested", "action": action.to_dict()})
             return
+        # DELETE /webhooks — remove a webhook URL (pass {"url": "..."} in body)
+        if self.path == "/webhooks":
+            body = self._read_json_body()
+            url = str(body.get("url", "")).strip()
+            if url in self.state.webhook_urls:
+                self.state.webhook_urls.remove(url)
+                self._json_response(200, {"status": "removed", "webhook_urls": list(self.state.webhook_urls)})
+            else:
+                self._json_response(404, {"error": "webhook URL not found"})
+            return
         self._json_response(404, {"error": "not found"})
 
     def _handle_action(self, action_name: str) -> None:
@@ -268,9 +374,14 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             self._json_response(503, {"error": "no action trigger configured"})
             return
         overrides = self._read_json_body()
-        logger.info("Action accepted: %s (overrides=%s)", action_name, overrides)
-        self.action_trigger(action_name, overrides)
-        self._json_response(202, {"status": "accepted", "action": action_name, "overrides": overrides})
+        # Merge runtime_config as defaults (explicit overrides take precedence).
+        merged = {**self.state.runtime_config, **overrides}
+        logger.info("Action accepted: %s (overrides=%s)", action_name, merged)
+        self.action_trigger(action_name, merged)
+        self._json_response(202, {"status": "accepted", "action": action_name, "overrides": merged})
+
+
+ReloadConfigFn = Callable[[], None]
 
 
 def start_api_server(
@@ -278,14 +389,16 @@ def start_api_server(
     *,
     port: int = 9100,
     action_trigger: ActionTriggerFn | None = None,
+    reload_config: ReloadConfigFn | None = None,
 ) -> ThreadingHTTPServer:
     """Start the bootstrap API HTTP server on a daemon thread."""
 
-    handler_class = type(
-        "BoundHandler",
-        (BootstrapAPIHandler,),
-        {"state": state, "action_trigger": staticmethod(action_trigger) if action_trigger else None},
-    )
+    attrs: dict[str, Any] = {"state": state}
+    if action_trigger:
+        attrs["action_trigger"] = staticmethod(action_trigger)
+    if reload_config:
+        attrs["reload_config"] = staticmethod(reload_config)
+    handler_class = type("BoundHandler", (BootstrapAPIHandler,), attrs)
 
     server = ThreadingHTTPServer(("0.0.0.0", port), handler_class)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

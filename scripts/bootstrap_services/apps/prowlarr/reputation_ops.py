@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -210,7 +212,11 @@ def auto_add_tested_indexers(
         "yes",
         "on",
     )
+    parallel_workers = int(os.environ.get("AUTO_INDEXER_PARALLEL_WORKERS", "4"))
+    parallel_workers = max(1, parallel_workers)
 
+    # Thread-safe counters.
+    _stats_lock = threading.Lock()
     scanned = 0
     attempted = 0
     added = 0
@@ -220,35 +226,35 @@ def auto_add_tested_indexers(
     failed_create = 0
     quarantined_now = 0
     skipped_quarantined = 0
+    untested_fallback_added = 0
 
-    for candidate in candidates:
-        payload = service.build_indexer_payload(candidate)
-        impl = payload.get("implementation")
-        name = payload.get("name")
-        if not impl or not name:
-            continue
+    def _test_and_add_candidate(payload: dict[str, Any], impl: str, name: str) -> None:
+        """Test and optionally add a single indexer candidate (thread-safe)."""
+        nonlocal scanned, attempted, added, skipped_existing, skipped_excluded
+        nonlocal skipped_test, failed_create, quarantined_now, skipped_quarantined
+        nonlocal untested_fallback_added
 
-        scanned += 1
+        with _stats_lock:
+            scanned += 1
+            _scanned = scanned
+
         key = (impl, name)
-        if key in existing_keys:
-            skipped_existing += 1
-            if scanned % heartbeat_every == 0:
-                service.log(
-                    "[WAIT] Auto indexer progress: "
-                    f"scanned={scanned}/{len(candidates)}, attempted={attempted}, "
-                    f"added={added}, skipped_existing={skipped_existing}, "
-                    f"skipped_test={skipped_test}, failed_create={failed_create}"
-                )
-            continue
+        with _stats_lock:
+            if key in existing_keys:
+                skipped_existing += 1
+                return
 
-        attempted += 1
+        with _stats_lock:
+            attempted += 1
+
         if exclude_tokens:
             name_lc = str(name).lower()
             if any(token in name_lc for token in exclude_tokens):
-                skipped_excluded += 1
+                with _stats_lock:
+                    skipped_excluded += 1
                 if log_skip_details:
                     service.log(f"[SKIP] {name}: excluded by name token policy")
-                continue
+                return
 
         rep = state_for(str(impl), str(name))
         if reputation_enabled and bool(rep.get("quarantined", False)):
@@ -260,10 +266,11 @@ def auto_add_tested_indexers(
                 rep["quarantined_at_epoch"] = 0
                 service.log(f"[INFO] Auto indexer: quarantine expired for {name}; retrying.")
             else:
-                skipped_quarantined += 1
+                with _stats_lock:
+                    skipped_quarantined += 1
                 if log_skip_details:
                     service.log(f"[SKIP] {name}: quarantined by reputation policy")
-                continue
+                return
 
         try:
             status, _, body = service.http_request(
@@ -277,7 +284,8 @@ def auto_add_tested_indexers(
             status, body = 599, str(exc)
         used_untested_fallback = False
         if status not in (200, 201, 202):
-            skipped_test += 1
+            with _stats_lock:
+                skipped_test += 1
             if reputation_enabled:
                 rep["score"] = int(rep.get("score") or 0) + test_fail_delta
                 rep["failures"] = int(rep.get("failures") or 0) + 1
@@ -286,18 +294,19 @@ def auto_add_tested_indexers(
             allow_fallback_for_name = not untested_name_tokens or any(
                 token in str(name).lower() for token in untested_name_tokens
             )
-            allow_fallback = (
-                allow_untested_fallback
-                and untested_fallback_added < untested_fallback_max_add
-                and allow_fallback_for_name
-            )
+            with _stats_lock:
+                allow_fallback = (
+                    allow_untested_fallback
+                    and untested_fallback_added < untested_fallback_max_add
+                    and allow_fallback_for_name
+                )
             if not allow_fallback:
                 if log_skip_details:
                     service.log(f"[SKIP] {name}: test failed (HTTP {status})")
-                continue
+                return
             service.log(
                 f"[WARN] Auto indexer: adding untested fallback indexer {name} "
-                f"(test HTTP {status}, fallback_slot={untested_fallback_added + 1}/{untested_fallback_max_add})"
+                f"(test HTTP {status})"
             )
             used_untested_fallback = True
 
@@ -312,15 +321,16 @@ def auto_add_tested_indexers(
         except Exception as exc:
             status, body = 599, str(exc)
         if status in (200, 201, 202):
-            existing_keys.add(key)
-            existing_by_key[reputation_key(str(impl), str(name))] = {
-                "implementation": impl,
-                "name": name,
-                "enable": True,
-            }
-            added += 1
-            if used_untested_fallback:
-                untested_fallback_added += 1
+            with _stats_lock:
+                existing_keys.add(key)
+                existing_by_key[reputation_key(str(impl), str(name))] = {
+                    "implementation": impl,
+                    "name": name,
+                    "enable": True,
+                }
+                added += 1
+                if used_untested_fallback:
+                    untested_fallback_added += 1
             if reputation_enabled:
                 rep["score"] = int(rep.get("score") or 0) + success_delta
                 rep["successes"] = int(rep.get("successes") or 0) + 1
@@ -329,7 +339,8 @@ def auto_add_tested_indexers(
                 rep["quarantined_at_epoch"] = 0
             service.log(f"[ADD] {name}")
         else:
-            failed_create += 1
+            with _stats_lock:
+                failed_create += 1
             if reputation_enabled:
                 rep["score"] = int(rep.get("score") or 0) + create_fail_delta
                 rep["failures"] = int(rep.get("failures") or 0) + 1
@@ -339,14 +350,44 @@ def auto_add_tested_indexers(
         if reputation_enabled:
             maybe_quarantine(str(impl), str(name), rep)
 
-        if scanned % heartbeat_every == 0:
-            service.log(
-                "[WAIT] Auto indexer progress: "
-                f"scanned={scanned}/{len(candidates)}, attempted={attempted}, "
-                f"added={added}, skipped_existing={skipped_existing}, skipped_excluded={skipped_excluded}, "
-                f"skipped_quarantined={skipped_quarantined}, skipped_test={skipped_test}, "
-                f"failed_create={failed_create}, quarantined_now={quarantined_now}"
-            )
+        if _scanned % heartbeat_every == 0:
+            with _stats_lock:
+                service.log(
+                    "[WAIT] Auto indexer progress: "
+                    f"scanned={scanned}/{len(candidates)}, attempted={attempted}, "
+                    f"added={added}, skipped_existing={skipped_existing}, skipped_excluded={skipped_excluded}, "
+                    f"skipped_quarantined={skipped_quarantined}, skipped_test={skipped_test}, "
+                    f"failed_create={failed_create}, quarantined_now={quarantined_now}"
+                )
+
+    # Build workload: pre-filter candidates, then test+add in parallel.
+    work_items: list[tuple[dict[str, Any], str, str]] = []
+    for candidate in candidates:
+        payload = service.build_indexer_payload(candidate)
+        impl = payload.get("implementation")
+        name = payload.get("name")
+        if not impl or not name:
+            continue
+        work_items.append((payload, str(impl), str(name)))
+
+    if parallel_workers > 1:
+        service.log(
+            f"[INFO] Auto indexer: testing {len(work_items)} candidates "
+            f"with {parallel_workers} parallel workers"
+        )
+        with ThreadPoolExecutor(max_workers=parallel_workers) as pool:
+            futures = [
+                pool.submit(_test_and_add_candidate, payload, impl, name)
+                for payload, impl, name in work_items
+            ]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    service.log(f"[WARN] Auto indexer worker error: {exc}")
+    else:
+        for payload, impl, name in work_items:
+            _test_and_add_candidate(payload, impl, name)
 
     if reputation_enabled:
         save_reputation_state(service, reputation_state_path, reputation_state)
