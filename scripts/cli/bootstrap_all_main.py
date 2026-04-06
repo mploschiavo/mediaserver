@@ -563,10 +563,70 @@ class BootstrapAllRunner:
                     enabled=True,
                 )
 
+        def _run_http_action_step(step: BootstrapPhasePlanStep) -> None:
+            """Trigger an action on the bootstrap service via HTTP and poll for completion."""
+            if not _phase_enabled(step):
+                return
+            params = step.params or {}
+            action_name = str(params.get("action_name", "")).strip()
+            svc_port = int(params.get("service_port", 9100))
+            namespace = self._render_template_value(
+                str(params.get("namespace_var", "$namespace")),
+                component_key="",
+            )
+            if not action_name:
+                raise ConfigError("http_action requires params.action_name")
+
+            from cli.bootstrap_job_wait_service import BootstrapJobWaitConfig, BootstrapJobWaitService
+
+            wait_svc = BootstrapJobWaitService(
+                cfg=BootstrapJobWaitConfig(
+                    namespace=namespace,
+                    timeout_seconds=600,
+                    timeout_raw="10m",
+                    heartbeat_interval=15,
+                    service_port=svc_port,
+                ),
+                kube=self.kube,
+                info=info,
+                warn=warn,
+            )
+
+            # Find the bootstrap pod.
+            pod_name = wait_svc._find_bootstrap_pod()
+            if not pod_name:
+                raise ConfigError("Bootstrap service pod not found for http_action")
+
+            # Trigger the action via HTTP POST.
+            info(f"Triggering action '{action_name}' on bootstrap service")
+            trigger_result = self.kube.run(
+                [
+                    "-n", namespace, "exec", pod_name, "--",
+                    "python3", "-c",
+                    "import urllib.request,json; "
+                    f"req=urllib.request.Request('http://127.0.0.1:{svc_port}/actions/{action_name}',"
+                    "data=b'{}',headers={'Content-Type':'application/json'}); "
+                    "r=urllib.request.urlopen(req); "
+                    "print(r.read().decode())",
+                ],
+                check=False,
+            )
+            if trigger_result.returncode != 0:
+                raise ConfigError(
+                    f"Failed to trigger action '{action_name}': {trigger_result.stderr or trigger_result.stdout}"
+                )
+            info(f"Action '{action_name}' accepted, waiting for completion...")
+
+            # Poll for completion.
+            wait_svc.wait_for_bootstrap_service(
+                wait_for_action=action_name,
+            )
+
         action_handlers: dict[str, Callable[[BootstrapPhasePlanStep], None]] = {
             "component_script": _run_component_script_step,
             "script": _run_script_step,
             "enable_components": _run_enable_components_step,
+            "http_action": _run_http_action_step,
         }
 
         for step in phase_plan:

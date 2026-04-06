@@ -1,8 +1,9 @@
-"""Bootstrap Kubernetes Job wait/diagnostic helpers."""
+"""Bootstrap Kubernetes Deployment/Job wait/diagnostic helpers."""
 
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import time
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ LogFn = Callable[[str], None]
 NowFn = Callable[[], int]
 SleepFn = Callable[[float], None]
 
+logger = logging.getLogger("bootstrap_wait")
+
 
 @dataclass(frozen=True)
 class BootstrapJobWaitConfig:
@@ -24,6 +27,8 @@ class BootstrapJobWaitConfig:
     heartbeat_interval: int
     job_discovery_grace_seconds: int = 30
     job_missing_timeout_seconds: int = 60
+    service_name: str = "bootstrap"
+    service_port: int = 9100
 
 
 @dataclass
@@ -350,3 +355,169 @@ class BootstrapJobWaitService:
                 raise KubernetesError("Bootstrap job timed out")
 
             self.sleep(2)
+
+    # ------------------------------------------------------------------
+    # HTTP-based wait for persistent Deployment bootstrap service
+    # ------------------------------------------------------------------
+
+    def _find_bootstrap_pod(self, selector: str = "app=media-stack-bootstrap") -> str | None:
+        """Return the name of the first ready bootstrap pod, or None."""
+        pods = self._get_pods(selector)
+        for pod in pods:
+            pod_name = str(pod.get("metadata", {}).get("name") or "")
+            phase = str(pod.get("status", {}).get("phase") or "")
+            if phase == "Running" and pod_name:
+                return pod_name
+        return None
+
+    def _query_bootstrap_status(self, pod_name: str) -> dict[str, Any] | None:
+        """Query GET /status from the bootstrap service via kubectl exec."""
+        result = self.kube.run(
+            [
+                "-n", self.cfg.namespace,
+                "exec", pod_name, "--",
+                "python3", "-c",
+                "import urllib.request,json; "
+                f"r=urllib.request.urlopen('http://127.0.0.1:{self.cfg.service_port}/status'); "
+                "print(r.read().decode())",
+            ],
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        try:
+            return json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            return None
+
+    def wait_for_bootstrap_service(
+        self,
+        *,
+        selector: str = "app=media-stack-bootstrap",
+        wait_for_action: str | None = None,
+    ) -> None:
+        """Wait for the bootstrap Deployment's HTTP service to report completion.
+
+        Polls GET /status until:
+        - phase == "complete" and error is None (initial bootstrap)
+        - current_action is None (if wait_for_action specified, wait until that action finishes)
+        """
+        start = self.now()
+        last_heartbeat = -self.cfg.heartbeat_interval
+        pod_name: str | None = None
+
+        self.info(
+            f"Waiting for bootstrap service "
+            f"(namespace={self.cfg.namespace}, timeout={self.cfg.timeout_raw})"
+        )
+
+        while True:
+            elapsed = self.now() - start
+
+            # Heartbeat.
+            if elapsed - last_heartbeat >= self.cfg.heartbeat_interval:
+                self.info(
+                    f"Bootstrap service poll: elapsed {elapsed}s, "
+                    f"timeout {self.cfg.timeout_raw}, "
+                    f"pod={'found' if pod_name else 'waiting'}"
+                )
+                last_heartbeat = elapsed
+
+            # Find the bootstrap pod.
+            if not pod_name:
+                pod_name = self._find_bootstrap_pod(selector)
+                if not pod_name:
+                    if elapsed >= self.cfg.timeout_seconds:
+                        raise KubernetesError(
+                            "Bootstrap service pod not found within timeout"
+                        )
+                    self.sleep(3)
+                    continue
+
+            # Query /status.
+            status = self._query_bootstrap_status(pod_name)
+            if status is None:
+                # Pod might be starting up.
+                if elapsed >= self.cfg.timeout_seconds:
+                    raise KubernetesError(
+                        "Bootstrap service did not respond within timeout"
+                    )
+                self.sleep(3)
+                continue
+
+            phase = str(status.get("phase") or "")
+            error = status.get("error")
+            current_action = status.get("current_action")
+            initial_done = bool(status.get("initial_bootstrap_done"))
+
+            # Log progress.
+            action_info = ""
+            if isinstance(current_action, dict):
+                action_info = f", action={current_action.get('name', '?')}"
+            elif current_action:
+                action_info = f", action={current_action}"
+            logger.debug(
+                "Status: phase=%s, initial_done=%s, error=%s%s",
+                phase, initial_done, error, action_info,
+            )
+
+            # Check if we're waiting for a specific action to finish.
+            if wait_for_action:
+                if isinstance(current_action, dict):
+                    current_name = current_action.get("name", "")
+                else:
+                    current_name = str(current_action or "")
+                # Action is running — keep waiting.
+                if current_name == wait_for_action:
+                    if elapsed >= self.cfg.timeout_seconds:
+                        raise KubernetesError(
+                            f"Action '{wait_for_action}' did not complete within timeout"
+                        )
+                    self.sleep(3)
+                    continue
+                # Action is no longer running — check history for result.
+                history = status.get("action_history") or []
+                for record in reversed(history):
+                    if record.get("name") == wait_for_action:
+                        if record.get("error"):
+                            raise KubernetesError(
+                                f"Action '{wait_for_action}' failed: {record['error']}"
+                            )
+                        self.info(
+                            f"Action '{wait_for_action}' completed successfully "
+                            f"({record.get('elapsed_seconds', '?')}s)"
+                        )
+                        return
+                # Action not in history yet and not running — it may not have started.
+                if elapsed >= self.cfg.timeout_seconds:
+                    raise KubernetesError(
+                        f"Action '{wait_for_action}' not found in service status"
+                    )
+                self.sleep(3)
+                continue
+
+            # Default: wait for initial bootstrap to complete.
+            if phase == "complete" and error is None:
+                self.info(
+                    f"Bootstrap service reports complete "
+                    f"(elapsed={status.get('elapsed_seconds', '?')}s)"
+                )
+                return
+
+            if phase == "error" and error:
+                self.warn(f"Bootstrap service reports error: {error}")
+                # Print pod logs for diagnostics.
+                if pod_name:
+                    self._tail_pod_logs(pod_name, lines=30)
+                raise KubernetesError(f"Bootstrap service failed: {error}")
+
+            if elapsed >= self.cfg.timeout_seconds:
+                self.warn(
+                    f"Bootstrap service did not complete within {self.cfg.timeout_raw} "
+                    f"(last phase={phase})"
+                )
+                if pod_name:
+                    self._tail_pod_logs(pod_name, lines=30)
+                raise KubernetesError("Bootstrap service timed out")
+
+            self.sleep(3)

@@ -23,16 +23,30 @@ class BootstrapJobLogsService:
     kube: KubernetesClient
 
     def capture_logs(self) -> None:
+        # Try deployment label selector first (persistent service mode),
+        # fall back to job/ prefix (legacy Job mode).
         result = self.kube.run(
             [
                 "-n",
                 self.cfg.namespace,
                 "logs",
-                f"job/{self.cfg.job_name}",
+                "-l", f"app={self.cfg.job_name}",
                 "--timestamps",
+                "--tail=500",
             ],
             check=False,
         )
+        if result.returncode != 0 or not (result.stdout or "").strip():
+            result = self.kube.run(
+                [
+                    "-n",
+                    self.cfg.namespace,
+                    "logs",
+                    f"job/{self.cfg.job_name}",
+                    "--timestamps",
+                ],
+                check=False,
+            )
         if result.returncode != 0:
             raise KubernetesError(result.stderr or result.stdout)
         self.cfg.log_file.write_text(result.stdout or "", encoding="utf-8")

@@ -7,7 +7,9 @@ Contact: mploschiavo@gmail.com | https://www.linkedin.com/in/matthewloschiavo
 
 import argparse
 import importlib
+import logging
 import os
+import queue
 import sys
 import threading
 import traceback
@@ -26,14 +28,15 @@ from bootstrap_services.runtime_factory import (
     BootstrapRuntimeFactoryService,
 )
 
+logger = logging.getLogger("bootstrap_service")
 
+
+# ---------------------------------------------------------------------------
+# Handler spec loading and execution
+# ---------------------------------------------------------------------------
 
 def _load_handler_specs(key: str) -> list[dict]:
-    """Load handler specs from bootstrap config by key name.
-
-    Used for both container_preflight_handlers and container_post_bootstrap_handlers.
-    Each spec declares a module:function to import and call.
-    """
+    """Load handler specs from bootstrap config by key name."""
     import json
 
     main_config = os.environ.get("BOOTSTRAP_CONFIG_FILE", "/bootstrap/media-stack.bootstrap.json")
@@ -53,8 +56,16 @@ def _run_handler_specs(
     args: argparse.Namespace,
     *,
     phase_label: str = "HANDLER",
+    parallel: bool = True,
 ) -> None:
-    """Run a list of handler specs with standard context injection."""
+    """Run a list of handler specs with standard context injection.
+
+    When parallel=True (default), independent handlers run concurrently.
+    Handlers with export_env=True run first (sequentially) since they
+    set environment variables needed by subsequent handlers.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     config_root = args.config_root
     admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
     admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-dev")
@@ -66,7 +77,7 @@ def _run_handler_specs(
         "log": runtime_platform.log,
     }
 
-    for spec in specs:
+    def _exec_spec(spec: dict) -> None:
         name = str(spec.get("name", "unknown")).strip()
         handler_path = str(spec.get("handler", "")).strip()
         extra_args = dict(spec.get("args") or {})
@@ -74,7 +85,7 @@ def _run_handler_specs(
         optional = bool(spec.get("optional", True))
 
         if not handler_path:
-            continue
+            return
 
         try:
             runtime_platform.log(f"[{phase_label}] {name}: starting")
@@ -94,6 +105,32 @@ def _run_handler_specs(
             if not optional:
                 raise
 
+    # Split: env-exporting specs run first (they set vars others need).
+    env_specs = [s for s in specs if s.get("export_env")]
+    parallel_specs = [s for s in specs if not s.get("export_env")]
+
+    for spec in env_specs:
+        _exec_spec(spec)
+
+    if not parallel or len(parallel_specs) <= 1:
+        for spec in parallel_specs:
+            _exec_spec(spec)
+        return
+
+    runtime_platform.log(
+        f"[{phase_label}] Running {len(parallel_specs)} handlers in parallel..."
+    )
+    with ThreadPoolExecutor(max_workers=min(6, len(parallel_specs))) as pool:
+        futures = {
+            pool.submit(_exec_spec, spec): str(spec.get("name", "?"))
+            for spec in parallel_specs
+        }
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception:
+                pass  # Errors already recorded in state by _exec_spec
+
 
 def _resolve_handler(spec: str):
     """Import a handler from 'module.path:function_name' spec."""
@@ -107,24 +144,21 @@ def _resolve_handler(spec: str):
 
 
 def _run_preflights(state: object, args: argparse.Namespace) -> None:
-    """Run preflight handlers declared in container_preflight_handlers config."""
     specs = _load_handler_specs("container_preflight_handlers")
     _run_handler_specs(specs, state, args, phase_label="PREFLIGHT")
 
 
 def _run_post_bootstrap(state: object, args: argparse.Namespace) -> None:
-    """Run post-bootstrap handlers declared in container_post_bootstrap_handlers config."""
     specs = _load_handler_specs("container_post_bootstrap_handlers")
     _run_handler_specs(specs, state, args, phase_label="POST-BOOTSTRAP")
 
 
-def _build_config_policy() -> object | None:
-    """Build a config policy callable from the profile YAML.
+# ---------------------------------------------------------------------------
+# Config policy from profile YAML
+# ---------------------------------------------------------------------------
 
-    Returns a function that mutates a config dict with routing/URL policy,
-    or None if no profile is configured. Injected into the runtime factory
-    as a pluggable transform between config loading and runtime building.
-    """
+def _build_config_policy() -> object | None:
+    """Build a config policy callable from the profile YAML."""
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
     if not profile_file:
         return None
@@ -150,7 +184,6 @@ def _build_config_policy() -> object | None:
     stack_name = str((profile.get("metadata") or {}).get("name", "")).strip()
     stack_subdomain = routing.get("stack_subdomain") or stack_name
 
-    # Derive gateway_host and media_server_direct_host from profile if not explicit.
     gateway_host = routing.get("gateway_host") or os.environ.get("APP_GATEWAY_HOST", "")
     if not gateway_host and route_strategy in ("hybrid", "path-prefix") and stack_subdomain:
         parts = [p for p in ["apps", stack_subdomain, base_domain] if p]
@@ -183,7 +216,11 @@ def _build_config_policy() -> object | None:
     return policy
 
 
-def _build_runner(args: argparse.Namespace) -> tuple:
+# ---------------------------------------------------------------------------
+# Runner build (reusable across actions)
+# ---------------------------------------------------------------------------
+
+def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = False) -> tuple:
     """Build the bootstrap runner and runtime state from CLI args."""
     servarr_runtime_arr_ops = importlib.import_module(
         "bootstrap_services.apps.servarr.runtime.arr_ops"
@@ -211,7 +248,7 @@ def _build_runner(args: argparse.Namespace) -> tuple:
             config_path=args.config,
             config_root=args.config_root,
             wait_timeout=args.wait_timeout,
-            auto_prowlarr_indexers=args.auto_prowlarr_indexers,
+            auto_prowlarr_indexers=auto_prowlarr_indexers or args.auto_prowlarr_indexers,
             runtime_env=str(args.env or "prod"),
         )
     )
@@ -233,18 +270,22 @@ def _build_runner(args: argparse.Namespace) -> tuple:
     return runner, runtime_state
 
 
+# ---------------------------------------------------------------------------
+# One-shot mode (used by Docker Compose)
+# ---------------------------------------------------------------------------
+
 def _run_oneshot(args: argparse.Namespace) -> None:
     """Original one-shot bootstrap mode."""
     runner, runtime_state = _build_runner(args)
     runner.run(runtime_state)
 
 
-def _apply_profile_env(profile_file: str | None) -> None:
-    """Read the bootstrap profile YAML and set env vars that the runtime factory expects.
+# ---------------------------------------------------------------------------
+# Profile env setup
+# ---------------------------------------------------------------------------
 
-    The profile is the single source of truth. Env vars are only set if not
-    already present, so explicit overrides still win.
-    """
+def _apply_profile_env(profile_file: str | None) -> None:
+    """Read the bootstrap profile YAML and set env vars that the runtime factory expects."""
     if not profile_file:
         return
     path = __import__("pathlib").Path(profile_file)
@@ -278,116 +319,263 @@ def _apply_profile_env(profile_file: str | None) -> None:
             os.environ[key] = value
 
 
+# ---------------------------------------------------------------------------
+# Action dispatcher — the core of the persistent service
+# ---------------------------------------------------------------------------
+
+_OVERRIDE_ENV_MAP = {
+    "auto_download_content": "AUTO_DOWNLOAD_CONTENT",
+    "preconfigure_api_keys": "PRECONFIGURE_API_KEYS",
+    "apply_initial_preferences": "APPLY_INITIAL_PREFERENCES",
+}
+
+
+def _apply_overrides(overrides: dict) -> None:
+    """Apply runtime overrides to environment variables."""
+    for key, env_var in _OVERRIDE_ENV_MAP.items():
+        if key in overrides:
+            os.environ[env_var] = "1" if overrides[key] else "0"
+
+
+def _dispatch_action(
+    action_name: str,
+    overrides: dict,
+    args: argparse.Namespace,
+    state: object,
+) -> None:
+    """Route an action to the appropriate handler."""
+    _apply_overrides(overrides)
+    runtime_platform.log(f"[ACTION] {action_name}: starting (overrides={overrides})")
+
+    if action_name == "bootstrap":
+        _action_bootstrap(args, state)
+    elif action_name == "auto-indexers":
+        _action_auto_indexers(args, state)
+    elif action_name == "restart-apps":
+        _action_restart_apps(args, state)
+    elif action_name == "sync-indexers":
+        _action_sync_indexers(args, state)
+    elif action_name == "envoy-config":
+        _action_envoy_config(args, state)
+    elif action_name == "reconcile":
+        _action_reconcile(args, state)
+    else:
+        raise ValueError(f"Unknown action: {action_name}")
+
+    runtime_platform.log(f"[ACTION] {action_name}: complete")
+
+
+def _action_bootstrap(args: argparse.Namespace, state: object) -> None:
+    """Full bootstrap pipeline: preflights + configure all apps + post-bootstrap."""
+    run_preflights = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
+    if run_preflights:
+        _run_preflights(state, args)
+
+    runner, runtime_state = _build_runner(args)
+    bootstrap_error = None
+    try:
+        runner.run(runtime_state)
+    except Exception as run_exc:
+        bootstrap_error = run_exc
+        runtime_platform.log(f"[ERR] Bootstrap pipeline: {run_exc}")
+
+    # Post-bootstrap handlers run even on partial success.
+    _run_post_bootstrap(state, args)
+
+    if bootstrap_error:
+        raise bootstrap_error
+
+    runtime_platform.log("[OK] Bootstrap completed successfully")
+
+
+def _action_auto_indexers(args: argparse.Namespace, state: object) -> None:
+    """Run Prowlarr auto-indexer discovery (indexer phase only, not full pipeline)."""
+    runtime_platform.log("[INFO] Auto-indexer: building runner with auto_prowlarr_indexers=True")
+    runner, runtime_state = _build_runner(args, auto_prowlarr_indexers=True)
+    # Only run the indexer steps — skip prechecks, servarr pipeline, and post-servarr.
+    try:
+        runner._run_runner_plan_phase(runtime_state, "indexer_steps")
+    except Exception:
+        # Fall back to full run if indexer_steps phase isn't available.
+        runtime_platform.log("[WARN] indexer_steps phase not available, running full pipeline")
+        runner.run(runtime_state)
+    runtime_platform.log("[OK] Auto-indexer discovery complete")
+
+
+def _action_restart_apps(args: argparse.Namespace, state: object) -> None:
+    """Restart all apps to pick up config changes."""
+    specs = _load_handler_specs("container_post_bootstrap_handlers")
+    restart_specs = [s for s in specs if s.get("name") == "restart_apps"]
+    if restart_specs:
+        _run_handler_specs(restart_specs, state, args, phase_label="RESTART")
+    else:
+        runtime_platform.log("[WARN] No restart_apps handler found in config")
+
+
+def _action_sync_indexers(args: argparse.Namespace, state: object) -> None:
+    """Trigger Prowlarr ApplicationIndexerSync."""
+    from bootstrap_services.apps.prowlarr import pipeline_service as prowlarr_svc
+
+    prowlarr_url = os.environ.get("PROWLARR_URL", "http://prowlarr:9696")
+    api_key = runtime_secrets.read_api_key(args.config_root, "prowlarr")
+    runtime_platform.log(f"[INFO] Triggering indexer sync on {prowlarr_url}")
+    prowlarr_svc.trigger_indexer_sync(prowlarr_url, api_key, log=runtime_platform.log)
+    runtime_platform.log("[OK] Indexer sync triggered")
+
+
+def _action_envoy_config(args: argparse.Namespace, state: object) -> None:
+    """Regenerate Envoy routing config from profile and bootstrap config."""
+    from cli.generate_envoy_config_main import main as generate_envoy_config
+
+    # Set env vars expected by the envoy config generator.
+    os.environ.setdefault("COMPOSE_FILE", "/dev/null")
+    os.environ.setdefault("CONFIG_ROOT", args.config_root)
+    os.environ.setdefault("ENVOY_LISTENER_PORT", "8080")
+    runtime_platform.log("[INFO] Generating Envoy config")
+    generate_envoy_config()
+    runtime_platform.log("[OK] Envoy config written")
+
+    # Restart Envoy to pick up the new config.
+    try:
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if namespace:
+            from kubernetes import client as k8s_client, config as k8s_config
+
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            apps_v1 = k8s_client.AppsV1Api()
+            # Trigger rollout restart by patching the pod template annotation.
+            import time as _time
+
+            patch = {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {
+                                "bootstrap.media-stack.io/restart-trigger": str(int(_time.time()))
+                            }
+                        }
+                    }
+                }
+            }
+            apps_v1.patch_namespaced_deployment("envoy", namespace, body=patch)
+            runtime_platform.log("[OK] Envoy deployment restart triggered")
+    except Exception as exc:
+        runtime_platform.log(f"[WARN] Could not restart Envoy: {exc}")
+
+
+def _action_reconcile(args: argparse.Namespace, state: object) -> None:
+    """Lightweight reconcile — re-run bootstrap in idempotent mode."""
+    runner, runtime_state = _build_runner(args)
+    runner.run(runtime_state)
+    runtime_platform.log("[OK] Reconcile complete")
+
+
+# ---------------------------------------------------------------------------
+# Serve mode — persistent HTTP API server with action dispatch loop
+# ---------------------------------------------------------------------------
+
 def _run_serve(args: argparse.Namespace) -> None:
-    """HTTP API server mode with optional auto-run."""
+    """HTTP API server with action dispatch loop.
+
+    The server stays alive indefinitely, processing actions from a queue.
+    Actions are triggered via POST /actions/{name} or POST /run.
+    """
     from bootstrap_api.server import start_api_server
     from bootstrap_api.state import BootstrapState
 
-    # Validate and load profile before anything else.
+    # Load profile if available (ConfigMap may not be mounted yet on first start).
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
     if profile_file:
-        from bootstrap_api.preflight.profile_validation import validate_profile
+        profile_path = __import__("pathlib").Path(profile_file)
+        if profile_path.exists():
+            from bootstrap_api.preflight.profile_validation import validate_profile
 
-        validate_profile(profile_file, log=runtime_platform.log)
-    _apply_profile_env(profile_file)
+            validate_profile(profile_file, log=runtime_platform.log)
+            _apply_profile_env(profile_file)
+        else:
+            runtime_platform.log(
+                f"[INFO] Profile not yet available at {profile_file} — "
+                "will apply from config when action is triggered"
+            )
 
     state = BootstrapState()
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
-    run_requested = threading.Event()
-    run_overrides: dict = {}
+    action_queue: queue.Queue[tuple[str, dict]] = queue.Queue()
+    action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
 
-    # Supported runtime overrides — mapped to env vars the pipeline reads.
-    _OVERRIDE_ENV_MAP = {
-        "auto_download_content": "AUTO_DOWNLOAD_CONTENT",
-        "preconfigure_api_keys": "PRECONFIGURE_API_KEYS",
-        "apply_initial_preferences": "APPLY_INITIAL_PREFERENCES",
-        "auto_prowlarr_indexers": "AUTO_PROWLARR_INDEXERS",
-    }
+    def action_trigger(action_name: str, overrides: dict) -> None:
+        action_queue.put((action_name, overrides))
 
-    def trigger_run(overrides: dict | None = None) -> None:
-        nonlocal run_overrides
-        run_overrides = dict(overrides or {})
-        state.run_overrides = dict(run_overrides)
-        for key, env_var in _OVERRIDE_ENV_MAP.items():
-            if key in run_overrides:
-                os.environ[env_var] = "1" if run_overrides[key] else "0"
-        run_requested.set()
-
-    server = start_api_server(state, port=port, run_trigger=trigger_run)
-    runtime_platform.log(f"[INFO] Bootstrap API server listening on :{port}")
+    server = start_api_server(state, port=port, action_trigger=action_trigger)
+    runtime_platform.log(f"[INFO] Bootstrap service listening on :{port}")
     runtime_platform.log(f"[INFO] Dashboard: http://127.0.0.1:{port}/")
+    runtime_platform.log(f"[INFO] Actions: POST /actions/{{name}} | GET /status")
 
     if args.auto_run:
-        run_requested.set()
+        runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
+        action_queue.put(("bootstrap", {}))
 
-    # Wait for a run trigger (POST /run or --auto-run).
-    run_requested.wait()
-    runtime_platform.log(f"[INFO] Bootstrap run triggered (overrides={run_overrides})")
-
-    try:
-        state.start()
-
-        # Run preflights inside the container (HTTP + file I/O, no docker exec).
-        run_preflights = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
-        if run_preflights:
-            _run_preflights(state, args)
-
-        runner, runtime_state = _build_runner(args)
-        bootstrap_error = None
+    # Main action dispatch loop — runs forever.
+    while True:
         try:
-            runner.run(runtime_state)
-        except Exception as run_exc:
-            bootstrap_error = run_exc
-            runtime_platform.log(f"[ERR] Bootstrap pipeline: {run_exc}")
-
-        # Post-bootstrap handlers run even on partial success — apps may
-        # need restarts to pick up config changes made before the failure.
-        _run_post_bootstrap(state, args)
-
-        if bootstrap_error:
-            raise bootstrap_error
-
-        state.finish()
-        runtime_platform.log("[OK] Bootstrap completed successfully")
-    except Exception as exc:
-        state.finish(error=str(exc))
-        runtime_platform.log(f"[ERR] Bootstrap failed: {exc}")
-        trace = traceback.format_exc().strip()
-        if trace:
-            for line in trace.splitlines():
-                runtime_platform.log(f"[TRACE] {line}")
-
-    # Clean up temp config files created by config policy.
-    import glob
-    import shutil
-
-    for tmp_dir in glob.glob("/tmp/bootstrap-*"):
-        try:
-            shutil.rmtree(tmp_dir)
-        except Exception:
-            pass
-
-    # Keep serving health/status endpoints until container is stopped.
-    shutdown_delay = int(os.environ.get("BOOTSTRAP_SHUTDOWN_DELAY_SECONDS", "0"))
-    if shutdown_delay > 0:
-        import time
-
-        runtime_platform.log(
-            f"[INFO] Bootstrap API server staying alive for {shutdown_delay}s"
-        )
-        time.sleep(shutdown_delay)
-        server.shutdown()
-    else:
-        runtime_platform.log("[INFO] Bootstrap API server staying alive (send SIGTERM to stop)")
-        try:
-            threading.Event().wait()  # Block forever until SIGTERM.
+            action_name, overrides = action_queue.get()
         except KeyboardInterrupt:
-            pass
-        finally:
+            runtime_platform.log("[INFO] Shutting down bootstrap service")
             server.shutdown()
+            return
 
+        action_record = state.start_action(
+            action_name, overrides=overrides, timeout_seconds=action_timeout
+        )
+        runtime_platform.log(
+            f"[ACTION] {action_name} [{action_record.id}]: dispatching "
+            f"(timeout={action_timeout}s)"
+        )
+
+        try:
+            _dispatch_action(action_name, overrides, args, state)
+            state.finish_action()
+
+            # Mark initial bootstrap done on first successful bootstrap.
+            if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                state.initial_bootstrap_done = True
+                runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
+
+                # Auto-generate envoy config after first bootstrap.
+                runtime_platform.log("[INFO] Auto-queuing envoy-config after bootstrap")
+                action_queue.put(("envoy-config", {}))
+
+        except Exception as exc:
+            state.finish_action(error=str(exc))
+            runtime_platform.log(f"[ERR] Action {action_name} failed: {exc}")
+            trace = traceback.format_exc().strip()
+            if trace:
+                for line in trace.splitlines():
+                    runtime_platform.log(f"[TRACE] {line}")
+
+            # Still mark initial bootstrap done if it was the bootstrap action
+            # and the error was in post-bootstrap (apps were configured).
+            if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                state.initial_bootstrap_done = True
+                runtime_platform.log(
+                    "[WARN] Initial bootstrap had errors but service is marked ready"
+                )
+
+
+# ---------------------------------------------------------------------------
+# CLI entrypoint
+# ---------------------------------------------------------------------------
 
 def main():
+    logging.basicConfig(
+        level=logging.DEBUG if os.environ.get("BOOTSTRAP_DEBUG") else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
+
     parser = argparse.ArgumentParser(
         description="Idempotent bootstrap for Arr + Prowlarr + Jellyseerr integration."
     )
@@ -432,7 +620,7 @@ def main():
     parser.add_argument(
         "--serve",
         action="store_true",
-        help="Start HTTP API server for telemetry and control instead of one-shot run",
+        help="Start persistent HTTP API service with action dispatch loop",
     )
     parser.add_argument(
         "--auto-run",

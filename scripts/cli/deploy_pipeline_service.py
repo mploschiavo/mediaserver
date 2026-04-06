@@ -31,6 +31,8 @@ class DeployPipelineConfig:
     auth_provider: str = ""
     auth_middleware: str = ""
     edge_router_provider: str = ""
+    platform_target: str = ""
+    bootstrap_profile_file: str = ""
 
 
 @dataclass
@@ -66,8 +68,13 @@ class DeployPipelineService:
 
     def run_bootstrap_pipeline(self) -> None:
         self.info("Running full bootstrap pipeline")
+        platform_tag = self.cfg.platform_target.strip() or "compose"
+        state_file = str(
+            self.cfg.root_dir / ".state" / f"bootstrap-all-{self.cfg.namespace}-{platform_tag}.json"
+        )
         env = {
             "NAMESPACE": self.cfg.namespace,
+            "BOOTSTRAP_STATE_FILE": state_file,
             "PREPARE_HOST_ROOT": self.cfg.prepare_host_root,
             "ENABLE_COMPONENTS": self.cfg.enable_components,
             "SELECTED_APPS": self.cfg.selected_apps,
@@ -85,6 +92,9 @@ class DeployPipelineService:
             "FULLY_PRECONFIGURED": self.cfg.apply_initial_preferences,
             "AUTO_DOWNLOAD_CONTENT": self.cfg.auto_download_content,
         }
+        profile_file = str(self.cfg.bootstrap_profile_file or "").strip()
+        if profile_file:
+            env["BOOTSTRAP_PROFILE_FILE"] = profile_file
         gateway_port = str(self.cfg.app_gateway_port or "").strip()
         if gateway_port:
             env["APP_GATEWAY_PORT"] = gateway_port

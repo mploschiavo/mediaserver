@@ -22,6 +22,7 @@ class BootstrapManifestConfig:
     prepare_host_root: str
     bootstrap_runner_image: str
     job_config_file: Path
+    bootstrap_profile_file: str = ""
 
 
 @dataclass
@@ -167,33 +168,52 @@ class BootstrapManifestService:
             configmap_yaml.write_text(generated.stdout, encoding="utf-8")
             self._replace_or_create_yaml(configmap_yaml, "configmap/media-stack-bootstrap-config")
 
-    def recreate_bootstrap_job(self) -> None:
-        self.info("Recreating bootstrap Job")
-        self.kube.run(
-            [
-                "-n",
-                self.cfg.namespace,
-                "delete",
-                "job",
-                "media-stack-bootstrap",
-                "--ignore-not-found",
-            ],
+        profile_path = str(self.cfg.bootstrap_profile_file or "").strip()
+        if profile_path and Path(profile_path).exists():
+            self.info("Updating bootstrap profile ConfigMap")
+            with TemporaryDirectory(prefix="media-stack-bootstrap-profile-") as tmpdir:
+                profile_yaml = Path(tmpdir) / "bootstrap-profile.yaml"
+                generated = self.kube.run(
+                    [
+                        "-n",
+                        self.cfg.namespace,
+                        "create",
+                        "configmap",
+                        "media-stack-bootstrap-profile",
+                        f"--from-file=profile.yaml={profile_path}",
+                        "--dry-run=client",
+                        "-o",
+                        "yaml",
+                    ]
+                )
+                profile_yaml.write_text(generated.stdout, encoding="utf-8")
+                self._replace_or_create_yaml(
+                    profile_yaml, "configmap/media-stack-bootstrap-profile"
+                )
+        else:
+            self.warn(
+                "No bootstrap profile file available — "
+                "skipping media-stack-bootstrap-profile ConfigMap"
+            )
+
+    def ensure_bootstrap_deployment(self) -> None:
+        """Ensure bootstrap Deployment is running and restart it to pick up new ConfigMaps."""
+        self.info("Ensuring bootstrap Deployment is ready with updated ConfigMaps")
+        # The Deployment is created by the kustomization (k8s/profiles/standard/).
+        # Restart it to pick up the updated ConfigMaps we just created.
+        result = self.kube.run(
+            ["-n", self.cfg.namespace, "rollout", "restart", "deploy/media-stack-bootstrap"],
             check=False,
         )
-        manifest_path = self.cfg.root_dir / "k8s" / "bootstrap-job.yaml"
-        with TemporaryDirectory(prefix="media-stack-bootstrap-job-") as tmpdir:
-            patched = Path(tmpdir) / "bootstrap-job.yaml"
-            patched.write_text(
-                self.manifest_overrides(manifest_path.read_text(encoding="utf-8")),
-                encoding="utf-8",
-            )
-            result = self.kube.run(
-                ["-n", self.cfg.namespace, "apply", "-f", str(patched)],
-                check=False,
-            )
-            if result.stdout.strip():
-                print(result.stdout.rstrip())
-            if result.stderr.strip():
-                print(result.stderr.rstrip(), file=sys.stderr)
-            if result.returncode != 0:
-                raise KubernetesError(result.stderr or result.stdout)
+        if result.returncode != 0:
+            self.warn(f"Bootstrap Deployment restart: {result.stderr or result.stdout}")
+        # Wait for the rollout to complete.
+        self.kube.run(
+            ["-n", self.cfg.namespace, "rollout", "status", "deploy/media-stack-bootstrap",
+             "--timeout=120s"],
+            check=False,
+        )
+        self.info("Bootstrap Deployment ready")
+
+    # Backward-compatible alias.
+    recreate_bootstrap_job = ensure_bootstrap_deployment

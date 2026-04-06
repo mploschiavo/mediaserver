@@ -8,6 +8,7 @@ resources:
   - ../../core.yaml
   - ../../optional.yaml
   - ../../envoy.yaml
+  - ../../bootstrap.yaml
   - ../../ingress-traefik.yaml
   - ../../unpackerr.yaml
   - ../../scale-policy.yaml

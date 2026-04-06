@@ -186,16 +186,41 @@ class ProwlarrAutoIndexerRunner:
         if create.returncode != 0:
             raise KubernetesError(create.stderr or create.stdout)
 
+    def _load_base_config(self) -> dict[str, Any]:
+        """Load the full bootstrap config as a base for the auto-indexer.
+
+        Uses the repo's bootstrap JSON directly rather than building a minimal
+        payload by hand. This ensures the auto-indexer config always has the
+        required sections (download_clients, adapter_hooks, etc.) that the
+        bootstrap runtime factory expects.
+        """
+        config_file = self.cfg.root_dir / "bootstrap" / "media-stack.bootstrap.json"
+        if config_file.exists():
+            return json.loads(config_file.read_text(encoding="utf-8"))
+        return {}
+
     def update_auto_configmap(self) -> None:
         info("Updating temporary bootstrap config ConfigMap")
-        config_payload = {
-            "config_version": 2,
-            "prowlarr_url": "http://prowlarr:9696",
-            "trigger_indexer_sync": True,
-            "arr_apps": [],
-            "prowlarr_auto_indexer_exclude_name_tokens": list(self.cfg.exclude_name_tokens),
-            "prowlarr_indexer_reputation": dict(self.cfg.reputation_cfg),
-        }
+        config_payload = self._load_base_config()
+        # Override: enable auto-indexer discovery, disable everything else.
+        config_payload["prowlarr_auto_add_tested_indexers"] = True
+        config_payload["trigger_indexer_sync"] = True
+        config_payload["prowlarr_auto_indexer_exclude_name_tokens"] = list(
+            self.cfg.exclude_name_tokens
+        )
+        config_payload["prowlarr_indexer_reputation"] = dict(self.cfg.reputation_cfg)
+        # Disable features that require PVCs/services not available to the auto-indexer pod.
+        config_payload["arr_apps"] = []
+        config_payload["app_auth"] = {"enabled": False, "include": []}
+        for client in (config_payload.get("download_clients") or {}).values():
+            if isinstance(client, dict):
+                client["configure_arr_clients"] = False
+                client["login_required"] = False
+        for section_key in ("jellyseerr", "homepage", "bazarr", "maintainerr"):
+            section = config_payload.get(section_key)
+            if isinstance(section, dict):
+                section["enabled"] = False
+                section.setdefault("configure", False)
         with TemporaryDirectory(prefix="media-stack-bootstrap-auto-config-") as tmpdir:
             config_json = Path(tmpdir) / "config.json"
             config_json.write_text(json.dumps(config_payload, indent=2) + "\n", encoding="utf-8")

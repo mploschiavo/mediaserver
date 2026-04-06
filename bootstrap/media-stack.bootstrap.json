@@ -336,28 +336,17 @@
         },
         {
           "operation": "run",
-          "phase_name": "Run indexer auto-discovery ({component|unbound})",
+          "phase_name": "Run indexer auto-discovery (prowlarr)",
           "when": {
-            "all_of": [
-              {
-                "var": "config.prowlarr_url",
-                "truthy": true
-              },
-              {
-                "var": "components.indexer_manager.scripts.indexer_auto_discovery",
-                "truthy": true
-              }
-            ]
+            "var": "config.prowlarr_url",
+            "truthy": true
           },
           "params": {
-            "action": "component_script",
-            "component": "indexer_manager",
-            "technology": "prowlarr",
-            "script_phase": "indexer_auto_discovery",
-            "env": {
-              "NAMESPACE": "$namespace",
-              "PREPARE_HOST_ROOT": "$prepare_host_root"
-            }
+            "action": "http_action",
+            "service_name": "bootstrap",
+            "service_port": 9100,
+            "action_name": "auto-indexers",
+            "namespace_var": "$namespace"
           }
         },
         {
@@ -618,16 +607,16 @@
         },
         {
           "operation": "call_handler",
-          "phase_name": "Recreate bootstrap Job",
+          "phase_name": "Ensure bootstrap Deployment",
           "params": {
-            "handler": "recreate_bootstrap_job"
+            "handler": "ensure_bootstrap_deployment"
           }
         },
         {
           "operation": "call_handler",
-          "phase_name": "Wait for bootstrap Job completion",
+          "phase_name": "Wait for bootstrap service",
           "params": {
-            "handler": "wait_for_bootstrap_job"
+            "handler": "wait_for_bootstrap_service"
           }
         },
         {

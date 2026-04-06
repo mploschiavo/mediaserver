@@ -87,8 +87,27 @@ class BootstrapRunnerService:
         )
 
     def _wait_for_servarr_services(self, rt: BootstrapRuntime) -> None:
-        for app in rt.arr_apps:
-            self.deps.wait_for_service(app.name, app.url, "/ping", rt.wait_timeout)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        if not rt.arr_apps:
+            return
+        self.deps.log(f"[INFO] Waiting for {len(rt.arr_apps)} services in parallel...")
+        errors: list[str] = []
+        with ThreadPoolExecutor(max_workers=min(8, len(rt.arr_apps))) as pool:
+            futures = {
+                pool.submit(
+                    self.deps.wait_for_service, app.name, app.url, "/ping", rt.wait_timeout
+                ): app.name
+                for app in rt.arr_apps
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    errors.append(f"{name}: {exc}")
+        if errors:
+            raise RuntimeError(f"Service readiness failures: {'; '.join(errors)}")
 
     def _download_client_pipeline_service(
         self, rt: BootstrapRuntime

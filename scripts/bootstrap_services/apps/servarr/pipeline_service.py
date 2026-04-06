@@ -167,7 +167,43 @@ class ServarrPipelineService:
             trigger_health_check=self.trigger_health_check,
         )
 
+    def _configure_single_app(self, inputs: ServarrPipelineInputs, app_entry, adapter_factory, adapter_registry) -> None:
+        """Configure a single Servarr app (thread-safe)."""
+        app_model = self._coerce_app(app_entry)
+        impl = str(app_model.implementation or "")
+        app_payload = self._raw_app_dict(app_model)
+        app_key = self._lookup_api_key(inputs.app_keys, impl)
+        adapter = adapter_factory.create(
+            context=ServarrAdapterContext(
+                cfg=inputs.cfg,
+                app_model=app_model,
+                app_payload=app_payload,
+                app_key=app_key,
+                app_auth_cfg=inputs.app_auth_cfg,
+                arr_media_management_cfg=inputs.arr_media_management_cfg,
+                arr_download_handling_cfg=inputs.arr_download_handling_cfg,
+                arr_quality_upgrade_cfg=inputs.arr_quality_upgrade_cfg,
+                qbit_cfg=inputs.qbit_cfg,
+                qbit_auth=inputs.qbit_auth,
+                sab_cfg=inputs.sab_cfg,
+                sab_auth=inputs.sab_auth,
+                sab_remote_path_mappings=inputs.sab_remote_path_mappings,
+                prowlarr_url=inputs.prowlarr_url,
+                prowlarr_key=inputs.prowlarr_key,
+                run_cfg=inputs.run_cfg,
+            ),
+            before_common_hook=adapter_registry.before_common_steps_for(impl),
+        )
+        adapter.load()
+        adapter.precheck()
+        adapter.prepare()
+        adapter.configure()
+        adapter.ensure()
+        adapter.status_check()
+
     def run(self, inputs: ServarrPipelineInputs) -> None:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         adapter_registry = AdapterRegistry.from_config(inputs.adapter_hooks_cfg)
         adapter_factory = ServarrAdapterFactory(
             deps=self._adapter_dependencies(),
@@ -175,35 +211,28 @@ class ServarrPipelineService:
             adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get("adapter_classes"),
         )
 
-        for app_entry in inputs.arr_apps:
-            app_model = self._coerce_app(app_entry)
-            impl = str(app_model.implementation or "")
-            app_payload = self._raw_app_dict(app_model)
-            app_key = self._lookup_api_key(inputs.app_keys, impl)
-            adapter = adapter_factory.create(
-                context=ServarrAdapterContext(
-                    cfg=inputs.cfg,
-                    app_model=app_model,
-                    app_payload=app_payload,
-                    app_key=app_key,
-                    app_auth_cfg=inputs.app_auth_cfg,
-                    arr_media_management_cfg=inputs.arr_media_management_cfg,
-                    arr_download_handling_cfg=inputs.arr_download_handling_cfg,
-                    arr_quality_upgrade_cfg=inputs.arr_quality_upgrade_cfg,
-                    qbit_cfg=inputs.qbit_cfg,
-                    qbit_auth=inputs.qbit_auth,
-                    sab_cfg=inputs.sab_cfg,
-                    sab_auth=inputs.sab_auth,
-                    sab_remote_path_mappings=inputs.sab_remote_path_mappings,
-                    prowlarr_url=inputs.prowlarr_url,
-                    prowlarr_key=inputs.prowlarr_key,
-                    run_cfg=inputs.run_cfg,
-                ),
-                before_common_hook=adapter_registry.before_common_steps_for(impl),
-            )
-            adapter.load()
-            adapter.precheck()
-            adapter.prepare()
-            adapter.configure()
-            adapter.ensure()
-            adapter.status_check()
+        if not inputs.arr_apps:
+            return
+
+        if len(inputs.arr_apps) == 1:
+            self._configure_single_app(inputs, inputs.arr_apps[0], adapter_factory, adapter_registry)
+            return
+
+        self.log(f"[INFO] Configuring {len(inputs.arr_apps)} Arr apps in parallel...")
+        errors: list[str] = []
+        with ThreadPoolExecutor(max_workers=min(4, len(inputs.arr_apps))) as pool:
+            futures = {
+                pool.submit(
+                    self._configure_single_app, inputs, app_entry, adapter_factory, adapter_registry
+                ): str(getattr(self._coerce_app(app_entry), "name", "?"))
+                for app_entry in inputs.arr_apps
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    errors.append(f"{name}: {exc}")
+                    self.log(f"[ERR] {name} configuration failed: {exc}")
+        if errors:
+            raise RuntimeError(f"Servarr pipeline errors: {'; '.join(errors)}")
