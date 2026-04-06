@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from .state import BootstrapState
 
-logger = logging.getLogger("bootstrap_api")
+logger = logging.getLogger("controller_api")
 
 ActionTriggerFn = Callable[[str, dict[str, Any]], None]
 

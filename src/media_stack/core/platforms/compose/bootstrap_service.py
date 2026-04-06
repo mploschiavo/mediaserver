@@ -1,4 +1,4 @@
-"""Compose-target bootstrap execution via bootstrap-runner container."""
+"""Compose-target bootstrap execution via controller container."""
 
 from __future__ import annotations
 
@@ -292,12 +292,12 @@ class ComposeBootstrapService:
     def _prepare_bootstrap_runner_image(self) -> None:
         image = str(self.cfg.bootstrap_runner_image or "").strip()
         if not image:
-            raise RuntimeError("Compose bootstrap-runner image cannot be empty.")
+            raise RuntimeError("Compose controller image cannot be empty.")
 
         pull_policy = self._image_pull_policy()
         has_local = self.docker.image_exists(image)
         self.info(
-            "Compose bootstrap-runner image policy: "
+            "Compose controller image policy: "
             f"policy={pull_policy}, image={image}, local_present={int(has_local)}"
         )
 
@@ -310,12 +310,12 @@ class ComposeBootstrapService:
             return
 
         if pull_policy == "if-missing" and has_local:
-            self.info(f"Compose bootstrap: using local bootstrap-runner image '{image}'.")
+            self.info(f"Compose bootstrap: using local controller image '{image}'.")
             return
 
         try:
             self.docker.pull_image(image)
-            self.info(f"Compose bootstrap: pulled bootstrap-runner image '{image}'.")
+            self.info(f"Compose bootstrap: pulled controller image '{image}'.")
         except Exception:
             if self.docker.image_exists(image):
                 self.info("Compose bootstrap: pull failed; using local image " f"'{image}'.")
@@ -340,12 +340,12 @@ class ComposeBootstrapService:
     ) -> None:
         """Run bootstrap via the existing compose service HTTP API.
 
-        Uses the same flow as K8s: find the running media-stack-bootstrap
+        Uses the same flow as K8s: find the running media-stack-controller
         service, trigger bootstrap via POST /actions/bootstrap, poll /status.
         The compose service is defined in docker-compose.yml and started by
         ``docker compose up``.
         """
-        container_name = f"{project_name}-media-stack-bootstrap"
+        container_name = f"{project_name}-media-stack-controller"
         api_port = 9100
 
         # Ensure the bootstrap service container is running.
@@ -378,7 +378,7 @@ class ComposeBootstrapService:
     def _resolve_container_api_base(
         self, container_name: str, port: int
     ) -> str:
-        """Get the bootstrap-runner container's network IP for API polling."""
+        """Get the controller container's network IP for API polling."""
         import time as _time
 
         deadline = _time.time() + 30
@@ -472,7 +472,7 @@ class ComposeBootstrapService:
             project_name=project_name,
         )
         network_name = f"{project_name}_default"
-        container_name = f"{project_name}-media-stack-bootstrap"
+        container_name = f"{project_name}-media-stack-controller"
         wait_seconds = _parse_wait_seconds(self.cfg.wait_timeout, default_seconds=600)
         bootstrap_env: dict[str, str] = {
             "FULLY_PRECONFIGURED": "1" if self.cfg.apply_initial_preferences else "0",
@@ -499,7 +499,7 @@ class ComposeBootstrapService:
             bootstrap_env.setdefault("DISK_GUARDRAILS_MONITOR_PATH", "/srv-stack")
 
         self.info(
-            "Compose bootstrap: running bootstrap-apps via bootstrap-runner container "
+            "Compose bootstrap: running controller via controller container "
             f"(project={project_name}, network={network_name})."
         )
         self.docker.ping()
@@ -521,7 +521,7 @@ class ComposeBootstrapService:
                 },
                 command=[
                     "python3",
-                    "/opt/media-stack/bin/bootstrap-apps.py",
+                    "/opt/media-stack/bin/controller.py",
                     "--config",
                     "/contracts/config.json",
                     "--config-root",

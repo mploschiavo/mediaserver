@@ -11,15 +11,15 @@ The stack supports two runtime targets:
 Kubernetes flow:
 1. Apply profile manifests (Kustomize overlays under `k8s/profiles/`).
 2. Generate or reconcile secrets.
-3. Wait for workloads (including bootstrap Deployment).
-4. Bootstrap service auto-runs on startup (`--serve --auto-run`), configuring all apps via HTTP API.
+3. Wait for workloads (including controller Deployment).
+4. Controller service auto-runs on startup (`--serve --auto-run`), configuring all apps via HTTP API.
 5. Verify with Playwright E2E tests (ingress + UX smoke + path-prefix).
 6. Keep drift low with periodic reconcile CronJobs or on-demand `POST /actions/reconcile`.
 
 Compose flow:
 1. Render native compose spec (`docker/docker-compose.yml` + env expansion).
-2. Start all services including persistent bootstrap-runner container.
-3. Bootstrap-runner auto-runs and configures apps, exposes dashboard on port 9100.
+2. Start all services including persistent controller container.
+3. Controller auto-runs and configures apps, exposes dashboard on port 9100.
 4. Envoy gateway generated automatically from bootstrap profile.
 5. Verify with same Playwright E2E tests (identical test suite, different env vars).
 
@@ -30,18 +30,18 @@ Bootstrap deployment profile:
 ## Profiles
 
 - `minimal`: essential media request/playback path (core services only).
-- `standard`: core + optional services (sabnzbd, homepage, maintainerr, tautulli, etc.) + Envoy gateway + bootstrap service.
+- `standard`: core + optional services (sabnzbd, homepage, maintainerr, tautulli, etc.) + Envoy gateway + controller service.
 - `full`: standard + plex, tautulli, and extended automation.
 - `public-demo`: demo-safe defaults and reduced downloader automation.
 - `power-user`: full with TLS and additional operational guardrails.
 
 Profile manifests live in `k8s/profiles/*` (Kubernetes) and `examples/bootstrap-profiles/` (both platforms).
 
-## Bootstrap Service
+## Controller Service
 
-The bootstrap runner is a **persistent Deployment** (not a one-shot Job) on both platforms:
-- Kubernetes: `media-stack-bootstrap` Deployment with ServiceAccount and RBAC
-- Compose: `bootstrap-runner` container with `restart: unless-stopped`
+The controller is a **persistent Deployment** (not a one-shot Job) on both platforms:
+- Kubernetes: `media-stack-controller` Deployment with ServiceAccount and RBAC
+- Compose: `controller` container with `restart: unless-stopped`
 
 It exposes an HTTP API on port 9100 with an interactive dashboard, action dispatch,
 SSE log streaming, webhook notifications, runtime config toggles, and action retry.
@@ -94,7 +94,7 @@ bash bin/deploy-stack.sh --bootstrap-profile-file contracts/media-stack.profile.
 
 ## Runtime Reconciliation
 
-Both platforms use the same persistent bootstrap HTTP API:
+Both platforms use the same persistent controller HTTP API:
 - `POST /actions/reconcile` — on-demand idempotent re-wiring
 - `POST /actions/bootstrap` — full pipeline with optional `{"retry": N}` for automatic retry
 - `POST /config {"auto_download_content": true}` — toggle runtime behavior without re-deploying
@@ -109,7 +109,7 @@ Platform-specific:
 - Compose:
   - Route strategy supports subdomain, path-prefix, or hybrid patterns.
   - Auth provider runtime is pluggable (`none`, `authelia`, `authentik`).
-  - Bootstrap-runner publishes port 9100 for direct dashboard access.
+  - Controller publishes port 9100 for direct dashboard access.
   - Tautulli runs in default profile (no longer requires `--profile plex`).
 
 ## Multi-Node / Remote Operator Note

@@ -78,7 +78,7 @@ bash bin/render-architecture-diagrams.sh
 Priority order:
 1. Git-managed manifests, plugin manifests, and bootstrap config
 2. Generated/managed Kubernetes Secrets
-3. Bootstrap HTTP API service and reconcile CronJobs
+3. Controller HTTP API service and reconcile CronJobs
 4. Runtime app state
 
 If UI state conflicts with bootstrap config, reconciliation pushes runtime back toward declared configuration.
@@ -106,7 +106,7 @@ Runtime override scope is intentionally narrow:
 - `adapter_hooks.media_server_operation_plans`
 - `adapter_hooks.runner_phase_scripts` (bootstrap wrapper phase->script mapping)
 - `adapter_hooks.bootstrap_all` (ordered phase plan + component wiring for bootstrap-all)
-- `adapter_hooks.bootstrap_job` (ordered phase plan + phase-binding support for bootstrap service API)
+- `adapter_hooks.bootstrap_job` (ordered phase plan + phase-binding support for controller service API)
 - `adapter_hooks.scale_policy` (`apps` + optional `scale_to_zero_apps` guardrails)
 
 Registration overrides are intentionally blocked in runtime config:
@@ -170,7 +170,7 @@ python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 
 ## Swap One Technology (Quick Path)
 
-Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> another media backend, or one Servarr app implementation) without editing `bootstrap-apps.py`.
+Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> another media backend, or one Servarr app implementation) without editing `controller.py`.
 
 1. Add or update one technology manifest in `src/media_stack/contracts/plugins/<technology>/manifest.json`.
 2. Add/update the app/client config block in `contracts/media-stack.config.json`.
@@ -223,12 +223,12 @@ root-level `jellyfin_*` modules are retired.
 Supported paths:
 - Kubernetes (primary path): profile-driven deploy + bootstrap + verification
 - Docker Compose (alternate runtime path): SDK-driven compose deploy + wait + smoke/status
-- Container image build/publish (tooling path): build and push bootstrap runner images used by Kubernetes Jobs/CronJobs
+- Container image build/publish (tooling path): build and push controller images used by Kubernetes Jobs/CronJobs
 - Distribution bootstrap profile (`contracts/media-stack.profile.yaml`) can drive target/purpose/install/exposure/auth defaults across both runtime targets
 
 Kubernetes profiles:
 - `minimal`: core stack only
-- `full`: core + optional apps + bootstrap reconcile loop
+- `full`: core + optional apps + controller reconcile loop
 - `public-demo`: safer demo profile (downloader automation reduced)
 - `power-user`: full profile + stricter guardrails/TLS helpers
 
@@ -347,9 +347,9 @@ Use this list if you want to modify/refactor/test the project.
   - On Ubuntu: `sudo apt-get install -y python3-venv`
 - Node.js + npm (Playwright tests and Mermaid rendering):
   - Node.js downloads: https://nodejs.org/en/download
-- Docker Engine (for bootstrap-runner image builds/pushes):
+- Docker Engine (for controller image builds/pushes):
   - https://docs.docker.com/engine/install/ubuntu/
-- Optional local image registry (if you push custom bootstrap runner images):
+- Optional local image registry (if you push custom controller images):
   - project default example: `192.168.1.60:30002/library/...`
 
 Recommended developer validation:
@@ -409,25 +409,25 @@ bash bin/deploy-verify.sh 192.168.1.60 media-stack full
 bash bin/deploy-verify.sh 192.168.1.60 media-stack-dev power-user
 ```
 
-## Bootstrap Runner Image
+## Controller Image
 
-The bootstrap service and CronJobs run from a prebuilt image.
+The controller service and CronJobs run from a prebuilt image.
 
 Build and push to local registry:
 ```bash
-bash bin/build-bootstrap-runner-image.sh
+bash bin/build-controller-image.sh
 ```
 
 Override image for one run:
 ```bash
-BOOTSTRAP_RUNNER_IMAGE=192.168.1.60:30002/library/media-stack-bootstrap-runner:latest \
+BOOTSTRAP_RUNNER_IMAGE=192.168.1.60:30002/library/media-stack-controller:latest \
   bash bin/bootstrap-all.sh
 ```
 
 The same `BOOTSTRAP_RUNNER_IMAGE` env var is respected by:
 - `bin/run-bootstrap-job.sh`
 - `bin/run-prowlarr-auto-indexers.sh`
-- `docker/docker-compose.yml` (bootstrap-runner service)
+- `docker/docker-compose.yml` (controller service)
 
 ## Runtime Config Overlays and Resume
 
@@ -466,11 +466,11 @@ Overlay details:
 
 Docker is used both as:
 - Compose runtime engine for the alternate `platform_target=compose` deployment path
-- build tooling for bootstrap-runner images used by Kubernetes jobs
+- build tooling for controller images used by Kubernetes jobs
 
-Build and push the bootstrap runner image:
+Build and push the controller image:
 ```bash
-bash bin/build-bootstrap-runner-image.sh
+bash bin/build-controller-image.sh
 ```
 
 ## End-to-End Automation Scope
@@ -597,7 +597,7 @@ Layout details: [docs/repo-layout.md](docs/repo-layout.md)
 
 - Idempotent automation over manual UI steps
 - Secure-by-default secret handling with deterministic regeneration
-- Drift reconciliation through bootstrap HTTP API + reconcile cron
+- Drift reconciliation through controller HTTP API + reconcile cron
 - Observable install/bootstraps with phase logs and diagnostics
 - Namespace-first environment isolation
 

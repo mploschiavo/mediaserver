@@ -77,10 +77,10 @@ MIN_REGISTRATION_REQUIREMENTS = {
 }
 
 SHARED_RUNTIME_ENTRY_MODULES = [
-    ROOT / "bin" / "bootstrap-apps.py",
+    ROOT / "bin" / "controller.py",
     ROOT / "src" / "media_stack" / "services" / "runtime_platform.py",
     ROOT / "src" / "media_stack" / "services" / "runtime_secrets.py",
-    ROOT / "src" / "media_stack" / "services" / "bootstrap_runner_service.py",
+    ROOT / "src" / "media_stack" / "services" / "controller_service.py",
     ROOT / "src" / "media_stack" / "services" / "download_client_pipeline_service.py",
     ROOT / "src" / "media_stack" / "services" / "runtime_factory" / "runtime_builder.py",
 ]
@@ -189,9 +189,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                     _assert_import_spec_resolves(spec)
 
     def test_bootstrap_entrypoint_uses_manifest_bound_handlers_for_tech_operations(self):
-        wrapper = (ROOT / "bin" / "bootstrap-apps.py").read_text(encoding="utf-8")
+        wrapper = (ROOT / "bin" / "controller.py").read_text(encoding="utf-8")
         entrypoint = (
-            ROOT / "src" / "media_stack" / "cli" / "commands" / "bootstrap_apps_main.py"
+            ROOT / "src" / "media_stack" / "cli" / "commands" / "controller_main.py"
         ).read_text(encoding="utf-8")
         operation_names: set[str] = set()
         for tech in TECHNOLOGIES:
@@ -200,7 +200,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
         operation_names = {name for name in operation_names if name}
         self.assertTrue(operation_names, "No event handlers discovered from manifests.")
-        self.assertIn("from media_stack.cli.commands.bootstrap_apps_main import main", wrapper)
+        self.assertIn("from media_stack.cli.commands.controller_main import main", wrapper)
         self.assertIn("build_runner_event_registry(", entrypoint)
         self.assertNotIn("_missing_op_handler(", entrypoint)
 

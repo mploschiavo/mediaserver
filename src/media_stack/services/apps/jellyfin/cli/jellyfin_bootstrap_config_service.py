@@ -28,5 +28,5 @@ def parse_jellyfin_bootstrap_config(argv=None) -> JellyfinBootstrapConfig:
         secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets"),
         service_name=os.environ.get("JELLYFIN_SERVICE_NAME", "jellyfin"),
         wait_seconds=int(os.environ.get("JELLYFIN_BOOTSTRAP_WAIT_SECONDS", "180")),
-        app_name=os.environ.get("JELLYFIN_API_KEY_APP_NAME", "media-stack-bootstrap"),
+        app_name=os.environ.get("JELLYFIN_API_KEY_APP_NAME", "media-stack-controller"),
     )

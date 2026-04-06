@@ -82,7 +82,7 @@ live_tv_defaults:
 ## Install Tiers
 
 - `minimal`: Jellyfin/Jellyseerr/Prowlarr/qBittorrent/Homepage
-- `standard`: `minimal` + Sonarr/Radarr/Lidarr/Readarr/Bazarr/SABnzbd/Tautulli/Maintainerr/Unpackerr/FlareSolverr + Envoy + Bootstrap Service
+- `standard`: `minimal` + Sonarr/Radarr/Lidarr/Readarr/Bazarr/SABnzbd/Tautulli/Maintainerr/Unpackerr/FlareSolverr + Envoy + Controller Service
 - `full`: all supported apps enabled (adds Plex)
 
 Automatic content behavior policy:

@@ -28,18 +28,18 @@ fi
 echo "Compose deploy: starting services..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-# Wait for bootstrap service to be healthy.
-echo "  Waiting for bootstrap service..."
+# Wait for controller service to be healthy.
+echo "  Waiting for controller service..."
 for i in $(seq 1 40); do
     HEALTH=$(curl -sf "http://127.0.0.1:${BOOTSTRAP_PORT}/healthz" 2>/dev/null || echo "")
     [[ -n "$HEALTH" ]] && break
     sleep 3
 done
 if [[ -z "$HEALTH" ]]; then
-    echo "  ERROR: Bootstrap service not responding on port ${BOOTSTRAP_PORT} within 120s" >&2
+    echo "  ERROR: Controller service not responding on port ${BOOTSTRAP_PORT} within 120s" >&2
     exit 1
 fi
-echo "  Bootstrap service ready."
+echo "  Controller service ready."
 
 # Trigger bootstrap via HTTP API (same as K8s flow).
 echo "  Triggering bootstrap..."

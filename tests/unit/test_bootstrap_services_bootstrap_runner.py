@@ -6,9 +6,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.bootstrap_runner_service import (  # noqa: E402
-    BootstrapRunnerDependencies,
-    BootstrapRunnerService,
+from media_stack.services.controller_service import (  # noqa: E402
+    ControllerDependencies,
+    ControllerService,
     BootstrapRuntime,
 )
 from media_stack.services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
@@ -49,7 +49,7 @@ class OP:
     RUN_PROWLARR_INDEXER_PIPELINE = "run_prowlarr_indexer_pipeline"
 
 
-class BootstrapRunnerServiceTests(unittest.TestCase):
+class ControllerServiceTests(unittest.TestCase):
     def _deps(self):
         operation_mocks = {
             OP.ENSURE_APP_AUTH_SETTINGS: mock.Mock(),
@@ -83,7 +83,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             OP.SYNC_ARR_INDEXERS_FROM_PROWLARR: mock.Mock(),
             OP.RUN_PROWLARR_INDEXER_PIPELINE: mock.Mock(),
         }
-        deps = BootstrapRunnerDependencies(
+        deps = ControllerDependencies(
             log=mock.Mock(),
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
             normalize_url=lambda value: value.rstrip("/"),
@@ -310,7 +310,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_prewarm_mode_short_circuit(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime(mode=BootstrapMode.MEDIA_SERVER_PREWARM)
         runner.run(runtime)
         deps.operation_mocks[OP.ENSURE_JELLYFIN_PREWARM].assert_called_once()  # type: ignore[attr-defined]
@@ -318,7 +318,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_media_hygiene_mode_waits_and_runs_hygiene(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         arr_app = ServarrAppConfig.from_dict(
             {
                 "name": "Sonarr",
@@ -339,7 +339,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_full_mode_runs_pipeline_and_optional_sync(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime(trigger_sync=True)
         runner.run(runtime)
         deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_called_once()  # type: ignore[attr-defined]
@@ -357,7 +357,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_runner_executes_precheck_phase_plan(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime()
         runner.run(runtime)
         deps.operation_mocks[OP.ENSURE_PROWLARR_READY].assert_called_once()  # type: ignore[attr-defined]
@@ -367,7 +367,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
         deps.operation_mocks[OP.CONFIGURE_JELLYSEERR].side_effect = RuntimeError(  # type: ignore[attr-defined]
             "boom"
         )
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime(
             configure_jellyseerr_services=True,
             jellyseerr_required=True,
@@ -377,7 +377,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_runner_configures_maintainerr_integrations_when_enabled(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime(
             configure_maintainerr_integrations=True,
             arr_apps_raw=[{"implementation": "sonarr", "url": "http://sonarr:8989"}],
@@ -394,7 +394,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_runner_configures_flaresolverr_proxy_when_enabled(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime(
             cfg={
                 "flaresolverr": {
@@ -423,7 +423,7 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
 
     def test_runner_canonicalizes_lifecycle_keys_from_aliases(self):
         deps = self._deps()
-        runner = BootstrapRunnerService(deps=deps)
+        runner = ControllerService(deps=deps)
         runtime = self._runtime(
             torrent_client_key="qbit",
             usenet_client_key="sab",

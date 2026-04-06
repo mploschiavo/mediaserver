@@ -304,7 +304,7 @@ class BootstrapJobWaitService:
                         self.warn(f"Image pull message: {wait_message}")
                     self.warn(
                         "Build/push the runner image and retry: "
-                        "bash bin/build-bootstrap-runner-image.sh"
+                        "bash bin/build-controller-image.sh"
                     )
                     raise KubernetesError("Bootstrap job image pull failed")
 
@@ -360,7 +360,7 @@ class BootstrapJobWaitService:
     # HTTP-based wait for persistent Deployment bootstrap service
     # ------------------------------------------------------------------
 
-    def _find_bootstrap_pod(self, selector: str = "app=media-stack-bootstrap") -> str | None:
+    def _find_bootstrap_pod(self, selector: str = "app=media-stack-controller") -> str | None:
         """Return the name of the first ready bootstrap pod, or None."""
         pods = self._get_pods(selector)
         for pod in pods:
@@ -393,7 +393,7 @@ class BootstrapJobWaitService:
     def wait_for_bootstrap_service(
         self,
         *,
-        selector: str = "app=media-stack-bootstrap",
+        selector: str = "app=media-stack-controller",
         wait_for_action: str | None = None,
     ) -> None:
         """Wait for the bootstrap Deployment's HTTP service to report completion.

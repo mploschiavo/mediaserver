@@ -11,7 +11,7 @@ Every app in the stack is reachable through **three consistent route patterns** 
 | Path-prefix (gateway) | `apps.media-stack.local/app/sonarr` | Single endpoint, upstream routers |
 
 All 19 services in the standard profile support all three patterns:
-bazarr, bootstrap-runner, envoy, flaresolverr, homepage, jellyfin, jellyseerr,
+bazarr, controller, envoy, flaresolverr, homepage, jellyfin, jellyseerr,
 lidarr, maintainerr, plex, prowlarr, qbittorrent, radarr, readarr, recyclarr,
 sabnzbd, sonarr, tautulli, unpackerr.
 

@@ -143,7 +143,7 @@ def build_parser(
         "--bootstrap-runner-image",
         default=os.environ.get(
             "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+            "192.168.1.60:30002/library/media-stack-controller:latest",
         ),
         help="Bootstrap runner container image.",
     )
@@ -200,7 +200,7 @@ def parse_run_bootstrap_job_config(
         prepare_host_root=str(args.prepare_host_root).strip() or "/srv/media-stack",
         ingress_name=str(args.ingress_name).strip() or "media-stack-ingress",
         bootstrap_runner_image=str(args.bootstrap_runner_image).strip()
-        or "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+        or "192.168.1.60:30002/library/media-stack-controller:latest",
         root_dir=root_dir,
         config_file=Path(str(args.config_file)),
         selected_apps=str(os.environ.get("SELECTED_APPS", "")).strip(),

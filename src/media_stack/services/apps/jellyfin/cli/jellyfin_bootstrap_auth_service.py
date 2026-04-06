@@ -23,8 +23,8 @@ class JellyfinBootstrapAuthService:
     def can_authenticate_jellyfin(self, base_url: str, username: str, password: str) -> bool:
         headers = {
             "X-Emby-Authorization": (
-                'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
-                'DeviceId="media-stack-bootstrap", Version="1.0.0"'
+                'MediaBrowser Client="media-stack-controller", Device="media-stack-controller", '
+                'DeviceId="media-stack-controller", Version="1.0.0"'
             )
         }
         payload = {"Username": username, "Pw": password}
@@ -42,8 +42,8 @@ class JellyfinBootstrapAuthService:
     def authenticate_with_credentials(self, base_url: str, username: str, password: str):
         headers = {
             "X-Emby-Authorization": (
-                'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
-                'DeviceId="media-stack-bootstrap", Version="1.0.0"'
+                'MediaBrowser Client="media-stack-controller", Device="media-stack-controller", '
+                'DeviceId="media-stack-controller", Version="1.0.0"'
             )
         }
         payload = {"Username": username, "Pw": password}
@@ -128,13 +128,22 @@ class JellyfinBootstrapAuthService:
         if status not in (200, 201, 202, 204):
             self.warn(f"Jellyfin startup config step returned HTTP {status}: {body}")
 
-        status, _, body = self.http_request(
-            base_url,
-            "/Startup/User",
-            method="POST",
-            payload={"Name": username, "Password": password},
-        )
-        if status not in (200, 201, 202, 204):
+        # Retry user creation — Jellyfin may return 500 if internal DB
+        # init is still settling after the configuration step.
+        user_created = False
+        for attempt in range(5):
+            status, _, body = self.http_request(
+                base_url,
+                "/Startup/User",
+                method="POST",
+                payload={"Name": username, "Password": password},
+            )
+            if status in (200, 201, 202, 204):
+                user_created = True
+                break
+            if attempt < 4:
+                time.sleep(3)
+        if not user_created:
             if self.can_authenticate_jellyfin(base_url, username, password):
                 self.warn(
                     f"Jellyfin startup user step returned HTTP {status}, but admin login works; "
@@ -182,8 +191,8 @@ class JellyfinBootstrapAuthService:
     def _authenticate_jellyfin(self, base_url: str, username: str, password: str):
         headers = {
             "X-Emby-Authorization": (
-                'MediaBrowser Client="media-stack-bootstrap", Device="media-stack-bootstrap", '
-                'DeviceId="media-stack-bootstrap", Version="1.0.0"'
+                'MediaBrowser Client="media-stack-controller", Device="media-stack-controller", '
+                'DeviceId="media-stack-controller", Version="1.0.0"'
             )
         }
         payload = {"Username": username, "Pw": password}

@@ -43,9 +43,9 @@ Use this path if you are modifying code, running tests, or extending adapters.
   - Ubuntu: `sudo apt-get install -y python3-venv`
 - Node.js + npm (Playwright and Mermaid rendering):
   - https://nodejs.org/en/download
-- Docker Engine (optional, for bootstrap-runner image build/push):
+- Docker Engine (optional, for controller image build/push):
   - https://docs.docker.com/engine/install/ubuntu/
-- Optional local image registry access for custom bootstrap runner images
+- Optional local image registry access for custom controller images
 
 Quick validation:
 
@@ -96,12 +96,12 @@ kubectl apply -k k8s
 ```bash
 kubectl create namespace media-dev
 kubectl apply -k k8s/profiles/standard
-kubectl -n media-dev create configmap media-stack-bootstrap-config \
+kubectl -n media-dev create configmap media-stack-controller-config \
   --from-file=config.json=contracts/media-stack.config.json --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n media-dev create configmap media-stack-bootstrap-profile \
+kubectl -n media-dev create configmap media-stack-controller-profile \
   --from-file=profile.yaml=examples/bootstrap-profiles/media-k8s-standard.yaml --dry-run=client -o yaml | kubectl apply -f -
 # Wait for pods to start, then trigger bootstrap:
-kubectl -n media-dev port-forward svc/media-stack-bootstrap 9100:9100 &
+kubectl -n media-dev port-forward svc/media-stack-controller 9100:9100 &
 curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
 ```
 
@@ -146,9 +146,9 @@ kubectl -n media-stack scale deploy/unpackerr --replicas=1
 ```
 
 ## Configuration-as-code bootstrap
-Build/push bootstrap runner image first (used by bootstrap Deployment + CronJobs):
+Build/push controller image first (used by controller Deployment + CronJobs):
 ```bash
-bash bin/build-bootstrap-runner-image.sh
+bash bin/build-controller-image.sh
 ```
 
 Run idempotent post-deploy wiring:
@@ -190,14 +190,14 @@ Still manual:
 Declarative config and job files:
 - `contracts/media-stack.config.json`
 - `contracts/prowlarr-indexers.example.json`
-- `bin/bootstrap-apps.py`
-- `k8s/bootstrap.yaml`
-- `docker/bootstrap-runner.Dockerfile`
-- `bin/build-bootstrap-runner-image.sh`
+- `bin/controller.py`
+- `k8s/controller.yaml`
+- `docker/controller.Dockerfile`
+- `bin/build-controller-image.sh`
 
 Override the runner image without editing manifests:
 ```bash
-BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-bootstrap-runner:<tag> bash bin/bootstrap-all.sh
+BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-controller:<tag> bash bin/bootstrap-all.sh
 ```
 
 Set stack admin credentials in `k8s/secrets.example.yaml` for fully automated download-client wiring.

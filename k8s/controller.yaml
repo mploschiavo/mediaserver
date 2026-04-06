@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: media-stack-bootstrap
+  name: media-stack-controller
   namespace: media-stack
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: media-stack-bootstrap
+  name: media-stack-controller
   namespace: media-stack
 rules:
   - apiGroups: [""]
@@ -23,21 +23,21 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: media-stack-bootstrap
+  name: media-stack-controller
   namespace: media-stack
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: media-stack-bootstrap
+  name: media-stack-controller
 subjects:
   - kind: ServiceAccount
-    name: media-stack-bootstrap
+    name: media-stack-controller
     namespace: media-stack
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: media-stack-bootstrap
+  name: media-stack-controller
   namespace: media-stack
   annotations:
     media-stack.io/author: Matthew Loschiavo
@@ -50,16 +50,16 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: media-stack-bootstrap
+      app: media-stack-controller
   template:
     metadata:
       labels:
-        app: media-stack-bootstrap
+        app: media-stack-controller
     spec:
-      serviceAccountName: media-stack-bootstrap
+      serviceAccountName: media-stack-controller
       containers:
-        - name: bootstrap
-          image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
+        - name: controller
+          image: 192.168.1.60:30002/library/media-stack-controller:latest
           imagePullPolicy: Always
           env:
             - name: SABNZBD_API_KEY
@@ -154,7 +154,7 @@ spec:
               value: /bootstrap-config/config.json
           command:
             - python3
-            - /opt/media-stack/bin/bootstrap-apps.py
+            - /opt/media-stack/bin/controller.py
             - --serve
             - --config
             - /bootstrap-config/config.json
@@ -225,11 +225,11 @@ spec:
       volumes:
         - name: bootstrap-config
           configMap:
-            name: media-stack-bootstrap-config
+            name: media-stack-controller-config
             optional: true
         - name: bootstrap-profile
           configMap:
-            name: media-stack-bootstrap-profile
+            name: media-stack-controller-profile
             optional: true
         - name: cfg-jellyfin
           persistentVolumeClaim:
@@ -283,11 +283,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: media-stack-bootstrap
+  name: media-stack-controller
   namespace: media-stack
 spec:
   selector:
-    app: media-stack-bootstrap
+    app: media-stack-controller
   ports:
     - name: api
       port: 9100

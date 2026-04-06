@@ -35,7 +35,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--bootstrap-runner-image",
         default=os.getenv(
             "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+            "192.168.1.60:30002/library/media-stack-controller:latest",
         ),
     )
     parser.add_argument(

@@ -221,7 +221,7 @@ tmp_body="/tmp/qb-login-body.$$"
 code="$(curl -sS -o "$tmp_body" -w "%{http_code}" \\
   -H "Origin: http://127.0.0.1:8080" \\
   -H "Referer: http://127.0.0.1:8080/" \\
-  -H "User-Agent: media-stack-bootstrap/1.0" \\
+  -H "User-Agent: media-stack-controller/1.0" \\
   --data-urlencode "username=$QB_USER" \\
   --data-urlencode "password=$QB_PASS" \\
   "http://127.0.0.1:8080/api/v2/auth/login" 2>/dev/null || true)"

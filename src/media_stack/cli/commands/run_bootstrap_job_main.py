@@ -156,7 +156,7 @@ class RunBootstrapJobRunner:
         return BootstrapJobLogsService(
             cfg=BootstrapJobLogsConfig(
                 namespace=self.cfg.namespace,
-                job_name="media-stack-bootstrap",
+                job_name="media-stack-controller",
                 log_file=self.artifacts.job_log_file,
                 tail_lines=self.cfg.job_log_tail_lines,
             ),
@@ -514,7 +514,7 @@ class RunBootstrapJobRunner:
         pod_name = None
         deadline = _time.time() + 120
         while _time.time() < deadline:
-            pod_name = wait_svc._find_bootstrap_pod(selector="app=media-stack-bootstrap")
+            pod_name = wait_svc._find_bootstrap_pod(selector="app=media-stack-controller")
             if pod_name:
                 status = wait_svc._query_bootstrap_status(pod_name)
                 if status is not None:
@@ -549,13 +549,13 @@ class RunBootstrapJobRunner:
 
         # Wait for completion via HTTP polling.
         wait_svc.wait_for_bootstrap_service(
-            selector="app=media-stack-bootstrap",
+            selector="app=media-stack-controller",
         )
 
     def wait_for_bootstrap_job(self) -> None:
         self._job_wait_service().wait_for_job(
-            job_name="media-stack-bootstrap",
-            selector="app=media-stack-bootstrap",
+            job_name="media-stack-controller",
+            selector="app=media-stack-controller",
         )
 
     def print_bootstrap_job_logs(self) -> None:

@@ -31,7 +31,7 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
                 timeout_raw="20m",
                 heartbeat_interval=15,
                 prepare_host_root="/srv/media-stack",
-                bootstrap_runner_image="registry.example/media-stack-bootstrap-runner:latest",
+                bootstrap_runner_image="registry.example/media-stack-controller:latest",
                 exclude_name_tokens=[],
                 reputation_cfg={},
                 root_dir=ROOT,
@@ -44,7 +44,7 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
                 timeout_raw="90s",
                 heartbeat_interval=15,
                 prepare_host_root="/srv/media-stack",
-                bootstrap_runner_image="registry.example/media-stack-bootstrap-runner:latest",
+                bootstrap_runner_image="registry.example/media-stack-controller:latest",
                 exclude_name_tokens=[],
                 reputation_cfg={},
                 root_dir=ROOT,
@@ -57,7 +57,7 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
                 timeout_raw="2h",
                 heartbeat_interval=15,
                 prepare_host_root="/srv/media-stack",
-                bootstrap_runner_image="registry.example/media-stack-bootstrap-runner:latest",
+                bootstrap_runner_image="registry.example/media-stack-controller:latest",
                 exclude_name_tokens=[],
                 reputation_cfg={},
                 root_dir=ROOT,
@@ -84,7 +84,7 @@ class ProwlarrAutoIndexerRunnerUnitTests(unittest.TestCase):
 
         rendered = runner.manifest_overrides(
             "namespace: media-stack\n"
-            "image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest\n"
+            "image: 192.168.1.60:30002/library/media-stack-controller:latest\n"
             "path: /srv/media-stack\n"
         )
         self.assertIn("namespace: media-stack-dev", rendered)

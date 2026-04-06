@@ -55,7 +55,7 @@ jobs:
 
       - name: Python compile check
         run: |
-          python3 -m py_compile bin/bootstrap-apps.py
+          python3 -m py_compile bin/controller.py
           python3 -m py_compile src/media_stack/adapters/common.py src/media_stack/adapters/http_client.py src/media_stack/adapters/servarr.py
           python3 -m py_compile src/media_stack/core/*.py src/media_stack/services/*.py
           python3 -m py_compile src/media_stack/cli/commands/*.py
@@ -69,7 +69,7 @@ jobs:
             src/media_stack/cli \
             tests/unit
           ~/.local/bin/black --check \
-            bin/bootstrap-apps.py \
+            bin/controller.py \
             src/media_stack/services/runtime_factory \
             src/media_stack/services/plugin_manifest_loader.py \
             src/media_stack/services/technology_catalog.py \

@@ -104,8 +104,8 @@ def deploy_k8s(args: argparse.Namespace) -> None:
     print("  Creating ConfigMaps...")
     config_json = SCRIPT_DIR / "contracts" / "media-stack.config.json"
     for cm_name, flag, src in [
-        ("media-stack-bootstrap-config", "config.json", config_json),
-        ("media-stack-bootstrap-profile", "profile.yaml", profile_path),
+        ("media-stack-controller-config", "config.json", config_json),
+        ("media-stack-controller-profile", "profile.yaml", profile_path),
     ]:
         dry = subprocess.run(
             ["kubectl", "-n", namespace, "create", "configmap", cm_name,
@@ -132,13 +132,13 @@ def deploy_k8s(args: argparse.Namespace) -> None:
             print(f"  WARN: Only {ready}/{total} pods ready after timeout")
         time.sleep(10)
 
-    # Wait for bootstrap service
-    print("  Waiting for bootstrap service...")
+    # Wait for controller service
+    print("  Waiting for controller service...")
     pod = ""
     for _ in range(40):
         pod = run_quiet([
             "kubectl", "-n", namespace, "get", "pods",
-            "-l", "app=media-stack-bootstrap",
+            "-l", "app=media-stack-controller",
             "-o", "jsonpath={.items[0].metadata.name}",
         ])
         if pod:
@@ -152,7 +152,7 @@ def deploy_k8s(args: argparse.Namespace) -> None:
         time.sleep(3)
 
     if not pod:
-        sys.exit("  ERROR: Bootstrap service pod not found within 120s")
+        sys.exit("  ERROR: Controller service pod not found within 120s")
 
     # Trigger bootstrap
     print(f"  Triggering bootstrap on pod {pod}...")
@@ -184,7 +184,7 @@ def deploy_k8s(args: argparse.Namespace) -> None:
 
     print()
     print(f"Deploy complete: {namespace}")
-    print(f"  Dashboard: http://apps.{namespace}.local:30180/app/media-stack-bootstrap/")
+    print(f"  Dashboard: http://apps.{namespace}.local:30180/app/media-stack-controller/")
     print(f"  Homepage:  http://apps.{namespace}.local:30180/app/homepage")
 
 
@@ -202,8 +202,8 @@ def deploy_compose(args: argparse.Namespace) -> None:
     print("Compose deploy: starting services...")
     run(["docker", "compose", "-f", str(compose_file), "up", "-d"])
 
-    # Wait for bootstrap service
-    print("  Waiting for bootstrap service...")
+    # Wait for controller service
+    print("  Waiting for controller service...")
     health = ""
     for _ in range(40):
         health = run_quiet(["curl", "-sf", f"http://127.0.0.1:{BOOTSTRAP_PORT}/healthz"])
@@ -220,8 +220,8 @@ def deploy_compose(args: argparse.Namespace) -> None:
         time.sleep(3)
 
     if not health:
-        sys.exit(f"  ERROR: Bootstrap service not responding on port {BOOTSTRAP_PORT} within 120s")
-    print("  Bootstrap service ready.")
+        sys.exit(f"  ERROR: Controller service not responding on port {BOOTSTRAP_PORT} within 120s")
+    print("  Controller service ready.")
 
     # Trigger bootstrap
     print("  Triggering bootstrap...")

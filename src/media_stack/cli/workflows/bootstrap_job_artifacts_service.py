@@ -16,14 +16,14 @@ class BootstrapJobArtifactsService:
         return BootstrapJobArtifacts(
             job_log_file=Path(
                 NamedTemporaryFile(
-                    prefix="media-stack-bootstrap-log.",
+                    prefix="media-stack-controller-log.",
                     suffix=".log",
                     delete=False,
                 ).name
             ),
             job_config_file=Path(
                 NamedTemporaryFile(
-                    prefix="media-stack-bootstrap-config.",
+                    prefix="media-stack-controller-config.",
                     suffix=".json",
                     delete=False,
                 ).name

@@ -261,7 +261,7 @@ def _homepage_host_token(value: str) -> str:
     """Extract a URL-safe slug from a homepage host entry.
 
     Preserves hyphens so the token can be used directly as a URL path
-    segment that matches Envoy/K8s service names (e.g. media-stack-bootstrap).
+    segment that matches Envoy/K8s service names (e.g. media-stack-controller).
     """
     text = str(value or "").strip().lower()
     if not text:

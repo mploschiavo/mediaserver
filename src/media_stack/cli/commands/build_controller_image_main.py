@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and optionally push bootstrap runner image."""
+"""Build and optionally push controller image."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from media_stack.cli.workflows.cli_common import repo_root_from_script_file, run
 
 
 @dataclass(frozen=True)
-class BuildBootstrapRunnerImageConfig:
+class BuildControllerImageConfig:
     image: str
     push_image: bool
     engine: str
@@ -44,17 +44,17 @@ def _detect_engine(preferred: str | None) -> str:
     raise ConfigError("Neither docker nor podman was found in PATH.")
 
 
-def parse_config(argv: list[str] | None = None) -> BuildBootstrapRunnerImageConfig:
+def parse_config(argv: list[str] | None = None) -> BuildControllerImageConfig:
     root_dir = repo_root_from_script_file(__file__)
     parser = argparse.ArgumentParser(
-        prog="bin/build-bootstrap-runner-image.sh",
-        description="Build bootstrap-runner image used by k8s/bootstrap.yaml, docker-compose.yml, and CronJobs.",
+        prog="bin/build-controller-image.sh",
+        description="Build controller image used by k8s/controller.yaml, docker-compose.yml, and CronJobs.",
     )
     parser.add_argument(
         "--image",
         default=os.environ.get(
             "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+            "192.168.1.60:30002/library/media-stack-controller:latest",
         ),
     )
     push_default = _truthy(os.environ.get("PUSH_IMAGE"), True)
@@ -64,7 +64,7 @@ def parse_config(argv: list[str] | None = None) -> BuildBootstrapRunnerImageConf
     parser.add_argument(
         "--dockerfile",
         default=os.environ.get(
-            "DOCKERFILE", str(root_dir / "docker" / "bootstrap-runner.Dockerfile")
+            "DOCKERFILE", str(root_dir / "docker" / "controller.Dockerfile")
         ),
     )
     args = parser.parse_args(argv)
@@ -76,7 +76,7 @@ def parse_config(argv: list[str] | None = None) -> BuildBootstrapRunnerImageConf
     if not dockerfile.is_file():
         raise ConfigError(f"Dockerfile not found: {dockerfile}")
     engine = _detect_engine(str(args.engine or "").strip())
-    return BuildBootstrapRunnerImageConfig(
+    return BuildControllerImageConfig(
         image=image,
         push_image=bool(args.push_image),
         engine=engine,
@@ -85,7 +85,7 @@ def parse_config(argv: list[str] | None = None) -> BuildBootstrapRunnerImageConf
     )
 
 
-def run(cfg: BuildBootstrapRunnerImageConfig) -> int:
+def run(cfg: BuildControllerImageConfig) -> int:
     run_command(
         [
             cfg.engine,
@@ -100,9 +100,9 @@ def run(cfg: BuildBootstrapRunnerImageConfig) -> int:
     if cfg.push_image:
         run_command([cfg.engine, "push", cfg.image])
 
-    print(f"Built bootstrap runner image: {cfg.image}")
+    print(f"Built controller image: {cfg.image}")
     if cfg.push_image:
-        print(f"Pushed bootstrap runner image: {cfg.image}")
+        print(f"Pushed controller image: {cfg.image}")
     return 0
 
 

@@ -59,7 +59,7 @@ class DeployStackConfig:
     compose_env_file: Path = Path("docker/.env")
     compose_project_name: str = ""
     compose_profiles: str = ""
-    bootstrap_runner_image: str = "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest"
+    bootstrap_runner_image: str = "192.168.1.60:30002/library/media-stack-controller:latest"
     selected_apps: str = ""
     purpose: str = "dev"
     disk_allocation_gb: int = 500
@@ -305,7 +305,7 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         compose_profiles=_pick(_env_value("COMPOSE_PROFILES"), default=""),
         bootstrap_runner_image=_pick(
             _env_value("BOOTSTRAP_RUNNER_IMAGE"),
-            default="192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+            default="192.168.1.60:30002/library/media-stack-controller:latest",
         ),
         selected_apps=selected_apps,
         purpose=_pick(

@@ -22,9 +22,9 @@ PLAYWRIGHT_DIR="$REPO_ROOT/tests/e2e/playwright"
 echo "[test] Profile: $BOOTSTRAP_PROFILE_FILE"
 echo "[test] Edge port: $STACK_COMPOSE_EDGE_PORT"
 
-# Step 1: Build bootstrap runner image.
-echo "[test] Building bootstrap runner image..."
-PUSH_IMAGE=0 bash "$REPO_ROOT/bin/build-bootstrap-runner-image.sh"
+# Step 1: Build controller image.
+echo "[test] Building controller image..."
+PUSH_IMAGE=0 bash "$REPO_ROOT/bin/build-controller-image.sh"
 
 # Step 2: Start the stack.
 echo "[test] Starting compose stack..."
@@ -36,13 +36,13 @@ TRAEFIK_HTTP_PORT="$STACK_COMPOSE_EDGE_PORT" docker compose up -d
 echo "[test] Waiting for bootstrap (timeout=${BOOTSTRAP_TIMEOUT}s)..."
 deadline=$((SECONDS + BOOTSTRAP_TIMEOUT))
 while [ "$SECONDS" -lt "$deadline" ]; do
-    phase=$(docker exec media-stack-bootstrap-runner wget -qO- http://127.0.0.1:9100/status 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('phase',''))" 2>/dev/null || echo "")
+    phase=$(docker exec media-stack-controller wget -qO- http://127.0.0.1:9100/status 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('phase',''))" 2>/dev/null || echo "")
     if [ "$phase" = "complete" ]; then
         echo "[test] Bootstrap complete."
         break
     elif [ "$phase" = "error" ]; then
         echo "[test] Bootstrap FAILED."
-        docker logs media-stack-bootstrap-runner 2>&1 | tail -20
+        docker logs media-stack-controller 2>&1 | tail -20
         exit 1
     fi
     sleep 10
@@ -50,7 +50,7 @@ done
 
 if [ "$phase" != "complete" ]; then
     echo "[test] Bootstrap timed out after ${BOOTSTRAP_TIMEOUT}s."
-    docker logs media-stack-bootstrap-runner 2>&1 | tail -20
+    docker logs media-stack-controller 2>&1 | tail -20
     exit 1
 fi
 

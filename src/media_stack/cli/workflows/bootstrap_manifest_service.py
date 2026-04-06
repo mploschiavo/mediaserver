@@ -45,7 +45,7 @@ class BootstrapManifestService:
             flags=re.MULTILINE,
         )
         out = re.sub(
-            r"image:\s*192\.168\.1\.60:30002/library/media-stack-bootstrap-runner:latest",
+            r"image:\s*192\.168\.1\.60:30002/library/media-stack-controller:latest",
             f"image: {self.cfg.bootstrap_runner_image}",
             out,
         )
@@ -150,7 +150,7 @@ class BootstrapManifestService:
 
     def update_bootstrap_configmaps(self) -> None:
         self.info("Updating bootstrap config ConfigMap")
-        with TemporaryDirectory(prefix="media-stack-bootstrap-config-") as tmpdir:
+        with TemporaryDirectory(prefix="media-stack-controller-config-") as tmpdir:
             configmap_yaml = Path(tmpdir) / "bootstrap-config.yaml"
             generated = self.kube.run(
                 [
@@ -158,7 +158,7 @@ class BootstrapManifestService:
                     self.cfg.namespace,
                     "create",
                     "configmap",
-                    "media-stack-bootstrap-config",
+                    "media-stack-controller-config",
                     f"--from-file=config.json={self.cfg.job_config_file}",
                     "--dry-run=client",
                     "-o",
@@ -166,12 +166,12 @@ class BootstrapManifestService:
                 ]
             )
             configmap_yaml.write_text(generated.stdout, encoding="utf-8")
-            self._replace_or_create_yaml(configmap_yaml, "configmap/media-stack-bootstrap-config")
+            self._replace_or_create_yaml(configmap_yaml, "configmap/media-stack-controller-config")
 
         profile_path = str(self.cfg.bootstrap_profile_file or "").strip()
         if profile_path and Path(profile_path).exists():
             self.info("Updating bootstrap profile ConfigMap")
-            with TemporaryDirectory(prefix="media-stack-bootstrap-profile-") as tmpdir:
+            with TemporaryDirectory(prefix="media-stack-controller-profile-") as tmpdir:
                 profile_yaml = Path(tmpdir) / "bootstrap-profile.yaml"
                 generated = self.kube.run(
                     [
@@ -179,7 +179,7 @@ class BootstrapManifestService:
                         self.cfg.namespace,
                         "create",
                         "configmap",
-                        "media-stack-bootstrap-profile",
+                        "media-stack-controller-profile",
                         f"--from-file=profile.yaml={profile_path}",
                         "--dry-run=client",
                         "-o",
@@ -188,12 +188,12 @@ class BootstrapManifestService:
                 )
                 profile_yaml.write_text(generated.stdout, encoding="utf-8")
                 self._replace_or_create_yaml(
-                    profile_yaml, "configmap/media-stack-bootstrap-profile"
+                    profile_yaml, "configmap/media-stack-controller-profile"
                 )
         else:
             self.warn(
                 "No bootstrap profile file available — "
-                "skipping media-stack-bootstrap-profile ConfigMap"
+                "skipping media-stack-controller-profile ConfigMap"
             )
 
     def ensure_bootstrap_deployment(self) -> None:
@@ -202,14 +202,14 @@ class BootstrapManifestService:
         # The Deployment is created by the kustomization (k8s/profiles/standard/).
         # Restart it to pick up the updated ConfigMaps we just created.
         result = self.kube.run(
-            ["-n", self.cfg.namespace, "rollout", "restart", "deploy/media-stack-bootstrap"],
+            ["-n", self.cfg.namespace, "rollout", "restart", "deploy/media-stack-controller"],
             check=False,
         )
         if result.returncode != 0:
             self.warn(f"Bootstrap Deployment restart: {result.stderr or result.stdout}")
         # Wait for the rollout to complete.
         self.kube.run(
-            ["-n", self.cfg.namespace, "rollout", "status", "deploy/media-stack-bootstrap",
+            ["-n", self.cfg.namespace, "rollout", "status", "deploy/media-stack-controller",
              "--timeout=120s"],
             check=False,
         )

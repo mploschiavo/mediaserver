@@ -140,7 +140,7 @@ class ProwlarrAutoIndexerRunner:
         text = re.sub(r"namespace:\s*media-stack", f"namespace: {self.cfg.namespace}", text)
         text = text.replace("/srv/media-stack", self.cfg.prepare_host_root)
         text = text.replace(
-            "192.168.1.60:30002/library/media-stack-bootstrap-runner:latest",
+            "192.168.1.60:30002/library/media-stack-controller:latest",
             self.cfg.bootstrap_runner_image,
         )
         return text
@@ -221,7 +221,7 @@ class ProwlarrAutoIndexerRunner:
             if isinstance(section, dict):
                 section["enabled"] = False
                 section.setdefault("configure", False)
-        with TemporaryDirectory(prefix="media-stack-bootstrap-auto-config-") as tmpdir:
+        with TemporaryDirectory(prefix="media-stack-controller-auto-config-") as tmpdir:
             config_json = Path(tmpdir) / "config.json"
             config_json.write_text(json.dumps(config_payload, indent=2) + "\n", encoding="utf-8")
 
@@ -232,7 +232,7 @@ class ProwlarrAutoIndexerRunner:
                     self.cfg.namespace,
                     "create",
                     "configmap",
-                    "media-stack-bootstrap-config-auto",
+                    "media-stack-controller-config-auto",
                     f"--from-file=config.json={config_json}",
                     "--dry-run=client",
                     "-o",
@@ -242,7 +242,7 @@ class ProwlarrAutoIndexerRunner:
             cm_yaml.write_text(generated.stdout, encoding="utf-8")
             self._replace_or_create_from_yaml(
                 cm_yaml,
-                "configmap/media-stack-bootstrap-config-auto",
+                "configmap/media-stack-controller-config-auto",
             )
 
     def recreate_job(self) -> None:
@@ -256,7 +256,7 @@ class ProwlarrAutoIndexerRunner:
         pod_name = self._find_bootstrap_pod()
         if not pod_name:
             raise KubernetesError(
-                "Bootstrap service pod not found — ensure media-stack-bootstrap "
+                "Bootstrap service pod not found — ensure media-stack-controller "
                 "Deployment is running"
             )
         trigger_script = (
@@ -283,7 +283,7 @@ class ProwlarrAutoIndexerRunner:
     def _find_bootstrap_pod(self) -> str | None:
         result = self.kube.run(
             ["-n", self.cfg.namespace, "get", "pods",
-             "-l", "app=media-stack-bootstrap",
+             "-l", "app=media-stack-controller",
              "-o", "jsonpath={.items[0].metadata.name}"],
             check=False,
         )
@@ -465,7 +465,7 @@ class ProwlarrAutoIndexerRunner:
                 if wait_message:
                     warn(f"Image pull message: {wait_message}")
                 warn(
-                    "Build/push the runner image and retry: bash bin/build-bootstrap-runner-image.sh"
+                    "Build/push the runner image and retry: bash bin/build-controller-image.sh"
                 )
                 self._print_failure_context(job_name, selector)
                 raise KubernetesError("Auto-indexer pod failed due to bootstrap image pull error")

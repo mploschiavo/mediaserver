@@ -37,7 +37,7 @@ These directories are intentionally introduced without breaking existing scripts
 - Platform manifests and cluster primitives: `k8s/`, `platform/`
 - App wiring and defaults: `contracts/`, `apps/`, `config/`
 - Technology registration and role bindings: `contracts/media-stack.config.json`, `src/media_stack/contracts/plugins/`
-- Shared runtime lifecycle orchestration: `bin/bootstrap-apps.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/services/bootstrap_runner_service.py`
+- Shared runtime lifecycle orchestration: `bin/controller.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/services/bootstrap_runner_service.py`
 - App/technology behavior modules: `src/media_stack/services/apps/*`, adapter directories
 - Quality gates and regressions: `tests/`
 - Product narrative and operator docs: `docs/`
