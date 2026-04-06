@@ -11,3 +11,6 @@ docker/.env
 node_modules/
 package.json
 package-lock.json
+docker/config/
+docker/data/
+docker/media/
