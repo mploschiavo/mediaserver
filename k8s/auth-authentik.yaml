@@ -1,0 +1,222 @@
+# Authentik identity provider for K8s (server + worker + PostgreSQL).
+# Include this resource in your kustomization.yaml to enable Authentik.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik-postgresql
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: authentik-postgresql}
+  template:
+    metadata:
+      labels: {app: authentik-postgresql}
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: POSTGRES_DB
+              value: authentik
+            - name: POSTGRES_USER
+              value: authentik
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: AUTHENTIK_PG_PASS
+                  optional: true
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+          readinessProbe:
+            exec:
+              command: [sh, -c, "pg_isready -d authentik -U authentik"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: [sh, -c, "pg_isready -d authentik -U authentik"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: media-stack-data-authentik-pg}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentik-postgresql
+  namespace: media-stack
+spec:
+  selector: {app: authentik-postgresql}
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: authentik}
+  template:
+    metadata:
+      labels: {app: authentik}
+    spec:
+      containers:
+        - name: server
+          image: ghcr.io/goauthentik/server:2026.2.2-rc1
+          args: [server]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: AUTHENTIK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: AUTHENTIK_SECRET_KEY
+                  optional: true
+            - name: AUTHENTIK_POSTGRESQL__HOST
+              value: authentik-postgresql
+            - name: AUTHENTIK_POSTGRESQL__NAME
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__USER
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: AUTHENTIK_PG_PASS
+                  optional: true
+            - name: AUTHENTIK_ERROR_REPORTING__ENABLED
+              value: "false"
+          ports:
+            - containerPort: 9000
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: templates, mountPath: /templates}
+          readinessProbe:
+            httpGet: {path: /-/health/live/, port: 9000}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /-/health/live/, port: 9000}
+            initialDelaySeconds: 40
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /-/health/live/, port: 9000}
+            failureThreshold: 60
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: media-stack-config-authentik}
+        - name: templates
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentik
+  namespace: media-stack
+spec:
+  selector: {app: authentik}
+  ports:
+    - port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik-worker
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: authentik-worker}
+  template:
+    metadata:
+      labels: {app: authentik-worker}
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/goauthentik/server:2026.2.2-rc1
+          args: [worker]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: AUTHENTIK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: AUTHENTIK_SECRET_KEY
+                  optional: true
+            - name: AUTHENTIK_POSTGRESQL__HOST
+              value: authentik-postgresql
+            - name: AUTHENTIK_POSTGRESQL__NAME
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__USER
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: AUTHENTIK_PG_PASS
+                  optional: true
+            - name: AUTHENTIK_ERROR_REPORTING__ENABLED
+              value: "false"
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: certs, mountPath: /certs}
+            - {name: templates, mountPath: /templates}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: media-stack-config-authentik}
+        - name: certs
+          emptyDir: {}
+        - name: templates
+          emptyDir: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-data-authentik-pg
+  namespace: media-stack
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-authentik
+  namespace: media-stack
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi

@@ -1,0 +1,79 @@
+# Authelia authentication provider for K8s.
+# Include this resource in your kustomization.yaml to enable Authelia.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authelia
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: authelia}
+  template:
+    metadata:
+      labels: {app: authelia}
+    spec:
+      initContainers:
+        - name: init-authelia-config
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -f /config/configuration.yml ]; then
+                echo "No configuration.yml found — copy your template to the PVC."
+              fi
+          volumeMounts:
+            - {name: config, mountPath: /config}
+      containers:
+        - name: authelia
+          image: authelia/authelia:4.39
+          args: ["--config", "/config/configuration.yml"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          ports:
+            - containerPort: 9091
+          volumeMounts:
+            - {name: config, mountPath: /config}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 9091}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /api/health, port: 9091}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          startupProbe:
+            httpGet: {path: /api/health, port: 9091}
+            failureThreshold: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim: {claimName: media-stack-config-authelia}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authelia
+  namespace: media-stack
+spec:
+  selector: {app: authelia}
+  ports:
+    - port: 9091
+      targetPort: 9091
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-authelia
+  namespace: media-stack
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

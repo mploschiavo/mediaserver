@@ -38,3 +38,7 @@ spec:
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: maintainerr, port: {number: 6246}}}}]}
     - host: tautulli.local
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: tautulli, port: {number: 8181}}}}]}
+    - host: authelia.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: authelia, port: {number: 9091}}}}]}
+    - host: authentik.local
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: authentik, port: {number: 9000}}}}]}

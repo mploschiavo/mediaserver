@@ -25,6 +25,9 @@ spec:
       containers:
         - name: sabnzbd
           image: lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f
+          env:
+            - {name: PUID, value: "1000"}
+            - {name: PGID, value: "1000"}
           resources:
             requests:
               cpu: 100m
@@ -207,6 +210,8 @@ spec:
               cpu: "2"
               memory: 2Gi
           env:
+            - {name: PUID, value: "1000"}
+            - {name: PGID, value: "1000"}
             - name: HOMEPAGE_ALLOWED_HOSTS
               value: "*"
           ports:
@@ -271,6 +276,8 @@ spec:
               value: "0.0.0.0"
             - name: UI_PORT
               value: "6246"
+            - name: BASE_PATH
+              value: "/app/maintainerr"
           ports:
             - containerPort: 6246
           volumeMounts:

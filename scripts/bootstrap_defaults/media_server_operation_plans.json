@@ -29,6 +29,7 @@
       ]
     },
     "post_servarr_pre_hygiene_steps": {
+      "parallel": true,
       "steps": [
         {
           "event": "ENSURE",

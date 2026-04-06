@@ -454,7 +454,7 @@ services:
       TZ: ${TZ:-UTC}
       UI_HOSTNAME: 0.0.0.0
       UI_PORT: 6246
-      BASE_PATH: ${MAINTAINERR_BASE_PATH:-}
+      BASE_PATH: ${MAINTAINERR_BASE_PATH:-/app/maintainerr}
     volumes:
       - ${CONFIG_ROOT:-./config}/maintainerr:/opt/data
     restart: unless-stopped

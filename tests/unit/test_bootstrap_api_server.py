@@ -38,14 +38,17 @@ class TestBootstrapAPIServerStatus(unittest.TestCase):
         finally:
             server.shutdown()
 
-    def test_readyz_503_when_idle(self):
+    def test_readyz_200_when_idle(self):
+        """Service is ready as soon as it's listening (Deployment model)."""
         state = BootstrapState()
         server = start_api_server(state, port=19103)
         try:
             conn = HTTPConnection("127.0.0.1", 19103, timeout=5)
             conn.request("GET", "/readyz")
             resp = conn.getresponse()
-            self.assertEqual(resp.status, 503)
+            self.assertEqual(resp.status, 200)
+            body = json.loads(resp.read())
+            self.assertFalse(body["initial_bootstrap_done"])
             conn.close()
         finally:
             server.shutdown()
@@ -90,16 +93,33 @@ class TestBootstrapAPIServerRouting(unittest.TestCase):
         finally:
             server.shutdown()
 
-    def test_run_409_when_complete(self):
+    def test_run_503_without_trigger(self):
+        """POST /run returns 503 when no action trigger is bound."""
         state = BootstrapState()
-        state.start()
-        state.finish()
         server = start_api_server(state, port=19107)
         try:
             conn = HTTPConnection("127.0.0.1", 19107, timeout=5)
             conn.request("POST", "/run")
             resp = conn.getresponse()
-            self.assertEqual(resp.status, 409)
+            self.assertEqual(resp.status, 503)
+            conn.close()
+        finally:
+            server.shutdown()
+
+    def test_run_202_with_trigger(self):
+        """POST /run accepts bootstrap action when trigger is bound."""
+        state = BootstrapState()
+        triggered = []
+        server = start_api_server(
+            state, port=19108,
+            action_trigger=lambda name, overrides: triggered.append((name, overrides)),
+        )
+        try:
+            conn = HTTPConnection("127.0.0.1", 19108, timeout=5)
+            conn.request("POST", "/run")
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 202)
+            self.assertEqual(triggered[0][0], "bootstrap")
             conn.close()
         finally:
             server.shutdown()
