@@ -26,7 +26,30 @@ Not currently part of Compose target:
 - Optional: `docker/.env` for local overrides (defaults from process env when omitted)
 - Optional but recommended: `contracts/media-stack.profile.yaml` for deployment/purpose/install/exposure/auth defaults
 
-## Deploy with Stack Runner (Compose Target)
+## Deploy
+
+### One-command deploy (recommended)
+
+**Linux / macOS:**
+```bash
+./deploy-compose.sh
+./deploy-compose.sh --delete   # teardown + redeploy
+```
+
+**Any OS (cross-platform, requires Python 3.11+):**
+```bash
+python deploy.py compose
+python deploy.py compose --delete   # teardown + redeploy
+```
+
+**Manual (any OS with Docker Compose):**
+```bash
+docker compose -f docker/docker-compose.yml up -d
+# Wait for bootstrap to be healthy, then trigger:
+curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
+```
+
+### Advanced deploy with Stack Runner (Compose Target)
 
 ```bash
 bash bin/deploy-stack.sh \

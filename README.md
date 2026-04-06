@@ -6,8 +6,10 @@ Declarative, Kubernetes-first media automation platform with Docker Compose runt
 
 ```bash
 git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
-./deploy-compose.sh   # Docker Compose
-./deploy-k8s.sh       # Kubernetes
+./deploy-compose.sh          # Docker Compose (Linux/macOS)
+./deploy-k8s.sh              # Kubernetes (Linux/macOS)
+python deploy.py compose     # Docker Compose (any OS)
+python deploy.py k8s         # Kubernetes (any OS)
 ```
 
 Maintainer:

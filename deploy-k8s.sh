@@ -42,42 +42,34 @@ fi
 PROFILE_DIR="$SCRIPT_DIR/k8s/profiles/${INSTALL_PROFILE:-standard}"
 [[ -d "$PROFILE_DIR" ]] || { echo "ERROR: K8s profile dir not found: $PROFILE_DIR" >&2; exit 1; }
 
-# Generate kustomization with namespace override.
-KUST_BACKUP="$PROFILE_DIR/kustomization.yaml.bak"
-cp "$PROFILE_DIR/kustomization.yaml" "$KUST_BACKUP"
-trap "mv '$KUST_BACKUP' '$PROFILE_DIR/kustomization.yaml' 2>/dev/null || true" EXIT
-
-# Add namespace field to kustomization.
-python3 -c "
-import yaml, sys
-with open('$PROFILE_DIR/kustomization.yaml') as f:
-    kust = yaml.safe_load(f)
-kust['namespace'] = '$NAMESPACE'
-with open('$PROFILE_DIR/kustomization.yaml', 'w') as f:
-    yaml.dump(kust, f, default_flow_style=False, sort_keys=False)
-"
-
-# Create namespace + apply all manifests.
+# Create namespace + apply all manifests (with namespace override).
 kubectl create namespace "$NAMESPACE" 2>/dev/null || true
 echo "  Applying manifests..."
-kubectl kustomize "$PROFILE_DIR" --load-restrictor LoadRestrictionsNone | kubectl apply -f - 2>&1 | tail -5
+kubectl kustomize "$PROFILE_DIR" --load-restrictor LoadRestrictionsNone \
+  | sed "s/namespace: media-stack/namespace: $NAMESPACE/g" \
+  | kubectl apply -f -
 
 # Create ConfigMaps.
 echo "  Creating ConfigMaps..."
 kubectl -n "$NAMESPACE" create configmap media-stack-bootstrap-config \
   --from-file=config.json="$SCRIPT_DIR/contracts/media-stack.config.json" \
-  --dry-run=client -o yaml | kubectl apply -f - 2>&1 | tail -1
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "$NAMESPACE" create configmap media-stack-bootstrap-profile \
   --from-file=profile.yaml="$PROFILE_PATH" \
-  --dry-run=client -o yaml | kubectl apply -f - 2>&1 | tail -1
+  --dry-run=client -o yaml | kubectl apply -f -
 
 # Poll for pods ready.
 echo "  Waiting for pods..."
-for i in $(seq 1 20); do
-    READY=$(kubectl -n "$NAMESPACE" get pods --no-headers 2>&1 | grep -c "1/1" || echo 0)
-    TOTAL=$(kubectl -n "$NAMESPACE" get pods --no-headers 2>&1 | wc -l)
-    [[ "$READY" -ge 15 ]] && echo "  Pods: $READY/$TOTAL ready" && break
-    [[ "$i" -eq 20 ]] && echo "  WARN: Only $READY/$TOTAL pods ready after timeout"
+for i in $(seq 1 30); do
+    READY=$(kubectl -n "$NAMESPACE" get pods --no-headers 2>/dev/null | grep -c "1/1" || echo "0")
+    TOTAL=$(kubectl -n "$NAMESPACE" get pods --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$READY" -ge 10 ]] 2>/dev/null; then
+        echo "  Pods: $READY/$TOTAL ready"
+        break
+    fi
+    if [[ "$i" -eq 30 ]]; then
+        echo "  WARN: Only $READY/$TOTAL pods ready after timeout"
+    fi
     sleep 10
 done
 

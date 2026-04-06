@@ -19,6 +19,11 @@ def _tokenize(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
 
+def _slugify(value: str) -> str:
+    """Lowercase slug preserving hyphens — used for URL path segments."""
+    return re.sub(r"[^a-z0-9\-]+", "", str(value or "").strip().lower()).strip("-")
+
+
 def parse_selected_apps_csv(value: str) -> set[str]:
     selected: set[str] = set()
     for raw in str(value or "").split(","):
@@ -253,6 +258,11 @@ def _host_with_port(value: str, *, port: str) -> str:
 
 
 def _homepage_host_token(value: str) -> str:
+    """Extract a URL-safe slug from a homepage host entry.
+
+    Preserves hyphens so the token can be used directly as a URL path
+    segment that matches Envoy/K8s service names (e.g. media-stack-bootstrap).
+    """
     text = str(value or "").strip().lower()
     if not text:
         return ""
@@ -262,11 +272,11 @@ def _homepage_host_token(value: str) -> str:
         parts = [part for part in path.split("/") if part]
         if parts:
             if len(parts) >= 2 and parts[0] == "app":
-                return _tokenize(parts[1])
-            return _tokenize(parts[-1])
+                return _slugify(parts[1])
+            return _slugify(parts[-1])
     host = str(parsed.netloc or "").split(":", 1)[0]
     prefix = host.split(".", 1)[0]
-    return _tokenize(prefix)
+    return _slugify(prefix)
 
 
 def _homepage_direct_host(value: str, *, internet_exposed: bool, ingress: str, token: str) -> str:
