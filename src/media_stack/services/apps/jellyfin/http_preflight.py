@@ -121,6 +121,28 @@ def run_preflight(
     user_id = str(auth_result.get("user_id", ""))
     password_used = str(auth_result.get("password_used", admin_password))
 
+    # Ensure wizard is marked complete — if /Startup/User returned 500,
+    # the wizard never reached /Startup/Complete even though we can auth.
+    status_check, info_data, _ = _http(jellyfin_url, "/System/Info/Public")
+    if status_check == 200 and isinstance(info_data, dict):
+        if not info_data.get("StartupWizardCompleted"):
+            info("Jellyfin: wizard not marked complete, completing now")
+            _http(jellyfin_url, "/Startup/Configuration", method="POST", payload={
+                "ServerName": "media-stack", "UICulture": "en-US",
+                "MetadataCountryCode": "US", "PreferredMetadataLanguage": "en",
+            })
+            _http(jellyfin_url, "/Startup/RemoteAccess", method="POST", payload={
+                "EnableRemoteAccess": True, "EnableAutomaticPortMapping": False,
+            })
+            _http(jellyfin_url, "/Startup/Complete", method="POST")
+            # Verify it took effect.
+            for _ in range(10):
+                s, d, _ = _http(jellyfin_url, "/System/Info/Public")
+                if s == 200 and isinstance(d, dict) and d.get("StartupWizardCompleted"):
+                    info("Jellyfin: wizard now marked complete")
+                    break
+                time.sleep(2)
+
     # Step 3: Rotate password if authenticated with empty/different password.
     if password_used != admin_password:
         info("Jellyfin: rotating password to stack admin credentials")
