@@ -75,6 +75,22 @@ class ComposeLabelService:
         except Exception:
             return ""
 
+    @staticmethod
+    def _subdomain_base(gateway_host: str) -> str:
+        """Derive the subdomain base from the gateway host.
+
+        apps.media-stack.local → media-stack.local
+        apps.media-dev.local   → media-dev.local
+        """
+        host = str(gateway_host or "").strip().lower()
+        if not host:
+            return ""
+        parts = host.split(".")
+        if len(parts) < 3:
+            return ""
+        # Strip the leading "apps" (or whatever the first segment is).
+        return ".".join(parts[1:])
+
     def _path_route_prefix(self, service_name: str) -> str:
         token = str(self.cfg.app_path_prefix or "").strip()
         if not token:
@@ -317,22 +333,36 @@ class ComposeLabelService:
                         labels[strip_key] = path_prefix
                     self._apply_router_middleware(labels, path_router, strip_name)
 
-        if is_media_server:
-            if direct_host:
-                media_rule_key_template = str(
-                    spec.get("media_server_rule_key_template") or ""
-                ).strip()
-                media_rule_template = str(spec.get("direct_host_rule_template") or "").strip()
-                media_rule_key = self._format_template(
-                    media_rule_key_template,
+        # Subdomain host routes: appname.subdomain.local for every app.
+        # Derived from the gateway host — e.g. gateway "apps.media-stack.local" yields
+        # subdomain base "media-stack.local", so sonarr → sonarr.media-stack.local.
+        subdomain_base = self._subdomain_base(gateway_host)
+        if subdomain_base and strategy in {"hybrid", "subdomain"}:
+            direct_rule_template = str(spec.get("direct_host_rule_template") or "").strip()
+            direct_rule_key_template = str(
+                spec.get("media_server_rule_key_template") or ""
+            ).strip()
+            if is_media_server and direct_host:
+                # Media server keeps its explicit direct host (e.g. jellyfin.media-stack.local).
+                app_direct_host = direct_host
+            else:
+                app_direct_host = f"{service_name}.{subdomain_base}"
+            subdomain_router = f"{service_name}-subdomain"
+            sub_rule_key = self._format_template(
+                direct_rule_key_template, service_name=subdomain_router,
+            )
+            if sub_rule_key and direct_rule_template:
+                labels[sub_rule_key] = self._format_template(
+                    direct_rule_template,
+                    direct_host=app_direct_host,
                     service_name=service_name,
                 )
-                if media_rule_key and media_rule_template:
-                    labels[media_rule_key] = self._format_template(
-                        media_rule_template,
-                        direct_host=direct_host,
-                        service_name=service_name,
-                    )
+            sub_svc_key_template = str(spec.get("router_service_key_template") or "").strip()
+            sub_svc_key = self._format_template(
+                sub_svc_key_template, router_name=subdomain_router,
+            )
+            if sub_svc_key:
+                labels[sub_svc_key] = service_name
 
     def _auth_middleware(self) -> str:
         explicit = str(self.cfg.auth_middleware or "").strip()
