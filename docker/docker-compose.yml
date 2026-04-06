@@ -567,8 +567,20 @@ services:
       BOOTSTRAP_CONFIG_FILE: /bootstrap/media-stack.bootstrap.json
       BOOTSTRAP_API_PORT: "9100"
       FULLY_PRECONFIGURED: "1"
+      BOOTSTRAP_WAIT_INTERVAL_SECONDS: "3"
+      BOOTSTRAP_WAIT_HEARTBEAT_SECONDS: "15"
+      AUTO_INDEXER_HEARTBEAT_EVERY: "25"
       STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
       STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
+      SONARR_API_KEY: "${SONARR_API_KEY:-}"
+      RADARR_API_KEY: "${RADARR_API_KEY:-}"
+      LIDARR_API_KEY: "${LIDARR_API_KEY:-}"
+      READARR_API_KEY: "${READARR_API_KEY:-}"
+      PROWLARR_API_KEY: "${PROWLARR_API_KEY:-}"
+      JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
+      JELLYSEERR_API_KEY: "${JELLYSEERR_API_KEY:-}"
+      SABNZBD_API_KEY: "${SABNZBD_API_KEY:-}"
+      TAUTULLI_API_KEY: "${TAUTULLI_API_KEY:-}"
     volumes:
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ../bootstrap:/bootstrap:ro
@@ -588,11 +600,11 @@ services:
     ports:
       - "${BOOTSTRAP_API_PORT:-9100}:9100"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9100/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9100/readyz"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 60
+      start_period: 10s
     restart: unless-stopped
     stop_grace_period: 10s
     labels:
