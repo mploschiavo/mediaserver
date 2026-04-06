@@ -5,7 +5,7 @@ flowchart LR
   end
 
   subgraph Edge[Cluster Edge]
-    Ingress[Ingress Controller<br/>public/nginx]
+    Envoy[Envoy Gateway<br/>host + path-prefix routing]
   end
 
   subgraph Apps[Media Stack Namespace]
@@ -20,28 +20,32 @@ flowchart LR
     Bazarr[Bazarr]
     Prowlarr[Prowlarr]
     QB[qBittorrent]
-    SAB[SABnzbd Optional]
-    Maintainerr[Maintainerr Optional]
-    Unpackerr[Unpackerr Optional]
-    Flare[FlareSolverr Optional]
+    SAB[SABnzbd]
+    Tautulli[Tautulli]
+    Maintainerr[Maintainerr]
+    Unpackerr[Unpackerr]
+    Flare[FlareSolverr]
+    Bootstrap[Bootstrap Runner<br/>HTTP API :9100]
   end
 
-  TV --> Ingress
-  Browser --> Ingress
+  TV --> Envoy
+  Browser --> Envoy
 
-  Ingress --> Homepage
-  Ingress --> Jellyseerr
-  Ingress --> Jellyfin
-  Ingress --> Sonarr
-  Ingress --> Radarr
-  Ingress --> Lidarr
-  Ingress --> Readarr
-  Ingress --> Bazarr
-  Ingress --> Prowlarr
-  Ingress --> QB
-  Ingress --> SAB
-  Ingress --> Maintainerr
-  Ingress --> Plex
+  Envoy --> Homepage
+  Envoy --> Jellyseerr
+  Envoy --> Jellyfin
+  Envoy --> Sonarr
+  Envoy --> Radarr
+  Envoy --> Lidarr
+  Envoy --> Readarr
+  Envoy --> Bazarr
+  Envoy --> Prowlarr
+  Envoy --> QB
+  Envoy --> SAB
+  Envoy --> Tautulli
+  Envoy --> Maintainerr
+  Envoy --> Plex
+  Envoy --> Bootstrap
 
   Jellyseerr --> Sonarr
   Jellyseerr --> Radarr
@@ -72,3 +76,5 @@ flowchart LR
   Unpackerr --> Radarr
   Unpackerr --> Lidarr
   Unpackerr --> Readarr
+
+  Bootstrap -->|Configure all apps| Apps

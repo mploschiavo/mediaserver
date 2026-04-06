@@ -1,18 +1,32 @@
 sequenceDiagram
   participant User
-  participant Script as bootstrap-all.sh / run-bootstrap-job.sh
+  participant Script as deploy-k8s.sh / deploy-stack.sh
   participant Factory as runtime_factory
-  participant Job as media-stack-bootstrap Job
-  participant Apps as Arr + Prowlarr + Request + Media + Bound Clients
+  participant API as Bootstrap HTTP API :9100
+  participant Apps as Arr + Prowlarr + Jellyfin + Jellyseerr + Bound Clients
 
-  User->>Script: Run bootstrap
-  Script->>Factory: Parse config + load plugin manifests
+  User->>Script: Deploy stack
+  Script->>Script: Apply manifests / start containers
+  Script->>API: Wait for /healthz (Deployment starts with --serve --auto-run)
+  API->>Factory: Parse config + load plugin manifests
   Factory->>Factory: Resolve technology_bindings + build runtime plan
-  Script->>Job: Apply ConfigMaps + launch job
-  Job->>Apps: Wait for services
-  Job->>Apps: Run manifest-bound precheck operations
-  Job->>Apps: Run torrent/usenet client phases
-  Job->>Apps: Run Servarr phases
-  Job->>Apps: Run media server and post-servarr plans
-  Job->>Apps: Run indexer sync pipeline
-  Script->>User: Show logs + completion
+
+  Note over API: Auto-queues bootstrap action on startup
+
+  API->>Apps: Run preflight handlers (parallel)
+  API->>Apps: Wait for services (parallel health checks)
+  API->>Apps: Prepare download clients (qBit + SAB in parallel)
+  API->>Apps: Run Servarr pipeline (Sonarr/Radarr/Lidarr/Readarr in parallel)
+  API->>Apps: Run post-servarr steps (Bazarr + Jellyseerr + Maintainerr in parallel)
+  API->>Apps: Run media server plan (Jellyfin 6 steps in parallel)
+  API->>Apps: Run post-media steps (Homepage + Disk guardrails + Hygiene in parallel)
+  API->>Apps: Run indexer pipeline (4 parallel workers)
+  API->>API: Auto-queue envoy-config action
+  API->>Apps: Regenerate Envoy config + restart Envoy
+
+  Note over API: Service stays alive for on-demand actions
+
+  User->>API: POST /actions/reconcile (on-demand)
+  User->>API: POST /config {"auto_download_content": true}
+  User->>API: GET /logs/stream (SSE)
+  User->>API: GET / (dashboard)

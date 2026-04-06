@@ -171,19 +171,20 @@ Do not add new hard-coded `if implementation == ...` logic in orchestration laye
 ## Deployment Target Contract
 The target deployment experience for each platform:
 - **Compose:** `docker compose --profile standard up -d` (or equivalent profile flag) stands up the full stack including bootstrap.
-- **Kubernetes:** `kubectl apply -k k8s/profiles/standard/` stands up the full stack including bootstrap Job.
-- Both platforms must converge on the same bootstrap runner image and codebase. Platform-specific entry point wiring (compose service vs K8s Job) is allowed; platform-specific bootstrap logic is not.
+- **Kubernetes:** `kubectl apply -k k8s/profiles/standard/` stands up the full stack including bootstrap Deployment with HTTP API.
+- Both platforms must converge on the same bootstrap runner image and codebase. The bootstrap runner is a persistent Deployment (not a Job) on both platforms, exposing an HTTP API on port 9100 with `--serve --auto-run`. Platform-specific entry point wiring is allowed; platform-specific bootstrap logic is not.
 - Host-side Python CLI orchestration (`deploy-stack.sh` / `deploy_stack_main.py`) is a power-user/CI tool, not the primary deployment path. The primary path must be platform-native.
 - Do not introduce Helm charts, Helm values files, or Helm template logic. Use Kustomize overlays for Kubernetes profile management and native Compose profiles for Docker Compose.
 
 ### Bootstrap Runner as HTTP API Service
-- The bootstrap runner must be a first-class HTTP API service, not only a one-shot script.
-- Expose HTTP endpoints for bootstrap status, progress, and telemetry.
-- HTTP endpoints are thin wrappers over existing (and future) Python service classes — the API layer must not contain domain logic, only dispatch to service classes.
-- Include a lightweight webserver for real-time bootstrap observability (health, phase progress, errors).
+- The bootstrap runner is a persistent Deployment (not a Job) exposing an HTTP API on port 9100.
+- Endpoints: `/actions/{name}`, `/status`, `/config`, `/logs/stream` (SSE), `/webhooks`, `/reload`, `/healthz`, `/readyz`, `/` (dashboard).
+- Actions: `bootstrap`, `auto-indexers`, `restart-apps`, `sync-indexers`, `envoy-config`, `reconcile`.
+- Features: action-level retry with exponential backoff, parallel phase execution (`"parallel": true` in phase config), webhook notifications on action complete/error, runtime config toggles via `/config`, SSE log streaming.
+- HTTP endpoints are thin wrappers over existing Python service classes — the API layer must not contain domain logic, only dispatch to service classes.
 - Both `docker compose` and `kubectl` entry points run through the same bootstrap runner image and API — do not fork platform-specific bootstrap logic.
 - Credential preflight (Jellyfin wizard, qBittorrent password, SABnzbd config) must use HTTP API calls to running services over the container network, not `docker exec` from the host.
-- The bootstrap runner must be declared in the compose file (with a profile) and in the K8s manifests (as a Job), not created ad-hoc by host-side Python.
+- The bootstrap runner must be declared in the compose file and in the K8s manifests (as a Deployment), not created ad-hoc by host-side Python.
 
 ## Platform Swap Contract
 Swapping deployment platforms/runtimes must be platform-local and config-driven, with the same isolation expectations as app swaps.
@@ -453,7 +454,7 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Use runtime log levels (`MEDIA_STACK_LOG_LEVEL`) and structured logs instead of dedicated debug scripts.
 
 ## Bootstrap Image Packaging Contract
-Bootstrap jobs run from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
+The bootstrap service runs from a prebuilt image (`docker/bootstrap-runner.Dockerfile`).
 - Any new module imported by `scripts/bootstrap-apps.py` must be included by the image build context.
 - Keep runtime Python under `scripts/` so `COPY scripts /opt/media-stack/scripts` captures required modules.
 - Validate runtime changes by rebuilding/pushing the bootstrap runner image before live bootstrap tests.
