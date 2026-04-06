@@ -4,13 +4,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.bootstrap_manifest_service import (  # noqa: E402
+from media_stack.cli.workflows.bootstrap_manifest_service import (  # noqa: E402
     BootstrapManifestConfig,
     BootstrapManifestService,
 )
-from core.exceptions import ConfigError  # noqa: E402
+from media_stack.core.exceptions import ConfigError  # noqa: E402
 
 
 class _Result:

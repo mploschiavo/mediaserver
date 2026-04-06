@@ -56,21 +56,21 @@ python3 -m pip install --upgrade pip
 python3 -m pip install docker kubernetes pyyaml requests
 python3 -m pip install ruff black
 npx -y @mermaid-js/mermaid-cli@10.9.1 -h
-bash scripts/test.sh
+bash bin/test.sh
 ```
 
 ## Apply
 ```bash
 # installer wizard with profile selection
-bash scripts/install.sh --profile full --node-ip <NODE_IP>
-bash scripts/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+bash bin/install.sh --profile full --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 
 # deterministic rebuild + verification (recommended for DR confidence)
-bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 
 # fully automatic rebuild + bootstrap + smoke test (recommended)
-bash scripts/deploy-stack.sh <NODE_IP>
-PROFILE=power-user bash scripts/deploy-stack.sh <NODE_IP>
+bash bin/deploy-stack.sh <NODE_IP>
+PROFILE=power-user bash bin/deploy-stack.sh <NODE_IP>
 
 # from repo root
 kubectl apply -k k8s
@@ -117,26 +117,26 @@ kubectl -n media-stack scale deploy/unpackerr --replicas=1
 ## Configuration-as-code bootstrap
 Build/push bootstrap runner image first (used by bootstrap Deployment + CronJobs):
 ```bash
-bash scripts/build-bootstrap-runner-image.sh
+bash bin/build-bootstrap-runner-image.sh
 ```
 
 Run idempotent post-deploy wiring:
 ```bash
 # one-command pipeline:
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 
 # optional: create/update qB secret (defaults to STACK_ADMIN credentials)
-bash scripts/set-qbit-secret.sh
+bash bin/set-qbit-secret.sh
 # optional: reconcile qB WebUI credentials to match secret now
-bash scripts/ensure-qbit-credentials.sh
-bash scripts/run-bootstrap-job.sh
-bash scripts/sync-unpackerr-keys.sh
+bash bin/ensure-qbit-credentials.sh
+bash bin/run-bootstrap-job.sh
+bash bin/sync-unpackerr-keys.sh
 # optional: auto-test all Prowlarr templates/presets and add the ones that pass
-bash scripts/run-prowlarr-auto-indexers.sh
+bash bin/run-prowlarr-auto-indexers.sh
 # full one-command flow from fresh namespace:
-bash scripts/deploy-stack.sh <NODE_IP>
+bash bin/deploy-stack.sh <NODE_IP>
 # full one-command bootstrap on existing namespace:
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 ```
 
 What it configures:
@@ -157,16 +157,16 @@ Still manual:
 - Private indexer credentials/CAPTCHA providers
 
 Declarative config and job files:
-- `bootstrap/media-stack.bootstrap.json`
-- `bootstrap/prowlarr-indexers.example.json`
-- `scripts/bootstrap-apps.py`
+- `contracts/media-stack.config.json`
+- `contracts/prowlarr-indexers.example.json`
+- `bin/bootstrap-apps.py`
 - `k8s/bootstrap.yaml`
 - `docker/bootstrap-runner.Dockerfile`
-- `scripts/build-bootstrap-runner-image.sh`
+- `bin/build-bootstrap-runner-image.sh`
 
 Override the runner image without editing manifests:
 ```bash
-BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-bootstrap-runner:<tag> bash scripts/bootstrap-all.sh
+BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-bootstrap-runner:<tag> bash bin/bootstrap-all.sh
 ```
 
 Set stack admin credentials in `k8s/secrets.example.yaml` for fully automated download-client wiring.
@@ -174,27 +174,27 @@ Defaults are `admin` / `<namespace>`, and qBittorrent uses those same values by 
 `JELLYFIN_API_KEY` is optional; bootstrap can auto-discover/recover it from Jellyfin DB and persist it in the secret.
 Set/update live:
 ```bash
-bash scripts/generate-secrets.sh
-bash scripts/set-qbit-secret.sh [USERNAME] [PASSWORD]
-bash scripts/ensure-qbit-credentials.sh
-bash scripts/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
+bash bin/generate-secrets.sh
+bash bin/set-qbit-secret.sh [USERNAME] [PASSWORD]
+bash bin/ensure-qbit-credentials.sh
+bash bin/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
 ```
 
 ## Multi-namespace and remote DNS
 Deploying side-by-side stacks:
 ```bash
-bash scripts/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-bash scripts/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
 
 Render host entries for a specific namespace:
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> media-stack-dev
+bash bin/render-hosts-example.sh <NODE_IP> media-stack-dev
 ```
 
 Render dnsmasq/AdGuard entries for a specific namespace:
 ```bash
-bash scripts/render-dnsmasq-snippet.sh <NODE_IP> media-stack-dev
+bash bin/render-dnsmasq-snippet.sh <NODE_IP> media-stack-dev
 ```
 
 Clean up old test namespaces:
@@ -204,20 +204,20 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 
 ## TLS and DNS
 ```bash
-bash scripts/setup-lan-tls.sh
-bash scripts/render-dnsmasq-snippet.sh <NODE_IP> [NAMESPACE]
+bash bin/setup-lan-tls.sh
+bash bin/render-dnsmasq-snippet.sh <NODE_IP> [NAMESPACE]
 ```
 
 ## Backup and restore
 ```bash
-bash scripts/backup-stack.sh
-bash scripts/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+bash bin/backup-stack.sh
+bash bin/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 ## Scale policy
 ```bash
-bash scripts/apply-scale-policy.sh
-SCALE_TO_ZERO=1 bash scripts/apply-scale-policy.sh
+bash bin/apply-scale-policy.sh
+SCALE_TO_ZERO=1 bash bin/apply-scale-policy.sh
 ```
 KEDA background component examples:
 ```bash
@@ -230,12 +230,12 @@ Deployments are already PVC-based by default. You can choose storage behavior wi
 1. Default behavior: rely on the cluster default StorageClass (`k8s/storage-pvc.yaml` has no `storageClassName` by default).
 2. Inject one class at deploy time (no manifest edits):
 ```bash
-bash scripts/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
 ```
 3. Pin all claims to a class by using `k8s/pvc-storage.example.yaml` as your template.
    Or patch in place:
 ```bash
-bash scripts/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
+bash bin/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
 ```
 4. MicroK8s custom pvDir class example:
 ```bash
@@ -259,18 +259,18 @@ kubectl -n media-stack logs deploy/jellyfin --tail=200
 ## MicroK8s helper scripts
 ```bash
 # only needed if your ingress class is not "public"
-bash scripts/microk8s-patch-ingress-class.sh nginx
-bash scripts/microk8s-smoke-test.sh <NODE_IP>
-bash scripts/microk8s-reconcile.sh --include-optional
+bash bin/microk8s-patch-ingress-class.sh nginx
+bash bin/microk8s-smoke-test.sh <NODE_IP>
+bash bin/microk8s-reconcile.sh --include-optional
 # if already in k8s/:
-bash ../scripts/microk8s-reconcile.sh --include-optional
+bash ../bin/microk8s-reconcile.sh --include-optional
 ```
 `microk8s-smoke-test.sh` skips ingress hosts when the backend service is not installed (useful for core-only deployments).
 
 ## Common recovery
 If logs show `s6-applyuidgid` permission errors, or Deployments are stuck between old/new ReplicaSets:
 ```bash
-bash scripts/microk8s-reconcile.sh --include-optional
+bash bin/microk8s-reconcile.sh --include-optional
 ```
 
 If Arr apps fail to add root folders with `Folder '/media/' is not writable by user 'abc'`:
@@ -280,7 +280,7 @@ kubectl -n media-stack rollout restart deploy/sonarr deploy/radarr deploy/lidarr
 
 If bootstrap status is unclear, collect focused diagnostics:
 ```bash
-MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
+MEDIA_STACK_LOG_LEVEL=DEBUG bash bin/bootstrap-all.sh --no-resume
 ```
 
 If PVCs are stuck `Pending`, inspect claim events and storage class:

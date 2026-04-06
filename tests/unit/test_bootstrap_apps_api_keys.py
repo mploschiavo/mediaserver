@@ -6,9 +6,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import bootstrap_services.runtime_secrets as MODULE
+import media_stack.services.runtime_secrets as MODULE
 
 
 class ApiKeyReadTests(unittest.TestCase):

@@ -19,22 +19,22 @@ cp examples/environments/media-dev.env.example ~/.config/media-stack/media-dev.e
 Run install with the env file:
 
 ```bash
-bash scripts/with-env.sh ~/.config/media-stack/media-dev.env \
-  bash scripts/install.sh
+bash bin/with-env.sh ~/.config/media-stack/media-dev.env \
+  bash bin/install.sh
 ```
 
 Run rebuild/bootstrap with the same env file:
 
 ```bash
-bash scripts/with-env.sh ~/.config/media-stack/media-dev.env \
-  bash scripts/rebuild-and-bootstrap.sh
+bash bin/with-env.sh ~/.config/media-stack/media-dev.env \
+  bash bin/rebuild-and-bootstrap.sh
 ```
 
 Render host entries for that namespace:
 
 ```bash
-bash scripts/with-env.sh ~/.config/media-stack/media-dev.env \
-  bash scripts/render-hosts-example.sh "$NODE_IP" "$NAMESPACE"
+bash bin/with-env.sh ~/.config/media-stack/media-dev.env \
+  bash bin/render-hosts-example.sh "$NODE_IP" "$NAMESPACE"
 ```
 
 ## Notes

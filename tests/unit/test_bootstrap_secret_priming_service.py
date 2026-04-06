@@ -6,13 +6,13 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.bootstrap_secret_priming_service import (  # noqa: E402
+from media_stack.cli.workflows.bootstrap_secret_priming_service import (  # noqa: E402
     BootstrapSecretPrimingConfig,
     BootstrapSecretPrimingService,
 )
-from core.exceptions import ConfigError
+from media_stack.core.exceptions import ConfigError
 
 
 class _Result:

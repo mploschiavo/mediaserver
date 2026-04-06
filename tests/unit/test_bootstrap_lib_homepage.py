@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_lib.homepage import DEFAULT_HOSTS, render_services_yaml  # noqa: E402
+from media_stack.adapters.homepage import DEFAULT_HOSTS, render_services_yaml  # noqa: E402
 
 
 class HomepageRenderTests(unittest.TestCase):

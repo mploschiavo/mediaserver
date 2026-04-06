@@ -1,7 +1,0 @@
-{
-  "technology": "plex",
-  "aliases": ["plexmediaserver"],
-  "adapter_classes": {
-    "media_server": "bootstrap_services.media_server_adapters.plex:PlexMediaServerAdapter"
-  }
-}

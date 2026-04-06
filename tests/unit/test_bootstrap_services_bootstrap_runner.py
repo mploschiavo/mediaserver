@@ -4,16 +4,16 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.bootstrap_runner_service import (  # noqa: E402
+from media_stack.services.bootstrap_runner_service import (  # noqa: E402
     BootstrapRunnerDependencies,
     BootstrapRunnerService,
     BootstrapRuntime,
 )
-from bootstrap_services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
-from bootstrap_services.enums import BootstrapMode  # noqa: E402
-from bootstrap_services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
+from media_stack.services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
+from media_stack.services.enums import BootstrapMode  # noqa: E402
+from media_stack.services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
 
 
 class OP:
@@ -114,12 +114,12 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
             app_auth_cfg={},
             adapter_hooks_cfg={
                 "app_service_classes": {
-                    "prowlarr_service": "bootstrap_services.apps.prowlarr.service:ProwlarrService",
+                    "prowlarr_service": "media_stack.services.apps.prowlarr.service:ProwlarrService",
                     "download_client_pipeline_service": (
-                        "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService"
+                        "media_stack.services.download_client_pipeline_service:DownloadClientPipelineService"
                     ),
                     "media_server_adapter_factory": (
-                        "bootstrap_services.media_server_adapters.factory:MediaServerAdapterFactory"
+                        "media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory"
                     ),
                 },
                 "service_technology_map": {"prowlarr_service": "prowlarr"},
@@ -433,18 +433,18 @@ class BootstrapRunnerServiceTests(unittest.TestCase):
                     "sab": "sabnzbd",
                 },
                 "download_client_adapter_classes": {
-                    "qbit": "bootstrap_services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
-                    "sab": "bootstrap_services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
+                    "qbit": "media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
+                    "sab": "media_stack.services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
                 },
                 "app_service_classes": {
                     "jellyseerr_service": (
-                        "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                        "media_stack.services.apps.jellyseerr.service:JellyseerrService"
                     ),
                     "download_client_pipeline_service": (
-                        "bootstrap_services.download_client_pipeline_service:DownloadClientPipelineService"
+                        "media_stack.services.download_client_pipeline_service:DownloadClientPipelineService"
                     ),
                     "media_server_adapter_factory": (
-                        "bootstrap_services.media_server_adapters.factory:MediaServerAdapterFactory"
+                        "media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory"
                     ),
                 },
                 "media_server_operation_plans": {

@@ -1,6 +1,6 @@
 # Bootstrap Profile
 
-`bootstrap/media-stack.bootstrap.yaml` is the canonical deployment profile for rebuild/install defaults.
+`contracts/media-stack.profile.yaml` is the canonical deployment profile for rebuild/install defaults.
 
 It is intentionally brief and strict:
 - platform target (`metadata.platform`)
@@ -15,9 +15,9 @@ It is intentionally brief and strict:
 
 ## Files
 
-- Profile: `bootstrap/media-stack.bootstrap.yaml`
-- Schema: `bootstrap/media-stack.bootstrap.profile.schema.json`
-- Validator: `bash scripts/validate-bootstrap-profile.sh`
+- Profile: `contracts/media-stack.profile.yaml`
+- Schema: `contracts/media-stack.profile.schema.json`
+- Validator: `bash bin/validate-bootstrap-profile.sh`
 - Example set: `examples/bootstrap-profiles/`
 
 ## Canonical Example
@@ -118,7 +118,7 @@ Chaos keys:
 ## Live TV URLs Used In Code
 
 These profile defaults intentionally match the current bootstrap config defaults in
-`bootstrap/media-stack.bootstrap.json` (`jellyfin_livetv` section):
+`contracts/media-stack.config.json` (`jellyfin_livetv` section):
 
 - Tuner playlist: `https://iptv-org.github.io/iptv/countries/us.m3u`
 - XMLTV guide: `https://iptv-epg.org/files/epg-us.xml`
@@ -126,18 +126,18 @@ These profile defaults intentionally match the current bootstrap config defaults
 
 ## CLI Integration
 
-Rebuild runner auto-loads `bootstrap/media-stack.bootstrap.yaml` when present.
+Rebuild runner auto-loads `contracts/media-stack.profile.yaml` when present.
 
 Override path:
 
 ```bash
-bash scripts/deploy-stack.sh \
+bash bin/deploy-stack.sh \
   --bootstrap-profile-file /path/to/profile.yaml
 ```
 
 Quick validation:
 
 ```bash
-bash scripts/validate-bootstrap-profile.sh
-bash scripts/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-k8s-full.yaml
+bash bin/validate-bootstrap-profile.sh
+bash bin/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-k8s-full.yaml
 ```

@@ -4,9 +4,9 @@ from pathlib import Path
 from urllib import parse
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.sabnzbd.service import SabnzbdService  # noqa: E402
+from media_stack.services.apps.sabnzbd.service import SabnzbdService  # noqa: E402
 
 
 class SabnzbdServiceTests(unittest.TestCase):

@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.config_artifacts_service import ConfigArtifactsService  # noqa: E402
+from media_stack.services.config_artifacts_service import ConfigArtifactsService  # noqa: E402
 
 
 def _service():

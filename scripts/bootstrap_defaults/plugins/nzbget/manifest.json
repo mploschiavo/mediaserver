@@ -1,7 +1,0 @@
-{
-  "technology": "nzbget",
-  "aliases": ["nzb"],
-  "adapter_classes": {
-    "download_client": "bootstrap_services.download_client_adapters.nzbget:NzbgetDownloadClientAdapter"
-  }
-}

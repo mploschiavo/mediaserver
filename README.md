@@ -68,7 +68,7 @@ Architecture previews:
 
 Regenerate diagrams:
 ```bash
-bash scripts/render-architecture-diagrams.sh
+bash bin/render-architecture-diagrams.sh
 ```
 
 ## Source-of-Truth Philosophy
@@ -85,7 +85,7 @@ See [docs/source-of-truth.md](docs/source-of-truth.md).
 
 Technology backends are selected declaratively via:
 - `technology_bindings` (active backend per role)
-- plugin manifests (`scripts/bootstrap_defaults/plugins/<technology>/manifest.json`)
+- plugin manifests (`src/media_stack/contracts/plugins/<technology>/manifest.json`)
 
 Manifest contract keys:
 - `adapter_classes`
@@ -157,7 +157,7 @@ For any technology in a role:
 
 Swap-removal test flow:
 1. Point `technology_bindings.<role>` to another registered technology.
-2. Reconcile once (`bash scripts/bootstrap-all.sh`).
+2. Reconcile once (`bash bin/bootstrap-all.sh`).
 3. Temporarily remove the old plugin manifest (or remove its role keys).
 4. Run unit tests:
 
@@ -170,17 +170,17 @@ python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 
 Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> another media backend, or one Servarr app implementation) without editing `bootstrap-apps.py`.
 
-1. Add or update one technology manifest in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`.
-2. Add/update the app/client config block in `bootstrap/media-stack.bootstrap.json`.
-3. Add or update adapter/service module(s) under `scripts/bootstrap_services/...`.
+1. Add or update one technology manifest in `src/media_stack/contracts/plugins/<technology>/manifest.json`.
+2. Add/update the app/client config block in `contracts/media-stack.config.json`.
+3. Add or update adapter/service module(s) under `src/media_stack/services/...`.
 4. Change the active binding in `technology_bindings`.
 5. Validate, test, and reconcile:
 
 ```bash
-bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+bash bin/validate-bootstrap-config.sh --config contracts/media-stack.config.json --schema contracts/media-stack.schema.json
 python3 -m unittest tests.unit.test_technology_pluggability_contracts
 python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 ```
 
 Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
@@ -190,22 +190,22 @@ Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 To add or replace one technology with minimal blast radius:
 
 1. Implement one app/client adapter module under:
-   - `scripts/bootstrap_services/apps/<app>/`
-   - `scripts/bootstrap_services/download_client_adapters/`
-   - `scripts/bootstrap_services/media_server_adapters/`
+   - `src/media_stack/services/apps/<app>/`
+   - `src/media_stack/services/download_client_adapters/`
+   - `src/media_stack/services/media_server_adapters/`
 2. Register the class path in plugin manifest:
-   - `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
+   - `src/media_stack/contracts/plugins/<technology>/manifest.json`
 3. Expose only technology-local handlers through manifest `event_handlers`.
 4. Bind runtime usage through `technology_bindings`.
-5. Keep policy/config in JSON under `bootstrap/` or `config/runtime/overlays/*`.
+5. Keep policy/config in JSON under `contracts/` or `config/runtime/overlays/*`.
 6. Validate + reconcile:
 
 ```bash
-bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+bash bin/validate-bootstrap-config.sh --config contracts/media-stack.config.json --schema contracts/media-stack.schema.json
 python3 -m unittest tests.unit.test_technology_pluggability_contracts
 python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
-bash scripts/bootstrap-all.sh
-RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
+bash bin/bootstrap-all.sh
+RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash bin/test.sh
 ```
 
 Design constraints for maintainability:
@@ -213,7 +213,7 @@ Design constraints for maintainability:
 - add app-specific behavior in app-specific adapter/service files
 - keep shell scripts as thin wrappers over Python modules for non-trivial logic
 
-Jellyfin-specific bootstrap logic is isolated under `scripts/bootstrap_services/apps/jellyfin/` (including app runtime orchestration in `runtime_ops.py`);  
+Jellyfin-specific bootstrap logic is isolated under `src/media_stack/services/apps/jellyfin/` (including app runtime orchestration in `runtime_ops.py`);  
 root-level `jellyfin_*` modules are retired.
 
 ## Deployment Model
@@ -222,7 +222,7 @@ Supported paths:
 - Kubernetes (primary path): profile-driven deploy + bootstrap + verification
 - Docker Compose (alternate runtime path): SDK-driven compose deploy + wait + smoke/status
 - Container image build/publish (tooling path): build and push bootstrap runner images used by Kubernetes Jobs/CronJobs
-- Distribution bootstrap profile (`bootstrap/media-stack.bootstrap.yaml`) can drive target/purpose/install/exposure/auth defaults across both runtime targets
+- Distribution bootstrap profile (`contracts/media-stack.profile.yaml`) can drive target/purpose/install/exposure/auth defaults across both runtime targets
 
 Kubernetes profiles:
 - `minimal`: core stack only
@@ -238,7 +238,7 @@ When `--platform-target compose` and edge provider is `traefik`, deploy automati
 
 - Runtime patch output: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
 - Replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
-- Owner code: `scripts/core/platforms/compose/edge/providers/traefik/patch_service.py`
+- Owner code: `src/media_stack/core/platforms/compose/edge/providers/traefik/patch_service.py`
 
 No manual host-side Traefik patch step is required for normal deploy runs.
 
@@ -248,7 +248,7 @@ When `--platform-target compose` and edge provider is `envoy`, deploy automation
 
 - Runtime patch output: `${CONFIG_ROOT}/envoy/envoy.yaml`
 - Replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/envoy.runtime.yaml`
-- Owner code: `scripts/core/platforms/compose/edge/providers/envoy/patch_service.py`
+- Owner code: `src/media_stack/core/platforms/compose/edge/providers/envoy/patch_service.py`
 
 ### Compose Preflight and Storage Guardrails
 
@@ -285,8 +285,8 @@ Profile key: `chaos` (default disabled).
   - `authentik` -> `authentik`, `authentik-worker` (and dependency services)
 - Provider selection precedence:
   - `--edge-router-provider` / `EDGE_ROUTER_PROVIDER`
-  - `routing.provider` in `bootstrap/media-stack.bootstrap.yaml`
-  - `adapter_hooks.edge.router_provider` in `bootstrap/media-stack.bootstrap.json`
+  - `routing.provider` in `contracts/media-stack.profile.yaml`
+  - `adapter_hooks.edge.router_provider` in `contracts/media-stack.config.json`
 
 ### Google IdP Manual Setup (Compose)
 
@@ -333,7 +333,7 @@ git --version
 If you use local hostnames (`*.local`), configure DNS/hosts for your node IP:
 
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
 ```
 
 ## Developer Prerequisites
@@ -359,52 +359,52 @@ python3 -m pip install --upgrade pip
 python3 -m pip install docker kubernetes pyyaml requests
 python3 -m pip install ruff black
 npx -y @mermaid-js/mermaid-cli@10.9.1 -h
-bash scripts/test.sh
+bash bin/test.sh
 ```
 
 ## Quick Start (Kubernetes)
 
 Recommended one-command install:
 ```bash
-bash scripts/install.sh --profile full --node-ip <NODE_IP>
+bash bin/install.sh --profile full --node-ip <NODE_IP>
 ```
 
 Storage-mode examples:
 ```bash
 # default: StorageClass/PVC-driven (portable to AKS and other managed clusters)
-bash scripts/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 
 # legacy single-node host directory prep (when you explicitly want hostPath semantics)
-bash scripts/install.sh --profile full --storage-mode legacy-hostpath --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode legacy-hostpath --node-ip <NODE_IP>
 
 # optional: inject one storage class for all stack PVCs at deploy time
-bash scripts/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
 
 # optional repo-level helper (edits k8s/storage-pvc.yaml)
-bash scripts/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
+bash bin/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
 ```
 
 Namespace-isolated install (side-by-side environment):
 ```bash
-bash scripts/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
 ```
 
 Safe env-file pattern (recommended for repeat runs):
 ```bash
 cp examples/environments/media-dev.env.example ~/.config/media-stack/media-dev.env
-bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/install.sh
-bash scripts/with-env.sh ~/.config/media-stack/media-dev.env bash scripts/deploy-stack.sh
+bash bin/with-env.sh ~/.config/media-stack/media-dev.env bash bin/install.sh
+bash bin/with-env.sh ~/.config/media-stack/media-dev.env bash bin/deploy-stack.sh
 ```
 
 Disaster-recovery style rebuild + verification:
 ```bash
-bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Examples:
 ```bash
-bash scripts/deploy-verify.sh 192.168.1.60 media-stack full
-bash scripts/deploy-verify.sh 192.168.1.60 media-stack-dev power-user
+bash bin/deploy-verify.sh 192.168.1.60 media-stack full
+bash bin/deploy-verify.sh 192.168.1.60 media-stack-dev power-user
 ```
 
 ## Bootstrap Runner Image
@@ -413,18 +413,18 @@ The bootstrap service and CronJobs run from a prebuilt image.
 
 Build and push to local registry:
 ```bash
-bash scripts/build-bootstrap-runner-image.sh
+bash bin/build-bootstrap-runner-image.sh
 ```
 
 Override image for one run:
 ```bash
 BOOTSTRAP_RUNNER_IMAGE=192.168.1.60:30002/library/media-stack-bootstrap-runner:latest \
-  bash scripts/bootstrap-all.sh
+  bash bin/bootstrap-all.sh
 ```
 
 The same `BOOTSTRAP_RUNNER_IMAGE` env var is respected by:
-- `scripts/run-bootstrap-job.sh`
-- `scripts/run-prowlarr-auto-indexers.sh`
+- `bin/run-bootstrap-job.sh`
+- `bin/run-prowlarr-auto-indexers.sh`
 - `docker/docker-compose.yml` (bootstrap-runner service)
 
 ## Runtime Config Overlays and Resume
@@ -448,13 +448,13 @@ Enable overlays in bootstrap config:
 Checkpoint-resume is enabled by default for `bootstrap-all`:
 ```bash
 # default checkpoint file: .state/bootstrap-all-<namespace>.json
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 
 # force a full rerun
-bash scripts/bootstrap-all.sh --no-resume
+bash bin/bootstrap-all.sh --no-resume
 
 # explicit checkpoint path
-bash scripts/bootstrap-all.sh --state-file .state/bootstrap-all-media-stack.json
+bash bin/bootstrap-all.sh --state-file .state/bootstrap-all-media-stack.json
 ```
 
 Overlay details:
@@ -468,7 +468,7 @@ Docker is used both as:
 
 Build and push the bootstrap runner image:
 ```bash
-bash scripts/build-bootstrap-runner-image.sh
+bash bin/build-bootstrap-runner-image.sh
 ```
 
 ## End-to-End Automation Scope
@@ -489,7 +489,7 @@ The bootstrap pipeline configures these OTB when enabled:
 - Disk usage guardrails with qB cleanup policy (`disk_guardrails`, default max 65% used on `/srv-stack`)
 - qB category budget guardrails (queue count + optional per-category size and weighted-share pruning)
 - Global media hygiene (failed-queue cleanup + temp/zero-byte/orphan cleanup + dedupe pass + qB IP filter refresh/cache)
-- Maintainerr app (`maintainerr.<domain>`) + policy-as-code artifact generation (`/srv-config/maintainerr/policy.json`) from per-rule JSON/YAML library (`scripts/bootstrap_defaults/maintainerr_rules/{json,yaml}/`)
+- Maintainerr app (`maintainerr.<domain>`) + policy-as-code artifact generation (`/srv-config/maintainerr/policy.json`) from per-rule JSON/YAML library (`src/media_stack/contracts/maintainerr_rules/{json,yaml}/`)
 
 ## Service URLs
 
@@ -534,12 +534,12 @@ microk8s enable ingress
 
 Render host entries:
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
 ```
 
 Render router DNS snippets:
 ```bash
-bash scripts/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
+bash bin/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
 
 Manual hosts files:
@@ -557,7 +557,7 @@ TV/mobile onboarding guidance:
 If books/music/live TV rows appear flat or artwork is missing, focus on these areas:
 - Ensure real content is imported (images do not populate without indexed/imported media)
 - Keep naming hygiene for media files and folders
-- Keep Jellyfin metadata/artwork tuning enabled in `bootstrap/media-stack.bootstrap.json`
+- Keep Jellyfin metadata/artwork tuning enabled in `contracts/media-stack.config.json`
 - Keep Jellyfin plugin and home-rails reconciliation enabled
 - Run bootstrap reconcile after metadata/provider changes
 - Curated rails now include Movies + TV + Music + Books defaults
@@ -565,8 +565,8 @@ If books/music/live TV rows appear flat or artwork is missing, focus on these ar
 
 Reconcile now:
 ```bash
-bash scripts/bootstrap-all.sh
-bash scripts/verify-flow.sh <NAMESPACE>
+bash bin/bootstrap-all.sh
+bash bin/verify-flow.sh <NAMESPACE>
 ```
 
 For retention and grooming policy:
@@ -583,8 +583,8 @@ Deep guidance:
 
 Current layout (with platform-oriented structure overlays):
 - `k8s/`: deployable Kubernetes manifests and profiles (runtime source)
-- `bootstrap/`: declarative app bootstrap configuration
-- `scripts/`: install/reconcile/verify tooling (`*.sh` operator entrypoints + Python implementations under `scripts/cli/` and `scripts/bootstrap_services/`)
+- `contracts/`: declarative app bootstrap configuration
+- `bin/`: install/reconcile/verify tooling (`*.sh` operator entrypoints + Python implementations under `src/media_stack/cli/commands/` and `src/media_stack/services/`)
 - `tests/`: unit + Playwright e2e smoke checks
 - `docs/`: architecture/operations/design docs and diagrams
 - `platform/`, `apps/`, `config/`, `examples/`: productized structure scaffolding and guidance
@@ -615,61 +615,61 @@ See [docs/gitops.md](docs/gitops.md).
 
 Run local test suite:
 ```bash
-bash scripts/test.sh
+bash bin/test.sh
 ```
 
 Schema-only config validation:
 ```bash
-bash scripts/validate-bootstrap-config.sh
+bash bin/validate-bootstrap-config.sh
 ```
 
 Run Playwright ingress smoke:
 ```bash
-RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash scripts/test.sh
+RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash bin/test.sh
 # or
-bash scripts/run-playwright-smoke.sh <NODE_IP> [NAMESPACE]
+bash bin/run-playwright-smoke.sh <NODE_IP> [NAMESPACE]
 ```
 
 Capture app UI screenshots (Playwright):
 ```bash
-bash scripts/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
+bash bin/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
 ```
 
 Capture Kubernetes terminal evidence snapshots:
 ```bash
-bash scripts/capture-k8s-snapshots.sh [NAMESPACE]
+bash bin/capture-k8s-snapshots.sh [NAMESPACE]
 ```
 
 Run API-level relationship verification:
 ```bash
-RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash scripts/test.sh
+RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash bin/test.sh
 # or
 python3 tests/e2e/api/verify_api_relationships.py --namespace <NAMESPACE>
-bash scripts/run-api-e2e.sh <NAMESPACE>
+bash bin/run-api-e2e.sh <NAMESPACE>
 ```
 
 Runtime flow verification:
 ```bash
-bash scripts/verify-flow.sh [NAMESPACE]
-bash scripts/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
+bash bin/verify-flow.sh [NAMESPACE]
+bash bin/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
 ```
 
 ## Operations
 
 Backups:
 ```bash
-bash scripts/backup-stack.sh
+bash bin/backup-stack.sh
 ```
 
 Restore:
 ```bash
-bash scripts/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+bash bin/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 Stack status and diagnostics:
 ```bash
-bash scripts/stack-status.sh
-bash scripts/bootstrap-debug.sh
+bash bin/stack-status.sh
+bash bin/bootstrap-debug.sh
 ```
 
 ## Documentation Map

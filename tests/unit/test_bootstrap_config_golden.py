@@ -2,16 +2,16 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.bootstrap_services.apps.download_clients.config_models import DownloadClientConfig
-from scripts.bootstrap_services.apps.jellyfin.config_models import JellyfinLiveTvConfig
-from scripts.bootstrap_services.apps.servarr.config_models import ArrDiscoveryListsConfig
-from scripts.bootstrap_services.plugin_manifest_loader import (
+from media_stack.services.apps.download_clients.config_models import DownloadClientConfig
+from media_stack.services.apps.jellyfin.config_models import JellyfinLiveTvConfig
+from media_stack.services.apps.servarr.config_models import ArrDiscoveryListsConfig
+from media_stack.services.plugin_manifest_loader import (
     build_adapter_hook_defaults,
     load_plugin_manifests,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = ROOT / "bootstrap" / "media-stack.bootstrap.json"
+CONFIG_PATH = ROOT / "contracts" / "media-stack.config.json"
 GOLDEN_DIR = ROOT / "tests" / "unit" / "golden"
 
 

@@ -154,7 +154,7 @@ spec:
               value: /bootstrap-config/config.json
           command:
             - python3
-            - /opt/media-stack/scripts/bootstrap-apps.py
+            - /opt/media-stack/bin/bootstrap-apps.py
             - --serve
             - --config
             - /bootstrap-config/config.json

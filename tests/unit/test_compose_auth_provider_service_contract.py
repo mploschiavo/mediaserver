@@ -5,9 +5,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.auth.provider_registry import compose_service_names_by_provider  # noqa: E402
+from media_stack.core.auth.provider_registry import compose_service_names_by_provider  # noqa: E402
 
 
 class ComposeAuthProviderServiceContractTests(unittest.TestCase):

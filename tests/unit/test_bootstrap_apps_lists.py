@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import bootstrap_services.apps.servarr.runtime_ops as MODULE
+import media_stack.services.apps.servarr.runtime_ops as MODULE
 
 
 class BootstrapAppImportListPayloadTests(unittest.TestCase):

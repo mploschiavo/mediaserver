@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.generate_envoy_config_main import _load_bootstrap_edge_hooks, _load_profile
+from media_stack.cli.commands.generate_envoy_config_main import _load_bootstrap_edge_hooks, _load_profile
 
 
 class TestLoadProfile(unittest.TestCase):

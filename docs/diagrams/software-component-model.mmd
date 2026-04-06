@@ -6,8 +6,8 @@ flowchart TD
   end
 
   subgraph Contracts[Declarative Contracts]
-    CFG["bootstrap/media-stack.bootstrap.json\ntechnology_bindings + policies"]
-    PM["scripts/bootstrap_defaults/plugins/*/manifest.json"]
+    CFG["contracts/media-stack.config.json\ntechnology_bindings + policies"]
+    PM["src/media_stack/contracts/plugins/*/manifest.json"]
     RPLAN["bootstrap_defaults/runner_operation_plans.json\n(event + handler steps)"]
     MPLAN["bootstrap_defaults/media_server_operation_plans.json\n(event + handler steps)"]
   end

@@ -5,9 +5,9 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.runner_phase_plan_service import run_phase_plan  # noqa: E402
+from media_stack.services.runner_phase_plan_service import run_phase_plan  # noqa: E402
 
 
 class RunnerPhasePlanServiceTests(unittest.TestCase):

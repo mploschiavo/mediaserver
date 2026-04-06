@@ -5,13 +5,13 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.download_client_pipeline_service import (  # noqa: E402
+from media_stack.services.download_client_pipeline_service import (  # noqa: E402
     DownloadClientPipelineInputs,
     DownloadClientPipelineService,
 )
-from bootstrap_services.download_client_adapters.base import (  # noqa: E402
+from media_stack.services.download_client_adapters.base import (  # noqa: E402
     DownloadClientAdapterBase,
 )
 
@@ -74,15 +74,15 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             adapter_hooks_cfg={
                 "download_client_adapter_classes": {
                     "qbittorrent": (
-                        "bootstrap_services.download_client_adapters.qbittorrent:"
+                        "media_stack.services.download_client_adapters.qbittorrent:"
                         "QbittorrentDownloadClientAdapter"
                     ),
                     "sabnzbd": (
-                        "bootstrap_services.download_client_adapters.sabnzbd:"
+                        "media_stack.services.download_client_adapters.sabnzbd:"
                         "SabnzbdDownloadClientAdapter"
                     ),
                     "transmission": (
-                        "bootstrap_services.download_client_adapters.transmission:"
+                        "media_stack.services.download_client_adapters.transmission:"
                         "TransmissionDownloadClientAdapter"
                     ),
                 }
@@ -116,7 +116,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                         "download_client_adapter_classes": {
                             "qbittorrent": "",
                             "sabnzbd": (
-                                "bootstrap_services.download_client_adapters.sabnzbd:"
+                                "media_stack.services.download_client_adapters.sabnzbd:"
                                 "SabnzbdDownloadClientAdapter"
                             ),
                         }
@@ -144,11 +144,11 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                 adapter_hooks_cfg={
                     "download_client_adapter_classes": {
                         "qbittorrent": (
-                            "bootstrap_services.download_client_adapters.transmission:"
+                            "media_stack.services.download_client_adapters.transmission:"
                             "TransmissionDownloadClientAdapter"
                         ),
                         "sabnzbd": (
-                            "bootstrap_services.download_client_adapters.sabnzbd:"
+                            "media_stack.services.download_client_adapters.sabnzbd:"
                             "SabnzbdDownloadClientAdapter"
                         ),
                     }
@@ -190,11 +190,11 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                 adapter_hooks_cfg={
                     "download_client_adapter_classes": {
                         "mytorrent": (
-                            "bootstrap_services.download_client_adapters.transmission:"
+                            "media_stack.services.download_client_adapters.transmission:"
                             "TransmissionDownloadClientAdapter"
                         ),
                         "sabnzbd": (
-                            "bootstrap_services.download_client_adapters.sabnzbd:"
+                            "media_stack.services.download_client_adapters.sabnzbd:"
                             "SabnzbdDownloadClientAdapter"
                         ),
                     }
@@ -209,7 +209,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
         invoke = self._invoke()
         service = self._service(invoke)
 
-        module_name = "bootstrap_services.download_client_adapters.my_torrent"
+        module_name = "media_stack.services.download_client_adapters.my_torrent"
         fake_module = types.ModuleType(module_name)
 
         class MyTorrentDownloadClientAdapter(DownloadClientAdapterBase):
@@ -230,11 +230,11 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                     adapter_hooks_cfg={
                         "download_client_adapter_classes": {
                             "my-torrent": (
-                                "bootstrap_services.download_client_adapters.my_torrent:"
+                                "media_stack.services.download_client_adapters.my_torrent:"
                                 "MyTorrentDownloadClientAdapter"
                             ),
                             "sabnzbd": (
-                                "bootstrap_services.download_client_adapters.sabnzbd:"
+                                "media_stack.services.download_client_adapters.sabnzbd:"
                                 "SabnzbdDownloadClientAdapter"
                             ),
                         }
@@ -261,11 +261,11 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                 adapter_hooks_cfg={
                     "download_client_adapter_classes": {
                         "qbittorrent": (
-                            "bootstrap_services.download_client_adapters.qbittorrent:"
+                            "media_stack.services.download_client_adapters.qbittorrent:"
                             "QbittorrentDownloadClientAdapter"
                         ),
                         "nzbget": (
-                            "bootstrap_services.download_client_adapters.nzbget:"
+                            "media_stack.services.download_client_adapters.nzbget:"
                             "NzbgetDownloadClientAdapter"
                         ),
                     }

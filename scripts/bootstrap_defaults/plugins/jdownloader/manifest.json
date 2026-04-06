@@ -1,7 +1,0 @@
-{
-  "technology": "jdownloader",
-  "aliases": ["jd"],
-  "adapter_classes": {
-    "download_client": "bootstrap_services.download_client_adapters.jdownloader:JdownloaderDownloadClientAdapter"
-  }
-}

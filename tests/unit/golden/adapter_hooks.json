@@ -144,27 +144,16 @@
       {
         "operation": "run",
         "params": {
-          "action": "component_script",
-          "component": "indexer_manager",
-          "env": {
-            "NAMESPACE": "$namespace",
-            "PREPARE_HOST_ROOT": "$prepare_host_root"
-          },
-          "script_phase": "indexer_auto_discovery",
-          "technology": "prowlarr"
+          "action": "http_action",
+          "action_name": "auto-indexers",
+          "namespace_var": "$namespace",
+          "service_name": "bootstrap",
+          "service_port": 9100
         },
-        "phase_name": "Run indexer auto-discovery ({component|unbound})",
+        "phase_name": "Run indexer auto-discovery (prowlarr)",
         "when": {
-          "all_of": [
-            {
-              "truthy": true,
-              "var": "config.prowlarr_url"
-            },
-            {
-              "truthy": true,
-              "var": "components.indexer_manager.scripts.indexer_auto_discovery"
-            }
-          ]
+          "truthy": true,
+          "var": "config.prowlarr_url"
         }
       },
       {
@@ -185,10 +174,11 @@
       "radarr",
       "lidarr",
       "readarr",
-      "prowlarr"
+      "prowlarr",
+      "bazarr"
     ],
     "call_handlers": {
-      "activate_media_server_plugins": "bootstrap_services.apps.jellyfin.cli.bootstrap_hooks:activate_media_server_plugins"
+      "activate_media_server_plugins": "media_stack.services.apps.jellyfin.cli.bootstrap_hooks:activate_media_server_plugins"
     },
     "components": {
       "request_manager": {
@@ -202,10 +192,10 @@
       }
     },
     "compose_preflight_handlers": [
-      "bootstrap_services.apps.stack.compose_preflight:ensure_compose_stack_filesystem_paths",
-      "bootstrap_services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
-      "bootstrap_services.apps.sabnzbd.compose_preflight:ensure_compose_sabnzbd_api_access",
-      "bootstrap_services.apps.qbittorrent.compose_preflight:ensure_compose_torrent_client_credentials"
+      "media_stack.services.apps.stack.compose_preflight:ensure_compose_stack_filesystem_paths",
+      "media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
+      "media_stack.services.apps.sabnzbd.compose_preflight:ensure_compose_sabnzbd_api_access",
+      "media_stack.services.apps.qbittorrent.compose_preflight:ensure_compose_torrent_client_credentials"
     ],
     "phase_plan": [
       {
@@ -343,16 +333,46 @@
       {
         "operation": "call_handler",
         "params": {
-          "handler": "recreate_bootstrap_job"
+          "handler": "ensure_bootstrap_deployment"
         },
-        "phase_name": "Recreate bootstrap Job"
+        "phase_name": "Ensure bootstrap Deployment"
       },
       {
         "operation": "call_handler",
         "params": {
-          "handler": "wait_for_bootstrap_job"
+          "handler": "wait_for_bootstrap_service"
         },
-        "phase_name": "Wait for bootstrap Job completion"
+        "phase_name": "Wait for bootstrap service"
+      },
+      {
+        "operation": "call_handler",
+        "params": {
+          "binding": "media_server",
+          "component": "media_server",
+          "handler": "prime_media_server_api_key_secret"
+        },
+        "phase_name": "Prime media server API key into secret ({component|unbound})",
+        "when": {
+          "in": [
+            "jellyfin"
+          ],
+          "var": "bindings.media_server"
+        }
+      },
+      {
+        "operation": "call_handler",
+        "params": {
+          "binding": "media_server",
+          "component": "media_server",
+          "handler": "prime_media_server_user_id_secret"
+        },
+        "phase_name": "Prime media server user id into secret ({component|unbound})",
+        "when": {
+          "in": [
+            "jellyfin"
+          ],
+          "var": "bindings.media_server"
+        }
       },
       {
         "operation": "call_handler",
@@ -408,13 +428,25 @@
         "timeout_seconds": 180
       }
     ],
-    "runtime_config_policy_handler": "bootstrap_services.apps.stack.bootstrap_config_policy:apply_bootstrap_runtime_policy",
+    "runtime_config_policy_handler": "media_stack.services.apps.stack.bootstrap_config_policy:apply_bootstrap_runtime_policy",
     "secret_priming_targets": {
       "analytics": {
         "deployment": "tautulli",
         "env_key": "TAUTULLI_API_KEY",
         "env_var": "TAUTULLI_API_KEY",
         "extract_command": "sed -n 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*//p' /config/config.ini | head -n1"
+      },
+      "media_server_api_key": {
+        "deployment": "jellyseerr",
+        "env_key": "JELLYFIN_API_KEY",
+        "env_var": "JELLYFIN_API_KEY",
+        "extract_command": "node -e \"const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); process.stdout.write(String((((d.jellyfin||{}).apiKey)||'')).trim());\""
+      },
+      "media_server_user_id": {
+        "deployment": "jellyseerr",
+        "env_key": "JELLYFIN_USER_ID",
+        "env_var": "JELLYFIN_USER_ID",
+        "extract_command": "node -e \"const fs=require('fs'); const http=require('http'); const d=JSON.parse(fs.readFileSync('/app/config/settings.json','utf8')); const apiKey=String((((d.jellyfin||{}).apiKey)||'')).trim(); if(!apiKey){process.exit(0)} http.get('http://jellyfin:8096/Users?api_key='+encodeURIComponent(apiKey),(res)=>{let body=''; res.on('data',(chunk)=>body+=chunk); res.on('end',()=>{try{const users=JSON.parse(body); const list=Array.isArray(users)?users:[]; const user=list.find((item)=>String(item&&item.Name||'').trim().toLowerCase()==='admin') || list.find((item)=>Boolean(item&&item.Policy&&item.Policy.IsAdministrator)); process.stdout.write(String(user&&user.Id||'').trim());}catch(_err){}});}).on('error',()=>{});\""
       },
       "request_manager": {
         "deployment": "jellyseerr",
@@ -479,8 +511,9 @@
         "lidarr",
         "readarr",
         "prowlarr",
-        "maintainerr",
-        "jellyseerr"
+        "bazarr",
+        "sabnzbd",
+        "maintainerr"
       ],
       "traefik": []
     },
@@ -503,7 +536,7 @@
         "plex"
       ]
     },
-    "router_provider": "traefik",
+    "router_provider": "envoy",
     "router_service_names_by_provider": {
       "envoy": [
         "envoy"
@@ -515,14 +548,14 @@
   },
   "event_handlers": {
     "ENSURE": {
-      "enforce_disk_guardrails": "bootstrap_services.apps.servarr.runtime.hygiene_ops:enforce_disk_guardrails"
+      "enforce_disk_guardrails": "media_stack.services.apps.servarr.runtime.hygiene_ops:enforce_disk_guardrails"
     },
     "RUN": {
-      "run_media_hygiene": "bootstrap_services.apps.servarr.runtime.hygiene_ops:run_media_hygiene",
-      "run_servarr_pipeline": "bootstrap_services.apps.servarr.runtime_ops:run_servarr_pipeline"
+      "run_media_hygiene": "media_stack.services.apps.servarr.runtime.hygiene_ops:run_media_hygiene",
+      "run_servarr_pipeline": "media_stack.services.apps.servarr.runtime_ops:run_servarr_pipeline"
     },
     "VALIDATE": {
-      "ensure_app_auth_settings": "bootstrap_services.apps.servarr.runtime.arr_ops:ensure_app_auth_settings"
+      "ensure_app_auth_settings": "media_stack.services.apps.servarr.runtime.arr_ops:ensure_app_auth_settings"
     }
   },
   "microk8s_reconcile": {

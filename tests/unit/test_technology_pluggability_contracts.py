@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-PLUGIN_ROOT = ROOT / "scripts" / "bootstrap_defaults" / "plugins"
+PLUGIN_ROOT = ROOT / "src" / "media_stack" / "contracts" / "plugins"
 
 TECHNOLOGIES = [
     "jellyfin",
@@ -77,12 +77,12 @@ MIN_REGISTRATION_REQUIREMENTS = {
 }
 
 SHARED_RUNTIME_ENTRY_MODULES = [
-    ROOT / "scripts" / "bootstrap-apps.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_platform.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_secrets.py",
-    ROOT / "scripts" / "bootstrap_services" / "bootstrap_runner_service.py",
-    ROOT / "scripts" / "bootstrap_services" / "download_client_pipeline_service.py",
-    ROOT / "scripts" / "bootstrap_services" / "runtime_factory" / "runtime_builder.py",
+    ROOT / "bin" / "bootstrap-apps.py",
+    ROOT / "src" / "media_stack" / "services" / "runtime_platform.py",
+    ROOT / "src" / "media_stack" / "services" / "runtime_secrets.py",
+    ROOT / "src" / "media_stack" / "services" / "bootstrap_runner_service.py",
+    ROOT / "src" / "media_stack" / "services" / "download_client_pipeline_service.py",
+    ROOT / "src" / "media_stack" / "services" / "runtime_factory" / "runtime_builder.py",
 ]
 
 
@@ -189,7 +189,10 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                     _assert_import_spec_resolves(spec)
 
     def test_bootstrap_entrypoint_uses_manifest_bound_handlers_for_tech_operations(self):
-        entrypoint = (ROOT / "scripts" / "bootstrap-apps.py").read_text(encoding="utf-8")
+        wrapper = (ROOT / "bin" / "bootstrap-apps.py").read_text(encoding="utf-8")
+        entrypoint = (
+            ROOT / "src" / "media_stack" / "cli" / "commands" / "bootstrap_apps_main.py"
+        ).read_text(encoding="utf-8")
         operation_names: set[str] = set()
         for tech in TECHNOLOGIES:
             manifest = _load_manifest(tech)
@@ -197,6 +200,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
         operation_names = {name for name in operation_names if name}
         self.assertTrue(operation_names, "No event handlers discovered from manifests.")
+        self.assertIn("from media_stack.cli.commands.bootstrap_apps_main import main", wrapper)
         self.assertIn("build_runner_event_registry(", entrypoint)
         self.assertNotIn("_missing_op_handler(", entrypoint)
 
@@ -209,7 +213,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                     for alias in node.names:
                         name = str(alias.name or "")
                         self.assertFalse(
-                            name.startswith("bootstrap_services.apps."),
+                            name.startswith("media_stack.services.apps."),
                             msg=(
                                 f"{module_path}: direct app import '{name}' found in shared runtime "
                                 "entry module. Use manifest-driven or lazy wiring."
@@ -218,7 +222,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                 elif isinstance(node, ast.ImportFrom):
                     module = str(node.module or "")
                     self.assertFalse(
-                        module.startswith("bootstrap_services.apps."),
+                        module.startswith("media_stack.services.apps."),
                         msg=(
                             f"{module_path}: direct app import-from '{module}' found in shared runtime "
                             "entry module. Use manifest-driven or lazy wiring."
@@ -226,9 +230,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                     )
 
     def test_missing_qbittorrent_manifest_does_not_break_shared_runtime_import_init(self):
-        import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
+        import media_stack.services.plugin_manifest_loader as manifest_loader
+        import media_stack.services.runtime_service_registry as registry
+        import media_stack.services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         all_manifests = manifest_loader.load_plugin_manifests()
@@ -264,9 +268,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             registry.set_runtime_context_cfg(prior_context)
 
     def test_missing_sabnzbd_manifest_does_not_break_shared_runtime_import_init(self):
-        import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
+        import media_stack.services.plugin_manifest_loader as manifest_loader
+        import media_stack.services.runtime_service_registry as registry
+        import media_stack.services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         all_manifests = manifest_loader.load_plugin_manifests()
@@ -302,10 +306,10 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             registry.set_runtime_context_cfg(prior_context)
 
     def test_missing_maintainerr_manifest_does_not_break_shared_runtime_import_init(self):
-        import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.apps.maintainerr.runtime_ops as maintainerr_runtime_ops
-        import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
+        import media_stack.services.plugin_manifest_loader as manifest_loader
+        import media_stack.services.apps.maintainerr.runtime_ops as maintainerr_runtime_ops
+        import media_stack.services.runtime_service_registry as registry
+        import media_stack.services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         all_manifests = manifest_loader.load_plugin_manifests()
@@ -341,9 +345,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             registry.set_runtime_context_cfg(prior_context)
 
     def test_runtime_binding_removal_is_lazy_until_technology_path_invoked(self):
-        import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
+        import media_stack.services.plugin_manifest_loader as manifest_loader
+        import media_stack.services.runtime_service_registry as registry
+        import media_stack.services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         manifests = manifest_loader.load_plugin_manifests()
@@ -380,9 +384,9 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             registry.set_runtime_context_cfg(prior_context)
 
     def test_runtime_usenet_binding_removal_is_lazy_until_technology_path_invoked(self):
-        import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
+        import media_stack.services.plugin_manifest_loader as manifest_loader
+        import media_stack.services.runtime_service_registry as registry
+        import media_stack.services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         manifests = manifest_loader.load_plugin_manifests()
@@ -417,10 +421,10 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
             registry.set_runtime_context_cfg(prior_context)
 
     def test_runtime_maintainerr_binding_removal_is_lazy_until_technology_path_invoked(self):
-        import bootstrap_services.plugin_manifest_loader as manifest_loader
-        import bootstrap_services.apps.maintainerr.runtime_ops as maintainerr_runtime_ops
-        import bootstrap_services.runtime_service_registry as registry
-        import bootstrap_services.apps.servarr.runtime.factory as runtime_factory
+        import media_stack.services.plugin_manifest_loader as manifest_loader
+        import media_stack.services.apps.maintainerr.runtime_ops as maintainerr_runtime_ops
+        import media_stack.services.runtime_service_registry as registry
+        import media_stack.services.apps.servarr.runtime.factory as runtime_factory
 
         prior_context = registry.get_runtime_context_cfg()
         manifests = manifest_loader.load_plugin_manifests()

@@ -2,15 +2,16 @@ FROM python:3.12-alpine
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/opt/media-stack/scripts
+    PYTHONPATH=/opt/media-stack/src:/opt/media-stack
 
 WORKDIR /opt/media-stack
 
 RUN pip install --no-cache-dir bcrypt docker kubernetes pyyaml requests
 
-COPY scripts /opt/media-stack/scripts
+COPY bin /opt/media-stack/bin
+COPY src /opt/media-stack/src
 COPY config/defaults /opt/media-stack/config/defaults
-COPY bootstrap /opt/media-stack/bootstrap
+COPY contracts /opt/media-stack/contracts
 
 EXPOSE 9100
 

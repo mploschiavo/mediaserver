@@ -2,7 +2,7 @@
 
 Reserved for shared default configuration domains.
 
-Current primary defaults live in `bootstrap/media-stack.bootstrap.json`.
+Current primary defaults live in `contracts/media-stack.config.json`.
 
 ---
 

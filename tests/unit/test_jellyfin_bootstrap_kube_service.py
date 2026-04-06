@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from scripts.bootstrap_services.apps.jellyfin.cli import jellyfin_bootstrap_kube_service as svc
+from media_stack.services.apps.jellyfin.cli import jellyfin_bootstrap_kube_service as svc
 
 
 class _Proc:

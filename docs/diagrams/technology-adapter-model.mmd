@@ -1,9 +1,9 @@
 flowchart LR
-  CFG[bootstrap/media-stack.bootstrap.json]
+  CFG[contracts/media-stack.config.json]
   BIND[technology_bindings]
   RH[adapter_hooks<br/>runtime overrides only]
 
-  PM[scripts/bootstrap_defaults/plugins/*/manifest.json]
+  PM[src/media_stack/contracts/plugins/*/manifest.json]
   LOAD[plugin_manifest_loader.py]
   DEF[AdapterHookDefaults<br/>aliases + class maps + handlers]
 

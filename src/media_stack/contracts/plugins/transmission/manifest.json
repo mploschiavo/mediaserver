@@ -1,0 +1,21 @@
+{
+  "technology": "transmission",
+  "aliases": [],
+  "adapter_classes": {
+    "download_client": "media_stack.services.download_client_adapters.transmission:TransmissionDownloadClientAdapter"
+  },
+  "app_service_classes": {
+    "torrent_client_service": "media_stack.services.apps.transmission.service:TransmissionService"
+  },
+  "event_handlers": {
+    "ACQUIRE": {
+      "torrent_client_login": "media_stack.services.apps.transmission.runtime_ops:torrent_client_login"
+    },
+    "ENSURE": {
+      "setup_torrent_categories": "media_stack.services.apps.transmission.runtime_ops:setup_torrent_categories"
+    }
+  },
+  "service_technology_map": {
+    "torrent_client_service": "transmission"
+  }
+}

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 2 ]]; then
+  cat <<'EOF'
+Usage:
+  bin/with-env.sh <ENV_FILE> <COMMAND> [ARGS...]
+
+Description:
+  Sources ENV_FILE with exported variables, applies safe default
+  DELETE_NAMESPACE=0 when unset, then executes COMMAND.
+  Teardown also requires DELETE_NAMESPACE_CONFIRM to be set to the
+  target namespace/project (or I_UNDERSTAND).
+
+Examples:
+  bash bin/with-env.sh examples/environments/media-dev.env.example \
+    bash bin/install.sh
+  bash bin/with-env.sh examples/environments/media-dev.env.example \
+    bash bin/deploy-stack.sh
+EOF
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    exit 0
+  fi
+  exit 2
+fi
+
+ENV_FILE="$1"
+shift
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "[ERR] Env file not found: $ENV_FILE" >&2
+  exit 2
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+export DELETE_NAMESPACE="${DELETE_NAMESPACE:-0}"
+
+echo "[INFO] Loaded env: $ENV_FILE" >&2
+echo "[INFO] Namespace=${NAMESPACE:-<unset>} IngressDomain=${INGRESS_DOMAIN:-<unset>} DELETE_NAMESPACE=${DELETE_NAMESPACE} DELETE_NAMESPACE_CONFIRM=${DELETE_NAMESPACE_CONFIRM:-<unset>}" >&2
+
+exec "$@"

@@ -1,11 +1,11 @@
-"""Unit tests for bootstrap_api.server HTTP endpoints."""
+"""Unit tests for media_stack.api.server HTTP endpoints."""
 
 import json
 import unittest
 from http.client import HTTPConnection
 
-from bootstrap_api.server import start_api_server
-from bootstrap_api.state import BootstrapState
+from media_stack.api.server import start_api_server
+from media_stack.api.state import BootstrapState
 
 
 class TestBootstrapAPIServerHealthz(unittest.TestCase):

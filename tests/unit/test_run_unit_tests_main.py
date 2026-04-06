@@ -5,9 +5,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.run_unit_tests_main import build_parser, main  # noqa: E402
+from media_stack.cli.commands.run_unit_tests_main import build_parser, main  # noqa: E402
 
 
 class RunUnitTestsMainTests(unittest.TestCase):
@@ -35,7 +35,9 @@ class RunUnitTestsMainTests(unittest.TestCase):
         self.assertEqual(args.timeout_seconds, 12.5)
 
     def test_main_builds_runner_config_and_returns_runner_exit_code(self):
-        with mock.patch("cli.run_unit_tests_main.run_discovered_unit_tests") as run_mock:
+        with mock.patch(
+            "media_stack.cli.commands.run_unit_tests_main.run_discovered_unit_tests"
+        ) as run_mock:
             run_mock.return_value = (3, [])
             rc = main(
                 [
@@ -66,12 +68,14 @@ class RunUnitTestsMainTests(unittest.TestCase):
 
     def test_main_ensures_repo_and_scripts_are_on_sys_path(self):
         repo_root = str(ROOT)
-        scripts_root = str(ROOT / "scripts")
+        scripts_root = str(ROOT / "src")
         trimmed_path = [item for item in sys.path if item not in {repo_root, scripts_root}]
 
         with (
             mock.patch.object(sys, "path", trimmed_path),
-            mock.patch("cli.run_unit_tests_main.run_discovered_unit_tests") as run_mock,
+            mock.patch(
+                "media_stack.cli.commands.run_unit_tests_main.run_discovered_unit_tests"
+            ) as run_mock,
         ):
             run_mock.return_value = (0, [])
             rc = main(["--verbosity", "0"])

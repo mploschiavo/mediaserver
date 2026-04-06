@@ -11,13 +11,13 @@ This platform follows a strict desired-state hierarchy.
   - `k8s/profiles/*`
   - `docker/docker-compose.yml`
   - `docker/.env.example`
-  - `bootstrap/media-stack.bootstrap.json`
-  - `bootstrap/media-stack.bootstrap.yaml`
-  - `bootstrap/media-stack.bootstrap.profile.schema.json`
-  - `scripts/bootstrap_defaults/plugins/*/manifest.json`
-  - `scripts/bootstrap_defaults/runner_operation_plans.json`
-  - `scripts/bootstrap_defaults/media_server_operation_plans.json`
-  - scripts under `scripts/`
+  - `contracts/media-stack.config.json`
+  - `contracts/media-stack.profile.yaml`
+  - `contracts/media-stack.profile.schema.json`
+  - `src/media_stack/contracts/plugins/*/manifest.json`
+  - `src/media_stack/contracts/runner_operation_plans.json`
+  - `src/media_stack/contracts/media_server_operation_plans.json`
+  - scripts under `bin/`
 
 2. **Cluster secrets generated/reconciled from code**
   - `media-stack-secrets` (Kubernetes Secret)

@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.bootstrap_component_resolver import (  # noqa: E402
+from media_stack.cli.workflows.bootstrap_component_resolver import (  # noqa: E402
     evaluate_phase_condition,
     resolve_bootstrap_enable_components,
     resolve_component_deployment_name,
@@ -18,13 +18,13 @@ from cli.bootstrap_component_resolver import (  # noqa: E402
     resolve_phase_skip_flag_specs,
     resolve_runner_phase_script,
 )
-from core.exceptions import ConfigError  # noqa: E402
+from media_stack.core.exceptions import ConfigError  # noqa: E402
 
 
 class BootstrapComponentResolverTests(unittest.TestCase):
     def _base_config(self) -> dict:
         return json.loads(
-            (ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text(encoding="utf-8")
+            (ROOT / "contracts" / "media-stack.config.json").read_text(encoding="utf-8")
         )
 
     def _write_config(self, payload: dict) -> Path:

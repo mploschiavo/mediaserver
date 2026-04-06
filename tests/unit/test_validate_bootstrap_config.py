@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = ROOT / "scripts" / "cli" / "validate_bootstrap_config_main.py"
+SCRIPT_PATH = ROOT / "src" / "media_stack" / "cli" / "commands" / "validate_bootstrap_config_main.py"
 
 
 def _load_module():

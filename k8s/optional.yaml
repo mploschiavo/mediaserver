@@ -490,7 +490,7 @@ spec:
                   value: "1"
               command:
                 - python3
-                - /opt/media-stack/scripts/bootstrap-apps.py
+                - /opt/media-stack/bin/bootstrap-apps.py
                 - --config
                 - /bootstrap-config/config.json
                 - --config-root
@@ -630,7 +630,7 @@ spec:
                   value: "15"
               command:
                 - python3
-                - /opt/media-stack/scripts/bootstrap-apps.py
+                - /opt/media-stack/bin/bootstrap-apps.py
                 - --mode
                 - jellyfin-prewarm
                 - --config
@@ -731,7 +731,7 @@ spec:
                   value: "15"
               command:
                 - python3
-                - /opt/media-stack/scripts/bootstrap-apps.py
+                - /opt/media-stack/bin/bootstrap-apps.py
                 - --mode
                 - media-hygiene
                 - --config

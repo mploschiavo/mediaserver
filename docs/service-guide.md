@@ -60,7 +60,7 @@ In other words, no single Arr app is the full groomer. Use the layered approach 
 
 This stack ships:
 - downloader-side cleanup defaults (CDH + qB seeding/cleanup policy)
-- disk-usage guardrails (`disk_guardrails` in `bootstrap/media-stack.bootstrap.json`, default max 65% used on `/srv-stack/media`)
+- disk-usage guardrails (`disk_guardrails` in `contracts/media-stack.config.json`, default max 65% used on `/srv-stack/media`)
 - scheduled media hygiene (`media_hygiene`) for failed queue cleanup + temp/orphan cleanup
 - Jellyfin prewarm schedule (`jellyfin_prewarm`) for recurring metadata/artwork + guide/channel refresh
 - Maintainerr app route (`maintainerr.<domain>`) with persistent config (`/opt/data`)
@@ -80,7 +80,7 @@ Deployed in full/public-demo/power-user profiles and exposed at `maintainerr.<do
 Bootstrap now reconciles Maintainerr main settings (`applicationUrl`, media-server type, Jellyfin URL/API key/user, Seerr URL)
 plus integrations for Radarr, Sonarr, Jellyseerr, and Tautulli with API-level test calls.
 Policy rules are maintained as a config-as-code library (one file per rule) under
-`scripts/bootstrap_defaults/maintainerr_rules/{json,yaml}/` and rendered to `/srv-config/maintainerr/policy.json`.
+`src/media_stack/contracts/maintainerr_rules/{json,yaml}/` and rendered to `/srv-config/maintainerr/policy.json`.
 
 ## Bootstrap Runner
 Persistent HTTP API service for stack configuration and operational control.

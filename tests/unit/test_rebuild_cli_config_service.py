@@ -6,9 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from scripts.cli.deploy_cli_config_service import parse_deploy_stack_config
+from media_stack.cli.workflows.deploy_cli_config_service import parse_deploy_stack_config
 
 
 class RebuildCliConfigServiceTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
             "APPLY_INITIAL_PREFERENCES": "0",
             "AUTO_DOWNLOAD_CONTENT": "1",
             "STORAGE_MODE": "dynamic-pvc",
-            "CONFIG_FILE": "/tmp/media-stack-test/bootstrap/custom.json",
+            "CONFIG_FILE": "/tmp/media-stack-test/contracts/custom.json",
         }
         with patch.dict(os.environ, env, clear=False):
             cfg = parse_deploy_stack_config(
@@ -40,7 +40,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.preconfigure_api_keys, "0")
         self.assertEqual(cfg.apply_initial_preferences, "0")
         self.assertEqual(cfg.auto_download_content, "1")
-        self.assertEqual(cfg.config_file, Path("/tmp/media-stack-test/bootstrap/custom.json"))
+        self.assertEqual(cfg.config_file, Path("/tmp/media-stack-test/contracts/custom.json"))
         self.assertEqual(cfg.compose_project_name, "media-dev")
         self.assertEqual(cfg.compose_file, root_dir / "docker" / "docker-compose.yml")
         self.assertEqual(cfg.compose_env_file, root_dir / "docker" / ".env")
@@ -78,9 +78,9 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
     def test_parse_deploy_stack_config_uses_bootstrap_profile_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
-            bootstrap_dir = root_dir / "bootstrap"
+            bootstrap_dir = root_dir / "contracts"
             bootstrap_dir.mkdir(parents=True, exist_ok=True)
-            (bootstrap_dir / "media-stack.bootstrap.yaml").write_text(
+            (bootstrap_dir / "media-stack.profile.yaml").write_text(
                 "\n".join(
                     [
                         "schema_version: 1",
@@ -149,9 +149,9 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
     def test_parse_deploy_stack_config_respects_preconfigure_apps_flag_for_run_bootstrap(self):
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
-            bootstrap_dir = root_dir / "bootstrap"
+            bootstrap_dir = root_dir / "contracts"
             bootstrap_dir.mkdir(parents=True, exist_ok=True)
-            (bootstrap_dir / "media-stack.bootstrap.yaml").write_text(
+            (bootstrap_dir / "media-stack.profile.yaml").write_text(
                 "\n".join(
                     [
                         "schema_version: 1",

@@ -6,10 +6,10 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.deploy_cli_config_service import DeployStackConfig  # noqa: E402
-from cli.deploy_stack_main import DeployError, DeployStackRunner, SkipPhase  # noqa: E402
+from media_stack.cli.workflows.deploy_cli_config_service import DeployStackConfig  # noqa: E402
+from media_stack.cli.commands.deploy_stack_main import DeployError, DeployStackRunner, SkipPhase  # noqa: E402
 
 
 class DeployStackEdgeProviderValidationTests(unittest.TestCase):

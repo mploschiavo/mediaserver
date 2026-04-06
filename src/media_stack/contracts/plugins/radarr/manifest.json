@@ -1,0 +1,10 @@
+{
+  "technology": "radarr",
+  "aliases": ["rarr"],
+  "adapter_classes": {
+    "servarr": "media_stack.services.apps.servarr.technologies.radarr:RadarrAdapter"
+  },
+  "capability_defaults": {
+    "default_download_category": "movies"
+  }
+}

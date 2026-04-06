@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.kubernetes.services.rebuild_manifest_overrides_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_manifest_overrides_service import (  # noqa: E402
     RebuildManifestOverridesConfig,
     RebuildManifestOverridesService,
 )
@@ -45,7 +45,12 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
         svc.apply_manifest_text_with_overrides(
             "kind: PersistentVolumeClaim\nspec:\n  resources:\n    requests:\n      storage: 1Gi\n"
         )
-        run_kubectl.assert_called_once()
+        self.assertEqual(run_kubectl.call_count, 2)
+        self.assertEqual(
+            run_kubectl.call_args_list[0].args[0],
+            ["create", "namespace", "media-stack-dev"],
+        )
+        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["apply", "-f", "-"])
 
     def test_apply_manifest_text_deletes_existing_jobs_before_apply(self):
         run_kubectl = mock.Mock(return_value=mock.Mock(returncode=0, stdout="", stderr=""))
@@ -63,17 +68,18 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
             "  name: sample\n"
             "  namespace: media-stack\n"
         )
-        self.assertEqual(run_kubectl.call_count, 2)
+        self.assertEqual(run_kubectl.call_count, 3)
         self.assertEqual(
-            run_kubectl.call_args_list[0].args[0],
+            run_kubectl.call_args_list[1].args[0],
             ["-n", "media-stack-dev", "delete", "job", "media-stack-bootstrap", "--ignore-not-found"],
         )
-        self.assertEqual(run_kubectl.call_args_list[0].kwargs.get("check"), False)
-        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["apply", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[1].kwargs.get("check"), False)
+        self.assertEqual(run_kubectl.call_args_list[2].args[0], ["apply", "-f", "-"])
 
     def test_apply_manifest_text_conflict_falls_back_to_replace_create(self):
         run_kubectl = mock.Mock(
             side_effect=[
+                mock.Mock(returncode=0, stdout="", stderr=""),
                 mock.Mock(returncode=1, stdout="", stderr="Conflict"),
                 mock.Mock(returncode=0, stdout="", stderr=""),
                 mock.Mock(returncode=1, stdout="", stderr="NotFound"),
@@ -95,15 +101,16 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
             "  namespace: media-stack\n"
             "type: Opaque\n"
         )
-        self.assertEqual(run_kubectl.call_args_list[0].args[0], ["apply", "-f", "-"])
-        self.assertEqual(run_kubectl.call_args_list[0].kwargs.get("check"), False)
-        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["replace", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["apply", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[1].kwargs.get("check"), False)
         self.assertEqual(run_kubectl.call_args_list[2].args[0], ["replace", "-f", "-"])
-        self.assertEqual(run_kubectl.call_args_list[3].args[0], ["create", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[3].args[0], ["replace", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[4].args[0], ["create", "-f", "-"])
 
     def test_apply_manifest_text_conflict_tolerates_existing_immutable_objects(self):
         run_kubectl = mock.Mock(
             side_effect=[
+                mock.Mock(returncode=0, stdout="", stderr=""),
                 mock.Mock(returncode=1, stdout="", stderr="Conflict"),
                 mock.Mock(returncode=1, stdout="", stderr="spec is immutable"),
                 mock.Mock(returncode=1, stdout="", stderr="already exists"),
@@ -121,9 +128,9 @@ class RebuildManifestOverridesServiceTests(unittest.TestCase):
             "    requests:\n"
             "      storage: 5Gi\n"
         )
-        self.assertEqual(run_kubectl.call_count, 3)
-        self.assertEqual(run_kubectl.call_args_list[1].args[0], ["replace", "-f", "-"])
-        self.assertEqual(run_kubectl.call_args_list[2].args[0], ["create", "-f", "-"])
+        self.assertEqual(run_kubectl.call_count, 4)
+        self.assertEqual(run_kubectl.call_args_list[2].args[0], ["replace", "-f", "-"])
+        self.assertEqual(run_kubectl.call_args_list[3].args[0], ["create", "-f", "-"])
 
 
 if __name__ == "__main__":

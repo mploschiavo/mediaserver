@@ -5,10 +5,10 @@ from unittest import mock
 from urllib import parse
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import bootstrap_services.apps.jellyfin.runtime_ops as MODULE
-import bootstrap_services.apps.jellyfin.runtime_ops as MEDIA_OPS
+import media_stack.services.apps.jellyfin.runtime_ops as MODULE
+import media_stack.services.apps.jellyfin.runtime_ops as MEDIA_OPS
 
 
 class JellyfinHomeRailsTests(unittest.TestCase):

@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.discovery_lists_service import DiscoveryListsService  # noqa: E402
+from media_stack.services.discovery_lists_service import DiscoveryListsService  # noqa: E402
 
 
 class DiscoveryListsServiceTests(unittest.TestCase):

@@ -6,27 +6,27 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.kubernetes.services.rebuild_deployments_wait_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_deployments_wait_service import (  # noqa: E402
     RebuildDeploymentsWaitService,
 )
-from core.platforms.kubernetes.services.rebuild_ingress_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_ingress_service import (  # noqa: E402
     RebuildIngressService,
 )
-from core.platforms.kubernetes.services.rebuild_manifest_apply_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_manifest_apply_service import (  # noqa: E402
     RebuildManifestApplyService,
 )
-from core.platforms.kubernetes.services.rebuild_namespace_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_namespace_service import (  # noqa: E402
     RebuildNamespaceService,
 )
-from core.platforms.kubernetes.services.rebuild_secret_preservation_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_secret_preservation_service import (  # noqa: E402
     RebuildSecretPreservationService,
 )
-from core.platforms.kubernetes.services.rebuild_smoke_test_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_smoke_test_service import (  # noqa: E402
     RebuildSmokeTestService,
 )
-from core.platforms.kubernetes.services.runner_bindings import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.runner_bindings import (  # noqa: E402
     build_kubernetes_runner_request,
 )
 

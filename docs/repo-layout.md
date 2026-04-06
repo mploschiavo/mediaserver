@@ -6,20 +6,20 @@ The repository keeps deployable runtime assets in existing stable paths while in
 
 - `k8s/`: Kubernetes manifests, profile overlays, bootstrap job manifests
 - `docker/`: Docker Compose runtime manifests and env templates
-- `bootstrap/`: app-level bootstrap JSON plus deployment bootstrap profile YAML/schema
-- `scripts/`: install, reconcile, diagnostics, and verification tooling
+- `contracts/`: app-level bootstrap JSON plus deployment bootstrap profile YAML/schema
+- `bin/`: install, reconcile, diagnostics, and verification tooling
 - `tests/`: unit and e2e test suites
 - `docs/`: architecture, operations, and design documents
 
-Manifest-driven pluggability paths inside `scripts/`:
-- `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`: technology registration contract
-- `scripts/bootstrap_defaults/runner_operation_plans.json`: shared runner phase contract
-- `scripts/bootstrap_defaults/media_server_operation_plans.json`: media-server phase contract
+Manifest-driven pluggability paths inside `bin/`:
+- `src/media_stack/contracts/plugins/<technology>/manifest.json`: technology registration contract
+- `src/media_stack/contracts/runner_operation_plans.json`: shared runner phase contract
+- `src/media_stack/contracts/media_server_operation_plans.json`: media-server phase contract
 - Event-driven handler registration in plugin manifests: `event_handlers.<EVENT>.<handler_key>`
-- `scripts/bootstrap_services/apps/<app>/`: app-local implementations
-- `scripts/bootstrap_services/download_client_adapters/`: torrent/usenet adapters
-- `scripts/bootstrap_services/media_server_adapters/`: media server adapters
-- `scripts/bootstrap_services/apps/servarr/technologies/`: Servarr adapters
+- `src/media_stack/services/apps/<app>/`: app-local implementations
+- `src/media_stack/services/download_client_adapters/`: torrent/usenet adapters
+- `src/media_stack/services/media_server_adapters/`: media server adapters
+- `src/media_stack/services/apps/servarr/technologies/`: Servarr adapters
 
 ## Product-Oriented Structure Scaffolding
 
@@ -35,10 +35,10 @@ These directories are intentionally introduced without breaking existing scripts
 ## Recommended Ownership Model
 
 - Platform manifests and cluster primitives: `k8s/`, `platform/`
-- App wiring and defaults: `bootstrap/`, `apps/`, `config/`
-- Technology registration and role bindings: `bootstrap/media-stack.bootstrap.json`, `scripts/bootstrap_defaults/plugins/`
-- Shared runtime lifecycle orchestration: `scripts/bootstrap-apps.py`, `scripts/bootstrap_services/runtime_factory/*`, `scripts/bootstrap_services/bootstrap_runner_service.py`
-- App/technology behavior modules: `scripts/bootstrap_services/apps/*`, adapter directories
+- App wiring and defaults: `contracts/`, `apps/`, `config/`
+- Technology registration and role bindings: `contracts/media-stack.config.json`, `src/media_stack/contracts/plugins/`
+- Shared runtime lifecycle orchestration: `bin/bootstrap-apps.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/services/bootstrap_runner_service.py`
+- App/technology behavior modules: `src/media_stack/services/apps/*`, adapter directories
 - Quality gates and regressions: `tests/`
 - Product narrative and operator docs: `docs/`
 

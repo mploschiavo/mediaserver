@@ -5,16 +5,16 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.compose.edge.provider_contract import (  # noqa: E402
+from media_stack.core.platforms.compose.edge.provider_contract import (  # noqa: E402
     ComposeEdgeProviderRuntimeContext,
 )
-from core.platforms.compose.edge.provider_registry import (  # noqa: E402
+from media_stack.core.platforms.compose.edge.provider_registry import (  # noqa: E402
     build_compose_edge_runtime_patchers,
     load_compose_edge_provider_plugins,
 )
-from core.platforms.compose.services.labels import (  # noqa: E402
+from media_stack.core.platforms.compose.services.labels import (  # noqa: E402
     ComposeLabelConfig,
     ComposeLabelService,
 )

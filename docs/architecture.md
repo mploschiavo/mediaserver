@@ -33,11 +33,11 @@ Features:
 The runtime is intentionally layered so technologies can be swapped locally without editing shared orchestration:
 
 1. **Declarative bindings layer**
-   `bootstrap/media-stack.bootstrap.json` selects active technologies per role through `technology_bindings`.
+   `contracts/media-stack.config.json` selects active technologies per role through `technology_bindings`.
 2. **Manifest registration layer**
-   `scripts/bootstrap_defaults/plugins/<technology>/manifest.json` declares adapter classes, service classes, operation handlers, and aliases.
+   `src/media_stack/contracts/plugins/<technology>/manifest.json` declares adapter classes, service classes, operation handlers, and aliases.
 3. **App/technology implementation layer**
-   `scripts/bootstrap_services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `apps/servarr/technologies/`.
+   `src/media_stack/services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `apps/servarr/technologies/`.
 4. **Shared orchestration layer**
    `bootstrap-apps.py`, `runtime_factory/*`, and `bootstrap_runner_service.py` stay technology-neutral.
 
@@ -70,7 +70,7 @@ Software design model diagrams:
 
 Regenerate all diagrams:
 ```bash
-bash scripts/render-architecture-diagrams.sh
+bash bin/render-architecture-diagrams.sh
 ```
 
 ## Logical Topology

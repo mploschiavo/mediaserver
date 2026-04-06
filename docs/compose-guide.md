@@ -24,12 +24,12 @@ Not currently part of Compose target:
 - Python runtime deps installed for automation entrypoints:
   - `python3 -m pip install docker kubernetes pyyaml requests`
 - Optional: `docker/.env` for local overrides (defaults from process env when omitted)
-- Optional but recommended: `bootstrap/media-stack.bootstrap.yaml` for deployment/purpose/install/exposure/auth defaults
+- Optional but recommended: `contracts/media-stack.profile.yaml` for deployment/purpose/install/exposure/auth defaults
 
 ## Deploy with Stack Runner (Compose Target)
 
 ```bash
-bash scripts/deploy-stack.sh \
+bash bin/deploy-stack.sh \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
@@ -40,7 +40,7 @@ bash scripts/deploy-stack.sh \
 Optional profiles:
 
 ```bash
-bash scripts/deploy-stack.sh \
+bash bin/deploy-stack.sh \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
@@ -61,11 +61,11 @@ Notes:
 - Traefik patching is automatic for Compose target when edge provider is `traefik`:
   - runtime patch file: `${CONFIG_ROOT}/traefik/dynamic/media-stack.dynamic.yaml`
   - replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/traefik.dynamic.runtime.yaml`
-  - implementation owner: `scripts/core/platforms/compose/edge/providers/traefik/patch_service.py`
+  - implementation owner: `src/media_stack/core/platforms/compose/edge/providers/traefik/patch_service.py`
 - Envoy is available as a first-class compose edge provider:
   - runtime patch file: `${CONFIG_ROOT}/envoy/envoy.yaml`
   - replay artifact: `.state/runtime-artifacts/<run-id>/compose/resolved/envoy.runtime.yaml`
-  - implementation owner: `scripts/core/platforms/compose/edge/providers/envoy/patch_service.py`
+  - implementation owner: `src/media_stack/core/platforms/compose/edge/providers/envoy/patch_service.py`
   - selection source precedence: `--edge-router-provider` / `EDGE_ROUTER_PROVIDER` / `routing.provider` / `adapter_hooks.edge.router_provider`
 
 Auth provider notes:

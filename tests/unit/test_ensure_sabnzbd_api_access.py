@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
 SPEC = importlib.util.spec_from_file_location(
     "ensure_sabnzbd_api_access",
     ROOT
-    / "scripts"
-    / "bootstrap_services"
+    / "src"
+    / "media_stack"
+    / "services"
     / "apps"
     / "sabnzbd"
     / "cli"

@@ -4,16 +4,16 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.servarr_adapters import (  # noqa: E402
+from media_stack.services.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
     AdapterRegistry,
     AppBootstrapContext,
     noop_before_common_steps,
 )
-from bootstrap_services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
-from bootstrap_services.apps.servarr.pipeline_service import (  # noqa: E402
+from media_stack.services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
+from media_stack.services.apps.servarr.pipeline_service import (  # noqa: E402
     ClientAuth,
     ServarrPipelineInputs,
     ServarrPipelineService,
@@ -52,7 +52,7 @@ class ServarrAdapterRegistryTests(unittest.TestCase):
         registry = AdapterRegistry.from_config(
             {
                 "before_common_steps": {
-                    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps",
+                    "readarr": "media_stack.services.servarr_adapters:readarr_before_common_steps",
                 }
             }
         )
@@ -127,7 +127,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         if resolved_hooks is None:
             resolved_hooks = {
                 "before_common_steps": {
-                    "readarr": "bootstrap_services.servarr_adapters:readarr_before_common_steps",
+                    "readarr": "media_stack.services.servarr_adapters:readarr_before_common_steps",
                 }
             }
         return ServarrPipelineInputs(
@@ -201,7 +201,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         app_keys = {"readarr": "readarr-key"}
         override = {
             "before_common_steps": {
-                "readarr": "bootstrap_services.servarr_adapters:noop_before_common_steps"
+                "readarr": "media_stack.services.servarr_adapters:noop_before_common_steps"
             }
         }
 

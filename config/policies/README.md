@@ -3,9 +3,9 @@
 Reserved for policy-level configuration domains (quality, retention, automation guardrails).
 
 Current organization:
-- `scripts/bootstrap_defaults/maintainerr_policy.json`: base Maintainerr policy scaffold.
-- `scripts/bootstrap_defaults/maintainerr_rules/json/`: canonical API-shaped rule files.
-- `scripts/bootstrap_defaults/maintainerr_rules/yaml/`: optional Maintainerr UI export YAML rules.
+- `src/media_stack/contracts/maintainerr_policy.json`: base Maintainerr policy scaffold.
+- `src/media_stack/contracts/maintainerr_rules/json/`: canonical API-shaped rule files.
+- `src/media_stack/contracts/maintainerr_rules/yaml/`: optional Maintainerr UI export YAML rules.
 
 Source-control guidance:
 - keep one rule per file with stable `rule.name` values for clean merge/override behavior.

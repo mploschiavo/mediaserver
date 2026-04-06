@@ -14,13 +14,13 @@ This directory stores reproducible runtime artifacts captured from a live namesp
 ## Capture UI Screenshots
 
 ```bash
-bash scripts/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE] [OUT_DIR]
+bash bin/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE] [OUT_DIR]
 ```
 
 Example:
 
 ```bash
-bash scripts/run-playwright-screenshots.sh 192.168.1.60 media-stack
+bash bin/run-playwright-screenshots.sh 192.168.1.60 media-stack
 ```
 
 This runs `tests/e2e/playwright/tests/screenshot-capture.spec.ts` and writes one PNG per app host.
@@ -40,13 +40,13 @@ Sample authenticated captures:
 ## Capture Kubernetes Terminal Snapshots
 
 ```bash
-bash scripts/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
+bash bin/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
 ```
 
 Example:
 
 ```bash
-bash scripts/capture-k8s-snapshots.sh media-stack
+bash bin/capture-k8s-snapshots.sh media-stack
 ```
 
 This writes timestamped `.txt` evidence files for:

@@ -4,10 +4,10 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.compose.docker_client import DockerClient  # noqa: E402
-from core.exceptions import DockerError  # noqa: E402
+from media_stack.core.platforms.compose.docker_client import DockerClient  # noqa: E402
+from media_stack.core.exceptions import DockerError  # noqa: E402
 
 
 class _NotFound(Exception):

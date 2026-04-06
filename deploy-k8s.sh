@@ -65,7 +65,7 @@ kubectl kustomize "$PROFILE_DIR" --load-restrictor LoadRestrictionsNone | kubect
 # Create ConfigMaps.
 echo "  Creating ConfigMaps..."
 kubectl -n "$NAMESPACE" create configmap media-stack-bootstrap-config \
-  --from-file=config.json="$SCRIPT_DIR/bootstrap/media-stack.bootstrap.json" \
+  --from-file=config.json="$SCRIPT_DIR/contracts/media-stack.config.json" \
   --dry-run=client -o yaml | kubectl apply -f - 2>&1 | tail -1
 kubectl -n "$NAMESPACE" create configmap media-stack-bootstrap-profile \
   --from-file=profile.yaml="$PROFILE_PATH" \

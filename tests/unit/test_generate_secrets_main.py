@@ -5,13 +5,14 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
-SCRIPT_PATH = ROOT / "scripts" / "cli" / "generate_secrets_main.py"
+sys.path.insert(0, str(ROOT / "src"))
+SCRIPT_PATH = ROOT / "src" / "media_stack" / "cli" / "commands" / "generate_secrets_main.py"
 if not SCRIPT_PATH.exists():
     SCRIPT_PATH = (
         ROOT
-        / "scripts"
-        / "bootstrap_services"
+        / "src"
+        / "media_stack"
+        / "services"
         / "apps"
         / "stack"
         / "cli"

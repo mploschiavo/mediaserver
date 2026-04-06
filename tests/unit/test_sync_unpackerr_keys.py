@@ -8,13 +8,14 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
 SPEC = importlib.util.spec_from_file_location(
     "sync_unpackerr_keys",
     ROOT
-    / "scripts"
-    / "bootstrap_services"
+    / "src"
+    / "media_stack"
+    / "services"
     / "apps"
     / "unpackerr"
     / "cli"
@@ -25,8 +26,8 @@ assert SPEC and SPEC.loader
 sys.modules["sync_unpackerr_keys"] = MODULE
 SPEC.loader.exec_module(MODULE)
 
-from core.subprocess_utils import CommandResult  # noqa: E402
-from core.exceptions import ConfigError  # noqa: E402
+from media_stack.core.subprocess_utils import CommandResult  # noqa: E402
+from media_stack.core.exceptions import ConfigError  # noqa: E402
 
 
 class FakeKube:
@@ -80,7 +81,7 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
         self.assertEqual(cfg.namespace, "media-stack")
         self.assertEqual(cfg.secret_name, "media-stack-secrets")
         self.assertTrue(
-            str(cfg.bootstrap_config_file or "").endswith("bootstrap/media-stack.bootstrap.json")
+            str(cfg.bootstrap_config_file or "").endswith("contracts/media-stack.config.json")
         )
 
     def test_service_updates_secret_with_all_keys(self):

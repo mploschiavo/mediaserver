@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
+from media_stack.services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
 
 
 class RunnerOperationRegistryTests(unittest.TestCase):

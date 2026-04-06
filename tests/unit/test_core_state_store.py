@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.state_store import CheckpointStateStore  # noqa: E402
+from media_stack.core.state_store import CheckpointStateStore  # noqa: E402
 
 
 class CheckpointStateStoreTests(unittest.TestCase):
