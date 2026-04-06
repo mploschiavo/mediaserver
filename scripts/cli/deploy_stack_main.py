@@ -552,6 +552,8 @@ class DeployStackRunner:
                 apply_initial_preferences=self.cfg.apply_initial_preferences,
                 auto_download_content=self.cfg.auto_download_content,
                 config_file=self.cfg.config_file,
+                platform_target=self._resolved_platform_target(),
+                bootstrap_profile_file=str(self.cfg.bootstrap_profile_file or ""),
             ),
             info=info,
             run_script=self._run_script,

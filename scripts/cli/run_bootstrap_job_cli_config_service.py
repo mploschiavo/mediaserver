@@ -60,6 +60,7 @@ class RunBootstrapJobConfig:
     preconfigure_api_keys: bool = True
     apply_initial_preferences: bool = True
     auto_download_content: bool = False
+    bootstrap_profile_file: str = ""
     phase_skip_flags: dict[str, bool] = field(default_factory=dict)
 
     @property
@@ -215,5 +216,6 @@ def parse_run_bootstrap_job_config(
             ("APPLY_INITIAL_PREFERENCES", "FULLY_PRECONFIGURED"), True
         ),
         auto_download_content=env_bool_candidates(("AUTO_DOWNLOAD_CONTENT",), False),
+        bootstrap_profile_file=str(os.environ.get("BOOTSTRAP_PROFILE_FILE", "")).strip(),
         phase_skip_flags=phase_skip_flags,
     )

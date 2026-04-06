@@ -451,6 +451,11 @@ class KubernetesClient:
         if command == "create" and remainder and remainder[0] == "configmap":
             return self._run_create_configmap(args, namespace, remainder[1:])
 
+        if command == "create" and remainder and remainder[0] == "namespace":
+            ns_name = remainder[1] if len(remainder) > 1 else ""
+            if ns_name:
+                return self._run_create_namespace(args, ns_name)
+
         if len(remainder) < 2 or remainder[0] != "-f":
             return self._error_result(
                 args,
@@ -483,6 +488,28 @@ class KubernetesClient:
             return self._error_result(args, message, returncode=status or 1)
         out = "\n".join(messages).rstrip()
         return self._result(args, stdout=(out + "\n") if out else "")
+
+    def _run_create_namespace(
+        self,
+        args: list[str],
+        ns_name: str,
+    ) -> CommandResult:
+        body = self._k8s_client.V1Namespace(
+            metadata=self._k8s_client.V1ObjectMeta(name=ns_name)
+        )
+        try:
+            self._core_v1.create_namespace(body=body)
+            return self._result(args, stdout=f"namespace/{ns_name} created\n")
+        except Exception as exc:
+            status, message = _format_api_error(exc)
+            if "already exists" in str(message).lower():
+                return self._result(
+                    args,
+                    stdout=f"namespace/{ns_name} already exists\n",
+                    stderr=f"{message}\n",
+                    returncode=0,
+                )
+            return self._error_result(args, message, returncode=status or 1)
 
     def _run_create_configmap(
         self,
@@ -794,10 +821,14 @@ class KubernetesClient:
     def _run_logs(self, args: list[str], namespace: str, remainder: list[str]) -> CommandResult:
         if not remainder:
             return self._error_result(args, "logs requires pod/job target.", returncode=2)
-        target = str(remainder[0] or "").strip()
+
+        target = ""
+        label_selector = ""
         tail_lines = None
         timestamps = False
-        for token in remainder[1:]:
+        idx = 0
+        while idx < len(remainder):
+            token = str(remainder[idx] or "").strip()
             if token.startswith("--tail="):
                 try:
                     tail_lines = int(token.split("=", 1)[1])
@@ -805,6 +836,31 @@ class KubernetesClient:
                     tail_lines = None
             elif token == "--timestamps":
                 timestamps = True
+            elif token == "-l" and idx + 1 < len(remainder):
+                idx += 1
+                label_selector = str(remainder[idx] or "").strip()
+            elif not target:
+                target = token
+            idx += 1
+
+        # Label selector mode: find first pod matching label.
+        if label_selector and not target:
+            pods = []
+            try:
+                payload = self._core_v1.list_namespaced_pod(
+                    namespace=namespace, label_selector=label_selector
+                )
+                pods = [p for p in (payload.items or []) if p.status and p.status.phase == "Running"]
+            except Exception:
+                pass
+            if not pods:
+                return self._error_result(
+                    args, f"No running pods found for selector '{label_selector}'", returncode=1
+                )
+            target = pods[0].metadata.name
+
+        if not target:
+            return self._error_result(args, "logs requires pod/job target.", returncode=2)
 
         if target.startswith("job/"):
             pod_name = self._first_job_pod(namespace, target.split("/", 1)[1])

@@ -34,8 +34,8 @@ subjects:
     name: media-stack-bootstrap
     namespace: media-stack
 ---
-apiVersion: batch/v1
-kind: Job
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: media-stack-bootstrap
   namespace: media-stack
@@ -45,15 +45,18 @@ metadata:
     media-stack.io/contact: mploschiavo@gmail.com
     media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
 spec:
-  backoffLimit: 0
-  ttlSecondsAfterFinished: 600
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: media-stack-bootstrap
   template:
     metadata:
       labels:
         app: media-stack-bootstrap
     spec:
       serviceAccountName: media-stack-bootstrap
-      restartPolicy: Never
       containers:
         - name: bootstrap
           image: 192.168.1.60:30002/library/media-stack-bootstrap-runner:latest
@@ -151,7 +154,6 @@ spec:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py
             - --serve
-            - --auto-run
             - --config
             - /bootstrap-config/config.json
             - --config-root
@@ -170,6 +172,12 @@ spec:
               path: /healthz
               port: api
             initialDelaySeconds: 5
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: api
+            failureThreshold: 60
             periodSeconds: 10
           volumeMounts:
             - name: bootstrap-config
@@ -202,6 +210,8 @@ spec:
               mountPath: /srv-config/maintainerr
             - name: cfg-jellyfin-auto-collections
               mountPath: /srv-config/jellyfin-auto-collections
+            - name: cfg-envoy
+              mountPath: /srv-config/envoy
             - name: stack-torrents
               mountPath: /srv-stack/data/torrents
             - name: stack-usenet
@@ -253,6 +263,9 @@ spec:
         - name: cfg-jellyfin-auto-collections
           persistentVolumeClaim:
             claimName: media-stack-config-jellyfin-auto-collections
+        - name: cfg-envoy
+          persistentVolumeClaim:
+            claimName: media-stack-config-envoy
         - name: stack-torrents
           persistentVolumeClaim:
             claimName: media-stack-data-torrents
@@ -262,3 +275,16 @@ spec:
         - name: stack-media
           persistentVolumeClaim:
             claimName: media-stack-media
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bootstrap
+  namespace: media-stack
+spec:
+  selector:
+    app: media-stack-bootstrap
+  ports:
+    - name: api
+      port: 9100
+      targetPort: 9100

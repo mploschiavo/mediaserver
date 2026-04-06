@@ -160,6 +160,7 @@ class RunBootstrapJobRunner:
                 prepare_host_root=self.cfg.prepare_host_root,
                 bootstrap_runner_image=self.cfg.bootstrap_runner_image,
                 job_config_file=self.artifacts.job_config_file,
+                bootstrap_profile_file=self.cfg.bootstrap_profile_file,
             ),
             kube=self.kube,
             info=info,
@@ -409,6 +410,10 @@ class RunBootstrapJobRunner:
                 "prime_media_server_api_key_secret": self.prime_media_server_api_key_secret,
                 "prime_media_server_user_id_secret": self.prime_media_server_user_id_secret,
                 "update_bootstrap_configmaps": self.update_bootstrap_configmaps,
+                # Deployment-based (preferred).
+                "ensure_bootstrap_deployment": self.ensure_bootstrap_deployment,
+                "wait_for_bootstrap_service": self.wait_for_bootstrap_service,
+                # Legacy Job-based (backward compatible).
                 "recreate_bootstrap_job": self.recreate_bootstrap_job,
                 "wait_for_bootstrap_job": self.wait_for_bootstrap_job,
                 "print_bootstrap_job_logs": self.print_bootstrap_job_logs,
@@ -491,11 +496,27 @@ class RunBootstrapJobRunner:
             cfg = TopLevelBootstrapConfig.from_dict(payload).to_dict()
         except ValueError as exc:
             raise ConfigError(f"Invalid bootstrap config at {self.cfg.config_file}: {exc}") from exc
+        info(
+            f"Config policy inputs: route_strategy={self.cfg.route_strategy}, "
+            f"gateway_host={self.cfg.app_gateway_host}, "
+            f"path_prefix={self.cfg.app_path_prefix}, "
+            f"ingress_domain={self.cfg.ingress_domain}, "
+            f"media_server_direct={self.cfg.media_server_direct_host}"
+        )
         self._apply_runtime_config_policy(cfg)
         self.artifacts.job_config_file.write_text(
             json.dumps(cfg, indent=2) + "\n",
             encoding="utf-8",
         )
+        # Log key config values after policy application.
+        homepage_hosts = (cfg.get("homepage") or {}).get("hosts", [])
+        technology_bindings = cfg.get("technology_bindings", {})
+        prowlarr_url = cfg.get("prowlarr_url", "")
+        app_auth_url_bases = (cfg.get("app_auth") or {}).get("path_prefix_url_base_by_app", {})
+        info(f"Config policy applied: homepage.hosts={homepage_hosts}")
+        info(f"Config policy applied: technology_bindings={technology_bindings}")
+        info(f"Config policy applied: prowlarr_url={prowlarr_url}")
+        info(f"Config policy applied: app_auth.url_bases={app_auth_url_bases}")
         info(
             "Bootstrap preconfigure flags: "
             f"api_keys={'on' if self.cfg.preconfigure_api_keys else 'off'}, "
@@ -530,6 +551,59 @@ class RunBootstrapJobRunner:
 
     def recreate_bootstrap_job(self) -> None:
         self._manifest_service().recreate_bootstrap_job()
+
+    # Deployment-based aliases (preferred for new deploys).
+    def ensure_bootstrap_deployment(self) -> None:
+        self._manifest_service().ensure_bootstrap_deployment()
+
+    def wait_for_bootstrap_service(self) -> None:
+        import time as _time
+
+        wait_svc = self._job_wait_service()
+        port = wait_svc.cfg.service_port
+
+        # Find a ready bootstrap pod with HTTP server responding.
+        info("Waiting for bootstrap service pod...")
+        pod_name = None
+        deadline = _time.time() + 120
+        while _time.time() < deadline:
+            pod_name = wait_svc._find_bootstrap_pod(selector="app=media-stack-bootstrap")
+            if pod_name:
+                status = wait_svc._query_bootstrap_status(pod_name)
+                if status is not None:
+                    info(f"Bootstrap service responding on pod {pod_name}")
+                    break
+                pod_name = None
+            _time.sleep(3)
+
+        if not pod_name:
+            raise ConfigError("Bootstrap service pod not found or not responding within 120s")
+
+        # Trigger the bootstrap action via HTTP.
+        info(f"Triggering bootstrap action on pod {pod_name}")
+        trigger_script = (
+            "import urllib.request,json; "
+            "req=urllib.request.Request("
+            f"'http://127.0.0.1:{port}/actions/bootstrap',"
+            "data=b'{}',"
+            "headers={'Content-Type':'application/json'}); "
+            "r=urllib.request.urlopen(req,timeout=10); "
+            "print(r.read().decode())"
+        )
+        result = self.kube.run(
+            ["-n", self.cfg.namespace, "exec", pod_name, "--",
+             "python3", "-c", trigger_script],
+            check=False,
+        )
+        if result.stdout:
+            info(f"Bootstrap trigger response: {result.stdout.strip()}")
+        if result.returncode != 0:
+            warn(f"Bootstrap trigger may have failed: {result.stderr or 'unknown error'}")
+
+        # Wait for completion via HTTP polling.
+        wait_svc.wait_for_bootstrap_service(
+            selector="app=media-stack-bootstrap",
+        )
 
     def wait_for_bootstrap_job(self) -> None:
         self._job_wait_service().wait_for_job(
