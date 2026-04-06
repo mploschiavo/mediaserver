@@ -45,108 +45,413 @@ KNOWN_ACTIONS = frozenset({
 })
 
 _DASHBOARD_HTML = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Bootstrap Service</title>
+<html><head><meta charset="utf-8"><title>Media Stack Controller</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;margin:0;padding:20px}
-  h1{color:#0f9;font-size:1.5em}
-  .card{background:#16213e;border-radius:8px;padding:16px;margin:12px 0}
-  .phase{font-size:1.2em;font-weight:bold}
-  .ok{color:#0f9}.error{color:#f44}.running{color:#ff0}.idle{color:#888}
-  .preflight{display:flex;gap:8px;align-items:center;padding:4px 0}
-  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
-  .dot.ok{background:#0f9}.dot.error{background:#f44}
-  pre{background:#0d1b2a;padding:12px;border-radius:4px;overflow-x:auto;font-size:0.85em}
-  button{background:#0f9;color:#000;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;margin:4px}
-  button:hover{opacity:0.8}
-  button.secondary{background:#334;color:#e0e0e0}
-  button.warn{background:#f80;color:#000}
-  #error{color:#f44;margin:8px 0}
-  .history{font-size:0.9em;margin-top:8px}
-  .history-item{padding:4px 0;border-bottom:1px solid #1a1a2e}
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f1923;color:#e0e0e0;margin:0;padding:0}
+header{background:#162230;padding:16px 24px;border-bottom:1px solid #234;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+header h1{margin:0;font-size:1.4em;color:#4ade80;display:flex;align-items:center;gap:8px}
+header h1 .badge{font-size:0.55em;padding:3px 8px;border-radius:10px;font-weight:normal}
+header .links{display:flex;gap:8px;flex-wrap:wrap}
+header .links a{color:#94a3b8;text-decoration:none;font-size:0.85em;padding:4px 10px;border-radius:4px;border:1px solid #334}
+header .links a:hover{color:#fff;border-color:#4ade80}
+.container{max-width:960px;margin:0 auto;padding:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}}
+.card{background:#162230;border-radius:10px;padding:16px;border:1px solid #1e3044}
+.card h2{margin:0 0 12px;font-size:1.05em;color:#94a3b8;font-weight:600}
+.phase{font-size:1.3em;font-weight:bold;margin-bottom:4px}
+.ok{color:#4ade80}.error{color:#f87171}.running{color:#fbbf24}.idle{color:#64748b}
+.row{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #1e3044}
+.row:last-child{border:none}
+.dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.dot.ok{background:#4ade80}.dot.error{background:#f87171}.dot.warn{background:#fbbf24}.dot.idle{background:#64748b}
+.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+button{border:none;padding:9px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.88em;transition:all .15s}
+.btn-primary{background:#4ade80;color:#0f1923}
+.btn-primary:hover{background:#22c55e}
+.btn-secondary{background:#1e3044;color:#e0e0e0;border:1px solid #334}
+.btn-secondary:hover{background:#263d56}
+.btn-warn{background:#f97316;color:#fff}
+.btn-warn:hover{background:#ea580c}
+.btn-danger{background:#ef4444;color:#fff}
+.btn-danger:hover{background:#dc2626}
+.toggle{display:flex;align-items:center;gap:10px;padding:8px 0}
+.switch{position:relative;width:44px;height:24px;cursor:pointer}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#334;border-radius:12px;transition:.3s}
+.slider:before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#94a3b8;border-radius:50%;transition:.3s}
+.switch input:checked+.slider{background:#4ade80}
+.switch input:checked+.slider:before{transform:translateX(20px);background:#fff}
+#toast{position:fixed;bottom:20px;right:20px;background:#162230;color:#4ade80;padding:12px 20px;border-radius:8px;border:1px solid #4ade80;display:none;z-index:99;font-size:0.9em}
+#toast.err{color:#f87171;border-color:#f87171}
+#logs{background:#0b1219;border-radius:6px;padding:10px;max-height:300px;overflow-y:auto;font-family:'Fira Code',monospace,monospace;font-size:0.78em;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.log-line{color:#94a3b8}.log-line .ts{color:#64748b}.log-line .ok{color:#4ade80}.log-line .err{color:#f87171}.log-line .warn{color:#fbbf24}
+details{margin-top:8px}
+details summary{cursor:pointer;color:#94a3b8;font-size:0.9em}
 </style></head><body>
-<h1>Bootstrap Service</h1>
-<div class="card" id="status">Loading...</div>
+<header>
+  <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span></h1>
+  <div class="links">
+    <a href="/api/docs">API Docs</a>
+    <a href="/logs/stream" target="_blank">SSE Stream</a>
+    <a href="/status" target="_blank">Raw JSON</a>
+  </div>
+</header>
+<div class="container">
+<!-- Status -->
+<div class="card" id="status-card"><div class="phase idle">Loading...</div></div>
+
+<!-- Quick Actions -->
 <div class="card">
-  <b>Actions</b><br>
-  <button onclick="triggerAction('bootstrap')">Full Bootstrap</button>
-  <button onclick="triggerAction('auto-indexers')">Auto-Add Indexers</button>
-  <button onclick="triggerAction('envoy-config')">Regen Envoy Config</button>
-  <button onclick="triggerAction('restart-apps')">Restart Apps</button>
-  <button onclick="triggerAction('sync-indexers')">Sync Indexers</button>
-  <button onclick="triggerAction('reconcile')">Reconcile</button>
-  <button class="secondary" onclick="location.reload()">Refresh</button>
-  <div id="error"></div>
+  <h2>Quick Actions</h2>
+  <div class="toggle">
+    <label class="switch"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider"></span></label>
+    <span id="autoLabel">Auto-Downloads: <b>off</b></span>
+  </div>
+  <div class="actions">
+    <button class="btn-primary" onclick="act('bootstrap')">Configure All Apps</button>
+    <button class="btn-secondary" onclick="act('auto-indexers')">Discover Indexers</button>
+    <button class="btn-secondary" onclick="act('envoy-config')">Rebuild Routing</button>
+    <button class="btn-secondary" onclick="act('restart-apps')">Restart All Apps</button>
+    <button class="btn-secondary" onclick="act('sync-indexers')">Sync Indexers</button>
+    <button class="btn-secondary" onclick="act('reconcile')">Reconcile</button>
+  </div>
 </div>
-<div class="card" id="apps" style="display:none"><b>App Status</b><div id="applist"></div></div>
-<div class="card" id="history-card" style="display:none"><b>Action History</b><div id="history"></div></div>
-<div class="card"><b>Raw Status</b><pre id="raw"></pre></div>
+
+<!-- Health -->
+<div class="grid">
+<div class="card">
+  <h2>Service Health</h2>
+  <div id="health">Checking...</div>
+</div>
+<div class="card">
+  <h2>API Credentials</h2>
+  <div id="creds">Checking...</div>
+</div>
+</div>
+
+<!-- Live Logs -->
+<div class="card">
+  <h2>Live Activity <button class="btn-secondary" style="float:right;padding:4px 10px;font-size:0.8em" onclick="downloadLogs()">Download Logs</button></h2>
+  <div id="logs"></div>
+</div>
+
+<!-- Service Links -->
+<div class="card" id="links-card" style="display:none">
+  <h2>Service Links</h2>
+  <div id="svc-links" class="grid"></div>
+</div>
+
+<!-- History -->
+<div class="card" id="hist-card" style="display:none">
+  <h2>Action History</h2>
+  <div id="hist"></div>
+</div>
+
+<!-- Raw -->
+<details><summary>Raw Status JSON</summary><pre id="raw" style="background:#0b1219;padding:12px;border-radius:6px;font-size:0.8em;overflow-x:auto"></pre></details>
+</div>
+<div id="toast"></div>
 <script>
-async function load(){
-  try{
-    const r=await fetch('/status');const d=await r.json();
-    const p=d.phase;const cls=p==='complete'?'ok':p==='error'?'error':p==='running'?'running':'idle';
-    let h='<div class="phase '+cls+'">'+p.toUpperCase()+'</div>';
-    if(d.current_action)h+='<div class="running">Action: '+d.current_action+'</div>';
-    if(d.initial_bootstrap_done)h+='<div class="ok">Initial bootstrap: done</div>';
-    if(d.elapsed_seconds!=null)h+='<div>Elapsed: '+d.elapsed_seconds+'s</div>';
-    if(d.error)h+='<div class="error">Error: '+d.error+'</div>';
-    if(d.phases_completed&&d.phases_completed.length)
-      h+='<div>Phases: '+d.phases_completed.join(', ')+'</div>';
-    const pf=d.preflight_results||{};
-    if(Object.keys(pf).length){
-      h+='<div style="margin-top:8px"><b>Preflights</b></div>';
-      for(const[k,v]of Object.entries(pf)){
-        const s=v.status||'?';
-        h+='<div class="preflight"><span class="dot '+(s==='ok'?'ok':'error')+'"></span>'+k+': '+s;
-        if(v.error)h+=' &mdash; '+v.error;
-        h+='</div>';
-      }
-    }
-    document.getElementById('status').innerHTML=h;
-    const apps=d.app_status||{};
-    const appEl=document.getElementById('apps');
-    const appList=document.getElementById('applist');
-    if(Object.keys(apps).length){
-      appEl.style.display='block';
-      let ah='';
-      for(const[k,v]of Object.entries(apps)){
-        const s=v.status||'?';
-        ah+='<div class="preflight"><span class="dot '+(s==='ok'?'ok':'error')+'"></span>'+k+': '+s;
-        if(v.error)ah+=' &mdash; '+v.error;
-        ah+='</div>';
-      }
-      appList.innerHTML=ah;
-    }
-    const hist=d.action_history||[];
-    const histCard=document.getElementById('history-card');
-    const histEl=document.getElementById('history');
-    if(hist.length){
-      histCard.style.display='block';
-      let hh='';
-      for(const a of hist.reverse().slice(0,20)){
-        const cls=a.error?'error':'ok';
-        hh+='<div class="history-item"><span class="dot '+cls+'"></span> '
-          +a.name+' ('+a.elapsed_seconds+'s)';
-        if(a.error)hh+=' &mdash; '+a.error;
-        hh+='</div>';
-      }
-      histEl.innerHTML=hh;
-    }
-    document.getElementById('raw').textContent=JSON.stringify(d,null,2);
-  }catch(e){document.getElementById('status').innerHTML='<div class="error">'+e+'</div>';}
+let logBuf=[];let logSeq=0;let evtSource=null;
+const SVC_PORTS={jellyfin:8096,jellyseerr:5055,sonarr:8989,radarr:7878,lidarr:8686,readarr:8787,
+  prowlarr:9696,qbittorrent:8080,sabnzbd:8080,bazarr:6767,maintainerr:6246,tautulli:8181,
+  homepage:3000,envoy:10000,plex:32400,flaresolverr:8191};
+
+function toast(msg,err){
+  const t=document.getElementById('toast');t.textContent=msg;
+  t.className=err?'err':'';t.style.display='block';
+  setTimeout(()=>t.style.display='none',4000);
 }
-async function triggerAction(name){
-  document.getElementById('error').textContent='';
+
+async function act(name){
   try{
     const r=await fetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d=await r.json();
-    if(r.status>=400)document.getElementById('error').textContent=d.error||'Failed';
-    else{document.getElementById('error').textContent='Action '+name+' accepted';setTimeout(load,2000);}
-  }catch(e){document.getElementById('error').textContent=e.toString();}
+    if(r.status>=400)toast(d.error||'Failed',true);
+    else{toast(name+' started');setTimeout(load,1500);}
+  }catch(e){toast(e.toString(),true);}
 }
-load();setInterval(load,5000);
+
+async function toggleAuto(on){
+  try{
+    await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({auto_download_content:on})});
+    document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(on?'on':'off')+'</b>';
+    toast('Auto-downloads '+(on?'enabled':'disabled'));
+  }catch(e){toast(e.toString(),true);}
+}
+
+async function load(){
+  try{
+    const r=await fetch('/status');const d=await r.json();
+    const p=d.phase;
+    const cls=p==='complete'?'ok':p==='error'?'error':p==='running'?'running':'idle';
+    const badge=document.getElementById('hbadge');
+    badge.textContent=p.toUpperCase();badge.className='badge '+cls;
+
+    let h='<div class="phase '+cls+'">'+p.charAt(0).toUpperCase()+p.slice(1)+'</div>';
+    if(d.current_action){
+      const a=d.current_action;
+      h+='<div class="running">Running: '+a.name+(a.elapsed_seconds?' ('+a.elapsed_seconds+'s)':'')+'</div>';
+    }
+    if(d.error)h+='<div class="error">'+d.error+'</div>';
+    if(d.initial_bootstrap_done)h+='<div class="ok" style="font-size:0.9em">Initial setup complete</div>';
+    document.getElementById('status-card').innerHTML=h;
+
+    // Auto-download toggle
+    const cfg=d.runtime_config||{};
+    const autoOn=cfg.auto_download_content===true||cfg.auto_download_content==='1';
+    document.getElementById('autoToggle').checked=autoOn;
+    document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(autoOn?'on':'off')+'</b>';
+
+    // Health: preflights
+    const pf=d.preflight_results||{};
+    let hh='';
+    for(const[k,v]of Object.entries(pf)){
+      const s=v.status||'unknown';
+      hh+='<div class="row"><span class="dot '+(s==='ok'?'ok':'error')+'"></span><span>'+
+        k.replace(/_/g,' ')+'</span></div>';
+    }
+    if(!hh)hh='<div style="color:#64748b">No health data yet &mdash; run Configure All Apps</div>';
+    document.getElementById('health').innerHTML=hh;
+
+    // Credentials
+    let ch='';const keys=['JELLYFIN_API_KEY','SONARR_API_KEY','RADARR_API_KEY','LIDARR_API_KEY',
+      'READARR_API_KEY','PROWLARR_API_KEY','BAZARR_API_KEY','SABNZBD_API_KEY','JELLYSEERR_API_KEY'];
+    const allKeys={};
+    for(const sec of Object.values(pf)){
+      if(typeof sec==='object')for(const[k,v]of Object.entries(sec)){
+        if(k.endsWith('_API_KEY')&&v)allKeys[k]=true;
+      }
+    }
+    for(const k of keys){
+      const ok=!!allKeys[k];
+      ch+='<div class="row"><span class="dot '+(ok?'ok':'warn')+'"></span><span>'+
+        k.replace(/_API_KEY/,'').replace(/_/g,' ')+'</span></div>';
+    }
+    document.getElementById('creds').innerHTML=ch;
+
+    // History
+    const hist=(d.action_history||[]).slice().reverse().slice(0,10);
+    if(hist.length){
+      document.getElementById('hist-card').style.display='block';
+      let hx='';
+      for(const a of hist){
+        const c=a.error?'error':'ok';
+        hx+='<div class="row"><span class="dot '+c+'"></span><span>'+a.name+
+          ' <span style="color:#64748b">'+(a.elapsed_seconds||'?')+'s</span>'+
+          (a.error?' &mdash; <span class="error">'+a.error+'</span>':'')+'</span></div>';
+      }
+      document.getElementById('hist').innerHTML=hx;
+    }
+    document.getElementById('raw').textContent=JSON.stringify(d,null,2);
+  }catch(e){document.getElementById('status-card').innerHTML='<div class="error">'+e+'</div>';}
+}
+
+function startSSE(){
+  if(evtSource)evtSource.close();
+  evtSource=new EventSource('/logs/stream?after_seq='+logSeq);
+  evtSource.onmessage=function(e){
+    try{
+      const d=JSON.parse(e.data);logSeq=d.seq;
+      const msg=d.msg||'';
+      let cls='';
+      if(msg.includes('[OK]')||msg.includes('complete'))cls=' ok';
+      else if(msg.includes('[ERR]')||msg.includes('failed'))cls=' err';
+      else if(msg.includes('[WARN]'))cls=' warn';
+      const line='<div class="log-line"><span class="ts">'+d.ts+'</span> <span class="'+cls+'">'+
+        msg.replace(/</g,'&lt;')+'</span></div>';
+      logBuf.push(line);
+      if(logBuf.length>500)logBuf=logBuf.slice(-300);
+      const el=document.getElementById('logs');
+      el.innerHTML=logBuf.join('');
+      el.scrollTop=el.scrollHeight;
+    }catch(ex){}
+  };
+  evtSource.onerror=function(){setTimeout(startSSE,3000);};
+}
+
+function downloadLogs(){
+  const lines=logBuf.map(l=>l.replace(/<[^>]*>/g,'')).join('\\n');
+  const blob=new Blob([lines],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='media-stack-logs-'+new Date().toISOString().slice(0,19)+'.txt';
+  a.click();URL.revokeObjectURL(a.href);
+}
+
+load();setInterval(load,4000);startSSE();
 </script></body></html>"""
+
+
+_API_DOCS_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Media Stack Controller — API Reference</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f1923;color:#e0e0e0;margin:0;padding:0}
+header{background:#162230;padding:16px 24px;border-bottom:1px solid #234}
+header h1{margin:0;font-size:1.3em;color:#4ade80}
+header a{color:#94a3b8;text-decoration:none;font-size:0.9em}
+.container{max-width:900px;margin:0 auto;padding:20px}
+.endpoint{background:#162230;border:1px solid #1e3044;border-radius:10px;padding:16px;margin:16px 0}
+.method{display:inline-block;padding:3px 10px;border-radius:4px;font-weight:bold;font-size:0.85em;margin-right:8px}
+.GET{background:#3b82f6;color:#fff}.POST{background:#4ade80;color:#000}.DELETE{background:#ef4444;color:#fff}
+.path{font-family:monospace;font-size:1.05em;color:#fff}
+.desc{color:#94a3b8;margin:8px 0 0;font-size:0.92em}
+pre{background:#0b1219;padding:12px;border-radius:6px;font-size:0.82em;overflow-x:auto;margin:8px 0}
+code{color:#fbbf24}
+h2{color:#94a3b8;font-size:1.1em;margin:24px 0 8px;padding-top:16px;border-top:1px solid #1e3044}
+</style></head><body>
+<header><h1>Media Stack Controller &mdash; API Reference</h1>
+<a href="/">&larr; Back to Dashboard</a></header>
+<div class="container">
+
+<h2>Health &amp; Status</h2>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/healthz</span>
+<div class="desc">Liveness probe. Always returns 200 if the service is running.</div>
+<pre>curl http://localhost:9100/healthz
+<code>{"status": "ok"}</code></pre></div>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/readyz</span>
+<div class="desc">Readiness probe. Returns initial bootstrap status.</div>
+<pre>curl http://localhost:9100/readyz
+<code>{"status": "ready", "initial_bootstrap_done": true, "phase": "complete"}</code></pre></div>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/status</span>
+<div class="desc">Full controller state: phase, preflight results, app status, action history, runtime config.</div>
+<pre>curl http://localhost:9100/status</pre></div>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/apps</span>
+<div class="desc">App-level status for all configured services.</div>
+<pre>curl http://localhost:9100/apps</pre></div>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/apps/{name}</span>
+<div class="desc">Status for a specific app (e.g. <code>sonarr</code>, <code>jellyfin</code>).</div>
+<pre>curl http://localhost:9100/apps/sonarr</pre></div>
+
+<h2>Actions</h2>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/actions/bootstrap</span>
+<div class="desc"><b>Configure All Apps.</b> Runs full pipeline: preflight checks, app wiring, post-bootstrap. Idempotent.</div>
+<pre>curl -X POST http://localhost:9100/actions/bootstrap \\
+  -H "Content-Type: application/json" -d '{}'
+
+# With retry on failure:
+curl -X POST http://localhost:9100/actions/bootstrap \\
+  -H "Content-Type: application/json" -d '{"retry": 2}'</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/actions/auto-indexers</span>
+<div class="desc"><b>Discover Indexers.</b> Scans and tests Prowlarr indexer presets, adds working ones.</div>
+<pre>curl -X POST http://localhost:9100/actions/auto-indexers \\
+  -H "Content-Type: application/json" -d '{}'</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/actions/envoy-config</span>
+<div class="desc"><b>Rebuild Routing.</b> Regenerates Envoy gateway config from profile and service discovery.</div>
+<pre>curl -X POST http://localhost:9100/actions/envoy-config \\
+  -H "Content-Type: application/json" -d '{}'</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/actions/restart-apps</span>
+<div class="desc"><b>Restart All Apps.</b> Rolling restart of all managed services to pick up config changes.</div>
+<pre>curl -X POST http://localhost:9100/actions/restart-apps \\
+  -H "Content-Type: application/json" -d '{}'</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/actions/sync-indexers</span>
+<div class="desc"><b>Sync Indexers.</b> Triggers Prowlarr ApplicationIndexerSync to push indexers to Arr apps.</div>
+<pre>curl -X POST http://localhost:9100/actions/sync-indexers \\
+  -H "Content-Type: application/json" -d '{}'</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/actions/reconcile</span>
+<div class="desc"><b>Reconcile.</b> Re-runs bootstrap to fix drift (same as bootstrap but intended for periodic use).</div>
+<pre>curl -X POST http://localhost:9100/actions/reconcile \\
+  -H "Content-Type: application/json" -d '{}'</pre></div>
+
+<h2>Configuration</h2>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/config</span>
+<div class="desc">Current runtime config overrides.</div>
+<pre>curl http://localhost:9100/config
+<code>{"config": {"auto_download_content": false}}</code></pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/config</span>
+<div class="desc">Update runtime config. Changes take effect on next action run.</div>
+<pre># Enable auto-downloads:
+curl -X POST http://localhost:9100/config \\
+  -H "Content-Type: application/json" \\
+  -d '{"auto_download_content": true}'
+
+# Disable auto-downloads:
+curl -X POST http://localhost:9100/config \\
+  -H "Content-Type: application/json" \\
+  -d '{"auto_download_content": false}'</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/reload</span>
+<div class="desc">Reload bootstrap profile YAML and re-apply environment config.</div>
+<pre>curl -X POST http://localhost:9100/reload</pre></div>
+
+<h2>Logs &amp; Monitoring</h2>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/logs/stream</span>
+<div class="desc">Server-Sent Events (SSE) stream of real-time log lines. Connect from browser or CLI.</div>
+<pre># Browser: open http://localhost:9100/logs/stream
+# CLI:
+curl -N http://localhost:9100/logs/stream
+
+# Resume from a specific sequence number:
+curl -N "http://localhost:9100/logs/stream?after_seq=42"</pre></div>
+
+<h2>Webhooks</h2>
+
+<div class="endpoint">
+<span class="method GET">GET</span><span class="path">/webhooks</span>
+<div class="desc">List registered webhook URLs.</div>
+<pre>curl http://localhost:9100/webhooks</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/webhooks</span>
+<div class="desc">Register a webhook URL. Receives JSON POST on action completion/error.</div>
+<pre>curl -X POST http://localhost:9100/webhooks \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "https://hooks.example.com/media-stack"}'</pre></div>
+
+<div class="endpoint">
+<span class="method DELETE">DELETE</span><span class="path">/webhooks</span>
+<div class="desc">Remove a registered webhook URL.</div>
+<pre>curl -X DELETE http://localhost:9100/webhooks \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "https://hooks.example.com/media-stack"}'</pre></div>
+
+<h2>Lifecycle</h2>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/reset</span>
+<div class="desc">Reset controller state to idle (only when no action is running).</div>
+<pre>curl -X POST http://localhost:9100/reset</pre></div>
+
+<div class="endpoint">
+<span class="method POST">POST</span><span class="path">/cancel</span>
+<div class="desc">Cancel the currently running action.</div>
+<pre>curl -X POST http://localhost:9100/cancel</pre></div>
+
+</div></body></html>"""
 
 
 class BootstrapAPIHandler(BaseHTTPRequestHandler):
@@ -248,6 +553,8 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             self._sse_response()
         elif path == "/" or path == "/dashboard":
             self._html_response(200, _DASHBOARD_HTML)
+        elif path == "/api/docs":
+            self._html_response(200, _API_DOCS_HTML)
         else:
             self._json_response(404, {"error": "not found"})
 
