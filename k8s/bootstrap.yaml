@@ -156,7 +156,6 @@ spec:
             - python3
             - /opt/media-stack/scripts/bootstrap-apps.py
             - --serve
-            - --auto-run
             - --config
             - /bootstrap-config/config.json
             - --config-root
