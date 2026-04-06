@@ -555,7 +555,6 @@ services:
       - python3
       - /opt/media-stack/scripts/bootstrap-apps.py
       - --serve
-      - --auto-run
       - --config
       - /bootstrap/media-stack.bootstrap.json
       - --config-root

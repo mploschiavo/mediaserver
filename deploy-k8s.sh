@@ -81,20 +81,38 @@ for i in $(seq 1 20); do
     sleep 10
 done
 
-# Poll bootstrap status.
-echo "  Waiting for bootstrap..."
-for i in $(seq 1 30); do
+# Trigger bootstrap via HTTP API.
+echo "  Waiting for bootstrap service..."
+POD=""
+for i in $(seq 1 40); do
     POD=$(kubectl -n "$NAMESPACE" get pods -l app=media-stack-bootstrap -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
     if [[ -n "$POD" ]]; then
-        PHASE=$(kubectl -n "$NAMESPACE" exec "$POD" -- wget -qO- http://127.0.0.1:9100/status 2>/dev/null | \
-            python3 -c "import json,sys; print(json.load(sys.stdin).get('phase',''))" 2>/dev/null || echo "")
-        [[ "$PHASE" == "complete" ]] && echo "  Bootstrap: complete" && break
-        [[ "$PHASE" == "error" ]] && echo "  Bootstrap: error (check logs)" && break
+        HEALTH=$(kubectl -n "$NAMESPACE" exec "$POD" -- wget -qO- http://127.0.0.1:9100/healthz 2>/dev/null || echo "")
+        [[ -n "$HEALTH" ]] && break
+        POD=""
     fi
-    sleep 15
+    sleep 3
+done
+if [[ -z "$POD" ]]; then
+    echo "  ERROR: Bootstrap service pod not found within 120s" >&2
+    exit 1
+fi
+
+echo "  Triggering bootstrap on pod $POD..."
+kubectl -n "$NAMESPACE" exec "$POD" -- \
+    wget -qO- --post-data='{}' --header='Content-Type: application/json' \
+    http://127.0.0.1:9100/actions/bootstrap 2>/dev/null || true
+
+echo "  Polling bootstrap status..."
+for i in $(seq 1 60); do
+    PHASE=$(kubectl -n "$NAMESPACE" exec "$POD" -- wget -qO- http://127.0.0.1:9100/status 2>/dev/null | \
+        python3 -c "import json,sys; print(json.load(sys.stdin).get('phase',''))" 2>/dev/null || echo "")
+    [[ "$PHASE" == "complete" ]] && echo "  Bootstrap: complete" && break
+    [[ "$PHASE" == "error" ]] && echo "  Bootstrap: error (check logs)" && break
+    sleep 10
 done
 
 echo ""
 echo "Deploy complete: $NAMESPACE"
-echo "  Dashboard: http://apps.${NAMESPACE}.local:30180/app/bootstrap-runner/"
+echo "  Dashboard: http://apps.${NAMESPACE}.local:30180/app/media-stack-bootstrap/"
 echo "  Homepage:  http://apps.${NAMESPACE}.local:30180/app/homepage"
