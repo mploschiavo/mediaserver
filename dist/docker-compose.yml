@@ -1,0 +1,617 @@
+# Media Automation Stack — Docker Compose Single-File Deploy
+#
+# Deploy:   docker compose up -d
+# Status:   docker compose ps
+# Dashboard: http://localhost:9100
+# Teardown: docker compose down -v
+#
+# Prerequisites: Docker Engine 24+ with Compose V2
+# More info: https://github.com/mploschiavo/mediaserver
+
+name: ${COMPOSE_PROJECT_NAME:-media-stack}
+# Image references are digest-pinned as of 2026-03-28.
+#
+# Usage:
+#   docker compose up -d                          # minimal (core services)
+#   docker compose --profile standard up -d       # standard (+ usenet, subtitles, etc.)
+#   docker compose --profile full up -d           # full (+ lidarr, readarr, recyclarr)
+#
+# All settings come from the profile YAML mounted into init/bootstrap containers.
+# Storage paths default to ./config, ./media, ./data relative to this file.
+# Override via .env or shell: CONFIG_ROOT=/srv/media-stack/config
+
+x-arr-env: &arr-env
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  TZ: ${TZ:-UTC}
+
+x-media-vols: &media-vols
+  - ${MEDIA_ROOT:-./media}/media:/media
+  - ${DATA_ROOT:-./data}/torrents:/data/torrents
+  - ${DATA_ROOT:-./data}/usenet:/data/usenet
+
+services:
+  traefik:
+    image: traefik@sha256:74d72c7a1345984f186bddbabcc462b2128d0d8054177dc84afaeac4db1f0f56
+    container_name: traefik
+    profiles: ["traefik"]
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=false
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --ping=true
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_DASHBOARD_PORT:-8088}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${CONFIG_ROOT:-./config}/traefik/dynamic:/etc/traefik/dynamic:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  authelia:
+    image: authelia/authelia:4.39
+    container_name: authelia
+    profiles: ["auth-authelia"]
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /config/configuration.yml ]; then
+          cp /defaults/configuration.yml /config/configuration.yml
+        fi
+        if [ ! -f /config/users_database.yml ]; then
+          cp /defaults/users_database.yml /config/users_database.yml
+        fi
+        exec authelia --config /config/configuration.yml
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${CONFIG_ROOT:-./config}/authelia:/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authelia.rule=Host(`authelia.local`)
+      - traefik.http.services.authelia.loadbalancer.server.port=9091
+      - traefik.http.middlewares.authelia.forwardauth.address=http://authelia:9091/api/authz/forward-auth
+      - traefik.http.middlewares.authelia.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.authelia.forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
+
+  authentik-postgresql:
+    image: docker.io/library/postgres:16-alpine
+    container_name: authentik-postgresql
+    profiles: ["auth-authentik"]
+    environment:
+      POSTGRES_DB: ${AUTHENTIK_PG_DB:-authentik}
+      POSTGRES_USER: ${AUTHENTIK_PG_USER:-authentik}
+      POSTGRES_PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
+    volumes:
+      - ${DATA_ROOT:-./data}/authentik/postgresql:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -d $${POSTGRES_DB:-authentik} -U $${POSTGRES_USER:-authentik}
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  authentik:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2-rc1}
+    container_name: authentik
+    profiles: ["auth-authentik"]
+    command: ["server"]
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-replace-this-authentik-secret-key}
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
+    volumes:
+      - ${CONFIG_ROOT:-./config}/authentik/data:/data
+      - ${CONFIG_ROOT:-./config}/authentik/custom-templates:/templates
+    restart: unless-stopped
+    shm_size: 512mb
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/-/health/live/"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authentik.rule=Host(`authentik.local`)
+      - traefik.http.services.authentik.loadbalancer.server.port=9000
+      - traefik.http.middlewares.authentik.forwardauth.address=http://authentik:9000/outpost.goauthentik.io/auth/traefik
+      - traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid
+
+  authentik-worker:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2-rc1}
+    container_name: authentik-worker
+    profiles: ["auth-authentik"]
+    command: ["worker"]
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-replace-this-authentik-secret-key}
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CONFIG_ROOT:-./config}/authentik/data:/data
+      - ${CONFIG_ROOT:-./config}/authentik/certs:/certs
+      - ${CONFIG_ROOT:-./config}/authentik/custom-templates:/templates
+    restart: unless-stopped
+    shm_size: 512mb
+
+  envoy-config-init:
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-controller:latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
+    command:
+      - python3
+      - /opt/media-stack/src/media_stack/cli/commands/generate_envoy_config_main.py
+    environment:
+      COMPOSE_FILE: /compose/docker-compose.yml
+      CONFIG_ROOT: /runtime-config
+      BOOTSTRAP_PROFILE_FILE: ${BOOTSTRAP_PROFILE_FILE:-/opt/media-stack/contracts/media-stack.profile.yaml}
+      BOOTSTRAP_CONFIG_FILE: /opt/media-stack/contracts/media-stack.config.json
+    volumes:
+      - ./docker-compose.yml:/compose/docker-compose.yml:ro
+      - ${CONFIG_ROOT:-./config}:/runtime-config:rw
+    restart: "no"
+
+  envoy:
+    image: envoyproxy/envoy:v1.31.2
+    container_name: envoy
+    depends_on:
+      envoy-config-init:
+        condition: service_completed_successfully
+    command:
+      - -c
+      - /etc/envoy/envoy.yaml
+      - --service-cluster
+      - media-stack-edge
+      - --log-level
+      - info
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_DASHBOARD_PORT:-8088}:9901"
+    volumes:
+      - ${CONFIG_ROOT:-./config}/envoy:/etc/envoy:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.envoy.rule=Host(`envoy.local`)
+      - traefik.http.services.envoy.loadbalancer.server.port=9901
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c
+    container_name: homepage
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      HOMEPAGE_ALLOWED_HOSTS: "*"
+    volumes:
+      - ${CONFIG_ROOT:-./config}/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.homepage.rule=Host(`homepage.local`)
+      - traefik.http.services.homepage.loadbalancer.server.port=3000
+
+  jellyfin:
+    image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+    container_name: jellyfin
+    user: "${PUID:-1000}:${PGID:-1000}"
+    # Hardware transcoding: uncomment on Linux with Intel QSV/VA-API GPU.
+    # group_add: ["44","109"]
+    # devices:
+    #   - /dev/dri:/dev/dri
+    environment:
+      TZ: ${TZ:-UTC}
+      JELLYFIN_PublishedServerUrl: ""
+    volumes:
+      - ${CONFIG_ROOT:-./config}/jellyfin:/config
+      - ${DATA_ROOT:-./data}/transcode:/cache
+      - ${MEDIA_ROOT:-./media}/media:/media
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyfin.rule=Host(`jellyfin.local`)
+      - traefik.http.services.jellyfin.loadbalancer.server.port=8096
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+    container_name: jellyseerr
+    environment:
+      TZ: ${TZ:-UTC}
+      BASE_URL: ${JELLYSEERR_BASE_PATH:-}
+    volumes:
+      - ${CONFIG_ROOT:-./config}/jellyseerr:/app/config
+    restart: unless-stopped
+    depends_on:
+      jellyfin:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5055${JELLYSEERR_BASE_PATH:-}/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.local`)
+      - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82
+    container_name: prowlarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/prowlarr:/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.local`)
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent@sha256:570aeb63bdedcb5f9dd2500bd8f0a75581ba07c518c05cabbef0cfeb15451b3f
+    container_name: qbittorrent
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      WEBUI_PORT: 8080
+      QBT_WEBUI_PORT: 8080
+    volumes:
+      - ${CONFIG_ROOT:-./config}/qbittorrent:/config
+      - ${DATA_ROOT:-./data}/torrents:/data/torrents
+    ports:
+      - "${QBITTORRENT_PUBLISHED_PORT:-8080}:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.local`)
+      - traefik.http.services.qbittorrent.loadbalancer.server.port=8080
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2
+    container_name: sonarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/sonarr:/config
+      - ${MEDIA_ROOT:-./media}/media:/media
+      - ${DATA_ROOT:-./data}/torrents:/data/torrents
+      - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8989/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.local`)
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+
+  radarr:
+    image: lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb
+    container_name: radarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/radarr:/config
+      - ${MEDIA_ROOT:-./media}/media:/media
+      - ${DATA_ROOT:-./data}/torrents:/data/torrents
+      - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7878/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.radarr.rule=Host(`radarr.local`)
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr@sha256:dbffcf91da47d48e09e613857032c95a62755b928a71a7718688e3ab03fbbd26
+    container_name: lidarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/lidarr:/config
+      - ${MEDIA_ROOT:-./media}/media:/media
+      - ${DATA_ROOT:-./data}/torrents:/data/torrents
+      - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8686/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.lidarr.rule=Host(`lidarr.local`)
+      - traefik.http.services.lidarr.loadbalancer.server.port=8686
+
+  readarr:
+    image: docker.io/linuxserver/readarr@sha256:4f291128d1a5538be73c2a30473d7cdd0820e223dc8b8533b0cbc5659000dcbe
+    container_name: readarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/readarr:/config
+      - ${MEDIA_ROOT:-./media}/media:/media
+      - ${DATA_ROOT:-./data}/torrents:/data/torrents
+      - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [qbittorrent, prowlarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.readarr.rule=Host(`readarr.local`)
+      - traefik.http.services.readarr.loadbalancer.server.port=8787
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e
+    container_name: bazarr
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/bazarr:/config
+      - ${MEDIA_ROOT:-./media}/media:/media
+    restart: unless-stopped
+    depends_on: [sonarr, radarr]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6767"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.bazarr.rule=Host(`bazarr.local`)
+      - traefik.http.services.bazarr.loadbalancer.server.port=6767
+
+  unpackerr:
+    image: ghcr.io/unpackerr/unpackerr@sha256:89e13608521ece21dd300c39229fd595a55fbf4b8152771af5670a7455b5c747
+    container_name: unpackerr
+    environment:
+      TZ: ${TZ:-UTC}
+      UN_CONFIG_FILE: /etc/unpackerr/unpackerr.conf
+    volumes:
+      - ${CONFIG_ROOT:-./config}/unpackerr:/etc/unpackerr:ro
+      - ${DATA_ROOT:-./data}/torrents:/data/torrents
+      - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    restart: unless-stopped
+    depends_on: [sonarr, radarr, lidarr, readarr]
+
+  recyclarr:
+    image: hashicorp/http-echo:1.0.0
+    container_name: recyclarr
+    command:
+      - "-text=Recyclarr stub endpoint. Enable and configure a real Recyclarr runtime when ready."
+      - "-listen=:80"
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.recyclarr.rule=Host(`recyclarr.local`)
+      - traefik.http.services.recyclarr.loadbalancer.server.port=80
+
+  maintainerr:
+    image: ghcr.io/maintainerr/maintainerr:3.3.0
+    container_name: maintainerr
+    environment:
+      TZ: ${TZ:-UTC}
+      UI_HOSTNAME: 0.0.0.0
+      UI_PORT: 6246
+      BASE_PATH: ${MAINTAINERR_BASE_PATH:-/app/maintainerr}
+    volumes:
+      - ${CONFIG_ROOT:-./config}/maintainerr:/opt/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${BASE_PATH:-/}"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.maintainerr.rule=Host(`maintainerr.local`)
+      - traefik.http.services.maintainerr.loadbalancer.server.port=6246
+
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f
+    container_name: sabnzbd
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/sabnzbd:/config
+      - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    ports:
+      - "${SABNZBD_PUBLISHED_PORT:-8085}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.local`)
+      - traefik.http.services.sabnzbd.loadbalancer.server.port=8080
+
+  plex:
+    image: lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95
+    container_name: plex
+    profiles: ["plex"]
+    network_mode: host
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      VERSION: docker
+    volumes:
+      - ${CONFIG_ROOT:-./config}/plex:/config
+      - ${MEDIA_ROOT:-./media}/media:/media
+      - ${DATA_ROOT:-./data}/transcode:/transcode
+    restart: unless-stopped
+
+  tautulli:
+    image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
+    container_name: tautulli
+    environment: *arr-env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/tautulli:/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tautulli.rule=Host(`tautulli.local`)
+      - traefik.http.services.tautulli.loadbalancer.server.port=8181
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e
+    container_name: flaresolverr
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: info
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.flaresolverr.rule=Host(`flaresolverr.local`)
+      - traefik.http.services.flaresolverr.loadbalancer.server.port=8191
+
+  jellyfin-nvidia:
+    image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+    container_name: jellyfin-nvidia
+    profiles: ["nvidia"]
+    runtime: nvidia
+    environment:
+      TZ: ${TZ:-UTC}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    volumes:
+      - ${CONFIG_ROOT:-./config}/jellyfin:/config
+      - ${DATA_ROOT:-./data}/transcode:/cache
+      - ${MEDIA_ROOT:-./media}/media:/media
+    restart: unless-stopped
+
+  media-stack-controller:
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-controller:latest}
+    container_name: media-stack-controller
+    command:
+      - python3
+      - /opt/media-stack/bin/bootstrap-apps.py
+      - --serve
+      - --config
+      - /opt/media-stack/contracts/media-stack.config.json
+      - --config-root
+      - /srv-config
+      - --wait-timeout
+      - "600"
+    environment:
+      BOOTSTRAP_PROFILE_FILE: ${BOOTSTRAP_PROFILE_FILE:-/opt/media-stack/contracts/media-stack.profile.yaml}
+      BOOTSTRAP_CONFIG_FILE: /opt/media-stack/contracts/media-stack.config.json
+      BOOTSTRAP_API_PORT: "9100"
+      FULLY_PRECONFIGURED: "1"
+      BOOTSTRAP_WAIT_INTERVAL_SECONDS: "3"
+      BOOTSTRAP_WAIT_HEARTBEAT_SECONDS: "15"
+      AUTO_INDEXER_HEARTBEAT_EVERY: "25"
+      STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
+      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
+      SONARR_API_KEY: "${SONARR_API_KEY:-}"
+      RADARR_API_KEY: "${RADARR_API_KEY:-}"
+      LIDARR_API_KEY: "${LIDARR_API_KEY:-}"
+      READARR_API_KEY: "${READARR_API_KEY:-}"
+      PROWLARR_API_KEY: "${PROWLARR_API_KEY:-}"
+      JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
+      JELLYSEERR_API_KEY: "${JELLYSEERR_API_KEY:-}"
+      SABNZBD_API_KEY: "${SABNZBD_API_KEY:-}"
+      TAUTULLI_API_KEY: "${TAUTULLI_API_KEY:-}"
+    volumes:
+      - ${CONFIG_ROOT:-./config}:/srv-config:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      jellyfin:
+        condition: service_healthy
+      prowlarr:
+        condition: service_healthy
+      sonarr:
+        condition: service_healthy
+      radarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
+    ports:
+      - "${BOOTSTRAP_API_PORT:-9100}:9100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9100/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 10s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.media-stack-controller.rule=Host(`controller.local`)
+      - traefik.http.services.media-stack-controller.loadbalancer.server.port=9100

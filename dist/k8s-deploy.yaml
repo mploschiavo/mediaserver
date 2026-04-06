@@ -1,0 +1,2744 @@
+# Media Automation Stack — Kubernetes Single-File Deploy
+#
+# Deploy:   kubectl apply -f k8s-deploy.yaml
+# Status:   kubectl -n media-stack get pods
+# Dashboard: kubectl -n media-stack port-forward svc/media-stack-controller 9100:9100
+#            Then open http://localhost:9100
+# Teardown: kubectl delete -f k8s-deploy.yaml
+#
+# Prerequisites: Kubernetes cluster with default StorageClass
+# More info: https://github.com/mploschiavo/mediaserver
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+  name: media-stack
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: media-stack-controller
+  namespace: media-stack
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: media-stack-controller
+  namespace: media-stack
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: media-stack-controller
+  namespace: media-stack
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: media-stack-controller
+subjects:
+- kind: ServiceAccount
+  name: media-stack-controller
+  namespace: media-stack
+---
+apiVersion: v1
+data:
+  envoy.runtime.base.yaml: |
+    # Base template — the envoy-config-init job merges routes/clusters into this.
+    # This is a placeholder that gets overwritten by the init job.
+    static_resources:
+      listeners:
+        - name: listener_http
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: 8080
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ingress_http
+                    codec_type: AUTO
+                    route_config:
+                      name: media_stack_routes
+                      virtual_hosts: []
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters: []
+    admin:
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 9901
+kind: ConfigMap
+metadata:
+  name: media-stack-envoy-base-template
+  namespace: media-stack
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: media-stack-secrets
+  namespace: media-stack
+stringData:
+  JELLYFIN_API_KEY: ""
+  JELLYFIN_USER_ID: ""
+  JELLYSEERR_API_KEY: ""
+  LIDARR_API_KEY: ""
+  PROWLARR_API_KEY: ""
+  RADARR_API_KEY: ""
+  READARR_API_KEY: ""
+  SABNZBD_API_KEY: ""
+  SONARR_API_KEY: ""
+  STACK_ADMIN_PASSWORD: media-stack
+  STACK_ADMIN_USERNAME: admin
+  TAUTULLI_API_KEY: ""
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bazarr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 6767
+    targetPort: 6767
+  selector:
+    app: bazarr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy
+  namespace: media-stack
+spec:
+  ports:
+  - name: http
+    nodePort: 30180
+    port: 80
+    targetPort: 8080
+  - name: admin
+    port: 9901
+    targetPort: 9901
+  selector:
+    app: envoy
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flaresolverr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8191
+    targetPort: 8191
+  selector:
+    app: flaresolverr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: media-stack
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+  selector:
+    app: homepage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8096
+    targetPort: 8096
+  selector:
+    app: jellyfin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyseerr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 5055
+    targetPort: 5055
+  selector:
+    app: jellyseerr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lidarr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8686
+    targetPort: 8686
+  selector:
+    app: lidarr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maintainerr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 6246
+    targetPort: 6246
+  selector:
+    app: maintainerr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: media-stack-controller
+  namespace: media-stack
+spec:
+  ports:
+  - name: api
+    port: 9100
+    targetPort: 9100
+  selector:
+    app: media-stack-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plex
+  namespace: media-stack
+spec:
+  ports:
+  - port: 32400
+    targetPort: 32400
+  selector:
+    app: plex
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prowlarr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 9696
+    targetPort: 9696
+  selector:
+    app: prowlarr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qbittorrent
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: qbittorrent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radarr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 7878
+    targetPort: 7878
+  selector:
+    app: radarr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: readarr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8787
+    targetPort: 8787
+  selector:
+    app: readarr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sabnzbd
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: sabnzbd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarr
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8989
+    targetPort: 8989
+  selector:
+    app: sonarr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tautulli
+  namespace: media-stack
+spec:
+  ports:
+  - port: 8181
+    targetPort: 8181
+  selector:
+    app: tautulli
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: media-stack-default-limits
+  namespace: media-stack
+spec:
+  limits:
+  - default:
+      cpu: "2"
+      memory: 2Gi
+    defaultRequest:
+      cpu: 100m
+      memory: 256Mi
+    max:
+      cpu: "6"
+      memory: 8Gi
+    type: Container
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-bazarr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-envoy
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-homepage
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-jellyfin
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-jellyfin-auto-collections
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-jellyseerr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-lidarr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-maintainerr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-plex
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-prowlarr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-qbittorrent
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-radarr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-readarr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-sabnzbd
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-sonarr
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-tautulli
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-data-torrents
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-data-transcode
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-data-usenet
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-media
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Ti
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bazarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bazarr
+  template:
+    metadata:
+      labels:
+        app: bazarr
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 6767
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: bazarr
+        ports:
+        - containerPort: 6767
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 6767
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /
+            port: 6767
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /media
+          name: media
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-bazarr
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy
+  template:
+    metadata:
+      labels:
+        app: envoy
+    spec:
+      containers:
+      - args:
+        - -c
+        - /etc/envoy/envoy.yaml
+        - --service-cluster
+        - media-stack-edge
+        - --log-level
+        - info
+        image: envoyproxy/envoy:v1.31.2
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: admin
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        name: envoy
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9901
+          name: admin
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: admin
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /etc/envoy
+          name: envoy-config
+          readOnly: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          if [ ! -f /etc/envoy/envoy.yaml ]; then
+            echo "Seeding base envoy config from template..."
+            cp /base-template/envoy.runtime.base.yaml /etc/envoy/envoy.yaml
+          else
+            echo "envoy.yaml already exists, skipping seed."
+          fi
+        image: busybox:1.36
+        name: seed-base-config
+        volumeMounts:
+        - mountPath: /etc/envoy
+          name: envoy-config
+        - mountPath: /base-template
+          name: envoy-base-template
+          readOnly: true
+      volumes:
+      - name: envoy-config
+        persistentVolumeClaim:
+          claimName: media-stack-config-envoy
+      - configMap:
+          name: media-stack-envoy-base-template
+        name: envoy-base-template
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flaresolverr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flaresolverr
+  template:
+    metadata:
+      labels:
+        app: flaresolverr
+    spec:
+      containers:
+      - image: ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8191
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: flaresolverr
+        ports:
+        - containerPort: 8191
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8191
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /
+            port: 8191
+          periodSeconds: 10
+        volumeMounts: []
+      volumes: []
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: homepage
+  template:
+    metadata:
+      labels:
+        app: homepage
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: HOMEPAGE_ALLOWED_HOSTS
+          value: '*'
+        image: ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: homepage
+        ports:
+        - containerPort: 3000
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /
+            port: 3000
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /app/config
+          name: config
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-homepage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyfin
+  template:
+    metadata:
+      labels:
+        app: jellyfin
+    spec:
+      containers:
+      - image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8096
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: jellyfin
+        ports:
+        - containerPort: 8096
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8096
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 30
+          httpGet:
+            path: /health
+            port: 8096
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /cache
+          name: transcode
+        - mountPath: /media
+          name: media
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsUser: 1000
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-jellyfin
+      - name: transcode
+        persistentVolumeClaim:
+          claimName: media-stack-data-transcode
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin-auto-collections
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyfin-auto-collections
+  template:
+    metadata:
+      labels:
+        app: jellyfin-auto-collections
+    spec:
+      containers:
+      - command:
+        - /bin/sh
+        - -c
+        - |
+          until [ -f /config/config.yaml ]; do
+            echo "[WAIT] jellyfin-auto-collections: waiting for /config/config.yaml from bootstrap..."
+            sleep 15
+          done
+          ln -sf /config/config.yaml /app/config.yaml
+          exec python /app/main.py
+        env:
+        - name: CRONTAB
+          value: 0 */6 * * *
+        - name: TZ
+          value: America/Chicago
+        - name: JELLYFIN_SERVER_URL
+          value: http://jellyfin:8096
+        - name: JELLYFIN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: JELLYFIN_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: JELLYFIN_USER_ID
+          valueFrom:
+            secretKeyRef:
+              key: JELLYFIN_USER_ID
+              name: media-stack-secrets
+              optional: true
+        image: ghcr.io/ghomashudson/jellyfin-auto-collections:latest
+        imagePullPolicy: IfNotPresent
+        name: jellyfin-auto-collections
+        resources:
+          limits:
+            cpu: "1"
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /config
+          name: config-dir
+      volumes:
+      - name: config-dir
+        persistentVolumeClaim:
+          claimName: media-stack-config-jellyfin-auto-collections
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyseerr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyseerr
+  template:
+    metadata:
+      labels:
+        app: jellyseerr
+    spec:
+      containers:
+      - image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+        livenessProbe:
+          httpGet:
+            path: /api/v1/status
+            port: 5055
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: jellyseerr
+        ports:
+        - containerPort: 5055
+        readinessProbe:
+          httpGet:
+            path: /api/v1/status
+            port: 5055
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /api/v1/status
+            port: 5055
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /app/config
+          name: config
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-jellyseerr
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lidarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lidarr
+  template:
+    metadata:
+      labels:
+        app: lidarr
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/lidarr@sha256:dbffcf91da47d48e09e613857032c95a62755b928a71a7718688e3ab03fbbd26
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8686
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: lidarr
+        ports:
+        - containerPort: 8686
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8686
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /ping
+            port: 8686
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete
+          /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music
+          /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed
+          /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music
+          /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+        image: busybox:1.36
+        name: init-media-dirs
+        volumeMounts:
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-lidarr
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+      - name: torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+      - name: usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maintainerr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maintainerr
+  template:
+    metadata:
+      labels:
+        app: maintainerr
+    spec:
+      containers:
+      - env:
+        - name: TZ
+          value: America/Chicago
+        - name: UI_HOSTNAME
+          value: 0.0.0.0
+        - name: UI_PORT
+          value: "6246"
+        - name: BASE_PATH
+          value: /app/maintainerr
+        image: ghcr.io/maintainerr/maintainerr:3.3.0
+        livenessProbe:
+          httpGet:
+            path: /app/maintainerr/api/settings
+            port: 6246
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: maintainerr
+        ports:
+        - containerPort: 6246
+        readinessProbe:
+          httpGet:
+            path: /app/maintainerr/api/settings
+            port: 6246
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /app/maintainerr/api/settings
+            port: 6246
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /opt/data
+          name: config
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-maintainerr
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+  name: media-stack-controller
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: media-stack-controller
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: media-stack-controller
+    spec:
+      containers:
+      - command:
+        - python3
+        - /opt/media-stack/bin/controller.py
+        - --serve
+        - --config
+        - /bootstrap-config/config.json
+        - --config-root
+        - /srv-config
+        - --wait-timeout
+        - "600"
+        env:
+        - name: SABNZBD_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: SABNZBD_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: JELLYFIN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: JELLYFIN_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: JELLYFIN_USER_ID
+          valueFrom:
+            secretKeyRef:
+              key: JELLYFIN_USER_ID
+              name: media-stack-secrets
+              optional: true
+        - name: JELLYSEERR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: JELLYSEERR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: TAUTULLI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: TAUTULLI_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: STACK_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: STACK_ADMIN_USERNAME
+              name: media-stack-secrets
+              optional: true
+        - name: STACK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: STACK_ADMIN_PASSWORD
+              name: media-stack-secrets
+              optional: true
+        - name: SONARR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: SONARR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: RADARR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: RADARR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: LIDARR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: LIDARR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: READARR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: READARR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: PROWLARR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: PROWLARR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: FULLY_PRECONFIGURED
+          value: "1"
+        - name: BOOTSTRAP_API_PORT
+          value: "9100"
+        - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
+          value: "3"
+        - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
+          value: "15"
+        - name: AUTO_INDEXER_HEARTBEAT_EVERY
+          value: "25"
+        - name: BOOTSTRAP_PROFILE_FILE
+          value: /profile/profile.yaml
+        - name: BOOTSTRAP_CONFIG_FILE
+          value: /bootstrap-config/config.json
+        image: 192.168.1.60:30002/library/media-stack-controller:latest
+        imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: api
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        name: controller
+        ports:
+        - containerPort: 9100
+          name: api
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: api
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /healthz
+            port: api
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /bootstrap-config
+          name: bootstrap-config
+          readOnly: true
+        - mountPath: /profile
+          name: bootstrap-profile
+          readOnly: true
+        - mountPath: /srv-config/jellyfin
+          name: cfg-jellyfin
+        - mountPath: /srv-config/jellyseerr
+          name: cfg-jellyseerr
+        - mountPath: /srv-config/sonarr
+          name: cfg-sonarr
+        - mountPath: /srv-config/radarr
+          name: cfg-radarr
+        - mountPath: /srv-config/lidarr
+          name: cfg-lidarr
+        - mountPath: /srv-config/readarr
+          name: cfg-readarr
+        - mountPath: /srv-config/bazarr
+          name: cfg-bazarr
+        - mountPath: /srv-config/prowlarr
+          name: cfg-prowlarr
+        - mountPath: /srv-config/sabnzbd
+          name: cfg-sabnzbd
+        - mountPath: /srv-config/homepage
+          name: cfg-homepage
+        - mountPath: /srv-config/maintainerr
+          name: cfg-maintainerr
+        - mountPath: /srv-config/jellyfin-auto-collections
+          name: cfg-jellyfin-auto-collections
+        - mountPath: /srv-config/envoy
+          name: cfg-envoy
+        - mountPath: /srv-stack/data/torrents
+          name: stack-torrents
+        - mountPath: /srv-stack/data/usenet
+          name: stack-usenet
+        - mountPath: /srv-stack/media
+          name: stack-media
+      serviceAccountName: media-stack-controller
+      volumes:
+      - configMap:
+          name: media-stack-controller-config
+          optional: true
+        name: bootstrap-config
+      - configMap:
+          name: media-stack-controller-profile
+          optional: true
+        name: bootstrap-profile
+      - name: cfg-jellyfin
+        persistentVolumeClaim:
+          claimName: media-stack-config-jellyfin
+      - name: cfg-jellyseerr
+        persistentVolumeClaim:
+          claimName: media-stack-config-jellyseerr
+      - name: cfg-sonarr
+        persistentVolumeClaim:
+          claimName: media-stack-config-sonarr
+      - name: cfg-radarr
+        persistentVolumeClaim:
+          claimName: media-stack-config-radarr
+      - name: cfg-lidarr
+        persistentVolumeClaim:
+          claimName: media-stack-config-lidarr
+      - name: cfg-readarr
+        persistentVolumeClaim:
+          claimName: media-stack-config-readarr
+      - name: cfg-bazarr
+        persistentVolumeClaim:
+          claimName: media-stack-config-bazarr
+      - name: cfg-prowlarr
+        persistentVolumeClaim:
+          claimName: media-stack-config-prowlarr
+      - name: cfg-sabnzbd
+        persistentVolumeClaim:
+          claimName: media-stack-config-sabnzbd
+      - name: cfg-homepage
+        persistentVolumeClaim:
+          claimName: media-stack-config-homepage
+      - name: cfg-maintainerr
+        persistentVolumeClaim:
+          claimName: media-stack-config-maintainerr
+      - name: cfg-jellyfin-auto-collections
+        persistentVolumeClaim:
+          claimName: media-stack-config-jellyfin-auto-collections
+      - name: cfg-envoy
+        persistentVolumeClaim:
+          claimName: media-stack-config-envoy
+      - name: stack-torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+      - name: stack-usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+      - name: stack-media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plex
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plex
+  template:
+    metadata:
+      labels:
+        app: plex
+    spec:
+      containers:
+      - image: lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95
+        livenessProbe:
+          httpGet:
+            path: /identity
+            port: 32400
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: plex
+        ports:
+        - containerPort: 32400
+        readinessProbe:
+          httpGet:
+            path: /identity
+            port: 32400
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /identity
+            port: 32400
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /media
+          name: media
+        - mountPath: /transcode
+          name: transcode
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-plex
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+      - name: transcode
+        persistentVolumeClaim:
+          claimName: media-stack-data-transcode
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prowlarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prowlarr
+  template:
+    metadata:
+      labels:
+        app: prowlarr
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 9696
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: prowlarr
+        ports:
+        - containerPort: 9696
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 9696
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /ping
+            port: 9696
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-prowlarr
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qbittorrent
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qbittorrent
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: qbittorrent
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/qbittorrent@sha256:570aeb63bdedcb5f9dd2500bd8f0a75581ba07c518c05cabbef0cfeb15451b3f
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: qbittorrent
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /data/torrents
+          name: torrents
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-qbittorrent
+      - name: torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: radarr
+  template:
+    metadata:
+      labels:
+        app: radarr
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 7878
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: radarr
+        ports:
+        - containerPort: 7878
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 7878
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /ping
+            port: 7878
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete
+          /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music
+          /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed
+          /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music
+          /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+        image: busybox:1.36
+        name: init-media-dirs
+        volumeMounts:
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-radarr
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+      - name: torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+      - name: usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: readarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: readarr
+  template:
+    metadata:
+      labels:
+        app: readarr
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: docker.io/linuxserver/readarr@sha256:4f291128d1a5538be73c2a30473d7cdd0820e223dc8b8533b0cbc5659000dcbe
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8787
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: readarr
+        ports:
+        - containerPort: 8787
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8787
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /ping
+            port: 8787
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete
+          /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music
+          /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed
+          /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music
+          /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+        image: busybox:1.36
+        name: init-media-dirs
+        volumeMounts:
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-readarr
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+      - name: torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+      - name: usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sabnzbd
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sabnzbd
+  template:
+    metadata:
+      labels:
+        app: sabnzbd
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: sabnzbd
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /data/usenet
+          name: usenet
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - mkdir -p /data/usenet/incomplete /data/usenet/completed /data/usenet/completed/tv
+          /data/usenet/completed/movies /data/usenet/completed/music /data/usenet/completed/books
+          /config/Downloads/incomplete /config/Downloads/complete && chmod -R 0777
+          /data/usenet /config/Downloads
+        image: busybox:1.36
+        name: init-sab-dirs
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /data/usenet
+          name: usenet
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-sabnzbd
+      - name: usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonarr
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sonarr
+  template:
+    metadata:
+      labels:
+        app: sonarr
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        image: lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8989
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: sonarr
+        ports:
+        - containerPort: 8989
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8989
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /ping
+            port: 8989
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - mkdir -p /media/tv /media/movies /media/music /media/books /data/torrents/incomplete
+          /data/torrents/completed/tv /data/torrents/completed/movies /data/torrents/completed/music
+          /data/torrents/completed/books /data/usenet/incomplete /data/usenet/completed
+          /data/usenet/completed/tv /data/usenet/completed/movies /data/usenet/completed/music
+          /data/usenet/completed/books && chmod -R 0777 /media /data/torrents /data/usenet
+        image: busybox:1.36
+        name: init-media-dirs
+        volumeMounts:
+        - mountPath: /media
+          name: media
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-sonarr
+      - name: media
+        persistentVolumeClaim:
+          claimName: media-stack-media
+      - name: torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+      - name: usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tautulli
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tautulli
+  template:
+    metadata:
+      labels:
+        app: tautulli
+    spec:
+      containers:
+      - image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 8181
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        name: tautulli
+        ports:
+        - containerPort: 8181
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 8181
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /status
+            port: 8181
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /config
+          name: config
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-tautulli
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unpackerr
+  namespace: media-stack
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: unpackerr
+  template:
+    metadata:
+      labels:
+        app: unpackerr
+    spec:
+      containers:
+      - env:
+        - name: TZ
+          value: America/Chicago
+        - name: UN_SONARR_0_URL
+          value: http://sonarr:8989
+        - name: UN_RADARR_0_URL
+          value: http://radarr:7878
+        - name: UN_LIDARR_0_URL
+          value: http://lidarr:8686
+        - name: UN_READARR_0_URL
+          value: http://readarr:8787
+        - name: UN_SONARR_0_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: SONARR_API_KEY
+              name: media-stack-secrets
+        - name: UN_RADARR_0_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: RADARR_API_KEY
+              name: media-stack-secrets
+        - name: UN_LIDARR_0_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: LIDARR_API_KEY
+              name: media-stack-secrets
+        - name: UN_READARR_0_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: READARR_API_KEY
+              name: media-stack-secrets
+        - name: UN_SONARR_0_PATHS_0
+          value: /data/torrents/completed/tv
+        - name: UN_RADARR_0_PATHS_0
+          value: /data/torrents/completed/movies
+        - name: UN_LIDARR_0_PATHS_0
+          value: /data/torrents/completed/music
+        - name: UN_READARR_0_PATHS_0
+          value: /data/torrents/completed/books
+        image: ghcr.io/unpackerr/unpackerr@sha256:89e13608521ece21dd300c39229fd595a55fbf4b8152771af5670a7455b5c747
+        name: unpackerr
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+        - mountPath: /data/torrents
+          name: torrents
+        - mountPath: /data/usenet
+          name: usenet
+      volumes:
+      - name: torrents
+        persistentVolumeClaim:
+          claimName: media-stack-data-torrents
+      - name: usenet
+        persistentVolumeClaim:
+          claimName: media-stack-data-usenet
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media-stack-controller-reconcile
+  namespace: media-stack
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: media-stack-controller-reconcile
+        spec:
+          containers:
+          - command:
+            - python3
+            - /opt/media-stack/bin/controller.py
+            - --config
+            - /bootstrap-config/config.json
+            - --config-root
+            - /srv-config
+            env:
+            - name: SABNZBD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SABNZBD_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: JELLYFIN_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: JELLYFIN_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  key: JELLYFIN_USER_ID
+                  name: media-stack-secrets
+                  optional: true
+            - name: STACK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: STACK_ADMIN_USERNAME
+                  name: media-stack-secrets
+                  optional: true
+            - name: STACK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: STACK_ADMIN_PASSWORD
+                  name: media-stack-secrets
+                  optional: true
+            - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
+              value: "3"
+            - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
+              value: "15"
+            - name: AUTO_INDEXER_HEARTBEAT_EVERY
+              value: "25"
+            - name: FULLY_PRECONFIGURED
+              value: "1"
+            image: 192.168.1.60:30002/library/media-stack-controller:latest
+            imagePullPolicy: Always
+            name: bootstrap-reconcile
+            volumeMounts:
+            - mountPath: /bootstrap-config
+              name: bootstrap-config
+              readOnly: true
+            - mountPath: /srv-config/jellyfin
+              name: cfg-jellyfin
+            - mountPath: /srv-config/jellyseerr
+              name: cfg-jellyseerr
+            - mountPath: /srv-config/sonarr
+              name: cfg-sonarr
+            - mountPath: /srv-config/radarr
+              name: cfg-radarr
+            - mountPath: /srv-config/lidarr
+              name: cfg-lidarr
+            - mountPath: /srv-config/readarr
+              name: cfg-readarr
+            - mountPath: /srv-config/bazarr
+              name: cfg-bazarr
+            - mountPath: /srv-config/prowlarr
+              name: cfg-prowlarr
+            - mountPath: /srv-config/sabnzbd
+              name: cfg-sabnzbd
+            - mountPath: /srv-config/homepage
+              name: cfg-homepage
+            - mountPath: /srv-config/maintainerr
+              name: cfg-maintainerr
+            - mountPath: /srv-config/jellyfin-auto-collections
+              name: cfg-jellyfin-auto-collections
+            - mountPath: /srv-stack/data/torrents
+              name: stack-torrents
+            - mountPath: /srv-stack/data/usenet
+              name: stack-usenet
+            - mountPath: /srv-stack/media
+              name: stack-media
+          restartPolicy: Never
+          volumes:
+          - configMap:
+              name: media-stack-controller-config
+            name: bootstrap-config
+          - name: cfg-jellyfin
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyfin
+          - name: cfg-jellyseerr
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyseerr
+          - name: cfg-sonarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-sonarr
+          - name: cfg-radarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-radarr
+          - name: cfg-lidarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-lidarr
+          - name: cfg-readarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-readarr
+          - name: cfg-bazarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-bazarr
+          - name: cfg-prowlarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-prowlarr
+          - name: cfg-sabnzbd
+            persistentVolumeClaim:
+              claimName: media-stack-config-sabnzbd
+          - name: cfg-homepage
+            persistentVolumeClaim:
+              claimName: media-stack-config-homepage
+          - name: cfg-maintainerr
+            persistentVolumeClaim:
+              claimName: media-stack-config-maintainerr
+          - name: cfg-jellyfin-auto-collections
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyfin-auto-collections
+          - name: stack-torrents
+            persistentVolumeClaim:
+              claimName: media-stack-data-torrents
+          - name: stack-usenet
+            persistentVolumeClaim:
+              claimName: media-stack-data-usenet
+          - name: stack-media
+            persistentVolumeClaim:
+              claimName: media-stack-media
+      ttlSecondsAfterFinished: 900
+  schedule: 0 */6 * * *
+  successfulJobsHistoryLimit: 1
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media-stack-jellyfin-prewarm
+  namespace: media-stack
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: media-stack-jellyfin-prewarm
+        spec:
+          containers:
+          - command:
+            - python3
+            - /opt/media-stack/bin/controller.py
+            - --mode
+            - jellyfin-prewarm
+            - --config
+            - /bootstrap-config/config.json
+            - --config-root
+            - /srv-config
+            env:
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: JELLYFIN_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: JELLYFIN_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  key: JELLYFIN_USER_ID
+                  name: media-stack-secrets
+                  optional: true
+            - name: STACK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: STACK_ADMIN_USERNAME
+                  name: media-stack-secrets
+                  optional: true
+            - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
+              value: "3"
+            - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
+              value: "15"
+            image: 192.168.1.60:30002/library/media-stack-controller:latest
+            imagePullPolicy: Always
+            name: jellyfin-prewarm
+            volumeMounts:
+            - mountPath: /bootstrap-config
+              name: bootstrap-config
+              readOnly: true
+            - mountPath: /srv-config/jellyfin
+              name: cfg-jellyfin
+            - mountPath: /srv-stack/media
+              name: stack-media
+          restartPolicy: Never
+          volumes:
+          - configMap:
+              name: media-stack-controller-config
+            name: bootstrap-config
+          - name: cfg-jellyfin
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyfin
+          - name: stack-media
+            persistentVolumeClaim:
+              claimName: media-stack-media
+      ttlSecondsAfterFinished: 900
+  schedule: 15 */6 * * *
+  successfulJobsHistoryLimit: 1
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media-stack-media-hygiene
+  namespace: media-stack
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: media-stack-media-hygiene
+        spec:
+          containers:
+          - command:
+            - python3
+            - /opt/media-stack/bin/controller.py
+            - --mode
+            - media-hygiene
+            - --config
+            - /bootstrap-config/config.json
+            - --config-root
+            - /srv-config
+            env:
+            - name: STACK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: STACK_ADMIN_USERNAME
+                  name: media-stack-secrets
+                  optional: true
+            - name: STACK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: STACK_ADMIN_PASSWORD
+                  name: media-stack-secrets
+                  optional: true
+            - name: SONARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SONARR_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: RADARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: RADARR_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: LIDARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: LIDARR_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: READARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: READARR_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: PROWLARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: PROWLARR_API_KEY
+                  name: media-stack-secrets
+                  optional: true
+            - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
+              value: "3"
+            - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
+              value: "15"
+            image: 192.168.1.60:30002/library/media-stack-controller:latest
+            imagePullPolicy: Always
+            name: media-hygiene
+            volumeMounts:
+            - mountPath: /bootstrap-config
+              name: bootstrap-config
+              readOnly: true
+            - mountPath: /srv-config/jellyfin
+              name: cfg-jellyfin
+            - mountPath: /srv-config/jellyseerr
+              name: cfg-jellyseerr
+            - mountPath: /srv-config/sonarr
+              name: cfg-sonarr
+            - mountPath: /srv-config/radarr
+              name: cfg-radarr
+            - mountPath: /srv-config/lidarr
+              name: cfg-lidarr
+            - mountPath: /srv-config/readarr
+              name: cfg-readarr
+            - mountPath: /srv-config/bazarr
+              name: cfg-bazarr
+            - mountPath: /srv-config/prowlarr
+              name: cfg-prowlarr
+            - mountPath: /srv-config/sabnzbd
+              name: cfg-sabnzbd
+            - mountPath: /srv-config/homepage
+              name: cfg-homepage
+            - mountPath: /srv-config/maintainerr
+              name: cfg-maintainerr
+            - mountPath: /srv-config/jellyfin-auto-collections
+              name: cfg-jellyfin-auto-collections
+            - mountPath: /srv-stack/data/torrents
+              name: stack-torrents
+            - mountPath: /srv-stack/data/usenet
+              name: stack-usenet
+            - mountPath: /srv-stack/media
+              name: stack-media
+          restartPolicy: Never
+          volumes:
+          - configMap:
+              name: media-stack-controller-config
+            name: bootstrap-config
+          - name: cfg-jellyfin
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyfin
+          - name: cfg-jellyseerr
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyseerr
+          - name: cfg-sonarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-sonarr
+          - name: cfg-radarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-radarr
+          - name: cfg-lidarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-lidarr
+          - name: cfg-readarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-readarr
+          - name: cfg-bazarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-bazarr
+          - name: cfg-prowlarr
+            persistentVolumeClaim:
+              claimName: media-stack-config-prowlarr
+          - name: cfg-sabnzbd
+            persistentVolumeClaim:
+              claimName: media-stack-config-sabnzbd
+          - name: cfg-homepage
+            persistentVolumeClaim:
+              claimName: media-stack-config-homepage
+          - name: cfg-maintainerr
+            persistentVolumeClaim:
+              claimName: media-stack-config-maintainerr
+          - name: cfg-jellyfin-auto-collections
+            persistentVolumeClaim:
+              claimName: media-stack-config-jellyfin-auto-collections
+          - name: stack-torrents
+            persistentVolumeClaim:
+              claimName: media-stack-data-torrents
+          - name: stack-usenet
+            persistentVolumeClaim:
+              claimName: media-stack-data-usenet
+          - name: stack-media
+            persistentVolumeClaim:
+              claimName: media-stack-media
+      ttlSecondsAfterFinished: 900
+  schedule: 45 */6 * * *
+  successfulJobsHistoryLimit: 1
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-bazarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bazarr
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-jellyfin
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: jellyfin
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-jellyseerr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: jellyseerr
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-lidarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: lidarr
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-prowlarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: prowlarr
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-qbittorrent
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: qbittorrent
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-radarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: radarr
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-readarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: readarr
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-sonarr
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: sonarr
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: public
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+  name: media-stack-ingress
+  namespace: media-stack
+spec:
+  ingressClassName: public
+  rules:
+  - host: homepage.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: homepage
+            port:
+              number: 3000
+        path: /
+        pathType: Prefix
+  - host: jellyfin.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: jellyfin
+            port:
+              number: 8096
+        path: /
+        pathType: Prefix
+  - host: jellyseerr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: jellyseerr
+            port:
+              number: 5055
+        path: /
+        pathType: Prefix
+  - host: sonarr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: sonarr
+            port:
+              number: 8989
+        path: /
+        pathType: Prefix
+  - host: radarr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: radarr
+            port:
+              number: 7878
+        path: /
+        pathType: Prefix
+  - host: lidarr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: lidarr
+            port:
+              number: 8686
+        path: /
+        pathType: Prefix
+  - host: readarr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: readarr
+            port:
+              number: 8787
+        path: /
+        pathType: Prefix
+  - host: bazarr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: bazarr
+            port:
+              number: 6767
+        path: /
+        pathType: Prefix
+  - host: prowlarr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: prowlarr
+            port:
+              number: 9696
+        path: /
+        pathType: Prefix
+  - host: qbittorrent.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: qbittorrent
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
+  - host: sabnzbd.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: sabnzbd
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
+  - host: maintainerr.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: maintainerr
+            port:
+              number: 6246
+        path: /
+        pathType: Prefix
+  - host: tautulli.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: tautulli
+            port:
+              number: 8181
+        path: /
+        pathType: Prefix
+  - host: authelia.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: authelia
+            port:
+              number: 9091
+        path: /
+        pathType: Prefix
+  - host: authentik.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: authentik
+            port:
+              number: 9000
+        path: /
+        pathType: Prefix

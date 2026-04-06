@@ -1,245 +1,159 @@
 # Getting Started
 
-Go from zero to streaming in one command. This guide covers installation, requesting your first movie, connecting your TV, and enabling automatic downloads.
+Go from zero to streaming in one command. No source code to download.
 
-## Prerequisites
+## Choose Your Platform
 
-You need **one** of these:
+You need **one** of these (not both):
 
-| Platform | Requirements |
-|---|---|
-| **Linux** (recommended) | Docker Engine 24+ or Kubernetes (MicroK8s, k3s, etc.) |
-| **macOS** | Docker Desktop with Compose V2 |
-| **Windows** | WSL2 + Docker Desktop, or WSL2 + MicroK8s |
+| Platform | Install | Works on |
+|---|---|---|
+| **Docker Compose** (easiest) | [Install Docker](https://docs.docker.com/get-docker/) | Linux, macOS, Windows |
+| **Kubernetes** | [Install MicroK8s](https://microk8s.io), [k3s](https://k3s.io), or any cluster | Linux, macOS, Windows (WSL2) |
 
-All platforms need: **Git**, **Python 3.11+**, and at least **50 GB free disk space**.
-
-### Linux (Docker Compose)
-```bash
-# Install Docker if you don't have it
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# Log out and back in, then:
-docker compose version   # verify v2.20+
-```
-
-### Linux (Kubernetes / MicroK8s)
-```bash
-sudo snap install microk8s --classic
-microk8s enable dns storage ingress
-alias kubectl="microk8s kubectl"
-```
-
-### macOS
-Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and enable Kubernetes in Settings if you want the K8s path. Otherwise Compose works out of the box.
-
-### Windows
-Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) + [Docker Desktop](https://www.docker.com/products/docker-desktop/) with WSL2 backend. Run all commands inside WSL2 (Ubuntu recommended).
+That's it. No Python, no Git, no source code needed.
 
 ---
 
-## Step 1: Clone and Deploy
+## Step 1: Deploy
+
+### Option A: Docker Compose (one command)
 
 ```bash
-git clone https://github.com/mploschiavo/mediaserver.git
-cd mediaserver
+curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -o docker-compose.yml
+docker compose up -d
 ```
 
-### Option A: Docker Compose (simplest)
+### Option B: Kubernetes (one command)
 
-**Linux / macOS:**
 ```bash
-./deploy-compose.sh
+kubectl apply -f https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/k8s-deploy.yaml
 ```
 
-**Any OS (cross-platform):**
-```bash
-python deploy.py compose
-```
-
-**Manual (step-by-step):**
-```bash
-docker compose -f docker/docker-compose.yml up -d
-# Wait for bootstrap to be healthy, then trigger:
-curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
-```
-
-### Option B: Kubernetes
-
-**Linux / macOS:**
-```bash
-./deploy-k8s.sh
-```
-
-**Any OS (cross-platform):**
-```bash
-python deploy.py k8s
-```
-
-**Manual (step-by-step):**
-```bash
-kubectl create namespace media-dev
-kubectl apply -k k8s/profiles/standard
-kubectl -n media-dev create configmap media-stack-controller-config \
-  --from-file=config.json=contracts/media-stack.config.json --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n media-dev create configmap media-stack-controller-profile \
-  --from-file=profile.yaml=examples/bootstrap-profiles/media-k8s-standard.yaml --dry-run=client -o yaml | kubectl apply -f -
-# Wait for pods, then trigger bootstrap:
-kubectl -n media-dev port-forward svc/media-stack-controller 9100:9100 &
-curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
-```
-
-That's it. The deploy script:
-1. Starts all services (Jellyfin, Sonarr, Radarr, Prowlarr, qBittorrent, and 15+ more)
-2. Waits for everything to be healthy
-3. Triggers the controller service to auto-configure all apps
-4. Prints the dashboard URL when done
-
-Bootstrap takes 3-5 minutes. Watch progress at the dashboard:
-- **Compose:** http://localhost:9100/
-- **K8s:** `kubectl -n media-dev port-forward svc/media-stack-controller 9100:9100` then http://localhost:9100/
+That's it. All 19 services start automatically.
 
 ---
 
-## Step 2: Access Your Stack
+## Step 2: Open the Dashboard
 
-### DNS Setup
+The controller service configures everything for you. Watch it work in real time:
 
-Add these to your `/etc/hosts` file (Linux/Mac) or `C:\Windows\System32\drivers\etc\hosts` (Windows):
+**Docker Compose:**
+```
+http://localhost:9100
+```
 
-**Compose (localhost):**
+**Kubernetes:**
+```bash
+kubectl -n media-stack port-forward svc/media-stack-controller 9100:9100
+```
+Then open **http://localhost:9100**
+
+The dashboard shows:
+- Live progress as each app is configured
+- Health status for all services
+- API credential status (green = ready)
+- Auto-download toggle
+- One-click actions (configure, discover indexers, restart)
+
+Bootstrap takes 3-5 minutes. When the status shows **Complete**, everything is wired up.
+
+---
+
+## Step 3: Set Up DNS
+
+After bootstrap completes, the dashboard shows your service URLs. To access them by name, add these to your hosts file:
+
+**Linux / macOS:** `/etc/hosts`
+**Windows:** `C:\Windows\System32\drivers\etc\hosts`
+
+**Docker Compose (localhost):**
 ```
 127.0.0.1  apps.media-stack.local jellyfin.media-stack.local homepage.media-stack.local
 ```
 
 **Kubernetes (replace with your node IP):**
 ```
-192.168.1.60  apps.media-dev.local jellyfin.media-dev.local homepage.media-dev.local
+192.168.1.60  apps.media-stack.local jellyfin.media-stack.local homepage.media-stack.local
 ```
 
-Or generate the full list automatically:
-```bash
-bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
-```
-
-### Open the Dashboard
-
-| Service | Compose URL | K8s URL (port 30180) |
-|---|---|---|
-| **Homepage** (start here) | http://apps.media-stack.local/app/homepage | http://apps.media-dev.local:30180/app/homepage |
-| **Jellyfin** (watch stuff) | http://jellyfin.media-stack.local | http://jellyfin.media-dev.local:30180 |
-| **Jellyseerr** (request stuff) | http://apps.media-stack.local/app/jellyseerr | http://apps.media-dev.local:30180/app/jellyseerr |
-| **Controller Dashboard** | http://localhost:9100/ | http://localhost:9100/ (with port-forward) |
-
-![Homepage dashboard](docs/screenshots/apps/homepage_local.png)
-
----
-
-## Step 3: Request Your First Movie
-
-1. Open **Jellyseerr** from the Homepage dashboard
-2. Sign in with Jellyfin credentials (default: `admin` / `media-stack`)
-3. Search for a movie (e.g., "Inception")
-4. Click **Request**
-
-That's it. Jellyseerr sends the request to Radarr, which searches via Prowlarr's indexers and sends the download to qBittorrent. When complete, the movie appears in Jellyfin.
-
-![Jellyseerr](docs/screenshots/apps/jellyseerr_local.png)
-
-**First request not working?** The standard profile starts in **manual mode** — indexers need to be added first. Either:
-- Run auto-indexers: `curl -X POST http://localhost:9100/actions/auto-indexers`
-- Or enable full auto-download mode (see Step 5)
-
----
-
-## Step 4: Connect Your TV and Devices
-
-### Samsung TV (Tizen)
-1. Open **Apps** on your Samsung TV and search for **Jellyfin**
-2. Install and open it
-3. Enter your server address: `http://jellyfin.media-stack.local` (or your node IP)
-4. Sign in with `admin` / `media-stack`
-
-### LG TV (webOS)
-1. Open the **LG Content Store** and search for **Jellyfin**
-2. Install, then enter your server URL
-
-### Roku
-1. Search for **Jellyfin** in the Roku Channel Store
-2. Install and connect to your server URL
-
-### Apple TV / iPhone / iPad
-1. Install **Jellyfin** from the App Store
-2. Add server: `http://jellyfin.media-stack.local` (or node IP)
-
-### Android TV / Google TV / Fire TV
-1. Install **Jellyfin for Android TV** from Play Store or sideload
-2. Connect to your server URL
-
-### Chromecast / AirPlay
-1. Open Jellyfin in a browser or mobile app
-2. Use the cast/AirPlay button to stream to your TV
-
-### Any Web Browser
-Just open `http://jellyfin.media-stack.local` (or your node IP with port).
-
-### Key Tip: Use Your Network IP
-
-TVs and devices on your LAN need your server's **network IP**, not `localhost`. Find it with:
+Find your node IP:
 ```bash
 hostname -I | awk '{print $1}'    # Linux
 ipconfig getifaddr en0            # macOS
 ```
 
-Then use `http://<YOUR_IP>:8096` as the Jellyfin server URL on devices.
+### Verify your links work
 
-For nicer hostnames on all devices, set up DNS:
-```bash
-# Generate AdGuard/dnsmasq config (point *.local to your server)
-bash bin/render-dnsmasq-snippet.sh <YOUR_IP> <NAMESPACE>
-```
+After setting DNS, these should load in your browser:
+
+| Service | URL |
+|---|---|
+| **Homepage** (start here) | http://apps.media-stack.local/app/homepage |
+| **Jellyfin** (watch stuff) | http://jellyfin.media-stack.local |
+| **Jellyseerr** (request stuff) | http://apps.media-stack.local/app/jellyseerr |
 
 ---
 
-## Step 5: Enable Auto-Downloads
+## Step 4: Request Your First Movie
 
-The standard profile starts in **manual mode** (`auto_download_content: false`). This means:
-- Indexers aren't auto-added to Prowlarr
-- Discovery lists don't auto-search
-- Jellyseerr doesn't auto-approve requests
+1. Open **Jellyseerr** from the Homepage
+2. Sign in with Jellyfin credentials (default: `admin` / `media-stack`)
+3. Search for a movie (e.g., "Inception")
+4. Click **Request**
 
-To enable everything with one command:
+Jellyseerr sends the request to Radarr, which searches via Prowlarr's indexers and sends the download to qBittorrent. When complete, the movie appears in Jellyfin.
 
+**First request not working?** Open the controller dashboard and click **Discover Indexers** to add search sources. Or toggle **Auto-Downloads** on.
+
+---
+
+## Step 5: Connect Your TV
+
+Jellyfin works on every device. Use your server's network IP (not localhost):
+
+| Device | How |
+|---|---|
+| **Samsung TV** | Apps > search "Jellyfin" > install > connect to `http://<YOUR_IP>:8096` |
+| **LG TV** | LG Content Store > "Jellyfin" > install |
+| **Roku** | Channel Store > "Jellyfin" |
+| **Apple TV / iPhone / iPad** | App Store > "Jellyfin" |
+| **Android TV / Fire TV** | Play Store > "Jellyfin for Android TV" |
+| **Any browser** | Open `http://<YOUR_IP>:8096` |
+
+---
+
+## Step 6: Enable Auto-Downloads (optional)
+
+The default profile starts in **manual mode**. To enable automatic content discovery:
+
+**From the dashboard:** Toggle "Auto-Downloads" to ON, then click "Configure All Apps"
+
+**From the command line:**
 ```bash
-# Toggle auto-download mode ON
 curl -X POST http://localhost:9100/config \
   -H "Content-Type: application/json" \
   -d '{"auto_download_content": true}'
-
-# Re-run bootstrap to apply
 curl -X POST http://localhost:9100/actions/bootstrap
 ```
 
 This enables:
 - Prowlarr auto-discovers and tests indexers
-- Sonarr/Radarr discovery lists trigger initial search
-- Seed series/movies get added automatically
-- Jellyseerr allows automatic searches
+- Sonarr/Radarr discovery lists trigger searches
+- Jellyseerr allows automatic request approval
 
-To turn it back off:
+To turn it off, toggle the switch or:
 ```bash
 curl -X POST http://localhost:9100/config \
   -H "Content-Type: application/json" \
   -d '{"auto_download_content": false}'
 ```
 
-Or do it from the controller dashboard at http://localhost:9100/.
-
 ---
 
 ## What's Included
 
-The standard profile deploys and configures **19 services**:
+19 services, fully configured:
 
 | Service | What it does |
 |---|---|
@@ -259,85 +173,76 @@ The standard profile deploys and configures **19 services**:
 | **Maintainerr** | Library retention policies |
 | **Unpackerr** | Auto-extract downloads |
 | **FlareSolverr** | Indexer proxy for protected sites |
-| **Controller Service** | Stack config API + dashboard on :9100 |
+| **Controller** | Stack config API + dashboard on :9100 |
 | **Plex** | Optional alternate media server |
-| **Recyclarr** | Quality profile sync (stub) |
-
-Every service is accessible three ways:
-- `sonarr.local` — simple hostname
-- `sonarr.media-stack.local` — namespace-qualified
-- `apps.media-stack.local/app/sonarr` — path-prefix through gateway
+| **Recyclarr** | Quality profile sync |
 
 ---
 
 ## Common Operations
 
+All from the controller dashboard at http://localhost:9100, or via API:
+
 ```bash
-# Check stack status
+# Check status
 curl http://localhost:9100/status
 
-# Re-run bootstrap (idempotent)
+# Re-configure all apps (idempotent)
 curl -X POST http://localhost:9100/actions/bootstrap
 
-# Add indexers to Prowlarr
+# Discover indexers
 curl -X POST http://localhost:9100/actions/auto-indexers
 
-# Regenerate Envoy routing config
+# Rebuild gateway routing
 curl -X POST http://localhost:9100/actions/envoy-config
 
 # Restart all apps
 curl -X POST http://localhost:9100/actions/restart-apps
 
-# Stream logs in real-time
-curl http://localhost:9100/logs/stream
-
-# Open interactive dashboard
-open http://localhost:9100/
+# Full API documentation
+open http://localhost:9100/api/docs
 ```
 
 ---
 
 ## Troubleshooting
 
-**Bootstrap didn't complete?**
-```bash
-curl http://localhost:9100/status | python3 -m json.tool
-```
-Check the `error` field. Most common: services not healthy yet. Re-trigger:
-```bash
-curl -X POST http://localhost:9100/actions/bootstrap -d '{"retry": 2}'
-```
+**Dashboard shows errors?**
+Check the live logs on the dashboard, or download them with the "Download Logs" button.
 
 **Can't reach services?**
-Check your `/etc/hosts` entries point to the right IP. Verify Envoy is running:
+Check your `/etc/hosts` entries match your server IP. Verify Envoy is running:
 ```bash
 # Compose
 docker ps | grep envoy
 # K8s
-kubectl -n media-dev get pods | grep envoy
+kubectl -n media-stack get pods | grep envoy
 ```
 
 **Movies not downloading?**
-Check Prowlarr has indexers: open `http://apps.media-stack.local/app/prowlarr` and look under Indexers. If empty, run:
-```bash
-curl -X POST http://localhost:9100/actions/auto-indexers
-```
-
-**Jellyfin shows empty library?**
-Content needs to be downloaded first (see Step 3). Libraries are pre-configured at `/media/tv`, `/media/movies`, `/media/music`, `/media/books`.
+Open the controller dashboard, click "Discover Indexers", then check Prowlarr for working indexers.
 
 See [docs/troubleshooting.md](docs/troubleshooting.md) for more.
 
 ---
 
+## Developers
+
+Want to modify the code? See the full [README](README.md) for developer setup, or:
+
+```bash
+git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
+python deploy.py k8s      # or: python deploy.py compose
+```
+
+---
+
 ## Next Steps
 
-- [Architecture overview](docs/architecture.md) — how the control plane and data plane work
-- [Service guide](docs/service-guide.md) — what each app does
-- [Operations runbook](docs/operations.md) — day-to-day operations, backup/restore
-- [Networking model](docs/networking.md) — routing patterns and DNS setup
-- [Device onboarding](docs/device-onboarding.md) — detailed TV/device setup
-- [Bootstrap profile](docs/bootstrap-profile.md) — customize what gets deployed
+- [Architecture overview](docs/architecture.md)
+- [Service guide](docs/service-guide.md)
+- [Operations runbook](docs/operations.md)
+- [API documentation](http://localhost:9100/api/docs) (when running)
 
 ---
 
