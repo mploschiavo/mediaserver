@@ -548,9 +548,9 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
     restart: unless-stopped
 
-  bootstrap-runner:
+  media-stack-bootstrap:
     image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-bootstrap-runner:latest}
-    container_name: bootstrap-runner
+    container_name: media-stack-bootstrap
     command:
       - python3
       - /opt/media-stack/scripts/bootstrap-apps.py
@@ -564,7 +564,9 @@ services:
       - "600"
     environment:
       BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
+      BOOTSTRAP_CONFIG_FILE: /bootstrap/media-stack.bootstrap.json
       BOOTSTRAP_API_PORT: "9100"
+      FULLY_PRECONFIGURED: "1"
       STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
       STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
     volumes:
@@ -595,5 +597,5 @@ services:
     stop_grace_period: 10s
     labels:
       - traefik.enable=true
-      - traefik.http.routers.bootstrap-runner.rule=Host(`bootstrap.local`)
-      - traefik.http.services.bootstrap-runner.loadbalancer.server.port=9100
+      - traefik.http.routers.media-stack-bootstrap.rule=Host(`bootstrap.local`)
+      - traefik.http.services.media-stack-bootstrap.loadbalancer.server.port=9100

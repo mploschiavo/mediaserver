@@ -345,7 +345,7 @@ class ComposeBootstrapService:
         Preflights run inside the container, not on the host.
         """
         network_name = f"{project_name}_default"
-        container_name = f"{project_name}-bootstrap-runner"
+        container_name = f"{project_name}-media-stack-bootstrap"
         api_port = 9100
         bootstrap_env: dict[str, str] = {
             "FULLY_PRECONFIGURED": "1" if self.cfg.apply_initial_preferences else "0",
@@ -517,7 +517,7 @@ class ComposeBootstrapService:
             project_name=project_name,
         )
         network_name = f"{project_name}_default"
-        container_name = f"{project_name}-bootstrap-runner"
+        container_name = f"{project_name}-media-stack-bootstrap"
         wait_seconds = _parse_wait_seconds(self.cfg.wait_timeout, default_seconds=600)
         bootstrap_env: dict[str, str] = {
             "FULLY_PRECONFIGURED": "1" if self.cfg.apply_initial_preferences else "0",
