@@ -584,13 +584,15 @@ services:
         condition: service_healthy
       qbittorrent:
         condition: service_healthy
+    ports:
+      - "${BOOTSTRAP_API_PORT:-9100}:9100"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9100/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-    restart: "no"
+    restart: unless-stopped
     stop_grace_period: 10s
     labels:
       - traefik.enable=true

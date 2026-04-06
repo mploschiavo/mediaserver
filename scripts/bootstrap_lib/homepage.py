@@ -23,6 +23,7 @@ DEFAULT_HOSTS = [
     "tautulli.local",
     "flaresolverr.local",
     "recyclarr.local",
+    "bootstrap-runner.local",
     "authelia.local",
     "authentik.local",
 ]
@@ -73,6 +74,7 @@ PREFERRED_PREFIX_ORDER = [
     "plex",
     "flaresolverr",
     "recyclarr",
+    "bootstrap-runner",
     "authelia",
     "authentik",
 ]
