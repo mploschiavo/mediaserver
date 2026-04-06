@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.deploy_pipeline_service import (  # noqa: E402
+from media_stack.cli.workflows.deploy_pipeline_service import (  # noqa: E402
     DeployPipelineConfig,
     DeployPipelineService,
 )
@@ -31,7 +31,7 @@ class DeployPipelineServiceTests(unittest.TestCase):
                 preconfigure_api_keys="1",
                 apply_initial_preferences="1",
                 auto_download_content="0",
-                config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+                config_file=ROOT / "contracts" / "media-stack.config.json",
                 auth_provider="authelia",
                 auth_middleware="authelia@docker",
                 edge_router_provider="traefik",

@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.jellyseerr import file_ops
+from media_stack.services.apps.jellyseerr import file_ops
 
 
 class _StubSvc:

@@ -6,16 +6,16 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import bootstrap_services.apps.servarr.runtime.hygiene_ops as MODULE
-import bootstrap_services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
-import bootstrap_services.apps.jellyfin.livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
-import bootstrap_services.apps.jellyfin.runtime_ops as JELLYFIN_OPS
-import bootstrap_services.media_hygiene_ops.duplicate_prune as DUPLICATE_PRUNE
-import bootstrap_services.media_hygiene_ops.ipfilter as IPFILTER
-import bootstrap_services.media_hygiene_ops.queue_guardrails as QUEUE_GUARDRAILS
-import bootstrap_services.apps.servarr.runtime.hygiene_ops as HYGIENE_OPS
+import media_stack.services.apps.servarr.runtime.hygiene_ops as MODULE
+import media_stack.services.disk_guardrails_service as DISK_GUARDRAILS_SERVICE
+import media_stack.services.apps.jellyfin.livetv_source_service as JELLYFIN_LIVETV_SOURCE_SERVICE
+import media_stack.services.apps.jellyfin.runtime_ops as JELLYFIN_OPS
+import media_stack.services.media_hygiene_ops.duplicate_prune as DUPLICATE_PRUNE
+import media_stack.services.media_hygiene_ops.ipfilter as IPFILTER
+import media_stack.services.media_hygiene_ops.queue_guardrails as QUEUE_GUARDRAILS
+import media_stack.services.apps.servarr.runtime.hygiene_ops as HYGIENE_OPS
 
 
 class DiskGuardrailsTests(unittest.TestCase):

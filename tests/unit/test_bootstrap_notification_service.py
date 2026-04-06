@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.bootstrap_notification_service import (  # noqa: E402
+from media_stack.cli.workflows.bootstrap_notification_service import (  # noqa: E402
     BootstrapNotificationConfig,
     BootstrapNotificationService,
 )

@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.bootstrap_script_runner_service import (  # noqa: E402
+from media_stack.cli.workflows.bootstrap_script_runner_service import (  # noqa: E402
     BootstrapScriptRunnerConfig,
     BootstrapScriptRunnerService,
 )

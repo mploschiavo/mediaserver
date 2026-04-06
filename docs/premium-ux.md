@@ -45,8 +45,8 @@ Notes:
 ## Refresh/Repair Sequence
 
 ```bash
-bash scripts/bootstrap-all.sh
-bash scripts/verify-flow.sh <NAMESPACE>
+bash bin/bootstrap-all.sh
+bash bin/verify-flow.sh <NAMESPACE>
 ```
 
 Then in Jellyfin:

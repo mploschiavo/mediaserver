@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import bootstrap_services.apps.homepage.runtime_ops as MODULE
+import media_stack.services.apps.homepage.runtime_ops as MODULE
 
 
 class HomepageRuntimeOpsTests(unittest.TestCase):

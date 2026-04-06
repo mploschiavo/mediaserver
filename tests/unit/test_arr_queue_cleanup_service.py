@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.bootstrap_services.arr_queue_cleanup_service import ArrQueueCleanupService
+from media_stack.services.arr_queue_cleanup_service import ArrQueueCleanupService
 
 
 def _bool_cfg(cfg, key, default):

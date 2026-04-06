@@ -9,9 +9,9 @@ from unittest import mock
 import bcrypt
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.jellyseerr.local_admin_ops import ensure_local_admin_user  # noqa: E402
+from media_stack.services.apps.jellyseerr.local_admin_ops import ensure_local_admin_user  # noqa: E402
 
 
 class _StubSvc:

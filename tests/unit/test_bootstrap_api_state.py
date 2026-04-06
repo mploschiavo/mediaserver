@@ -1,9 +1,9 @@
-"""Unit tests for bootstrap_api.state.BootstrapState."""
+"""Unit tests for media_stack.api.state.BootstrapState."""
 
 import time
 import unittest
 
-from bootstrap_api.state import BootstrapState
+from media_stack.api.state import BootstrapState
 
 
 class TestBootstrapState(unittest.TestCase):

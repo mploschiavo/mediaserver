@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.bootstrap_services.apps.jellyfin.cli import jellyfin_bootstrap_api_key_service as svc
+from media_stack.services.apps.jellyfin.cli import jellyfin_bootstrap_api_key_service as svc
 
 
 class JellyfinBootstrapApiKeyServiceTests(unittest.TestCase):

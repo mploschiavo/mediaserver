@@ -24,8 +24,8 @@ Compose flow:
 5. Verify with same Playwright E2E tests (identical test suite, different env vars).
 
 Bootstrap deployment profile:
-- `bootstrap/media-stack.bootstrap.yaml` declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults.
-- Use `bash scripts/validate-bootstrap-profile.sh` to validate profile shape + semantics.
+- `contracts/media-stack.profile.yaml` declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults.
+- Use `bash bin/validate-bootstrap-profile.sh` to validate profile shape + semantics.
 
 ## Profiles
 
@@ -53,7 +53,7 @@ See [architecture.md](architecture.md) for the full endpoint reference.
 
 Example:
 ```bash
-bash scripts/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 ```
 
 ## Namespace Strategy
@@ -62,8 +62,8 @@ Use namespace isolation for environment promotion and safe experimentation.
 
 Example:
 ```bash
-bash scripts/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-bash scripts/install.sh --profile full --namespace media-stack-prod --ingress-domain prod.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-prod --ingress-domain prod.local --node-ip <NODE_IP>
 ```
 
 ## Rebuild-First Operations
@@ -76,12 +76,12 @@ The expected operating posture is rebuild-ready:
 
 One command for full Kubernetes rebuild + verify:
 ```bash
-bash scripts/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Compose rebuild example:
 ```bash
-bash scripts/deploy-stack.sh \
+bash bin/deploy-stack.sh \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev
@@ -89,7 +89,7 @@ bash scripts/deploy-stack.sh \
 
 Compose rebuild with profile auto-defaults:
 ```bash
-bash scripts/deploy-stack.sh --bootstrap-profile-file bootstrap/media-stack.bootstrap.yaml
+bash bin/deploy-stack.sh --bootstrap-profile-file contracts/media-stack.profile.yaml
 ```
 
 ## Runtime Reconciliation
@@ -102,7 +102,7 @@ Both platforms use the same persistent bootstrap HTTP API:
 
 Platform-specific:
 - Kubernetes:
-  - Bootstrap config supplied via ConfigMap from `bootstrap/media-stack.bootstrap.json`.
+  - Bootstrap config supplied via ConfigMap from `contracts/media-stack.config.json`.
   - Optional reconcile CronJobs for periodic re-apply.
   - Auth providers available as optional manifests (`k8s/auth-authelia.yaml`, `k8s/auth-authentik.yaml`).
   - All linuxserver.io images have PUID/PGID=1000; Jellyfin has securityContext.

@@ -7,13 +7,13 @@ from unittest import mock
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.compose.rebuild_platform_adapter import (  # noqa: E402
+from media_stack.core.platforms.compose.rebuild_platform_adapter import (  # noqa: E402
     ComposeRebuildPlatformAdapter,
     ComposeRebuildPlatformConfig,
 )
-from core.platforms.compose.docker_client import DockerContainerState  # noqa: E402
+from media_stack.core.platforms.compose.docker_client import DockerContainerState  # noqa: E402
 
 _TRAEFIK_EDGE_SPEC = {
     "enable_label_key": "traefik.enable",
@@ -337,7 +337,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
             )
             self.assertEqual(
                 jellyfin_labels.get("traefik.http.routers.jellyfin.rule"),
-                "Host(`jellyfin.media-dev.example.com`)",
+                "Host(`jellyfin.old.local`)",
             )
             self.assertNotIn(
                 "authelia@docker",
@@ -690,7 +690,7 @@ class ComposeRebuildPlatformAdapterTests(unittest.TestCase):
                 "00000000000000000000000000000000",
             )
 
-    @mock.patch("core.platforms.compose.rebuild_platform_adapter.time.sleep", return_value=None)
+    @mock.patch("media_stack.core.platforms.compose.rebuild_platform_adapter.time.sleep", return_value=None)
     def test_run_chaos_tests_executes_declared_actions(self, _sleep_mock):
         with tempfile.TemporaryDirectory() as tmp:
             compose_file = Path(tmp) / "docker-compose.yml"

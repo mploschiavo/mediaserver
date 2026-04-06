@@ -11,9 +11,9 @@ Design model reference:
 
 Swaps are controlled by:
 
-1. `technology_bindings` in `bootstrap/media-stack.bootstrap.json`
-2. Per-technology plugin manifests in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
-3. Per-technology adapter/service modules under `scripts/bootstrap_services/...`
+1. `technology_bindings` in `contracts/media-stack.config.json`
+2. Per-technology plugin manifests in `src/media_stack/contracts/plugins/<technology>/manifest.json`
+3. Per-technology adapter/service modules under `src/media_stack/services/...`
 
 ## Manifest Contract Surface
 
@@ -123,18 +123,18 @@ Dashboard app operations:
 App-specific logic should live under one app package.  
 For Jellyfin, the implementation boundary is now:
 
-- `scripts/bootstrap_services/apps/jellyfin/runtime_ops.py`
-- `scripts/bootstrap_services/apps/jellyfin/livetv_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/livetv_source_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/livetv_state_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/libraries_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/home_rails_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/playback_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/plugins_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/prewarm_service.py`
-- `scripts/bootstrap_services/apps/jellyfin/config_models.py`
+- `src/media_stack/services/apps/jellyfin/runtime_ops.py`
+- `src/media_stack/services/apps/jellyfin/livetv_service.py`
+- `src/media_stack/services/apps/jellyfin/livetv_source_service.py`
+- `src/media_stack/services/apps/jellyfin/livetv_state_service.py`
+- `src/media_stack/services/apps/jellyfin/libraries_service.py`
+- `src/media_stack/services/apps/jellyfin/home_rails_service.py`
+- `src/media_stack/services/apps/jellyfin/playback_service.py`
+- `src/media_stack/services/apps/jellyfin/plugins_service.py`
+- `src/media_stack/services/apps/jellyfin/prewarm_service.py`
+- `src/media_stack/services/apps/jellyfin/config_models.py`
 
-Root-level `scripts/bootstrap_services/jellyfin_*` modules are retired.
+Root-level `src/media_stack/services/jellyfin_*` modules are retired.
 Bootstrap handler wiring now calls Jellyfin operations from this app-local boundary directly.
 
 ## Swap Process
@@ -145,7 +145,7 @@ Bootstrap handler wiring now calls Jellyfin operations from this app-local bound
 4. Validate config:
 
 ```bash
-bash scripts/validate-bootstrap-config.sh --config bootstrap/media-stack.bootstrap.json --schema bootstrap/media-stack.bootstrap.schema.json
+bash bin/validate-bootstrap-config.sh --config contracts/media-stack.config.json --schema contracts/media-stack.schema.json
 ```
 
 5. Verify manifest contracts and swap matrix:
@@ -158,7 +158,7 @@ python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 6. Reconcile:
 
 ```bash
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 ```
 
 ## Declarative Wrapper Phases
@@ -188,7 +188,7 @@ Legacy flag aliases remain supported (`--skip-qbit-ensure`, `--skip-sab-ensure`,
 }
 ```
 
-2. Keep `scripts/bootstrap_defaults/plugins/plex/manifest.json` present.
+2. Keep `src/media_stack/contracts/plugins/plex/manifest.json` present.
 3. Add/update `adapter_hooks.media_server_event_plans.plex` (or legacy `media_server_operation_plans`) only if you want Plex-specific runtime operations.
 4. Reconcile; Jellyfin-specific operations are not executed when `media_server=plex`.
 
@@ -214,11 +214,11 @@ Expected result:
 ## Add a New Technology
 
 1. Create manifest:
-   - `scripts/bootstrap_defaults/plugins/<your-tech>/manifest.json`
+   - `src/media_stack/contracts/plugins/<your-tech>/manifest.json`
 2. Add adapter/service module:
-   - download client: `scripts/bootstrap_services/download_client_adapters/<your-tech>.py`
-   - media server: `scripts/bootstrap_services/media_server_adapters/<your-tech>.py`
-   - request manager app: `scripts/bootstrap_services/apps/<your-tech>/service.py`
+   - download client: `src/media_stack/services/download_client_adapters/<your-tech>.py`
+   - media server: `src/media_stack/services/media_server_adapters/<your-tech>.py`
+   - request manager app: `src/media_stack/services/apps/<your-tech>/service.py`
 3. Ensure manifest points to your class path (`module:ClassName`).
 4. Add config block and switch binding key.
 5. Validate + run bootstrap.

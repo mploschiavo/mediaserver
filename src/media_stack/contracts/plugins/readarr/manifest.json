@@ -1,0 +1,15 @@
+{
+  "technology": "readarr",
+  "aliases": ["rdr"],
+  "adapter_classes": {
+    "servarr": "media_stack.services.apps.servarr.technologies.readarr:ReadarrAdapter"
+  },
+  "before_common_steps": {
+    "readarr": "media_stack.services.servarr_adapters:readarr_before_common_steps"
+  },
+  "capability_defaults": {
+    "default_download_category": "books",
+    "monitor_scope_all_value": "entireAuthor",
+    "download_client_dual_priority_fields": true
+  }
+}

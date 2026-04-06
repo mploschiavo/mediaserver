@@ -1,0 +1,10 @@
+{
+  "technology": "tautulli",
+  "aliases": ["tau"],
+  "app_service_classes": {
+    "tautulli_service": "media_stack.services.apps.tautulli.service:TautulliService"
+  },
+  "service_technology_map": {
+    "tautulli_service": "tautulli"
+  }
+}

@@ -22,7 +22,7 @@ This folder contains multiple architecture views.
 ## Regeneration
 
 ```bash
-bash scripts/render-architecture-diagrams.sh
+bash bin/render-architecture-diagrams.sh
 ```
 
 Render tuning is configurable via env vars:
@@ -34,7 +34,7 @@ Render tuning is configurable via env vars:
 Recommended high-legibility render (used for repo snapshots):
 
 ```bash
-MMDC_WIDTH=3200 MMDC_HEIGHT=2400 MMDC_SCALE=2 bash scripts/render-architecture-diagrams.sh
+MMDC_WIDTH=3200 MMDC_HEIGHT=2400 MMDC_SCALE=2 bash bin/render-architecture-diagrams.sh
 ```
 
 Rendering notes:

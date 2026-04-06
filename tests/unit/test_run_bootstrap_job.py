@@ -6,11 +6,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
 SPEC = importlib.util.spec_from_file_location(
     "run_bootstrap_job",
-    ROOT / "scripts" / "cli" / "run_bootstrap_job_main.py",
+    ROOT / "src" / "media_stack" / "cli" / "commands" / "run_bootstrap_job_main.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
@@ -65,7 +65,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 ingress_name="media-stack-ingress",
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
-                config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+                config_file=ROOT / "contracts" / "media-stack.config.json",
             ).timeout_seconds,
             600,
         )
@@ -80,7 +80,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 ingress_name="media-stack-ingress",
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
-                config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+                config_file=ROOT / "contracts" / "media-stack.config.json",
             ).timeout_seconds,
             90,
         )
@@ -95,7 +95,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 ingress_name="media-stack-ingress",
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
-                config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+                config_file=ROOT / "contracts" / "media-stack.config.json",
             ).timeout_seconds,
             7200,
         )
@@ -111,7 +111,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/custom/bootstrap:dev",
             root_dir=ROOT,
-            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            config_file=ROOT / "contracts" / "media-stack.config.json",
         )
         runner = MODULE.RunBootstrapJobRunner(
             cfg=cfg,
@@ -141,7 +141,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            config_file=ROOT / "contracts" / "media-stack.config.json",
         )
         kube = _RecordingKube()
         runner = MODULE.RunBootstrapJobRunner(
@@ -172,7 +172,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            config_file=ROOT / "contracts" / "media-stack.config.json",
         )
         runner = MODULE.RunBootstrapJobRunner(
             cfg=cfg,
@@ -197,7 +197,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            config_file=ROOT / "contracts" / "media-stack.config.json",
             auto_download_content=False,
         )
         runner = MODULE.RunBootstrapJobRunner(
@@ -239,7 +239,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+            config_file=ROOT / "contracts" / "media-stack.config.json",
             auto_download_content=True,
         )
         runner = MODULE.RunBootstrapJobRunner(

@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.kubernetes.services.rebuild_smoke_test_service import (
+from media_stack.core.platforms.kubernetes.services.rebuild_smoke_test_service import (
     RebuildSmokeTestService,
 )  # noqa: E402
 

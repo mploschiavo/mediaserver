@@ -4,12 +4,12 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.kubernetes.rebuild_platform_adapter import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.rebuild_platform_adapter import (  # noqa: E402
     KubernetesRebuildPlatformAdapter,
 )
-from core.platform_adapter import (  # noqa: E402
+from media_stack.core.platform_adapter import (  # noqa: E402
     RebuildPlatformAdapterBuildRequest,
     build_rebuild_platform_adapter,
     normalize_platform_target,

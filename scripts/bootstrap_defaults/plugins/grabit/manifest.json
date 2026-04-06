@@ -1,7 +1,0 @@
-{
-  "technology": "grabit",
-  "aliases": ["grab-it"],
-  "adapter_classes": {
-    "download_client": "bootstrap_services.download_client_adapters.grabit:GrabitDownloadClientAdapter"
-  }
-}

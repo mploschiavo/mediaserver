@@ -4,10 +4,10 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.deploy_stack_main import main  # noqa: E402
-from cli.deploy_cli_config_service import DeployStackConfig  # noqa: E402
+from media_stack.cli.commands.deploy_stack_main import main  # noqa: E402
+from media_stack.cli.workflows.deploy_cli_config_service import DeployStackConfig  # noqa: E402
 
 
 class DeployStackMainTests(unittest.TestCase):
@@ -15,10 +15,10 @@ class DeployStackMainTests(unittest.TestCase):
         cfg = DeployStackConfig(root_dir=Path("/tmp"), platform_target="compose")
         with (
             mock.patch(
-                "cli.deploy_stack_main.parse_deploy_stack_config",
+                "media_stack.cli.commands.deploy_stack_main.parse_deploy_stack_config",
                 return_value=cfg,
             ),
-            mock.patch("cli.deploy_stack_main.DeployStackRunner") as runner_cls,
+            mock.patch("media_stack.cli.commands.deploy_stack_main.DeployStackRunner") as runner_cls,
         ):
             runner_cls.return_value.run.return_value = 0
             rc = main([])
@@ -29,10 +29,10 @@ class DeployStackMainTests(unittest.TestCase):
         cfg = DeployStackConfig(root_dir=Path("/tmp"), platform_target="k8s")
         with (
             mock.patch(
-                "cli.deploy_stack_main.parse_deploy_stack_config",
+                "media_stack.cli.commands.deploy_stack_main.parse_deploy_stack_config",
                 return_value=cfg,
             ),
-            mock.patch("cli.deploy_stack_main.DeployStackRunner") as runner_cls,
+            mock.patch("media_stack.cli.commands.deploy_stack_main.DeployStackRunner") as runner_cls,
         ):
             runner_cls.return_value.run.return_value = 0
             rc = main([])

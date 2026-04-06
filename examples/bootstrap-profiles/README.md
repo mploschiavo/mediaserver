@@ -33,5 +33,5 @@ Chaos testing is profile-driven via `chaos`.
 Validate any profile with:
 
 ```bash
-bash scripts/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-compose-standard.yaml
+bash bin/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-compose-standard.yaml
 ```

@@ -5,19 +5,19 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from cli.bootstrap_core_phases_service import (
+from media_stack.cli.workflows.bootstrap_core_phases_service import (
     BootstrapCorePhasesConfig,
     BootstrapCorePhasesService,
 )
-from core.exceptions import ConfigError
+from media_stack.core.exceptions import ConfigError
 
 
 class BootstrapCorePhasesServiceTests(unittest.TestCase):
     def _base_config(self) -> dict:
         return json.loads(
-            (ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text(encoding="utf-8")
+            (ROOT / "contracts" / "media-stack.config.json").read_text(encoding="utf-8")
         )
 
     def _write_config(self, payload: dict) -> Path:
@@ -30,7 +30,7 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
     def test_run_executes_expected_phases_and_respects_skip_flags(self):
         svc = BootstrapCorePhasesService(
             BootstrapCorePhasesConfig(
-                config_file=ROOT / "bootstrap" / "media-stack.bootstrap.json",
+                config_file=ROOT / "contracts" / "media-stack.config.json",
                 namespace="media-stack",
                 prepare_host_root="/srv/media-stack",
                 phase_skip_flags={"skip_torrent_client_ensure": True},
@@ -61,9 +61,11 @@ class BootstrapCorePhasesServiceTests(unittest.TestCase):
                 "prime_usenet_client_api_key_secret": noop,
                 "prime_request_manager_api_key_secret": noop,
                 "prime_analytics_api_key_secret": noop,
+                "prime_media_server_api_key_secret": noop,
+                "prime_media_server_user_id_secret": noop,
                 "update_bootstrap_configmaps": noop,
-                "recreate_bootstrap_job": noop,
-                "wait_for_bootstrap_job": noop,
+                "ensure_bootstrap_deployment": noop,
+                "wait_for_bootstrap_service": noop,
                 "print_bootstrap_job_logs": noop,
                 "activate_media_server_plugins": noop,
             },

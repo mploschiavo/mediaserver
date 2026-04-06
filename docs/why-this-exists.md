@@ -14,7 +14,7 @@ This project exists to provide a declarative reference architecture where:
 ## Design Intent
 
 - Make fresh rebuilds predictable.
-- Keep behavior convergent through idempotent bootstrap/reconcile flows.
+- Keep behavior convergent through idempotent contracts/reconcile flows.
 - Reduce manual UI work to optional tuning only.
 - Keep multi-namespace environments possible for testing and promotion.
 

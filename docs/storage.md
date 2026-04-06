@@ -46,13 +46,13 @@ Recommended options:
 - Set an appropriate default StorageClass in your cluster.
 - Pass a deploy-time override (no file edits):
 ```bash
-bash scripts/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
+bash bin/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
 ```
 - Or pin claims to a class by editing `k8s/storage-pvc.yaml`.
 - Or use `k8s/pvc-storage.example.yaml` as a class-pinned template.
 - Or use helper script:
 ```bash
-bash scripts/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
+bash bin/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
 ```
 
 ## MicroK8s Custom pvDir (SSD Path)
@@ -83,7 +83,7 @@ Then either:
 2. Set `storageClassName: media-stack-azurefile` in `k8s/storage-pvc.yaml`.
 
 Why RWX matters on multi-node clusters:
-- bootstrap/reconcile jobs may mount multiple app config PVCs at once
+- contracts/reconcile jobs may mount multiple app config PVCs at once
 - RWX-backed claims avoid cross-node attach contention common with RWO-only classes
 
 ## Core Principle
@@ -106,8 +106,8 @@ PVCs + StorageClass and is portable across clusters.
 ## Backup/Restore
 
 ```bash
-bash scripts/backup-stack.sh
-bash scripts/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+bash bin/backup-stack.sh
+bash bin/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 ---

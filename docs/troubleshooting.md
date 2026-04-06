@@ -34,7 +34,7 @@ Point hostnames to the node IP:
 
 - Generate entries:
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
 ```
 
 - Linux/macOS (`/etc/hosts`):
@@ -52,7 +52,7 @@ sudo nano /etc/hosts
   - map each `*.local` host used by this stack to `<NODE_IP>`, or
   - use generated dnsmasq snippets:
 ```bash
-bash scripts/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
+bash bin/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
 
 Then validate from the same client machine:
@@ -67,7 +67,7 @@ If name resolution works but UI still fails:
 - test from private/incognito window
 - run smoke test:
 ```bash
-bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
+bash bin/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 ```
 
 ## 1) Bootstrap Service Fails
@@ -81,7 +81,7 @@ kubectl -n <NAMESPACE> logs deploy/media-stack-bootstrap --tail=300
 # Dashboard
 open http://localhost:9100/
 # Re-trigger with debug logging
-MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
+MEDIA_STACK_LOG_LEVEL=DEBUG bash bin/bootstrap-all.sh --no-resume
 ```
 
 Common causes:
@@ -95,9 +95,9 @@ Common causes:
 - Reconcile credentials and download clients.
 
 ```bash
-bash scripts/ensure-qbit-credentials.sh
-bash scripts/bootstrap-all.sh
-bash scripts/verify-flow.sh <NAMESPACE>
+bash bin/ensure-qbit-credentials.sh
+bash bin/bootstrap-all.sh
+bash bin/verify-flow.sh <NAMESPACE>
 ```
 
 ## 2b) Sonarr/Radarr Show 0 Downloads
@@ -114,9 +114,9 @@ Checklist:
 
 Commands:
 ```bash
-bash scripts/run-prowlarr-auto-indexers.sh
-bash scripts/bootstrap-all.sh --no-resume
-bash scripts/verify-flow.sh <NAMESPACE>
+bash bin/run-prowlarr-auto-indexers.sh
+bash bin/bootstrap-all.sh --no-resume
+bash bin/verify-flow.sh <NAMESPACE>
 ```
 
 ## 3) Arr Imports Fail (Remote Path Mapping)
@@ -127,15 +127,15 @@ Symptoms:
 
 Actions:
 ```bash
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 ```
 
 ## 4) Jellyfin Shows Wizard Again
 
 Run:
 ```bash
-bash scripts/ensure-jellyfin-bootstrap.sh
-bash scripts/bootstrap-all.sh
+bash bin/ensure-jellyfin-bootstrap.sh
+bash bin/bootstrap-all.sh
 ```
 Then retry in private/incognito browser session to avoid stale client state.
 
@@ -148,8 +148,8 @@ Checklist:
 - trigger bootstrap reconcile and library refresh
 
 ```bash
-bash scripts/bootstrap-all.sh
-bash scripts/verify-flow.sh <NAMESPACE>
+bash bin/bootstrap-all.sh
+bash bin/verify-flow.sh <NAMESPACE>
 ```
 
 ## 6) Live TV Channels Show but Guide/Now Is Empty
@@ -157,7 +157,7 @@ bash scripts/verify-flow.sh <NAMESPACE>
 This usually means tuner playlist data exists but guide data is missing or not mapped yet.
 
 Checklist:
-- ensure `jellyfin_livetv.guides` is configured in `bootstrap/media-stack.bootstrap.json`
+- ensure `jellyfin_livetv.guides` is configured in `contracts/media-stack.config.json`
 - keep `jellyfin_livetv.refresh_on_bootstrap=true` so Guide/Now refresh runs each bootstrap
 - keep `jellyfin_livetv.cleanup_duplicates=true` and `jellyfin_livetv.recreate_managed_guides=true`
   so stale/duplicate Live TV bindings are auto-repaired
@@ -172,7 +172,7 @@ Checklist:
 - check bootstrap logs for `requested guide refresh` and `requested channel refresh`
 
 ```bash
-bash scripts/run-bootstrap-job.sh
+bash bin/run-bootstrap-job.sh
 kubectl -n <NAMESPACE> logs job/media-stack-bootstrap --tail=300 | grep -E "Jellyfin Live TV"
 ```
 
@@ -183,8 +183,8 @@ Usually wrong ingress class or DNS/hosts mismatch.
 ```bash
 kubectl get ingressclass
 kubectl -n <NAMESPACE> get ingress
-bash scripts/microk8s-patch-ingress-class.sh <INGRESS_CLASS>
-bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
+bash bin/microk8s-patch-ingress-class.sh <INGRESS_CLASS>
+bash bin/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 ```
 
 ## 8) Kustomize Profile Apply Fails With Load Restrictions
@@ -192,16 +192,16 @@ bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 If your kubectl enforces strict load restrictions, use installer/rebuild scripts. They already include fallback behavior to direct manifest apply.
 
 ```bash
-bash scripts/deploy-stack.sh <NODE_IP>
+bash bin/deploy-stack.sh <NODE_IP>
 ```
 
 ## 9) qBittorrent Login Drift
 
 ```bash
-bash scripts/ensure-qbit-credentials.sh
+bash bin/ensure-qbit-credentials.sh
 # if needed
-bash scripts/reset-qbit-webui-auth.sh
-bash scripts/set-qbit-secret.sh <USERNAME> <PASSWORD>
+bash bin/reset-qbit-webui-auth.sh
+bash bin/set-qbit-secret.sh <USERNAME> <PASSWORD>
 ```
 
 ## 10) Disk Usage Keeps Growing
@@ -214,7 +214,7 @@ kubectl -n <NAMESPACE> logs job/media-stack-bootstrap --tail=300 | grep -E "Disk
 ```
 
 Tune policy:
-- `bootstrap/media-stack.bootstrap.json` -> `disk_guardrails`
+- `contracts/media-stack.config.json` -> `disk_guardrails`
 - adjust `max_used_percent`, `target_used_percent`, and `qbit_cleanup` criteria
 
 ## 11) Jellyfin Collection Click Starts Playback Instead of Opening
@@ -223,7 +223,7 @@ If synthetic curated collections (`Trending`, `Top Rated`, etc.) feel clunky, di
 collection rails and let bootstrap clean them up:
 
 ```bash
-bash scripts/reconcile-jellyfin-home-rails.sh
+bash bin/reconcile-jellyfin-home-rails.sh
 ```
 
 By default this stack now runs in native-first Jellyfin mode:

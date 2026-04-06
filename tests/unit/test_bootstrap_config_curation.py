@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = ROOT / "bootstrap" / "media-stack.bootstrap.json"
+CONFIG_PATH = ROOT / "contracts" / "media-stack.config.json"
 
 
 class BootstrapConfigCurationTests(unittest.TestCase):
@@ -212,7 +212,7 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         hooks = (self.cfg.get("adapter_hooks") or {}).get("bootstrap_job") or {}
         preflight = hooks.get("compose_preflight_handlers") or []
         self.assertIn(
-            "bootstrap_services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
+            "media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
             preflight,
         )
 

@@ -30,8 +30,8 @@ For parallel environments, use unique namespace + domain suffix pairs.
 
 Example:
 ```bash
-bash scripts/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-bash scripts/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+bash bin/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
 
 ### Safe Env-File Workflow
@@ -44,11 +44,11 @@ Templates:
 
 Run with env file:
 ```bash
-bash scripts/with-env.sh <ENV_FILE> bash scripts/install.sh
-bash scripts/with-env.sh <ENV_FILE> bash scripts/deploy-stack.sh
+bash bin/with-env.sh <ENV_FILE> bash bin/install.sh
+bash bin/with-env.sh <ENV_FILE> bash bin/deploy-stack.sh
 ```
 
-`scripts/with-env.sh` applies `DELETE_NAMESPACE=0` when unset, so destructive rebuilds stay opt-in.
+`bin/with-env.sh` applies `DELETE_NAMESPACE=0` when unset, so destructive rebuilds stay opt-in.
 To allow teardown, set both `DELETE_NAMESPACE=1` and
 `DELETE_NAMESPACE_CONFIRM=<namespace-or-compose-project>` (or `I_UNDERSTAND`).
 
@@ -56,18 +56,18 @@ To allow teardown, set both `DELETE_NAMESPACE=1` and
 
 Render local hosts entries:
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
 ```
 
 Render dnsmasq/AdGuard snippets:
 ```bash
-bash scripts/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
+bash bin/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
 
 ## Smoke Validation
 
 ```bash
-bash scripts/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
+bash bin/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
 ```
 
 ## Internal vs External Boundaries
@@ -85,7 +85,7 @@ Reference diagram:
 
 Optional LAN TLS helper:
 ```bash
-bash scripts/setup-lan-tls.sh
+bash bin/setup-lan-tls.sh
 ```
 
 ---

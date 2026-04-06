@@ -5,9 +5,9 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.media_hygiene_ops_service import MediaHygieneOpsService  # noqa: E402
+from media_stack.services.media_hygiene_ops_service import MediaHygieneOpsService  # noqa: E402
 
 
 class MediaHygieneOpsServiceTests(unittest.TestCase):

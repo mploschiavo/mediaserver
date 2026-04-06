@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.jellyfin.config_models import (  # noqa: E402
+from media_stack.services.apps.jellyfin.config_models import (  # noqa: E402
     JellyfinLibrariesConfig,
     JellyfinPlaybackConfig,
     JellyfinPluginsConfig,

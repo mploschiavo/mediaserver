@@ -15,7 +15,7 @@ Avoid permanent UI-only configuration.
 
 ## 3) Idempotent Automation
 
-Every install/bootstrap/reconcile action should be safe to rerun and should converge state rather than duplicate resources.
+Every install/contracts/reconcile action should be safe to rerun and should converge state rather than duplicate resources.
 
 ## 4) Fail Fast, Log Clearly
 

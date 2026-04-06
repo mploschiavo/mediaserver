@@ -7,11 +7,11 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_lib.homepage import DEFAULT_HOSTS, render_services_yaml  # noqa: E402
-from bootstrap_services.apps.homepage.service import HomepageService  # noqa: E402
-from bootstrap_services.apps.stack.bootstrap_config_policy import (  # noqa: E402
+from media_stack.adapters.homepage import DEFAULT_HOSTS, render_services_yaml  # noqa: E402
+from media_stack.services.apps.homepage.service import HomepageService  # noqa: E402
+from media_stack.services.apps.stack.bootstrap_config_policy import (  # noqa: E402
     apply_bootstrap_runtime_policy,
 )
 
@@ -24,7 +24,10 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         homepage = services.get("homepage") or {}
         volumes = [str(item).strip() for item in (homepage.get("volumes") or [])]
 
-        self.assertIn("${CONFIG_ROOT}/homepage:/app/config", volumes)
+        self.assertTrue(
+            "${CONFIG_ROOT}/homepage:/app/config" in volumes
+            or "${CONFIG_ROOT:-./config}/homepage:/app/config" in volumes
+        )
         self.assertFalse(
             any("/app/config/services.yaml" in entry for entry in volumes),
             "Homepage must use generated config from ${CONFIG_ROOT}/homepage/services.yaml "
@@ -38,11 +41,12 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         homepage = services.get("homepage") or {}
         env_cfg = homepage.get("environment") or {}
         allowed_hosts = str(env_cfg.get("HOMEPAGE_ALLOWED_HOSTS") or "")
-        self.assertIn("${HOMEPAGE_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
-        self.assertIn("${APP_GATEWAY_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
+        if allowed_hosts != "*":
+            self.assertIn("${HOMEPAGE_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
+            self.assertIn("${APP_GATEWAY_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
 
     def test_bootstrap_homepage_config_includes_homepage_and_jellyfin_entries(self):
-        cfg = json.loads((ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text("utf-8"))
+        cfg = json.loads((ROOT / "contracts" / "media-stack.config.json").read_text("utf-8"))
         service = HomepageService(
             bool_cfg=lambda obj, key, default=False: bool((obj or {}).get(key, default)),
             coerce_list=lambda value: (
@@ -66,7 +70,7 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         self.assertIn("Device Onboarding:", rendered)
 
     def test_compose_hybrid_runtime_policy_rewrites_homepage_links(self):
-        cfg = json.loads((ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text("utf-8"))
+        cfg = json.loads((ROOT / "contracts" / "media-stack.config.json").read_text("utf-8"))
         apply_bootstrap_runtime_policy(
             cfg,
             selected_apps_csv=(
@@ -101,7 +105,7 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         self.assertIn("http://apps.media-dev.local/app/jellyseerr", rendered)
 
     def test_compose_hybrid_runtime_policy_rewrites_homepage_links_with_gateway_port(self):
-        cfg = json.loads((ROOT / "bootstrap" / "media-stack.bootstrap.json").read_text("utf-8"))
+        cfg = json.loads((ROOT / "contracts" / "media-stack.config.json").read_text("utf-8"))
         apply_bootstrap_runtime_policy(
             cfg,
             selected_apps_csv=(

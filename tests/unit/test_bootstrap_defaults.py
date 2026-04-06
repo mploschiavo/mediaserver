@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from scripts.bootstrap_lib.defaults import load_json_default
+from media_stack.adapters.defaults import load_json_default
 
 
 class BootstrapDefaultsTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class BootstrapDefaultsTests(unittest.TestCase):
 
     def test_repo_maintainerr_default_is_valid(self):
         repo_root = Path(__file__).resolve().parents[2]
-        defaults_dir = repo_root / "scripts" / "bootstrap_defaults"
+        defaults_dir = repo_root / "src" / "media_stack" / "contracts"
         loaded = load_json_default(defaults_dir, "maintainerr_policy.json", {})
         self.assertIsInstance(loaded, dict)
         self.assertEqual(loaded.get("version"), 1)
@@ -35,7 +35,7 @@ class BootstrapDefaultsTests(unittest.TestCase):
 
     def test_repo_maintainerr_rule_library_defaults_are_valid(self):
         repo_root = Path(__file__).resolve().parents[2]
-        rules_dir = repo_root / "scripts" / "bootstrap_defaults" / "maintainerr_rules"
+        rules_dir = repo_root / "src" / "media_stack" / "contracts" / "maintainerr_rules"
         files = sorted(rules_dir.glob("*.json"))
         if not files:
             files = sorted((rules_dir / "json").glob("*.json"))

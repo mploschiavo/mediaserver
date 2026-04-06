@@ -3,13 +3,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.runtime_service_registry import (
+from media_stack.services.runtime_service_registry import (
     get_runtime_context_cfg,
     set_runtime_context_cfg,
 )
-from bootstrap_services.apps.servarr.runtime.factory import _torrent_client_service
+from media_stack.services.apps.servarr.runtime.factory import _torrent_client_service
 
 
 class TorrentClientServiceFactoryTests(unittest.TestCase):
@@ -28,10 +28,10 @@ class TorrentClientServiceFactoryTests(unittest.TestCase):
             },
             "app_service_classes_by_technology": {
                 "qbittorrent": {
-                    "torrent_client_service": "bootstrap_services.apps.qbittorrent.service:QBittorrentService",
+                    "torrent_client_service": "media_stack.services.apps.qbittorrent.service:QBittorrentService",
                 },
                 "transmission": {
-                    "torrent_client_service": "bootstrap_services.apps.transmission.service:TransmissionService",
+                    "torrent_client_service": "media_stack.services.apps.transmission.service:TransmissionService",
                 },
             },
             "runtime_bindings": {

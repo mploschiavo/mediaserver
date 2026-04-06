@@ -3,13 +3,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.runtime_service_registry import (  # noqa: E402
+from media_stack.services.runtime_service_registry import (  # noqa: E402
     resolve_app_service_class,
     set_runtime_context_cfg,
 )
-from bootstrap_services.apps.jellyseerr.service import JellyseerrService  # noqa: E402
+from media_stack.services.apps.jellyseerr.service import JellyseerrService  # noqa: E402
 
 
 class AppServiceResolutionTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class AppServiceResolutionTests(unittest.TestCase):
             {
                 "app_service_classes": {
                     "jellyseerr_service": (
-                        "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                        "media_stack.services.apps.jellyseerr.service:JellyseerrService"
                     )
                 }
             },
@@ -39,18 +39,18 @@ class AppServiceResolutionTests(unittest.TestCase):
                 "technology_aliases": {"openseer": "openseerr"},
                 "app_service_classes": {
                     "request_manager_service": (
-                        "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                        "media_stack.services.apps.jellyseerr.service:JellyseerrService"
                     )
                 },
                 "app_service_classes_by_technology": {
                     "jellyseerr": {
                         "request_manager_service": (
-                            "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                            "media_stack.services.apps.jellyseerr.service:JellyseerrService"
                         )
                     },
                     "openseerr": {
                         "request_manager_service": (
-                            "bootstrap_services.apps.openseerr.service:OpenSeerrService"
+                            "media_stack.services.apps.openseerr.service:OpenSeerrService"
                         )
                     },
                 },
@@ -78,7 +78,7 @@ class AppServiceResolutionTests(unittest.TestCase):
         set_runtime_context_cfg(
             {
                 "app_service_classes": {
-                    "other_service": "bootstrap_services.apps.jellyseerr.service:JellyseerrService"
+                    "other_service": "media_stack.services.apps.jellyseerr.service:JellyseerrService"
                 }
             }
         )

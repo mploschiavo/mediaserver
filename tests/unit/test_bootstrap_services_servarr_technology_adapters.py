@@ -5,18 +5,18 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
-from bootstrap_services.plugin_manifest_loader import (  # noqa: E402
+from media_stack.services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
+from media_stack.services.plugin_manifest_loader import (  # noqa: E402
     build_adapter_hook_defaults,
     load_plugin_manifests,
 )
-from bootstrap_services.servarr_adapters import (  # noqa: E402
+from media_stack.services.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
     noop_before_common_steps,
 )
-from bootstrap_services.apps.servarr.technologies import (  # noqa: E402
+from media_stack.services.apps.servarr.technologies import (  # noqa: E402
     GenericServarrAdapter,
     LidarrAdapter,
     RadarrAdapter,
@@ -26,7 +26,7 @@ from bootstrap_services.apps.servarr.technologies import (  # noqa: E402
     ServarrAdapterFactory,
     SonarrAdapter,
 )
-from bootstrap_services.apps.servarr.types import ClientAuth, ServarrRunConfig  # noqa: E402
+from media_stack.services.apps.servarr.types import ClientAuth, ServarrRunConfig  # noqa: E402
 
 
 class ServarrTechnologyAdaptersTests(unittest.TestCase):
@@ -235,7 +235,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             deps=self._deps(),
             adapter_deps=self._adapter_deps(),
             adapter_class_specs={
-                "sonarr": "bootstrap_services.apps.servarr.technologies.generic:GenericServarrAdapter"
+                "sonarr": "media_stack.services.apps.servarr.technologies.generic:GenericServarrAdapter"
             },
         )
         adapter = factory.create(self._context("sonarr"), noop_before_common_steps)
@@ -251,7 +251,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             factory.create(self._context("sonarr"), noop_before_common_steps)
 
     def test_factory_requires_explicit_mapping_for_custom_impl_module(self):
-        module_name = "bootstrap_services.apps.servarr.technologies.custom_arr"
+        module_name = "media_stack.services.apps.servarr.technologies.custom_arr"
         fake_module = types.ModuleType(module_name)
 
         class CustomArrAdapter(GenericServarrAdapter):
@@ -264,7 +264,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
                 deps=self._deps(),
                 adapter_deps=self._adapter_deps(),
                 adapter_class_specs={
-                    "custom-arr": "bootstrap_services.apps.servarr.technologies.custom_arr:CustomArrAdapter"
+                    "custom-arr": "media_stack.services.apps.servarr.technologies.custom_arr:CustomArrAdapter"
                 },
             ).create(self._context("custom-arr"), noop_before_common_steps)
 

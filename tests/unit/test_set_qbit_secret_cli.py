@@ -6,11 +6,12 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 SCRIPT_PATH = (
     ROOT
-    / "scripts"
-    / "bootstrap_services"
+    / "src"
+    / "media_stack"
+    / "services"
     / "apps"
     / "qbittorrent"
     / "cli"

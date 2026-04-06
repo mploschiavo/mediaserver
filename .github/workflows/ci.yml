@@ -15,8 +15,8 @@ jobs:
 
       - name: Fast Python compile check (migrated scripts)
         run: |
-          python3 -m py_compile scripts/core/*.py scripts/bootstrap_services/*.py
-          python3 -m py_compile scripts/cli/*.py
+          python3 -m py_compile src/media_stack/core/*.py src/media_stack/services/*.py
+          python3 -m py_compile src/media_stack/cli/commands/*.py
 
       - name: Fast migrated unit tests + shell wrapper contracts
         run: |
@@ -48,52 +48,49 @@ jobs:
             mypy==1.11.2
 
       - name: Shell syntax check
-        run: bash -n scripts/*.sh
+        run: bash -n bin/*.sh
 
       - name: Shellcheck
-        run: shellcheck scripts/*.sh
+        run: shellcheck bin/*.sh
 
       - name: Python compile check
         run: |
-          python3 -m py_compile scripts/bootstrap-apps.py
-          python3 -m py_compile scripts/bootstrap_lib/common.py scripts/bootstrap_lib/http_client.py scripts/bootstrap_lib/servarr.py
-          python3 -m py_compile scripts/core/*.py scripts/bootstrap_services/*.py
-          python3 -m py_compile scripts/cli/*.py
+          python3 -m py_compile bin/bootstrap-apps.py
+          python3 -m py_compile src/media_stack/adapters/common.py src/media_stack/adapters/http_client.py src/media_stack/adapters/servarr.py
+          python3 -m py_compile src/media_stack/core/*.py src/media_stack/services/*.py
+          python3 -m py_compile src/media_stack/cli/commands/*.py
           python3 -m py_compile tests/e2e/api/verify_api_relationships.py
 
       - name: Python style (ruff + black)
         run: |
           ~/.local/bin/ruff check \
-            scripts/core \
-            scripts/bootstrap_services \
-            scripts/cli \
+            src/media_stack/core \
+            src/media_stack/services \
+            src/media_stack/cli \
             tests/unit
           ~/.local/bin/black --check \
-            scripts/bootstrap-apps.py \
-            scripts/bootstrap_services/runtime_factory \
-            scripts/bootstrap_services/plugin_manifest_loader.py \
-            scripts/bootstrap_services/technology_catalog.py \
-            scripts/bootstrap_services/config_models_discovery.py \
-            scripts/bootstrap_services/runtime_servarr \
-            scripts/cli/backup_stack_main.py \
-            scripts/cli/restore_stack_main.py \
-            scripts/cli/render_architecture_diagrams_main.py \
-            scripts/cli/setup_lan_tls_main.py \
-            scripts/cli/seed_jellyseerr_local_admin_main.py
+            bin/bootstrap-apps.py \
+            src/media_stack/services/runtime_factory \
+            src/media_stack/services/plugin_manifest_loader.py \
+            src/media_stack/services/technology_catalog.py \
+            src/media_stack/cli/commands/backup_stack_main.py \
+            src/media_stack/cli/commands/restore_stack_main.py \
+            src/media_stack/cli/commands/render_architecture_diagrams_main.py \
+            src/media_stack/cli/commands/setup_lan_tls_main.py \
+            src/media_stack/services/apps/jellyseerr/cli/seed_jellyseerr_local_admin_main.py
 
       - name: Python type checks (mypy)
         run: |
           ~/.local/bin/mypy --config-file mypy.ini \
-            scripts/bootstrap_services/runtime_factory \
-            scripts/bootstrap_services/config_models_discovery.py \
-            scripts/cli/backup_stack_main.py \
-            scripts/cli/restore_stack_main.py \
-            scripts/cli/render_architecture_diagrams_main.py \
-            scripts/cli/setup_lan_tls_main.py \
-            scripts/cli/seed_jellyseerr_local_admin_main.py
+            src/media_stack/services/runtime_factory \
+            src/media_stack/cli/commands/backup_stack_main.py \
+            src/media_stack/cli/commands/restore_stack_main.py \
+            src/media_stack/cli/commands/render_architecture_diagrams_main.py \
+            src/media_stack/cli/commands/setup_lan_tls_main.py \
+            src/media_stack/services/apps/jellyseerr/cli/seed_jellyseerr_local_admin_main.py
 
       - name: Bootstrap config schema validation
-        run: python3 scripts/cli/validate_bootstrap_config_main.py
+        run: python3 src/media_stack/cli/commands/validate_bootstrap_config_main.py
 
       - name: Python unit tests
         run: python3 -m unittest discover -s tests/unit -p 'test_*.py'

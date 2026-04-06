@@ -4,16 +4,16 @@ Maintainerr policy rules are managed as individual JSON/YAML files and assembled
 
 ## Source of Truth
 
-- Base policy scaffold: `scripts/bootstrap_defaults/maintainerr_policy.json`
+- Base policy scaffold: `src/media_stack/contracts/maintainerr_policy.json`
 - Default rule library:
-  - `scripts/bootstrap_defaults/maintainerr_rules/json/*.json`
-  - `scripts/bootstrap_defaults/maintainerr_rules/yaml/*.{yaml,yml}`
+  - `src/media_stack/contracts/maintainerr_rules/json/*.json`
+  - `src/media_stack/contracts/maintainerr_rules/yaml/*.{yaml,yml}`
 - Rendered policy artifact (cluster): `/srv-config/maintainerr/policy.json`
 
 The bootstrap step `ensure_maintainerr_policy` composes the final policy in this order:
 
 1. Base policy defaults
-2. Rule files from default library (`scripts/bootstrap_defaults/maintainerr_rules/**`)
+2. Rule files from default library (`src/media_stack/contracts/maintainerr_rules/**`)
 3. Optional namespace/local overrides (`maintainerr.rules_library.relative_path`)
 4. Inline `maintainerr.policy` overrides from bootstrap JSON
 
@@ -102,7 +102,7 @@ These cover:
 
 ## Config Controls
 
-Configure in `bootstrap/media-stack.bootstrap.json`:
+Configure in `contracts/media-stack.config.json`:
 
 ```json
 "maintainerr": {
@@ -125,13 +125,13 @@ Behavior:
 ## Add a New Rule
 
 1. Add file under either:
-   - `scripts/bootstrap_defaults/maintainerr_rules/json/<nn>-<name>.json`
-   - `scripts/bootstrap_defaults/maintainerr_rules/yaml/<nn>-<name>.yaml`
+   - `src/media_stack/contracts/maintainerr_rules/json/<nn>-<name>.json`
+   - `src/media_stack/contracts/maintainerr_rules/yaml/<nn>-<name>.yaml`
 2. Keep a unique `rule.name` (used for merge/override)
 3. Run bootstrap:
 
 ```bash
-bash scripts/bootstrap-all.sh
+bash bin/bootstrap-all.sh
 ```
 
 4. Verify rendered policy:

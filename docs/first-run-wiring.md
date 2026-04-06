@@ -2,28 +2,28 @@
 
 Use helper script for fastest setup flow:
 ```bash
-bash scripts/fast-first-run.sh <NODE_IP>
+bash bin/fast-first-run.sh <NODE_IP>
 ```
 
 Full zero-to-usable automation:
 ```bash
-bash scripts/deploy-stack.sh <NODE_IP>
-bash scripts/install.sh --profile full --node-ip <NODE_IP>
+bash bin/deploy-stack.sh <NODE_IP>
+bash bin/install.sh --profile full --node-ip <NODE_IP>
 ```
 
 Run declarative bootstrap first:
 ```bash
-bash scripts/set-qbit-secret.sh
-bash scripts/ensure-qbit-credentials.sh
-bash scripts/ensure-sabnzbd-api-access.sh
+bash bin/set-qbit-secret.sh
+bash bin/ensure-qbit-credentials.sh
+bash bin/ensure-sabnzbd-api-access.sh
 # optional override; otherwise auto-discovered from Jellyfin DB:
-bash scripts/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
-bash scripts/run-bootstrap-job.sh
-bash scripts/sync-unpackerr-keys.sh
-bash scripts/run-prowlarr-auto-indexers.sh
-bash scripts/bootstrap-all.sh
+bash bin/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
+bash bin/run-bootstrap-job.sh
+bash bin/sync-unpackerr-keys.sh
+bash bin/run-prowlarr-auto-indexers.sh
+bash bin/bootstrap-all.sh
 ```
-For indexers-as-code, add entries under `prowlarr_indexers` in `bootstrap/media-stack.bootstrap.json` using `bootstrap/prowlarr-indexers.example.json` as a reference, then re-run the bootstrap job.
+For indexers-as-code, add entries under `prowlarr_indexers` in `contracts/media-stack.config.json` using `contracts/prowlarr-indexers.example.json` as a reference, then re-run the bootstrap job.
 
 ## qBittorrent categories
 - tv
@@ -107,25 +107,25 @@ Downloader note:
 - qBittorrent and SABnzbd are transport clients. They do not render media directly in Jellyfin.
 - Media appears in Jellyfin after Arr import into library folders.
 - Bootstrap enforces CDH for Arr apps and wires Jellyfin libraries for Movies/TV/Music/Books.
-- Jellyfin Auto Collections is deployed OTB with a safe default config; add your own list sources in `bootstrap/media-stack.bootstrap.json` (`jellyfin_auto_collections.plugins`) if you want curated auto-generated collections.
+- Jellyfin Auto Collections is deployed OTB with a safe default config; add your own list sources in `contracts/media-stack.config.json` (`jellyfin_auto_collections.plugins`) if you want curated auto-generated collections.
 - Curated Jellyfin home rails can be enabled as an advanced option via
   `jellyfin_home_rails.enabled=true`; default behavior favors native home UX.
 
 If `jellyfin.local` still opens `/web/#/wizard/start`:
 ```bash
-bash scripts/ensure-jellyfin-bootstrap.sh
-bash scripts/bootstrap-all.sh
+bash bin/ensure-jellyfin-bootstrap.sh
+bash bin/bootstrap-all.sh
 ```
 Then retry in a private/incognito browser session to avoid stale local UI state.
 
 ## Troubleshooting
 If bootstrap appears stuck or partially applied:
 ```bash
-MEDIA_STACK_LOG_LEVEL=DEBUG bash scripts/bootstrap-all.sh --no-resume
-bash scripts/stack-status.sh
-bash scripts/verify-flow.sh
+MEDIA_STACK_LOG_LEVEL=DEBUG bash bin/bootstrap-all.sh --no-resume
+bash bin/stack-status.sh
+bash bin/verify-flow.sh
 ```
-`scripts/verify-flow.sh` now includes writable-path checks to catch permission/path mismatches early.
+`bin/verify-flow.sh` now includes writable-path checks to catch permission/path mismatches early.
 
 ---
 

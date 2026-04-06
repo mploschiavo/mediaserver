@@ -1,10 +1,10 @@
-"""Unit tests for bootstrap_api.preflight.api_keys discovery."""
+"""Unit tests for media_stack.api.preflight.api_keys discovery."""
 
 import tempfile
 import unittest
 from pathlib import Path
 
-from bootstrap_api.preflight.api_keys import (
+from media_stack.api.preflight.api_keys import (
     _read_bazarr_api_key,
     _read_ini_api_key,
     _read_xml_api_key,

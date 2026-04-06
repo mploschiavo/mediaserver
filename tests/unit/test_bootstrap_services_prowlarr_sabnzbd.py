@@ -8,10 +8,10 @@ from unittest import mock
 from urllib import parse
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.prowlarr.service import ProwlarrService  # noqa: E402
-from bootstrap_services.apps.sabnzbd.service import SabnzbdService  # noqa: E402
+from media_stack.services.apps.prowlarr.service import ProwlarrService  # noqa: E402
+from media_stack.services.apps.sabnzbd.service import SabnzbdService  # noqa: E402
 
 
 def _field_map(fields):
@@ -53,9 +53,13 @@ class SabnzbdServiceTests(unittest.TestCase):
                     },
                     "",
                 )
+            if mode == "get_config" and section == "servers":
+                return 200, {"config": {"servers": []}}, ""
             if mode == "get_config" and section == "categories":
                 return 200, {"config": {"categories": []}}, ""
             if mode == "set_config" and section == "misc" and keyword:
+                return 200, {"status": True}, ""
+            if mode == "set_config" and section == "servers":
                 return 200, {"status": True}, ""
             if mode == "set_config" and section == "categories":
                 return 200, {"status": True}, ""

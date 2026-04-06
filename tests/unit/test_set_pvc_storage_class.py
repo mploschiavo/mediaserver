@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
 SPEC = importlib.util.spec_from_file_location(
-    "set_pvc_storage_class", ROOT / "scripts" / "cli" / "set_pvc_storage_class_main.py"
+    "set_pvc_storage_class", ROOT / "src" / "media_stack" / "cli" / "commands" / "set_pvc_storage_class_main.py"
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader

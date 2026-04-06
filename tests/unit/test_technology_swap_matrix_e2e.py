@@ -5,15 +5,15 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.enums import BootstrapMode  # noqa: E402
-from bootstrap_services.runtime_factory import (  # noqa: E402
+from media_stack.services.enums import BootstrapMode  # noqa: E402
+from media_stack.services.runtime_factory import (  # noqa: E402
     BootstrapCliArgs,
     BootstrapRuntimeFactoryDependencies,
     BootstrapRuntimeFactoryService,
 )
-from bootstrap_services.download_client_pipeline_service import (  # noqa: E402
+from media_stack.services.download_client_pipeline_service import (  # noqa: E402
     DownloadClientPipelineInputs,
     DownloadClientPipelineService,
 )
@@ -41,7 +41,7 @@ class TechnologySwapMatrixE2ETests(unittest.TestCase):
     def _args() -> BootstrapCliArgs:
         return BootstrapCliArgs(
             mode=BootstrapMode.FULL,
-            config_path="bootstrap/media-stack.bootstrap.json",
+            config_path="contracts/media-stack.config.json",
             config_root="/srv-config",
             wait_timeout=30,
             auto_prowlarr_indexers=False,

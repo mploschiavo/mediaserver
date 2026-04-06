@@ -33,7 +33,7 @@ This stack now supports end-to-end bootstrap automation, but these community pat
 
 ## Practical recommendation order
 
-1. Keep using `scripts/deploy-stack.sh` for baseline automation.
+1. Keep using `bin/deploy-stack.sh` for baseline automation.
 2. Add Recyclarr for quality profile consistency.
 3. Introduce Buildarr only when you need full declarative lifecycle management for additional apps.
 4. Test any scale-to-zero strategy on non-critical services first.

@@ -8,11 +8,11 @@
 By default, this stack is hostPath-free for portability.
 Enable Intel GPU pass-through only when needed:
 ```bash
-NAMESPACE=media-stack bash scripts/toggle-jellyfin-intel-gpu.sh enable
+NAMESPACE=media-stack bash bin/toggle-jellyfin-intel-gpu.sh enable
 ```
 Disable it again:
 ```bash
-NAMESPACE=media-stack bash scripts/toggle-jellyfin-intel-gpu.sh disable
+NAMESPACE=media-stack bash bin/toggle-jellyfin-intel-gpu.sh disable
 ```
 
 ## Check

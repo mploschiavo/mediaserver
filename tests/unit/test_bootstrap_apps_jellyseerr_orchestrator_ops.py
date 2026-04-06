@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.apps.jellyseerr import orchestrator_ops as module  # noqa: E402
+from media_stack.services.apps.jellyseerr import orchestrator_ops as module  # noqa: E402
 
 
 class _StubSvc:
@@ -23,6 +23,15 @@ class _StubSvc:
     @staticmethod
     def normalize_url(url: str) -> str:
         return str(url or "").rstrip("/")
+
+    @staticmethod
+    def normalize_base_path(path: str) -> str:
+        token = str(path or "").strip()
+        if not token:
+            return ""
+        if not token.startswith("/"):
+            token = "/" + token
+        return token.rstrip("/")
 
     @staticmethod
     def wait_for_service(_name: str, _base_url: str, _path: str, _timeout: int) -> None:

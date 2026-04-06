@@ -5,10 +5,10 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
 MODULE = importlib.import_module(
-    "bootstrap_services.apps.prowlarr.cli.run_prowlarr_auto_indexers_main"
+    "media_stack.services.apps.prowlarr.cli.run_prowlarr_auto_indexers_main"
 )
 
 

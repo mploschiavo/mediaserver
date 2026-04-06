@@ -6,9 +6,9 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from bootstrap_services.media_server_adapters import (  # noqa: E402
+from media_stack.services.media_server_adapters import (  # noqa: E402
     EmbyMediaServerAdapter,
     JellyfinMediaServerAdapter,
     MediaServerAdapterBase,
@@ -172,13 +172,13 @@ class MediaServerAdaptersTests(unittest.TestCase):
         ctx, _calls = self._context()
         adapter = MediaServerAdapterFactory(
             adapter_class_specs={
-                "my-media": "bootstrap_services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
+                "my-media": "media_stack.services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
             }
         ).create("my-media", ctx)
         self.assertIsInstance(adapter, JellyfinMediaServerAdapter)
 
     def test_factory_requires_explicit_mapping_for_custom_backend(self):
-        module_name = "bootstrap_services.media_server_adapters.my_media"
+        module_name = "media_stack.services.media_server_adapters.my_media"
         fake_module = types.ModuleType(module_name)
 
         class MyMediaServerAdapter(MediaServerAdapterBase):
@@ -191,7 +191,7 @@ class MediaServerAdaptersTests(unittest.TestCase):
             adapter = MediaServerAdapterFactory(
                 adapter_class_specs={
                     "my-media": (
-                        "bootstrap_services.media_server_adapters.my_media:MyMediaServerAdapter"
+                        "media_stack.services.media_server_adapters.my_media:MyMediaServerAdapter"
                     )
                 }
             ).create("my-media", ctx)

@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.cli.bootstrap_post_job_actions_service import (
+from media_stack.cli.workflows.bootstrap_post_job_actions_service import (
     BootstrapPostJobAction,
     BootstrapPostJobActionsService,
 )

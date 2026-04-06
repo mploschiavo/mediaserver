@@ -31,14 +31,14 @@ TCL model behavior depends on OS family:
 
 Use namespace-aware host mapping:
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
-bash scripts/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
+bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
 
 ## Validate Reachability
 
 ```bash
-bash scripts/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
+bash bin/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
 ```
 
 ---

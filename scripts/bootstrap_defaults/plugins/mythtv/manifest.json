@@ -1,7 +1,0 @@
-{
-  "technology": "mythtv",
-  "aliases": ["myth"],
-  "adapter_classes": {
-    "media_server": "bootstrap_services.media_server_adapters.mythtv:MythTvMediaServerAdapter"
-  }
-}

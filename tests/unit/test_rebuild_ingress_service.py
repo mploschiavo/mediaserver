@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from core.platforms.kubernetes.services.rebuild_ingress_service import (  # noqa: E402
+from media_stack.core.platforms.kubernetes.services.rebuild_ingress_service import (  # noqa: E402
     RebuildIngressConfig,
     RebuildIngressService,
 )

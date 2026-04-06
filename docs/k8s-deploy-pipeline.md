@@ -3,7 +3,7 @@
 ## Command
 
 ```bash
-bash scripts/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-k8s-standard.yaml
+bash bin/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-k8s-standard.yaml
 ```
 
 ## Pipeline Overview
@@ -32,7 +32,7 @@ deploy-stack.sh
 
 ## Phase 6: Apply Manifests
 
-**File:** `scripts/core/platforms/kubernetes/services/rebuild_manifest_apply_service.py`
+**File:** `src/media_stack/core/platforms/kubernetes/services/rebuild_manifest_apply_service.py`
 
 1. Run `kubectl kustomize k8s/profiles/standard/`
 2. Pipe output through `rebuild_manifest_overrides_service.py`:
@@ -68,7 +68,7 @@ The separate `prowlarr-auto-indexers-job.yaml` has been replaced by `POST /actio
 
 ## Phase 10: Wait for Deployments
 
-**File:** `scripts/core/platforms/kubernetes/services/rebuild_deployments_wait_service.py`
+**File:** `src/media_stack/core/platforms/kubernetes/services/rebuild_deployments_wait_service.py`
 
 For each Deployment with replicas > 0:
 ```bash
@@ -79,7 +79,7 @@ kubectl -n <namespace> rollout status deploy/<name> --timeout=20m
 
 ## Phase 12: Bootstrap Pipeline
 
-**File:** `scripts/cli/deploy_pipeline_service.py` → `bootstrap-all.sh` → `bootstrap_all_main.py`
+**File:** `src/media_stack/cli/commands/deploy_pipeline_service.py` → `bootstrap-all.sh` → `bootstrap_all_main.py`
 
 ### State file isolation
 
@@ -87,7 +87,7 @@ State file: `.state/bootstrap-all-<namespace>-<platform>.json`
 
 This prevents compose and K8s runs from sharing checkpoint state.
 
-### Phase Plan (from `bootstrap/media-stack.bootstrap.json`)
+### Phase Plan (from `contracts/media-stack.config.json`)
 
 ```
 bootstrap_all_main.py
@@ -125,7 +125,7 @@ bootstrap_all_main.py
 
 ## Phase 4 Detail: Bootstrap Job Runner
 
-**File:** `scripts/cli/run_bootstrap_job_main.py`
+**File:** `src/media_stack/cli/commands/run_bootstrap_job_main.py`
 
 This orchestrates the main K8s bootstrap Job:
 
@@ -206,7 +206,7 @@ bootstrap_apps_main.py (inside K8s Job pod)
 
 ## Phase 6 Detail: Auto-Indexer Job
 
-**File:** `scripts/bootstrap_services/apps/prowlarr/cli/prowlarr_auto_indexers_runtime.py`
+**File:** `src/media_stack/services/apps/prowlarr/cli/prowlarr_auto_indexers_runtime.py`
 
 ```
 prowlarr_auto_indexers_runtime.py
@@ -258,34 +258,34 @@ because both use namespace `media-dev`. Resume mode (default) skips completed ph
 ### Orchestration
 | File | Purpose |
 |------|---------|
-| `scripts/deploy-stack.sh` | Entry point |
-| `scripts/cli/deploy_stack_main.py` | Main deploy runner |
-| `scripts/cli/deploy_pipeline_service.py` | Pipeline step helpers |
-| `scripts/cli/deploy_cli_config_service.py` | Config/profile parsing |
+| `bin/deploy-stack.sh` | Entry point |
+| `src/media_stack/cli/commands/deploy_stack_main.py` | Main deploy runner |
+| `src/media_stack/cli/commands/deploy_pipeline_service.py` | Pipeline step helpers |
+| `src/media_stack/cli/commands/deploy_cli_config_service.py` | Config/profile parsing |
 
 ### Bootstrap
 | File | Purpose |
 |------|---------|
-| `scripts/cli/bootstrap_all_main.py` | Phase plan executor |
-| `scripts/cli/bootstrap_component_resolver.py` | Phase/component resolution from JSON |
-| `scripts/cli/run_bootstrap_job_main.py` | Bootstrap K8s Job orchestrator |
-| `scripts/cli/bootstrap_manifest_service.py` | ConfigMap + Job creation |
-| `scripts/cli/bootstrap_job_wait_service.py` | Job status polling |
-| `scripts/cli/bootstrap_apps_main.py` | Bootstrap HTTP API (runs inside Job pod) |
-| `bootstrap/media-stack.bootstrap.json` | Phase plan config |
+| `src/media_stack/cli/commands/bootstrap_all_main.py` | Phase plan executor |
+| `src/media_stack/cli/commands/bootstrap_component_resolver.py` | Phase/component resolution from JSON |
+| `src/media_stack/cli/commands/run_bootstrap_job_main.py` | Bootstrap K8s Job orchestrator |
+| `src/media_stack/cli/commands/bootstrap_manifest_service.py` | ConfigMap + Job creation |
+| `src/media_stack/cli/commands/bootstrap_job_wait_service.py` | Job status polling |
+| `src/media_stack/cli/commands/bootstrap_apps_main.py` | Bootstrap HTTP API (runs inside Job pod) |
+| `contracts/media-stack.config.json` | Phase plan config |
 
 ### K8s Platform
 | File | Purpose |
 |------|---------|
-| `scripts/core/platforms/kubernetes/plugin.py` | K8s platform plugin |
-| `scripts/core/platforms/kubernetes/services/rebuild_manifest_apply_service.py` | Kustomize + apply |
-| `scripts/core/platforms/kubernetes/services/rebuild_manifest_overrides_service.py` | Namespace/domain overrides |
-| `scripts/core/platforms/kubernetes/services/rebuild_deployments_wait_service.py` | Rollout waiting |
+| `src/media_stack/core/platforms/kubernetes/plugin.py` | K8s platform plugin |
+| `src/media_stack/core/platforms/kubernetes/services/rebuild_manifest_apply_service.py` | Kustomize + apply |
+| `src/media_stack/core/platforms/kubernetes/services/rebuild_manifest_overrides_service.py` | Namespace/domain overrides |
+| `src/media_stack/core/platforms/kubernetes/services/rebuild_deployments_wait_service.py` | Rollout waiting |
 
 ### Auto-Indexer
 | File | Purpose |
 |------|---------|
-| `scripts/bootstrap_services/apps/prowlarr/cli/prowlarr_auto_indexers_runtime.py` | Auto-indexer orchestrator |
+| `src/media_stack/services/apps/prowlarr/cli/prowlarr_auto_indexers_runtime.py` | Auto-indexer orchestrator |
 | `k8s/prowlarr-auto-indexers-job.yaml` | Auto-indexer Job manifest |
 
 ### Manifests

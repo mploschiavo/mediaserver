@@ -1,6 +1,6 @@
 # Software Design Models
 
-This page captures the internal design models used by the bootstrap/runtime system after the refactor.
+This page captures the internal design models used by the contracts/runtime system after the refactor.
 
 ## 1) Software Component Model
 
@@ -37,12 +37,12 @@ This page captures the internal design models used by the bootstrap/runtime syst
 - Manifest-first registration contracts for adapters/services/operations.
 - Typed config and explicit operation plans as runtime contracts.
 - Generic shared operation names to avoid technology-specific branding in base orchestration.
-- Thin shell entrypoints + Python implementations under `scripts/cli/` and `scripts/bootstrap_services/`.
+- Thin shell entrypoints + Python implementations under `src/media_stack/cli/commands/` and `src/media_stack/services/`.
 
 ## Regenerate Diagrams
 
 ```bash
-bash scripts/render-architecture-diagrams.sh
+bash bin/render-architecture-diagrams.sh
 ```
 
 ---

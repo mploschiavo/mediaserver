@@ -85,7 +85,7 @@ Add these to your `/etc/hosts` file (Linux/Mac) or `C:\Windows\System32\drivers\
 
 Or generate the full list automatically:
 ```bash
-bash scripts/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
 ```
 
 ### Open the Dashboard
@@ -162,7 +162,7 @@ Then use `http://<YOUR_IP>:8096` as the Jellyfin server URL on devices.
 For nicer hostnames on all devices, set up DNS:
 ```bash
 # Generate AdGuard/dnsmasq config (point *.local to your server)
-bash scripts/render-dnsmasq-snippet.sh <YOUR_IP> <NAMESPACE>
+bash bin/render-dnsmasq-snippet.sh <YOUR_IP> <NAMESPACE>
 ```
 
 ---

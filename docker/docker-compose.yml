@@ -163,17 +163,17 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
-      - /opt/media-stack/scripts/cli/generate_envoy_config_main.py
+      - /opt/media-stack/src/media_stack/cli/commands/generate_envoy_config_main.py
     environment:
       COMPOSE_FILE: /compose/docker-compose.yml
       CONFIG_ROOT: /runtime-config
       BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
-      BOOTSTRAP_CONFIG_FILE: /bootstrap/media-stack.bootstrap.json
+      BOOTSTRAP_CONFIG_FILE: /contracts/media-stack.config.json
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT:-./config}:/runtime-config:rw
-      - ../bootstrap:/bootstrap:ro
+      - ../contracts:/contracts:ro
     restart: "no"
 
   envoy:
@@ -553,17 +553,17 @@ services:
     container_name: media-stack-bootstrap
     command:
       - python3
-      - /opt/media-stack/scripts/bootstrap-apps.py
+      - /opt/media-stack/bin/bootstrap-apps.py
       - --serve
       - --config
-      - /bootstrap/media-stack.bootstrap.json
+      - /contracts/media-stack.config.json
       - --config-root
       - /srv-config
       - --wait-timeout
       - "600"
     environment:
       BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
-      BOOTSTRAP_CONFIG_FILE: /bootstrap/media-stack.bootstrap.json
+      BOOTSTRAP_CONFIG_FILE: /contracts/media-stack.config.json
       BOOTSTRAP_API_PORT: "9100"
       FULLY_PRECONFIGURED: "1"
       BOOTSTRAP_WAIT_INTERVAL_SECONDS: "3"
@@ -582,7 +582,7 @@ services:
       TAUTULLI_API_KEY: "${TAUTULLI_API_KEY:-}"
     volumes:
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
-      - ../bootstrap:/bootstrap:ro
+      - ../contracts:/contracts:ro
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

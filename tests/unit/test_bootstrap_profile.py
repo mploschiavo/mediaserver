@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.core.bootstrap_profile import (
+from media_stack.core.bootstrap_profile import (
     BootstrapProfileConfig,
     normalize_selected_apps_csv,
 )

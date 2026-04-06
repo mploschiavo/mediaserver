@@ -608,7 +608,7 @@ def main() -> int:
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
     parser.add_argument(
         "--config",
-        default="bootstrap/media-stack.bootstrap.json",
+        default="contracts/media-stack.config.json",
         help="Bootstrap config file used for expected roots",
     )
     parser.add_argument("--timeout", type=int, default=120)

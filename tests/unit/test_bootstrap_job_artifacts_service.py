@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.cli.bootstrap_job_artifacts_service import BootstrapJobArtifactsService
+from media_stack.cli.workflows.bootstrap_job_artifacts_service import BootstrapJobArtifactsService
 
 
 class BootstrapJobArtifactsServiceTests(unittest.TestCase):
