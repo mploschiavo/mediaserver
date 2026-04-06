@@ -83,6 +83,7 @@ _DEFAULT_SERVICE_PORTS: dict[str, int] = {
     "maintainerr": 6246,
     "flaresolverr": 8191,
     "tautulli": 8181,
+    "plex": 32400,
     "unpackerr": 5656,
     "recyclarr": 80,
     "bootstrap-runner": 9100,
