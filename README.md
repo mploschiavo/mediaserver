@@ -70,7 +70,7 @@ bash scripts/render-architecture-diagrams.sh
 Priority order:
 1. Git-managed manifests, plugin manifests, and bootstrap config
 2. Generated/managed Kubernetes Secrets
-3. Reconcile scripts and bootstrap Job/CronJob
+3. Bootstrap HTTP API service and reconcile CronJobs
 4. Runtime app state
 
 If UI state conflicts with bootstrap config, reconciliation pushes runtime back toward declared configuration.
@@ -98,7 +98,7 @@ Runtime override scope is intentionally narrow:
 - `adapter_hooks.media_server_operation_plans`
 - `adapter_hooks.runner_phase_scripts` (bootstrap wrapper phase->script mapping)
 - `adapter_hooks.bootstrap_all` (ordered phase plan + component wiring for bootstrap-all)
-- `adapter_hooks.bootstrap_job` (ordered phase plan + phase-binding support for run-bootstrap-job)
+- `adapter_hooks.bootstrap_job` (ordered phase plan + phase-binding support for bootstrap service API)
 - `adapter_hooks.scale_policy` (`apps` + optional `scale_to_zero_apps` guardrails)
 
 Registration overrides are intentionally blocked in runtime config:
@@ -403,7 +403,7 @@ bash scripts/deploy-verify.sh 192.168.1.60 media-stack-dev power-user
 
 ## Bootstrap Runner Image
 
-Bootstrap Jobs/CronJobs run from a prebuilt image instead of mounting Python source via ConfigMap.
+The bootstrap service and CronJobs run from a prebuilt image.
 
 Build and push to local registry:
 ```bash
@@ -419,6 +419,7 @@ BOOTSTRAP_RUNNER_IMAGE=192.168.1.60:30002/library/media-stack-bootstrap-runner:l
 The same `BOOTSTRAP_RUNNER_IMAGE` env var is respected by:
 - `scripts/run-bootstrap-job.sh`
 - `scripts/run-prowlarr-auto-indexers.sh`
+- `docker/docker-compose.yml` (bootstrap-runner service)
 
 ## Runtime Config Overlays and Resume
 
@@ -485,6 +486,11 @@ The bootstrap pipeline configures these OTB when enabled:
 - Maintainerr app (`maintainerr.<domain>`) + policy-as-code artifact generation (`/srv-config/maintainerr/policy.json`) from per-rule JSON/YAML library (`scripts/bootstrap_defaults/maintainerr_rules/{json,yaml}/`)
 
 ## Service URLs
+
+Every app supports three routing patterns through Envoy (hybrid mode):
+- `appname.local` — simple host-based
+- `appname.<stack>.local` — namespace-qualified (e.g. `sonarr.media-stack.local`)
+- `apps.<stack>.local/app/appname` — path-prefix through gateway
 
 Use your ingress domain suffix (default `.local`):
 - `homepage.<domain>`
@@ -583,7 +589,7 @@ Layout details: [docs/repo-layout.md](docs/repo-layout.md)
 
 - Idempotent automation over manual UI steps
 - Secure-by-default secret handling with deterministic regeneration
-- Drift reconciliation through bootstrap job + reconcile cron
+- Drift reconciliation through bootstrap HTTP API + reconcile cron
 - Observable install/bootstraps with phase logs and diagnostics
 - Namespace-first environment isolation
 

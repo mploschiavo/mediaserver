@@ -1,23 +1,28 @@
 # Networking Model
 
-## Ingress and Hostnames
+## Routing Model
 
-The stack exposes services through Kubernetes ingress host rules.
+Every app in the stack is reachable through **three consistent route patterns** via Envoy:
 
-Default hostnames (domain suffix is configurable):
-- `homepage.<domain>`
-- `jellyfin.<domain>`
-- `jellyseerr.<domain>`
-- `sonarr.<domain>`
-- `radarr.<domain>`
-- `lidarr.<domain>`
-- `readarr.<domain>`
-- `bazarr.<domain>`
-- `prowlarr.<domain>`
-- `qbittorrent.<domain>`
-- `sabnzbd.<domain>`
-- `maintainerr.<domain>`
-- `tautulli.<domain>`
+| Pattern | Example | Use Case |
+|---|---|---|
+| Simple host | `sonarr.local` | Bookmarks, direct access |
+| Namespace-qualified host | `sonarr.media-stack.local` | Multi-environment isolation |
+| Path-prefix (gateway) | `apps.media-stack.local/app/sonarr` | Single endpoint, upstream routers |
+
+All 19 services in the standard profile support all three patterns:
+bazarr, bootstrap-runner, envoy, flaresolverr, homepage, jellyfin, jellyseerr,
+lidarr, maintainerr, plex, prowlarr, qbittorrent, radarr, readarr, recyclarr,
+sabnzbd, sonarr, tautulli, unpackerr.
+
+The route strategy is set in the bootstrap profile (`routing.strategy`):
+- **hybrid** (default): all three patterns active
+- **path-prefix**: gateway path-prefix routes only
+- **subdomain**: host-based routes only
+
+The subdomain base is derived from the gateway host. For example:
+- Gateway `apps.media-stack.local` → subdomain base `media-stack.local` → `sonarr.media-stack.local`
+- Gateway `apps.media-dev.local` → subdomain base `media-dev.local` → `sonarr.media-dev.local`
 
 ## Namespace-Aware Domains
 

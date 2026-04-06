@@ -82,10 +82,21 @@ plus integrations for Radarr, Sonarr, Jellyseerr, and Tautulli with API-level te
 Policy rules are maintained as a config-as-code library (one file per rule) under
 `scripts/bootstrap_defaults/maintainerr_rules/{json,yaml}/` and rendered to `/srv-config/maintainerr/policy.json`.
 
-## Traefik
-Reverse proxy for nice local hostnames.
+## Bootstrap Runner
+Persistent HTTP API service for stack configuration and operational control.
+Exposes an interactive dashboard, action dispatch, SSE log streaming, webhook notifications,
+runtime config toggles, and action retry on port 9100.
+Available at `bootstrap-runner.local`, `bootstrap-runner.<stack>.local`, or `/app/bootstrap-runner`.
 
-## Plex / Tautulli / FlareSolverr
+## Envoy
+Edge gateway proxy for path-prefix and host-based routing.
+Automatically configured by the bootstrap service from the bootstrap profile.
+Every app gets three route patterns: `app.local`, `app.<stack>.local`, and `/app/<name>`.
+
+## Tautulli
+Media analytics and monitoring. Runs in the default compose and K8s standard profiles.
+
+## Plex / FlareSolverr
 Optional extras.
 When FlareSolverr is enabled in bootstrap config, bootstrap reconciles a Prowlarr FlareSolverr indexer proxy and runs a proxy connection test automatically.
 

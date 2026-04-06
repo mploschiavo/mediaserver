@@ -82,14 +82,15 @@ live_tv_defaults:
 ## Install Tiers
 
 - `minimal`: Jellyfin/Jellyseerr/Prowlarr/qBittorrent/Homepage
-- `standard`: `minimal` + Sonarr/Radarr/Bazarr/SABnzbd/Maintainerr/Unpackerr/FlareSolverr
-- `full`: all supported apps enabled
+- `standard`: `minimal` + Sonarr/Radarr/Lidarr/Readarr/Bazarr/SABnzbd/Tautulli/Maintainerr/Unpackerr/FlareSolverr + Envoy + Bootstrap Service
+- `full`: all supported apps enabled (adds Plex)
 
 Automatic content behavior policy:
 
 - `minimal` and `standard` default to manual content mode (`auto_download_content: false`)
 - `full` defaults to automatic content mode (`auto_download_content: true`)
 - All tiers can still preconfigure API keys and initial app preferences
+- `auto_download_content` can be toggled at runtime via the bootstrap API: `POST /config {"auto_download_content": true}`
 
 Use `apps` for explicit overrides on top of the tier.
 

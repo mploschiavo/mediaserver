@@ -1,25 +1,39 @@
 stateDiagram-v2
-  [*] --> ParseConfig
+  [*] --> StartAPIServer
+  StartAPIServer --> WaitForAction: --serve mode (persistent)
+  StartAPIServer --> ParseConfig: --auto-run or POST /actions/bootstrap
+
+  WaitForAction --> ParseConfig: POST /actions/bootstrap
+  WaitForAction --> RunIndexerPipeline: POST /actions/auto-indexers
+  WaitForAction --> EnvoyConfigGen: POST /actions/envoy-config
+  WaitForAction --> Reconcile: POST /actions/reconcile
+
   ParseConfig --> LoadPluginManifests
   LoadPluginManifests --> MergeHookDefaults
   MergeHookDefaults --> ResolveBindings
   ResolveBindings --> BuildRuntime
 
-  BuildRuntime --> RunPrecheckPlan
-  RunPrecheckPlan --> RunDownloadClientPhases
-  RunDownloadClientPhases --> RunServarrPhases
-  RunServarrPhases --> RunMediaServerPlan
-  RunMediaServerPlan --> RunPostServarrPlans
-  RunPostServarrPlans --> RunIndexerPipeline
-  RunIndexerPipeline --> RunStatusPhase
-  RunStatusPhase --> [*]
+  BuildRuntime --> RunPrecheckPlan: parallel preflight handlers
+  RunPrecheckPlan --> RunDownloadClientPhases: qBit + SAB in parallel
+  RunDownloadClientPhases --> RunServarrPhases: Sonarr/Radarr/Lidarr/Readarr in parallel
+  RunServarrPhases --> RunPostServarrPreMedia: Bazarr + Jellyseerr + Maintainerr in parallel
+  RunPostServarrPreMedia --> RunMediaServerPlan: 6 Jellyfin steps in parallel
+  RunMediaServerPlan --> RunPostServarrPostMedia: Homepage + Guardrails + Hygiene in parallel
+  RunPostServarrPostMedia --> RunIndexerPipeline: 4 parallel test workers
+  RunIndexerPipeline --> ActionComplete
+  ActionComplete --> EnvoyConfigGen: auto-queue after first bootstrap
+  EnvoyConfigGen --> WaitForAction
 
-  RunServarrPhases --> RetryableFailure: transient http/k8s error
+  ActionComplete --> RetryAction: retry > 0
+  RetryAction --> ParseConfig: exponential backoff
+
+  RunServarrPhases --> RetryableFailure: transient http error
   RetryableFailure --> RunServarrPhases: retry decorator
   RetryableFailure --> FatalFailure: max retries
-  FatalFailure --> [*]
+
+  ActionComplete --> FireWebhooks: notify registered URLs
+  FatalFailure --> FireWebhooks
+  FireWebhooks --> WaitForAction
 
   LoadPluginManifests --> FatalFailure: invalid manifest contract
   ResolveBindings --> FatalFailure: missing or unbound technology
-  RunDownloadClientPhases --> FatalFailure: missing required operation handler
-  RunMediaServerPlan --> FatalFailure: invalid media-server plan

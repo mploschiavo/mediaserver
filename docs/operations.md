@@ -38,6 +38,52 @@ bash scripts/set-qbit-secret.sh <USERNAME> <PASSWORD>
 
 ## Bootstrap and Reconcile
 
+The bootstrap runner is a persistent HTTP API service on both platforms.
+
+### Bootstrap API (port 9100)
+
+Trigger actions via HTTP:
+```bash
+# Full bootstrap pipeline
+curl -X POST http://localhost:9100/actions/bootstrap
+
+# With runtime overrides
+curl -X POST http://localhost:9100/actions/bootstrap \
+  -H "Content-Type: application/json" \
+  -d '{"auto_download_content": true, "retry": 2}'
+
+# Individual actions
+curl -X POST http://localhost:9100/actions/auto-indexers
+curl -X POST http://localhost:9100/actions/envoy-config
+curl -X POST http://localhost:9100/actions/restart-apps
+curl -X POST http://localhost:9100/actions/sync-indexers
+curl -X POST http://localhost:9100/actions/reconcile
+
+# Runtime config toggles (persist across actions)
+curl -X POST http://localhost:9100/config \
+  -H "Content-Type: application/json" \
+  -d '{"auto_download_content": true}'
+
+# Hot-reload profile YAML
+curl -X POST http://localhost:9100/reload
+
+# Check status
+curl http://localhost:9100/status
+
+# Stream logs (SSE)
+curl http://localhost:9100/logs/stream
+
+# Register webhook
+curl -X POST http://localhost:9100/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"url": "http://example.com/hook"}'
+
+# Interactive dashboard
+open http://localhost:9100/
+```
+
+### Script-based bootstrap (alternative)
+
 ```bash
 bash scripts/bootstrap-all.sh
 bash scripts/run-bootstrap-job.sh

@@ -2,8 +2,31 @@
 
 This platform is organized as a control plane plus a data plane.
 
-- **Control plane**: deployment scripts, bootstrap job, reconcile logic, and verification tooling.
+- **Control plane**: deployment scripts, persistent bootstrap HTTP API service, reconcile logic, and verification tooling.
 - **Data plane**: downloader clients, Arr import pipeline, media libraries, and playback services.
+
+## Bootstrap HTTP API Service
+
+The bootstrap runner is a persistent Deployment (not a one-shot Job) exposing an HTTP API on port 9100.
+It serves as the operational control surface for both Kubernetes and Docker Compose.
+
+Key endpoints:
+- `POST /actions/{name}` — trigger actions: `bootstrap`, `auto-indexers`, `restart-apps`, `sync-indexers`, `envoy-config`, `reconcile`
+- `GET /status` — full state with phases, preflights, app status, action history
+- `GET /config` / `POST /config` — runtime toggles (e.g. `auto_download_content`)
+- `GET /logs/stream` — Server-Sent Events (SSE) real-time log stream
+- `POST /webhooks` — register webhook URLs for action completion/error notifications
+- `POST /reload` — hot-reload bootstrap profile YAML
+- `GET /healthz` / `GET /readyz` — Kubernetes liveness/readiness probes
+- `GET /` — interactive HTML dashboard
+
+Features:
+- **Action-level retry** with exponential backoff (`{"retry": 2}` in POST body or `BOOTSTRAP_ACTION_MAX_RETRIES` env)
+- **Parallel phase execution** — phases with `"parallel": true` in config run steps concurrently
+- **Parallel download client preparation** — qBittorrent and SABnzbd configure concurrently
+- **Parallel auto-indexer testing** — configurable via `AUTO_INDEXER_PARALLEL_WORKERS` (default 4)
+- **Webhook notifications** on action complete/error
+- **Runtime config toggles** persist across actions and merge into every action as defaults
 
 ## Pluggable Layers and Contracts
 
@@ -123,9 +146,10 @@ flowchart LR
 flowchart TD
   GIT[Git Config + Plugin Manifests] --> INSTALL[Install and Rebuild Scripts]
   INSTALL --> K8S[Kubernetes Resources]
-  INSTALL --> BOOT[Bootstrap Job]
-  BOOT --> APPS[Manifest-Bound Runtime Operations]
-  APPS --> VERIFY[verify-flow and smoke tests]
+  INSTALL --> BOOT[Bootstrap Service API]
+  BOOT --> ACTIONS[On-Demand Actions via HTTP]
+  ACTIONS --> APPS[Manifest-Bound Runtime Operations]
+  APPS --> VERIFY[verify-flow and Playwright tests]
   VERIFY --> GIT
 ```
 
