@@ -447,6 +447,7 @@ def _take_config_snapshot(args: argparse.Namespace) -> None:
     """Save a timestamped snapshot of all service config files."""
     import json as _json
     import re
+    import time
     from pathlib import Path
 
     config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
