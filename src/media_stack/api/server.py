@@ -133,17 +133,37 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     # --- Auth ---
 
     def _check_auth(self) -> bool:
-        """Check Basic Auth for sensitive endpoints. GET is public, POST/PUT/DELETE require auth."""
+        """Check Basic Auth.
+
+        CONTROLLER_AUTH modes:
+          "all"   — protect all endpoints (dashboard + API + write)
+          "write" — protect POST/PUT/DELETE only (default when password is set)
+          "none"  — no auth (default when no password)
+
+        /healthz and /readyz are always public (K8s probes).
+        """
         path = self.path.split("?")[0]
-        if self.command == "GET":
-            return True  # All GET endpoints are read-only and public
-        needs_auth = self.command in ("POST", "PUT", "DELETE")
-        if not needs_auth:
+
+        # Probes are always public
+        if path in ("/healthz", "/readyz"):
             return True
+
         username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         password = os.environ.get("STACK_ADMIN_PASSWORD", "")
-        if not password:
+        auth_mode = os.environ.get("CONTROLLER_AUTH", "").strip().lower()
+
+        # Determine effective mode
+        if not auth_mode:
+            auth_mode = "write" if password else "none"
+
+        if auth_mode == "none":
             return True
+        if auth_mode == "write" and self.command == "GET":
+            return True
+
+        # Auth required — check credentials
+        if not password:
+            return True  # No password configured, can't authenticate
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Basic "):
             try:
@@ -561,6 +581,15 @@ tr:hover{{background:#162230}}</style></head><body>
                 self._json_response(400, {"error": "JSON body required"})
                 return
             self._json_response(200, config_svc.update_routing(body, self.action_trigger))
+            return
+
+        # POST /api/restore — restore config from backup JSON
+        if self.path == "/api/restore":
+            body = self._read_json_body()
+            if not body or "service_configs" not in body:
+                self._json_response(400, {"error": "backup JSON with service_configs required"})
+                return
+            self._json_response(200, config_svc.restore_backup(body))
             return
 
         # POST /api/snapshot — take a config snapshot now
