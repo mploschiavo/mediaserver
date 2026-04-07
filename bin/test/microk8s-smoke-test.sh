@@ -3,4 +3,4 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-exec "$SCRIPT_DIR/lib/run-python-cli.sh" backup_stack_main.py "$@"
+exec "$SCRIPT_DIR/../lib/run-python-cli.sh" microk8s_smoke_test_main.py "$@"

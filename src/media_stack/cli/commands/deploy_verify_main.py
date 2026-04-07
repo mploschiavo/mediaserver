@@ -97,24 +97,24 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     info("Phase 2/5: verify end-to-end flow")
-    _run(scripts_dir / "verify-flow.sh", namespace)
+    _run(scripts_dir / "test" / "verify-flow.sh", namespace)
 
     info("Phase 3/5: ingress smoke test")
-    _run(scripts_dir / "microk8s-smoke-test.sh", node_ip, namespace)
+    _run(scripts_dir / "test" / "microk8s-smoke-test.sh", node_ip, namespace)
 
     if bool(args.run_playwright):
         info("Phase 4/5: Playwright ingress smoke")
-        _run(scripts_dir / "run-playwright-smoke.sh", node_ip, namespace)
+        _run(scripts_dir / "test" / "run-playwright-smoke.sh", node_ip, namespace)
     else:
         info("Phase 4/5: Playwright ingress smoke skipped (RUN_PLAYWRIGHT=0)")
 
     info("Phase 5/5: final status snapshot")
-    _run(scripts_dir / "stack-status.sh", env={"NAMESPACE": namespace})
+    _run(scripts_dir / "utils" / "stack-status.sh", env={"NAMESPACE": namespace})
 
     print()
     print(f"[OK] Deploy + verification complete for namespace '{namespace}'.")
     print("[INFO] Render hosts entries if needed:")
-    print(f"  bash bin/render-hosts-example.sh {node_ip} {namespace}")
+    print(f"  bash bin/utils/render-hosts-example.sh {node_ip} {namespace}")
     return 0
 
 

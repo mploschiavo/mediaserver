@@ -10,6 +10,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _find_script(bin_dir: Path, name: str) -> Path:
+    """Find a script in bin/ or its subdirectories."""
+    direct = bin_dir / name
+    if direct.is_file():
+        return direct
+    for child in bin_dir.iterdir():
+        if child.is_dir() and not child.name.startswith("."):
+            candidate = child / name
+            if candidate.is_file():
+                return candidate
+    return direct  # fall through — let caller handle missing file
+
+
 @dataclass(frozen=True)
 class DeployScriptRunnerConfig:
     root_dir: Path
@@ -31,7 +44,7 @@ class DeployScriptRunnerService:
             cmd = [sys.executable, "-m", script_name, *list(args)]
             label = script_name
         else:
-            script_path = self.cfg.root_dir / "bin" / script_name
+            script_path = _find_script(self.cfg.root_dir / "bin", script_name)
             cmd = ["bash", str(script_path), *list(args)]
             label = script_name
 

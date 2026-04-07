@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NODE_IP="${1:-${STACK_NODE_IP:-}}"
 NAMESPACE="${2:-${NAMESPACE:-media-stack}}"
 
@@ -10,7 +10,7 @@ if [[ -z "${NODE_IP}" ]]; then
   exit 1
 fi
 
-HOSTS_LINE="$(bash "$ROOT_DIR/bin/render-hosts-example.sh" "$NODE_IP" "$NAMESPACE")"
+HOSTS_LINE="$(bash "$ROOT_DIR/bin/utils/render-hosts-example.sh" "$NODE_IP" "$NAMESPACE")"
 HOSTS_CSV="$(echo "$HOSTS_LINE" | cut -d' ' -f2- | tr ' ' ',')"
 
 echo "[INFO] Running Playwright ingress tests"

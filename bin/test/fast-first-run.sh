@@ -2,4 +2,5 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/lib/run-python-cli.sh" set_pvc_storage_class_main.py "$@"
+
+exec "$SCRIPT_DIR/../lib/run-python-cli.sh" fast_first_run_main.py "$@"
