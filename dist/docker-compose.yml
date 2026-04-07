@@ -223,7 +223,7 @@ services:
       - info
     ports:
       - "${TRAEFIK_HTTP_PORT:-80}:80"
-      - "${TRAEFIK_DASHBOARD_PORT:-8088}:9901"
+      - "${ENVOY_ADMIN_PORT:-9901}:9901"
     volumes:
       - ${CONFIG_ROOT:-./config}/envoy:/etc/envoy:ro
     restart: unless-stopped
@@ -534,7 +534,7 @@ services:
       - ${CONFIG_ROOT:-./config}/sabnzbd:/config
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
     ports:
-      - "${SABNZBD_PUBLISHED_PORT:-8085}:8080"
+      - "${SABNZBD_PORT:-8085}:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
