@@ -1481,6 +1481,22 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 errors.append(f"{app}: {exc}")
 
+        # Bazarr: regenerate apikey in config/config.yaml
+        bazarr_cfg = Path(config_root) / "bazarr" / "config" / "config.yaml"
+        if bazarr_cfg.is_file():
+            try:
+                import yaml
+                with open(bazarr_cfg) as f:
+                    bcfg = yaml.safe_load(f) or {}
+                new_key = uuid.uuid4().hex
+                bcfg.setdefault("auth", {})["apikey"] = new_key
+                with open(bazarr_cfg, "w") as f:
+                    yaml.dump(bcfg, f, default_flow_style=False)
+                os.environ["BAZARR_API_KEY"] = new_key
+                rotated["BAZARR_API_KEY"] = new_key
+            except Exception as exc:
+                errors.append(f"bazarr: {exc}")
+
         # SABnzbd: regenerate api_key in sabnzbd.ini
         sab_ini = Path(config_root) / "sabnzbd" / "sabnzbd.ini"
         if sab_ini.is_file():
@@ -1592,7 +1608,23 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 errors.append(f"{app}: {exc}")
 
-        # 4. Update env var for this controller process
+        # 4. Bazarr — update auth in config.yaml
+        try:
+            bazarr_cfg = Path(config_root) / "bazarr" / "config" / "config.yaml"
+            if bazarr_cfg.is_file():
+                import yaml
+                with open(bazarr_cfg) as f:
+                    bcfg = yaml.safe_load(f) or {}
+                bcfg.setdefault("auth", {})["username"] = username
+                bcfg["auth"]["password"] = new_password
+                bcfg["auth"]["type"] = "form"
+                with open(bazarr_cfg, "w") as f:
+                    yaml.dump(bcfg, f, default_flow_style=False)
+                updated.append("bazarr")
+        except Exception as exc:
+            errors.append(f"bazarr: {exc}")
+
+        # 5. Update env var for this controller process
         os.environ["STACK_ADMIN_PASSWORD"] = new_password
 
         # 5. Persist to K8s secret
