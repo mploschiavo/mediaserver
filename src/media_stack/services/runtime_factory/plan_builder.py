@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from ..runtime_models import BootstrapRuntime
-from .models import BootstrapPlanSummary
+from ..runtime_models import ControllerRuntime
+from .models import ControllerPlanSummary
 
 
-def build_plan_summary(runtime: BootstrapRuntime) -> BootstrapPlanSummary:
-    return BootstrapPlanSummary(
+def build_plan_summary(runtime: ControllerRuntime) -> ControllerPlanSummary:
+    return ControllerPlanSummary(
         mode=runtime.mode,
         arr_apps=len(runtime.arr_apps),
         prowlarr_indexers=len(runtime.prowlarr_indexers),

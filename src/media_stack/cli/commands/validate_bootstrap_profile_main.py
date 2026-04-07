@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from media_stack.core.bootstrap_profile import BootstrapProfileConfig
+from media_stack.core.bootstrap_profile import ControllerProfileConfig
 
 
 def _format_path(path_parts: list[object]) -> str:
@@ -74,7 +74,7 @@ def main() -> int:
         return 1
 
     try:
-        BootstrapProfileConfig.from_dict(payload, source_path=config_path)
+        ControllerProfileConfig.from_dict(payload, source_path=config_path)
     except ValueError as exc:
         print(f"[ERR] Bootstrap profile semantic validation failed: {exc}", file=sys.stderr)
         return 1

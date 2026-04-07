@@ -9,13 +9,13 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class BootstrapNotificationConfig:
+class ControllerNotificationConfig:
     alert_webhook_url: str
 
 
 @dataclass
-class BootstrapNotificationService:
-    cfg: BootstrapNotificationConfig
+class ControllerNotificationService:
+    cfg: ControllerNotificationConfig
 
     def notify(self, status: str, message: str) -> None:
         if not self.cfg.alert_webhook_url:

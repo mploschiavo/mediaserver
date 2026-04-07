@@ -10,7 +10,7 @@ from ..top_level_config_model import TopLevelBootstrapConfig
 from .models import DeepMergeFn
 
 
-class BootstrapConfigLoader:
+class ControllerConfigLoader:
     def __init__(self, *, deep_merge_objects: DeepMergeFn):
         self._deep_merge_objects = deep_merge_objects
 

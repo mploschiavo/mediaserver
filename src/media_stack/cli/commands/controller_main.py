@@ -23,9 +23,9 @@ from media_stack.services.controller_service import (
 from media_stack.services.enums import BootstrapMode
 from media_stack.services.operation_wiring import build_runner_event_registry
 from media_stack.services.runtime_factory import (
-    BootstrapCliArgs,
-    BootstrapRuntimeFactoryDependencies,
-    BootstrapRuntimeFactoryService,
+    ControllerCliArgs,
+    ControllerRuntimeFactoryDependencies,
+    ControllerRuntimeFactoryService,
 )
 
 logger = logging.getLogger("bootstrap_service")
@@ -243,8 +243,8 @@ def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = Fa
         "build_sab_remote_path_mappings",
     )
 
-    runtime_factory = BootstrapRuntimeFactoryService(
-        deps=BootstrapRuntimeFactoryDependencies(
+    runtime_factory = ControllerRuntimeFactoryService(
+        deps=ControllerRuntimeFactoryDependencies(
             load_bootstrap_default_json=runtime_platform.load_bootstrap_default_json,
             deep_merge_objects=runtime_platform.deep_merge_objects,
             bool_cfg=runtime_platform.bool_cfg,
@@ -257,7 +257,7 @@ def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = Fa
     )
     resolved_config = _resolve_config_path(args.config) or args.config
     build_result = runtime_factory.build_from_cli(
-        BootstrapCliArgs(
+        ControllerCliArgs(
             mode=BootstrapMode.from_cli(args.mode),
             config_path=resolved_config,
             config_root=args.config_root,
@@ -358,23 +358,28 @@ def _dispatch_action(
     state: object,
 ) -> None:
     """Route an action to the appropriate handler."""
+    from media_stack.cli.commands.action_handlers import (
+        action_bootstrap, action_finalize, action_auto_indexers,
+        action_restart_apps, action_sync_indexers, action_envoy_config,
+        action_reconcile,
+    )
     _apply_overrides(overrides)
     runtime_platform.log(f"[ACTION] {action_name}: starting (overrides={overrides})")
 
     if action_name == "bootstrap":
-        _action_bootstrap(args, state)
+        action_bootstrap(args, state, _run_preflights, _persist_preflight_keys_to_secret, _build_runner)
     elif action_name == "finalize":
-        _action_finalize(args, state)
+        action_finalize(args, state, _build_runner, _run_post_bootstrap)
     elif action_name == "auto-indexers":
-        _action_auto_indexers(args, state)
+        action_auto_indexers(args, _build_runner)
     elif action_name == "restart-apps":
-        _action_restart_apps(args, state)
+        action_restart_apps(args, state, _load_handler_specs, _run_handler_specs)
     elif action_name == "sync-indexers":
-        _action_sync_indexers(args, state)
+        action_sync_indexers(args, _build_runner)
     elif action_name == "envoy-config":
-        _action_envoy_config(args, state)
+        action_envoy_config(args)
     elif action_name == "reconcile":
-        _action_reconcile(args, state)
+        action_reconcile(args, _build_runner)
     else:
         raise ValueError(f"Unknown action: {action_name}")
 
@@ -426,223 +431,8 @@ def _persist_preflight_keys_to_secret(state: object) -> None:
         runtime_platform.log(f"[WARN] Failed to persist keys to K8s secret: {exc}")
 
 
-def _action_bootstrap(args: argparse.Namespace, state: object) -> None:
-    """Core bootstrap: preflights + configure arr apps + download clients.
-
-    Post-servarr steps (Jellyfin plugins/Live TV/prewarm, disk guardrails,
-    media hygiene, app restarts) run in the separate 'finalize' action
-    so bootstrap completes fast and downloads can start immediately.
-    """
-    run_preflights = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
-    if run_preflights:
-        _run_preflights(state, args)
-        _persist_preflight_keys_to_secret(state)
-
-    runner, runtime_state = _build_runner(args)
-    runner.run(runtime_state)
-    runtime_platform.log("[OK] Bootstrap completed successfully")
-
-
-def _prune_stale_files(args: argparse.Namespace, log: object) -> None:
-    """Clean up files that grow without bounds: XMLTV guides, old logs, temp files."""
-    from pathlib import Path
-
-    config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
-    pruned = 0
-
-    # Jellyfin XMLTV guide files — keep only 2 newest per directory
-    for xmltv_dir in [
-        config_root.parent / "data" / "transcode" / "xmltv",
-        config_root / "jellyfin" / "data" / "xmltv",
-        Path("/srv-stack/data/transcode/xmltv"),
-        Path("/cache/xmltv"),
-    ]:
-        if xmltv_dir.is_dir():
-            xmls = sorted(xmltv_dir.glob("*.xml"), key=lambda f: f.stat().st_mtime, reverse=True)
-            for old in xmls[2:]:
-                try:
-                    sz = old.stat().st_size
-                    old.unlink()
-                    pruned += 1
-                    log(f"[INFO] Pruned stale XMLTV guide: {old.name} ({sz // 1048576}MB)")
-                except Exception:
-                    pass
-
-    # Jellyfin log rotation — keep only 5 newest log files
-    jf_log_dir = config_root / "jellyfin" / "log"
-    if jf_log_dir.is_dir():
-        logs = sorted(jf_log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
-        for old in logs[5:]:
-            try:
-                old.unlink()
-                pruned += 1
-            except Exception:
-                pass
-
-    # Prowlarr/Sonarr/Radarr log rotation — keep 5 newest
-    for app in ("prowlarr", "sonarr", "radarr", "lidarr", "readarr"):
-        log_dir = config_root / app / "logs"
-        if log_dir.is_dir():
-            app_logs = sorted(log_dir.glob("*.txt"), key=lambda f: f.stat().st_mtime, reverse=True)
-            app_logs += sorted(log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
-            for old in app_logs[5:]:
-                try:
-                    old.unlink()
-                    pruned += 1
-                except Exception:
-                    pass
-
-    if pruned:
-        log(f"[INFO] Stale file cleanup: pruned {pruned} files")
-
-
-def _take_config_snapshot(args: argparse.Namespace) -> None:
-    """Save a timestamped snapshot of all service config files."""
-    import json as _json
-    import re
-    import time
-    from pathlib import Path
-
-    config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
-    snapshot_dir = config_root / ".snapshots"
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-    # Collect key config files
-    snapshot: dict[str, str] = {}
-    patterns = [
-        ("sonarr", "config.xml"), ("radarr", "config.xml"), ("lidarr", "config.xml"),
-        ("readarr", "config.xml"), ("prowlarr", "config.xml"),
-        ("bazarr", "config/config.yaml"), ("sabnzbd", "sabnzbd.ini"),
-        ("jellyseerr", "settings.json"), ("homepage", "services.yaml"),
-    ]
-    for app, rel in patterns:
-        path = config_root / app / rel
-        if path.is_file():
-            try:
-                text = path.read_text(encoding="utf-8", errors="replace")
-                # Redact API keys for safety
-                text = re.sub(r"<ApiKey>[^<]+</ApiKey>", "<ApiKey>***</ApiKey>", text)
-                text = re.sub(r"api_key\s*=\s*\S+", "api_key = ***", text)
-                text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
-                snapshot[f"{app}/{rel}"] = text
-            except Exception:
-                pass
-
-    ts = time.strftime("%Y%m%dT%H%M%S")
-    out = snapshot_dir / f"snapshot-{ts}.json"
-    out.write_text(_json.dumps(snapshot, indent=2), encoding="utf-8")
-
-    # Keep only last 24 snapshots
-    existing = sorted(snapshot_dir.glob("snapshot-*.json"), reverse=True)
-    for old in existing[24:]:
-        old.unlink(missing_ok=True)
-
-
-def _action_finalize(args: argparse.Namespace, state: object) -> None:
-    """Deferred post-bootstrap: Jellyfin tuning, disk guardrails, hygiene, app restarts.
-
-    Runs after core bootstrap completes. These steps are important but
-    not required for downloads to start working.
-    """
-    runner, runtime_state = _build_runner(args)
-    # Post-servarr steps: Bazarr, Jellyseerr, Maintainerr, Jellyfin (libraries,
-    # plugins, Live TV, playback, home rails, auto-collections, prewarm).
-    try:
-        runner._run_post_servarr_steps(runtime_state)
-    except Exception as exc:
-        runtime_platform.log(f"[WARN] Finalize post-servarr: {exc}")
-
-    # Post-bootstrap handlers: restart apps, unpackerr config.
-    _run_post_bootstrap(state, args)
-    runtime_platform.log("[OK] Finalize completed")
-
-
-def _action_auto_indexers(args: argparse.Namespace, state: object) -> None:
-    """Run Prowlarr auto-indexer discovery (indexer phase only, not full pipeline)."""
-    runtime_platform.log("[INFO] Auto-indexer: building runner with auto_prowlarr_indexers=True")
-    runner, runtime_state = _build_runner(args, auto_prowlarr_indexers=True)
-    # Only run the indexer steps — skip prechecks, servarr pipeline, and post-servarr.
-    try:
-        runner._run_runner_plan_phase(runtime_state, "indexer_steps")
-    except Exception:
-        # Fall back to full run if indexer_steps phase isn't available.
-        runtime_platform.log("[WARN] indexer_steps phase not available, running full pipeline")
-        runner.run(runtime_state)
-    runtime_platform.log("[OK] Auto-indexer discovery complete")
-
-
-def _action_restart_apps(args: argparse.Namespace, state: object) -> None:
-    """Restart all apps to pick up config changes."""
-    specs = _load_handler_specs("container_post_bootstrap_handlers")
-    restart_specs = [s for s in specs if s.get("name") == "restart_apps"]
-    if restart_specs:
-        _run_handler_specs(restart_specs, state, args, phase_label="RESTART")
-    else:
-        runtime_platform.log("[WARN] No restart_apps handler found in config")
-
-
-def _action_sync_indexers(args: argparse.Namespace, state: object) -> None:
-    """Trigger Prowlarr ApplicationIndexerSync."""
-    from media_stack.services.apps.prowlarr import pipeline_service as prowlarr_svc
-
-    prowlarr_url = os.environ.get("PROWLARR_URL", "http://prowlarr:9696")
-    api_key = runtime_secrets.read_api_key(args.config_root, "prowlarr")
-    runtime_platform.log(f"[INFO] Triggering indexer sync on {prowlarr_url}")
-    prowlarr_svc.trigger_indexer_sync(prowlarr_url, api_key, log=runtime_platform.log)
-    runtime_platform.log("[OK] Indexer sync triggered")
-
-
-def _action_envoy_config(args: argparse.Namespace, state: object) -> None:
-    """Regenerate Envoy routing config from profile and bootstrap config."""
-    from media_stack.cli.commands.generate_envoy_config_main import main as generate_envoy_config
-
-    # Set env vars expected by the envoy config generator.
-    # On K8s, Envoy listens on non-privileged 8080; on compose, it listens on 80.
-    is_k8s = bool(os.environ.get("K8S_NAMESPACE"))
-    default_listener_port = "8080" if is_k8s else "80"
-    os.environ.setdefault("COMPOSE_FILE", "/dev/null")
-    os.environ.setdefault("CONFIG_ROOT", args.config_root)
-    os.environ.setdefault("ENVOY_LISTENER_PORT", default_listener_port)
-    runtime_platform.log("[INFO] Generating Envoy config")
-    generate_envoy_config()
-    runtime_platform.log("[OK] Envoy config written")
-
-    # Restart Envoy to pick up the new config.
-    try:
-        namespace = os.environ.get("K8S_NAMESPACE", "")
-        if namespace:
-            from kubernetes import client as k8s_client, config as k8s_config
-
-            try:
-                k8s_config.load_incluster_config()
-            except Exception:
-                k8s_config.load_kube_config()
-            apps_v1 = k8s_client.AppsV1Api()
-            # Trigger rollout restart by patching the pod template annotation.
-            import time as _time
-
-            patch = {
-                "spec": {
-                    "template": {
-                        "metadata": {
-                            "annotations": {
-                                "bootstrap.media-stack.io/restart-trigger": str(int(_time.time()))
-                            }
-                        }
-                    }
-                }
-            }
-            apps_v1.patch_namespaced_deployment("envoy", namespace, body=patch)
-            runtime_platform.log("[OK] Envoy deployment restart triggered")
-    except Exception as exc:
-        runtime_platform.log(f"[WARN] Could not restart Envoy: {exc}")
-
-
-def _action_reconcile(args: argparse.Namespace, state: object) -> None:
-    """Lightweight reconcile — re-run bootstrap in idempotent mode."""
-    runner, runtime_state = _build_runner(args)
-    runner.run(runtime_state)
-    runtime_platform.log("[OK] Reconcile complete")
+## Action handlers: see action_handlers.py
+## Maintenance (snapshots, pruning): see maintenance.py
 
 
 # ---------------------------------------------------------------------------
@@ -692,7 +482,7 @@ def _run_serve(args: argparse.Namespace) -> None:
     Actions are triggered via POST /actions/{name} or POST /run.
     """
     from media_stack.api.server import _fire_webhooks, start_api_server
-    from media_stack.api.state import BootstrapState
+    from media_stack.api.state import ControllerState
 
     # Resolve config path: try CLI arg, env var, then image-embedded path.
     resolved = _resolve_config_path(args.config)
@@ -733,7 +523,7 @@ def _run_serve(args: argparse.Namespace) -> None:
     except Exception as exc:
         runtime_platform.log(f"[WARN] API key pre-discovery failed: {exc}")
 
-    state = BootstrapState()
+    state = ControllerState()
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
     action_queue: queue.Queue[tuple[str, dict]] = queue.Queue()
     action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
@@ -778,12 +568,14 @@ def _run_serve(args: argparse.Namespace) -> None:
             _t.sleep(60)  # Wait 1 min before first snapshot
             while True:
                 try:
-                    _take_config_snapshot(args)
+                    from media_stack.cli.commands.maintenance import take_config_snapshot
+                    take_config_snapshot(args)
                 except Exception as exc:
                     runtime_platform.log(f"[WARN] Config snapshot failed: {exc}")
                 # Prune stale cache/transcode files to prevent disk growth
                 try:
-                    _prune_stale_files(args, runtime_platform.log)
+                    from media_stack.cli.commands.maintenance import prune_stale_files
+                    prune_stale_files(args, runtime_platform.log)
                 except Exception as exc:
                     runtime_platform.log(f"[WARN] Stale file cleanup failed: {exc}")
                 _t.sleep(snapshot_interval)

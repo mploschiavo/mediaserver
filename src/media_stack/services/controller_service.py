@@ -16,7 +16,7 @@ from .enums import BootstrapMode, RunnerEvent
 from .media_server_adapters import MediaServerAdapterContext, MediaServerAdapterFactory
 from .runner_operations_service import RunnerOperationRegistry
 from .runner_phase_plan_service import run_phase_plan as run_runner_phase_plan
-from .runtime_models import BootstrapRuntime
+from .runtime_models import ControllerRuntime
 from .runtime_service_registry import (
     get_runtime_context_cfg,
     resolve_app_service_class,
@@ -53,7 +53,7 @@ class ControllerService:
     ) -> Any:
         return self.deps.operations.invoke_event(event, handler, *args, **kwargs)
 
-    def _technology_aliases(self, rt: BootstrapRuntime) -> dict[str, str]:
+    def _technology_aliases(self, rt: ControllerRuntime) -> dict[str, str]:
         aliases: dict[str, str] = {}
         raw = (rt.adapter_hooks_cfg or {}).get("technology_aliases") or {}
         if isinstance(raw, dict):
@@ -65,18 +65,18 @@ class ControllerService:
                 aliases[src] = dst
         return aliases
 
-    def _canonical_tech_key(self, raw: str, rt: BootstrapRuntime) -> str:
+    def _canonical_tech_key(self, raw: str, rt: ControllerRuntime) -> str:
         token = str(raw or "").strip().lower()
         if not token:
             return ""
         return self._technology_aliases(rt).get(token, token)
 
-    def _runner_operation_plans(self, rt: BootstrapRuntime) -> dict[str, Any]:
+    def _runner_operation_plans(self, rt: ControllerRuntime) -> dict[str, Any]:
         hooks = rt.adapter_hooks_cfg or {}
         plans = hooks.get("runner_event_plans") or hooks.get("runner_operation_plans") or {}
         return plans if isinstance(plans, dict) else {}
 
-    def _run_runner_plan_phase(self, rt: BootstrapRuntime, phase_name: str) -> bool:
+    def _run_runner_plan_phase(self, rt: ControllerRuntime, phase_name: str) -> bool:
         return run_runner_phase_plan(
             runtime=rt,
             plan_cfg=self._runner_operation_plans(rt),
@@ -86,7 +86,7 @@ class ControllerService:
             log=self.deps.log,
         )
 
-    def _wait_for_servarr_services(self, rt: BootstrapRuntime) -> None:
+    def _wait_for_servarr_services(self, rt: ControllerRuntime) -> None:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         if not rt.arr_apps:
@@ -110,7 +110,7 @@ class ControllerService:
             raise RuntimeError(f"Service readiness failures: {'; '.join(errors)}")
 
     def _download_client_pipeline_service(
-        self, rt: BootstrapRuntime
+        self, rt: ControllerRuntime
     ) -> DownloadClientPipelineService:
         service_cls = resolve_app_service_class(
             "download_client_pipeline_service",
@@ -124,7 +124,7 @@ class ControllerService:
             invoke_handler=self._invoke_handler,
         )
 
-    def _prepare_download_clients(self, rt: BootstrapRuntime) -> DownloadClientPipelineResult:
+    def _prepare_download_clients(self, rt: ControllerRuntime) -> DownloadClientPipelineResult:
         if self._download_client_prepare_result is not None:
             return self._download_client_prepare_result
         self._download_client_prepare_result = self._download_client_pipeline_service(
@@ -150,7 +150,7 @@ class ControllerService:
         )
         return self._download_client_prepare_result
 
-    def _media_server_adapter(self, rt: BootstrapRuntime) -> Any:
+    def _media_server_adapter(self, rt: ControllerRuntime) -> Any:
         factory_cls = resolve_app_service_class(
             "media_server_adapter_factory",
             MediaServerAdapterFactory,
@@ -176,13 +176,13 @@ class ControllerService:
             ),
         )
 
-    def _run_media_server_prewarm_mode(self, rt: BootstrapRuntime) -> None:
+    def _run_media_server_prewarm_mode(self, rt: ControllerRuntime) -> None:
         self._media_server_adapter(rt).run_prewarm_mode()
 
-    def _run_media_server_home_rails_mode(self, rt: BootstrapRuntime) -> None:
+    def _run_media_server_home_rails_mode(self, rt: ControllerRuntime) -> None:
         self._media_server_adapter(rt).run_home_rails_mode()
 
-    def _run_media_hygiene_mode(self, rt: BootstrapRuntime) -> None:
+    def _run_media_hygiene_mode(self, rt: ControllerRuntime) -> None:
         self._run_runner_plan_phase(rt, "precheck_steps")
         for app in rt.arr_apps:
             try:
@@ -204,8 +204,8 @@ class ControllerService:
         )
         self.deps.log("[OK] Media hygiene mode complete.")
 
-    def _run_mode_shortcuts(self, rt: BootstrapRuntime) -> bool:
-        handlers: dict[BootstrapMode, Callable[[BootstrapRuntime], None]] = {
+    def _run_mode_shortcuts(self, rt: ControllerRuntime) -> bool:
+        handlers: dict[BootstrapMode, Callable[[ControllerRuntime], None]] = {
             BootstrapMode.MEDIA_SERVER_PREWARM: self._run_media_server_prewarm_mode,
             BootstrapMode.MEDIA_SERVER_HOME_RAILS: self._run_media_server_home_rails_mode,
             BootstrapMode.MEDIA_HYGIENE: self._run_media_hygiene_mode,
@@ -233,14 +233,14 @@ class ControllerService:
                 raise
             self.deps.log(f"{warning_message} ({exc})")
 
-    def _run_full_prechecks(self, rt: BootstrapRuntime) -> tuple[bool, str]:
+    def _run_full_prechecks(self, rt: ControllerRuntime) -> tuple[bool, str]:
         self._run_runner_plan_phase(rt, "precheck_steps")
         self._wait_for_servarr_services(rt)
         pipeline_prepare = self._prepare_download_clients(rt)
         return pipeline_prepare.qbit_login_ok, pipeline_prepare.sab_api_key
 
     def _run_servarr_pipeline(
-        self, rt: BootstrapRuntime, qbit_login_ok: bool, sab_api_key: str
+        self, rt: ControllerRuntime, qbit_login_ok: bool, sab_api_key: str
     ) -> None:
         self._invoke_handler(
             RunnerEvent.RUN,
@@ -275,16 +275,16 @@ class ControllerService:
             ),
         )
 
-    def _run_post_servarr_steps(self, rt: BootstrapRuntime) -> None:
+    def _run_post_servarr_steps(self, rt: ControllerRuntime) -> None:
         self._run_runner_plan_phase(rt, "post_servarr_pre_media_steps")
         self._media_server_adapter(rt).run_post_servarr_pre_hygiene_steps()
         self._run_runner_plan_phase(rt, "post_servarr_post_media_steps")
         self._media_server_adapter(rt).run_post_servarr_post_hygiene_steps()
 
-    def _run_indexers(self, rt: BootstrapRuntime) -> None:
+    def _run_indexers(self, rt: ControllerRuntime) -> None:
         self._run_runner_plan_phase(rt, "indexer_steps")
 
-    def run(self, rt: BootstrapRuntime) -> None:
+    def run(self, rt: ControllerRuntime) -> None:
         prior_hooks = get_runtime_context_cfg()
         runtime_context_cfg = dict(rt.adapter_hooks_cfg or {})
         runtime_bindings = rt.cfg.get("technology_bindings") if isinstance(rt.cfg, dict) else {}

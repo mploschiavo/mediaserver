@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-from .state import BootstrapState
+from .state import ControllerState
 from .services import health as health_svc
 from .services import disk as disk_svc
 from .services import content as content_svc
@@ -62,7 +62,7 @@ _api_cache = _TTLCache()
 # Webhook firing
 # ---------------------------------------------------------------------------
 
-def _fire_webhooks(state: BootstrapState, event: str, payload: dict[str, Any]) -> None:
+def _fire_webhooks(state: ControllerState, event: str, payload: dict[str, Any]) -> None:
     """Fire webhooks for action events (best-effort, non-blocking)."""
     urls = list(state.webhook_urls)
     if not urls:
@@ -115,7 +115,7 @@ KNOWN_ACTIONS = frozenset({
 class ControllerAPIHandler(BaseHTTPRequestHandler):
     """HTTP request handler for controller API endpoints."""
 
-    state: BootstrapState
+    state: ControllerState
     _callbacks: dict[str, Any] = {}
 
     @property
@@ -628,7 +628,7 @@ tr:hover{{background:#162230}}</style></head><body>
 # ---------------------------------------------------------------------------
 
 def start_api_server(
-    state: BootstrapState,
+    state: ControllerState,
     port: int = 9100,
     action_trigger: ActionTriggerFn | None = None,
     reload_config: Callable[[], None] | None = None,

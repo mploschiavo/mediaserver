@@ -16,7 +16,7 @@ LogFn = Callable[[str], None]
 
 
 @dataclass(frozen=True)
-class BootstrapManifestConfig:
+class ControllerManifestConfig:
     namespace: str
     root_dir: Path
     prepare_host_root: str
@@ -26,8 +26,8 @@ class BootstrapManifestConfig:
 
 
 @dataclass
-class BootstrapManifestService:
-    cfg: BootstrapManifestConfig
+class ControllerManifestService:
+    cfg: ControllerManifestConfig
     kube: KubernetesClient
     info: LogFn
     warn: LogFn

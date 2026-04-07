@@ -41,21 +41,21 @@ from ..plugin_manifest_loader import (
     collect_capability_defaults,
     load_plugin_manifests,
 )
-from ..runtime_models import BootstrapRuntime
+from ..runtime_models import ControllerRuntime
 from ..technology_catalog import build_servarr_catalog_from_manifests
 from ..top_level_config_model import TopLevelBootstrapConfig
 from .binding_resolver import RuntimeBindingResolver
 from .models import (
-    BootstrapCliArgs,
-    BootstrapRuntimeBuildResult,
-    BootstrapRuntimeFactoryDependencies,
+    ControllerCliArgs,
+    ControllerRuntimeBuildResult,
+    ControllerRuntimeFactoryDependencies,
 )
 from .plan_builder import build_plan_summary
 
 
 @dataclass
-class BootstrapRuntimeBuilder:
-    deps: BootstrapRuntimeFactoryDependencies
+class ControllerRuntimeBuilder:
+    deps: ControllerRuntimeFactoryDependencies
 
     @staticmethod
     def _validate_adapter_registration_overrides(adapter_hooks_cfg: dict[str, Any]) -> None:
@@ -180,7 +180,7 @@ class BootstrapRuntimeBuilder:
                 adapter_hooks_cfg["operation_handlers"] = dict(run_handlers)
         return adapter_hooks_cfg
 
-    def build(self, args: BootstrapCliArgs, cfg: dict[str, Any]) -> BootstrapRuntimeBuildResult:
+    def build(self, args: ControllerCliArgs, cfg: dict[str, Any]) -> ControllerRuntimeBuildResult:
         cfg = TopLevelBootstrapConfig.from_dict(cfg).to_dict()
         prowlarr_url = str(cfg.get("prowlarr_url") or "").strip().rstrip("/")
         arr_apps_raw = cfg.get("arr_apps", [])
@@ -390,7 +390,7 @@ class BootstrapRuntimeBuilder:
                 f"{', '.join(missing)} for technology '{usenet_client_key}'."
             )
 
-        runtime = BootstrapRuntime(
+        runtime = ControllerRuntime(
             mode=args.mode,
             cfg=cfg,
             config_root=args.config_root,
@@ -460,4 +460,4 @@ class BootstrapRuntimeBuilder:
         )
 
         plan = build_plan_summary(runtime)
-        return BootstrapRuntimeBuildResult(cfg=cfg, runtime=runtime, plan=plan)
+        return ControllerRuntimeBuildResult(cfg=cfg, runtime=runtime, plan=plan)

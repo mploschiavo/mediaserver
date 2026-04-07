@@ -93,7 +93,7 @@ class ActionRecord:
 
 
 @dataclass
-class BootstrapState:
+class ControllerState:
     """Mutable state shared between the HTTP API thread and the bootstrap runner thread."""
 
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)

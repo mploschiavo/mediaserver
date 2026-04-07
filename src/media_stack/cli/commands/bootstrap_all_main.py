@@ -23,8 +23,8 @@ from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 from media_stack.core.state_store import CheckpointStateStore
 
 from media_stack.cli.workflows.bootstrap_component_resolver import (
-    BootstrapComponentPlan,
-    BootstrapPhasePlanStep,
+    ControllerComponentPlan,
+    ControllerPhasePlanStep,
     PhaseSkipFlagSpec,
     evaluate_phase_condition,
     normalize_flag_token,
@@ -43,7 +43,7 @@ from media_stack.cli.workflows.cli_common import PhaseTracker, err, info, ts, wa
 
 
 @dataclass(frozen=True)
-class BootstrapAllConfig:
+class ControllerAllConfig:
     root_dir: Path
     config_file: Path
     namespace: str
@@ -55,13 +55,13 @@ class BootstrapAllConfig:
     state_file: Path
 
 
-class BootstrapAllRunner:
-    def __init__(self, cfg: BootstrapAllConfig) -> None:
+class ControllerAllRunner:
+    def __init__(self, cfg: ControllerAllConfig) -> None:
         self.cfg = cfg
         self.kube = KubernetesClient.from_environment()
         self.tracker = PhaseTracker()
         self.state = CheckpointStateStore(cfg.state_file)
-        self._plan: BootstrapComponentPlan | None = None
+        self._plan: ControllerComponentPlan | None = None
         self.state.load()
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
@@ -87,7 +87,7 @@ class BootstrapAllRunner:
                 f"{' '.join(shlex.quote(x) for x in [str(script_path), *args])}"
             )
 
-    def _component_plan(self) -> BootstrapComponentPlan:
+    def _component_plan(self) -> ControllerComponentPlan:
         if self._plan is None:
             self._plan = resolve_bootstrap_component_plan(self.cfg.config_file)
         return self._plan
@@ -262,7 +262,7 @@ class BootstrapAllRunner:
             role_bindings=plan.role_bindings,
         )
 
-        def _resolve_component_technology(step: BootstrapPhasePlanStep) -> tuple[str, str]:
+        def _resolve_component_technology(step: ControllerPhasePlanStep) -> tuple[str, str]:
             params = dict(step.params or {})
             component_key = str(params.get("component") or "").strip()
             if component_key:
@@ -313,7 +313,7 @@ class BootstrapAllRunner:
             },
         }
 
-        def _phase_enabled(step: BootstrapPhasePlanStep) -> bool:
+        def _phase_enabled(step: ControllerPhasePlanStep) -> bool:
             enabled = bool(step.enabled) and evaluate_phase_condition(
                 step.when, context=phase_context
             )
@@ -321,10 +321,10 @@ class BootstrapAllRunner:
                 enabled = False
             return enabled
 
-        def _phase_name(default_name: str, step: BootstrapPhasePlanStep) -> str:
+        def _phase_name(default_name: str, step: ControllerPhasePlanStep) -> str:
             return step.phase_name or default_name
 
-        def _resolve_step_action(step: BootstrapPhasePlanStep) -> str:
+        def _resolve_step_action(step: ControllerPhasePlanStep) -> str:
             operation = str(step.operation or "").strip()
             if operation != "run":
                 raise ConfigError(
@@ -384,7 +384,7 @@ class BootstrapAllRunner:
                 )
             return env
 
-        def _run_component_script_step(step: BootstrapPhasePlanStep) -> None:
+        def _run_component_script_step(step: ControllerPhasePlanStep) -> None:
             params = dict(step.params or {})
             component_key, component_technology = _resolve_component_technology(step)
             enabled = _phase_enabled(step)
@@ -447,7 +447,7 @@ class BootstrapAllRunner:
                 enabled=enabled,
             )
 
-        def _run_script_step(step: BootstrapPhasePlanStep) -> None:
+        def _run_script_step(step: ControllerPhasePlanStep) -> None:
             params = dict(step.params or {})
             script_name = self._render_template_value(params.get("script", ""))
             if not script_name:
@@ -474,7 +474,7 @@ class BootstrapAllRunner:
                 enabled=enabled,
             )
 
-        def _run_enable_components_step(step: BootstrapPhasePlanStep) -> None:
+        def _run_enable_components_step(step: ControllerPhasePlanStep) -> None:
             if not _phase_enabled(step):
                 return
             components_to_enable = resolve_bootstrap_enable_components(
@@ -510,7 +510,7 @@ class BootstrapAllRunner:
                     enabled=True,
                 )
 
-        def _run_http_action_step(step: BootstrapPhasePlanStep) -> None:
+        def _run_http_action_step(step: ControllerPhasePlanStep) -> None:
             """Trigger an action on the bootstrap service via HTTP and poll for completion."""
             if not _phase_enabled(step):
                 return
@@ -524,10 +524,10 @@ class BootstrapAllRunner:
             if not action_name:
                 raise ConfigError("http_action requires params.action_name")
 
-            from media_stack.cli.workflows.bootstrap_job_wait_service import BootstrapJobWaitConfig, BootstrapJobWaitService
+            from media_stack.cli.workflows.bootstrap_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
 
-            wait_svc = BootstrapJobWaitService(
-                cfg=BootstrapJobWaitConfig(
+            wait_svc = ControllerJobWaitService(
+                cfg=ControllerJobWaitConfig(
                     namespace=namespace,
                     timeout_seconds=600,
                     timeout_raw="10m",
@@ -569,7 +569,7 @@ class BootstrapAllRunner:
                 wait_for_action=action_name,
             )
 
-        action_handlers: dict[str, Callable[[BootstrapPhasePlanStep], None]] = {
+        action_handlers: dict[str, Callable[[ControllerPhasePlanStep], None]] = {
             "component_script": _run_component_script_step,
             "script": _run_script_step,
             "enable_components": _run_enable_components_step,
@@ -689,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         if str(args.state_file).strip()
         else root_dir / ".state" / f"bootstrap-all-{args.namespace}.json"
     )
-    cfg = BootstrapAllConfig(
+    cfg = ControllerAllConfig(
         root_dir=root_dir,
         config_file=config_file,
         namespace=str(args.namespace).strip(),
@@ -702,7 +702,7 @@ def main(argv: list[str] | None = None) -> int:
         resume=bool(args.resume),
         state_file=state_file,
     )
-    runner = BootstrapAllRunner(cfg)
+    runner = ControllerAllRunner(cfg)
     try:
         return runner.run()
     except (ConfigError, KubernetesError, RuntimeError) as exc:

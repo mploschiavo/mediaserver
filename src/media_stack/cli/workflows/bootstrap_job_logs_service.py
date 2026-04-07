@@ -10,7 +10,7 @@ from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
 
 @dataclass(frozen=True)
-class BootstrapJobLogsConfig:
+class ControllerJobLogsConfig:
     namespace: str
     job_name: str
     log_file: Path
@@ -18,8 +18,8 @@ class BootstrapJobLogsConfig:
 
 
 @dataclass
-class BootstrapJobLogsService:
-    cfg: BootstrapJobLogsConfig
+class ControllerJobLogsService:
+    cfg: ControllerJobLogsConfig
     kube: KubernetesClient
 
     def capture_logs(self) -> None:

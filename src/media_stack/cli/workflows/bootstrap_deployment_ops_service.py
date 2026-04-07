@@ -12,13 +12,13 @@ LogFn = Callable[[str], None]
 
 
 @dataclass(frozen=True)
-class BootstrapDeploymentOpsConfig:
+class ControllerDeploymentOpsConfig:
     namespace: str
 
 
 @dataclass
-class BootstrapDeploymentOpsService:
-    cfg: BootstrapDeploymentOpsConfig
+class ControllerDeploymentOpsService:
+    cfg: ControllerDeploymentOpsConfig
     kube: KubernetesClient
     info: LogFn
 

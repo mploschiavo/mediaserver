@@ -35,8 +35,8 @@ from media_stack.core.subprocess_utils import CommandResult
 
 from media_stack.cli.workflows import deploy_hook_config_resolver
 from media_stack.cli.workflows.bootstrap_notification_service import (
-    BootstrapNotificationConfig,
-    BootstrapNotificationService,
+    ControllerNotificationConfig,
+    ControllerNotificationService,
 )
 from media_stack.cli.workflows.deploy_cli_config_service import (
     DeployStackConfig,
@@ -392,9 +392,9 @@ class DeployStackRunner:
         except ValueError as exc:
             raise DeployError(str(exc)) from exc
 
-    def _notification_service(self) -> BootstrapNotificationService:
-        return BootstrapNotificationService(
-            cfg=BootstrapNotificationConfig(
+    def _notification_service(self) -> ControllerNotificationService:
+        return ControllerNotificationService(
+            cfg=ControllerNotificationConfig(
                 alert_webhook_url=self.cfg.alert_webhook_url,
             )
         )

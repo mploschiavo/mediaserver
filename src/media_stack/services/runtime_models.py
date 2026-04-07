@@ -13,7 +13,7 @@ from .apps.servarr.config_models import (
 from .enums import BootstrapMode
 
 
-class BootstrapRuntime:
+class ControllerRuntime:
     """Runtime state bag for bootstrap orchestration.
 
     Core runtime identity and wiring fields are explicit.
