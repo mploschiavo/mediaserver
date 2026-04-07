@@ -1504,13 +1504,34 @@ async function loadImageUpdates(){
 async function loadGpuInfo(){
   try{const r=await fetch('/api/gpu');if(!r.ok)return;const d=await r.json();
     let h='';
-    if(!d.detected){h='<div style="color:var(--fg3);font-size:.88em">No GPU detected. Hardware transcoding requires Intel QSV/VA-API or NVIDIA GPU.</div>';}
-    else{
+    // Host GPU detection
+    h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">Host GPU</div>';
+    if(!d.detected){
+      h+='<div class="svc-row" style="cursor:default"><span class="dot error"></span><span class="sname">No GPU detected</span></div>';
+      if(d.note)h+='<div style="color:var(--fg3);font-size:.85em;padding:4px 0">'+d.note+'</div>';
+    }else{
       for(const g of(d.gpus||[])){
         h+='<div class="svc-row" style="cursor:default"><span class="dot ok"></span><span class="sname">'+g.name+'</span><span class="smeta">'+g.type.toUpperCase()+(g.driver?' · '+g.driver:'')+(g.memory?' · '+g.memory:'')+'</span></div>';
       }
-      h+='<div style="margin-top:8px;font-size:.88em;color:var(--fg2)"><b>Jellyfin HW Transcoding:</b> '+(d.jellyfin_configured?'<span class="ok">Enabled ('+( d.jellyfin_hw_type||'unknown')+')</span>':'<span class="warn">Not configured</span>')+'</div>';
-      if(d.compose_snippet){h+='<pre class="profile-pre" style="margin-top:8px">'+d.compose_snippet+'</pre>';}
+    }
+    h+='</div>';
+    // Jellyfin GPU passthrough status
+    h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">Jellyfin Transcoding</div>';
+    h+='<div class="svc-row" style="cursor:default"><span class="dot '+(d.jellyfin_has_gpu?'ok':'warn')+'"></span><span class="sname">GPU Passthrough</span><span class="smeta">'+(d.jellyfin_has_gpu?'Enabled — /dev/dri mounted':'Not configured')+'</span></div>';
+    h+='<div class="svc-row" style="cursor:default"><span class="dot '+(d.jellyfin_configured?'ok':'idle')+'"></span><span class="sname">HW Decoding</span><span class="smeta">'+(d.jellyfin_configured?'Enabled'+(d.jellyfin_hw_type?' ('+d.jellyfin_hw_type+')':''):'Not enabled in Jellyfin settings')+'</span></div>';
+    h+='</div>';
+    // Setup instructions
+    if(d.detected&&!d.jellyfin_has_gpu){
+      h+='<div class="action-group"><div class="action-group-title">How to Enable</div>';
+      h+='<div style="font-size:.85em;color:var(--fg2);margin-bottom:6px">GPU detected on host but not passed to Jellyfin. Add these to the jellyfin service in docker-compose.yml:</div>';
+      const isNv=d.gpus.some(g=>g.type==='nvidia');
+      if(isNv){h+='<pre class="profile-pre">    runtime: nvidia\n    environment:\n      - NVIDIA_VISIBLE_DEVICES=all\n      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility</pre>';}
+      else{h+='<pre class="profile-pre">    devices:\n      - /dev/dri:/dev/dri\n    group_add:\n      - "44"   # video\n      - "109"  # render</pre>';}
+      h+='<div style="font-size:.82em;color:var(--fg3);margin-top:4px">After updating compose, run: <code>docker compose up -d jellyfin</code></div></div>';
+    }else if(d.detected&&d.jellyfin_has_gpu&&!d.jellyfin_configured){
+      h+='<div style="font-size:.85em;color:var(--warn);margin-top:6px">GPU is passed through but HW decoding is not enabled in Jellyfin. Go to Jellyfin → Dashboard → Playback → Transcoding and select your hardware acceleration type.</div>';
+    }else if(!d.detected){
+      h+='<div style="font-size:.85em;color:var(--fg3);margin-top:6px">To verify your host has a GPU, run on the host:<br><code>ls /dev/dri/ && lspci | grep -iE "VGA|Display|3D"</code></div>';
     }
     document.getElementById('gpu-info').innerHTML=h;
   }catch(e){document.getElementById('gpu-info').innerHTML='Error: '+e;}

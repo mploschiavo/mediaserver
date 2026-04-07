@@ -172,38 +172,91 @@ def check_image_updates() -> dict[str, Any]:
 
 
 def get_gpu_info() -> dict[str, Any]:
-    """Detect GPU hardware for transcoding configuration."""
-    result: dict[str, Any] = {"detected": False, "gpus": [], "jellyfin_configured": False}
+    """Detect GPU hardware for transcoding — checks host via Docker, falls back to container."""
+    result: dict[str, Any] = {"detected": False, "gpus": [], "jellyfin_configured": False,
+                               "jellyfin_has_gpu": False, "note": ""}
 
-    render_devices = list(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").exists() else []
-    if render_devices:
-        gpu_info: dict[str, Any] = {"type": "intel", "driver": "va-api", "devices": [str(d) for d in render_devices]}
-        try:
-            lspci = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5)
-            for line in lspci.stdout.splitlines():
-                if "VGA" in line or "Display" in line:
-                    gpu_info["name"] = line.split(":", 2)[-1].strip() if ":" in line else line
-                    break
-        except Exception:
-            gpu_info["name"] = "Intel integrated (VA-API)"
-        result["gpus"].append(gpu_info)
-        result["detected"] = True
-
+    # Strategy 1: Check which containers already have GPU devices mounted
     try:
-        nvidia = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if nvidia.returncode == 0:
-            for line in nvidia.stdout.strip().splitlines():
-                parts = [p.strip() for p in line.split(",")]
-                result["gpus"].append({
-                    "type": "nvidia", "name": parts[0] if parts else "NVIDIA GPU",
-                    "driver": parts[1] if len(parts) > 1 else "",
-                    "memory": parts[2] if len(parts) > 2 else "",
-                })
+        import docker
+        client = docker.from_env()
+        for c in client.containers.list():
+            devices = c.attrs.get("HostConfig", {}).get("Devices") or []
+            runtime = c.attrs.get("HostConfig", {}).get("Runtime", "")
+            for dev in devices:
+                host_path = dev.get("PathOnHost", "") if isinstance(dev, dict) else str(dev)
+                if "/dev/dri" in host_path or "/dev/nvidia" in host_path:
+                    gpu_type = "nvidia" if "nvidia" in host_path.lower() or runtime == "nvidia" else "intel/va-api"
+                    result["gpus"].append({"type": gpu_type, "name": f"GPU passed to {c.name} ({host_path})",
+                                           "container": c.name})
+                    result["detected"] = True
+            if runtime == "nvidia":
+                result["gpus"].append({"type": "nvidia", "name": f"NVIDIA runtime on {c.name}", "container": c.name})
                 result["detected"] = True
-    except FileNotFoundError:
+    except Exception:
+        pass
+
+    # Strategy 2: Query host Docker info for GPU-related runtimes
+    if not result["detected"]:
+        try:
+            import docker
+            client = docker.from_env()
+            info = client.info()
+            runtimes = info.get("Runtimes", {})
+            if "nvidia" in runtimes:
+                result["detected"] = True
+                result["gpus"].append({"type": "nvidia", "name": "NVIDIA Container Runtime available on host"})
+            # Check for default GPU devices
+            security = info.get("SecurityOptions", [])
+            for s in security:
+                if "gpu" in str(s).lower():
+                    result["detected"] = True
+        except Exception:
+            pass
+
+    # Strategy 3: Check inside this container (works if GPU is passed through)
+    if not result["detected"]:
+        render_devices = list(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").exists() else []
+        if render_devices:
+            result["detected"] = True
+            result["gpus"].append({"type": "intel/generic", "driver": "va-api",
+                                   "devices": [str(d) for d in render_devices],
+                                   "name": "GPU available in controller container"})
+        try:
+            nvidia = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if nvidia.returncode == 0:
+                for line in nvidia.stdout.strip().splitlines():
+                    parts = [p.strip() for p in line.split(",")]
+                    result["gpus"].append({"type": "nvidia", "name": parts[0] if parts else "NVIDIA GPU",
+                                           "driver": parts[1] if len(parts) > 1 else "",
+                                           "memory": parts[2] if len(parts) > 2 else ""})
+                    result["detected"] = True
+        except FileNotFoundError:
+            pass
+
+    if not result["detected"]:
+        result["note"] = ("No containers have GPU devices mounted. Your host may have a GPU but it needs "
+                          "to be passed through to containers. Check your host: ls /dev/dri/ && lspci | grep VGA")
+
+    # Check if Jellyfin container has GPU passthrough
+    try:
+        import docker
+        client = docker.from_env()
+        jf = client.containers.get("jellyfin")
+        devices = jf.attrs.get("HostConfig", {}).get("Devices") or []
+        groups = jf.attrs.get("HostConfig", {}).get("GroupAdd") or []
+        if any("/dev/dri" in str(d) for d in devices):
+            result["jellyfin_has_gpu"] = True
+        elif any("dri" in str(d) for d in devices):
+            result["jellyfin_has_gpu"] = True
+        # Check runtime for nvidia
+        runtime = jf.attrs.get("HostConfig", {}).get("Runtime", "")
+        if runtime == "nvidia":
+            result["jellyfin_has_gpu"] = True
+    except Exception:
         pass
 
     config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
