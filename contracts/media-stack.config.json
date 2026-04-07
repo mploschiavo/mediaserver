@@ -95,19 +95,19 @@
     },
     "runner_phase_scripts": {
       "torrent_client_credentials": {
-        "qbittorrent": "ensure-qbit-credentials.sh"
+        "qbittorrent": "media_stack.services.apps.qbittorrent.cli.ensure_qbit_credentials_main"
       },
       "usenet_client_api_access": {
-        "sabnzbd": "ensure-sabnzbd-api-access.sh"
+        "sabnzbd": "media_stack.services.apps.sabnzbd.cli.ensure_sabnzbd_api_access_main"
       },
       "media_server_bootstrap": {
-        "jellyfin": "ensure-jellyfin-bootstrap.sh"
+        "jellyfin": "media_stack.services.apps.jellyfin.cli.ensure_jellyfin_controller_main"
       },
       "request_manager_seed_local_admin": {
-        "jellyseerr": "seed-jellyseerr-local-admin.sh"
+        "jellyseerr": "media_stack.services.apps.jellyseerr.cli.seed_jellyseerr_local_admin_main"
       },
       "component_key_sync": {
-        "unpackerr": "sync-unpackerr-keys.sh"
+        "unpackerr": "media_stack.services.apps.unpackerr.cli.sync_unpackerr_keys_main"
       }
     },
     "bootstrap_all": {
@@ -198,7 +198,7 @@
           "phase_name": "Run bootstrap job",
           "params": {
             "action": "script",
-            "script": "run-bootstrap-job.sh",
+            "script": "media_stack.cli.commands.run_controller_job_main",
             "args": [
               "$config_file"
             ],
