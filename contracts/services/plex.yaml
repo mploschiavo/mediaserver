@@ -1,0 +1,14 @@
+# Plex — Alt media server
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: plex
+  name: Plex
+  desc: Alt media server
+  category: media
+  host: plex
+  port: 32400
+  health_path: /identity
+  profiles: ['plex']

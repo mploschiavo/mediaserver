@@ -1,0 +1,13 @@
+# qBittorrent — Torrent client
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: qbittorrent
+  name: qBittorrent
+  desc: Torrent client
+  category: downloads
+  host: qbittorrent
+  port: 8080
+  health_path: /

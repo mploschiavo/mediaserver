@@ -1,0 +1,15 @@
+# Envoy — gateway proxy / reverse proxy
+#
+# This single file fully defines the Envoy service.
+
+service:
+  id: envoy
+  name: Envoy
+  desc: Gateway proxy
+  category: infrastructure
+  host: envoy
+  port: 9901
+  health_path: /ready
+
+# No plugin or defaults needed — Envoy config is generated
+# by the envoy-config-init container from the compose/K8s spec.

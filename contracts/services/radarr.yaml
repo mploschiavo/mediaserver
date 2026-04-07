@@ -1,0 +1,21 @@
+# Radarr — Movie automation
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: radarr
+  name: Radarr
+  desc: Movie automation
+  category: automation
+  host: radarr
+  port: 7878
+  health_path: /ping
+  auth_path: /api/v3/system/status
+  auth_mode: X-Api-Key
+  api_key_env: RADARR_API_KEY
+  api_key_config: radarr/config.xml
+  api_key_format: xml
+  version_path: /api/v3/system/status
+  version_json_key: version
+  password_api_path: /api/v3/config/host

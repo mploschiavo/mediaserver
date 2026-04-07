@@ -1,0 +1,14 @@
+# Traefik — Reverse proxy (alt)
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: traefik
+  name: Traefik
+  desc: Reverse proxy (alt)
+  category: infrastructure
+  host: traefik
+  port: 8080
+  health_path: /ping
+  profiles: ['traefik']

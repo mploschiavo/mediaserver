@@ -1,0 +1,12 @@
+# Unpackerr — Archive extractor
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: unpackerr
+  name: Unpackerr
+  desc: Archive extractor
+  category: downloads
+  host: unpackerr
+  port: 0

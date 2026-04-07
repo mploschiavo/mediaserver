@@ -1,0 +1,18 @@
+# Jellyseerr — Request manager
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: jellyseerr
+  name: Jellyseerr
+  desc: Request manager
+  category: media
+  host: jellyseerr
+  port: 5055
+  health_path: /api/v1/status
+  auth_path: /api/v1/settings/main
+  auth_mode: X-Api-Key
+  api_key_env: JELLYSEERR_API_KEY
+  api_key_config: jellyseerr/settings.json
+  api_key_format: json

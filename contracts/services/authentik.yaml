@@ -1,0 +1,14 @@
+# Authentik — Identity provider
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: authentik
+  name: Authentik
+  desc: Identity provider
+  category: infrastructure
+  host: authentik
+  port: 9000
+  health_path: /-/health/live/
+  profiles: ['auth-authentik']

@@ -1,0 +1,47 @@
+# Sonarr — TV show automation
+#
+# This single file fully defines the Sonarr service.
+# To add Sonarr to the stack: place this file in contracts/services/
+# To remove Sonarr: delete this file.
+# No Python code changes needed.
+
+service:
+  id: sonarr
+  name: Sonarr
+  desc: TV automation
+  category: automation
+  host: sonarr
+  port: 8989
+  health_path: /ping
+  auth_path: /api/v3/system/status
+  auth_mode: X-Api-Key
+  api_key_env: SONARR_API_KEY
+  api_key_config: sonarr/config.xml
+  api_key_format: xml
+  version_path: /api/v3/system/status
+  version_json_key: version
+  password_api_path: /api/v3/config/host
+
+# Plugin capabilities — used by the bootstrap pipeline
+plugin:
+  technology: sonarr
+  aliases: [sarr]
+  adapter_class: media_stack.services.apps.servarr.technologies.sonarr:SonarrAdapter
+  capabilities:
+    default_download_category: tv
+    root_folder: /media/tv
+    supports_series_folder_management: true
+    supports_seed_series: true
+
+# Default settings — merged into runtime config
+defaults:
+  # Root folder for TV content
+  root_folder: /media/tv
+  # Discovery lists — auto-add popular/trending shows
+  discovery_lists:
+    - name: Trakt Popular
+      type: trakt_popular
+      enabled: true
+      quality_profile_preferred: [HD-1080p, HD - 720p/1080p]
+      monitor: firstSeason
+      search_on_add: true

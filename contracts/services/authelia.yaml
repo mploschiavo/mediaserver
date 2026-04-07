@@ -1,0 +1,14 @@
+# Authelia — SSO auth provider
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: authelia
+  name: Authelia
+  desc: SSO auth provider
+  category: infrastructure
+  host: authelia
+  port: 9091
+  health_path: /api/health
+  profiles: ['auth-authelia']
