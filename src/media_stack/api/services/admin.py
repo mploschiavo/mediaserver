@@ -64,8 +64,75 @@ def rotate_keys() -> dict[str, Any]:
         except Exception as exc:
             errors.append(f"sabnzbd: {exc}")
 
+    # Tautulli: regenerate api_key in config.ini
+    tautulli_ini = Path(config_root) / "tautulli" / "config.ini"
+    if tautulli_ini.is_file():
+        try:
+            content = tautulli_ini.read_text(encoding="utf-8")
+            new_key = uuid.uuid4().hex
+            content = re.sub(r"^api_key\s*=\s*.*$", f"api_key = {new_key}", content, count=1, flags=re.MULTILINE)
+            tautulli_ini.write_text(content, encoding="utf-8")
+            os.environ["TAUTULLI_API_KEY"] = new_key
+            rotated["TAUTULLI_API_KEY"] = new_key
+        except Exception as exc:
+            errors.append(f"tautulli: {exc}")
+
+    # Jellyfin: create new API key via Jellyfin API, delete old one
+    try:
+        jf_key = os.environ.get("JELLYFIN_API_KEY", "")
+        if not jf_key:
+            import sqlite3
+            jf_db = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
+            if jf_db.exists():
+                conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
+                cur = conn.cursor()
+                cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
+                row = cur.fetchone()
+                conn.close()
+                if row:
+                    jf_key = row[0]
+        if jf_key:
+            import urllib.request as _ur
+            # Create new key
+            req = _ur.Request(
+                "http://jellyfin:8096/Auth/Keys?app=media-stack-controller",
+                method="POST", headers={"X-Emby-Token": jf_key},
+            )
+            _ur.urlopen(req, timeout=5)
+            # Read new key from DB
+            jf_db = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
+            import sqlite3
+            conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
+            cur = conn.cursor()
+            cur.execute("SELECT AccessToken FROM ApiKeys WHERE Name='media-stack-controller' ORDER BY Id DESC LIMIT 1")
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                new_key = row[0].strip()
+                os.environ["JELLYFIN_API_KEY"] = new_key
+                rotated["JELLYFIN_API_KEY"] = new_key
+    except Exception as exc:
+        errors.append(f"jellyfin: {exc}")
+
+    # Jellyseerr: regenerate apiKey in settings.json
+    js_settings = Path(config_root) / "jellyseerr" / "settings.json"
+    if js_settings.is_file():
+        try:
+            data = json.loads(js_settings.read_text(encoding="utf-8"))
+            import base64
+            new_key = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes).decode("utf-8")
+            data.setdefault("main", {})["apiKey"] = new_key
+            js_settings.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            os.environ["JELLYSEERR_API_KEY"] = new_key
+            rotated["JELLYSEERR_API_KEY"] = new_key
+        except Exception as exc:
+            errors.append(f"jellyseerr: {exc}")
+
     persist_keys_to_secret(rotated)
-    return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors}
+    restart_needed = [k.replace("_API_KEY", "").lower() for k in rotated
+                      if k in ("TAUTULLI_API_KEY", "JELLYSEERR_API_KEY")]
+    return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors,
+            "restart_needed": restart_needed}
 
 
 def reset_password(new_password: str) -> dict[str, Any]:
@@ -161,16 +228,44 @@ def reset_password(new_password: str) -> dict[str, Any]:
     except Exception as exc:
         errors.append(f"bazarr: {exc}")
 
-    # 5. Update env var
+    # 5. SABnzbd — set username/password in INI
+    try:
+        sab_ini = Path(config_root) / "sabnzbd" / "sabnzbd.ini"
+        if sab_ini.is_file():
+            content = sab_ini.read_text(encoding="utf-8")
+            content = re.sub(r"^username\s*=\s*.*$", f"username = {username}", content, count=1, flags=re.MULTILINE)
+            content = re.sub(r"^password\s*=\s*.*$", f"password = {new_password}", content, count=1, flags=re.MULTILINE)
+            sab_ini.write_text(content, encoding="utf-8")
+            updated.append("sabnzbd")
+    except Exception as exc:
+        errors.append(f"sabnzbd: {exc}")
+
+    # 6. Tautulli — set http_username/http_password in config.ini
+    try:
+        tautulli_ini = Path(config_root) / "tautulli" / "config.ini"
+        if tautulli_ini.is_file():
+            content = tautulli_ini.read_text(encoding="utf-8")
+            if "http_username" in content:
+                content = re.sub(r"^http_username\s*=\s*.*$", f"http_username = {username}", content, count=1, flags=re.MULTILINE)
+                content = re.sub(r"^http_password\s*=\s*.*$", f"http_password = {new_password}", content, count=1, flags=re.MULTILINE)
+            else:
+                # Append under [General] section
+                content = content.replace("[General]", f"[General]\nhttp_username = {username}\nhttp_password = {new_password}", 1)
+            tautulli_ini.write_text(content, encoding="utf-8")
+            updated.append("tautulli")
+    except Exception as exc:
+        errors.append(f"tautulli: {exc}")
+
+    # 7. Update env var
     os.environ["STACK_ADMIN_PASSWORD"] = new_password
 
-    # 6. Persist to K8s secret
+    # 8. Persist to K8s secret
     persist_keys_to_secret({
         "STACK_ADMIN_PASSWORD": new_password,
         "STACK_ADMIN_USERNAME": username,
     })
 
-    restart_needed = [s for s in updated if s in ("bazarr",)]
+    restart_needed = [s for s in updated if s in ("bazarr", "sabnzbd", "tautulli")]
     return {"status": "updated", "services": updated, "errors": errors, "restart_needed": restart_needed}
 
 
