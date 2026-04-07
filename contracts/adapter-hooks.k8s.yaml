@@ -1,6 +1,11 @@
 # K8s platform adapter hooks — pipeline orchestration for Kubernetes deployments.
 # Loaded automatically when metadata.platform=k8s in profile YAML.
 # Compose deployments do not load this file.
+
+edge:
+  ingress_class_priority:
+    - public
+    - nginx
 #
 # Sections:
 #   bootstrap_all       — host-side K8s deploy phase plan (bin/bootstrap-all.sh)

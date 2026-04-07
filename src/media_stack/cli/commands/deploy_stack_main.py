@@ -277,6 +277,7 @@ class DeployStackRunner:
         return out
 
     def _media_server_service_names(self) -> tuple[str, ...]:
+        # 1. adapter_hooks.edge (config.json / K8s YAML)
         hooks = self._edge_hooks()
         raw = hooks.get("media_server_service_names")
         out: list[str] = []
@@ -290,6 +291,17 @@ class DeployStackRunner:
                 out.append(token)
         if out:
             return tuple(out)
+        # 2. Profile YAML routing.media_server_service_names
+        try:
+            from media_stack.core.controller_profile import load_bootstrap_profile
+            profile = load_bootstrap_profile()
+            routing = profile.get("routing") or {}
+            raw_profile = routing.get("media_server_service_names")
+            if isinstance(raw_profile, list) and raw_profile:
+                return tuple(str(s).strip().lower() for s in raw_profile if str(s).strip())
+        except Exception:
+            pass
+        # 3. Derive from technology_bindings
         cfg = self._resolved_bootstrap_config()
         technology_bindings = cfg.get("technology_bindings")
         if isinstance(technology_bindings, dict):
