@@ -300,9 +300,11 @@ class ControllerService:
 
             qbit_login_ok, sab_api_key = self._run_full_prechecks(rt)
             self._run_servarr_pipeline(rt, qbit_login_ok=qbit_login_ok, sab_api_key=sab_api_key)
-            self._run_post_servarr_steps(rt)
-            # Auto-indexers now run as a separate queued action after bootstrap
-            # completes, so they don't block the bootstrap pipeline.
+            # Core bootstrap complete — apps are configured with download clients,
+            # root folders, and quality profiles. Post-servarr steps (Jellyfin
+            # plugins, Live TV, prewarm, disk guardrails, media hygiene) run as
+            # a separate queued "finalize" action so the dashboard shows complete
+            # faster and downloads can start immediately.
             self.deps.log("[OK] Bootstrap complete.")
         finally:
             set_runtime_context_cfg(prior_hooks)
