@@ -42,6 +42,7 @@ AUTH_PROBES: dict[str, tuple[str, int, str, str]] = {
     "jellyfin": ("jellyfin", 8096, "/System/Info", "X-Emby-Token"),
     "jellyseerr": ("jellyseerr", 5055, "/api/v1/settings/main", "X-Api-Key"),
     "sabnzbd": ("sabnzbd", 8080, "/api", "query:apikey"),
+    "tautulli": ("tautulli", 8181, "/api/v2", "query:apikey"),
 }
 
 _HEALTH_HISTORY_PATH = Path(os.environ.get("HEALTH_HISTORY_PATH", "/tmp/media-stack-health-history.json"))
@@ -58,7 +59,7 @@ def discover_api_keys() -> dict[str, str]:
         "lidarr": "LIDARR_API_KEY", "readarr": "READARR_API_KEY",
         "prowlarr": "PROWLARR_API_KEY", "bazarr": "BAZARR_API_KEY",
         "sabnzbd": "SABNZBD_API_KEY", "jellyseerr": "JELLYSEERR_API_KEY",
-        "jellyfin": "JELLYFIN_API_KEY",
+        "jellyfin": "JELLYFIN_API_KEY", "tautulli": "TAUTULLI_API_KEY",
     }
     for app, env_key in env_map.items():
         val = (os.environ.get(env_key) or "").strip()
@@ -114,6 +115,14 @@ def discover_api_keys() -> dict[str, str]:
                     keys["jellyfin"] = str(row[0]).strip()
             except Exception:
                 pass
+
+    if "tautulli" not in keys:
+        tautulli_ini = config_root / "tautulli" / "config.ini"
+        if tautulli_ini.exists():
+            text = tautulli_ini.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"^\s*api_key\s*=\s*(\S+)", text, re.MULTILINE)
+            if m:
+                keys["tautulli"] = m.group(1).strip()
 
     return keys
 

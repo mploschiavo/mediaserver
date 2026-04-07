@@ -92,5 +92,48 @@ def run_preflight(
         except Exception:
             pass
 
+    # Tautulli: read from config.ini (same INI format as SABnzbd).
+    tautulli_ini = root / "tautulli" / "config.ini"
+    if tautulli_ini.exists():
+        value = _read_ini_api_key(tautulli_ini)
+        if value:
+            discovered["TAUTULLI_API_KEY"] = value
+            info(f"API key discovered: TAUTULLI_API_KEY from tautulli/config.ini")
+
+    # Jellyfin: read from SQLite database.
+    jf_db = root / "jellyfin" / "data" / "jellyfin.db"
+    if jf_db.exists():
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                discovered["JELLYFIN_API_KEY"] = str(row[0]).strip()
+                info(f"API key discovered: JELLYFIN_API_KEY from jellyfin/data/jellyfin.db")
+        except Exception:
+            pass
+
+    # Jellyfin user ID: read from SQLite database.
+    if jf_db.exists() and "JELLYFIN_API_KEY" in discovered:
+        try:
+            conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT Id FROM Users WHERE IsAdministrator=1 ORDER BY Id LIMIT 1"
+            )
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                discovered["JELLYFIN_USER_ID"] = str(row[0]).strip()
+                info(f"API key discovered: JELLYFIN_USER_ID from jellyfin/data/jellyfin.db")
+        except Exception:
+            pass
+
     info(f"API key discovery: {len(discovered)} keys found")
     return discovered
