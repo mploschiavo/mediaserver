@@ -54,6 +54,11 @@ plugin:
     media_server: media_stack.services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter
   aliases:
   - jf
+  preflight_handler:
+    name: jellyfin
+    handler: media_stack.services.apps.jellyfin.http_preflight:run_preflight
+    export_env: true
+    optional: true
 defaults:
   libraries:
     enabled: true

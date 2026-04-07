@@ -25,3 +25,7 @@ plugin:
       setup_torrent_categories: media_stack.services.apps.qbittorrent.runtime_ops:setup_torrent_categories
   adapter_classes:
     download_client: media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter
+  preflight_handler:
+    name: qbittorrent
+    handler: media_stack.services.apps.qbittorrent.http_preflight:run_preflight
+    optional: true
