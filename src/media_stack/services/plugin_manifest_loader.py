@@ -147,11 +147,59 @@ def _load_manifest(path: Path) -> PluginManifest:
     )
 
 
+def _load_from_service_yamls() -> list[PluginManifest]:
+    """Load plugin definitions from per-service YAML files (contracts/services/*.yaml)."""
+    import yaml as _yaml
+
+    svc_dirs = [
+        Path(__file__).resolve().parents[2] / "contracts" / "services",
+        Path("/opt/media-stack/contracts/services"),
+        Path("contracts/services"),
+    ]
+    manifests: list[PluginManifest] = []
+    for svc_dir in svc_dirs:
+        if not svc_dir.is_dir():
+            continue
+        for yaml_file in sorted(svc_dir.glob("*.yaml")):
+            if yaml_file.name.startswith("_"):
+                continue
+            try:
+                data = _yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+                plugin = data.get("plugin")
+                if not isinstance(plugin, dict) or not plugin.get("technology"):
+                    continue
+                adapter_classes = {}
+                ac = plugin.get("adapter_class", "")
+                if ac:
+                    # Single adapter class → use "servarr" as the default role
+                    adapter_classes["servarr"] = str(ac)
+                adapter_classes.update(_coerce_str_map(plugin.get("adapter_classes")))
+                manifests.append(PluginManifest(
+                    technology=str(plugin["technology"]).lower(),
+                    aliases=_coerce_aliases(plugin.get("aliases")),
+                    adapter_classes=adapter_classes,
+                    capability_defaults=dict(plugin.get("capabilities") or {}),
+                    source_path=yaml_file,
+                ))
+            except Exception:
+                pass
+        break  # Use first directory found
+    return manifests
+
+
 def load_plugin_manifests(manifest_root: Path | None = None) -> list[PluginManifest]:
+    # Load from legacy manifest.json files (these have full adapter/service bindings)
     root = manifest_root or DEFAULT_PLUGIN_MANIFESTS_DIR
     manifests: list[PluginManifest] = []
     for path in _iter_manifest_files(root):
         manifests.append(_load_manifest(path))
+
+    # Supplement with per-service YAML files (add any technologies not in legacy manifests)
+    legacy_techs = {m.technology for m in manifests}
+    for yaml_manifest in _load_from_service_yamls():
+        if yaml_manifest.technology not in legacy_techs:
+            manifests.append(yaml_manifest)
+
     return manifests
 
 

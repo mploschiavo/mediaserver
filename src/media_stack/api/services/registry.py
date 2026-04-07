@@ -48,28 +48,30 @@ class ServiceDef:
 
 def _find_services_dir() -> Path | None:
     """Locate the per-service YAML directory."""
+    env_dir = os.environ.get("SERVICES_REGISTRY_DIR", "").strip()
     candidates = [
-        Path(os.environ.get("SERVICES_REGISTRY_DIR", "")),
+        Path(env_dir) if env_dir else None,
         Path("/opt/media-stack/contracts/services"),
         Path(__file__).resolve().parents[4] / "contracts" / "services",
         Path("contracts/services"),
     ]
     for p in candidates:
-        if p.is_dir():
+        if p and p.is_dir() and any(p.glob("*.yaml")):
             return p
     return None
 
 
 def _find_services_yaml() -> Path | None:
     """Locate the legacy services.yaml config file (fallback)."""
+    env_file = os.environ.get("SERVICES_REGISTRY_FILE", "").strip()
     candidates = [
-        Path(os.environ.get("SERVICES_REGISTRY_FILE", "")),
+        Path(env_file) if env_file else None,
         Path("/opt/media-stack/contracts/services.yaml"),
         Path(__file__).resolve().parents[4] / "contracts" / "services.yaml",
         Path("contracts/services.yaml"),
     ]
     for p in candidates:
-        if p.is_file():
+        if p and p.is_file():
             return p
     return None
 
