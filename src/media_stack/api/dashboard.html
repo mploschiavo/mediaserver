@@ -280,6 +280,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 
   <!-- Routing tab (was DNS) -->
   <div id="tab-routing" class="tab-content">
+    <div id="routing-config" style="margin-bottom:12px"></div>
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — 3 access patterns per service.</p>
     <div class="dns-entry" id="dns-entries">Detecting...</div>
     <div style="margin:8px 0;display:flex;gap:6px">
@@ -705,25 +706,51 @@ async function loadEnv(){
   }}catch(e){}
 }
 
-/* DNS Matrix */
+/* Routing / DNS Matrix */
+let _routingCfg={base_domain:'local',stack_subdomain:'media-stack',gateway_host:'apps.media-stack.local',gateway_port:80,app_path_prefix:'/app'};
 function getHostIp(){const h=location.hostname;return (h==='localhost'||h==='127.0.0.1'||!h)?'127.0.0.1':h;}
+async function loadRoutingConfig(){
+  try{const r=await fetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
+  renderRoutingPanel();buildDns();
+}
+function renderRoutingPanel(){
+  const rc=_routingCfg;const el=document.getElementById('routing-config');if(!el)return;
+  const gwUrl='http://'+rc.gateway_host+(rc.gateway_port&&rc.gateway_port!==80?':'+rc.gateway_port:'')+rc.app_path_prefix+'/';
+  const locUrl='http://localhost'+(rc.gateway_port&&rc.gateway_port!==80?':'+rc.gateway_port:'')+rc.app_path_prefix+'/';
+  el.innerHTML='<table style="width:100%;font-size:.88em;border-collapse:collapse">'+
+    '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Gateway URL</td><td style="padding:6px;font-family:monospace"><a href="'+gwUrl+'" target="_blank" style="color:var(--blue)">'+gwUrl+'</a></td></tr>'+
+    '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Localhost</td><td style="padding:6px;font-family:monospace"><a href="'+locUrl+'" target="_blank" style="color:var(--blue)">'+locUrl+'</a> <span style="color:var(--fg3);font-size:.82em">(no DNS needed)</span></td></tr>'+
+    '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Base Domain</td><td style="padding:6px;font-family:monospace">'+rc.base_domain+'</td></tr>'+
+    '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Subdomain</td><td style="padding:6px;font-family:monospace">'+rc.stack_subdomain+'</td></tr>'+
+    '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Path Prefix</td><td style="padding:6px;font-family:monospace">'+rc.app_path_prefix+'</td></tr>'+
+    '<tr><td style="padding:6px;color:var(--fg2);font-weight:600">Strategy</td><td style="padding:6px;font-family:monospace">'+rc.strategy+'</td></tr></table>';
+}
 function buildDns(){
-  const ip=getHostIp();
-  document.getElementById('dns-entries').textContent=ip+'  apps.media-stack.local '+SVCS.map(s=>s.id+'.local').join(' ');
+  const ip=getHostIp();const rc=_routingCfg;
+  const gwHost=rc.gateway_host||'apps.media-stack.local';
+  const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
+  document.getElementById('dns-entries').textContent=ip+'  '+gwHost+' '+SVCS.map(s=>s.id+'.'+sub+'.'+dom).join(' ');
   renderMatrix();
 }
 function getAccessUrls(s){
-  const ip=getHostIp();
+  const ip=getHostIp();const rc=_routingCfg;
+  const gwPort=rc.gateway_port||80;const portSuffix=gwPort===80?'':':'+gwPort;
+  const gwHost=rc.gateway_host||'apps.media-stack.local';
+  const prefix=rc.app_path_prefix||'/app';
+  const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
   return{
-    gateway:'http://'+ip+':'+((envData&&envData.gateway_nodeport)||30180)+'/app/'+s.id+'/',
-    subdomain:'http://'+s.id+'.local/',
+    gateway:'http://'+gwHost+portSuffix+prefix+'/'+s.id+'/',
+    localhost:'http://localhost'+portSuffix+prefix+'/'+s.id+'/',
+    subdomain:'http://'+s.id+'.'+sub+'.'+dom+portSuffix+'/',
     direct:'http://'+ip+':'+s.port+'/'
   };
 }
 function renderMatrix(){
-  let h='<table class="matrix-table"><thead><tr><th>Service</th><th>Gateway (/app/...)</th><th>Subdomain (.local)</th><th>Direct (:port)</th></tr></thead><tbody>';
-  for(const s of SVCS){const urls=getAccessUrls(s);const gs=matrixState[s.id+'_gw']||'idle';const ss=matrixState[s.id+'_sub']||'idle';const ds=matrixState[s.id+'_dir']||'idle';
+  let h='<table class="matrix-table"><thead><tr><th>Service</th><th>Localhost (/app/...)</th><th>Gateway</th><th>Subdomain</th><th>Direct (:port)</th></tr></thead><tbody>';
+  for(const s of SVCS){const urls=getAccessUrls(s);
+    const ls=matrixState[s.id+'_loc']||'idle';const gs=matrixState[s.id+'_gw']||'idle';const ss=matrixState[s.id+'_sub']||'idle';const ds=matrixState[s.id+'_dir']||'idle';
     h+='<tr><td class="svc-name">'+s.name+'</td>';
+    h+='<td><div class="matrix-cell"><span class="dot '+ls+'"></span><a href="'+urls.localhost+'" target="_blank">'+urls.localhost.replace('http://','')+'</a></div></td>';
     h+='<td><div class="matrix-cell"><span class="dot '+gs+'"></span><a href="'+urls.gateway+'" target="_blank">'+urls.gateway.replace('http://','')+'</a></div></td>';
     h+='<td><div class="matrix-cell"><span class="dot '+ss+'"></span><a href="'+urls.subdomain+'" target="_blank">'+urls.subdomain.replace('http://','')+'</a></div></td>';
     h+='<td><div class="matrix-cell"><span class="dot '+ds+'"></span><a href="'+urls.direct+'" target="_blank">'+urls.direct.replace('http://','')+'</a></div></td></tr>';}
@@ -732,12 +759,13 @@ function renderMatrix(){
 async function probeUrl(url,timeout){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout||4000);try{await fetch(url,{mode:'no-cors',cache:'no-store',signal:c.signal});clearTimeout(t);return 'ok';}catch(e){clearTimeout(t);return 'error';}}
 async function probeMatrix(){
   toast('Testing all access paths...');const tasks=[];
-  for(const s of SVCS){const urls=getAccessUrls(s);matrixState[s.id+'_gw']='warn';matrixState[s.id+'_sub']='warn';matrixState[s.id+'_dir']='warn';
+  for(const s of SVCS){const urls=getAccessUrls(s);matrixState[s.id+'_loc']='warn';matrixState[s.id+'_gw']='warn';matrixState[s.id+'_sub']='warn';matrixState[s.id+'_dir']='warn';
+    tasks.push(probeUrl(urls.localhost).then(r=>{matrixState[s.id+'_loc']=r;renderMatrix();}));
     tasks.push(probeUrl(urls.gateway).then(r=>{matrixState[s.id+'_gw']=r;renderMatrix();}));
     tasks.push(probeUrl(urls.subdomain).then(r=>{matrixState[s.id+'_sub']=r;renderMatrix();}));
     tasks.push(probeUrl(urls.direct).then(r=>{matrixState[s.id+'_dir']=r;renderMatrix();}));}
   renderMatrix();await Promise.all(tasks);
-  const ok=Object.values(matrixState).filter(v=>v==='ok').length;toast(ok+'/'+(SVCS.length*3)+' paths reachable');
+  const ok=Object.values(matrixState).filter(v=>v==='ok').length;toast(ok+'/'+(SVCS.length*4)+' paths reachable');
 }
 function copyDns(){navigator.clipboard.writeText(document.getElementById('dns-entries').textContent).then(()=>toast('Copied!')).catch(()=>toast('Copy failed',true));}
 
@@ -1286,7 +1314,7 @@ const apiTimings={};
 async function timedFetch(url){const t0=performance.now();const r=await fetch(url);const ms=Math.round(performance.now()-t0);apiTimings[url]=ms;return r;}
 
 /* Init */
-load();setInterval(load,dashSettings.refreshInterval);startSSE();buildDns();buildQuickLinks();
+load();setInterval(load,dashSettings.refreshInterval);startSSE();loadRoutingConfig();buildQuickLinks();
 setTimeout(probeServices,2000);
 setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();renderTimingFooter();});},dashSettings.healthInterval);
 setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();},3000);
