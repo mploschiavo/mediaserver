@@ -526,7 +526,7 @@ async function load(){
     if(d.error)h+='<div class="error" style="font-size:.9em">'+d.error+'</div>';
     if(d.initial_bootstrap_done&&p!=='running'){
       let completedAt='';
-      if(d.completed_at){try{completedAt=' at '+new Date(d.completed_at).toLocaleString();}catch(e){}}
+      if(d.completed_at){try{const ts=d.completed_at>1e12?d.completed_at:d.completed_at*1000;completedAt=' at '+new Date(ts).toLocaleString();}catch(e){}}
       else if(d.elapsed_seconds){completedAt=' in '+relTime(d.elapsed_seconds);}
       h+='<div class="ok" style="font-size:.85em">Setup complete'+completedAt+'</div>';
     }
@@ -1060,8 +1060,9 @@ function renderDrift(){
   if(Object.keys(cfg).length===0)h+='<div class="svc-row" style="cursor:default"><span class="sname">No overrides</span><span class="smeta idle">Default config</span></div>';
   else for(const[k,v]of Object.entries(cfg))h+='<div class="svc-row" style="cursor:default"><span class="sname">'+k+'</span><span class="smeta">'+JSON.stringify(v)+'</span></div>';
   h+='<div class="cat-label">Service Auth Status</div>';
-  for(const s of SVCS){const auth=SVC_AUTH[s.id]||'unknown';const cls=auth==='ok'?'ok':auth==='n/a'?'idle':'error';
-    h+='<div class="svc-row" style="cursor:default"><span class="dot '+cls+'"></span><span class="sname">'+s.name+'</span><span class="smeta">'+auth+'</span></div>';}
+  for(const s of SVCS){const auth=SVC_AUTH[s.id]||'unknown';const cls=auth==='ok'?'ok':auth==='n/a'?'idle':auth==='no_key'?'idle':auth==='unauthorized'?'warn':'error';
+    const label=auth==='unauthorized'?'auth required (run bootstrap)':auth==='no_key'?'key not discovered':auth;
+    h+='<div class="svc-row" style="cursor:default"><span class="dot '+cls+'"></span><span class="sname">'+s.name+'</span><span class="smeta">'+label+'</span></div>';}
   h+='</div>';document.getElementById('drift-view').innerHTML=h;
 }
 

@@ -586,6 +586,20 @@ def _run_serve(args: argparse.Namespace) -> None:
                 "will apply from config when action is triggered"
             )
 
+    # Pre-discover API keys from config files so auth probes work
+    # even before bootstrap preflights run (or after controller restart).
+    try:
+        from media_stack.api.preflight.api_keys import run_preflight as _discover_keys
+        config_root = getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config"))
+        discovered = _discover_keys(config_root=config_root, log=runtime_platform.log)
+        for env_key, val in discovered.items():
+            if val and not os.environ.get(env_key):
+                os.environ[env_key] = val
+        if discovered:
+            runtime_platform.log(f"[INFO] Pre-discovered {len(discovered)} API keys from config files")
+    except Exception as exc:
+        runtime_platform.log(f"[WARN] API key pre-discovery failed: {exc}")
+
     state = BootstrapState()
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
     action_queue: queue.Queue[tuple[str, dict]] = queue.Queue()
