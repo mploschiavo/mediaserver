@@ -1,6 +1,17 @@
+# Emby — alternative media server (community)
+# To use: set technology_bindings.media_server: emby in profile YAML
+
+service:
+  id: emby
+  name: Emby
+  desc: Alternative media server
+  category: media
+  host: emby
+  port: 8096
+  health_path: /System/Info/Public
 plugin:
+  technology: emby
+  aliases:
+    - embyserver
   adapter_classes:
     media_server: media_stack.services.media_server_adapters.emby:EmbyMediaServerAdapter
-  aliases:
-  - embyserver
-  technology: emby

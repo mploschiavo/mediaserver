@@ -1,6 +1,17 @@
+# NZBGet — alternative usenet client (community)
+# To use: set technology_bindings.usenet_client: nzbget in profile YAML
+
+service:
+  id: nzbget
+  name: NZBGet
+  desc: Usenet download client
+  category: downloads
+  host: nzbget
+  port: 6789
+  health_path: /
 plugin:
+  technology: nzbget
+  aliases:
+    - nzb
   adapter_classes:
     download_client: media_stack.services.download_client_adapters.nzbget:NzbgetDownloadClientAdapter
-  aliases:
-  - nzb
-  technology: nzbget

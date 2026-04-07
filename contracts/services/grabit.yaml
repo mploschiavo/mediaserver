@@ -1,6 +1,17 @@
+# Grabit — alternative download client (community)
+# To use: set technology_bindings.usenet_client: grabit in profile YAML
+
+service:
+  id: grabit
+  name: Grabit
+  desc: Usenet download client
+  category: downloads
+  host: grabit
+  port: 0
+  web_ui: false
 plugin:
+  technology: grabit
+  aliases:
+    - grab-it
   adapter_classes:
     download_client: media_stack.services.download_client_adapters.grabit:GrabitDownloadClientAdapter
-  aliases:
-  - grab-it
-  technology: grabit
