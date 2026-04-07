@@ -731,7 +731,32 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                     results[label] = {"path": str(path), "error": str(exc)[:80]}
             else:
                 results[label] = {"path": str(path), "error": "path not found"}
-        return {"disk": results}
+        # Include disk guardrail thresholds from bootstrap config.
+        guardrails: dict[str, Any] = {"enabled": False}
+        resolved_cfg = _resolve_config_path()
+        if resolved_cfg:
+            try:
+                import json as _json
+                cfg = _json.loads(Path(resolved_cfg).read_text(encoding="utf-8"))
+                gc = cfg.get("disk_guardrails") or {}
+                guardrails = {
+                    "enabled": bool(gc.get("enabled", False)),
+                    "max_used_percent": float(gc.get("max_used_percent", 65)),
+                    "target_used_percent": float(gc.get("target_used_percent", 58)),
+                    "monitor_path": str(gc.get("monitor_path", "")),
+                    "qbit_cleanup": {
+                        "enabled": bool((gc.get("qbit_cleanup") or {}).get("enabled", True)),
+                        "min_completion_age_hours": float((gc.get("qbit_cleanup") or {}).get("min_completion_age_hours", 36)),
+                        "min_ratio": float((gc.get("qbit_cleanup") or {}).get("min_ratio", 1.0)),
+                        "min_seeding_time_minutes": int((gc.get("qbit_cleanup") or {}).get("min_seeding_time_minutes", 720)),
+                        "max_delete_per_run": int((gc.get("qbit_cleanup") or {}).get("max_delete_per_run", 80)),
+                        "delete_files": bool((gc.get("qbit_cleanup") or {}).get("delete_files", True)),
+                        "categories": list((gc.get("qbit_cleanup") or {}).get("categories", [])),
+                    },
+                }
+            except Exception:
+                pass
+        return {"disk": results, "guardrails": guardrails}
 
     def _get_env(self) -> dict[str, Any]:
         """Return runtime environment information."""

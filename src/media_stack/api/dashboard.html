@@ -35,9 +35,11 @@ header .links a:hover,header .links button:hover{color:var(--accent);border-colo
 .stat-card h3{margin:0 0 8px;font-size:.85em;color:var(--fg3);font-weight:600}
 .stat-item{display:flex;justify-content:space-between;padding:3px 0;font-size:.85em}
 .stat-item .label{color:var(--fg2)}.stat-item .val{font-weight:600}
-.disk-bar{height:6px;border-radius:3px;background:var(--bg4);margin:4px 0;overflow:hidden}
+.disk-bar{height:6px;border-radius:3px;background:var(--bg4);margin:4px 0;overflow:hidden;position:relative}
 .disk-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .5s}
 .disk-fill.warn{background:var(--warn)}.disk-fill.crit{background:var(--err)}
+.disk-thresh{position:absolute;top:-2px;bottom:-2px;width:2px;z-index:1}
+.disk-thresh.target{background:var(--warn);opacity:.6}.disk-thresh.max{background:var(--err);opacity:.6}
 .dl-item{padding:4px 0;border-bottom:1px solid var(--border);font-size:.83em}
 .dl-item:last-child{border:none}
 .dl-name{color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -74,6 +76,9 @@ button{border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight
 .slider:before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:var(--fg3);border-radius:50%;transition:.3s}
 .switch input:checked+.slider{background:var(--ok)}
 .switch input:checked+.slider:before{transform:translateX(20px);background:#fff}
+header .switch{width:34px;height:18px}
+header .switch .slider:before{height:12px;width:12px;left:3px;bottom:3px}
+header .switch input:checked+.slider:before{transform:translateX(16px)}
 #toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);color:var(--ok);padding:12px 20px;border-radius:8px;border:1px solid var(--ok);display:none;z-index:99;font-size:.9em;max-width:360px;animation:fadeIn .2s ease}
 #toast.err{color:var(--err);border-color:var(--err)}
 .progress-wrap{background:var(--bg4);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
@@ -156,7 +161,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div class="links">
     <a href="/api/docs">API Docs</a>
     <a href="/status" target="_blank">JSON</a>
-    <label style="display:flex;align-items:center;gap:4px;font-size:.82em;color:var(--fg3);cursor:pointer" title="Play sound on action complete"><input type="checkbox" id="soundToggle" style="margin:0"> Sound</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.82em;color:var(--fg3);cursor:pointer" title="Play sound on action complete"><label class="switch" style="width:34px;height:18px"><input type="checkbox" id="soundToggle"><span class="slider" style="border-radius:9px"></span></label>Sound</label>
     <button onclick="toggleTheme()" id="themeBtn" title="Toggle light/dark theme (T)">Light</button>
     <button onclick="showSettings()" title="Dashboard settings">Settings</button>
     <button onclick="showShortcuts()" title="Keyboard shortcuts (?)">?</button>
@@ -302,6 +307,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-heatmap',this)">Heatmap</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-bw',this)">Bandwidth</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-schedule',this)">Schedule</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-guardrails',this)">Disk Guardrails</button>
     </div>
     <div id="ops-traffic" class="subtab active"><div id="traffic-view">Loading...</div></div>
     <div id="ops-sla" class="subtab" style="display:none"><div id="sla-view"></div></div>
@@ -322,6 +328,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
         <button class="btn-primary" style="padding:5px 12px;font-size:.82em" onclick="addSchedule()">Schedule</button>
       </div>
       <div id="schedule-list"></div>
+    </div>
+    <div id="ops-guardrails" class="subtab" style="display:none">
+      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Disk guardrails automatically clean completed torrents when storage exceeds the threshold.</p>
+      <div id="guardrail-config">Loading guardrail config...</div>
     </div>
   </div>
   <div id="tab-webhooks" class="tab-content">
@@ -588,14 +598,45 @@ async function loadStats(){
     let h='';for(const[k,v]of Object.entries(s)){h+='<div class="stat-item"><span class="label">'+(SVC_MAP[k]?SVC_MAP[k].name:k)+'</span><span class="val">'+(v.count||0)+' '+v.label+'</span></div>';}
     document.getElementById('stats-lib').innerHTML=h||'<span style="color:var(--fg3);font-size:.85em">Run bootstrap first</span>';}}catch(e){}
 }
+let _diskGuardrails={};
 async function loadDisk(){
   try{const r=await fetch('/api/disk');if(r.ok){const d=await r.json();const disks=d.disk||{};
+    _diskGuardrails=d.guardrails||{};
+    const gEnabled=_diskGuardrails.enabled;
+    const gMax=_diskGuardrails.max_used_percent||65;
+    const gTarget=_diskGuardrails.target_used_percent||58;
     let h='';for(const[k,v]of Object.entries(disks)){
       if(v.error){h+='<div class="stat-item"><span class="label">'+k+'</span><span class="val" style="color:var(--fg3)">'+v.error+'</span></div>';continue;}
-      const pct=v.percent_used||0;const cls=pct>90?'crit':pct>75?'warn':'';
-      h+='<div class="stat-item"><span class="label">'+k+'</span><span class="val">'+fmtBytes(v.used_bytes)+' / '+fmtBytes(v.total_bytes)+'</span></div>';
-      h+='<div class="disk-bar"><div class="disk-fill '+cls+'" style="width:'+pct+'%"></div></div>';}
-    document.getElementById('stats-disk').innerHTML=h||'No volumes found';}}catch(e){}
+      const pct=v.percent_used||0;const cls=pct>gMax?'crit':pct>gTarget?'warn':'';
+      h+='<div class="stat-item"><span class="label">'+k+'</span><span class="val">'+fmtBytes(v.used_bytes)+' / '+fmtBytes(v.total_bytes)+' ('+pct.toFixed(1)+'%)</span></div>';
+      h+='<div class="disk-bar">';
+      if(gEnabled){h+='<div class="disk-thresh target" style="left:'+gTarget+'%" title="Target: '+gTarget+'%"></div>';
+        h+='<div class="disk-thresh max" style="left:'+gMax+'%" title="Max: '+gMax+'% — cleanup triggers"></div>';}
+      h+='<div class="disk-fill '+cls+'" style="width:'+pct+'%"></div></div>';
+      if(gEnabled&&pct>gTarget){h+='<div style="font-size:.72em;color:var(--fg3);margin-bottom:4px">Guardrail: '+(pct>gMax?'<span style="color:var(--err)">cleanup will trigger</span>':'<span style="color:var(--warn)">approaching threshold</span>')+' (target '+gTarget+'% / max '+gMax+'%)</div>';}}
+    document.getElementById('stats-disk').innerHTML=h||'No volumes found';
+    renderGuardrailConfig();}}catch(e){}
+}
+function renderGuardrailConfig(){
+  const g=_diskGuardrails;if(!g)return;
+  const el=document.getElementById('guardrail-config');if(!el)return;
+  const qc=g.qbit_cleanup||{};
+  let h='<table style="width:100%;font-size:.88em;border-collapse:collapse">';
+  const row=(label,val,desc)=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600;white-space:nowrap">'+label+'</td><td style="padding:6px;font-family:monospace">'+val+'</td><td style="padding:6px;color:var(--fg3);font-size:.85em">'+desc+'</td></tr>';
+  h+=row('Status','<span style="color:var('+(g.enabled?'--ok':'--fg3')+')">'+( g.enabled?'Enabled':'Disabled')+'</span>','');
+  h+=row('Max Used %','<b>'+g.max_used_percent+'%</b>','Cleanup triggers above this');
+  h+=row('Target %','<b>'+g.target_used_percent+'%</b>','Cleanup tries to reach this level');
+  h+=row('Monitor Path',g.monitor_path||'auto-detect','Filesystem to monitor');
+  h+='<tr><td colspan="3" style="padding:10px 6px 4px;color:var(--fg3);font-weight:700;font-size:.82em;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--border)">qBittorrent Cleanup</td></tr>';
+  h+=row('Cleanup','<span style="color:var('+(qc.enabled?'--ok':'--fg3')+')">'+( qc.enabled?'Enabled':'Disabled')+'</span>','Delete completed torrents when over threshold');
+  h+=row('Min Age',qc.min_completion_age_hours+'h','Only delete torrents completed longer ago');
+  h+=row('Min Ratio',qc.min_ratio,'Must reach this seed ratio before deletion');
+  h+=row('Min Seed Time',qc.min_seeding_time_minutes+' min','Must seed at least this long');
+  h+=row('Max Delete/Run',qc.max_delete_per_run,'Limit deletions per cleanup cycle');
+  h+=row('Delete Files',qc.delete_files?'Yes':'No','Remove downloaded files too');
+  h+=row('Categories',(qc.categories||[]).join(', ')||'all','Only clean these categories');
+  h+='</table>';
+  el.innerHTML=h;
 }
 async function loadDownloads(){
   try{const r=await fetch('/api/downloads');if(r.ok){const d=await r.json();
