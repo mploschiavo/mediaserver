@@ -396,13 +396,13 @@ const SVCS=[
   {id:'readarr',name:'Readarr',desc:'Books automation',port:8787},
   {id:'prowlarr',name:'Prowlarr',desc:'Indexer manager',port:9696},
   {id:'qbittorrent',name:'qBittorrent',desc:'Torrent client',port:8080},
-  {id:'sabnzbd',name:'SABnzbd',desc:'Usenet client',port:8080},
+  {id:'sabnzbd',name:'SABnzbd',desc:'Usenet client',port:8085},
   {id:'flaresolverr',name:'FlareSolverr',desc:'Indexer proxy',port:8191},
   {id:'bazarr',name:'Bazarr',desc:'Subtitles',port:6767},
   {id:'maintainerr',name:'Maintainerr',desc:'Library cleanup',port:6246},
   {id:'tautulli',name:'Tautulli',desc:'Analytics',port:8181},
   {id:'homepage',name:'Homepage',desc:'Dashboard',port:3000},
-  {id:'envoy',name:'Envoy',desc:'Gateway proxy',port:9901}
+  {id:'envoy',name:'Envoy',desc:'Gateway proxy',port:8088}
 ];
 const SVC_MAP=Object.fromEntries(SVCS.map(s=>[s.id,s]));
 const SVC_HEALTH={},SVC_AUTH={},SVC_MS={};
