@@ -523,7 +523,12 @@ async function load(){
       h+='<div class="running" style="font-size:.93em">Running: '+a.name+' ('+relTime(el)+') <button class="btn-danger" style="padding:3px 10px;font-size:.78em;margin-left:8px" onclick="cancelAction()">Cancel</button></div>';
       h+='<div class="progress-wrap"><div class="progress-bar" style="width:'+pct+'%"></div></div>';}
     if(d.error)h+='<div class="error" style="font-size:.9em">'+d.error+'</div>';
-    if(d.initial_bootstrap_done&&p!=='running')h+='<div class="ok" style="font-size:.85em">Setup complete</div>';
+    if(d.initial_bootstrap_done&&p!=='running'){
+      let completedAt='';
+      if(d.completed_at){try{completedAt=' at '+new Date(d.completed_at).toLocaleTimeString();}catch(e){}}
+      else if(d.elapsed_seconds){completedAt=' in '+relTime(d.elapsed_seconds);}
+      h+='<div class="ok" style="font-size:.85em">Setup complete'+completedAt+'</div>';
+    }
     document.getElementById('status-card').innerHTML=h;
 
     // Sound on phase transition
@@ -1119,10 +1124,11 @@ function checkRemediation(){
 async function loadImageUpdates(){
   try{const r=await fetch('/api/image-updates');if(!r.ok)return;const d=await r.json();
     if(d.error)return;
-    let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th></tr></thead><tbody>';
+    let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th><th>Last Changed</th></tr></thead><tbody>';
     for(const img of(d.images||[])){const cls=img.tag==='latest'?'warn':img.tag.includes('digest')?'ok':'';
       const short=(img.image||'').split('/').pop().split('@')[0];
-      h+='<tr><td style="font-weight:600">'+img.name+'</td><td style="font-size:.78em;color:var(--fg3)">'+short+'</td><td class="'+(cls||'')+'">'+img.tag+'</td></tr>';}
+      const changed=img.last_updated||img.started_at||img.image_created||'';
+      h+='<tr><td style="font-weight:600">'+img.name+'</td><td style="font-size:.78em;color:var(--fg3)">'+short+'</td><td class="'+(cls||'')+'">'+img.tag+'</td><td style="font-size:.78em;color:var(--fg3)">'+changed+'</td></tr>';}
     h+='</tbody></table><div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+d.pinned+'/'+d.total+' pinned to specific version</div>';
     // Append to ops-traffic or create sub-section
     const el=document.getElementById('ops-images');if(el)el.innerHTML=h;
