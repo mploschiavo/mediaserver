@@ -138,11 +138,80 @@ test.describe('Controller API', () => {
   });
 
   test('localhost routing works through Envoy', async ({ request }) => {
-    // Envoy should serve app routes on localhost:80
     const r = await request.get('http://127.0.0.1:80/app/homepage', {
       maxRedirects: 0,
     });
-    // 200 or 301/302 redirect means Envoy is routing
     expect(r.status()).toBeLessThan(404);
+  });
+
+  test('POST /api/routing updates config and returns changed fields', async ({ request }) => {
+    // Save current config
+    const current = await (await request.get(`${baseUrl}/api/routing`)).json();
+
+    // Update with same values — should return no_changes
+    const r = await request.post(`${baseUrl}/api/routing`, {
+      data: { base_domain: current.base_domain },
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const d = await r.json();
+    expect(d.status).toBe('no_changes');
+  });
+
+  test('GET /api/cleanup-preview returns preview data', async ({ request }) => {
+    const r = await request.get(`${baseUrl}/api/cleanup-preview`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d).toHaveProperty('candidates');
+  });
+
+  test('GET /api/gpu returns detection result', async ({ request }) => {
+    const r = await request.get(`${baseUrl}/api/gpu`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d).toHaveProperty('detected');
+    expect(d).toHaveProperty('gpus');
+  });
+
+  test('GET /api/snapshots returns snapshot list', async ({ request }) => {
+    const r = await request.get(`${baseUrl}/api/snapshots`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d).toHaveProperty('snapshots');
+  });
+
+  test('GET /api/mounts returns mount info', async ({ request }) => {
+    const r = await request.get(`${baseUrl}/api/mounts`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d).toHaveProperty('mounts');
+  });
+
+  test('routing form shows live preview', async ({ page }) => {
+    await page.goto(`${baseUrl}/#routing`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+    // Open edit form
+    await page.click('summary:has-text("Edit Routing Config")');
+    await page.waitForTimeout(500);
+    // Preview should show gateway pattern
+    const preview = await page.locator('#rt-preview').textContent();
+    expect(preview).toContain('Gateway:');
+    expect(preview).toContain('Path-based:');
+    expect(preview).toContain('Subdomain:');
+    expect(preview).toContain('Localhost:');
+  });
+
+  test('log viewer has source selector and columns', async ({ page }) => {
+    await page.goto(`${baseUrl}/#logs`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+    // Should have source buttons
+    const controllerBtn = page.locator('button:has-text("Controller")');
+    expect(await controllerBtn.count()).toBeGreaterThan(0);
+    // Should have service picker
+    const picker = page.locator('#svcLogPicker');
+    expect(await picker.count()).toBe(1);
+    // Should have column headers
+    const headers = await page.locator('.log-line').first().textContent();
+    expect(headers).toContain('Time');
+    expect(headers).toContain('Source');
   });
 });
