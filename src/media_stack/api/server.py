@@ -592,6 +592,17 @@ tr:hover{{background:#162230}}</style></head><body>
             self._json_response(200, config_svc.restore_backup(body))
             return
 
+        # POST /api/jellyfin/reset — hard-reset Jellyfin credentials via DB
+        if self.path == "/api/jellyfin/reset":
+            body = self._read_json_body()
+            username = body.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
+            password = body.get("password", os.environ.get("STACK_ADMIN_PASSWORD", "media-stack"))
+            if not password or len(password) < 4:
+                self._json_response(400, {"error": "password required (min 4 chars)"})
+                return
+            self._json_response(200, admin_svc.jellyfin_hard_reset(username, password))
+            return
+
         # POST /api/gpu/enable — auto-configure GPU transcoding in Jellyfin
         if self.path == "/api/gpu/enable":
             self._json_response(200, ops_svc.enable_gpu_transcoding())

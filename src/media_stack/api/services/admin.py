@@ -108,6 +108,99 @@ def _discover_jellyfin_api_key(config_root: str) -> str:
     return _read_key_sqlite(db_path)
 
 
+def jellyfin_hard_reset(username: str, password: str) -> dict[str, Any]:
+    """Hard-reset Jellyfin user credentials via direct DB access.
+
+    This handles the Jellyfin 10.11+ race condition where the startup
+    wizard auto-completes before the controller can intercept it,
+    creating a user with an unknown name and password.
+
+    Steps: stop Jellyfin → clear password in DB → rename user → restart
+    → set new password via API.
+    """
+    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+    db_path = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
+    if not db_path.is_file():
+        return {"status": "error", "error": "Jellyfin database not found. Start Jellyfin first."}
+
+    jf = SERVICE_MAP.get("jellyfin")
+    if not jf:
+        return {"status": "error", "error": "Jellyfin not in service registry"}
+
+    import sqlite3
+
+    # 1. Clear password and set username in DB
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute("UPDATE Users SET Password='', Username=?, MustUpdatePassword=0", (username,))
+        affected = cur.rowcount
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        return {"status": "error", "error": f"DB update failed: {exc}"}
+
+    if affected == 0:
+        return {"status": "error", "error": "No users found in Jellyfin DB"}
+
+    # 2. Restart Jellyfin to pick up DB changes
+    restart_msg = ""
+    try:
+        import docker as docker_lib
+        client = docker_lib.from_env()
+        jf_container = client.containers.get("jellyfin")
+        jf_container.restart(timeout=30)
+        import time
+        for _ in range(15):
+            time.sleep(2)
+            try:
+                req = urllib.request.Request(f"http://{jf.host}:{jf.port}/System/Info/Public")
+                urllib.request.urlopen(req, timeout=5)
+                restart_msg = "Jellyfin restarted."
+                break
+            except Exception:
+                continue
+        else:
+            restart_msg = "Jellyfin restarting (health check pending)."
+    except Exception:
+        restart_msg = "Restart Jellyfin manually."
+
+    # 3. Set the new password via API (now with empty current password)
+    pw_set = False
+    try:
+        # Auth with empty password
+        auth_data = json.dumps({"Username": username, "Pw": ""}).encode()
+        auth_req = urllib.request.Request(
+            f"http://{jf.host}:{jf.port}/Users/AuthenticateByName",
+            data=auth_data, method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Emby-Authorization": 'MediaBrowser Client="controller", Device="controller", DeviceId="controller", Version="1.0"',
+            },
+        )
+        with urllib.request.urlopen(auth_req, timeout=10) as resp:
+            auth_result = json.loads(resp.read())
+        token = auth_result.get("AccessToken", "")
+        user_id = auth_result.get("User", {}).get("Id", "")
+
+        if token and user_id:
+            pw_data = json.dumps({"CurrentPw": "", "NewPw": password}).encode()
+            pw_req = urllib.request.Request(
+                f"http://{jf.host}:{jf.port}/Users/{user_id}/Password",
+                data=pw_data, method="POST",
+                headers={"X-Emby-Token": token, "Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(pw_req, timeout=10)
+            pw_set = True
+            os.environ["JELLYFIN_USER_ID"] = user_id
+    except Exception as exc:
+        return {"status": "partial", "error": f"Password set failed: {exc}", "note": restart_msg}
+
+    if pw_set:
+        return {"status": "ok", "user": username, "note": restart_msg}
+    return {"status": "partial", "error": "Could not set password after DB reset", "note": restart_msg}
+
+
 def _discover_jellyfin_admin_user_id(base_url: str, api_key: str, preferred_name: str = "admin") -> str:
     """Find the admin user ID in Jellyfin."""
     try:
