@@ -23,7 +23,7 @@ bash bin/sync-unpackerr-keys.sh
 bash bin/run-prowlarr-auto-indexers.sh
 bash bin/bootstrap-all.sh
 ```
-For indexers-as-code, add entries under `prowlarr_indexers` in `contracts/media-stack.config.json` using `contracts/prowlarr-indexers.example.json` as a reference, then re-run the bootstrap job.
+Indexers are configured via Prowlarr auto-discovery (`bin/run-prowlarr-auto-indexers.sh`) or the controller dashboard at `http://localhost:9100/`.
 
 ## qBittorrent categories
 - tv

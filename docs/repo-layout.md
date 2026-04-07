@@ -6,7 +6,7 @@ The repository keeps deployable runtime assets in existing stable paths while in
 
 - `k8s/`: Kubernetes manifests, profile overlays, bootstrap job manifests
 - `docker/`: Docker Compose runtime manifests and env templates
-- `contracts/`: app-level bootstrap JSON plus deployment bootstrap profile YAML/schema
+- `contracts/`: per-service YAML (`services/*.yaml`), profile YAML, adapter-hooks config (`adapter-hooks.k8s.yaml`), and catalog YAML
 - `bin/`: install, reconcile, diagnostics, and verification tooling
 - `tests/`: unit and e2e test suites
 - `docs/`: architecture, operations, and design documents
@@ -37,7 +37,7 @@ These directories are intentionally introduced without breaking existing scripts
 - Platform manifests and cluster primitives: `k8s/`, `platform/`
 - App wiring and defaults: `contracts/`, `apps/`, `config/`
 - Technology registration and role bindings: `contracts/media-stack.config.json`, `src/media_stack/contracts/plugins/`
-- Shared runtime lifecycle orchestration: `bin/controller.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/services/bootstrap_runner_service.py`
+- Shared runtime lifecycle orchestration: `bin/controller.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/services/runner_operations_service.py`
 - App/technology behavior modules: `src/media_stack/services/apps/*`, adapter directories
 - Quality gates and regressions: `tests/`
 - Product narrative and operator docs: `docs/`

@@ -106,7 +106,7 @@ bash bin/bootstrap-all.sh --state-file .state/bootstrap-all-media-stack.json
 
 Runtime overlays:
 - base + env overlays live under `config/runtime/`.
-- enable with `config_overlays.enabled=true` in your bootstrap config.
+- enable with `config_overlays.enabled=true` in your profile YAML.
 - select env with `config_overlays.env` (`dev`, `stage`, `prod`).
 
 Optional periodic reconcile is available through Kubernetes CronJob manifests.
@@ -124,7 +124,7 @@ qB IP filter defaults are config-as-code under `media_hygiene.qbit_ipfilter` in
 
 Disk guardrails defaults are configured in `contracts/media-stack.config.json` under `disk_guardrails` (default max 65% used, target 58%, qB cleanup policy when over threshold, monitor path `/srv-stack/media`).
 Maintainerr is deployed as an optional app (`maintainerr.<domain>`) with persistent config at `/opt/data`.
-Maintainerr policy-as-code is also rendered to `/srv-config/maintainerr/policy.json` from the `maintainerr` section in bootstrap config.
+Maintainerr policy-as-code is also rendered to `/srv-config/maintainerr/policy.json` from the `contracts/services/maintainerr.yaml` defaults section.
 Rule definitions are managed as one-file-per-rule JSON/YAML under `src/media_stack/contracts/maintainerr_rules/{json,yaml}/`
 with optional namespace-local overrides from `maintainerr.rules_library.relative_path`.
 

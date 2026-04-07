@@ -39,7 +39,7 @@ The runtime is intentionally layered so technologies can be swapped locally with
 3. **App/technology implementation layer**
    `src/media_stack/services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `apps/servarr/technologies/`.
 4. **Shared orchestration layer**
-   `controller.py`, `runtime_factory/*`, and `bootstrap_runner_service.py` stay technology-neutral.
+   `controller.py`, `runtime_factory/*`, and `runner_operations_service.py` stay technology-neutral.
 
 Contract rules:
 - Registration is manifest-first, not runtime-config overrides.
