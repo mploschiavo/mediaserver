@@ -1,15 +1,17 @@
 flowchart LR
-  SRC[Git Desired State\n- k8s manifests\n- per-service YAML\n- profile YAML\n- operation plans]
-  SEC[Managed Secrets\nKubernetes Secret]
-  BOOT[Bootstrap and Reconcile]
-  RUN[Runtime App State]
-  TEST[Verification\nflow + smoke + API tests]
+  SRC[Desired State\n- per-service YAML\n- profile YAML\n- adapter-hooks YAML\n- k8s manifests]
+  SEC[Secrets\nenv vars / K8s Secrets]
+  CTRL[Controller\nbootstrap + reconcile]
+  RUN[Runtime App State\nconfigured services]
+  TEST[Verification\nhealth probes + smoke tests]
+  DASH[Dashboard / API\nPOST /config\nPOST /api/profile]
 
-  SRC --> BOOT
-  SEC --> BOOT
-  BOOT --> RUN
+  SRC --> CTRL
+  SEC --> CTRL
+  DASH --> CTRL
+  CTRL --> RUN
   RUN --> TEST
-  TEST --> SRC
+  TEST -.feed back.-> SRC
 
   DRIFT[Manual UI Drift]
-  DRIFT -.detected and overwritten.-> BOOT
+  DRIFT -.detected and overwritten.-> CTRL

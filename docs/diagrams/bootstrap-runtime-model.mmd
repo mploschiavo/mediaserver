@@ -4,6 +4,7 @@ stateDiagram-v2
   StartAPIServer --> ParseConfig: --auto-run or POST /actions/bootstrap
 
   WaitForAction --> ParseConfig: POST /actions/bootstrap
+  WaitForAction --> RunPostServarr: POST /actions/finalize
   WaitForAction --> RunIndexerPipeline: POST /actions/auto-indexers
   WaitForAction --> EnvoyConfigGen: POST /actions/envoy-config
   WaitForAction --> Reconcile: POST /actions/reconcile
@@ -14,17 +15,27 @@ stateDiagram-v2
   ResolveBindings --> BuildRuntime
 
   BuildRuntime --> RunPrecheckPlan: parallel preflight handlers
-  RunPrecheckPlan --> RunDownloadClientPhases: qBit + SAB in parallel
+  RunPrecheckPlan --> WaitForServices: parallel health checks
+  WaitForServices --> RunDownloadClientPhases: qBit + SAB in parallel
   RunDownloadClientPhases --> RunServarrPhases: Sonarr/Radarr/Lidarr/Readarr in parallel
-  RunServarrPhases --> RunPostServarrPreMedia: Bazarr + Jellyseerr + Maintainerr in parallel
-  RunPostServarrPreMedia --> RunMediaServerPlan: 6 Jellyfin steps in parallel
-  RunMediaServerPlan --> RunPostServarrPostMedia: Homepage + Guardrails + Hygiene in parallel
-  RunPostServarrPostMedia --> RunIndexerPipeline: 4 parallel test workers
+  RunServarrPhases --> BootstrapComplete
+  BootstrapComplete --> QueueFinalize: auto-queue finalize action
+
+  state RunPostServarr {
+    PostServarrPreMedia: Bazarr + Jellyseerr + Maintainerr
+    MediaServerPlan: Jellyfin libraries + plugins + playback + prewarm
+    PostServarrPostMedia: Homepage + Guardrails + Hygiene
+    PostServarrPreMedia --> MediaServerPlan
+    MediaServerPlan --> PostServarrPostMedia
+  }
+
+  RunPostServarr --> QueueIndexers: auto-queue indexer discovery
+  QueueIndexers --> RunIndexerPipeline: 4 parallel test workers
   RunIndexerPipeline --> ActionComplete
   ActionComplete --> EnvoyConfigGen: auto-queue after first bootstrap
   EnvoyConfigGen --> WaitForAction
 
-  ActionComplete --> RetryAction: retry > 0
+  BootstrapComplete --> RetryAction: retry > 0
   RetryAction --> ParseConfig: exponential backoff
 
   RunServarrPhases --> RetryableFailure: transient http error
