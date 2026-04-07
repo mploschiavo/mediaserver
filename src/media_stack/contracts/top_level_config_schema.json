@@ -42,7 +42,5 @@
     "container_post_setup_handlers": "array",
     "jellyfin": "dict"
   },
-  "required_keys": [
-    "config_version"
-  ]
+  "required_keys": []
 }

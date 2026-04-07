@@ -119,7 +119,10 @@ class TopLevelBootstrapConfig:
             raise ValueError("Bootstrap config root must be an object")
 
         src = dict(cfg)
-        config_version = _expect_int(src, "config_version")
+        raw_version = src.get("config_version", SUPPORTED_BOOTSTRAP_CONFIG_VERSION)
+        if not isinstance(raw_version, int) or isinstance(raw_version, bool):
+            raise ValueError("$.config_version must be an integer")
+        config_version = int(raw_version)
         if config_version != SUPPORTED_BOOTSTRAP_CONFIG_VERSION:
             raise ValueError(
                 "$.config_version "

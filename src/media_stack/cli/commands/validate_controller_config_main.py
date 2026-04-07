@@ -26,7 +26,7 @@ def basic_checks(cfg):
     if not isinstance(cfg, dict):
         return ["$: config root must be an object"]
 
-    for key in ("config_version", "technology_bindings"):
+    for key in ("technology_bindings",):
         if key not in cfg:
             errors.append(f"$: missing required key '{key}'")
 
