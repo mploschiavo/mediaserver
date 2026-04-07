@@ -657,6 +657,10 @@ def _run_serve(args: argparse.Namespace) -> None:
                     runtime_platform.log("[INFO] Auto-queuing envoy-config after bootstrap")
                     action_queue.put(("envoy-config", {}))
 
+                    # Auto-queue indexer discovery in background after bootstrap.
+                    runtime_platform.log("[INFO] Auto-queuing auto-indexers after bootstrap")
+                    action_queue.put(("auto-indexers", {}))
+
                 break  # Success — exit retry loop.
 
             except Exception as exc:
