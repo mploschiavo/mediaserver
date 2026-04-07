@@ -129,10 +129,19 @@ def rotate_keys() -> dict[str, Any]:
             errors.append(f"jellyseerr: {exc}")
 
     persist_keys_to_secret(rotated)
+    # Auto-restart services that need it (file-based config changes)
     restart_needed = [k.replace("_API_KEY", "").lower() for k in rotated
-                      if k in ("TAUTULLI_API_KEY", "JELLYSEERR_API_KEY")]
+                      if k in ("TAUTULLI_API_KEY", "JELLYSEERR_API_KEY",
+                               "SABNZBD_API_KEY", "BAZARR_API_KEY")]
+    restarted = []
+    for svc in restart_needed:
+        try:
+            restart_service(svc)
+            restarted.append(svc)
+        except Exception:
+            pass
     return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors,
-            "restart_needed": restart_needed}
+            "restarted": restarted}
 
 
 def reset_password(new_password: str) -> dict[str, Any]:
@@ -265,8 +274,16 @@ def reset_password(new_password: str) -> dict[str, Any]:
         "STACK_ADMIN_USERNAME": username,
     })
 
+    # Auto-restart file-based services to pick up password change
     restart_needed = [s for s in updated if s in ("bazarr", "sabnzbd", "tautulli")]
-    return {"status": "updated", "services": updated, "errors": errors, "restart_needed": restart_needed}
+    restarted = []
+    for svc in restart_needed:
+        try:
+            restart_service(svc)
+            restarted.append(svc)
+        except Exception:
+            pass
+    return {"status": "updated", "services": updated, "errors": errors, "restarted": restarted}
 
 
 def restart_service(service_name: str) -> dict[str, Any]:

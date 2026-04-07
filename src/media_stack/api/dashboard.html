@@ -324,15 +324,17 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div id="tab-routing" class="tab-content">
     <div id="routing-config" style="margin-bottom:12px"></div>
     <details style="margin-bottom:12px"><summary style="color:var(--fg2);font-size:.88em;cursor:pointer;font-weight:600">Edit Routing Config</summary>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:.88em">
-        <label style="color:var(--fg2)">Gateway Host <span style="color:var(--fg3);font-size:.82em">(e.g. apps.media-stack.local)</span><input type="text" id="rt-gateway" class="svc-search" style="margin:4px 0" placeholder="apps.media-stack.local"></label>
-        <label style="color:var(--fg2)">Base Domain <span style="color:var(--fg3);font-size:.82em">(TLD)</span><input type="text" id="rt-domain" class="svc-search" style="margin:4px 0" placeholder="local"></label>
-        <label style="color:var(--fg2)">Stack Subdomain<input type="text" id="rt-subdomain" class="svc-search" style="margin:4px 0" placeholder="media-stack"></label>
-        <label style="color:var(--fg2)">Path Prefix<input type="text" id="rt-prefix" class="svc-search" style="margin:4px 0" placeholder="/app"></label>
-        <label style="color:var(--fg2)">Gateway Port<input type="number" id="rt-port" class="svc-search" style="margin:4px 0" placeholder="80"></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;font-size:.88em">
+        <label style="color:var(--fg2)">Gateway Prefix<input type="text" id="rt-gwprefix" class="svc-search" style="margin:4px 0" placeholder="apps" oninput="updateRoutingPreview()"></label>
+        <label style="color:var(--fg2)">Stack Name<input type="text" id="rt-subdomain" class="svc-search" style="margin:4px 0" placeholder="media-stack" oninput="updateRoutingPreview()"></label>
+        <label style="color:var(--fg2)">Domain<input type="text" id="rt-domain" class="svc-search" style="margin:4px 0" placeholder="local" oninput="updateRoutingPreview()"></label>
       </div>
-      <p style="color:var(--fg3);font-size:.78em;margin:6px 0 0">Gateway Host is the main entry point hostname. Subdomain services use <code>{service}.{subdomain}.{domain}</code>. Path-based access uses <code>{gateway_host}{prefix}/{service}</code>.</p>
-      <button class="btn-primary" style="margin-top:6px" onclick="saveRouting()">Save & Rebuild Routing</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.88em">
+        <label style="color:var(--fg2)">Path Prefix<input type="text" id="rt-prefix" class="svc-search" style="margin:4px 0" placeholder="/app" oninput="updateRoutingPreview()"></label>
+        <label style="color:var(--fg2)">Port<input type="number" id="rt-port" class="svc-search" style="margin:4px 0" placeholder="80" oninput="updateRoutingPreview()"></label>
+      </div>
+      <div id="rt-preview" style="margin:10px 0;padding:10px;border-radius:6px;background:var(--bg4);font-size:.85em;font-family:monospace;line-height:1.8"></div>
+      <button class="btn-primary" onclick="saveRouting()">Save & Rebuild Routing</button>
     </details>
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — access patterns per service.</p>
     <div class="dns-entry" id="dns-entries">Detecting...</div>
@@ -858,11 +860,15 @@ async function loadRoutingConfig(){
   try{const r=await fetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
   renderRoutingPanel();buildDns();
   // Populate edit form
-  const ge=document.getElementById('rt-gateway');if(ge)ge.value=_routingCfg.gateway_host||'';
+  // Extract gateway prefix from gateway_host (e.g. "apps" from "apps.media-stack.local")
+  const gwHost=_routingCfg.gateway_host||'';
+  const gwPrefix=gwHost.split('.')[0]||'apps';
+  const gpe=document.getElementById('rt-gwprefix');if(gpe)gpe.value=gwPrefix;
   const de=document.getElementById('rt-domain');if(de)de.value=_routingCfg.base_domain||'';
   const se=document.getElementById('rt-subdomain');if(se)se.value=_routingCfg.stack_subdomain||'';
   const pe=document.getElementById('rt-prefix');if(pe)pe.value=_routingCfg.app_path_prefix||'';
   const po=document.getElementById('rt-port');if(po)po.value=_routingCfg.gateway_port||80;
+  updateRoutingPreview();
 }
 function renderRoutingPanel(){
   const rc=_routingCfg;const el=document.getElementById('routing-config');if(!el)return;
@@ -927,7 +933,11 @@ function confirmRotateKeys(){
 async function rotateKeys(){
   toast('Rotating API keys...');document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
   try{const r=await fetch('/api/rotate-keys',{method:'POST'});const d=await r.json();
-    if(d.status==='rotated'){toast('Rotated '+d.keys.length+' keys'+(d.errors.length?' ('+d.errors.length+' errors)':''));}
+    if(d.status==='rotated'){
+      let msg='Rotated '+d.keys.length+' keys';
+      if(d.restarted&&d.restarted.length)msg+=', restarted: '+d.restarted.join(', ');
+      if(d.errors&&d.errors.length)msg+=' ('+d.errors.length+' errors)';
+      toast(msg);}
     else{toast(d.error||'Rotation failed',true);}}catch(e){toast('Error: '+e.message,true);}
   finally{document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
@@ -944,17 +954,40 @@ async function resetPassword(){
     const d=await r.json();
     if(d.status==='updated'){
       let msg='Password updated for '+d.services.join(', ');
-      if(d.restart_needed&&d.restart_needed.length){msg+=' (restart needed: '+d.restart_needed.join(', ')+')';}
+      if(d.restarted&&d.restarted.length){msg+=', restarted: '+d.restarted.join(', ');}
       toast(msg);
     }else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+e.message,true);}
 }
 
+/* Routing preview */
+function updateRoutingPreview(){
+  const gwp=document.getElementById('rt-gwprefix')?.value?.trim()||'apps';
+  const sub=document.getElementById('rt-subdomain')?.value?.trim()||'media-stack';
+  const dom=document.getElementById('rt-domain')?.value?.trim()||'local';
+  const pfx=document.getElementById('rt-prefix')?.value?.trim()||'/app';
+  const port=parseInt(document.getElementById('rt-port')?.value)||80;
+  const portStr=port===80?'':':'+port;
+  const gwHost=gwp+'.'+sub+'.'+dom;
+  const el=document.getElementById('rt-preview');if(!el)return;
+  el.innerHTML=
+    '<div style="color:var(--fg3);font-size:.82em;margin-bottom:4px;font-family:system-ui">Live preview — how services will be accessed:</div>'+
+    '<div><span style="color:var(--fg3)">Gateway:</span> <span style="color:var(--accent)">'+gwHost+portStr+'</span></div>'+
+    '<div><span style="color:var(--fg3)">Path-based:</span> <span style="color:var(--ok)">'+gwHost+portStr+pfx+'/sonarr</span></div>'+
+    '<div><span style="color:var(--fg3)">Subdomain:</span> <span style="color:var(--blue)">sonarr.'+sub+'.'+dom+portStr+'</span></div>'+
+    '<div><span style="color:var(--fg3)">Localhost:</span> <span style="color:var(--fg2)">localhost'+portStr+pfx+'/sonarr</span></div>'+
+    '<div style="margin-top:6px;color:var(--fg3);font-size:.82em;font-family:system-ui">/etc/hosts entry: <code style="user-select:all">127.0.0.1  '+gwHost+' jellyfin.'+sub+'.'+dom+'</code></div>';
+}
+
 /* Save Routing Config */
 async function saveRouting(){
-  const body={};
-  const gw=document.getElementById('rt-gateway')?.value?.trim();if(gw)body.gateway_host=gw;
-  const dom=document.getElementById('rt-domain')?.value?.trim();if(dom)body.base_domain=dom;
-  const sub=document.getElementById('rt-subdomain')?.value?.trim();if(sub)body.stack_subdomain=sub;
+  const gwp=document.getElementById('rt-gwprefix')?.value?.trim()||'apps';
+  const sub=document.getElementById('rt-subdomain')?.value?.trim()||'media-stack';
+  const dom=document.getElementById('rt-domain')?.value?.trim()||'local';
+  const body={
+    gateway_host:gwp+'.'+sub+'.'+dom,
+    stack_subdomain:sub,
+    base_domain:dom,
+  };
   const pfx=document.getElementById('rt-prefix')?.value?.trim();if(pfx)body.app_path_prefix=pfx;
   const port=document.getElementById('rt-port')?.value?.trim();if(port)body.gateway_port=parseInt(port);
   if(!Object.keys(body).length){toast('No changes',true);return;}
