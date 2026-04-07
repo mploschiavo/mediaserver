@@ -157,16 +157,81 @@ def get_env() -> dict[str, Any]:
 
 
 def get_backup(state: Any) -> bytes:
-    """Create a JSON backup of all discoverable config."""
+    """Create a JSON backup of all discoverable config and service state."""
     backup: dict[str, Any] = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "version": "2",
         "env": get_env(),
         "state": state.to_dict() if hasattr(state, "to_dict") else {},
     }
+
+    # Profile YAML
     resolved_profile = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
     if resolved_profile:
         backup["profile_raw"] = Path(resolved_profile).read_text(encoding="utf-8", errors="replace")
+
+    # Service configs from config root (sonarr/config.xml, sabnzbd/sabnzbd.ini, etc.)
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    service_configs: dict[str, str] = {}
+    if config_root.is_dir():
+        config_files = [
+            "sonarr/config.xml", "radarr/config.xml", "lidarr/config.xml",
+            "readarr/config.xml", "prowlarr/config.xml", "bazarr/config/config.ini",
+            "sabnzbd/sabnzbd.ini", "jellyseerr/settings.json",
+            "homepage/services.yaml", "homepage/settings.yaml",
+        ]
+        for rel_path in config_files:
+            full_path = config_root / rel_path
+            if full_path.is_file():
+                try:
+                    content = full_path.read_text(encoding="utf-8", errors="replace")
+                    if len(content) < 100_000:  # Skip huge files
+                        service_configs[rel_path] = content
+                except Exception:
+                    pass
+    if service_configs:
+        backup["service_configs"] = service_configs
+
+    # API keys (env vars only, not file-discovered secrets)
+    api_keys: dict[str, str] = {}
+    for key, value in sorted(os.environ.items()):
+        if key.endswith("_API_KEY") and value:
+            api_keys[key] = value[:8] + "..." if len(value) > 8 else value
+    if api_keys:
+        backup["api_keys_masked"] = api_keys
+
     return json.dumps(backup, indent=2, default=str).encode("utf-8")
+
+
+def restore_backup(backup: dict[str, Any]) -> dict[str, Any]:
+    """Restore service configs from a backup JSON payload."""
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    restored: list[str] = []
+    errors: list[str] = []
+
+    service_configs = backup.get("service_configs", {})
+    if not isinstance(service_configs, dict):
+        return {"status": "error", "error": "service_configs must be an object"}
+
+    for rel_path, content in service_configs.items():
+        # Safety: only allow known config paths, no traversal
+        if ".." in rel_path or rel_path.startswith("/"):
+            errors.append(f"skipped unsafe path: {rel_path}")
+            continue
+        target = config_root / rel_path
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            restored.append(rel_path)
+        except Exception as exc:
+            errors.append(f"{rel_path}: {exc}")
+
+    return {
+        "status": "ok" if not errors else "partial",
+        "restored": restored,
+        "errors": errors,
+        "note": "Restart services to apply restored configs",
+    }
 
 
 def get_envvars() -> dict[str, str]:
