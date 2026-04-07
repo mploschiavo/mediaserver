@@ -312,7 +312,17 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div class="svc-sort">Sort: <button class="active" onclick="setSvcSort('default',this)">Default</button><button onclick="setSvcSort('name',this)">Name</button><button onclick="setSvcSort('status',this)">Status</button><button onclick="setSvcSort('ms',this)">Latency</button>
   <span style="margin-left:auto;display:flex;gap:4px"><button onclick="selectAllSvcs()">Select All</button><button onclick="batchRestart()">Restart Selected</button></span></div>
   <div id="services-list"></div>
-  <!-- Service logs now open in Logs tab with context filter -->
+  <!-- Service management tips -->
+  <details style="margin-top:8px;font-size:.82em"><summary style="color:var(--fg3);cursor:pointer">Service Management</summary>
+    <div style="color:var(--fg2);padding:6px 0;line-height:1.6">
+      <b>Disable a service:</b> <code>docker compose stop servicename && docker compose rm servicename</code><br>
+      <b>Enable Plex:</b> <code>docker compose --profile plex up -d</code><br>
+      <b>Enable NVIDIA GPU:</b> <code>docker compose --profile nvidia up -d</code><br>
+      <b>Restart one service:</b> <code>docker compose restart servicename</code><br>
+      <b>View logs:</b> Click the service above then "View Logs"<br>
+      <b>Update images:</b> <code>docker compose pull && docker compose up -d</code>
+    </div>
+  </details>
   </div>
 </div>
 

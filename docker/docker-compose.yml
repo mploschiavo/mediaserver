@@ -509,7 +509,7 @@ services:
       - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${BASE_PATH:-/}"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${MAINTAINERR_BASE_PATH:-/app/maintainerr}/api/settings || wget -qO- http://127.0.0.1:6246/"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -564,7 +564,7 @@ services:
       - "${TAUTULLI_PORT:-8181}:8181"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8181/status"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/"]
       interval: 10s
       timeout: 10s
       retries: 10
