@@ -34,7 +34,8 @@ services:
           /cfg/jellyfin /cfg/jellyseerr /cfg/sonarr /cfg/radarr /cfg/lidarr \
           /cfg/readarr /cfg/prowlarr /cfg/bazarr /cfg/sabnzbd /cfg/qbittorrent \
           /cfg/maintainerr /cfg/tautulli /cfg/homepage /cfg/envoy /cfg/unpackerr \
-          /data/torrents /data/usenet /data/transcode /media/media; do
+          /data/torrents /data/usenet /data/transcode \
+          /media/media /media/media/movies /media/media/tv /media/media/music /media/media/books; do
           mkdir -p "$$d"
         done
         chown -R ${PUID:-1000}:${PGID:-1000} /cfg /data /media
@@ -578,6 +579,8 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       LOG_LEVEL: info
+    ports:
+      - "${FLARESOLVERR_PORT:-8191}:8191"
     restart: unless-stopped
     labels:
       - traefik.enable=true

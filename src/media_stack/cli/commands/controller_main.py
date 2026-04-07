@@ -608,7 +608,8 @@ def _run_serve(args: argparse.Namespace) -> None:
     runtime_platform.log(f"[INFO] Actions: POST /actions/{{name}} | GET /status")
     runtime_platform.log(f"[INFO] SSE log stream: GET /logs/stream")
 
-    if args.auto_run:
+    auto_run = args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
+    if auto_run:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
         action_queue.put(("bootstrap", {}))
 
