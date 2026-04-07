@@ -12,20 +12,20 @@ export PYTHONPATH="${ROOT_DIR}/src:${ROOT_DIR}:${PYTHONPATH:-}"
 pushd "$ROOT_DIR" >/dev/null
 
 bash bin/lib/run-python-cli.sh run_unit_tests_main.py "$@"
-bash -n bin/*.sh
+bash -n bin/*.sh bin/*/*.sh
 "$PYTHON_BIN" -m py_compile \
   bin/controller.py \
   src/media_stack/cli/commands/run_unit_tests_main.py \
   src/media_stack/cli/workflows/unit_test_runner_service.py \
   src/media_stack/services/apps/jellyfin/cli/ensure_jellyfin_controller_main.py
-bash bin/validate-bootstrap-config.sh
+bash bin/utils/validate-bootstrap-config.sh
 
 if [[ "$RUN_PLAYWRIGHT" == "1" ]]; then
   if [[ -z "$STACK_NODE_IP" ]]; then
     echo "[ERR] RUN_PLAYWRIGHT=1 requires STACK_NODE_IP" >&2
     exit 1
   fi
-  bash bin/run-playwright-smoke.sh "$STACK_NODE_IP" "$NAMESPACE"
+  bash bin/test/run-playwright-smoke.sh "$STACK_NODE_IP" "$NAMESPACE"
 else
   echo "[INFO] Skipping Playwright. Set RUN_PLAYWRIGHT=1 STACK_NODE_IP=<IP> to enable."
 fi

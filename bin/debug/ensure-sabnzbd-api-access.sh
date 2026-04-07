@@ -2,4 +2,4 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/lib/run-python-cli.sh" run_prowlarr_auto_indexers_main.py "$@"
+exec "$SCRIPT_DIR/../lib/run-python-cli.sh" ensure_sabnzbd_api_access_main.py "$@"

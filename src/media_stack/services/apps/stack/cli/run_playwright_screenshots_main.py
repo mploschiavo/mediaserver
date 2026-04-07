@@ -81,7 +81,7 @@ def _hosts_csv(root_dir: Path, node_ip: str, namespace: str) -> str:
     proc = _capture(
         [
             "bash",
-            str(root_dir / "bin" / "render-hosts-example.sh"),
+            str(root_dir / "bin" / "utils" / "render-hosts-example.sh"),
             node_ip,
             namespace,
         ]

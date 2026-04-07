@@ -10,6 +10,19 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "bin"
 
 
+def _find_script(name: str) -> Path:
+    """Find a script in bin/ or its subdirectories."""
+    direct = SCRIPTS / name
+    if direct.is_file():
+        return direct
+    for child in SCRIPTS.iterdir():
+        if child.is_dir() and not child.name.startswith("."):
+            candidate = child / name
+            if candidate.is_file():
+                return candidate
+    return direct
+
+
 def run_wrapper(
     script_name: str,
     *args: str,
@@ -20,7 +33,7 @@ def run_wrapper(
     if env_overrides:
         env.update(env_overrides)
     return subprocess.run(
-        [str(SCRIPTS / script_name), *args],
+        [str(_find_script(script_name)), *args],
         cwd=str(ROOT),
         env=env,
         capture_output=True,

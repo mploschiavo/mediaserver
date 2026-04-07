@@ -149,7 +149,7 @@ sed -i -e '/^WebUI\\\\Username=/d' -e '/^WebUI\\\\Password_PBKDF2=/d' -e '/^WebU
             file=sys.stderr,
         )
 
-    ensure_script = cfg.root_dir / "bin" / "ensure-qbit-credentials.sh"
+    ensure_script = cfg.root_dir / "bin" / "debug" / "ensure-qbit-credentials.sh"
     if not ensure_script.is_file():
         raise ConfigError(f"Missing ensure script: {ensure_script}")
     print("[INFO] Reconciling credentials from secret using ensure-qbit-credentials.sh")
