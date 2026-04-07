@@ -20,6 +20,13 @@ name: ${COMPOSE_PROJECT_NAME:-media-stack}
 # Storage paths default to ./config, ./media, ./data relative to this file.
 # Override via .env or shell: CONFIG_ROOT=/srv/media-stack/config
 
+# Default log rotation — prevents container logs from filling disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "10"
+
 x-arr-env: &arr-env
   PUID: ${PUID:-1000}
   PGID: ${PGID:-1000}
@@ -76,6 +83,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${CONFIG_ROOT:-./config}/traefik/dynamic:/etc/traefik/dynamic:ro
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
       interval: 10s
@@ -102,6 +110,7 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/authelia:/config
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
       interval: 10s
@@ -126,6 +135,7 @@ services:
     volumes:
       - ${DATA_ROOT:-./data}/authentik/postgresql:/var/lib/postgresql/data
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test:
         - CMD-SHELL
@@ -154,6 +164,7 @@ services:
       - ${CONFIG_ROOT:-./config}/authentik/data:/data
       - ${CONFIG_ROOT:-./config}/authentik/custom-templates:/templates
     restart: unless-stopped
+    logging: *default-logging
     shm_size: 512mb
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9000/-/health/live/"]
@@ -190,6 +201,7 @@ services:
       - ${CONFIG_ROOT:-./config}/authentik/certs:/certs
       - ${CONFIG_ROOT:-./config}/authentik/custom-templates:/templates
     restart: unless-stopped
+    logging: *default-logging
     shm_size: 512mb
 
   envoy-config-init:
@@ -227,6 +239,7 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/envoy:/etc/envoy:ro
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
       interval: 10s
@@ -250,6 +263,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${HOMEPAGE_PORT:-3000}:3000"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
       interval: 10s
@@ -281,6 +295,7 @@ services:
     ports:
       - "${JELLYFIN_PORT:-8096}:8096"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8096/health"]
       interval: 10s
@@ -303,6 +318,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${JELLYSEERR_PORT:-5055}:5055"
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       jellyfin:
         condition: service_started
@@ -325,6 +341,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${PROWLARR_PORT:-9696}:9696"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
       interval: 10s
@@ -352,6 +369,7 @@ services:
       - "6881:6881"
       - "6881:6881/udp"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
       interval: 10s
@@ -374,6 +392,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${SONARR_PORT:-8989}:8989"
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8989/ping"]
@@ -397,6 +416,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${RADARR_PORT:-7878}:7878"
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7878/ping"]
@@ -420,6 +440,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${LIDARR_PORT:-8686}:8686"
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8686/ping"]
@@ -443,6 +464,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${READARR_PORT:-8787}:8787"
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8787/ping"]
@@ -464,6 +486,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${BAZARR_PORT:-6767}:6767"
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [sonarr, radarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:6767"]
@@ -486,6 +509,7 @@ services:
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f unpackerr || exit 1"]
       interval: 30s
@@ -518,6 +542,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${MAINTAINERR_BASE_PATH:-/app/maintainerr}/api/settings || wget -qO- http://127.0.0.1:6246/"]
       interval: 10s
@@ -538,6 +563,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${SABNZBD_PORT:-8085}:8080"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
       interval: 10s
@@ -563,6 +589,7 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/transcode:/transcode
     restart: unless-stopped
+    logging: *default-logging
 
   tautulli:
     image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
@@ -573,6 +600,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${TAUTULLI_PORT:-8181}:8181"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/"]
       interval: 10s
@@ -592,6 +620,7 @@ services:
     # ports:  # Uncomment below to expose on host
       # - "${FLARESOLVERR_PORT:-8191}:8191"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8191/"]
       interval: 10s
@@ -616,6 +645,7 @@ services:
       - ${DATA_ROOT:-./data}/transcode:/cache
       - ${MEDIA_ROOT:-./media}/media:/media
     restart: unless-stopped
+    logging: *default-logging
 
   media-stack-controller:
     image: ${BOOTSTRAP_RUNNER_IMAGE:-192.168.1.60:30002/library/media-stack-controller:latest}
@@ -664,6 +694,7 @@ services:
       retries: 60
       start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
     stop_grace_period: 10s
     labels:
       - traefik.enable=true
