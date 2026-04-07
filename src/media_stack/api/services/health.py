@@ -18,6 +18,7 @@ from .registry import SERVICES, SERVICE_MAP
 # Build probe dicts from the service registry — no hardcoded service details here
 SERVICE_PROBES: dict[str, tuple[str, int, str]] = {
     s.id: (s.host, s.port, s.health_path) for s in SERVICES
+    if s.port > 0 and s.health_path  # Skip services without HTTP endpoints
 }
 
 AUTH_PROBES: dict[str, tuple[str, int, str, str]] = {

@@ -222,7 +222,9 @@ def _build_config_policy() -> object | None:
         gateway_host = ".".join(parts).lower()
     media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", ""))
     if not media_server_direct_host and stack_subdomain and base_domain:
-        parts = [p for p in ["jellyfin", stack_subdomain, base_domain] if p]
+        # Use the primary media server from the profile, default to "jellyfin"
+        media_server_id = str((routing.get("direct_hosts") or {}).get("media_server_id", "jellyfin"))
+        parts = [p for p in [media_server_id, stack_subdomain, base_domain] if p]
         media_server_direct_host = ".".join(parts).lower()
 
     from media_stack.services.apps.stack.controller_config_policy import (
@@ -467,14 +469,22 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
     import urllib.request
     import urllib.error
 
-    # Try Sonarr as the canary — it starts fast and has a simple ping
-    key = discovered.get("SONARR_API_KEY", "")
-    if not key:
+    # Pick the first arr app with a discovered key as the canary for mount validation
+    from media_stack.api.services.registry import SERVICES
+    canary = None
+    canary_key = ""
+    for svc in SERVICES:
+        if svc.api_key_env and svc.auth_path and svc.api_key_format == "xml":
+            canary_key = discovered.get(svc.api_key_env, "")
+            if canary_key:
+                canary = svc
+                break
+    if not canary:
         return
     try:
         req = urllib.request.Request(
-            "http://sonarr:8989/api/v3/system/status",
-            headers={"X-Api-Key": key},
+            f"http://{canary.host}:{canary.port}{canary.auth_path}",
+            headers={canary.auth_mode: canary_key},
         )
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
@@ -482,9 +492,9 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
             log(
-                "[WARN] Config mount mismatch detected: API key from "
-                f"{config_root}/sonarr/config.xml does not match the running "
-                "Sonarr container. This usually means the controller and "
+                f"[WARN] Config mount mismatch detected: API key from "
+                f"{config_root}/{canary.api_key_config} does not match the running "
+                f"{canary.name} container. This usually means the controller and "
                 "services are using different config directories. "
                 "Re-run 'docker compose down && docker compose up -d' from "
                 "the same directory to fix."
