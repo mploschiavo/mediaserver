@@ -26,9 +26,40 @@ class ControllerConfigLoader:
             return candidate
         return (root_dir / candidate).resolve()
 
+    def _load_yaml_defaults(self, config_dir: Path) -> dict[str, object]:
+        """Load default settings from contracts/defaults/*.yaml files."""
+        import yaml
+
+        defaults: dict[str, object] = {}
+        defaults_dir = config_dir / "defaults"
+        if not defaults_dir.is_dir():
+            # Try image-embedded path
+            defaults_dir = Path("/opt/media-stack/contracts/defaults")
+        if not defaults_dir.is_dir():
+            return defaults
+
+        for yaml_file in sorted(defaults_dir.glob("*.yaml")):
+            try:
+                with open(yaml_file, encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                if isinstance(data, dict):
+                    defaults.update(data)
+            except Exception:
+                pass
+        return defaults
+
     def load_config(self, config_path: str, runtime_env: str = "prod") -> dict[str, object]:
         config_file = Path(config_path).resolve()
         loaded = json.loads(config_file.read_text(encoding="utf-8"))
+
+        # Merge YAML defaults as the base, then overlay config.json on top.
+        # This means config.json values take precedence over defaults.
+        yaml_defaults = self._load_yaml_defaults(config_file.parent)
+        if yaml_defaults:
+            merged_loaded = dict(yaml_defaults)
+            merged_loaded.update(loaded)
+            loaded = merged_loaded
+
         model = TopLevelBootstrapConfig.from_dict(loaded)
 
         overlay_cfg = model.config_overlays
