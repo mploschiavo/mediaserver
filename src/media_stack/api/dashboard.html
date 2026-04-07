@@ -26,8 +26,8 @@ header .links a:hover,header .links button:hover{color:var(--accent);border-colo
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .phase{font-size:1.3em;font-weight:bold;margin-bottom:4px}
 .ok{color:var(--ok)}.error{color:var(--err)}.running{color:var(--warn)}.idle{color:var(--fg3)}
-.quick-links{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
-.quick-links a{padding:4px 10px;font-size:.78em;border-radius:4px;background:var(--bg2);color:var(--fg2);text-decoration:none;border:1px solid var(--border);transition:all .15s;white-space:nowrap}
+.quick-links{display:flex;gap:4px;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+.quick-links a{padding:3px 8px;font-size:.75em;border-radius:4px;background:transparent;color:var(--fg2);text-decoration:none;border:1px solid var(--border);transition:all .15s;white-space:nowrap;flex-shrink:0}
 .quick-links a:hover{color:var(--accent);border-color:var(--accent)}
 .stats-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
 @media(max-width:700px){.stats-row{grid-template-columns:1fr}}
@@ -193,7 +193,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   .action-group button{font-size:.75em;padding:5px 8px}
   .svc-row{padding:5px 6px;font-size:.82em}
   .svc-row .sver,.svc-row .smeta{display:none}
-  .quick-links{display:none}
+  .quick-links{padding:4px 10px!important;gap:3px}
+  .quick-links a{font-size:.68em;padding:2px 6px}
   .idx-table{font-size:.72em}
   .filter-bar{font-size:.72em;gap:3px}
   .filter-bar button{padding:2px 6px}
@@ -230,6 +231,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   </div>
 </header>
 <div class="env-banner" id="env-banner" style="display:none"></div>
+<div class="quick-links" id="quick-links" style="background:var(--bg2);padding:6px 24px;border-bottom:1px solid var(--border);overflow-x:auto;white-space:nowrap"></div>
 <div class="container">
 
 <div class="card" id="status-card"><div class="phase idle">Loading...</div></div>
@@ -244,8 +246,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   </div>
 </div>
 
-<!-- Quick Links Toolbar -->
-<div class="quick-links" id="quick-links"></div>
+
 
 <!-- Stats Row: Library / Disk / Downloads -->
 <div class="stats-row">
@@ -413,8 +414,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-snapshots',this)">Snapshots</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-mounts',this)">Mounts</button>
     </div>
-    <div id="ops-sla" class="subtab active"><div id="sla-view"></div></div>
-    <div id="ops-traffic" class="subtab" style="display:none"><div id="traffic-view">Loading...</div></div>
+    <div id="ops-sla" class="subtab active" style="min-height:120px"><div id="sla-view"><span style="color:var(--fg3);font-size:.85em">Loading health SLA data...</span></div></div>
+    <div id="ops-traffic" class="subtab" style="display:none;min-height:120px"><div id="traffic-view"><span style="color:var(--fg3);font-size:.85em">Loading traffic data...</span></div></div>
     <div id="ops-timeline" class="subtab" style="display:none"><div id="timeline-view"></div></div>
     <div id="ops-ns" class="subtab" style="display:none"><div id="ns-view">Loading...</div></div>
     <div id="ops-guardrails" class="subtab" style="display:none">
@@ -906,10 +907,9 @@ async function loadEnv(){
     envData=d;
     let h='<b>'+d.runtime.toUpperCase()+'</b>';
     if(d.namespace)h+=' · ns: <b>'+d.namespace+'</b>';
-    h+=' · host: <b>'+d.hostname+'</b>';
-    if(d.env)h+=' · env: <b>'+d.env+'</b>';
     if(d.profile_name)h+=' · profile: <b>'+d.profile_name+'</b>';
-    if(d.node_ip)h+=' · node: <b>'+d.node_ip+'</b>';
+    if(d.node_count>1){h+=' · nodes: <b>'+d.node_count+'</b> ('+d.node_ips.join(', ')+')';}
+    else if(d.node_ip){h+=' · node: <b>'+d.node_ip+'</b>';}
     if(d.gateway_nodeport)h+=' · gateway: <b>:'+d.gateway_nodeport+'</b>';
     const banner=document.getElementById('env-banner');banner.innerHTML=h;banner.style.display='flex';
     // Rebuild links with real URLs now that we have env data.
@@ -1773,12 +1773,12 @@ function onTabShow(tabId){
   if(tabLoaded[tabId])return;tabLoaded[tabId]=true;
   if(tabId==='tab-content'){loadLibraries();loadIndexers();setTimeout(loadIndexerStats,500);}
   if(tabId==='tab-routing'){loadRoutingConfig();}
-  if(tabId==='tab-ops'){renderSLA();loadTraffic();}
+  if(tabId==='tab-ops'){renderSLA();loadTraffic();loadNamespaces();}
   if(tabId==='tab-profile'){/* profile loads on render */}
 }
-/* Preload adjacent tabs after initial load for snappier feel */
+/* Preload all tabs 3s after page load so clicking feels instant */
 setTimeout(()=>{
-  loadLibraries();loadIndexers();loadRoutingConfig();
+  loadLibraries();loadIndexers();loadRoutingConfig();renderSLA();loadTraffic();
 },3000);
 
 /* Widget visibility */

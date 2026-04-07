@@ -124,10 +124,32 @@ def get_env() -> dict[str, Any]:
         except Exception:
             node_ip = ""
 
+    # Multi-node K8s: discover all node IPs
+    node_ips: list[str] = [node_ip] if node_ip else []
+    if namespace:
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            v1 = k8s_client.CoreV1Api()
+            nodes = v1.list_node()
+            node_ips = []
+            for node in nodes.items:
+                for addr in (node.status.addresses or []):
+                    if addr.type == "InternalIP":
+                        node_ips.append(addr.address)
+                        break
+        except Exception:
+            pass
+
     return {
         "namespace": namespace,
         "profile_name": profile_name,
         "node_ip": node_ip,
+        "node_ips": node_ips,
+        "node_count": len(node_ips),
         "platform": platform.platform(),
         "python": platform.python_version(),
         "runtime": "kubernetes" if namespace else "compose",
