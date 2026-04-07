@@ -407,37 +407,38 @@ def resolve_pipeline_components(
             f"adapter_hooks.{pipeline} must be defined as an object with a components map."
         )
 
-    components = section.get("components")
-    if not isinstance(components, dict) or not components:
-        raise ConfigError(
-            f"adapter_hooks.{pipeline}.components must be defined as a non-empty object."
-        )
-
+    # Auto-derive from technology_bindings: each binding key is a component
     resolved: dict[str, str] = {}
-    for key, value in components.items():
-        component_key = str(key or "").strip()
-        if not component_key:
-            raise ConfigError(f"adapter_hooks.{pipeline}.components has an empty component key.")
-        technology = ""
-        if isinstance(value, dict):
-            binding_key = str(value.get("binding") or "").strip()
-            if binding_key:
-                technology = str(role_bindings.get(binding_key) or "").strip()
+    for binding_key, technology in role_bindings.items():
+        if technology:
+            resolved[binding_key] = technology
+
+    # Overlay explicit components from config (for non-binding mappings like
+    # indexer_manager: {technology: prowlarr})
+    components = section.get("components") if isinstance(section, dict) else None
+    if isinstance(components, dict):
+        for key, value in components.items():
+            component_key = str(key or "").strip()
+            if not component_key:
+                continue
+            technology = ""
+            if isinstance(value, dict):
+                binding_key = str(value.get("binding") or "").strip()
+                if binding_key:
+                    technology = str(role_bindings.get(binding_key) or "").strip()
                 if not technology:
-                    raise ConfigError(
-                        f"adapter_hooks.{pipeline}.components.{component_key}.binding "
-                        f"references unbound technology_bindings key '{binding_key}'."
-                    )
-            if not technology:
-                technology = canonicalize_technology(value.get("technology"), aliases)
-        else:
-            technology = canonicalize_technology(value, aliases)
-        technology = str(technology or "").strip()
-        if not technology:
-            raise ConfigError(
-                f"adapter_hooks.{pipeline}.components.{component_key} must resolve to a technology."
-            )
-        resolved[component_key] = technology
+                    technology = canonicalize_technology(value.get("technology"), aliases)
+            else:
+                technology = canonicalize_technology(value, aliases)
+            technology = str(technology or "").strip()
+            if technology:
+                resolved[component_key] = technology
+
+    if not resolved:
+        raise ConfigError(
+            f"adapter_hooks.{pipeline}: no components resolved from "
+            "technology_bindings or explicit components map."
+        )
     return resolved
 
 

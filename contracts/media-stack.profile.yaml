@@ -32,6 +32,7 @@ technology_bindings:
   usenet_client: sabnzbd
   media_server: jellyfin
   request_manager: jellyseerr
+  indexer_manager: prowlarr
 
 routing:
   internet_exposed: false

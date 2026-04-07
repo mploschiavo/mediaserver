@@ -33,3 +33,11 @@ plugin:
     servarr_policy_service: servarr
     servarr_pipeline_service: servarr
   technology: bootstrap
+  event_handlers:
+    VALIDATE:
+      ensure_app_auth_settings: media_stack.services.apps.servarr.runtime.arr_ops:ensure_app_auth_settings
+    RUN:
+      run_servarr_pipeline: media_stack.services.apps.servarr.runtime_ops:run_servarr_pipeline
+      run_media_hygiene: media_stack.services.apps.servarr.runtime.hygiene_ops:run_media_hygiene
+    ENSURE:
+      enforce_disk_guardrails: media_stack.services.apps.servarr.runtime.hygiene_ops:enforce_disk_guardrails
