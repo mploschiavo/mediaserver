@@ -247,14 +247,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div class="svc-sort">Sort: <button class="active" onclick="setSvcSort('default',this)">Default</button><button onclick="setSvcSort('name',this)">Name</button><button onclick="setSvcSort('status',this)">Status</button><button onclick="setSvcSort('ms',this)">Latency</button>
   <span style="margin-left:auto;display:flex;gap:4px"><button onclick="selectAllSvcs()">Select All</button><button onclick="batchRestart()">Restart Selected</button></span></div>
   <div id="services-list"></div>
-  <!-- Service log viewer panel -->
-  <div id="svc-log-panel" style="display:none;margin-top:8px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <b style="font-size:.85em;color:var(--fg2)" id="svc-log-title">Logs</b>
-      <button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="closeSvcLogs()">Close</button>
-    </div>
-    <div class="svc-log-viewer" id="svc-log-content"></div>
-  </div>
+  <!-- Service logs now open in Logs tab with context filter -->
   </div>
 </div>
 
@@ -312,11 +305,13 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="routing-config" style="margin-bottom:12px"></div>
     <details style="margin-bottom:12px"><summary style="color:var(--fg2);font-size:.88em;cursor:pointer;font-weight:600">Edit Routing Config</summary>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:.88em">
-        <label style="color:var(--fg2)">Base Domain<input type="text" id="rt-domain" class="svc-search" style="margin:4px 0" placeholder="local"></label>
-        <label style="color:var(--fg2)">Subdomain<input type="text" id="rt-subdomain" class="svc-search" style="margin:4px 0" placeholder="media-stack"></label>
+        <label style="color:var(--fg2)">Gateway Host <span style="color:var(--fg3);font-size:.82em">(e.g. apps.media-stack.local)</span><input type="text" id="rt-gateway" class="svc-search" style="margin:4px 0" placeholder="apps.media-stack.local"></label>
+        <label style="color:var(--fg2)">Base Domain <span style="color:var(--fg3);font-size:.82em">(TLD)</span><input type="text" id="rt-domain" class="svc-search" style="margin:4px 0" placeholder="local"></label>
+        <label style="color:var(--fg2)">Stack Subdomain<input type="text" id="rt-subdomain" class="svc-search" style="margin:4px 0" placeholder="media-stack"></label>
         <label style="color:var(--fg2)">Path Prefix<input type="text" id="rt-prefix" class="svc-search" style="margin:4px 0" placeholder="/app"></label>
         <label style="color:var(--fg2)">Gateway Port<input type="number" id="rt-port" class="svc-search" style="margin:4px 0" placeholder="80"></label>
       </div>
+      <p style="color:var(--fg3);font-size:.78em;margin:6px 0 0">Gateway Host is the main entry point hostname. Subdomain services use <code>{service}.{subdomain}.{domain}</code>. Path-based access uses <code>{gateway_host}{prefix}/{service}</code>.</p>
       <button class="btn-primary" style="margin-top:6px" onclick="saveRouting()">Save & Rebuild Routing</button>
     </details>
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — access patterns per service.</p>
@@ -354,7 +349,16 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     </div>
     <div id="ops-images" class="subtab" style="display:none">Loading...</div>
     <div id="ops-heatmap" class="subtab" style="display:none"></div>
-    <div id="ops-bw" class="subtab" style="display:none"><canvas id="bw-canvas" style="width:100%;height:120px;border-radius:6px;background:var(--bg4)"></canvas><div style="font-size:.78em;color:var(--fg3);margin-top:4px">Request throughput per refresh interval. Updates every 60s.</div></div>
+    <div id="ops-bw" class="subtab" style="display:none">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:.82em">
+        <label style="color:var(--fg2)">Refresh: <select id="bw-interval" onchange="setBwInterval()" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:1em">
+          <option value="5000">5s</option><option value="10000">10s</option><option value="15000">15s</option><option value="30000">30s</option><option value="60000" selected>60s</option><option value="120000">2m</option><option value="300000">5m</option><option value="600000">10m</option>
+        </select></label>
+        <label class="switch" style="width:34px;height:18px"><input type="checkbox" id="bw-auto" checked onchange="setBwInterval()"><span class="slider" style="border-radius:9px"></span></label>
+        <span style="color:var(--fg3)">Auto-refresh</span>
+      </div>
+      <canvas id="bw-canvas" style="width:100%;height:120px;border-radius:6px;background:var(--bg4)"></canvas>
+    </div>
     <div id="ops-schedule" class="subtab" style="display:none">
       <p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Schedule recurring actions (runs in-browser while dashboard is open)</p>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
@@ -705,7 +709,10 @@ function renderGuardrailConfig(){
   h+=row('Max Delete/Run',inp('qbit_maxdel',qc.max_delete_per_run),'Limit deletions per cycle');
   h+=row('Delete Files',tog('qbit_delfiles',qc.delete_files),'Remove downloaded files too');
   h+='</table>';
-  h+='<button class="btn-primary" style="margin-top:8px" onclick="saveGuardrails()">Save Guardrails</button>';
+  h+='<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-primary" onclick="saveGuardrails()">Save Guardrails</button>';
+  h+='<button class="btn-secondary" onclick="previewCleanup()">Preview Cleanup</button>';
+  h+='<button class="btn-danger" onclick="confirmAction(\'reconcile\',\'Run Cleanup Now\',\'Runs media hygiene including disk guardrails. Will delete qualifying torrents if over threshold.\')">Run Cleanup</button></div>';
+  h+='<div id="cleanup-preview" style="margin-top:10px"></div>';
   el.innerHTML=h;
 }
 async function saveGuardrails(){
@@ -724,6 +731,28 @@ async function saveGuardrails(){
     const d=await r.json();
     if(d.status==='updated'){toast('Guardrails saved: '+d.changed.join(', '));loadDisk();}
     else{toast(d.error||d.status||'Save failed',true);}}catch(e){toast('Error: '+e.message,true);}
+}
+async function previewCleanup(){
+  const el=document.getElementById('cleanup-preview');if(!el)return;
+  el.innerHTML='<span style="color:var(--fg3)">Scanning completed torrents...</span>';
+  try{const r=await fetch('/api/cleanup-preview');const d=await r.json();
+    if(d.error){el.innerHTML='<span class="error">'+d.error+'</span>';return;}
+    if(!d.candidates||!d.candidates.length){
+      el.innerHTML='<div style="color:var(--fg3);font-size:.88em">No torrents match cleanup criteria.'+(d.message?' '+d.message:'')+'</div>';return;}
+    let h='<div style="font-size:.85em;margin-bottom:6px;color:var(--fg2)">';
+    h+=d.over_threshold?'<span class="warn">Disk over '+d.max_used_percent+'% — cleanup would trigger</span>':'<span style="color:var(--ok)">Disk below '+d.max_used_percent+'% — no cleanup needed yet</span>';
+    h+=' · <b>'+d.total_candidates+'</b> torrent(s) eligible for deletion</div>';
+    h+='<table class="idx-table"><thead><tr><th>Name</th><th>Size</th><th>Category</th><th>Age</th><th>Ratio</th></tr></thead><tbody>';
+    for(const c of d.candidates.slice(0,20)){
+      h+='<tr><td style="font-size:.82em;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.name+'</td>';
+      h+='<td style="font-size:.82em">'+fmtBytes(c.size)+'</td>';
+      h+='<td style="font-size:.82em">'+c.category+'</td>';
+      h+='<td style="font-size:.82em">'+c.age_hours+'h</td>';
+      h+='<td style="font-size:.82em">'+c.ratio+'</td></tr>';}
+    if(d.total_candidates>20)h+='<tr><td colspan="5" style="color:var(--fg3);font-size:.82em">...and '+(d.total_candidates-20)+' more</td></tr>';
+    h+='</tbody></table>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error">Error: '+e.message+'</span>';}
 }
 async function loadDownloads(){
   try{const r=await fetch('/api/downloads');if(r.ok){const d=await r.json();
@@ -789,6 +818,7 @@ async function loadRoutingConfig(){
   try{const r=await fetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
   renderRoutingPanel();buildDns();
   // Populate edit form
+  const ge=document.getElementById('rt-gateway');if(ge)ge.value=_routingCfg.gateway_host||'';
   const de=document.getElementById('rt-domain');if(de)de.value=_routingCfg.base_domain||'';
   const se=document.getElementById('rt-subdomain');if(se)se.value=_routingCfg.stack_subdomain||'';
   const pe=document.getElementById('rt-prefix');if(pe)pe.value=_routingCfg.app_path_prefix||'';
@@ -881,6 +911,7 @@ async function resetPassword(){
 /* Save Routing Config */
 async function saveRouting(){
   const body={};
+  const gw=document.getElementById('rt-gateway')?.value?.trim();if(gw)body.gateway_host=gw;
   const dom=document.getElementById('rt-domain')?.value?.trim();if(dom)body.base_domain=dom;
   const sub=document.getElementById('rt-subdomain')?.value?.trim();if(sub)body.stack_subdomain=sub;
   const pfx=document.getElementById('rt-prefix')?.value?.trim();if(pfx)body.app_path_prefix=pfx;
@@ -1178,17 +1209,30 @@ async function loadNamespaces(){
 
 /* #5 Container log viewer */
 async function viewSvcLogs(svcId){
-  const panel=document.getElementById('svc-log-panel');
-  panel.style.display='block';
-  document.getElementById('svc-log-title').textContent=svcId+' logs';
-  document.getElementById('svc-log-content').textContent='Loading...';
-  try{const r=await fetch('/api/logs/'+svcId+'?lines=150');const d=await r.json();
-    if(d.error){document.getElementById('svc-log-content').textContent='Error: '+d.error;return;}
-    document.getElementById('svc-log-content').textContent=(d.lines||[]).join('\n')||'No logs';
-    document.getElementById('svc-log-content').scrollTop=document.getElementById('svc-log-content').scrollHeight;
-  }catch(e){document.getElementById('svc-log-content').textContent='Error: '+e;}
+  // Fetch container logs and inject into the main Logs tab
+  try{
+    const r=await fetch('/api/logs/'+svcId+'?lines=150');const d=await r.json();
+    const lines=(d.lines||[]);
+    // Add to logRaw as synthetic entries
+    for(const line of lines){
+      const cls=line.includes('error')||line.includes('ERR')?'err':line.includes('warn')||line.includes('WARN')?'warn':'';
+      const html='<div class="log-line" data-action="'+svcId+'"><span class="ts" style="color:var(--blue)">['+svcId+']</span> <span class="'+cls+'">'+line.replace(/</g,'&lt;')+'</span></div>';
+      logRaw.push({msg:'['+svcId+'] '+line,cls,html,action:svcId});
+    }
+    // Switch to Logs tab with service filter
+    const tab=document.getElementById('tab-logs');const btn=document.querySelector('#main-tabs button');
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent==='Logs')b.classList.add('active');});
+    location.hash='logs';
+    // Set action filter to this service
+    applyLogFilter();
+    const sel=document.getElementById('logActionFilter');
+    if(sel){sel.value=svcId;applyLogFilter();}
+    toast('Loaded '+lines.length+' log lines from '+svcId);
+  }catch(e){toast('Error loading logs: '+e.message,true);}
 }
-function closeSvcLogs(){document.getElementById('svc-log-panel').style.display='none';}
 
 /* #6 Auto-remediation — runs during health check cycle */
 let remediation=JSON.parse(localStorage.getItem('remediation')||'{"enabled":false,"threshold":3}');
@@ -1366,6 +1410,13 @@ function resSparkHtml(name){const hist=resHistory[name]||[];if(!hist.length)retu
 }
 
 /* #16 Real-time bandwidth chart (canvas) */
+let _bwTimer=null;
+function setBwInterval(){
+  if(_bwTimer)clearInterval(_bwTimer);
+  const auto=document.getElementById('bw-auto')?.checked;
+  const ms=parseInt(document.getElementById('bw-interval')?.value)||60000;
+  if(auto){_bwTimer=setInterval(()=>{loadTraffic();renderBandwidthChart();},ms);}
+}
 const bwHistory=[];
 function recordBandwidth(data){
   const cl=data.clusters||{};let total=0;

@@ -380,6 +380,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         # --- Disk ---
         elif path == "/api/disk":
             self._json_response(200, disk_svc.get_disk())
+        elif path == "/api/cleanup-preview":
+            self._json_response(200, disk_svc.preview_cleanup())
 
         # --- Config ---
         elif path == "/api/env":
