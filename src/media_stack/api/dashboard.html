@@ -138,7 +138,7 @@ header .switch input:checked+.slider:before{transform:translateX(16px)}
 .dur-bar.error{background:var(--err)}
 .status-counts{display:flex;gap:10px;font-size:.82em;font-weight:normal}
 .status-counts span{display:flex;align-items:center;gap:3px}
-.subtab{display:none}.subtab.active{display:block;animation:fadeIn .2s ease}
+.subtab{display:none;min-height:100px}.subtab.active{display:block;animation:fadeIn .2s ease}
 .dep-graph{font-family:'Fira Code',monospace;font-size:.82em;background:var(--bg4);padding:12px;border-radius:6px;line-height:1.8;color:var(--fg2)}
 .dep-graph .dep-arrow{color:var(--accent)}.dep-graph .dep-svc{color:var(--blue);font-weight:600}
 .sla-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.85em;border-bottom:1px solid var(--border)}
@@ -164,6 +164,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 .hm-cell.ok{background:var(--ok)}.hm-cell.error{background:var(--err)}.hm-cell.warn{background:var(--warn)}.hm-cell.empty{background:var(--bg3)}
 .res-spark{display:inline-flex;gap:1px;align-items:flex-end;height:12px;vertical-align:middle}
 .res-spark .rb{width:2px;border-radius:1px;background:var(--blue);min-height:1px}
+.loading-bar{position:fixed;top:0;left:0;right:0;height:3px;z-index:99;pointer-events:none}
+.loading-bar .bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--blue),var(--accent));width:30%;animation:loadSlide 1.2s ease-in-out infinite;border-radius:0 2px 2px 0}
+@keyframes loadSlide{0%{margin-left:-30%}100%{margin-left:100%}}
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:14px;margin:6px 0}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .api-footer{background:var(--bg4);padding:6px 16px;border-radius:6px;font-size:.72em;color:var(--fg3);font-family:'Fira Code',monospace;margin-top:12px;display:flex;gap:12px;flex-wrap:wrap}
 .api-footer span{white-space:nowrap}
 .mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:8px 16px;z-index:45;gap:6px;justify-content:center;flex-wrap:wrap}
@@ -219,6 +224,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   .log-line .src{display:none}
 }
 </style></head><body>
+<div class="loading-bar" id="loadingBar" style="display:none"><div class="bar"></div></div>
 <header>
   <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span><span class="conn-dot dead" id="sse-dot" title="Log stream disconnected"></span></h1>
   <div class="links">
@@ -592,13 +598,13 @@ function closeConfirm(){document.getElementById('confirm-root').innerHTML='';}
 let _actionPending=false;
 async function doAction(name){
   if(_actionPending){toast('Action already in progress',true);return;}
-  _actionPending=true;
+  _actionPending=true;showLoading();
   document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
   toast(name+' starting...');
   try{const r=await fetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d=await r.json();if(r.status>=400)toast(d.error||'Failed',true);else{toast(name+' accepted');setTimeout(load,1500);}
   }catch(e){toast(e.toString(),true);}
-  finally{_actionPending=false;document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
+  finally{_actionPending=false;hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
 async function cancelAction(){
   try{const r=await fetch('/cancel',{method:'POST'});const d=await r.json();toast(d.status==='cancel_requested'?'Cancelling...':'No action running',d.status!=='cancel_requested');}catch(e){toast(e.toString(),true);}
@@ -614,6 +620,12 @@ async function toggleAuto(on){
 
 function relTime(sec){if(!sec&&sec!==0)return '?';sec=Math.round(sec);if(sec<60)return sec+'s';if(sec<3600)return Math.floor(sec/60)+'m '+sec%60+'s';return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';}
 function fmtBytes(b){if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;let v=b;while(v>=1024&&i<u.length-1){v/=1024;i++;}return v.toFixed(i>1?1:0)+' '+u[i];}
+
+/* Global loading indicator */
+let _loadingCount=0;
+function showLoading(){_loadingCount++;document.getElementById('loadingBar').style.display='block';}
+function hideLoading(){_loadingCount=Math.max(0,_loadingCount-1);if(_loadingCount===0)document.getElementById('loadingBar').style.display='none';}
+function skeletonHTML(rows){let h='';for(let i=0;i<(rows||4);i++)h+='<div class="skeleton" style="width:'+(60+Math.random()*30)+'%;height:'+(12+Math.random()*6)+'px"></div>';return h;}
 
 /* URL resolution — auto-detect from current browser location */
 let envData=null;
@@ -995,7 +1007,7 @@ function confirmRotateKeys(){
   document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Rotate All API Keys</h3><p>This regenerates API keys for all Arr apps and SABnzbd. Existing integrations using old keys will break until reconfigured. Run <b>Reconcile</b> after to re-wire connections.</p><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-danger" onclick="rotateKeys();this.closest(\'.confirm-overlay\').remove()">Rotate Keys</button></div></div></div>';
 }
 async function rotateKeys(){
-  toast('Rotating API keys...');document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
+  toast('Rotating API keys...');showLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
   try{const r=await fetch('/api/rotate-keys',{method:'POST'});const d=await r.json();
     if(d.status==='rotated'){
       let msg='Rotated '+d.keys.length+' keys';
@@ -1003,7 +1015,7 @@ async function rotateKeys(){
       if(d.errors&&d.errors.length)msg+=' ('+d.errors.length+' errors)';
       toast(msg);}
     else{toast(d.error||'Rotation failed',true);}}catch(e){toast('Error: '+e.message,true);}
-  finally{document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
+  finally{hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
 
 /* Reset Password */
@@ -1013,7 +1025,7 @@ function promptResetPassword(){
 async function resetPassword(){
   const pw=document.getElementById('new-pass-input')?.value||'';
   if(pw.length<4){toast('Password must be at least 4 characters',true);return;}
-  toast('Resetting password...');
+  toast('Resetting password...');showLoading();
   try{const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
     const d=await r.json();
     if(d.status==='updated'){
@@ -1021,6 +1033,7 @@ async function resetPassword(){
       if(d.restarted&&d.restarted.length){msg+=', restarted: '+d.restarted.join(', ');}
       toast(msg);
     }else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+e.message,true);}
+  finally{hideLoading();}
 }
 
 /* Routing preview */
@@ -1055,13 +1068,14 @@ async function saveRouting(){
   const pfx=document.getElementById('rt-prefix')?.value?.trim();if(pfx)body.app_path_prefix=pfx;
   const port=document.getElementById('rt-port')?.value?.trim();if(port)body.gateway_port=parseInt(port);
   if(!Object.keys(body).length){toast('No changes',true);return;}
-  toast('Saving routing config...');
+  toast('Saving routing config...');showLoading();
   try{const r=await fetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.status==='updated'){toast('Routing updated: '+d.changed.join(', ')+'. Envoy rebuild queued.');loadRoutingConfig();}
     else if(d.status==='no_changes'){toast('No changes needed');}
     else{toast(d.error||'Update failed',true);loadRoutingConfig();}}
   catch(e){toast('Error: '+e.message,true);loadRoutingConfig();}
+  finally{hideLoading();}
 }
 
 /* Webhooks + Test */
@@ -1205,16 +1219,24 @@ function downloadLogs(){const t=logRaw.map(e=>e.msg).join('\n');const b=new Blob
 function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.querySelectorAll('.subtab').forEach(t=>{t.classList.remove('active');t.style.display='none';});
   const tab=document.getElementById(id);tab.classList.add('active');tab.style.display='block';
   parent.querySelectorAll('.btn-secondary').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
-  // Lazy load
-  if(id==='lib-history')loadDownloadHistory();if(id==='lib-profiles')loadQualityProfiles();
-  if(id==='lib-imports')loadImportLists();if(id==='lib-libraries')loadLibraries();
-  if(id==='ops-traffic')loadTraffic();if(id==='ops-sla')renderSLA();
-  if(id==='ops-timeline')renderTimeline();if(id==='ops-ns')loadNamespaces();
-  if(id==='ops-images')loadImageUpdates();if(id==='ops-heatmap')renderCalendarHeatmap();
-  if(id==='ops-bw')renderBandwidthChart();if(id==='ops-guardrails')loadDisk();
-  if(id==='ops-gpu')loadGpuInfo();if(id==='ops-snapshots')loadSnapshots();if(id==='ops-mounts')loadMountInfo();
-  if(id==='cfg-drift')renderDrift();if(id==='cfg-deps')renderTopologySVG();
-  if(id==='cfg-manifest')loadManifests();if(id==='cfg-envvars')loadEnvVars();
+  // Show skeleton immediately if content is empty/loading text
+  const inner=tab.innerHTML.trim();
+  if(!inner||inner.startsWith('<span')||inner==='Loading...'||inner.includes('Loading ')){
+    tab.innerHTML=skeletonHTML(6);
+  }
+  // Lazy load with loading indicator
+  const _load=async(fn)=>{showLoading();try{await fn();}finally{hideLoading();}};
+  if(id==='lib-history')_load(loadDownloadHistory);else if(id==='lib-profiles')_load(loadQualityProfiles);
+  else if(id==='lib-imports')_load(loadImportLists);else if(id==='lib-libraries')_load(loadLibraries);
+  else if(id==='ops-traffic')_load(loadTraffic);else if(id==='ops-sla'){renderSLA();}
+  else if(id==='ops-timeline'){renderTimeline();}else if(id==='ops-ns')_load(loadNamespaces);
+  else if(id==='ops-images')_load(loadImageUpdates);else if(id==='ops-heatmap'){renderCalendarHeatmap();}
+  else if(id==='ops-bw'){renderBandwidthChart();}else if(id==='ops-guardrails')_load(loadDisk);
+  else if(id==='ops-gpu')_load(loadGpuInfo);else if(id==='ops-snapshots')_load(loadSnapshots);
+  else if(id==='ops-mounts')_load(loadMountInfo);
+  else if(id==='cfg-drift'){renderDrift();}else if(id==='cfg-deps'){renderTopologySVG();}
+  else if(id==='cfg-manifest')_load(loadManifests);else if(id==='cfg-envvars')_load(loadEnvVars);
+  else if(id==='lib-indexers')_load(loadIndexers);
 }
 
 /* #1 Bandwidth + #2 Error rates */
