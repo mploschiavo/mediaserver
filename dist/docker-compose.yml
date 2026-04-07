@@ -223,7 +223,7 @@ services:
       - info
     ports:
       - "${TRAEFIK_HTTP_PORT:-80}:80"
-      - "${ENVOY_ADMIN_PORT:-9901}:9901"
+      # - "${ENVOY_ADMIN_PORT:-9901}:9901"  # Uncomment for Envoy admin debug access
     volumes:
       - ${CONFIG_ROOT:-./config}/envoy:/etc/envoy:ro
     restart: unless-stopped
@@ -247,8 +247,8 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "${HOMEPAGE_PORT:-3000}:3000"
+    # ports:  # Uncomment below to expose on host
+      # - "${HOMEPAGE_PORT:-3000}:3000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
@@ -300,8 +300,8 @@ services:
       BASE_URL: ${JELLYSEERR_BASE_PATH:-}
     volumes:
       - ${CONFIG_ROOT:-./config}/jellyseerr:/app/config
-    ports:
-      - "${JELLYSEERR_PORT:-5055}:5055"
+    # ports:  # Uncomment below to expose on host
+      # - "${JELLYSEERR_PORT:-5055}:5055"
     restart: unless-stopped
     depends_on:
       jellyfin:
@@ -322,8 +322,8 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/prowlarr:/config
-    ports:
-      - "${PROWLARR_PORT:-9696}:9696"
+    # ports:  # Uncomment below to expose on host
+      # - "${PROWLARR_PORT:-9696}:9696"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
@@ -348,7 +348,7 @@ services:
       - ${CONFIG_ROOT:-./config}/qbittorrent:/config
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
     ports:
-      - "${QBITTORRENT_PUBLISHED_PORT:-8080}:8080"
+      # - "${QBITTORRENT_PUBLISHED_PORT:-8080}:8080"  # Uncomment for direct qBit WebUI access
       - "6881:6881"
       - "6881:6881/udp"
     restart: unless-stopped
@@ -371,8 +371,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    ports:
-      - "${SONARR_PORT:-8989}:8989"
+    # ports:  # Uncomment below to expose on host
+      # - "${SONARR_PORT:-8989}:8989"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -394,8 +394,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    ports:
-      - "${RADARR_PORT:-7878}:7878"
+    # ports:  # Uncomment below to expose on host
+      # - "${RADARR_PORT:-7878}:7878"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -417,8 +417,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    ports:
-      - "${LIDARR_PORT:-8686}:8686"
+    # ports:  # Uncomment below to expose on host
+      # - "${LIDARR_PORT:-8686}:8686"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -440,8 +440,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    ports:
-      - "${READARR_PORT:-8787}:8787"
+    # ports:  # Uncomment below to expose on host
+      # - "${READARR_PORT:-8787}:8787"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -461,8 +461,8 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/bazarr:/config
       - ${MEDIA_ROOT:-./media}/media:/media
-    ports:
-      - "${BAZARR_PORT:-6767}:6767"
+    # ports:  # Uncomment below to expose on host
+      # - "${BAZARR_PORT:-6767}:6767"
     restart: unless-stopped
     depends_on: [sonarr, radarr]
     healthcheck:
@@ -493,18 +493,14 @@ services:
       retries: 3
     depends_on: [sonarr, radarr, lidarr, readarr]
 
-  recyclarr:
-    image: hashicorp/http-echo:1.0.0
-    container_name: recyclarr
-    command:
-      - "-text=Recyclarr stub endpoint. Enable and configure a real Recyclarr runtime when ready."
-      - "-listen=:80"
-    restart: unless-stopped
-    # No healthcheck — scratch-based image has no shell or tools
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.recyclarr.rule=Host(`recyclarr.local`)
-      - traefik.http.services.recyclarr.loadbalancer.server.port=80
+  # recyclarr: uncomment when ready to use Recyclarr for quality profile sync.
+  # See: https://recyclarr.dev
+  # recyclarr:
+  #   image: ghcr.io/recyclarr/recyclarr:latest
+  #   container_name: recyclarr
+  #   volumes:
+  #     - ${CONFIG_ROOT:-./config}/recyclarr:/config
+  #   restart: unless-stopped
 
   maintainerr:
     image: ghcr.io/maintainerr/maintainerr:3.3.0
@@ -519,8 +515,8 @@ services:
       BASE_PATH: ${MAINTAINERR_BASE_PATH:-/app/maintainerr}
     volumes:
       - ${CONFIG_ROOT:-./config}/maintainerr:/opt/data
-    ports:
-      - "${MAINTAINERR_PORT:-6246}:6246"
+    # ports:  # Uncomment below to expose on host
+      # - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${MAINTAINERR_BASE_PATH:-/app/maintainerr}/api/settings || wget -qO- http://127.0.0.1:6246/"]
@@ -539,8 +535,8 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/sabnzbd:/config
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    ports:
-      - "${SABNZBD_PORT:-8085}:8080"
+    # ports:  # Uncomment below to expose on host
+      # - "${SABNZBD_PORT:-8085}:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
@@ -574,8 +570,8 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/tautulli:/config
-    ports:
-      - "${TAUTULLI_PORT:-8181}:8181"
+    # ports:  # Uncomment below to expose on host
+      # - "${TAUTULLI_PORT:-8181}:8181"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/"]
@@ -593,8 +589,8 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       LOG_LEVEL: info
-    ports:
-      - "${FLARESOLVERR_PORT:-8191}:8191"
+    # ports:  # Uncomment below to expose on host
+      # - "${FLARESOLVERR_PORT:-8191}:8191"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8191/"]
