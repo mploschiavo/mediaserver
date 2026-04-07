@@ -155,7 +155,32 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 .api-footer{background:var(--bg4);padding:6px 16px;border-radius:6px;font-size:.72em;color:var(--fg3);font-family:'Fira Code',monospace;margin-top:12px;display:flex;gap:12px;flex-wrap:wrap}
 .api-footer span{white-space:nowrap}
 .mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:8px 16px;z-index:45;gap:6px;justify-content:center;flex-wrap:wrap}
-@media(max-width:700px){.confirm-box{margin:16px}.matrix-table{font-size:.78em}.stats-row{grid-template-columns:1fr}.mobile-bar{display:flex}.container{padding-bottom:70px}}
+@media(max-width:700px){
+  .confirm-box{margin:16px}
+  .matrix-table{font-size:.72em}
+  .matrix-table th:nth-child(3),.matrix-table td:nth-child(3){display:none}
+  .stats-row{grid-template-columns:1fr}
+  .mobile-bar{display:flex}
+  .container{padding:10px;padding-bottom:70px}
+  header{padding:10px 12px;flex-wrap:wrap}
+  header h1{font-size:1.1em}
+  header .links{gap:4px}
+  header .links a,header .links button{padding:3px 6px;font-size:.75em}
+  .tab-bar{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+  .tab-bar button{white-space:nowrap;font-size:.78em;padding:6px 10px}
+  .card{padding:10px;margin-bottom:8px}
+  .actions{gap:4px}
+  .actions button{padding:6px 10px;font-size:.78em}
+  .svc-row{padding:6px 8px;font-size:.82em}
+  .svc-row .sver,.svc-row .smeta{display:none}
+  .quick-links{display:none}
+  .idx-table{font-size:.75em}
+  .filter-bar{font-size:.75em}
+  #logs{max-height:200px;font-size:.72em}
+  .settings-panel{max-width:95%;padding:16px}
+  .svc-sort{flex-wrap:wrap}
+  .env-banner{padding:4px 12px;font-size:.7em}
+}
 </style></head><body>
 <header>
   <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span><span class="conn-dot dead" id="sse-dot" title="Log stream disconnected"></span></h1>
@@ -315,6 +340,9 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-heatmap',this)">Heatmap</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-bw',this)">Bandwidth</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-schedule',this)">Schedule</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-gpu',this)">GPU</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-snapshots',this)">Snapshots</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-mounts',this)">Mounts</button>
     </div>
     <div id="ops-sla" class="subtab active"><div id="sla-view"></div></div>
     <div id="ops-traffic" class="subtab" style="display:none"><div id="traffic-view">Loading...</div></div>
@@ -339,6 +367,18 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
         <button class="btn-primary" style="padding:5px 12px;font-size:.82em" onclick="addSchedule()">Schedule</button>
       </div>
       <div id="schedule-list"></div>
+    </div>
+    <div id="ops-gpu" class="subtab" style="display:none">
+      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">GPU hardware detection for Jellyfin hardware transcoding.</p>
+      <div id="gpu-info">Detecting GPU...</div>
+    </div>
+    <div id="ops-snapshots" class="subtab" style="display:none">
+      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Config snapshots are taken hourly. Keys are redacted. Last 24 kept.</p>
+      <div id="snapshot-list">Loading...</div>
+    </div>
+    <div id="ops-mounts" class="subtab" style="display:none">
+      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Detected filesystem mounts relevant to media storage.</p>
+      <div id="mount-info">Loading...</div>
     </div>
   </div>
 
@@ -921,6 +961,7 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   if(id==='ops-timeline')renderTimeline();if(id==='ops-ns')loadNamespaces();
   if(id==='ops-images')loadImageUpdates();if(id==='ops-heatmap')renderCalendarHeatmap();
   if(id==='ops-bw')renderBandwidthChart();if(id==='ops-guardrails')loadDisk();
+  if(id==='ops-gpu')loadGpuInfo();if(id==='ops-snapshots')loadSnapshots();if(id==='ops-mounts')loadMountInfo();
   if(id==='cfg-drift')renderDrift();if(id==='cfg-deps')renderTopologySVG();
   if(id==='cfg-manifest')loadManifests();if(id==='cfg-envvars')loadEnvVars();
 }
@@ -1178,6 +1219,50 @@ async function loadImageUpdates(){
     // Append to ops-traffic or create sub-section
     const el=document.getElementById('ops-images');if(el)el.innerHTML=h;
   }catch(e){}
+}
+
+/* GPU Info */
+async function loadGpuInfo(){
+  try{const r=await fetch('/api/gpu');if(!r.ok)return;const d=await r.json();
+    let h='';
+    if(!d.detected){h='<div style="color:var(--fg3);font-size:.88em">No GPU detected. Hardware transcoding requires Intel QSV/VA-API or NVIDIA GPU.</div>';}
+    else{
+      for(const g of(d.gpus||[])){
+        h+='<div class="svc-row" style="cursor:default"><span class="dot ok"></span><span class="sname">'+g.name+'</span><span class="smeta">'+g.type.toUpperCase()+(g.driver?' · '+g.driver:'')+(g.memory?' · '+g.memory:'')+'</span></div>';
+      }
+      h+='<div style="margin-top:8px;font-size:.88em;color:var(--fg2)"><b>Jellyfin HW Transcoding:</b> '+(d.jellyfin_configured?'<span class="ok">Enabled ('+( d.jellyfin_hw_type||'unknown')+')</span>':'<span class="warn">Not configured</span>')+'</div>';
+      if(d.compose_snippet){h+='<pre class="profile-pre" style="margin-top:8px">'+d.compose_snippet+'</pre>';}
+    }
+    document.getElementById('gpu-info').innerHTML=h;
+  }catch(e){document.getElementById('gpu-info').innerHTML='Error: '+e;}
+}
+
+/* Config Snapshots */
+async function loadSnapshots(){
+  try{const r=await fetch('/api/snapshots');if(!r.ok)return;const d=await r.json();
+    const snaps=d.snapshots||[];
+    if(!snaps.length){document.getElementById('snapshot-list').innerHTML='<span style="color:var(--fg3)">No snapshots yet. First snapshot taken 1 minute after controller start.</span>';return;}
+    let h='<table class="idx-table"><thead><tr><th>Snapshot</th><th>Size</th><th>Created</th></tr></thead><tbody>';
+    for(const s of snaps){h+='<tr><td style="font-family:monospace;font-size:.82em">'+s.file+'</td><td style="font-size:.82em">'+fmtBytes(s.size)+'</td><td style="font-size:.82em;color:var(--fg3)">'+s.created+'</td></tr>';}
+    h+='</tbody></table><div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+snaps.length+' snapshot(s) in '+d.dir+'</div>';
+    document.getElementById('snapshot-list').innerHTML=h;
+  }catch(e){document.getElementById('snapshot-list').innerHTML='Error: '+e;}
+}
+
+/* Mount Info */
+async function loadMountInfo(){
+  try{const r=await fetch('/api/mounts');if(!r.ok)return;const d=await r.json();
+    const mounts=d.mounts||[];
+    if(!mounts.length){document.getElementById('mount-info').innerHTML='<span style="color:var(--fg3)">No relevant mounts detected.</span>';return;}
+    let h='<table class="idx-table"><thead><tr><th>Device</th><th>Mount Point</th><th>Type</th></tr></thead><tbody>';
+    for(const m of mounts){const isNet=m.fstype.startsWith('nfs')||m.fstype.startsWith('cifs');
+      h+='<tr><td style="font-family:monospace;font-size:.82em">'+m.device+'</td><td style="font-size:.82em">'+m.mountpoint+'</td><td style="font-size:.82em">'+(isNet?'<span class="ok">'+m.fstype+'</span>':m.fstype)+'</td></tr>';}
+    h+='</tbody></table>';
+    if(d.nfs_available)h+='<div style="margin-top:6px;font-size:.82em;color:var(--ok)">NFS mounts detected</div>';
+    if(d.cifs_available)h+='<div style="margin-top:6px;font-size:.82em;color:var(--ok)">CIFS/SMB mounts detected</div>';
+    if(!d.nfs_available&&!d.cifs_available)h+='<div style="margin-top:8px;font-size:.85em;color:var(--fg2)">To add network storage, mount NFS/CIFS on the host and map it into Docker volumes.</div>';
+    document.getElementById('mount-info').innerHTML=h;
+  }catch(e){document.getElementById('mount-info').innerHTML='Error: '+e;}
 }
 
 /* #8 Manifest viewer */

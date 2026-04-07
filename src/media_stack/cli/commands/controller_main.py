@@ -443,6 +443,47 @@ def _action_bootstrap(args: argparse.Namespace, state: object) -> None:
     runtime_platform.log("[OK] Bootstrap completed successfully")
 
 
+def _take_config_snapshot(args: argparse.Namespace) -> None:
+    """Save a timestamped snapshot of all service config files."""
+    import json as _json
+    import re
+    from pathlib import Path
+
+    config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
+    snapshot_dir = config_root / ".snapshots"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    # Collect key config files
+    snapshot: dict[str, str] = {}
+    patterns = [
+        ("sonarr", "config.xml"), ("radarr", "config.xml"), ("lidarr", "config.xml"),
+        ("readarr", "config.xml"), ("prowlarr", "config.xml"),
+        ("bazarr", "config/config.yaml"), ("sabnzbd", "sabnzbd.ini"),
+        ("jellyseerr", "settings.json"), ("homepage", "services.yaml"),
+    ]
+    for app, rel in patterns:
+        path = config_root / app / rel
+        if path.is_file():
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+                # Redact API keys for safety
+                text = re.sub(r"<ApiKey>[^<]+</ApiKey>", "<ApiKey>***</ApiKey>", text)
+                text = re.sub(r"api_key\s*=\s*\S+", "api_key = ***", text)
+                text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
+                snapshot[f"{app}/{rel}"] = text
+            except Exception:
+                pass
+
+    ts = time.strftime("%Y%m%dT%H%M%S")
+    out = snapshot_dir / f"snapshot-{ts}.json"
+    out.write_text(_json.dumps(snapshot, indent=2), encoding="utf-8")
+
+    # Keep only last 24 snapshots
+    existing = sorted(snapshot_dir.glob("snapshot-*.json"), reverse=True)
+    for old in existing[24:]:
+        old.unlink(missing_ok=True)
+
+
 def _action_finalize(args: argparse.Namespace, state: object) -> None:
     """Deferred post-bootstrap: Jellyfin tuning, disk guardrails, hygiene, app restarts.
 
@@ -635,6 +676,21 @@ def _run_serve(args: argparse.Namespace) -> None:
     runtime_platform.log(f"[INFO] Dashboard: http://127.0.0.1:{port}/")
     runtime_platform.log(f"[INFO] Actions: POST /actions/{{name}} | GET /status")
     runtime_platform.log(f"[INFO] SSE log stream: GET /logs/stream")
+
+    # Start config snapshot background timer
+    snapshot_interval = int(os.environ.get("CONFIG_SNAPSHOT_INTERVAL_SECONDS", "3600"))  # 1h default
+    if snapshot_interval > 0:
+        def _snapshot_timer() -> None:
+            import time as _t
+            _t.sleep(60)  # Wait 1 min before first snapshot
+            while True:
+                try:
+                    _take_config_snapshot(args)
+                except Exception as exc:
+                    runtime_platform.log(f"[WARN] Config snapshot failed: {exc}")
+                _t.sleep(snapshot_interval)
+        snap_thread = threading.Thread(target=_snapshot_timer, daemon=True, name="config-snapshots")
+        snap_thread.start()
 
     auto_run = args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
     if auto_run:
