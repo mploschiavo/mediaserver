@@ -91,6 +91,23 @@ class ControllerConfigLoader:
             merged_loaded.update(loaded)
             loaded = merged_loaded
 
+        # Load technology_bindings from profile YAML if not in config.json
+        if "technology_bindings" not in loaded:
+            import yaml
+            profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+            for pf in [Path(profile_file) if profile_file else None,
+                        Path("/opt/media-stack/contracts/media-stack.profile.yaml"),
+                        config_file.parent / "media-stack.profile.yaml"]:
+                if pf and pf.is_file():
+                    try:
+                        profile = yaml.safe_load(pf.read_text(encoding="utf-8")) or {}
+                        tb = profile.get("technology_bindings")
+                        if isinstance(tb, dict):
+                            loaded["technology_bindings"] = tb
+                            break
+                    except Exception:
+                        pass
+
         model = TopLevelBootstrapConfig.from_dict(loaded)
 
         overlay_cfg = model.config_overlays
