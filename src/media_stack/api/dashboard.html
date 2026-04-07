@@ -1355,40 +1355,47 @@ function renderTimeline(){
   const hist=(statusData.action_history||[]).slice(-20);
   if(!hist.length){document.getElementById('timeline-view').innerHTML='<span style="color:var(--fg3)">No actions yet</span>';return;}
 
-  // Find time range
   const starts=hist.map(a=>a.started_at||0).filter(t=>t>0);
   const ends=hist.map(a=>a.completed_at||a.started_at||0).filter(t=>t>0);
   if(!starts.length){document.getElementById('timeline-view').innerHTML='<span style="color:var(--fg3)">No timing data</span>';return;}
   const minT=Math.min(...starts);
   const maxT=Math.max(...ends,minT+1);
   const range=maxT-minT;
+  const windowMin=Math.round(range/60*10)/10;
+  const fmt=t=>{const d=new Date((t>1e12?t:t*1000));return d.toLocaleTimeString();};
 
-  // Render Gantt chart
-  let h='<div style="position:relative;min-height:'+(hist.length*28+30)+'px;background:var(--bg4);border-radius:6px;padding:10px;overflow-x:auto">';
+  let h='<div style="font-size:.82em;color:var(--fg3);margin-bottom:6px">'+
+    'Window: <b>'+fmt(minT)+'</b> — <b>'+fmt(maxT)+'</b> ('+
+    (windowMin<1?(range.toFixed(0)+'s'):(windowMin+'m'))+') · '+hist.length+' actions</div>';
+
+  h+='<div style="position:relative;background:var(--bg4);border-radius:6px;padding:10px;overflow-x:auto">';
 
   // Time axis
-  const ticks=5;
-  h+='<div style="display:flex;justify-content:space-between;font-size:.7em;color:var(--fg3);margin-bottom:6px;padding-left:100px">';
-  for(let i=0;i<=ticks;i++){
-    const t=minT+(range*i/ticks);
-    const ts=new Date((t>1e12?t:t*1000));
-    h+='<span>'+ts.toLocaleTimeString()+'</span>';
-  }
+  const ticks=Math.min(6,Math.max(3,Math.ceil(range/30)));
+  h+='<div style="display:flex;justify-content:space-between;font-size:.68em;color:var(--fg3);margin-bottom:8px;padding-left:110px;border-bottom:1px solid var(--border);padding-bottom:4px">';
+  for(let i=0;i<=ticks;i++){h+='<span>'+fmt(minT+(range*i/ticks))+'</span>';}
   h+='</div>';
 
   // Action bars
-  hist.forEach((a,idx)=>{
-    const start=((a.started_at||minT)-minT)/range*100;
-    const dur=((a.completed_at||a.started_at||minT)-(a.started_at||minT))/range*100;
-    const width=Math.max(dur,1);
+  hist.forEach((a)=>{
+    const startPct=((a.started_at||minT)-minT)/range*100;
+    const durSec=(a.completed_at||a.started_at||minT)-(a.started_at||minT);
+    const durPct=durSec/range*100;
+    const width=Math.max(durPct,0.8); // min 0.8% so short actions are visible
     const c=a.error?'var(--err)':'var(--accent)';
-    const y=idx*28;
-    h+='<div style="position:relative;height:24px;margin-bottom:4px;display:flex;align-items:center">';
-    h+='<span style="min-width:100px;font-size:.78em;font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+a.name+'</span>';
-    h+='<div style="flex:1;position:relative;height:18px">';
-    h+='<div style="position:absolute;left:'+start+'%;width:'+width+'%;height:100%;background:'+c+';border-radius:3px;min-width:4px" title="'+a.name+': '+relTime(a.elapsed_seconds||0)+(a.error?' — ERROR':'')+'"></div>';
-    h+='</div>';
-    h+='<span style="min-width:50px;text-align:right;font-size:.72em;color:var(--fg3);font-family:monospace">'+relTime(a.elapsed_seconds||0)+'</span>';
+    const user=a.triggered_by||'system';
+    const startStr=a.started_at?fmt(a.started_at):'';
+
+    h+='<div style="height:22px;margin-bottom:3px;display:flex;align-items:center">';
+    h+='<span style="min-width:110px;font-size:.75em;font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+a.name+' ('+user+')">'+a.name+'</span>';
+    h+='<div style="flex:1;position:relative;height:16px;background:var(--bg3);border-radius:2px">';
+    h+='<div style="position:absolute;left:'+startPct+'%;width:'+width+'%;height:100%;background:'+c+';border-radius:2px;min-width:3px;cursor:pointer" ';
+    h+='title="'+a.name+'\nStarted: '+startStr+'\nDuration: '+relTime(a.elapsed_seconds||0)+'\nUser: '+user+(a.error?'\nError: '+a.error.substring(0,80):'')+'" ';
+    h+='onclick="filterLogsToAction(\''+a.name+'\')">';
+    // Show duration label inside bar if wide enough
+    if(durPct>8){h+='<span style="position:absolute;left:4px;top:1px;font-size:.65em;color:#fff;white-space:nowrap">'+relTime(a.elapsed_seconds||0)+'</span>';}
+    h+='</div></div>';
+    h+='<span style="min-width:45px;text-align:right;font-size:.7em;color:var(--fg3);font-family:monospace">'+relTime(a.elapsed_seconds||0)+'</span>';
     h+='</div>';
   });
 
