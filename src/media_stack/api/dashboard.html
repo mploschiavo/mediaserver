@@ -252,6 +252,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button onclick="setLogFilter('warn',this)">Warn</button>
       <button onclick="setLogFilter('err',this)">Error</button>
       <input type="text" id="logSearch" placeholder="Search logs (regex with /pattern/)" oninput="applyLogFilter()">
+      <select id="logActionFilter" onchange="applyLogFilter()" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.78em"><option value="">All Actions</option></select>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" id="scrollBtn" onclick="logAutoScroll=!logAutoScroll;updateScrollBtn()">Pause</button>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleFullscreenLogs()">Expand</button>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="downloadLogs()">Export</button>
@@ -649,22 +650,40 @@ function renderGuardrailConfig(){
   const g=_diskGuardrails;if(!g)return;
   const el=document.getElementById('guardrail-config');if(!el)return;
   const qc=g.qbit_cleanup||{};
+  const inp=(id,val,type)=>'<input id="gr-'+id+'" type="'+(type||'number')+'" value="'+val+'" style="width:80px;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-family:monospace;font-size:.88em">';
+  const tog=(id,val)=>'<label class="switch" style="width:34px;height:18px"><input type="checkbox" id="gr-'+id+'" '+(val?'checked':'')+'><span class="slider" style="border-radius:9px"></span></label>';
   let h='<table style="width:100%;font-size:.88em;border-collapse:collapse">';
-  const row=(label,val,desc)=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600;white-space:nowrap">'+label+'</td><td style="padding:6px;font-family:monospace">'+val+'</td><td style="padding:6px;color:var(--fg3);font-size:.85em">'+desc+'</td></tr>';
-  h+=row('Status','<span style="color:var('+(g.enabled?'--ok':'--fg3')+')">'+( g.enabled?'Enabled':'Disabled')+'</span>','');
-  h+=row('Max Used %','<b>'+g.max_used_percent+'%</b>','Cleanup triggers above this');
-  h+=row('Target %','<b>'+g.target_used_percent+'%</b>','Cleanup tries to reach this level');
-  h+=row('Monitor Path',g.monitor_path||'auto-detect','Filesystem to monitor');
+  const row=(label,val,desc)=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600;white-space:nowrap">'+label+'</td><td style="padding:6px">'+val+'</td><td style="padding:6px;color:var(--fg3);font-size:.85em">'+desc+'</td></tr>';
+  h+=row('Enabled',tog('enabled',g.enabled),'Enable disk guardrails');
+  h+=row('Max Used %',inp('max',g.max_used_percent)+'%','Cleanup triggers above this');
+  h+=row('Target %',inp('target',g.target_used_percent)+'%','Cleanup tries to reach this level');
   h+='<tr><td colspan="3" style="padding:10px 6px 4px;color:var(--fg3);font-weight:700;font-size:.82em;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--border)">qBittorrent Cleanup</td></tr>';
-  h+=row('Cleanup','<span style="color:var('+(qc.enabled?'--ok':'--fg3')+')">'+( qc.enabled?'Enabled':'Disabled')+'</span>','Delete completed torrents when over threshold');
-  h+=row('Min Age',qc.min_completion_age_hours+'h','Only delete torrents completed longer ago');
-  h+=row('Min Ratio',qc.min_ratio,'Must reach this seed ratio before deletion');
-  h+=row('Min Seed Time',qc.min_seeding_time_minutes+' min','Must seed at least this long');
-  h+=row('Max Delete/Run',qc.max_delete_per_run,'Limit deletions per cleanup cycle');
-  h+=row('Delete Files',qc.delete_files?'Yes':'No','Remove downloaded files too');
-  h+=row('Categories',(qc.categories||[]).join(', ')||'all','Only clean these categories');
+  h+=row('Cleanup Enabled',tog('qbit_enabled',qc.enabled),'Delete completed torrents when over threshold');
+  h+=row('Min Age (hours)',inp('qbit_age',qc.min_completion_age_hours),'Only delete torrents completed longer ago');
+  h+=row('Min Ratio',inp('qbit_ratio',qc.min_ratio,'number'),'Must reach this seed ratio');
+  h+=row('Min Seed (min)',inp('qbit_seed',qc.min_seeding_time_minutes),'Must seed at least this long');
+  h+=row('Max Delete/Run',inp('qbit_maxdel',qc.max_delete_per_run),'Limit deletions per cycle');
+  h+=row('Delete Files',tog('qbit_delfiles',qc.delete_files),'Remove downloaded files too');
   h+='</table>';
+  h+='<button class="btn-primary" style="margin-top:8px" onclick="saveGuardrails()">Save Guardrails</button>';
   el.innerHTML=h;
+}
+async function saveGuardrails(){
+  const body={
+    enabled:document.getElementById('gr-enabled')?.checked||false,
+    max_used_percent:parseFloat(document.getElementById('gr-max')?.value)||65,
+    target_used_percent:parseFloat(document.getElementById('gr-target')?.value)||58,
+    qbit_enabled:document.getElementById('gr-qbit_enabled')?.checked||false,
+    qbit_min_completion_age_hours:parseFloat(document.getElementById('gr-qbit_age')?.value)||36,
+    qbit_min_ratio:parseFloat(document.getElementById('gr-qbit_ratio')?.value)||1.0,
+    qbit_min_seeding_time_minutes:parseInt(document.getElementById('gr-qbit_seed')?.value)||720,
+    qbit_max_delete_per_run:parseInt(document.getElementById('gr-qbit_maxdel')?.value)||80,
+    qbit_delete_files:document.getElementById('gr-qbit_delfiles')?.checked||false,
+  };
+  try{const r=await fetch('/api/guardrails',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.status==='updated'){toast('Guardrails saved: '+d.changed.join(', '));loadDisk();}
+    else{toast(d.error||d.status||'Save failed',true);}}catch(e){toast('Error: '+e.message,true);}
 }
 async function loadDownloads(){
   try{const r=await fetch('/api/downloads');if(r.ok){const d=await r.json();
@@ -856,12 +875,20 @@ async function testWebhooks(){
 function setLogFilter(f,btn){logFilter=f;document.querySelectorAll('.filter-bar button').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');applyLogFilter();}
 function applyLogFilter(){
   const search=(document.getElementById('logSearch').value||'').toLowerCase();const el=document.getElementById('logs');
+  const actionFilter=(document.getElementById('logActionFilter')?.value||'');
   let filtered=logRaw;
   if(logFilter!=='all')filtered=filtered.filter(e=>{if(logFilter==='ok')return e.cls==='ok';if(logFilter==='warn')return e.cls==='warn';if(logFilter==='err')return e.cls==='err';return true;});
+  if(actionFilter)filtered=filtered.filter(e=>e.action===actionFilter);
   if(search){const isRegex=search.startsWith('/')&&search.lastIndexOf('/')>0;
     if(isRegex){try{const rx=new RegExp(search.slice(1,search.lastIndexOf('/')),'i');filtered=filtered.filter(e=>rx.test(e.msg));}catch(ex){}}
     else{filtered=filtered.filter(e=>e.msg.toLowerCase().includes(search));}}
   el.innerHTML=filtered.map(e=>e.html).join('');if(logAutoScroll)el.scrollTop=el.scrollHeight;
+  // Update action filter dropdown with known actions
+  const sel=document.getElementById('logActionFilter');if(sel){
+    const actions=new Set(logRaw.map(e=>e.action).filter(Boolean));
+    const cur=sel.value;sel.innerHTML='<option value="">All Actions</option>';
+    for(const a of[...actions].sort())sel.innerHTML+='<option value="'+a+'"'+(a===cur?' selected':'')+'>'+a+'</option>';
+  }
 }
 function toggleFullscreenLogs(){document.getElementById('logs').classList.toggle('fullscreen');}
 
@@ -870,10 +897,11 @@ function setSseStatus(alive){sseAlive=alive;const d=document.getElementById('sse
 function updateScrollBtn(){document.getElementById('scrollBtn').textContent=logAutoScroll?'Pause':'Resume';}
 function startSSE(){if(evtSource)evtSource.close();evtSource=new EventSource('/logs/stream?after_seq='+logSeq);
   evtSource.onopen=function(){setSseStatus(true);};
-  evtSource.onmessage=function(e){try{const d=JSON.parse(e.data);logSeq=d.seq;const msg=d.msg||'';
+  evtSource.onmessage=function(e){try{const d=JSON.parse(e.data);logSeq=d.seq;const msg=d.msg||'';const action=d.action||'';
     let cls='';if(msg.includes('[OK]')||msg.includes('complete'))cls='ok';else if(msg.includes('[ERR]')||msg.includes('failed'))cls='err';else if(msg.includes('[WARN]'))cls='warn';
-    const html='<div class="log-line"><span class="ts">'+d.ts+'</span> <span class="'+cls+'">'+msg.replace(/</g,'&lt;')+'</span></div>';
-    logRaw.push({msg,cls,html});if(logRaw.length>500)logRaw=logRaw.slice(-300);applyLogFilter();
+    const tag=action?'<span style="color:var(--blue);font-size:.78em;margin-left:4px">['+action+']</span>':'';
+    const html='<div class="log-line" data-action="'+action+'"><span class="ts">'+d.ts+'</span> <span class="'+cls+'">'+msg.replace(/</g,'&lt;')+'</span>'+tag+'</div>';
+    logRaw.push({msg,cls,html,action});if(logRaw.length>500)logRaw=logRaw.slice(-300);applyLogFilter();
   }catch(ex){}};
   evtSource.onerror=function(){setSseStatus(false);setTimeout(startSSE,3000);};}
 document.addEventListener('DOMContentLoaded',function(){const el=document.getElementById('logs');if(el)el.addEventListener('scroll',function(){
@@ -1087,7 +1115,18 @@ async function loadNamespaces(){
       h+='</tbody></table>';}
     // Pod metrics
     const metrics=d.pod_metrics||[];
-    if(metrics.length){h+='<div class="cat-label">Live Resource Usage</div>';
+    if(metrics.length){
+      let totalCpuM=0,totalMemMi=0;
+      for(const m of metrics){
+        const cpuStr=m.cpu||'';const memStr=m.memory||'';
+        if(cpuStr.endsWith('m'))totalCpuM+=parseInt(cpuStr)||0;
+        else if(cpuStr.endsWith('n'))totalCpuM+=(parseInt(cpuStr)||0)/1e6;
+        if(memStr.endsWith('Mi'))totalMemMi+=parseInt(memStr)||0;
+        else if(memStr.endsWith('Ki'))totalMemMi+=(parseInt(memStr)||0)/1024;
+        else if(memStr.endsWith('Gi'))totalMemMi+=(parseInt(memStr)||0)*1024;
+      }
+      h+='<div class="cat-label">Live Resource Usage</div>';
+      h+='<div style="display:flex;gap:16px;margin:6px 0;font-size:.88em"><span>Total CPU: <b>'+totalCpuM.toFixed(0)+'m</b> ('+(totalCpuM/1000).toFixed(2)+' cores)</span><span>Total Memory: <b>'+totalMemMi.toFixed(0)+'Mi</b> ('+(totalMemMi/1024).toFixed(1)+' Gi)</span><span>Pods: <b>'+metrics.length+'</b></span></div>';
       h+='<table class="idx-table"><thead><tr><th>Pod</th><th>CPU</th><th>Memory</th></tr></thead><tbody>';
       for(const m of metrics){const podShort=m.pod.replace(/-[a-z0-9]{8,10}-[a-z0-9]{5}$/,'');
         h+='<tr><td style="font-size:.82em">'+podShort+'</td><td style="font-family:monospace;font-size:.82em">'+m.cpu+'</td><td style="font-family:monospace;font-size:.82em">'+m.memory+'</td></tr>';}
@@ -1126,12 +1165,16 @@ function checkRemediation(){
 async function loadImageUpdates(){
   try{const r=await fetch('/api/image-updates');if(!r.ok)return;const d=await r.json();
     if(d.error)return;
-    let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th><th>Last Changed</th></tr></thead><tbody>';
+    let staleCount=0;
+    let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th><th>Last Changed</th><th>Age</th></tr></thead><tbody>';
     for(const img of(d.images||[])){const cls=img.tag==='latest'?'warn':img.tag.includes('digest')?'ok':'';
       const short=(img.image||'').split('/').pop().split('@')[0];
       const changed=img.last_updated||img.started_at||img.image_created||'';
-      h+='<tr><td style="font-weight:600">'+img.name+'</td><td style="font-size:.78em;color:var(--fg3)">'+short+'</td><td class="'+(cls||'')+'">'+img.tag+'</td><td style="font-size:.78em;color:var(--fg3)">'+changed+'</td></tr>';}
-    h+='</tbody></table><div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+d.pinned+'/'+d.total+' pinned to specific version</div>';
+      let ageStr='',ageCls='';
+      if(changed){try{const d2=new Date(changed);const days=Math.floor((Date.now()-d2.getTime())/86400000);
+        ageStr=days+'d';if(days>30){ageCls='warn';staleCount++;}if(days>90)ageCls='err';}catch(e){}}
+      h+='<tr><td style="font-weight:600">'+img.name+'</td><td style="font-size:.78em;color:var(--fg3)">'+short+'</td><td class="'+(cls||'')+'">'+img.tag+'</td><td style="font-size:.78em;color:var(--fg3)">'+changed+'</td><td class="'+ageCls+'" style="font-size:.78em">'+ageStr+'</td></tr>';}
+    h+='</tbody></table><div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+d.pinned+'/'+d.total+' pinned to specific version'+(staleCount?' · <span class="warn">'+staleCount+' image(s) >30 days old</span>':'')+'</div>';
     // Append to ops-traffic or create sub-section
     const el=document.getElementById('ops-images');if(el)el.innerHTML=h;
   }catch(e){}

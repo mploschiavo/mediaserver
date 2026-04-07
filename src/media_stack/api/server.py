@@ -95,6 +95,28 @@ def _fire_webhooks(state: BootstrapState, event: str, payload: dict[str, Any]) -
         except Exception as exc:
             logger.debug("Webhook delivery failed for %s: %s", url, exc)
 
+# Endpoints that require authentication (mutating or sensitive).
+_AUTH_REQUIRED_PATHS = frozenset({
+    "/api/rotate-keys", "/api/reset-password", "/api/routing",
+    "/api/batch-restart", "/api/profile", "/api/envvars",
+    "/webhooks/test", "/config",
+})
+_AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/")
+
+# Read-only endpoints that don't require auth.
+_PUBLIC_PATHS = frozenset({
+    "/healthz", "/readyz", "/status", "/api/health", "/api/disk",
+    "/api/stats", "/api/downloads", "/api/versions", "/api/env",
+    "/api/routing", "/api/indexers", "/api/indexer-stats",
+    "/api/recent", "/api/profile", "/api/openapi.json",
+    "/api/feed.xml", "/metrics", "/api/namespaces",
+    "/api/image-updates", "/api/manifests", "/api/envvars",
+    "/api/libraries", "/api/download-history", "/api/quality-profiles",
+    "/api/import-lists", "/api/envoy/stats", "/api/backup",
+    "/logs/stream",
+})
+
+
 KNOWN_ACTIONS = frozenset({
     "bootstrap",
     "finalize",
@@ -295,6 +317,42 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         logger.debug("[%s] %s %s", ts, self.command, self.path)
 
+    def _check_auth(self) -> bool:
+        """Check Basic Auth for sensitive endpoints. Returns True if authorized."""
+        import base64, os
+        path = self.path.split("?")[0]
+        # GET requests to known public paths skip auth
+        if self.command == "GET" and path in _PUBLIC_PATHS:
+            return True
+        if self.command == "GET" and path == "/":
+            return True
+        # POST/DELETE and sensitive paths require auth
+        needs_auth = (
+            path in _AUTH_REQUIRED_PATHS
+            or any(path.startswith(p) for p in _AUTH_REQUIRED_PREFIXES)
+            or self.command in ("POST", "PUT", "DELETE")
+        )
+        if not needs_auth:
+            return True
+        username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+        password = os.environ.get("STACK_ADMIN_PASSWORD", "")
+        if not password:
+            return True  # No password set — skip auth (first boot)
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+                provided_user, _, provided_pass = decoded.partition(":")
+                if provided_user == username and provided_pass == password:
+                    return True
+            except Exception:
+                pass
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Media Stack Controller"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def _json_response(self, status: int, body: dict[str, Any]) -> None:
         payload = json.dumps(body, default=str).encode("utf-8")
         self.send_response(status)
@@ -342,9 +400,9 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         try:
             while True:
                 entries = self.state.get_logs_since(after_seq)
-                for seq, ts, msg in entries:
+                for seq, ts, msg, action, *_ in entries:
                     ts_str = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts))
-                    data = json.dumps({"seq": seq, "ts": ts_str, "msg": msg})
+                    data = json.dumps({"seq": seq, "ts": ts_str, "msg": msg, "action": action})
                     self.wfile.write(f"id: {seq}\ndata: {data}\n\n".encode())
                     after_seq = seq
                 self.wfile.flush()
@@ -1180,11 +1238,9 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             "state": self.state.to_dict(),
         }
         # Include profile
-        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
-        if profile_file:
-            p = Path(profile_file)
-            if p.exists():
-                backup["profile_raw"] = p.read_text(encoding="utf-8", errors="replace")
+        resolved_profile = _resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+        if resolved_profile:
+            backup["profile_raw"] = Path(resolved_profile).read_text(encoding="utf-8", errors="replace")
         return json.dumps(backup, indent=2, default=str).encode("utf-8")
 
     def _get_namespaces(self) -> dict[str, Any]:
@@ -1762,6 +1818,34 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             return {"error": str(exc)[:200]}
 
+    def _update_guardrails(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update disk guardrail settings in the bootstrap config JSON."""
+        from pathlib import Path
+
+        config_path = _resolve_config_path()
+        if not config_path:
+            return {"error": "Config file not found"}
+        try:
+            cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+            gc = cfg.setdefault("disk_guardrails", {})
+            allowed = {"enabled", "max_used_percent", "target_used_percent", "monitor_path"}
+            qbit_allowed = {"enabled", "min_completion_age_hours", "min_ratio",
+                            "min_seeding_time_minutes", "max_delete_per_run", "delete_files"}
+            changed = []
+            for k, v in updates.items():
+                if k in allowed:
+                    gc[k] = v
+                    changed.append(k)
+                elif k.startswith("qbit_") and k[5:] in qbit_allowed:
+                    gc.setdefault("qbit_cleanup", {})[k[5:]] = v
+                    changed.append(k)
+            if not changed:
+                return {"status": "no_changes"}
+            Path(config_path).write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+            return {"status": "updated", "changed": changed}
+        except Exception as exc:
+            return {"error": str(exc)[:200]}
+
     def _persist_keys_to_secret(self, data: dict[str, str]) -> None:
         """Persist key-value pairs to K8s secret if available."""
         import os
@@ -2010,6 +2094,8 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         return "\n".join(parts)
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._check_auth():
+            return
         path = self.path.split("?")[0]  # strip query string for routing
 
         if path == "/healthz":
@@ -2129,6 +2215,8 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             self._json_response(404, {"error": "not found"})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._check_auth():
+            return
         # POST /run — backward-compatible alias for /actions/bootstrap
         if self.path == "/run":
             self._handle_action("bootstrap")
@@ -2199,6 +2287,15 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"error": "JSON body required"})
                 return
             self._json_response(200, self._update_routing(body))
+            return
+
+        # POST /api/guardrails — update disk guardrail settings
+        if self.path == "/api/guardrails":
+            body = self._read_json_body()
+            if not body:
+                self._json_response(400, {"error": "JSON body required"})
+                return
+            self._json_response(200, self._update_guardrails(body))
             return
 
         # POST /webhooks/test
