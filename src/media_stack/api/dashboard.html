@@ -115,7 +115,10 @@ header .switch input:checked+.slider:before{transform:translateX(16px)}
 .matrix-cell a:hover{text-decoration:underline}
 .dns-entry{font-family:monospace;font-size:.85em;background:var(--bg4);padding:10px;border-radius:6px;line-height:1.8;user-select:all}
 .idx-table{width:100%;border-collapse:collapse;font-size:.85em}
-.idx-table th{text-align:left;padding:6px;color:var(--fg3);font-weight:600;border-bottom:2px solid var(--border)}
+.idx-table th{text-align:left;padding:6px;color:var(--fg3);font-weight:600;border-bottom:2px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
+.idx-table th:hover{color:var(--accent)}
+.idx-table th .sort-arrow{font-size:.7em;margin-left:3px;color:var(--fg3)}
+.idx-table th.sorted .sort-arrow{color:var(--accent)}
 .idx-table td{padding:5px 6px;border-bottom:1px solid var(--border)}
 .idx-table tr:last-child td{border:none}
 .profile-pre{background:var(--bg4);padding:12px;border-radius:6px;font-size:.8em;overflow-x:auto;max-height:400px;overflow-y:auto;font-family:'Fira Code',monospace;white-space:pre-wrap;color:var(--fg2)}
@@ -254,11 +257,16 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 
 
 
-<!-- Stats Row: Library / Disk / Downloads -->
-<div class="stats-row">
-  <div class="stat-card"><h3>Library</h3><div id="stats-lib">Loading...</div></div>
-  <div class="stat-card"><h3>Storage</h3><div id="stats-disk">Loading...</div></div>
-  <div class="stat-card"><h3>Downloads</h3><div id="stats-dl">Loading...</div></div>
+<!-- Stats Row -->
+<div class="card">
+  <h2 onclick="toggleCard(this)">Overview <span class="collapse-icon">&#9660;</span></h2>
+  <div class="card-body">
+    <div class="stats-row">
+      <div class="stat-card"><h3>Library</h3><div id="stats-lib">Loading...</div></div>
+      <div class="stat-card"><h3>Storage</h3><div id="stats-disk">Loading...</div></div>
+      <div class="stat-card"><h3>Downloads</h3><div id="stats-dl">Loading...</div></div>
+    </div>
+  </div>
 </div>
 
 <!-- Actions -->
@@ -633,6 +641,37 @@ async function toggleAuto(on){
 
 function relTime(sec){if(!sec&&sec!==0)return '?';sec=Math.round(sec);if(sec<60)return sec+'s';if(sec<3600)return Math.floor(sec/60)+'m '+sec%60+'s';return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';}
 function fmtBytes(b){if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;let v=b;while(v>=1024&&i<u.length-1){v/=1024;i++;}return v.toFixed(i>1?1:0)+' '+u[i];}
+
+/* Sortable tables — click any th to sort */
+function makeSortable(table){
+  if(!table||table.dataset.sortable)return;
+  table.dataset.sortable='1';
+  const headers=table.querySelectorAll('thead th');
+  headers.forEach((th,colIdx)=>{
+    th.innerHTML+=`<span class="sort-arrow">&#9650;</span>`;
+    th.addEventListener('click',()=>{
+      const tbody=table.querySelector('tbody');if(!tbody)return;
+      const rows=Array.from(tbody.querySelectorAll('tr'));
+      const asc=th.dataset.sortDir!=='asc';
+      headers.forEach(h=>{h.classList.remove('sorted');h.dataset.sortDir='';});
+      th.classList.add('sorted');th.dataset.sortDir=asc?'asc':'desc';
+      th.querySelector('.sort-arrow').innerHTML=asc?'&#9650;':'&#9660;';
+      rows.sort((a,b)=>{
+        const ac=(a.cells[colIdx]?.textContent||'').trim();
+        const bc=(b.cells[colIdx]?.textContent||'').trim();
+        const an=parseFloat(ac),bn=parseFloat(bc);
+        if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;
+        return asc?ac.localeCompare(bc):bc.localeCompare(ac);
+      });
+      rows.forEach(r=>tbody.appendChild(r));
+    });
+  });
+}
+// Auto-apply to tables after render
+const _sortObserver=new MutationObserver(()=>{
+  document.querySelectorAll('.idx-table:not([data-sortable]),.matrix-table:not([data-sortable])').forEach(makeSortable);
+});
+_sortObserver.observe(document.body,{childList:true,subtree:true});
 
 /* Global loading indicator */
 let _loadingCount=0;
