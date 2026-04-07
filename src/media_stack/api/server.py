@@ -1846,6 +1846,127 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             return {"error": str(exc)[:200]}
 
+    def _get_gpu_info(self) -> dict[str, Any]:
+        """Detect GPU hardware for transcoding configuration."""
+        import os
+        import subprocess
+        from pathlib import Path
+
+        result: dict[str, Any] = {"detected": False, "gpus": [], "jellyfin_configured": False}
+
+        # Intel QSV / VA-API
+        render_devices = list(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").exists() else []
+        if render_devices:
+            gpu_info: dict[str, Any] = {"type": "intel", "driver": "va-api", "devices": [str(d) for d in render_devices]}
+            try:
+                lspci = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5)
+                for line in lspci.stdout.splitlines():
+                    if "VGA" in line or "Display" in line:
+                        gpu_info["name"] = line.split(":", 2)[-1].strip() if ":" in line else line
+                        break
+            except Exception:
+                gpu_info["name"] = "Intel integrated (VA-API)"
+            result["gpus"].append(gpu_info)
+            result["detected"] = True
+
+        # NVIDIA
+        try:
+            nvidia = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"], capture_output=True, text=True, timeout=5)
+            if nvidia.returncode == 0:
+                for line in nvidia.stdout.strip().splitlines():
+                    parts = [p.strip() for p in line.split(",")]
+                    result["gpus"].append({
+                        "type": "nvidia",
+                        "name": parts[0] if parts else "NVIDIA GPU",
+                        "driver": parts[1] if len(parts) > 1 else "",
+                        "memory": parts[2] if len(parts) > 2 else "",
+                    })
+                    result["detected"] = True
+        except FileNotFoundError:
+            pass
+
+        # Check if Jellyfin is already configured for HW transcoding
+        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        jf_system = Path(config_root) / "jellyfin" / "config" / "system.xml"
+        if jf_system.is_file():
+            try:
+                text = jf_system.read_text(encoding="utf-8")
+                result["jellyfin_configured"] = "EnableHardwareDecoding" in text and ">true<" in text.lower()
+                if "HardwareAccelerationType" in text:
+                    import re
+                    m = re.search(r"<HardwareAccelerationType>(\w+)</HardwareAccelerationType>", text)
+                    if m:
+                        result["jellyfin_hw_type"] = m.group(1)
+            except Exception:
+                pass
+
+        # Compose config recommendation
+        if result["detected"]:
+            gpu = result["gpus"][0]
+            if gpu["type"] == "intel":
+                result["compose_snippet"] = (
+                    "# Add to jellyfin service in docker-compose.yml:\n"
+                    "    devices:\n"
+                    "      - /dev/dri:/dev/dri\n"
+                    "    group_add:\n"
+                    '      - "44"   # video\n'
+                    '      - "109"  # render'
+                )
+            elif gpu["type"] == "nvidia":
+                result["compose_snippet"] = (
+                    "# Use the jellyfin-nvidia profile:\n"
+                    "# docker compose --profile nvidia up -d\n"
+                    "# Or add to jellyfin service:\n"
+                    "    runtime: nvidia\n"
+                    "    environment:\n"
+                    "      - NVIDIA_VISIBLE_DEVICES=all\n"
+                    "      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility"
+                )
+
+        return result
+
+    def _get_config_snapshots(self) -> dict[str, Any]:
+        """List available config snapshots."""
+        import os
+        from pathlib import Path
+
+        snapshot_dir = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / ".snapshots"
+        snapshots: list[dict[str, Any]] = []
+        if snapshot_dir.exists():
+            for f in sorted(snapshot_dir.iterdir(), reverse=True):
+                if f.suffix == ".json" and f.is_file():
+                    snapshots.append({
+                        "file": f.name,
+                        "size": f.stat().st_size,
+                        "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(f.stat().st_mtime)),
+                    })
+        return {"snapshots": snapshots[:50], "dir": str(snapshot_dir)}
+
+    def _get_mount_info(self) -> dict[str, Any]:
+        """Detect NFS/CIFS/local mounts relevant to media storage."""
+        import subprocess
+
+        mounts: list[dict[str, str]] = []
+        try:
+            result = subprocess.run(["mount"], capture_output=True, text=True, timeout=5)
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 5:
+                    device, _, mountpoint, _, fstype = parts[:5]
+                    # Only show relevant mounts
+                    if any(kw in mountpoint for kw in ("/media", "/data", "/config", "/srv", "/mnt", "/nas")):
+                        mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
+                    elif fstype.strip("()").startswith(("nfs", "cifs", "smb")):
+                        mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
+        except Exception:
+            pass
+
+        return {
+            "mounts": mounts,
+            "nfs_available": any(m["fstype"].startswith("nfs") for m in mounts),
+            "cifs_available": any(m["fstype"].startswith(("cifs", "smb")) for m in mounts),
+        }
+
     def _persist_keys_to_secret(self, data: dict[str, str]) -> None:
         """Persist key-value pairs to K8s secret if available."""
         import os
@@ -2180,6 +2301,12 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             self._json_response(200, self._get_service_logs(svc, lines))
         elif path == "/api/image-updates":
             self._json_response(200, self._check_image_updates())
+        elif path == "/api/gpu":
+            self._json_response(200, self._get_gpu_info())
+        elif path == "/api/snapshots":
+            self._json_response(200, self._get_config_snapshots())
+        elif path == "/api/mounts":
+            self._json_response(200, self._get_mount_info())
         elif path == "/api/manifests":
             self._json_response(200, self._get_manifests())
         elif path == "/api/envvars":
