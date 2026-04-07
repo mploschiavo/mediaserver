@@ -592,6 +592,7 @@ class EnvoyDynamicConfigService:
                     svc = get_service(service_name)
                     if svc and not svc.preserve_path_prefix:
                         needs_strip = True
+                        strip_prefix = path_prefix  # propagate to fallback routes
                 except Exception:
                     pass
 
