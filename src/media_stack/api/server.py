@@ -758,6 +758,37 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 pass
         return {"disk": results, "guardrails": guardrails}
 
+    def _get_routing(self) -> dict[str, Any]:
+        """Return current routing configuration from profile."""
+        import os
+        from pathlib import Path
+
+        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+        resolved = _resolve_config_path(profile_file) if not profile_file else profile_file
+        profile_path = Path(profile_file) if profile_file else None
+        if not profile_path or not profile_path.is_file():
+            # Try image-embedded profile
+            profile_path = Path("/opt/media-stack/contracts/media-stack.profile.yaml")
+        routing: dict[str, Any] = {}
+        if profile_path and profile_path.is_file():
+            try:
+                import yaml
+                with open(profile_path) as f:
+                    profile = yaml.safe_load(f) or {}
+                routing = profile.get("routing") or {}
+            except Exception:
+                pass
+        return {
+            "base_domain": str(routing.get("base_domain", "local")),
+            "stack_subdomain": str(routing.get("stack_subdomain", "media-stack")),
+            "gateway_host": str(routing.get("gateway_host", "apps.media-stack.local")),
+            "gateway_port": int(routing.get("gateway_port", 80)),
+            "app_path_prefix": str(routing.get("app_path_prefix", "/app")),
+            "strategy": str(routing.get("strategy", "hybrid")),
+            "internet_exposed": bool(routing.get("internet_exposed", False)),
+            "direct_hosts": dict(routing.get("direct_hosts") or {}),
+        }
+
     def _get_env(self) -> dict[str, Any]:
         """Return runtime environment information."""
         import os
@@ -1682,6 +1713,8 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             self._json_response(200, self._get_disk())
         elif path == "/api/env":
             self._json_response(200, self._get_env())
+        elif path == "/api/routing":
+            self._json_response(200, self._get_routing())
         elif path == "/api/recent":
             self._json_response(200, self._get_recent())
         elif path == "/api/profile":

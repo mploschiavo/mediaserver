@@ -790,6 +790,23 @@ class EnvoyDynamicConfigService:
                 }
             )
 
+        # Add a localhost catch-all vhost that mirrors the gateway host routes.
+        # This lets compose users access services at localhost:80/app/sonarr
+        # without DNS setup. Find the gateway vhost (has /app/ routes) and clone it.
+        gateway_vhost = None
+        for vh in virtual_hosts:
+            if any(
+                r.get("match", {}).get("prefix", "").startswith("/app/")
+                for r in vh.get("routes", [])
+            ):
+                gateway_vhost = vh
+                break
+        if gateway_vhost:
+            localhost_vhost = copy.deepcopy(gateway_vhost)
+            localhost_vhost["name"] = "vhost_localhost"
+            localhost_vhost["domains"] = ["localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*"]
+            virtual_hosts.append(localhost_vhost)
+
         if not virtual_hosts:
             virtual_hosts = [
                 {
