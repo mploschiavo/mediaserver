@@ -307,7 +307,11 @@ def get_gpu_info() -> dict[str, Any]:
 
 
 def enable_gpu_transcoding() -> dict[str, Any]:
-    """Auto-configure Jellyfin for hardware transcoding based on detected GPU."""
+    """Auto-configure Jellyfin for hardware transcoding based on detected GPU.
+
+    Creates a backup of system.xml before modifying. If Jellyfin fails to
+    restart, automatically rolls back to the backup.
+    """
     gpu_info = get_gpu_info()
 
     if not gpu_info.get("detected"):
@@ -325,7 +329,20 @@ def enable_gpu_transcoding() -> dict[str, Any]:
         return {"status": "error", "error": "Jellyfin system.xml not found. Start Jellyfin first."}
 
     import re
-    text = system_xml.read_text(encoding="utf-8")
+
+    original_text = system_xml.read_text(encoding="utf-8")
+
+    if "</ServerConfiguration>" not in original_text:
+        return {"status": "error", "error": "system.xml does not contain expected XML structure."}
+
+    # Backup before modifying
+    backup_path = system_xml.with_suffix(".xml.gpu-backup")
+    try:
+        backup_path.write_text(original_text, encoding="utf-8")
+    except Exception as exc:
+        return {"status": "error", "error": f"Failed to create backup: {exc}"}
+
+    text = original_text
     changes: list[str] = []
 
     def _set_xml(content: str, tag: str, value: str) -> str:
@@ -333,7 +350,6 @@ def enable_gpu_transcoding() -> dict[str, Any]:
         replacement = f"<{tag}>{value}</{tag}>"
         if re.search(pattern, content):
             return re.sub(pattern, replacement, content)
-        # Insert before </ServerConfiguration>
         return content.replace("</ServerConfiguration>",
                                f"  {replacement}\n</ServerConfiguration>")
 
@@ -351,24 +367,64 @@ def enable_gpu_transcoding() -> dict[str, Any]:
             text = _set_xml(text, codec, "true")
             changes.append(f"{codec}=true")
 
-    system_xml.write_text(text, encoding="utf-8")
+    try:
+        system_xml.write_text(text, encoding="utf-8")
+    except Exception as exc:
+        return {"status": "error", "error": f"Failed to write system.xml: {exc}"}
 
-    # Restart Jellyfin to apply
+    # Restart Jellyfin and verify it comes back healthy
     restart_note = ""
+    rollback = False
     try:
         import docker
         client = docker.from_env()
         jf = client.containers.get("jellyfin")
         jf.restart(timeout=30)
-        restart_note = "Jellyfin restarted to apply changes."
+        # Wait up to 30s for Jellyfin to come back healthy
+        import time as _time
+        for _ in range(15):
+            _time.sleep(2)
+            jf.reload()
+            status = jf.status
+            if status == "running":
+                health = (jf.attrs.get("State") or {}).get("Health", {}).get("Status", "")
+                if health in ("healthy", ""):
+                    restart_note = "Jellyfin restarted and running."
+                    break
+            elif status in ("exited", "dead"):
+                rollback = True
+                restart_note = "Jellyfin failed to start after config change."
+                break
+        else:
+            restart_note = "Jellyfin restarted (health check pending)."
     except Exception:
         restart_note = "Restart Jellyfin manually to apply changes."
+
+    if rollback:
+        # Roll back to backup
+        try:
+            system_xml.write_text(backup_path.read_text(encoding="utf-8"), encoding="utf-8")
+            import docker
+            client = docker.from_env()
+            client.containers.get("jellyfin").restart(timeout=30)
+            restart_note += " Rolled back to previous config and restarted."
+        except Exception:
+            restart_note += " Rollback written but manual restart needed."
+        return {
+            "status": "error",
+            "error": "Jellyfin crashed after enabling GPU transcoding. Config rolled back.",
+            "hw_accel_type": hw_type,
+            "changes": changes,
+            "note": restart_note,
+            "backup": str(backup_path),
+        }
 
     return {
         "status": "ok",
         "hw_accel_type": hw_type,
         "changes": changes,
         "note": restart_note,
+        "backup": str(backup_path),
     }
 
 
