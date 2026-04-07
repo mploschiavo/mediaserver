@@ -39,7 +39,8 @@
     "trigger_indexer_sync": "boolean",
     "config_overlays": "object",
     "container_preflight_handlers": "array",
-    "container_post_setup_handlers": "array"
+    "container_post_setup_handlers": "array",
+    "jellyfin": "dict"
   },
   "required_keys": [
     "config_version"

@@ -247,21 +247,31 @@ class ControllerRuntimeBuilder:
         jellyseerr_model = JellyseerrConfig.from_dict(cfg.get("jellyseerr") or {})
         homepage_model = HomepageConfig.from_dict(cfg.get("homepage") or {})
         bazarr_model = BazarrConfig.from_dict(cfg.get("bazarr") or {})
+        # Jellyfin settings: support both new pattern (cfg["jellyfin"]["libraries"])
+        # and legacy pattern (cfg["jellyfin_libraries"]) for backward compatibility
+        jf = cfg.get("jellyfin") or {}
+        jf_cfg = jf if isinstance(jf, dict) else {}
         jellyfin_libraries_model = JellyfinLibrariesConfig.from_dict(
-            cfg.get("jellyfin_libraries") or {}
+            jf_cfg.get("libraries") or cfg.get("jellyfin_libraries") or {}
         )
-        jellyfin_livetv_model = JellyfinLiveTvConfig.from_dict(cfg.get("jellyfin_livetv") or {})
-        jellyfin_plugins_model = JellyfinPluginsConfig.from_dict(cfg.get("jellyfin_plugins") or {})
+        jellyfin_livetv_model = JellyfinLiveTvConfig.from_dict(
+            jf_cfg.get("livetv") or cfg.get("jellyfin_livetv") or {}
+        )
+        jellyfin_plugins_model = JellyfinPluginsConfig.from_dict(
+            jf_cfg.get("plugins") or cfg.get("jellyfin_plugins") or {}
+        )
         jellyfin_playback_model = JellyfinPlaybackConfig.from_dict(
-            cfg.get("jellyfin_playback") or {}
+            jf_cfg.get("playback") or cfg.get("jellyfin_playback") or {}
         )
         jellyfin_home_rails_model = JellyfinHomeRailsConfig.from_dict(
-            cfg.get("jellyfin_home_rails") or {}
+            jf_cfg.get("home_rails") or cfg.get("jellyfin_home_rails") or {}
         )
         jellyfin_auto_collections_model = JellyfinAutoCollectionsConfig.from_dict(
-            cfg.get("jellyfin_auto_collections") or {}
+            jf_cfg.get("auto_collections") or cfg.get("jellyfin_auto_collections") or {}
         )
-        jellyfin_prewarm_model = JellyfinPrewarmConfig.from_dict(cfg.get("jellyfin_prewarm") or {})
+        jellyfin_prewarm_model = JellyfinPrewarmConfig.from_dict(
+            jf_cfg.get("prewarm") or cfg.get("jellyfin_prewarm") or {}
+        )
         disk_guardrails_model = DiskGuardrailsConfig.from_dict(cfg.get("disk_guardrails") or {})
         media_hygiene_model = MediaHygieneConfig.from_dict(cfg.get("media_hygiene") or {})
         maintainerr_model = MaintainerrConfig.from_dict(cfg.get("maintainerr") or {})

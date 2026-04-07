@@ -45,10 +45,37 @@ class ControllerConfigLoader:
                         pass
                 break
 
-        # Per-service YAML files (contracts/services/*.yaml) contain defaults:
-        # sections, but these are loaded by the registry for future use.
-        # The contracts/defaults/*.yaml files remain the active source for
-        # runtime config defaults until the key naming is fully standardized.
+        # 2. Load from contracts/services/*.yaml (per-service defaults)
+        # Key naming convention:
+        #   - Jellyfin: defaults keys become "jellyfin_{key}" (e.g., jellyfin_libraries)
+        #   - Other services: defaults become the service-name key (e.g., "bazarr": {entire dict})
+        #   - Shared defaults (arr_*, download_*): kept in contracts/defaults/*.yaml
+        # Services whose defaults: section maps to a top-level config key of the same name
+        _SERVICE_KEY_SERVICES = {"bazarr", "jellyseerr", "homepage", "maintainerr", "flaresolverr", "jellyfin"}
+
+        for svc_dir in [config_dir / "services", Path("/opt/media-stack/contracts/services")]:
+            if svc_dir.is_dir() and any(svc_dir.glob("*.yaml")):
+                for yaml_file in sorted(svc_dir.glob("*.yaml")):
+                    if yaml_file.name.startswith("_"):
+                        continue
+                    try:
+                        with open(yaml_file, encoding="utf-8") as f:
+                            data = yaml.safe_load(f) or {}
+                        svc_id = str((data.get("service") or {}).get("id", yaml_file.stem))
+                        svc_defaults = data.get("defaults")
+                        if not isinstance(svc_defaults, dict):
+                            continue
+
+                        if svc_id in _SERVICE_KEY_SERVICES:
+                            # Integration pattern: full dict under service name
+                            if svc_id not in defaults:
+                                defaults[svc_id] = svc_defaults
+                        # Other services (sonarr, radarr, etc.): defaults are
+                        # handled by arr.yaml/downloads.yaml shared defaults,
+                        # not per-service keys
+                    except Exception:
+                        pass
+                break
 
         return defaults
 
