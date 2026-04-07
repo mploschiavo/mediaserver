@@ -1,6 +1,6 @@
 # Device Onboarding
 
-This stack ships homepage onboarding cards and QR links by default when `homepage.device_onboarding.enabled=true` in bootstrap config.
+This stack ships homepage onboarding cards and QR links by default when `homepage.device_onboarding.enabled=true` in per-service YAML (`contracts/services/homepage.yaml`).
 
 Primary entrypoints:
 - Jellyfin playback: `http://jellyfin.<domain>`

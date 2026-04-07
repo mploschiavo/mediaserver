@@ -5,7 +5,7 @@ This stack is GitOps-friendly even if you operate it with imperative scripts tod
 ## Principles
 
 - Git is the change ledger.
-- Desired state is declared in manifests and bootstrap config.
+- Desired state is declared in manifests, profile YAML, and per-service YAML.
 - Runtime state is reconciled back to declared state.
 
 ## Suggested Flow
@@ -31,7 +31,7 @@ bash bin/microk8s-smoke-test.sh <NODE_IP> media-stack-dev
 
 - Keep namespace-specific differences in arguments/env (namespace, ingress domain, host root).
 - Avoid editing manifests manually between environments.
-- Use the same profile and bootstrap config unless there is an explicit environment override.
+- Use the same profile YAML and per-service YAML unless there is an explicit environment override.
 
 ## Drift Handling
 
