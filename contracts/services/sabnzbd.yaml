@@ -31,3 +31,10 @@ plugin:
       ensure_sabnzbd_categories: media_stack.services.apps.sabnzbd.runtime_ops:ensure_sabnzbd_categories
   adapter_classes:
     download_client: media_stack.services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter
+  preflight_handler:
+    name: sabnzbd
+    handler: media_stack.services.apps.sabnzbd.http_preflight:run_preflight
+    args:
+      host_whitelist: sabnzbd,localhost,sabnzbd.media-stack.svc.cluster.local,sabnzbd.media-dev.svc.cluster.local,sabnzbd.media-stack,sabnzbd.media-dev
+      local_ranges: 172.16.0.0/12,192.168.0.0/16,10.0.0.0/8
+    optional: true

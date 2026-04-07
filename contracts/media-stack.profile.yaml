@@ -25,6 +25,14 @@ bootstrap:
   apply_initial_preferences: true
   auto_download_content: false
 
+# Technology bindings — which implementation to use for each role.
+# Change these to swap implementations (e.g., qbittorrent → transmission).
+technology_bindings:
+  torrent_client: qbittorrent
+  usenet_client: sabnzbd
+  media_server: jellyfin
+  request_manager: jellyseerr
+
 routing:
   internet_exposed: false
   strategy: hybrid

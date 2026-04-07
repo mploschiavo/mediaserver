@@ -811,13 +811,7 @@
     "fail_on_error": false,
     "username_env": "STACK_ADMIN_USERNAME",
     "password_env": "STACK_ADMIN_PASSWORD",
-    "include": [
-      "Sonarr",
-      "Radarr",
-      "Lidarr",
-      "Readarr",
-      "Prowlarr",
-      "Bazarr"
-    ]
+    "include": [],
+    "include_note": "Empty = all services with password_api_path in registry"
   }
 }
