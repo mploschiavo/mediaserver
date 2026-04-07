@@ -1,0 +1,85 @@
+# Operational defaults (disk guardrails, media hygiene)
+# Override in media-stack.config.json
+
+disk_guardrails:
+  enabled: true
+  required: false
+  monitor_path: /srv-stack
+  max_used_percent: 65
+  target_used_percent: 58
+  qbit_cleanup:
+    enabled: true
+    categories:
+    - tv
+    - movies
+    - music
+    - books
+    min_completion_age_hours: 36
+    min_ratio: 1.0
+    min_seeding_time_minutes: 720
+    max_delete_per_run: 80
+    delete_files: true
+media_hygiene:
+  enabled: true
+  required: false
+  cleanup_arr_failed_queue: true
+  arr_failed_queue_cleanup:
+    enabled: true
+    failed_status_tokens:
+    - failed
+    - error
+    - importfailed
+    - warning
+    remove_from_client: true
+    blocklist: true
+    max_delete_per_run: 50
+    page_size: 250
+  qbit_ipfilter:
+    enabled: true
+    required: false
+    url: https://github.com/DavidMoore/ipfilter/releases/download/lists/ipfilter.dat
+    fallback_urls: []
+    target_path: /srv-stack/data/torrents/ipfilter.dat
+    mirror_target_paths: []
+    qbit_filter_path: /data/torrents/ipfilter.dat
+    state_path: /srv-stack/data/torrents/.ipfilter-refresh-state.json
+    min_refresh_interval_hours: 24
+    download_timeout_seconds: 30
+    min_valid_bytes: 1024
+    apply_existing_on_download_failure: true
+  qbit_duplicate_prune:
+    enabled: false
+    dry_run: false
+    match_on_hash: true
+    match_on_name_size: true
+    include_category_in_key: true
+    categories:
+    - tv
+    - movies
+    - music
+    - books
+    min_completion_age_hours: 24
+    max_delete_per_run: 30
+    keep: oldest
+    delete_files: false
+  filesystem:
+    enabled: true
+    roots:
+    - /srv-stack/data/torrents/incomplete
+    - /srv-stack/data/torrents/completed
+    - /srv-stack/data/usenet/incomplete
+    - /srv-stack/data/usenet/completed
+    min_file_age_hours: 24
+    remove_zero_byte_files: true
+    temp_extensions:
+    - .part
+    - .tmp
+    - .temp
+    - .nzb
+    - .!qb
+    remove_empty_dirs: true
+    dedupe:
+      enabled: true
+      dry_run: false
+      max_delete_per_run: 20
+      min_size_bytes: 104857600

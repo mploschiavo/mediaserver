@@ -1,0 +1,181 @@
+# Download client defaults (qBittorrent, SABnzbd, Prowlarr)
+# Override in media-stack.config.json
+
+prowlarr_url: http://prowlarr:9696
+prowlarr_auto_add_tested_indexers: true
+prowlarr_auto_indexer_exclude_name_tokens: []
+prowlarr_indexers: []
+download_clients:
+  qbittorrent:
+    url: http://qbittorrent:8080
+    host: qbittorrent
+    port: 8080
+    implementation: QBittorrent
+    name: qBittorrent
+    configure_arr_clients: true
+    set_categories_in_qbit: true
+    login_required: true
+    username_env: STACK_ADMIN_USERNAME
+    password_env: STACK_ADMIN_PASSWORD
+    auth_bypass:
+      localhost: true
+      whitelist_enabled: true
+      whitelist_subnets:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 127.0.0.1/32
+      - ::1/128
+      allow_open_world: false
+      host_header_validation_enabled: false
+      reverse_proxy_support_enabled: true
+      csrf_protection_enabled: false
+    default_save_path: /data/torrents/completed
+    temp_path: /data/torrents/incomplete
+    temp_path_enabled: true
+    auto_tmm_enabled: true
+    seeding_policy:
+      enabled: true
+      max_ratio: 1.2
+      max_seeding_time_minutes: 1440
+      remove_on_limit_reached: false
+    queue_guardrails:
+      enabled: true
+      dry_run: false
+      default_max_queued: 20
+      max_queued_by_category:
+        tv: 20
+        movies: 12
+        music: 6
+        books: 4
+      include_uncategorized: false
+      count_states:
+      - downloading
+      - queuedDL
+      - stalledDL
+      - metaDL
+      - forcedDL
+      - checkingDL
+      - pausedDL
+      - allocating
+      - checkingResumeData
+      prune_when_over_limit: true
+      prune_states:
+      - queuedDL
+      - stalledDL
+      - metaDL
+      - pausedDL
+      - error
+      - missingFiles
+      over_limit_max_delete_per_category: 15
+      over_limit_delete_files: true
+      stale_prune:
+        enabled: true
+        max_age_hours: 96
+        max_stalled_hours: 12
+        max_eta_seconds: 1209600
+        min_progress: 0.98
+        max_download_speed_bps: 32768
+        states:
+        - downloading
+        - queuedDL
+        - stalledDL
+        - metaDL
+        - pausedDL
+        - error
+        - missingFiles
+        max_delete_per_run: 25
+        delete_files: true
+      max_total_size_gib_by_category:
+        tv: 120
+        movies: 180
+        music: 25
+        books: 12
+      max_weight_percent_by_category:
+        tv: 30
+        movies: 35
+        music: 8
+        books: 5
+      budget_prune_states:
+      - queuedDL
+      - stalledDL
+      - metaDL
+      - pausedDL
+      - error
+      - missingFiles
+      - uploading
+      - stalledUP
+      - queuedUP
+      - pausedUP
+      over_budget_max_delete_per_category: 20
+      over_budget_delete_files: true
+    categories:
+      Sonarr: tv
+      Radarr: movies
+      Lidarr: music
+      Readarr: books
+    completed_paths:
+      tv: /data/torrents/completed/tv
+      movies: /data/torrents/completed/movies
+      music: /data/torrents/completed/music
+      books: /data/torrents/completed/books
+  sabnzbd:
+    url: http://sabnzbd:8080
+    host: sabnzbd
+    port: 8080
+    implementation: Sabnzbd
+    name: SABnzbd
+    url_base: /app/sabnzbd
+    configure_arr_clients: true
+    set_categories_in_sab: true
+    incomplete_dir: /data/usenet/incomplete
+    complete_dir: /data/usenet/completed
+    auto_browser: false
+    api_key_env: SABNZBD_API_KEY
+    api_key_config_path: sabnzbd/sabnzbd.ini
+    api_key_required: false
+    seed_placeholder_server_if_empty: true
+    placeholder_server:
+      name: bootstrap-placeholder
+      displayname: Bootstrap Placeholder
+      host: news.invalid
+      port: 119
+      connections: 1
+      ssl: false
+      enable: false
+      required: false
+      optional: true
+      notes: Bootstrap placeholder server to bypass startup wizard
+    remote_path_mappings:
+    - host: sabnzbd
+      remote_path: /config/Downloads/complete
+      local_path: /data/usenet/completed
+    - host: sabnzbd
+      remote_path: Downloads/complete
+      local_path: /data/usenet/completed
+    categories:
+      Sonarr: tv
+      Radarr: movies
+      Lidarr: music
+      Readarr: books
+    completed_paths:
+      tv: /data/usenet/completed/tv
+      movies: /data/usenet/completed/movies
+      music: /data/usenet/completed/music
+      books: /data/usenet/completed/books
+prowlarr_indexer_reputation:
+  enabled: true
+  state_path: /srv-config/prowlarr/indexer-reputation-state.json
+  quarantine_score_threshold: -10
+  quarantine_failure_threshold: 3
+  quarantine_ttl_hours: 72
+  success_score_delta: 2
+  test_failure_score_delta: -4
+  create_failure_score_delta: -3
+  allow_untested_fallback: true
+  untested_fallback_max_add: 6
+  untested_fallback_name_tokens:
+  - 1337x
+  - nyaa
+  - eztv
+  - torrentdownloads

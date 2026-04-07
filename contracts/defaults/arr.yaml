@@ -1,0 +1,200 @@
+# Arr app default settings (Sonarr, Radarr, Lidarr, Readarr)
+# Override in media-stack.config.json
+
+arr_download_handling:
+  enabled: true
+  enable_completed_download_handling: true
+  remove_completed_downloads: true
+  remove_failed_downloads: true
+  auto_redownload_failed: true
+arr_media_management:
+  enabled: true
+  copy_using_hardlinks: true
+  create_empty_series_folders: true
+arr_quality_upgrade:
+  enabled: true
+  allow_upgrades: true
+  disallow_quality_name_tokens:
+  - '2160'
+  - 4k
+  - uhd
+  - remux
+  cutoff_preferred_name_tokens:
+  - '1080'
+  by_app:
+    Lidarr:
+      enabled: false
+    Readarr:
+      enabled: false
+quality_profiles:
+  preferred_names:
+  - HD-1080p
+  - HD - 720p/1080p
+  - HD-720p
+  by_app:
+    Radarr:
+      preferred_names:
+      - HD-1080p
+      - HD - 720p/1080p
+      - HD-720p
+    Sonarr:
+      preferred_names:
+      - HD-1080p
+      - HD - 720p/1080p
+      - HD-720p
+arr_discovery_lists:
+  enabled: true
+  required: false
+  trigger_initial_sync: true
+  prune_unmanaged: true
+  Radarr:
+  - name: TMDb Trending Movies
+    implementation: TMDbPopularImport
+    enabled: true
+    enable_auto: true
+    monitor: movieOnly
+    minimum_availability: released
+    search_on_add: true
+    field_overrides:
+      tMDbListType: 1
+  - name: TMDb Popular Movies
+    implementation: TMDbPopularImport
+    enabled: true
+    enable_auto: true
+    monitor: movieOnly
+    minimum_availability: released
+    search_on_add: true
+    field_overrides:
+      tMDbListType: 2
+  - name: TMDb Top Rated Movies
+    implementation: TMDbPopularImport
+    enabled: true
+    enable_auto: true
+    monitor: movieOnly
+    minimum_availability: released
+    search_on_add: true
+    field_overrides:
+      tMDbListType: 3
+  - name: TMDb Upcoming Movies
+    implementation: TMDbPopularImport
+    enabled: true
+    enable_auto: true
+    monitor: movieOnly
+    minimum_availability: released
+    search_on_add: true
+    field_overrides:
+      tMDbListType: 4
+  Sonarr: []
+  Lidarr:
+  - name: Last.fm Top Rock Artists (Top 10)
+    implementation: LastFmTag
+    enabled: true
+    enable_automatic_add: true
+    should_monitor: all
+    monitor_new_items: all
+    should_search: true
+    field_overrides:
+      tagId: rock
+      count: 10
+  - name: Last.fm Top Pop Artists (Top 10)
+    implementation: LastFmTag
+    enabled: true
+    enable_automatic_add: true
+    should_monitor: all
+    monitor_new_items: all
+    should_search: true
+    field_overrides:
+      tagId: pop
+      count: 10
+  - name: Last.fm Top Hip-Hop Artists (Top 10)
+    implementation: LastFmTag
+    enabled: true
+    enable_automatic_add: true
+    should_monitor: all
+    monitor_new_items: all
+    should_search: true
+    field_overrides:
+      tagId: hip-hop
+      count: 10
+  - name: Last.fm Top Electronic Artists (Top 10)
+    implementation: LastFmTag
+    enabled: true
+    enable_automatic_add: true
+    should_monitor: all
+    monitor_new_items: all
+    should_search: true
+    field_overrides:
+      tagId: electronic
+      count: 10
+  Readarr:
+  - name: Goodreads Popular Science Fiction
+    implementation: GoodreadsListImportList
+    enabled: true
+    enable_automatic_add: true
+    should_monitor: all
+    monitor_new_items: all
+    should_search: true
+    min_refresh_interval: '168:00:00'
+    field_overrides:
+      listId: '2681'
+  - name: Goodreads Readarr Top 100
+    implementation: GoodreadsListImportList
+    enabled: true
+    enable_automatic_add: true
+    should_monitor: all
+    monitor_new_items: all
+    should_search: true
+    min_refresh_interval: '168:00:00'
+    field_overrides:
+      listId: '184476'
+sonarr_seed_series:
+  enabled: true
+  max_series: 15
+  monitor: firstSeason
+  season_folder: true
+  search_for_missing_episodes: true
+  quality_profile_name_tokens:
+  - '1080'
+  - hd
+  series:
+  - Breaking Bad
+  - Stranger Things
+  - The Last of Us
+  - The Boys
+  - Severance
+  - House of the Dragon
+  - The Bear
+  - Reacher
+  - Silo
+  - The White Lotus
+readarr:
+  metadata_source: https://api.bookinfo.pro
+  metadata_source_required: false
+arr_apps:
+- name: Sonarr
+  implementation: Sonarr
+  url: http://sonarr:8989
+  root_folder: /media/tv
+  quality_profile_preferred_names:
+  - HD-1080p
+  - HD - 720p/1080p
+  - HD-720p
+- name: Radarr
+  implementation: Radarr
+  url: http://radarr:7878
+  root_folder: /media/movies
+  quality_profile_preferred_names:
+  - HD-1080p
+  - HD - 720p/1080p
+  - HD-720p
+- name: Lidarr
+  implementation: Lidarr
+  url: http://lidarr:8686
+  root_folder: /media/music
+- name: Readarr
+  implementation: Readarr
+  url: http://readarr:8787
+  root_folder: /media/books
+arr_indexer_sync:
+  enabled: true
+  prune_stale_indexers: true
