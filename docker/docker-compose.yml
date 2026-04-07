@@ -21,6 +21,29 @@ x-media-vols: &media-vols
   - ${DATA_ROOT:-./data}/usenet:/data/usenet
 
 services:
+  # Init service: create config/data directories with correct ownership.
+  # Docker creates bind-mount host dirs as root, but services run as UID 1000.
+  init-permissions:
+    image: alpine:3.20
+    container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-init-permissions
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        for d in \
+          /cfg/jellyfin /cfg/jellyseerr /cfg/sonarr /cfg/radarr /cfg/lidarr \
+          /cfg/readarr /cfg/prowlarr /cfg/bazarr /cfg/sabnzbd /cfg/qbittorrent \
+          /cfg/maintainerr /cfg/tautulli /cfg/homepage /cfg/envoy /cfg/unpackerr \
+          /data/torrents /data/usenet /data/transcode /media/media; do
+          mkdir -p "$$d"
+        done
+        chown -R ${PUID:-1000}:${PGID:-1000} /cfg /data /media
+    volumes:
+      - ${CONFIG_ROOT:-./config}:/cfg
+      - ${DATA_ROOT:-./data}:/data
+      - ${MEDIA_ROOT:-./media}:/media
+    restart: "no"
+
   traefik:
     image: traefik@sha256:74d72c7a1345984f186bddbabcc462b2128d0d8054177dc84afaeac4db1f0f56
     container_name: traefik
@@ -230,6 +253,9 @@ services:
     image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
     container_name: jellyfin
     user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
     # Hardware transcoding: uncomment on Linux with Intel QSV/VA-API GPU.
     # group_add: ["44","109"]
     # devices:
@@ -450,6 +476,9 @@ services:
   maintainerr:
     image: ghcr.io/maintainerr/maintainerr:3.3.0
     container_name: maintainerr
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
     environment:
       TZ: ${TZ:-UTC}
       UI_HOSTNAME: 0.0.0.0

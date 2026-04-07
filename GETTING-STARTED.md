@@ -17,20 +17,40 @@ That's it. No Python, no Git, no source code needed.
 
 ## Step 1: Deploy
 
-### Option A: Docker Compose (one command)
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -o docker-compose.yml
-docker compose up -d
+git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
 ```
 
-### Option B: Kubernetes (one command)
+### Option A: Docker Compose
 
 ```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+### Option B: Kubernetes
+
+```bash
+python3 deploy.py k8s
+```
+
+### Option C: One-liner (if repo is public)
+
+```bash
+# Compose
+curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -o docker-compose.yml && docker compose up -d
+
+# Kubernetes
 kubectl apply -f https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/k8s-deploy.yaml
 ```
 
-That's it. All 19 services start automatically.
+> **Note:** Options C requires the repo to be public. If you get a 404, use Option A or B after cloning.
+
+All 19 services start automatically. An init container creates the config/data/media directories with correct ownership (UID/GID 1000) before services start.
+
+> **Permissions note:** Services like Jellyfin and Maintainerr run as non-root (UID 1000). The compose file includes an `init-permissions` service that automatically sets ownership on first deploy. If you see "Permission denied" errors after upgrading from an older version, run:
+> ```bash
+> docker run --rm -v ./config:/cfg -v ./data:/data -v ./media:/media alpine chown -R 1000:1000 /cfg /data /media
+> ```
 
 ---
 
