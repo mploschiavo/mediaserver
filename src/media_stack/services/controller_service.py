@@ -301,7 +301,8 @@ class ControllerService:
             qbit_login_ok, sab_api_key = self._run_full_prechecks(rt)
             self._run_servarr_pipeline(rt, qbit_login_ok=qbit_login_ok, sab_api_key=sab_api_key)
             self._run_post_servarr_steps(rt)
-            self._run_indexers(rt)
+            # Auto-indexers now run as a separate queued action after bootstrap
+            # completes, so they don't block the bootstrap pipeline.
             self.deps.log("[OK] Bootstrap complete.")
         finally:
             set_runtime_context_cfg(prior_hooks)
