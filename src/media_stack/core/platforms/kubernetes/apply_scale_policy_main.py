@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from media_stack.cli.workflows.bootstrap_component_resolver import resolve_bootstrap_component_plan
+from media_stack.cli.workflows.controller_component_resolver import resolve_bootstrap_component_plan
 from media_stack.cli.workflows.cli_common import kube_cmd, run_command
 
 from media_stack.core.exceptions import MediaStackError

@@ -76,7 +76,7 @@ def run_preflight(
         raise RuntimeError(f"Jellyfin not reachable at {jellyfin_url} within {wait_timeout}s")
 
     # Use the SAME auth service as the compose preflight.
-    from .cli.jellyfin_bootstrap_auth_service import JellyfinBootstrapAuthService
+    from .cli.jellyfin_controller_auth_service import JellyfinBootstrapAuthService
 
     auth_service = JellyfinBootstrapAuthService(
         http_request=_http,

@@ -17,7 +17,7 @@ from media_stack.core.auth.provider_registry import (
     load_builtin_auth_provider_specs,
     merge_auth_provider_defaults,
 )
-from media_stack.core.bootstrap_profile import load_bootstrap_profile_catalog
+from media_stack.core.controller_profile import load_bootstrap_profile_catalog
 from media_stack.core.edge.provider_registry import (
     compose_label_specs_by_provider,
     router_service_names_by_provider,
@@ -34,7 +34,7 @@ from media_stack.core.platform_plugin_registry import resolve_platform_plugin
 from media_stack.core.subprocess_utils import CommandResult
 
 from media_stack.cli.workflows import deploy_hook_config_resolver
-from media_stack.cli.workflows.bootstrap_notification_service import (
+from media_stack.cli.workflows.controller_notification_service import (
     ControllerNotificationConfig,
     ControllerNotificationService,
 )

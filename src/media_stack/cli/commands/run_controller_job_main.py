@@ -16,46 +16,46 @@ from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 from media_stack.core.exceptions import ConfigError, MediaStackError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
-from media_stack.cli.workflows.bootstrap_component_resolver import resolve_bootstrap_component_plan
-from media_stack.cli.workflows.bootstrap_core_phases_service import (
+from media_stack.cli.workflows.controller_component_resolver import resolve_bootstrap_component_plan
+from media_stack.cli.workflows.controller_core_phases_service import (
     ControllerCorePhasesConfig,
     ControllerCorePhasesService,
 )
-from media_stack.cli.workflows.bootstrap_deployment_ops_service import (
+from media_stack.cli.workflows.controller_deployment_ops_service import (
     ControllerDeploymentOpsConfig,
     ControllerDeploymentOpsService,
 )
-from media_stack.cli.workflows.bootstrap_job_artifacts_service import (
+from media_stack.cli.workflows.controller_job_artifacts_service import (
     ControllerJobArtifacts,
     ControllerJobArtifactsService,
 )
-from media_stack.cli.workflows.bootstrap_job_logs_service import (
+from media_stack.cli.workflows.controller_job_logs_service import (
     ControllerJobLogsConfig,
     ControllerJobLogsService,
 )
-from media_stack.cli.workflows.bootstrap_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
-from media_stack.cli.workflows.bootstrap_manifest_service import ControllerManifestConfig, ControllerManifestService
-from media_stack.cli.workflows.bootstrap_notification_service import (
+from media_stack.cli.workflows.controller_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
+from media_stack.cli.workflows.controller_manifest_service import ControllerManifestConfig, ControllerManifestService
+from media_stack.cli.workflows.controller_notification_service import (
     ControllerNotificationConfig,
     ControllerNotificationService,
 )
-from media_stack.cli.workflows.bootstrap_post_job_actions_service import (
+from media_stack.cli.workflows.controller_post_job_actions_service import (
     ControllerPostJobAction,
     ControllerPostJobActionsService,
 )
-from media_stack.cli.workflows.bootstrap_script_runner_service import (
+from media_stack.cli.workflows.controller_script_runner_service import (
     ControllerScriptRunnerConfig,
     ControllerScriptRunnerService,
 )
-from media_stack.cli.workflows.bootstrap_secret_priming_service import (
+from media_stack.cli.workflows.controller_secret_priming_service import (
     ControllerSecretPrimingConfig,
     ControllerSecretPrimingService,
 )
-from media_stack.cli.workflows.bootstrap_secret_reader_service import (
+from media_stack.cli.workflows.controller_secret_reader_service import (
     ControllerSecretReaderConfig,
     ControllerSecretReaderService,
 )
-from media_stack.cli.workflows.run_bootstrap_job_cli_config_service import (
+from media_stack.cli.workflows.run_controller_job_cli_config_service import (
     RunBootstrapJobConfig,
     parse_run_bootstrap_job_config,
 )

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 try:  # pragma: no cover - import path depends on entrypoint context
-    from media_stack.core.bootstrap_profile import (
+    from media_stack.core.controller_profile import (
         ControllerProfileConfig,
         load_bootstrap_profile_catalog,
         maybe_load_bootstrap_profile,
@@ -16,7 +16,7 @@ try:  # pragma: no cover - import path depends on entrypoint context
     from media_stack.core.platform_plugin_registry import normalize_platform_target
     from media_stack.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 except ModuleNotFoundError:  # pragma: no cover
-    from media_stack.core.bootstrap_profile import (
+    from media_stack.core.controller_profile import (
         ControllerProfileConfig,
         load_bootstrap_profile_catalog,
         maybe_load_bootstrap_profile,

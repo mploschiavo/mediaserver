@@ -13,7 +13,7 @@ if str(SCRIPTS_ROOT) not in sys.path:  # pragma: no cover - import compatibility
 
 from media_stack.core.exceptions import ConfigError  # noqa: E402
 
-from media_stack.cli.workflows.bootstrap_component_resolver import (  # noqa: E402
+from media_stack.cli.workflows.controller_component_resolver import (  # noqa: E402
     PhaseSkipFlagSpec,
     normalize_flag_token,
     resolve_bootstrap_component_plan,

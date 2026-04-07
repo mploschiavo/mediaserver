@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from media_stack.core.bootstrap_profile import ControllerProfileConfig
+from media_stack.core.controller_profile import ControllerProfileConfig
 
 
 def _format_path(path_parts: list[object]) -> str:

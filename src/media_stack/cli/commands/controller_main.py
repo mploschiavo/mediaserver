@@ -206,7 +206,7 @@ def _build_config_policy() -> object | None:
         parts = [p for p in ["jellyfin", stack_subdomain, base_domain] if p]
         media_server_direct_host = ".".join(parts).lower()
 
-    from media_stack.services.apps.stack.bootstrap_config_policy import (
+    from media_stack.services.apps.stack.controller_config_policy import (
         apply_bootstrap_runtime_policy,
     )
 
