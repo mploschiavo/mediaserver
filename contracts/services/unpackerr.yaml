@@ -12,3 +12,5 @@ plugin:
     name: unpackerr
     handler: media_stack.api.preflight.unpackerr:write_config_and_restart
     optional: true
+  phase_scripts:
+    component_key_sync: media_stack.services.apps.unpackerr.cli.sync_unpackerr_keys_main

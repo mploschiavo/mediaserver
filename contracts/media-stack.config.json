@@ -25,49 +25,6 @@
         "nginx"
       ]
     },
-    "skip_flag_aliases": {
-      "skip_torrent_client_ensure": {
-        "options": [
-          "--skip-qbit-ensure"
-        ],
-        "env_vars": [
-          "SKIP_QBIT_ENSURE"
-        ]
-      },
-      "skip_usenet_client_ensure": {
-        "options": [
-          "--skip-sab-ensure"
-        ],
-        "env_vars": [
-          "SKIP_SAB_ENSURE"
-        ]
-      },
-      "skip_media_server_bootstrap": {
-        "options": [
-          "--skip-jellyfin-bootstrap"
-        ],
-        "env_vars": [
-          "SKIP_JELLYFIN_BOOTSTRAP"
-        ]
-      }
-    },
-    "runner_phase_scripts": {
-      "torrent_client_credentials": {
-        "qbittorrent": "media_stack.services.apps.qbittorrent.cli.ensure_qbit_credentials_main"
-      },
-      "usenet_client_api_access": {
-        "sabnzbd": "media_stack.services.apps.sabnzbd.cli.ensure_sabnzbd_api_access_main"
-      },
-      "media_server_bootstrap": {
-        "jellyfin": "media_stack.services.apps.jellyfin.cli.ensure_jellyfin_controller_main"
-      },
-      "request_manager_seed_local_admin": {
-        "jellyseerr": "media_stack.services.apps.jellyseerr.cli.seed_jellyseerr_local_admin_main"
-      },
-      "component_key_sync": {
-        "unpackerr": "media_stack.services.apps.unpackerr.cli.sync_unpackerr_keys_main"
-      }
-    },
     "bootstrap_all": {
       "phase_plan": [
         {

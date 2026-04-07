@@ -29,3 +29,5 @@ plugin:
     name: qbittorrent
     handler: media_stack.services.apps.qbittorrent.http_preflight:run_preflight
     optional: true
+  phase_scripts:
+    torrent_client_credentials: media_stack.services.apps.qbittorrent.cli.ensure_qbit_credentials_main
