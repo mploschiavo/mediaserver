@@ -96,6 +96,7 @@ class ControllerConfigLoader:
             "technology_bindings": ("technology_bindings",),
             "trigger_indexer_sync": ("bootstrap", "trigger_indexer_sync"),
             "refresh_health_after_setup": ("bootstrap", "refresh_health_after_setup"),
+            "app_auth": ("app_auth",),
         }
         missing_keys = [k for k in _profile_keys_needed if k not in loaded]
         if missing_keys:

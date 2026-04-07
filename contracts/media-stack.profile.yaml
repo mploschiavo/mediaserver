@@ -53,6 +53,14 @@ auth:
   provider: none
   middleware: ""
 
+app_auth:
+  enabled: true
+  method: Forms
+  required: DisabledForLocalAddresses
+  fail_on_error: false
+  username_env: STACK_ADMIN_USERNAME
+  password_env: STACK_ADMIN_PASSWORD
+
 chaos:
   enabled: false
   duration_minutes: 5
