@@ -79,6 +79,60 @@ class ControllerConfigLoader:
 
         return defaults
 
+    def _merge_platform_adapter_hooks(
+        self, loaded: dict[str, object], config_dir: Path
+    ) -> dict[str, object]:
+        """Merge adapter hooks from platform-specific YAML files.
+
+        Looks for adapter-hooks.{platform}.yaml next to config.json or in
+        /opt/media-stack/contracts/.  The platform is determined from the
+        profile YAML metadata.platform field or MEDIA_STACK_PLATFORM env var.
+        """
+        import yaml
+
+        platform = os.environ.get("MEDIA_STACK_PLATFORM", "").strip().lower()
+        if not platform:
+            # Try to read from profile YAML
+            profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+            for pf in [Path(profile_file) if profile_file else None,
+                        Path("/opt/media-stack/contracts/media-stack.profile.yaml"),
+                        config_dir / "media-stack.profile.yaml"]:
+                if pf and pf.is_file():
+                    try:
+                        profile = yaml.safe_load(pf.read_text(encoding="utf-8")) or {}
+                        platform = str(
+                            (profile.get("metadata") or {}).get("platform", "")
+                        ).strip().lower()
+                        if platform:
+                            break
+                    except Exception:
+                        pass
+
+        if not platform:
+            return loaded
+
+        filename = f"adapter-hooks.{platform}.yaml"
+        for candidate_dir in [config_dir, Path("/opt/media-stack/contracts")]:
+            hooks_file = candidate_dir / filename
+            if hooks_file.is_file():
+                try:
+                    platform_hooks = yaml.safe_load(
+                        hooks_file.read_text(encoding="utf-8")
+                    ) or {}
+                    if isinstance(platform_hooks, dict):
+                        existing_hooks = loaded.get("adapter_hooks")
+                        if not isinstance(existing_hooks, dict):
+                            existing_hooks = {}
+                        merged = self._deep_merge_objects(
+                            dict(existing_hooks), platform_hooks
+                        )
+                        loaded = dict(loaded)
+                        loaded["adapter_hooks"] = merged
+                except Exception:
+                    pass
+                break
+        return loaded
+
     def load_config(self, config_path: str, runtime_env: str = "prod") -> dict[str, object]:
         config_file = Path(config_path).resolve()
         loaded = json.loads(config_file.read_text(encoding="utf-8"))
@@ -122,6 +176,9 @@ class ControllerConfigLoader:
                         break
                     except Exception:
                         pass
+
+        # Merge platform-specific adapter hooks from YAML (e.g. adapter-hooks.k8s.yaml)
+        loaded = self._merge_platform_adapter_hooks(loaded, config_file.parent)
 
         model = TopLevelBootstrapConfig.from_dict(loaded)
 
