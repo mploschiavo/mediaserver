@@ -1,9 +1,0 @@
-{
-  "radarr": {},
-  "lidarr": {
-    "monitor_scope_all_value": "entireArtist"
-  },
-  "readarr": {
-    "monitor_scope_all_value": "entireAuthor"
-  }
-}
