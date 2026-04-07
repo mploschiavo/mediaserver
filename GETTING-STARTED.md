@@ -17,33 +17,23 @@ That's it. No Python, no Git, no source code needed.
 
 ## Step 1: Deploy
 
-```bash
-git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
-```
-
 ### Option A: Docker Compose
 
+Download the compose file and start:
+
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -o docker-compose.yml
+docker compose up -d
 ```
 
 ### Option B: Kubernetes
 
-```bash
-python3 deploy.py k8s
-```
-
-### Option C: One-liner (if repo is public)
+Download and apply the K8s manifest:
 
 ```bash
-# Compose
-curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -o docker-compose.yml && docker compose up -d
-
-# Kubernetes
-kubectl apply -f https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/k8s-deploy.yaml
+curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/k8s-deploy.yaml -o k8s-deploy.yaml
+kubectl apply -f k8s-deploy.yaml
 ```
-
-> **Note:** Options C requires the repo to be public. If you get a 404, use Option A or B after cloning.
 
 All 19 services start automatically. An init container creates the config/data/media directories with correct ownership (UID/GID 1000) before services start.
 
@@ -276,12 +266,15 @@ See [docs/troubleshooting.md](docs/troubleshooting.md) for more.
 
 ## Developers
 
-Want to modify the code? See the full [README](README.md) for developer setup, or:
+Want to modify the stack or add services? Clone the repo:
 
 ```bash
 git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
-python deploy.py k8s      # or: python deploy.py compose
 ```
+
+- **Add a service:** Create `contracts/services/myapp.yaml` (see `_template.yaml`)
+- **Swap a technology:** Edit `contracts/media-stack.profile.yaml` → `technology_bindings`
+- **Full developer guide:** See [README](README.md), [Configuration](docs/configuration.md), [Technology Swaps](docs/technology-swaps.md)
 
 ---
 
