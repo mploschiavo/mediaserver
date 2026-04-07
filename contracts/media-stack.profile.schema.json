@@ -18,21 +18,13 @@
       "type": "object",
       "required": ["name", "platform", "purpose"],
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
+        "name": { "type": "string", "minLength": 1 },
         "platform": {
           "type": "string",
           "enum": ["k8s", "kubernetes", "microk8s", "compose", "dockercompose", "docker-compose"]
         },
-        "purpose": {
-          "type": "string",
-          "enum": ["dev", "test", "prod"]
-        },
-        "description": {
-          "type": "string"
-        }
+        "purpose": { "type": "string", "enum": ["dev", "test", "prod", "standard"] },
+        "description": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -41,16 +33,12 @@
       "required": ["disk_space_gb", "network_cidr"],
       "properties": {
         "disk_space_gb": {
-          "description": "Minimum 20GB for constrained local testing. Accepts integer or values like 500GB/1TB.",
           "oneOf": [
             { "type": "integer", "minimum": 20 },
             { "type": "string", "minLength": 1 }
           ]
         },
-        "network_cidr": {
-          "type": "string",
-          "minLength": 1
-        }
+        "network_cidr": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     },
@@ -60,27 +48,7 @@
     },
     "apps": {
       "type": "object",
-      "properties": {
-        "traefik": { "type": "boolean" },
-        "envoy": { "type": "boolean" },
-        "jellyfin": { "type": "boolean" },
-        "jellyseerr": { "type": "boolean" },
-        "sonarr": { "type": "boolean" },
-        "radarr": { "type": "boolean" },
-        "lidarr": { "type": "boolean" },
-        "readarr": { "type": "boolean" },
-        "bazarr": { "type": "boolean" },
-        "prowlarr": { "type": "boolean" },
-        "qbittorrent": { "type": "boolean" },
-        "sabnzbd": { "type": "boolean" },
-        "tautulli": { "type": "boolean" },
-        "maintainerr": { "type": "boolean" },
-        "unpackerr": { "type": "boolean" },
-        "recyclarr": { "type": "boolean" },
-        "homepage": { "type": "boolean" },
-        "flaresolverr": { "type": "boolean" }
-      },
-      "additionalProperties": false
+      "additionalProperties": { "type": "boolean" }
     },
     "bootstrap": {
       "type": "object",
@@ -88,9 +56,23 @@
         "preconfigure_apps": { "type": "boolean" },
         "preconfigure_api_keys": { "type": "boolean" },
         "apply_initial_preferences": { "type": "boolean" },
-        "auto_download_content": { "type": "boolean" }
+        "auto_download_content": { "type": "boolean" },
+        "trigger_indexer_sync": { "type": "boolean" },
+        "refresh_health_after_setup": { "type": "boolean" }
       },
       "additionalProperties": false
+    },
+    "technology_bindings": {
+      "type": "object",
+      "description": "Role-to-technology mappings. Change these to swap implementations.",
+      "properties": {
+        "torrent_client": { "type": "string" },
+        "usenet_client": { "type": "string" },
+        "media_server": { "type": "string" },
+        "request_manager": { "type": "string" },
+        "indexer_manager": { "type": "string" }
+      },
+      "additionalProperties": { "type": "string" }
     },
     "routing": {
       "type": "object",
@@ -100,19 +82,9 @@
           "type": "string",
           "enum": ["subdomain", "path-prefix", "hybrid", "local", "path_prefix", "pathprefix"]
         },
-        "provider": {
-          "type": "string",
-          "description": "Canonical edge-router provider key.",
-          "enum": ["traefik", "envoy"]
-        },
-        "base_domain": {
-          "type": "string",
-          "minLength": 1
-        },
-        "stack_subdomain": {
-          "type": "string",
-          "minLength": 1
-        },
+        "provider": { "type": "string" },
+        "base_domain": { "type": "string", "minLength": 1 },
+        "stack_subdomain": { "type": "string", "minLength": 1 },
         "gateway_host": { "type": "string" },
         "gateway_port": {
           "oneOf": [
@@ -121,12 +93,13 @@
           ]
         },
         "app_path_prefix": { "type": "string" },
+        "media_server_service_names": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "direct_hosts": {
           "type": "object",
-          "properties": {
-            "media_server": { "type": "string", "minLength": 1 }
-          },
-          "additionalProperties": true
+          "additionalProperties": { "type": "string" }
         }
       },
       "additionalProperties": false
@@ -135,11 +108,22 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "provider": {
-          "type": "string",
-          "enum": ["none", "authelia", "authentik"]
-        },
+        "provider": { "type": "string" },
         "middleware": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "app_auth": {
+      "type": "object",
+      "description": "Service-level authentication — set passwords on Sonarr, Radarr, etc.",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "method": { "type": "string" },
+        "required": { "type": "string" },
+        "fail_on_error": { "type": "boolean" },
+        "username_env": { "type": "string" },
+        "password_env": { "type": "string" },
+        "include": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false
     },
@@ -154,8 +138,7 @@
           "items": {
             "type": "string",
             "enum": ["restart_container", "pause_container", "network_disconnect"]
-          },
-          "minItems": 1
+          }
         }
       },
       "additionalProperties": false
@@ -163,37 +146,12 @@
     "live_tv_defaults": {
       "type": "object",
       "properties": {
-        "tuner_url": { "type": "string", "minLength": 1 },
-        "tuner_urls": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
-        },
-        "playlists": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
-        },
-        "guide_url": { "type": "string", "minLength": 1 },
-        "guide_urls": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
-        },
-        "guides": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
-        },
-        "default_program_icon_urls": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
-        },
-        "default_program_icon_url": {
-          "type": "string",
-          "minLength": 1
-        }
+        "tuner_url": { "type": "string" },
+        "tuner_urls": { "type": "array", "items": { "type": "string" } },
+        "guide_url": { "type": "string" },
+        "guide_urls": { "type": "array", "items": { "type": "string" } },
+        "default_program_icon_url": { "type": "string" },
+        "default_program_icon_urls": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false
     }
