@@ -1,21 +1,21 @@
 flowchart TD
   subgraph Operators[Operator Surface]
-    SH1["install.sh\ndeploy-stack.sh"]
-    SH2["bootstrap-all.sh\nrun-bootstrap-job.sh"]
-    SH3["verify-flow.sh\ntest.sh"]
+    SH1["bin/install.sh\nbin/deploy-stack.sh"]
+    SH2["bin/bootstrap-all.sh\nbin/run-bootstrap-job.sh"]
+    SH3["bin/test/verify-flow.sh\nbin/test.sh"]
   end
 
   subgraph Contracts[Declarative Contracts]
-    CFG["contracts/media-stack.config.json\ntechnology_bindings + policies"]
-    PM["src/media_stack/contracts/plugins/*/manifest.json"]
-    RPLAN["bootstrap_defaults/runner_operation_plans.json\n(event + handler steps)"]
-    MPLAN["bootstrap_defaults/media_server_operation_plans.json\n(event + handler steps)"]
+    SVC["contracts/services/*.yaml\nper-service definitions + plugin config"]
+    PROF["contracts/media-stack.profile.yaml\ntechnology_bindings + routing + auth"]
+    K8S["contracts/adapter-hooks.k8s.yaml\nK8s pipeline phases"]
+    RPLAN["src/media_stack/contracts/runner_operation_plans.json"]
   end
 
   subgraph Entry[Composition Root]
-    MAIN["bootstrap-apps.py"]
+    MAIN["controller_main.py"]
     RF["runtime_factory/*"]
-    RUN["bootstrap_runner_service.py"]
+    REG["adapter_factory.py\n(generic registry)"]
     WIRE["operation_wiring.py"]
   end
 
@@ -38,7 +38,7 @@ flowchart TD
   end
 
   subgraph Runtime[Cluster Runtime]
-    JOB["media-stack-bootstrap\nJob/CronJobs"]
+    CTRL["media-stack-controller\nHTTP API + Dashboard on :9100"]
     APPS["Arr/Prowlarr/Jellyfin\nJellyseerr + bound clients"]
   end
 
@@ -46,23 +46,23 @@ flowchart TD
   SH2 --> MAIN
   SH3 --> MAIN
 
-  CFG --> RF
-  PM --> RF
+  SVC --> RF
+  PROF --> RF
+  K8S --> RF
   RPLAN --> RF
-  MPLAN --> RF
 
-  MAIN --> RF --> RUN --> WIRE
+  MAIN --> RF --> REG --> WIRE
 
-  RUN --> CFGM
-  RUN --> CORE_RT
-  RUN --> CORE_SEC
-  RUN --> ARR
-  RUN --> LIB
+  REG --> CFGM
+  REG --> CORE_RT
+  REG --> CORE_SEC
+  REG --> ARR
+  REG --> LIB
 
-  RUN --> DL
-  RUN --> MS
-  RUN --> SA
+  REG --> DL
+  REG --> MS
+  REG --> SA
 
   WIRE --> APPMOD
 
-  RUN --> JOB --> APPS
+  MAIN --> CTRL --> APPS

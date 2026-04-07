@@ -1,34 +1,34 @@
 flowchart LR
-  CFG[contracts/media-stack.config.json]
+  SVC[contracts/services/*.yaml<br/>per-service definitions]
+  PROF[contracts/media-stack.profile.yaml]
   BIND[technology_bindings]
-  RH[adapter_hooks<br/>runtime overrides only]
+  K8S[contracts/adapter-hooks.k8s.yaml<br/>K8s pipeline only]
 
-  PM[src/media_stack/contracts/plugins/*/manifest.json]
   LOAD[plugin_manifest_loader.py]
   DEF[AdapterHookDefaults<br/>aliases + class maps + handlers]
 
   RES[RuntimeBindingResolver]
-  RT[BootstrapRuntime]
+  RT[ControllerRuntime]
 
+  AF[adapter_factory.py<br/>generic registry]
   OPREG[RunnerEventRegistry]
-  DLF[DownloadClientAdapterFactory]
-  MSF[MediaServerAdapterFactory]
-  SAF[ServarrAdapterFactory]
 
   subgraph Roles[Active Runtime Roles]
     TOR[torrent_client]
     USE[usenet_client]
     MED[media_server]
     RQM[request_manager]
+    IDX[indexer_manager]
     ARR[arr implementations]
   end
 
-  subgraph Contracts[Manifest Contract Keys]
+  subgraph Contracts[Per-Service YAML Plugin Keys]
     C1[adapter_classes]
     C2[app_service_classes]
     C3[service_technology_map]
-    C4[event_handlers<br/>plus legacy operation_handlers]
-    C5[aliases and capability_defaults]
+    C4[event_handlers]
+    C5[phase_scripts + call_handlers]
+    C6[preflight_handler]
   end
 
   subgraph Impl[Concrete Modules]
@@ -38,38 +38,35 @@ flowchart LR
     APS[apps/*/service.py and runtime_ops.py]
   end
 
-  CFG --> BIND --> RES
-  CFG --> RH
+  SVC --> LOAD --> DEF
+  PROF --> BIND --> RES
+  K8S --> OPREG
 
-  PM --> LOAD --> DEF
   DEF --> C1
   DEF --> C2
   DEF --> C3
   DEF --> C4
   DEF --> C5
+  DEF --> C6
 
   DEF --> RES
   RES --> TOR
   RES --> USE
   RES --> MED
   RES --> RQM
+  RES --> IDX
   RES --> ARR
   RES --> RT
 
-  DEF --> DLF
-  DEF --> MSF
-  DEF --> SAF
+  DEF --> AF
+  AF --> TCA
+  AF --> MSA
+  AF --> SVA
   DEF --> OPREG
-
-  RH --> OPREG
-  RH --> RT
-
-  DLF --> TCA
-  MSF --> MSA
-  SAF --> SVA
   OPREG --> APS
 
-  style CFG fill:#eef7ff,stroke:#1f4f99,stroke-width:2px
-  style PM fill:#f4f7ea,stroke:#507a18,stroke-width:2px
+  style SVC fill:#eef7ff,stroke:#1f4f99,stroke-width:2px
+  style PROF fill:#f4f7ea,stroke:#507a18,stroke-width:2px
   style DEF fill:#fff7e8,stroke:#9a6b00,stroke-width:2px
-  style RH fill:#fff0f0,stroke:#ad1f2f,stroke-width:2px
+  style K8S fill:#fff0f0,stroke:#ad1f2f,stroke-width:2px
+  style AF fill:#f0fff0,stroke:#2a7a2a,stroke-width:2px
