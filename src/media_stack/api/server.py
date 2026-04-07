@@ -463,8 +463,8 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                     conn.close()
                     if row and row[0]:
                         keys["jellyfin"] = str(row[0]).strip()
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
         return keys
 
