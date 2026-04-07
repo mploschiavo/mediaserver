@@ -65,10 +65,12 @@ header .links a:hover,header .links button:hover{color:var(--accent);border-colo
 .svc-detail a{color:var(--blue);text-decoration:none}.svc-detail a:hover{text-decoration:underline}
 .svc-detail button{margin-top:4px}
 .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.action-group{border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px}
-.action-group-title{color:var(--fg3);font-size:.75em;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
-.action-group-desc{color:var(--fg3);font-size:.78em;margin-top:4px}
-.action-group .actions{margin-top:6px}
+.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.action-group{border:1px solid var(--border);border-radius:8px;padding:10px}
+.action-group-title{color:var(--fg3);font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.action-group-desc{color:var(--fg3);font-size:.75em;margin-top:3px;line-height:1.3}
+.action-group .actions{margin-top:4px;gap:4px}
+.action-group button{font-size:.8em;padding:6px 10px}
 button{border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.85em;transition:all .15s}
 .btn-primary{background:var(--accent);color:var(--bg)}.btn-primary:hover{filter:brightness(1.1)}
 .btn-secondary{background:var(--bg3);color:var(--fg);border:1px solid var(--border)}.btn-secondary:hover{border-color:var(--accent)}
@@ -165,31 +167,55 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 .api-footer{background:var(--bg4);padding:6px 16px;border-radius:6px;font-size:.72em;color:var(--fg3);font-family:'Fira Code',monospace;margin-top:12px;display:flex;gap:12px;flex-wrap:wrap}
 .api-footer span{white-space:nowrap}
 .mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:8px 16px;z-index:45;gap:6px;justify-content:center;flex-wrap:wrap}
+/* Tablet */
+@media(max-width:900px){
+  .action-grid{grid-template-columns:1fr}
+  .stats-row{grid-template-columns:1fr 1fr}
+}
+/* Mobile */
 @media(max-width:700px){
   .confirm-box{margin:16px}
   .matrix-table{font-size:.72em}
-  .matrix-table th:nth-child(3),.matrix-table td:nth-child(3){display:none}
+  .matrix-table th:nth-child(3),.matrix-table td:nth-child(3),.matrix-table th:nth-child(4),.matrix-table td:nth-child(4){display:none}
   .stats-row{grid-template-columns:1fr}
+  .action-grid{grid-template-columns:1fr}
   .mobile-bar{display:flex}
-  .container{padding:10px;padding-bottom:70px}
-  header{padding:10px 12px;flex-wrap:wrap}
-  header h1{font-size:1.1em}
-  header .links{gap:4px}
-  header .links a,header .links button{padding:3px 6px;font-size:.75em}
-  .tab-bar{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
-  .tab-bar button{white-space:nowrap;font-size:.78em;padding:6px 10px}
-  .card{padding:10px;margin-bottom:8px}
-  .actions{gap:4px}
-  .actions button{padding:6px 10px;font-size:.78em}
-  .svc-row{padding:6px 8px;font-size:.82em}
+  .container{padding:8px;padding-bottom:70px}
+  header{padding:8px 10px}
+  header h1{font-size:1em}
+  header .links{gap:3px}
+  header .links a,header .links button{padding:2px 5px;font-size:.72em}
+  .tab-bar{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;gap:0}
+  .tab-bar button{white-space:nowrap;font-size:.75em;padding:5px 8px}
+  .card{padding:8px;margin-bottom:6px}
+  .card h2{font-size:.9em}
+  .action-group{padding:8px}
+  .action-group button{font-size:.75em;padding:5px 8px}
+  .svc-row{padding:5px 6px;font-size:.82em}
   .svc-row .sver,.svc-row .smeta{display:none}
   .quick-links{display:none}
-  .idx-table{font-size:.75em}
-  .filter-bar{font-size:.75em}
-  #logs{max-height:200px;font-size:.72em}
-  .settings-panel{max-width:95%;padding:16px}
-  .svc-sort{flex-wrap:wrap}
-  .env-banner{padding:4px 12px;font-size:.7em}
+  .idx-table{font-size:.72em}
+  .filter-bar{font-size:.72em;gap:3px}
+  .filter-bar button{padding:2px 6px}
+  #logs{max-height:180px;font-size:.68em}
+  .log-line{grid-template-columns:50px 50px 1fr;font-size:.72em}
+  .log-line .lvl{display:none}
+  .settings-panel{max-width:98%;padding:12px}
+  .svc-sort{flex-wrap:wrap;gap:2px}
+  .env-banner{padding:3px 10px;font-size:.68em}
+  .stat-card{padding:10px}
+  .stat-card h3{font-size:.78em;margin-bottom:4px}
+  .subtab{min-height:80px!important}
+  .btn-secondary.active{font-size:.72em}
+}
+/* Small phone */
+@media(max-width:400px){
+  header h1{font-size:.9em}
+  header .links a,header .links button{font-size:.65em}
+  .tab-bar button{font-size:.68em;padding:4px 6px}
+  .action-group-desc{display:none}
+  .log-line{grid-template-columns:40px 1fr}
+  .log-line .src{display:none}
 }
 </style></head><body>
 <header>
@@ -232,6 +258,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <div class="card">
   <h2 onclick="toggleCard(this)">Actions <span class="collapse-icon">&#9660;</span></h2>
   <div class="card-body" id="action-buttons">
+    <div class="action-grid">
     <div class="action-group">
       <div class="action-group-title">General</div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -264,7 +291,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
         <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
         <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
       </div>
-      <div class="action-group-desc">Regenerate credentials across all services. Affected services restart automatically.</div>
+      <div class="action-group-desc">Regenerate credentials. Services restart automatically.</div>
+    </div>
     </div>
   </div>
 </div>
