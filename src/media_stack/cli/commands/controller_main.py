@@ -164,7 +164,7 @@ def _build_config_policy() -> object | None:
         return None
 
     path = __import__("pathlib").Path(profile_file)
-    if not path.exists():
+    if not path.is_file():
         return None
 
     try:
@@ -289,7 +289,7 @@ def _apply_profile_env(profile_file: str | None) -> None:
     if not profile_file:
         return
     path = __import__("pathlib").Path(profile_file)
-    if not path.exists():
+    if not path.is_file():
         return
     try:
         import yaml
@@ -539,7 +539,7 @@ def _run_serve(args: argparse.Namespace) -> None:
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
     if profile_file:
         profile_path = __import__("pathlib").Path(profile_file)
-        if profile_path.exists():
+        if profile_path.is_file():
             from media_stack.api.preflight.profile_validation import validate_profile
 
             validate_profile(profile_file, log=runtime_platform.log)
