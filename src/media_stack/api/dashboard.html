@@ -1480,15 +1480,18 @@ async function loadImageUpdates(){
   try{const r=await fetch('/api/image-updates');if(!r.ok)return;const d=await r.json();
     if(d.error)return;
     let staleCount=0;
-    let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th><th>Last Changed</th><th>Age</th></tr></thead><tbody>';
+    let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th><th>Digest</th><th>Last Changed</th><th>Age</th></tr></thead><tbody>';
     for(const img of(d.images||[])){const cls=img.tag==='latest'?'warn':img.tag.includes('digest')?'ok':'';
       const short=(img.image||'').split('/').pop().split('@')[0];
       const changed=img.last_updated||img.started_at||img.image_created||'';
+      const digest=img.digest||'';
       let ageStr='',ageCls='';
       if(changed){try{const d2=new Date(changed);const days=Math.floor((Date.now()-d2.getTime())/86400000);
         ageStr=days+'d';if(days>30){ageCls='warn';staleCount++;}if(days>90)ageCls='err';}catch(e){}}
-      h+='<tr><td style="font-weight:600">'+img.name+'</td><td style="font-size:.78em;color:var(--fg3)">'+short+'</td><td class="'+(cls||'')+'">'+img.tag+'</td><td style="font-size:.78em;color:var(--fg3)">'+changed+'</td><td class="'+ageCls+'" style="font-size:.78em">'+ageStr+'</td></tr>';}
-    h+='</tbody></table><div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+d.pinned+'/'+d.total+' pinned to specific version'+(staleCount?' · <span class="warn">'+staleCount+' image(s) >30 days old</span>':'')+'</div>';
+      h+='<tr><td style="font-weight:600">'+img.name+'</td><td style="font-size:.78em;color:var(--fg3)">'+short+'</td><td class="'+(cls||'')+'">'+img.tag+'</td><td style="font-size:.72em;color:var(--fg3);font-family:monospace">'+digest+'</td><td style="font-size:.78em;color:var(--fg3)">'+changed+'</td><td class="'+ageCls+'" style="font-size:.78em">'+ageStr+'</td></tr>';}
+    h+='</tbody></table>';
+    h+='<div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+d.pinned+'/'+d.total+' pinned · Digests can be used for rollback: <code style="font-size:.9em">docker pull image@sha256:digest</code></div>';
+    if(staleCount)h+='<div style="font-size:.82em;color:var(--warn)">'+staleCount+' image(s) >30 days old</div>';
     // Append to ops-traffic or create sub-section
     const el=document.getElementById('ops-images');if(el)el.innerHTML=h;
   }catch(e){}
@@ -1796,7 +1799,8 @@ function renderTimingFooter(){
     const cls=ms>3000?'error':ms>1000?'running':'';
     h+='<span class="'+cls+'">'+name+': '+ms+'ms</span>';
   }
-  el.innerHTML=h||'Collecting timing data...';
+  if(!h){el.style.display='none';return;}
+  el.style.display='flex';el.innerHTML='<span style="color:var(--fg3)">API:</span> '+h;
 }
 
 /* Lazy-load tab data */
