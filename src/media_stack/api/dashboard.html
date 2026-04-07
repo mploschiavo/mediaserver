@@ -322,16 +322,9 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="batchRestart()">Restart Selected</button>
   </div>
   <div id="services-list"></div>
-  <!-- Service management tips -->
+  <!-- Service management tips — runtime-aware -->
   <details style="margin-top:8px;font-size:.82em"><summary style="color:var(--fg3);cursor:pointer">Service Management</summary>
-    <div style="color:var(--fg2);padding:6px 0;line-height:1.6">
-      <b>Disable a service:</b> <code>docker compose stop servicename && docker compose rm servicename</code><br>
-      <b>Enable Plex:</b> <code>docker compose --profile plex up -d</code><br>
-      <b>Enable NVIDIA GPU:</b> <code>docker compose --profile nvidia up -d</code><br>
-      <b>Restart one service:</b> <code>docker compose restart servicename</code><br>
-      <b>View logs:</b> Click the service above then "View Logs"<br>
-      <b>Update images:</b> <code>docker compose pull && docker compose up -d</code>
-    </div>
+    <div id="svc-mgmt-tips" style="color:var(--fg2);padding:6px 0;line-height:1.6">Loading...</div>
   </details>
   </div>
 </div>
@@ -1007,7 +1000,7 @@ async function loadEnv(){
     if(d.gateway_nodeport)h+=' · gateway: <b>:'+d.gateway_nodeport+'</b>';
     const banner=document.getElementById('env-banner');banner.innerHTML=h;banner.style.display='flex';
     // Rebuild links with real URLs now that we have env data.
-    buildQuickLinks();buildDns();renderMatrix();
+    buildQuickLinks();buildDns();renderMatrix();renderSvcMgmtTips();
   }}catch(e){}
 }
 
@@ -1916,6 +1909,30 @@ function renderCalendarHeatmap(){
 }
 
 /* API timing footer */
+/* Service management tips — runtime-aware */
+function renderSvcMgmtTips(){
+  const el=document.getElementById('svc-mgmt-tips');if(!el)return;
+  const isK8s=envData&&envData.runtime==='kubernetes';
+  const ns=envData&&envData.namespace?envData.namespace:'media-stack';
+  if(isK8s){
+    el.innerHTML=
+      '<b>Scale down a service:</b> <code>kubectl -n '+ns+' scale deployment servicename --replicas=0</code><br>'+
+      '<b>Scale up:</b> <code>kubectl -n '+ns+' scale deployment servicename --replicas=1</code><br>'+
+      '<b>Restart one service:</b> <code>kubectl -n '+ns+' rollout restart deployment servicename</code><br>'+
+      '<b>View logs:</b> <code>kubectl -n '+ns+' logs -f deployment/servicename</code> or click Logs above<br>'+
+      '<b>Update images:</b> <code>kubectl -n '+ns+' set image deployment/servicename container=image:tag</code><br>'+
+      '<b>Delete a service:</b> <code>kubectl -n '+ns+' delete deployment servicename</code>';
+  }else{
+    el.innerHTML=
+      '<b>Disable a service:</b> <code>docker compose stop servicename && docker compose rm servicename</code><br>'+
+      '<b>Enable Plex:</b> <code>docker compose --profile plex up -d</code><br>'+
+      '<b>Enable NVIDIA GPU:</b> <code>docker compose --profile nvidia up -d</code><br>'+
+      '<b>Restart one service:</b> <code>docker compose restart servicename</code><br>'+
+      '<b>View logs:</b> <code>docker compose logs -f servicename</code> or click Logs above<br>'+
+      '<b>Update images:</b> <code>docker compose pull && docker compose up -d</code>';
+  }
+}
+
 function renderTimingFooter(){
   const el=document.getElementById('api-footer');if(!el)return;
   let h='';for(const[url,ms]of Object.entries(apiTimings)){
