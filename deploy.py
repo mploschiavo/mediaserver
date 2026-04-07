@@ -103,10 +103,14 @@ def deploy_k8s(args: argparse.Namespace) -> None:
     # Create ConfigMaps
     print("  Creating ConfigMaps...")
     config_json = SCRIPT_DIR / "contracts" / "media-stack.config.json"
-    for cm_name, flag, src in [
-        ("media-stack-controller-config", "config.json", config_json),
+    cm_sources = [
         ("media-stack-controller-profile", "profile.yaml", profile_path),
-    ]:
+    ]
+    # Only include config.json ConfigMap if the file exists (optional now)
+    if config_json.is_file():
+        cm_sources.insert(0, ("media-stack-controller-config", "config.json", config_json))
+
+    for cm_name, flag, src in cm_sources:
         dry = subprocess.run(
             ["kubectl", "-n", namespace, "create", "configmap", cm_name,
              f"--from-file={flag}={src}", "--dry-run=client", "-o", "yaml"],
