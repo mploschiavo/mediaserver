@@ -1,0 +1,13 @@
+# Exclude from production image build context
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+test-results
+node_modules
+.env
+*.egg-info
+.mypy_cache
+.ruff_cache
