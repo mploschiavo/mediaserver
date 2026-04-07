@@ -389,7 +389,7 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _discover_api_keys() -> dict[str, str]:
-        """Read API keys from app config files on disk."""
+        """Read API keys — prefer env vars (set during preflights), fall back to config files."""
         import os
         import re
         from pathlib import Path
@@ -397,8 +397,23 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
         keys: dict[str, str] = {}
 
-        # Arr apps + Prowlarr — XML config
+        # Check env vars first (set by preflights, always match running services)
+        env_map = {
+            "sonarr": "SONARR_API_KEY", "radarr": "RADARR_API_KEY",
+            "lidarr": "LIDARR_API_KEY", "readarr": "READARR_API_KEY",
+            "prowlarr": "PROWLARR_API_KEY", "bazarr": "BAZARR_API_KEY",
+            "sabnzbd": "SABNZBD_API_KEY", "jellyseerr": "JELLYSEERR_API_KEY",
+            "jellyfin": "JELLYFIN_API_KEY",
+        }
+        for app, env_key in env_map.items():
+            val = (os.environ.get(env_key) or "").strip()
+            if val:
+                keys[app] = val
+
+        # Fall back to config files for any missing keys
         for app in ("sonarr", "radarr", "lidarr", "readarr", "prowlarr"):
+            if app in keys:
+                continue
             xml = config_root / app / "config.xml"
             if xml.exists():
                 text = xml.read_text(encoding="utf-8", errors="replace")
@@ -406,44 +421,48 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 if m:
                     keys[app] = m.group(1).strip()
 
-        # SABnzbd — INI
-        sab_ini = config_root / "sabnzbd" / "sabnzbd.ini"
-        if sab_ini.exists():
-            text = sab_ini.read_text(encoding="utf-8", errors="replace")
-            m = re.search(r"^\s*api_key\s*=\s*(\S+)", text, re.MULTILINE)
-            if m:
-                keys["sabnzbd"] = m.group(1).strip()
+        # SABnzbd — INI (fallback if not in env)
+        if "sabnzbd" not in keys:
+            sab_ini = config_root / "sabnzbd" / "sabnzbd.ini"
+            if sab_ini.exists():
+                text = sab_ini.read_text(encoding="utf-8", errors="replace")
+                m = re.search(r"^\s*api_key\s*=\s*(\S+)", text, re.MULTILINE)
+                if m:
+                    keys["sabnzbd"] = m.group(1).strip()
 
-        # Bazarr — YAML (uses shared reader)
-        from media_stack.api.preflight.api_keys import _read_bazarr_api_key
-        bazarr_cfg = config_root / "bazarr" / "config" / "config.yaml"
-        bazarr_key = _read_bazarr_api_key(bazarr_cfg)
-        if bazarr_key:
-            keys["bazarr"] = bazarr_key
+        # Bazarr — YAML (fallback if not in env)
+        if "bazarr" not in keys:
+            from media_stack.api.preflight.api_keys import _read_bazarr_api_key
+            bazarr_cfg = config_root / "bazarr" / "config" / "config.yaml"
+            bazarr_key = _read_bazarr_api_key(bazarr_cfg)
+            if bazarr_key:
+                keys["bazarr"] = bazarr_key
 
-        # Jellyseerr — JSON settings
-        js_settings = config_root / "jellyseerr" / "settings.json"
-        if js_settings.exists():
-            try:
-                data = json.loads(js_settings.read_text(encoding="utf-8", errors="replace"))
-                api_key = str((data.get("main") or {}).get("apiKey", "")).strip()
-                if api_key:
-                    keys["jellyseerr"] = api_key
-            except Exception:
-                pass
+        # Jellyseerr — JSON settings (fallback if not in env)
+        if "jellyseerr" not in keys:
+            js_settings = config_root / "jellyseerr" / "settings.json"
+            if js_settings.exists():
+                try:
+                    data = json.loads(js_settings.read_text(encoding="utf-8", errors="replace"))
+                    api_key = str((data.get("main") or {}).get("apiKey", "")).strip()
+                    if api_key:
+                        keys["jellyseerr"] = api_key
+                except Exception:
+                    pass
 
-        # Jellyfin — SQLite db
-        import sqlite3
-        jf_db = config_root / "jellyfin" / "data" / "jellyfin.db"
-        if jf_db.exists():
-            try:
-                conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
-                cur = conn.cursor()
-                cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
-                row = cur.fetchone()
-                conn.close()
-                if row and row[0]:
-                    keys["jellyfin"] = str(row[0]).strip()
+        # Jellyfin — SQLite db (fallback if not in env)
+        if "jellyfin" not in keys:
+            import sqlite3
+            jf_db = config_root / "jellyfin" / "data" / "jellyfin.db"
+            if jf_db.exists():
+                try:
+                    conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
+                    cur = conn.cursor()
+                    cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
+                    row = cur.fetchone()
+                    conn.close()
+                    if row and row[0]:
+                        keys["jellyfin"] = str(row[0]).strip()
             except Exception:
                 pass
 

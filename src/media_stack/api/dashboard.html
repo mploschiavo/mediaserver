@@ -68,6 +68,7 @@ header .links a:hover,header .links button:hover{color:var(--accent);border-colo
 button{border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.85em;transition:all .15s}
 .btn-primary{background:var(--accent);color:var(--bg)}.btn-primary:hover{filter:brightness(1.1)}
 .btn-secondary{background:var(--bg3);color:var(--fg);border:1px solid var(--border)}.btn-secondary:hover{border-color:var(--accent)}
+.btn-secondary.active{color:var(--accent);border-color:var(--accent);background:var(--bg4)}
 .btn-danger{background:var(--err);color:#fff}.btn-danger:hover{filter:brightness(1.1)}
 .toggle{display:flex;align-items:center;gap:10px;padding:8px 0}
 .switch{position:relative;width:44px;height:24px;cursor:pointer}
@@ -292,7 +293,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       </div>
       <button class="btn-primary" style="margin-top:6px" onclick="saveRouting()">Save & Rebuild Routing</button>
     </details>
-    <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — 4 access patterns per service.</p>
+    <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — access patterns per service.</p>
     <div class="dns-entry" id="dns-entries">Detecting...</div>
     <div style="margin:8px 0;display:flex;gap:6px">
       <button class="btn-secondary" style="padding:5px 12px;font-size:.82em" onclick="copyDns()">Copy Hosts</button>
@@ -525,7 +526,7 @@ async function load(){
     if(d.error)h+='<div class="error" style="font-size:.9em">'+d.error+'</div>';
     if(d.initial_bootstrap_done&&p!=='running'){
       let completedAt='';
-      if(d.completed_at){try{completedAt=' at '+new Date(d.completed_at).toLocaleTimeString();}catch(e){}}
+      if(d.completed_at){try{completedAt=' at '+new Date(d.completed_at).toLocaleString();}catch(e){}}
       else if(d.elapsed_seconds){completedAt=' in '+relTime(d.elapsed_seconds);}
       h+='<div class="ok" style="font-size:.85em">Setup complete'+completedAt+'</div>';
     }
@@ -891,7 +892,7 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   if(id==='ops-traffic')loadTraffic();if(id==='ops-sla')renderSLA();
   if(id==='ops-timeline')renderTimeline();if(id==='ops-ns')loadNamespaces();
   if(id==='ops-images')loadImageUpdates();if(id==='ops-heatmap')renderCalendarHeatmap();
-  if(id==='ops-bw')renderBandwidthChart();
+  if(id==='ops-bw')renderBandwidthChart();if(id==='ops-guardrails')loadDisk();
   if(id==='cfg-drift')renderDrift();if(id==='cfg-deps')renderTopologySVG();
   if(id==='cfg-manifest')loadManifests();if(id==='cfg-envvars')loadEnvVars();
 }
@@ -1333,10 +1334,15 @@ function renderTimingFooter(){
 const tabLoaded={};
 function onTabShow(tabId){
   if(tabLoaded[tabId])return;tabLoaded[tabId]=true;
-  if(tabId==='tab-content'){loadIndexers();setTimeout(loadIndexerStats,1000);}
-  if(tabId==='tab-routing'){buildDns();}
-  if(tabId==='tab-ops'){loadTraffic();}
+  if(tabId==='tab-content'){loadLibraries();loadIndexers();setTimeout(loadIndexerStats,500);}
+  if(tabId==='tab-routing'){loadRoutingConfig();}
+  if(tabId==='tab-ops'){renderSLA();loadTraffic();}
+  if(tabId==='tab-profile'){/* profile loads on render */}
 }
+/* Preload adjacent tabs after initial load for snappier feel */
+setTimeout(()=>{
+  loadLibraries();loadIndexers();loadRoutingConfig();
+},3000);
 
 /* Widget visibility */
 const hiddenCards=JSON.parse(localStorage.getItem('hiddenCards')||'[]');
