@@ -16,15 +16,15 @@ LogFn = Callable[[str], None]
 
 
 @dataclass(frozen=True)
-class BootstrapSecretPrimingConfig:
+class ControllerSecretPrimingConfig:
     namespace: str
     secret_name: str = "media-stack-secrets"
     bootstrap_config_file: Path | None = None
 
 
 @dataclass
-class BootstrapSecretPrimingService:
-    cfg: BootstrapSecretPrimingConfig
+class ControllerSecretPrimingService:
+    cfg: ControllerSecretPrimingConfig
     kube: KubernetesClient
     info: LogFn
     warn: LogFn

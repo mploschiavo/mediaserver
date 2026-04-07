@@ -18,42 +18,42 @@ from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
 from media_stack.cli.workflows.bootstrap_component_resolver import resolve_bootstrap_component_plan
 from media_stack.cli.workflows.bootstrap_core_phases_service import (
-    BootstrapCorePhasesConfig,
-    BootstrapCorePhasesService,
+    ControllerCorePhasesConfig,
+    ControllerCorePhasesService,
 )
 from media_stack.cli.workflows.bootstrap_deployment_ops_service import (
-    BootstrapDeploymentOpsConfig,
-    BootstrapDeploymentOpsService,
+    ControllerDeploymentOpsConfig,
+    ControllerDeploymentOpsService,
 )
 from media_stack.cli.workflows.bootstrap_job_artifacts_service import (
-    BootstrapJobArtifacts,
-    BootstrapJobArtifactsService,
+    ControllerJobArtifacts,
+    ControllerJobArtifactsService,
 )
 from media_stack.cli.workflows.bootstrap_job_logs_service import (
-    BootstrapJobLogsConfig,
-    BootstrapJobLogsService,
+    ControllerJobLogsConfig,
+    ControllerJobLogsService,
 )
-from media_stack.cli.workflows.bootstrap_job_wait_service import BootstrapJobWaitConfig, BootstrapJobWaitService
-from media_stack.cli.workflows.bootstrap_manifest_service import BootstrapManifestConfig, BootstrapManifestService
+from media_stack.cli.workflows.bootstrap_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
+from media_stack.cli.workflows.bootstrap_manifest_service import ControllerManifestConfig, ControllerManifestService
 from media_stack.cli.workflows.bootstrap_notification_service import (
-    BootstrapNotificationConfig,
-    BootstrapNotificationService,
+    ControllerNotificationConfig,
+    ControllerNotificationService,
 )
 from media_stack.cli.workflows.bootstrap_post_job_actions_service import (
-    BootstrapPostJobAction,
-    BootstrapPostJobActionsService,
+    ControllerPostJobAction,
+    ControllerPostJobActionsService,
 )
 from media_stack.cli.workflows.bootstrap_script_runner_service import (
-    BootstrapScriptRunnerConfig,
-    BootstrapScriptRunnerService,
+    ControllerScriptRunnerConfig,
+    ControllerScriptRunnerService,
 )
 from media_stack.cli.workflows.bootstrap_secret_priming_service import (
-    BootstrapSecretPrimingConfig,
-    BootstrapSecretPrimingService,
+    ControllerSecretPrimingConfig,
+    ControllerSecretPrimingService,
 )
 from media_stack.cli.workflows.bootstrap_secret_reader_service import (
-    BootstrapSecretReaderConfig,
-    BootstrapSecretReaderService,
+    ControllerSecretReaderConfig,
+    ControllerSecretReaderService,
 )
 from media_stack.cli.workflows.run_bootstrap_job_cli_config_service import (
     RunBootstrapJobConfig,
@@ -71,13 +71,13 @@ class RunBootstrapJobRunner:
         self.cfg = cfg
         self.kube = kube
         self.tracker = tracker
-        self.artifacts_service = BootstrapJobArtifactsService()
-        self.artifacts: BootstrapJobArtifacts = self.artifacts_service.create()
+        self.artifacts_service = ControllerJobArtifactsService()
+        self.artifacts: ControllerJobArtifacts = self.artifacts_service.create()
         self._resolved_cfg_cache: dict[str, object] | None = None
 
-    def _job_wait_service(self) -> BootstrapJobWaitService:
-        return BootstrapJobWaitService(
-            cfg=BootstrapJobWaitConfig(
+    def _job_wait_service(self) -> ControllerJobWaitService:
+        return ControllerJobWaitService(
+            cfg=ControllerJobWaitConfig(
                 namespace=self.cfg.namespace,
                 timeout_seconds=self.cfg.timeout_seconds,
                 timeout_raw=self.cfg.timeout_raw,
@@ -88,9 +88,9 @@ class RunBootstrapJobRunner:
             warn=warn,
         )
 
-    def _secret_priming_service(self) -> BootstrapSecretPrimingService:
-        return BootstrapSecretPrimingService(
-            cfg=BootstrapSecretPrimingConfig(
+    def _secret_priming_service(self) -> ControllerSecretPrimingService:
+        return ControllerSecretPrimingService(
+            cfg=ControllerSecretPrimingConfig(
                 namespace=self.cfg.namespace,
                 bootstrap_config_file=self.artifacts.job_config_file,
             ),
@@ -99,9 +99,9 @@ class RunBootstrapJobRunner:
             warn=warn,
         )
 
-    def _manifest_service(self) -> BootstrapManifestService:
-        return BootstrapManifestService(
-            cfg=BootstrapManifestConfig(
+    def _manifest_service(self) -> ControllerManifestService:
+        return ControllerManifestService(
+            cfg=ControllerManifestConfig(
                 namespace=self.cfg.namespace,
                 root_dir=self.cfg.root_dir,
                 prepare_host_root=self.cfg.prepare_host_root,
@@ -114,37 +114,37 @@ class RunBootstrapJobRunner:
             warn=warn,
         )
 
-    def _notification_service(self) -> BootstrapNotificationService:
-        return BootstrapNotificationService(
-            cfg=BootstrapNotificationConfig(
+    def _notification_service(self) -> ControllerNotificationService:
+        return ControllerNotificationService(
+            cfg=ControllerNotificationConfig(
                 alert_webhook_url=self.cfg.alert_webhook_url,
             )
         )
 
-    def _script_runner_service(self) -> BootstrapScriptRunnerService:
-        return BootstrapScriptRunnerService(
-            cfg=BootstrapScriptRunnerConfig(root_dir=self.cfg.root_dir),
+    def _script_runner_service(self) -> ControllerScriptRunnerService:
+        return ControllerScriptRunnerService(
+            cfg=ControllerScriptRunnerConfig(root_dir=self.cfg.root_dir),
         )
 
-    def _deployment_ops_service(self) -> BootstrapDeploymentOpsService:
-        return BootstrapDeploymentOpsService(
-            cfg=BootstrapDeploymentOpsConfig(namespace=self.cfg.namespace),
+    def _deployment_ops_service(self) -> ControllerDeploymentOpsService:
+        return ControllerDeploymentOpsService(
+            cfg=ControllerDeploymentOpsConfig(namespace=self.cfg.namespace),
             kube=self.kube,
             info=info,
         )
 
-    def _secret_reader_service(self) -> BootstrapSecretReaderService:
-        return BootstrapSecretReaderService(
-            cfg=BootstrapSecretReaderConfig(namespace=self.cfg.namespace),
+    def _secret_reader_service(self) -> ControllerSecretReaderService:
+        return ControllerSecretReaderService(
+            cfg=ControllerSecretReaderConfig(namespace=self.cfg.namespace),
             kube=self.kube,
         )
 
-    def _post_job_actions_service(self) -> BootstrapPostJobActionsService:
-        return BootstrapPostJobActionsService(actions=self._resolve_post_job_actions())
+    def _post_job_actions_service(self) -> ControllerPostJobActionsService:
+        return ControllerPostJobActionsService(actions=self._resolve_post_job_actions())
 
-    def _core_phases_service(self) -> BootstrapCorePhasesService:
-        return BootstrapCorePhasesService(
-            BootstrapCorePhasesConfig(
+    def _core_phases_service(self) -> ControllerCorePhasesService:
+        return ControllerCorePhasesService(
+            ControllerCorePhasesConfig(
                 config_file=self.cfg.config_file,
                 namespace=self.cfg.namespace,
                 prepare_host_root=self.cfg.prepare_host_root,
@@ -152,9 +152,9 @@ class RunBootstrapJobRunner:
             )
         )
 
-    def _job_logs_service(self) -> BootstrapJobLogsService:
-        return BootstrapJobLogsService(
-            cfg=BootstrapJobLogsConfig(
+    def _job_logs_service(self) -> ControllerJobLogsService:
+        return ControllerJobLogsService(
+            cfg=ControllerJobLogsConfig(
                 namespace=self.cfg.namespace,
                 job_name="media-stack-controller",
                 log_file=self.artifacts.job_log_file,
@@ -177,7 +177,7 @@ class RunBootstrapJobRunner:
             return {}
         return bootstrap_job
 
-    def _resolve_post_job_actions(self) -> list[BootstrapPostJobAction]:
+    def _resolve_post_job_actions(self) -> list[ControllerPostJobAction]:
         hooks = self._bootstrap_job_hooks()
         raw_actions = hooks.get("post_job_actions")
         if raw_actions is None:
@@ -185,7 +185,7 @@ class RunBootstrapJobRunner:
         if not isinstance(raw_actions, list):
             raise ConfigError("adapter_hooks.bootstrap_job.post_job_actions must be an array")
 
-        actions: list[BootstrapPostJobAction] = []
+        actions: list[ControllerPostJobAction] = []
         for idx, item in enumerate(raw_actions):
             if not isinstance(item, dict):
                 raise ConfigError(
@@ -202,7 +202,7 @@ class RunBootstrapJobRunner:
             timeout_seconds = int(item.get("timeout_seconds") or 180)
             restart_if_exists = bool(item.get("restart_if_exists", True))
             actions.append(
-                BootstrapPostJobAction(
+                ControllerPostJobAction(
                     marker=marker,
                     phase_name=phase_name,
                     deployment=deployment,

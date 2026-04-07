@@ -48,10 +48,10 @@ def _phase_plan_steps(
     value: Any,
     *,
     pipeline: str,
-) -> tuple[BootstrapPhasePlanStep, ...]:
+) -> tuple[ControllerPhasePlanStep, ...]:
     if not isinstance(value, list):
         return ()
-    out: list[BootstrapPhasePlanStep] = []
+    out: list[ControllerPhasePlanStep] = []
     for index, item in enumerate(value):
         operation = ""
         skip_flag = ""
@@ -89,7 +89,7 @@ def _phase_plan_steps(
                 f"adapter_hooks.{pipeline}.phase_plan[{index}] must be a string or object."
             )
         out.append(
-            BootstrapPhasePlanStep(
+            ControllerPhasePlanStep(
                 operation=operation,
                 skip_flag=skip_flag,
                 phase_name=phase_name,
@@ -108,7 +108,7 @@ class ManifestCatalog:
 
 
 @dataclass(frozen=True)
-class BootstrapComponentPlan:
+class ControllerComponentPlan:
     config: dict[str, Any]
     aliases: dict[str, str]
     role_bindings: dict[str, str]
@@ -118,7 +118,7 @@ class BootstrapComponentPlan:
 
 
 @dataclass(frozen=True)
-class BootstrapPhasePlanStep:
+class ControllerPhasePlanStep:
     operation: str
     skip_flag: str = ""
     phase_name: str = ""
@@ -147,7 +147,7 @@ def resolve_pipeline_phase_plan(
     *,
     pipeline: str,
     allow_empty: bool = False,
-) -> tuple[BootstrapPhasePlanStep, ...]:
+) -> tuple[ControllerPhasePlanStep, ...]:
     hooks = _adapter_hooks(cfg)
     section = hooks.get(pipeline)
     if not isinstance(section, dict):
@@ -561,7 +561,7 @@ def _resolve_scale_policy_lists(
     return managed_apps, filtered_scale_to_zero
 
 
-def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPlan:
+def resolve_bootstrap_component_plan(config_file: Path) -> ControllerComponentPlan:
     cfg = load_bootstrap_config(config_file)
     catalog = build_manifest_catalog()
     role_bindings = resolve_role_bindings(cfg, aliases=catalog.aliases)
@@ -576,7 +576,7 @@ def resolve_bootstrap_component_plan(config_file: Path) -> BootstrapComponentPla
         aliases=catalog.aliases,
     )
 
-    return BootstrapComponentPlan(
+    return ControllerComponentPlan(
         config=cfg,
         aliases=catalog.aliases,
         role_bindings=role_bindings,

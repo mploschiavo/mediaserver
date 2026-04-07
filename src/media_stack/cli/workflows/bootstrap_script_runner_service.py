@@ -11,13 +11,13 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
-class BootstrapScriptRunnerConfig:
+class ControllerScriptRunnerConfig:
     root_dir: Path
 
 
 @dataclass
-class BootstrapScriptRunnerService:
-    cfg: BootstrapScriptRunnerConfig
+class ControllerScriptRunnerService:
+    cfg: ControllerScriptRunnerConfig
 
     def run_script(
         self,

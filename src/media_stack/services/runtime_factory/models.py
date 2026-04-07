@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..enums import BootstrapMode
-from ..runtime_models import BootstrapRuntime
+from ..runtime_models import ControllerRuntime
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 CoerceListFn = Callable[[Any], list[Any]]
@@ -18,7 +18,7 @@ BuildSabMappingsFn = Callable[[dict[str, Any]], list[dict[str, Any]]]
 
 
 @dataclass(frozen=True)
-class BootstrapCliArgs:
+class ControllerCliArgs:
     mode: BootstrapMode
     config_path: str
     config_root: str
@@ -28,7 +28,7 @@ class BootstrapCliArgs:
 
 
 @dataclass(frozen=True)
-class BootstrapPlanSummary:
+class ControllerPlanSummary:
     mode: BootstrapMode
     arr_apps: int
     prowlarr_indexers: int
@@ -116,14 +116,14 @@ class BootstrapPlanSummary:
 
 
 @dataclass(frozen=True)
-class BootstrapRuntimeBuildResult:
+class ControllerRuntimeBuildResult:
     cfg: dict[str, Any]
-    runtime: BootstrapRuntime
-    plan: BootstrapPlanSummary
+    runtime: ControllerRuntime
+    plan: ControllerPlanSummary
 
 
 @dataclass
-class BootstrapRuntimeFactoryDependencies:
+class ControllerRuntimeFactoryDependencies:
     load_bootstrap_default_json: LoadDefaultJsonFn
     deep_merge_objects: DeepMergeFn
     bool_cfg: BoolCfgFn

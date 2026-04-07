@@ -20,7 +20,7 @@ logger = logging.getLogger("bootstrap_wait")
 
 
 @dataclass(frozen=True)
-class BootstrapJobWaitConfig:
+class ControllerJobWaitConfig:
     namespace: str
     timeout_seconds: int
     timeout_raw: str
@@ -32,8 +32,8 @@ class BootstrapJobWaitConfig:
 
 
 @dataclass
-class BootstrapJobWaitService:
-    cfg: BootstrapJobWaitConfig
+class ControllerJobWaitService:
+    cfg: ControllerJobWaitConfig
     kube: KubernetesClient
     info: LogFn
     warn: LogFn

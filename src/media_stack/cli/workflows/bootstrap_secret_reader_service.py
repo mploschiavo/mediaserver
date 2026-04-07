@@ -9,13 +9,13 @@ from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
 
 @dataclass(frozen=True)
-class BootstrapSecretReaderConfig:
+class ControllerSecretReaderConfig:
     namespace: str
 
 
 @dataclass
-class BootstrapSecretReaderService:
-    cfg: BootstrapSecretReaderConfig
+class ControllerSecretReaderService:
+    cfg: ControllerSecretReaderConfig
     kube: KubernetesClient
 
     def read_secret_key(self, secret: str, key_name: str) -> str:

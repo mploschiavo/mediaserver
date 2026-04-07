@@ -22,7 +22,7 @@ _MIN_PROFILE_DISK_ALLOCATION_GB = 20
 
 
 @dataclass(frozen=True)
-class BootstrapProfileCatalog:
+class ControllerProfileCatalog:
     deployment_aliases: dict[str, str]
     purpose_values: tuple[str, ...]
     route_strategy_aliases: dict[str, str]
@@ -49,7 +49,7 @@ class BootstrapProfileCatalog:
 
 
 @dataclass(frozen=True)
-class BootstrapExposureSettings:
+class ControllerExposureSettings:
     internet_exposed: bool = False
     route_strategy: str = "subdomain"
     edge_router_provider: str = ""
@@ -78,7 +78,7 @@ class BootstrapExposureSettings:
 
 
 @dataclass(frozen=True)
-class BootstrapChaosSettings:
+class ControllerChaosSettings:
     enabled: bool = False
     duration_minutes: int = 5
     interval_seconds: int = 60
@@ -88,7 +88,7 @@ class BootstrapChaosSettings:
 
 
 @dataclass(frozen=True)
-class BootstrapProfileConfig:
+class ControllerProfileConfig:
     deployment_target: str
     purpose: str
     stack_name: str
@@ -104,8 +104,8 @@ class BootstrapProfileConfig:
     live_tv_tuner_urls: tuple[str, ...] = field(default_factory=tuple)
     live_tv_guide_urls: tuple[str, ...] = field(default_factory=tuple)
     live_tv_default_program_icon_url: str = ""
-    exposure: BootstrapExposureSettings = field(default_factory=BootstrapExposureSettings)
-    chaos: BootstrapChaosSettings = field(default_factory=BootstrapChaosSettings)
+    exposure: ControllerExposureSettings = field(default_factory=ControllerExposureSettings)
+    chaos: ControllerChaosSettings = field(default_factory=ControllerChaosSettings)
     source_path: Path | None = None
 
     @property
@@ -123,8 +123,8 @@ class BootstrapProfileConfig:
         payload: dict[str, Any],
         *,
         source_path: Path | None = None,
-        catalog: BootstrapProfileCatalog | None = None,
-    ) -> "BootstrapProfileConfig":
+        catalog: ControllerProfileCatalog | None = None,
+    ) -> "ControllerProfileConfig":
         if not isinstance(payload, dict):
             raise ValueError("Bootstrap profile root must be an object")
 
@@ -336,7 +336,7 @@ class BootstrapProfileConfig:
             live_tv_tuner_urls=live_tv_tuner_urls,
             live_tv_guide_urls=live_tv_guide_urls,
             live_tv_default_program_icon_url=live_tv_default_program_icon_url,
-            exposure=BootstrapExposureSettings(
+            exposure=ControllerExposureSettings(
                 internet_exposed=internet_exposed,
                 route_strategy=route_strategy,
                 edge_router_provider=edge_router_provider,
@@ -349,7 +349,7 @@ class BootstrapProfileConfig:
                 auth_provider=auth_provider,
                 auth_middleware=auth_middleware,
             ),
-            chaos=BootstrapChaosSettings(
+            chaos=ControllerChaosSettings(
                 enabled=chaos_enabled,
                 duration_minutes=chaos_duration_minutes,
                 interval_seconds=chaos_interval_seconds,
@@ -363,8 +363,8 @@ class BootstrapProfileConfig:
         cls,
         path: Path,
         *,
-        catalog: BootstrapProfileCatalog | None = None,
-    ) -> "BootstrapProfileConfig":
+        catalog: ControllerProfileCatalog | None = None,
+    ) -> "ControllerProfileConfig":
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
         if payload is None:
             payload = {}
@@ -383,7 +383,7 @@ def _resolve_catalog_path(path: Path | None = None) -> Path:
 
 
 @lru_cache(maxsize=8)
-def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileCatalog:
+def _load_bootstrap_profile_catalog_cached(path_token: str) -> ControllerProfileCatalog:
     path = Path(path_token)
     if not path.exists():
         raise ValueError(f"Bootstrap profile catalog file not found: {path}")
@@ -586,7 +586,7 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
             "live_tv_defaults.default_program_icon_urls (or default_program_icon_url) is required"
         )
 
-    return BootstrapProfileCatalog(
+    return ControllerProfileCatalog(
         deployment_aliases=deployment_aliases,
         purpose_values=purpose_values,
         route_strategy_aliases=route_strategy_aliases,
@@ -609,7 +609,7 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> BootstrapProfileC
     )
 
 
-def load_bootstrap_profile_catalog(path: Path | None = None) -> BootstrapProfileCatalog:
+def load_bootstrap_profile_catalog(path: Path | None = None) -> ControllerProfileCatalog:
     resolved_path = _resolve_catalog_path(path)
     return _load_bootstrap_profile_catalog_cached(str(resolved_path))
 
@@ -651,14 +651,14 @@ def _normalize_app_token(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", token)
 
 
-def _normalize_app_name(value: Any, catalog: BootstrapProfileCatalog) -> str:
+def _normalize_app_name(value: Any, catalog: ControllerProfileCatalog) -> str:
     token = _normalize_app_token(value)
     if not token:
         return ""
     return catalog.app_aliases.get(token, token)
 
 
-def _as_bool(value: Any, *, default: bool, catalog: BootstrapProfileCatalog) -> bool:
+def _as_bool(value: Any, *, default: bool, catalog: ControllerProfileCatalog) -> bool:
     return _as_bool_with_tokens(
         value,
         default=default,
@@ -774,7 +774,7 @@ def _normalize_chaos_actions(
     return tuple(out)
 
 
-def _normalize_deployment_target(value: Any, catalog: BootstrapProfileCatalog) -> str:
+def _normalize_deployment_target(value: Any, catalog: ControllerProfileCatalog) -> str:
     token = str(value or "").strip().lower()
     normalized = catalog.deployment_aliases.get(token, "")
     if not normalized:
@@ -783,7 +783,7 @@ def _normalize_deployment_target(value: Any, catalog: BootstrapProfileCatalog) -
     return normalized
 
 
-def _normalize_purpose(value: Any, catalog: BootstrapProfileCatalog) -> str:
+def _normalize_purpose(value: Any, catalog: ControllerProfileCatalog) -> str:
     token = str(value or "").strip().lower()
     if token not in set(catalog.purpose_values):
         allowed = ", ".join(catalog.purpose_values)
@@ -791,7 +791,7 @@ def _normalize_purpose(value: Any, catalog: BootstrapProfileCatalog) -> str:
     return token
 
 
-def _normalize_route_strategy(value: Any, catalog: BootstrapProfileCatalog) -> str:
+def _normalize_route_strategy(value: Any, catalog: ControllerProfileCatalog) -> str:
     token = str(value or "").strip().lower()
     normalized = catalog.route_strategy_aliases.get(token, "")
     if not normalized:
@@ -800,7 +800,7 @@ def _normalize_route_strategy(value: Any, catalog: BootstrapProfileCatalog) -> s
     return normalized
 
 
-def _resolve_install_profile(value: Any, catalog: BootstrapProfileCatalog) -> str:
+def _resolve_install_profile(value: Any, catalog: ControllerProfileCatalog) -> str:
     token = str(value or "").strip().lower()
     if token not in catalog.install_profiles:
         allowed = ", ".join(sorted(catalog.install_profiles.keys()))
@@ -808,7 +808,7 @@ def _resolve_install_profile(value: Any, catalog: BootstrapProfileCatalog) -> st
     return token
 
 
-def _split_app_csv(value: str, catalog: BootstrapProfileCatalog) -> tuple[str, ...]:
+def _split_app_csv(value: str, catalog: ControllerProfileCatalog) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in str(value or "").split(","):
@@ -880,18 +880,18 @@ def _coerce_url_list(value: Any) -> tuple[str, ...]:
 
 def _install_apps_for_profile(
     profile: str,
-    catalog: BootstrapProfileCatalog,
+    catalog: ControllerProfileCatalog,
 ) -> dict[str, bool]:
     enabled = set(catalog.install_profiles.get(profile) or ())
     return {app_name: app_name in enabled for app_name in catalog.app_keys}
 
 
-def maybe_load_bootstrap_profile(path: Path | None) -> BootstrapProfileConfig | None:
+def maybe_load_bootstrap_profile(path: Path | None) -> ControllerProfileConfig | None:
     if path is None:
         return None
     if not path.exists():
         raise ValueError(f"Bootstrap profile file not found: {path}")
-    return BootstrapProfileConfig.from_yaml_file(path)
+    return ControllerProfileConfig.from_yaml_file(path)
 
 
 def normalize_selected_apps_csv(value: str) -> str:

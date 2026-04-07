@@ -6,14 +6,14 @@ from tempfile import NamedTemporaryFile
 
 
 @dataclass(frozen=True)
-class BootstrapJobArtifacts:
+class ControllerJobArtifacts:
     job_log_file: Path
     job_config_file: Path
 
 
-class BootstrapJobArtifactsService:
-    def create(self) -> BootstrapJobArtifacts:
-        return BootstrapJobArtifacts(
+class ControllerJobArtifactsService:
+    def create(self) -> ControllerJobArtifacts:
+        return ControllerJobArtifacts(
             job_log_file=Path(
                 NamedTemporaryFile(
                     prefix="media-stack-controller-log.",
@@ -30,7 +30,7 @@ class BootstrapJobArtifactsService:
             ),
         )
 
-    def cleanup(self, artifacts: BootstrapJobArtifacts) -> None:
+    def cleanup(self, artifacts: ControllerJobArtifacts) -> None:
         for file_path in (artifacts.job_log_file, artifacts.job_config_file):
             try:
                 file_path.unlink(missing_ok=True)

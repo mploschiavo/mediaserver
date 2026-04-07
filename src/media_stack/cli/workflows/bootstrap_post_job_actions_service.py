@@ -5,7 +5,7 @@ from typing import Callable
 
 
 @dataclass(frozen=True)
-class BootstrapPostJobAction:
+class ControllerPostJobAction:
     marker: str
     phase_name: str
     deployment: str
@@ -13,10 +13,10 @@ class BootstrapPostJobAction:
     restart_if_exists: bool = True
 
 
-class BootstrapPostJobActionsService:
+class ControllerPostJobActionsService:
     """Apply post-job restart actions when bootstrap logs indicate config writes."""
 
-    def __init__(self, actions: list[BootstrapPostJobAction] | None = None) -> None:
+    def __init__(self, actions: list[ControllerPostJobAction] | None = None) -> None:
         self._actions = list(actions or [])
 
     def run_actions(

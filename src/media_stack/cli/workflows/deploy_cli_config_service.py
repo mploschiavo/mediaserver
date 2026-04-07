@@ -7,7 +7,7 @@ from pathlib import Path
 
 try:  # pragma: no cover - import path depends on entrypoint context
     from media_stack.core.bootstrap_profile import (
-        BootstrapProfileConfig,
+        ControllerProfileConfig,
         load_bootstrap_profile_catalog,
         maybe_load_bootstrap_profile,
         normalize_selected_apps_csv,
@@ -17,7 +17,7 @@ try:  # pragma: no cover - import path depends on entrypoint context
     from media_stack.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 except ModuleNotFoundError:  # pragma: no cover
     from media_stack.core.bootstrap_profile import (
-        BootstrapProfileConfig,
+        ControllerProfileConfig,
         load_bootstrap_profile_catalog,
         maybe_load_bootstrap_profile,
         normalize_selected_apps_csv,
@@ -122,7 +122,7 @@ def _normalize_path_prefix(value: str) -> str:
 
 
 def _resolve_profile_defaults(
-    profile: BootstrapProfileConfig | None,
+    profile: ControllerProfileConfig | None,
 ) -> dict[str, str]:
     if profile is None:
         return {}

@@ -7,8 +7,8 @@ from typing import Callable
 from media_stack.core.exceptions import ConfigError
 
 from media_stack.cli.workflows.bootstrap_component_resolver import (
-    BootstrapComponentPlan,
-    BootstrapPhasePlanStep,
+    ControllerComponentPlan,
+    ControllerPhasePlanStep,
     evaluate_phase_condition,
     normalize_flag_token,
     resolve_bootstrap_component_plan,
@@ -19,17 +19,17 @@ from media_stack.cli.workflows.bootstrap_component_resolver import (
 
 
 @dataclass(frozen=True)
-class BootstrapCorePhasesConfig:
+class ControllerCorePhasesConfig:
     config_file: Path
     namespace: str
     prepare_host_root: str
     phase_skip_flags: dict[str, bool]
 
 
-class BootstrapCorePhasesService:
-    def __init__(self, cfg: BootstrapCorePhasesConfig) -> None:
+class ControllerCorePhasesService:
+    def __init__(self, cfg: ControllerCorePhasesConfig) -> None:
         self.cfg = cfg
-        self.plan: BootstrapComponentPlan = resolve_bootstrap_component_plan(self.cfg.config_file)
+        self.plan: ControllerComponentPlan = resolve_bootstrap_component_plan(self.cfg.config_file)
 
     def _phase_script(self, phase_key: str, technology: str) -> str:
         return resolve_runner_phase_script(
@@ -109,7 +109,7 @@ class BootstrapCorePhasesService:
             role_bindings=self.plan.role_bindings,
         )
 
-        def _resolve_component_technology(step: BootstrapPhasePlanStep) -> tuple[str, str]:
+        def _resolve_component_technology(step: ControllerPhasePlanStep) -> tuple[str, str]:
             params = dict(step.params or {})
             component_key = str(params.get("component") or "").strip()
             if component_key:
@@ -154,7 +154,7 @@ class BootstrapCorePhasesService:
             "components": component_context,
         }
 
-        def _phase_enabled(step: BootstrapPhasePlanStep) -> bool:
+        def _phase_enabled(step: ControllerPhasePlanStep) -> bool:
             enabled = bool(step.enabled) and evaluate_phase_condition(
                 step.when, context=phase_context
             )
