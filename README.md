@@ -170,18 +170,18 @@ python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 
 ## Swap One Technology (Quick Path)
 
-Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> another media backend, or one Servarr app implementation) without editing `controller.py`.
+Use this path when replacing one component (for example qBittorrent -> Transmission, Jellyfin -> Plex) without editing Python code.
 
-1. Add or update one technology manifest in `src/media_stack/contracts/plugins/<technology>/manifest.json`.
-2. Add/update the app/client config block in `contracts/media-stack.config.json`.
-3. Add or update adapter/service module(s) under `src/media_stack/services/...`.
-4. Change the active binding in `technology_bindings`.
-5. Validate, test, and reconcile:
+1. Create or update the per-service YAML: `contracts/services/<technology>.yaml`
+2. Change the active binding in `contracts/media-stack.profile.yaml`:
+   ```yaml
+   technology_bindings:
+     torrent_client: transmission    # was: qbittorrent
+   ```
+3. Validate and deploy:
 
 ```bash
-bash bin/validate-bootstrap-config.sh --config contracts/media-stack.config.json --schema contracts/media-stack.schema.json
-python3 -m unittest tests.unit.test_technology_pluggability_contracts
-python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
+bash bin/utils/validate-bootstrap-config.sh
 bash bin/bootstrap-all.sh
 ```
 
@@ -189,25 +189,18 @@ Deep guide: [docs/technology-swaps.md](docs/technology-swaps.md)
 
 ## Extend With a New Component (Developer Path)
 
-To add or replace one technology with minimal blast radius:
+To add a new service with full pipeline integration:
 
-1. Implement one app/client adapter module under:
-   - `src/media_stack/services/apps/<app>/`
-   - `src/media_stack/services/download_client_adapters/`
-   - `src/media_stack/services/media_server_adapters/`
-2. Register the class path in plugin manifest:
-   - `src/media_stack/contracts/plugins/<technology>/manifest.json`
-3. Expose only technology-local handlers through manifest `event_handlers`.
-4. Bind runtime usage through `technology_bindings`.
-5. Keep policy/config in JSON under `contracts/` or `config/runtime/overlays/*`.
-6. Validate + reconcile:
+1. **Create per-service YAML** at `contracts/services/myapp.yaml` (see `_template.yaml` for all fields)
+2. **Optionally** implement adapter module under `src/media_stack/services/apps/myapp/`
+3. **Register** adapter class paths in the per-service YAML `plugin.adapter_classes`
+4. **Bind** runtime usage through `technology_bindings` in profile YAML
+5. Validate + deploy:
 
 ```bash
-bash bin/validate-bootstrap-config.sh --config contracts/media-stack.config.json --schema contracts/media-stack.schema.json
+bash bin/utils/validate-bootstrap-config.sh
 python3 -m unittest tests.unit.test_technology_pluggability_contracts
-python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 bash bin/bootstrap-all.sh
-RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash bin/test.sh
 ```
 
 Design constraints for maintainability:
