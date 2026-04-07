@@ -1,0 +1,19 @@
+# Tautulli — Analytics
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: tautulli
+  name: Tautulli
+  desc: Analytics
+  category: management
+  host: tautulli
+  port: 8181
+  health_path: /
+  auth_path: /api/v2
+  auth_mode: query:apikey
+  api_key_env: TAUTULLI_API_KEY
+  api_key_config: tautulli/config.ini
+  api_key_format: ini
+  password_config: tautulli/config.ini

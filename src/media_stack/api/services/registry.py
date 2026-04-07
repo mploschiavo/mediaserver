@@ -46,8 +46,22 @@ class ServiceDef:
 # Load from YAML
 # ---------------------------------------------------------------------------
 
-def _find_services_yaml() -> Path:
-    """Locate the services.yaml config file."""
+def _find_services_dir() -> Path | None:
+    """Locate the per-service YAML directory."""
+    candidates = [
+        Path(os.environ.get("SERVICES_REGISTRY_DIR", "")),
+        Path("/opt/media-stack/contracts/services"),
+        Path(__file__).resolve().parents[4] / "contracts" / "services",
+        Path("contracts/services"),
+    ]
+    for p in candidates:
+        if p.is_dir():
+            return p
+    return None
+
+
+def _find_services_yaml() -> Path | None:
+    """Locate the legacy services.yaml config file (fallback)."""
     candidates = [
         Path(os.environ.get("SERVICES_REGISTRY_FILE", "")),
         Path("/opt/media-stack/contracts/services.yaml"),
@@ -57,47 +71,77 @@ def _find_services_yaml() -> Path:
     for p in candidates:
         if p.is_file():
             return p
-    raise FileNotFoundError(
-        "services.yaml not found. Set SERVICES_REGISTRY_FILE env var "
-        "or place it at contracts/services.yaml"
+    return None
+
+
+def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
+    """Parse a service dict into a ServiceDef."""
+    if not isinstance(entry, dict) or not entry.get("id"):
+        return None
+    profiles = entry.get("profiles") or []
+    if not isinstance(profiles, list):
+        profiles = [profiles]
+    return ServiceDef(
+        id=str(entry["id"]),
+        name=str(entry.get("name", entry["id"])),
+        desc=str(entry.get("desc", "")),
+        category=str(entry.get("category", "management")),
+        host=str(entry.get("host", entry["id"])),
+        port=int(entry.get("port", 0)),
+        health_path=str(entry.get("health_path", "/")),
+        auth_path=str(entry.get("auth_path", "")),
+        auth_mode=str(entry.get("auth_mode", "X-Api-Key")),
+        api_key_env=str(entry.get("api_key_env", "")),
+        api_key_config=str(entry.get("api_key_config", "")),
+        api_key_format=str(entry.get("api_key_format", "")),
+        version_path=str(entry.get("version_path", "")),
+        version_json_key=str(entry.get("version_json_key", "")),
+        password_api_path=str(entry.get("password_api_path", "")),
+        password_config=str(entry.get("password_config", "")),
+        profiles=[str(p) for p in profiles],
     )
 
 
 def _load_registry() -> tuple[list[ServiceDef], list[str]]:
-    """Load services and categories from YAML."""
-    path = _find_services_yaml()
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-
-    categories = [str(c) for c in (data.get("categories") or []) if c]
+    """Load services from per-service YAML files or legacy services.yaml."""
     services: list[ServiceDef] = []
+    categories: list[str] = []
 
-    for entry in data.get("services") or []:
-        if not isinstance(entry, dict) or not entry.get("id"):
-            continue
-        # Convert profiles from YAML list/None to Python list
-        profiles = entry.get("profiles") or []
-        if not isinstance(profiles, list):
-            profiles = [profiles]
-        services.append(ServiceDef(
-            id=str(entry["id"]),
-            name=str(entry.get("name", entry["id"])),
-            desc=str(entry.get("desc", "")),
-            category=str(entry.get("category", "management")),
-            host=str(entry.get("host", entry["id"])),
-            port=int(entry.get("port", 0)),
-            health_path=str(entry.get("health_path", "/")),
-            auth_path=str(entry.get("auth_path", "")),
-            auth_mode=str(entry.get("auth_mode", "X-Api-Key")),
-            api_key_env=str(entry.get("api_key_env", "")),
-            api_key_config=str(entry.get("api_key_config", "")),
-            api_key_format=str(entry.get("api_key_format", "")),
-            version_path=str(entry.get("version_path", "")),
-            version_json_key=str(entry.get("version_json_key", "")),
-            password_api_path=str(entry.get("password_api_path", "")),
-            password_config=str(entry.get("password_config", "")),
-            profiles=[str(p) for p in profiles],
-        ))
+    # Strategy 1: Per-service YAML files (preferred — one file per service)
+    svc_dir = _find_services_dir()
+    if svc_dir:
+        for yaml_file in sorted(svc_dir.glob("*.yaml")):
+            if yaml_file.name.startswith("_"):
+                continue  # Skip templates
+            try:
+                with open(yaml_file, encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                entry = data.get("service", data)
+                svc = _parse_service_entry(entry)
+                if svc:
+                    services.append(svc)
+            except Exception:
+                pass
+
+    # Strategy 2: Legacy services.yaml (fallback — all services in one file)
+    if not services:
+        legacy = _find_services_yaml()
+        if legacy:
+            with open(legacy, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            categories = [str(c) for c in (data.get("categories") or []) if c]
+            for entry in data.get("services") or []:
+                svc = _parse_service_entry(entry)
+                if svc:
+                    services.append(svc)
+
+    # Derive categories from services if not explicitly set
+    if not categories:
+        seen: set[str] = set()
+        for s in services:
+            if s.category not in seen:
+                categories.append(s.category)
+                seen.add(s.category)
 
     return services, categories
 

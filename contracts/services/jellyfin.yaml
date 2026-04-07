@@ -1,0 +1,74 @@
+# Jellyfin — primary media server
+#
+# This single file fully defines the Jellyfin service.
+# To add Jellyfin: place this file in contracts/services/
+# To remove Jellyfin: delete this file.
+
+service:
+  id: jellyfin
+  name: Jellyfin
+  desc: Media server
+  category: media
+  host: jellyfin
+  port: 8096
+  health_path: /System/Info/Public
+  auth_path: /System/Info
+  auth_mode: X-Emby-Token
+  api_key_env: JELLYFIN_API_KEY
+  api_key_config: jellyfin/data/jellyfin.db
+  api_key_format: sqlite
+  version_path: /System/Info/Public
+  version_json_key: Version
+
+plugin:
+  technology: jellyfin
+  adapter_class: media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins
+  capabilities:
+    media_server: true
+    supports_libraries: true
+    supports_livetv: true
+    supports_plugins: true
+    supports_playback_defaults: true
+    supports_home_rails: true
+
+defaults:
+  # Library definitions — created during bootstrap
+  libraries:
+    enabled: true
+    items:
+      - name: Movies
+        type: movies
+        path: /media/movies
+      - name: TV Shows
+        type: tvshows
+        path: /media/tv
+      - name: Music
+        type: music
+        path: /media/music
+      - name: Books
+        type: books
+        path: /media/books
+
+  # Live TV — IPTV tuner and EPG guide
+  livetv:
+    enabled: true
+    tuners:
+      - name: IPTV
+        url: https://iptv-org.github.io/iptv/index.m3u
+        type: m3u
+    guides:
+      - name: EPG
+        url: https://iptv-org.github.io/epg/guides/en/example.xml
+        type: xmltv
+
+  # Plugin installation
+  plugins:
+    enabled: true
+
+  # Playback defaults
+  playback:
+    enabled: true
+
+  # Prewarm — refresh metadata and artwork after bootstrap
+  prewarm:
+    enabled: true

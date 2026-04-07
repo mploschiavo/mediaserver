@@ -1,0 +1,13 @@
+# Maintainerr — Library cleanup
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: maintainerr
+  name: Maintainerr
+  desc: Library cleanup
+  category: management
+  host: maintainerr
+  port: 6246
+  health_path: /app/maintainerr/api/settings

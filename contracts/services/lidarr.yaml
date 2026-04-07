@@ -1,0 +1,21 @@
+# Lidarr — Music automation
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: lidarr
+  name: Lidarr
+  desc: Music automation
+  category: automation
+  host: lidarr
+  port: 8686
+  health_path: /ping
+  auth_path: /api/v1/system/status
+  auth_mode: X-Api-Key
+  api_key_env: LIDARR_API_KEY
+  api_key_config: lidarr/config.xml
+  api_key_format: xml
+  version_path: /api/v1/system/status
+  version_json_key: version
+  password_api_path: /api/v1/config/host

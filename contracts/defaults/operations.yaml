@@ -1,5 +1,9 @@
-# Operational defaults (disk guardrails, media hygiene)
-# Override in media-stack.config.json
+# Operational defaults — disk guardrails and media hygiene
+#
+# Controls automatic cleanup behavior. Override any value in
+# media-stack.config.json or via the dashboard UI (Ops > Storage).
+#
+# To disable all cleanup: set disk_guardrails.enabled: false
 
 disk_guardrails:
   enabled: true

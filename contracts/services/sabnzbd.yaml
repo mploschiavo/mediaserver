@@ -1,0 +1,19 @@
+# SABnzbd — Usenet client
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: sabnzbd
+  name: SABnzbd
+  desc: Usenet client
+  category: downloads
+  host: sabnzbd
+  port: 8080
+  health_path: /
+  auth_path: /api
+  auth_mode: query:apikey
+  api_key_env: SABNZBD_API_KEY
+  api_key_config: sabnzbd/sabnzbd.ini
+  api_key_format: ini
+  password_config: sabnzbd/sabnzbd.ini

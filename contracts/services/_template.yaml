@@ -1,0 +1,36 @@
+# Service Template — copy this file and customize for your service.
+#
+# File name should match the service id: myapp.yaml
+# Place in contracts/services/ and restart the controller.
+#
+# Only the 'service' section is required. 'plugin' and 'defaults'
+# are optional — add them when you need deeper integration.
+
+service:
+  id: myapp                          # Unique identifier (required)
+  name: My App                       # Display name
+  desc: What this app does           # Short description
+  category: automation               # media | automation | downloads | management | infrastructure
+  host: myapp                        # Container/pod hostname
+  port: 8080                         # Primary HTTP port (0 = no HTTP)
+  health_path: /ping                 # Health check endpoint
+  # auth_path: /api/v1/status        # Auth validation endpoint (optional)
+  # auth_mode: X-Api-Key             # Auth header name or "query:param"
+  # api_key_env: MYAPP_API_KEY       # Env var for API key (optional)
+  # api_key_config: myapp/config.xml # Config file path for key discovery
+  # api_key_format: xml              # xml | ini | yaml | json | sqlite
+  # password_api_path: /api/v1/config/host  # Password change API (optional)
+  # profiles: [myprofile]            # Compose profiles (optional, empty = always on)
+
+# Plugin capabilities — only needed for bootstrap pipeline integration
+# plugin:
+#   technology: myapp
+#   adapter_class: media_stack.services.apps.myapp:MyAppAdapter
+#   capabilities:
+#     my_capability: true
+
+# Default settings — merged into runtime config during bootstrap
+# defaults:
+#   my_setting: my_value
+#   nested:
+#     deep_setting: true

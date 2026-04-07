@@ -1,0 +1,21 @@
+# Bazarr — Subtitles
+#
+# Single-file service definition. Drop in contracts/services/ to enable.
+# Delete to disable. No Python code changes needed.
+
+service:
+  id: bazarr
+  name: Bazarr
+  desc: Subtitles
+  category: automation
+  host: bazarr
+  port: 6767
+  health_path: /
+  auth_path: /api/system/status
+  auth_mode: X-Api-Key
+  api_key_env: BAZARR_API_KEY
+  api_key_config: bazarr/config/config.yaml
+  api_key_format: yaml
+  version_path: /api/system/status
+  version_json_key: data.bazarr_version
+  password_config: bazarr/config/config.yaml
