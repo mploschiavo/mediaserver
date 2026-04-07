@@ -231,8 +231,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <header>
   <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span><span class="conn-dot dead" id="sse-dot" title="Log stream disconnected"></span></h1>
   <div class="links">
-    <a href="/api/docs">API Docs</a>
-    <a href="/status" target="_blank">JSON</a>
+    <a href="/api/docs">API</a>
     <label style="display:flex;align-items:center;gap:6px;font-size:.82em;color:var(--fg3);cursor:pointer" title="Play sound on action complete"><label class="switch" style="width:34px;height:18px"><input type="checkbox" id="soundToggle"><span class="slider" style="border-radius:9px"></span></label>Sound</label>
     <button onclick="toggleTheme()" id="themeBtn" title="Toggle light/dark theme (T)">Light</button>
     <button onclick="showSettings()" title="Dashboard settings">Settings</button>
@@ -386,7 +385,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="lib-indexers" class="subtab" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="color:var(--fg2);font-size:.9em">Prowlarr Indexers</span>
-        <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadIndexers()">Refresh</button>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showLoading();loadIndexers().finally(hideLoading)">Refresh</button>
       </div>
       <div id="indexer-list">Loading...</div>
     </div>
@@ -439,10 +438,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;font-size:.82em">
         <span style="color:var(--fg3)">Range:</span>
         <button class="btn-secondary active" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('session',this)">Session</button>
-        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('1h',this)">1h</button>
-        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('6h',this)">6h</button>
-        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('24h',this)">24h</button>
-        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('7d',this)">7d</button>
+        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('1h',this)">Last 1h</button>
+        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('6h',this)">Last 6h</button>
+        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('24h',this)">Last 24h</button>
+        <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('7d',this)">Last 7d</button>
         <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="setGanttRange('all',this)">All</button>
         <span style="margin-left:auto;display:flex;gap:4px">
           <button class="btn-secondary" style="padding:2px 8px;font-size:1em" onclick="ganttPan(-1)" title="Older">◄</button>
@@ -1388,21 +1387,24 @@ function renderTimeline(){
   const allMinT=Math.min(...starts);
   const allMaxT=Math.max(...ends,allMinT+1);
 
-  // Calculate window based on range selection
+  // Calculate window — "Last N" anchored to now, pan moves backward
+  const now=Date.now()/1000;
   let windowSec;
   if(_ganttRange==='1h')windowSec=3600;
   else if(_ganttRange==='6h')windowSec=21600;
   else if(_ganttRange==='24h')windowSec=86400;
   else if(_ganttRange==='7d')windowSec=604800;
-  else if(_ganttRange==='all')windowSec=allMaxT-allMinT;
-  else windowSec=7200; // session default
+  else if(_ganttRange==='all')windowSec=now-allMinT+60;
+  else windowSec=Math.max(now-allMaxT+300,7200); // session: from first action to now+5m, min 2h
 
-  // Apply pan offset (each step = half the window)
+  // Pan moves the window backward in time (negative = older)
   const panStep=windowSec/2;
-  let windowEnd=allMaxT+(panStep*_ganttOffset);
+  let windowEnd=now+(panStep*_ganttOffset);
   let windowStart=windowEnd-windowSec;
-  // Clamp to data range
-  if(windowStart<allMinT&&_ganttRange!=='all'){windowStart=allMinT;windowEnd=windowStart+windowSec;}
+  // Don't go into the future
+  if(windowEnd>now+60){windowEnd=now+60;windowStart=windowEnd-windowSec;}
+  // Don't go before first action
+  if(windowStart<allMinT-60){windowStart=allMinT-60;windowEnd=windowStart+windowSec;}
 
   const useHist=hist.filter(a=>{const s=a.started_at||0;const e=a.completed_at||s;return e>=windowStart&&s<=windowEnd;});
   const minT=windowStart;
@@ -1835,11 +1837,12 @@ function toggleBatchSvc(id,cb){if(cb.checked)batchSelected.add(id);else batchSel
 function selectAllSvcs(){const cbs=document.querySelectorAll('.svc-cb');cbs.forEach(cb=>{cb.checked=true;batchSelected.add(cb.dataset.svc);});}
 async function batchRestart(){
   if(!batchSelected.size){toast('No services selected',true);return;}
-  const names=[...batchSelected];toast('Restarting '+names.length+' services...');
+  const names=[...batchSelected];toast('Restarting '+names.length+' services...');showLoading();
   try{const r=await fetch('/api/batch-restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:names})});
     const d=await r.json();toast(d.restarted+'/'+d.total+' restarted');batchSelected.clear();
     document.querySelectorAll('.svc-cb').forEach(cb=>cb.checked=false);
   }catch(e){toast(e.toString(),true);}
+  finally{hideLoading();}
 }
 
 /* #11 Config editor */
