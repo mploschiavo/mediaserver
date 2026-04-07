@@ -595,6 +595,42 @@ def _action_reconcile(args: argparse.Namespace, state: object) -> None:
 # Serve mode — persistent HTTP API server with action dispatch loop
 # ---------------------------------------------------------------------------
 
+def _validate_key_against_service(discovered: dict, config_root: str, log: object) -> None:
+    """Quick check: does a discovered key actually work against the running service?
+
+    If not, the controller's config mount likely points to a different directory
+    than the services. This is a common compose context mismatch.
+    """
+    import urllib.request
+    import urllib.error
+
+    # Try Sonarr as the canary — it starts fast and has a simple ping
+    key = discovered.get("SONARR_API_KEY", "")
+    if not key:
+        return
+    try:
+        req = urllib.request.Request(
+            "http://sonarr:8989/api/v3/system/status",
+            headers={"X-Api-Key": key},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                return  # Key works — mounts are consistent
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            log(
+                "[WARN] Config mount mismatch detected: API key from "
+                f"{config_root}/sonarr/config.xml does not match the running "
+                "Sonarr container. This usually means the controller and "
+                "services are using different config directories. "
+                "Re-run 'docker compose down && docker compose up -d' from "
+                "the same directory to fix."
+            )
+            return
+    except Exception:
+        pass  # Service not ready yet — skip validation
+
+
 def _run_serve(args: argparse.Namespace) -> None:
     """HTTP API server with action dispatch loop.
 
@@ -638,6 +674,8 @@ def _run_serve(args: argparse.Namespace) -> None:
                 os.environ[env_key] = val
         if discovered:
             runtime_platform.log(f"[INFO] Pre-discovered {len(discovered)} API keys from config files")
+        # Validate a key against a running service to detect mount mismatches
+        _validate_key_against_service(discovered, config_root, runtime_platform.log)
     except Exception as exc:
         runtime_platform.log(f"[WARN] API key pre-discovery failed: {exc}")
 
