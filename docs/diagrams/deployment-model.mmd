@@ -6,13 +6,13 @@ flowchart TB
   subgraph K8S[Kubernetes Path]
     subgraph ENV1[Namespace: media-dev]
       K8S1[Kustomize Manifests]
-      BOOT1[Bootstrap Service API :9100]
+      BOOT1[Controller API :9100]
       ENVOY1[Envoy Gateway]
       APPS1[19 Configured Apps]
     end
     subgraph ENV2[Namespace: media-stack]
       K8S2[Kustomize Manifests]
-      BOOT2[Bootstrap Service API :9100]
+      BOOT2[Controller API :9100]
       ENVOY2[Envoy Gateway]
       APPS2[19 Configured Apps]
     end
@@ -20,7 +20,7 @@ flowchart TB
 
   subgraph COMPOSE[Docker Compose Path]
     DC[docker-compose.yml]
-    BOOT3[bootstrap-runner :9100]
+    BOOT3[Controller :9100]
     ENVOY3[Envoy Gateway :80]
     APPS3[19 Configured Apps]
   end
