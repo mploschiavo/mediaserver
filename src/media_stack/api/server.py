@@ -1501,37 +1501,30 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
 
     def _reset_password(self, new_password: str) -> dict[str, Any]:
         """Reset admin password across all services."""
+        import json as _json
         import os
         import re
+        import urllib.request
+        import http.cookiejar
         from pathlib import Path
 
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        old_password = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
         username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         updated: list[str] = []
         errors: list[str] = []
 
-        # Update env var
-        os.environ["STACK_ADMIN_PASSWORD"] = new_password
-
-        # qBittorrent: change via API
+        # 1. qBittorrent — login with old password, set new via preferences API
         try:
-            from media_stack.services.runtime_platform import http_request
-            # Login with old password first
-            old_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
-            import urllib.request, http.cookiejar
             cj = http.cookiejar.CookieJar()
             opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-            login_data = f"username={username}&password={old_pass}".encode()
+            login_data = f"username={username}&password={old_password}".encode()
             req = urllib.request.Request("http://qbittorrent:8080/api/v2/auth/login", data=login_data)
-            try:
-                opener.open(req, timeout=5)
-            except Exception:
-                pass
-            # Set new password
-            prefs = f'{{"web_ui_password": "{new_password}"}}'.encode()
+            opener.open(req, timeout=5)
+            prefs = _json.dumps({"web_ui_password": new_password}).encode()
             req2 = urllib.request.Request(
                 "http://qbittorrent:8080/api/v2/app/setPreferences",
-                data=b"json=" + prefs,
+                data=b"json=" + urllib.parse.quote(_json.dumps({"web_ui_password": new_password})).encode(),
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             opener.open(req2, timeout=5)
@@ -1539,13 +1532,87 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             errors.append(f"qbittorrent: {exc}")
 
-        # Persist to K8s secret
+        # 2. Jellyfin — authenticate, then change password via Users API
+        try:
+            jf_key = os.environ.get("JELLYFIN_API_KEY", "")
+            jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
+            if jf_key and jf_uid:
+                payload = _json.dumps({
+                    "CurrentPw": old_password,
+                    "NewPw": new_password,
+                }).encode()
+                req = urllib.request.Request(
+                    f"http://jellyfin:8096/Users/{jf_uid}/Password",
+                    data=payload,
+                    method="POST",
+                    headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=10)
+                updated.append("jellyfin")
+            else:
+                errors.append("jellyfin: JELLYFIN_API_KEY or JELLYFIN_USER_ID not set")
+        except Exception as exc:
+            errors.append(f"jellyfin: {exc}")
+
+        # 3. Arr apps — update auth config via host config API
+        arr_apps = [
+            ("sonarr", 8989, "/api/v3/config/host", "SONARR_API_KEY"),
+            ("radarr", 7878, "/api/v3/config/host", "RADARR_API_KEY"),
+            ("lidarr", 8686, "/api/v1/config/host", "LIDARR_API_KEY"),
+            ("readarr", 8787, "/api/v1/config/host", "READARR_API_KEY"),
+            ("prowlarr", 9696, "/api/v1/config/host", "PROWLARR_API_KEY"),
+        ]
+        for app, port, api_path, key_env in arr_apps:
+            try:
+                api_key = os.environ.get(key_env, "")
+                if not api_key:
+                    api_key = self._read_xml_key(Path(config_root) / app / "config.xml")
+                if not api_key:
+                    errors.append(f"{app}: no API key available")
+                    continue
+                # GET current host config
+                req = urllib.request.Request(
+                    f"http://{app}:{port}{api_path}",
+                    headers={"X-Api-Key": api_key, "Accept": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    cfg = _json.loads(resp.read())
+                # Update password
+                cfg["username"] = username
+                cfg["password"] = new_password
+                cfg["passwordConfirmation"] = new_password
+                put_req = urllib.request.Request(
+                    f"http://{app}:{port}{api_path}",
+                    data=_json.dumps(cfg).encode(),
+                    method="PUT",
+                    headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(put_req, timeout=5)
+                updated.append(app)
+            except Exception as exc:
+                errors.append(f"{app}: {exc}")
+
+        # 4. Update env var for this controller process
+        os.environ["STACK_ADMIN_PASSWORD"] = new_password
+
+        # 5. Persist to K8s secret
         self._persist_keys_to_secret({
             "STACK_ADMIN_PASSWORD": new_password,
             "STACK_ADMIN_USERNAME": username,
         })
 
         return {"status": "updated", "services": updated, "errors": errors}
+
+    @staticmethod
+    def _read_xml_key(path) -> str:
+        """Read ApiKey from an arr app config.xml."""
+        import re
+        try:
+            content = path.read_text(encoding="utf-8")
+            m = re.search(r"<ApiKey>([^<]+)</ApiKey>", content)
+            return m.group(1) if m else ""
+        except Exception:
+            return ""
 
     def _update_routing(self, updates: dict[str, Any]) -> dict[str, Any]:
         """Update routing config in profile YAML and trigger regeneration."""
