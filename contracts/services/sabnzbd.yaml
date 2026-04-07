@@ -41,3 +41,4 @@ plugin:
     optional: true
   phase_scripts:
     usenet_client_api_access: media_stack.services.apps.sabnzbd.cli.ensure_sabnzbd_api_access_main
+  compose_preflight_handler: media_stack.services.apps.sabnzbd.compose_preflight:ensure_compose_sabnzbd_api_access
