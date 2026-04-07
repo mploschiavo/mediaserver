@@ -475,7 +475,25 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 html = html.replace("</body>", plugins + "\n</body>")
             self._html_response(200, html)
         elif path == "/api/docs":
-            self._html_response(200, '<html><head><meta http-equiv="refresh" content="0;url=/api/openapi.json"></head></html>')
+            spec = self._get_openapi_spec()
+            rows = ""
+            for ep, info in sorted(spec.get("paths", {}).items()):
+                for method, details in info.items():
+                    color = "#4ade80" if method == "get" else "#3b82f6"
+                    rows += f'<tr><td><span style="color:{color};font-weight:700;text-transform:uppercase;font-size:.82em">{method}</span></td><td style="font-family:monospace">{ep}</td><td>{details.get("summary","")}</td></tr>'
+            html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>API Documentation</title>
+<style>body{{font-family:system-ui;background:#0f1923;color:#e0e0e0;margin:0;padding:24px}}
+h1{{color:#4ade80;font-size:1.4em}}a{{color:#3b82f6}}
+table{{width:100%;border-collapse:collapse;margin-top:16px}}
+th{{text-align:left;padding:8px;border-bottom:2px solid #1e3044;color:#94a3b8;font-size:.82em;text-transform:uppercase}}
+td{{padding:6px 8px;border-bottom:1px solid #1e3044;font-size:.9em}}
+tr:hover{{background:#162230}}</style></head><body>
+<h1>Media Stack Controller API</h1>
+<p style="color:#94a3b8">Base URL: <code>http://localhost:9100</code> · <a href="/api/openapi.json">OpenAPI JSON</a> · <a href="/">Dashboard</a></p>
+<table><thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead><tbody>{rows}</tbody></table>
+<p style="color:#64748b;margin-top:24px;font-size:.82em">POST endpoints require Basic Auth (admin credentials). GET endpoints are public.</p>
+</body></html>"""
+            self._html_response(200, html)
 
         else:
             self._json_response(404, {"error": "not found"})

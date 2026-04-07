@@ -65,6 +65,10 @@ header .links a:hover,header .links button:hover{color:var(--accent);border-colo
 .svc-detail a{color:var(--blue);text-decoration:none}.svc-detail a:hover{text-decoration:underline}
 .svc-detail button{margin-top:4px}
 .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.action-group{border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px}
+.action-group-title{color:var(--fg3);font-size:.75em;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.action-group-desc{color:var(--fg3);font-size:.78em;margin-top:4px}
+.action-group .actions{margin-top:6px}
 button{border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.85em;transition:all .15s}
 .btn-primary{background:var(--accent);color:var(--bg)}.btn-primary:hover{filter:brightness(1.1)}
 .btn-secondary{background:var(--bg3);color:var(--fg);border:1px solid var(--border)}.btn-secondary:hover{border-color:var(--accent)}
@@ -227,21 +231,41 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <!-- Actions -->
 <div class="card">
   <h2 onclick="toggleCard(this)">Actions <span class="collapse-icon">&#9660;</span></h2>
-  <div class="card-body">
-  <div class="toggle">
-    <label class="switch"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider"></span></label>
-    <span id="autoLabel">Auto-Downloads: <b>off</b></span>
-  </div>
-  <div class="actions" id="action-buttons">
-    <button class="btn-primary" onclick="confirmAction('bootstrap','Configure All Apps','Runs the full setup pipeline: service health checks, credential provisioning, download client wiring, library setup, and routing. Takes 3-5 minutes. Safe to re-run anytime.')" title="(B)">Configure All</button>
-    <button class="btn-secondary" onclick="confirmAction('auto-indexers','Discover Indexers','Scans Prowlarr indexer presets. Takes 1-2 minutes.')" title="(I)">Discover Indexers</button>
-    <button class="btn-secondary" onclick="confirmAction('envoy-config','Rebuild Routing','Regenerates Envoy gateway config.')">Rebuild Routing</button>
-    <button class="btn-secondary" onclick="confirmAction('restart-apps','Restart All Apps','Rolling restart of all services.')">Restart All</button>
-    <button class="btn-secondary" onclick="confirmAction('sync-indexers','Sync Indexers','Push Prowlarr indexers to Arr apps.')">Sync Indexers</button>
-    <button class="btn-secondary" onclick="confirmAction('reconcile','Reconcile','Re-run config to fix drift.')">Reconcile</button>
-    <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
-    <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
-  </div>
+  <div class="card-body" id="action-buttons">
+    <div class="action-group">
+      <div class="action-group-title">General</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <label class="switch"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider"></span></label>
+        <div><span id="autoLabel" style="font-weight:600">Auto-Downloads: <b>off</b></span><div class="action-group-desc">Automatically fetch new content when available</div></div>
+      </div>
+      <button class="btn-primary" onclick="confirmAction('bootstrap','Configure All','Full setup pipeline: health checks, credentials, download clients, libraries, routing. Safe to re-run.')" title="(B)">Configure All</button>
+      <div class="action-group-desc">Apply recommended settings across all services</div>
+    </div>
+    <div class="action-group">
+      <div class="action-group-title">Indexers & Sync</div>
+      <div class="actions">
+        <button class="btn-secondary" onclick="confirmAction('auto-indexers','Discover Indexers','Scans Prowlarr indexer presets and tests connectivity. Takes 1-2 minutes.')" title="(I)">Discover Indexers</button>
+        <button class="btn-secondary" onclick="confirmAction('sync-indexers','Sync Indexers','Push Prowlarr indexers to all Arr apps.')">Sync Indexers</button>
+        <button class="btn-secondary" onclick="confirmAction('reconcile','Reconcile','Re-check all configs and fix drift.')">Reconcile</button>
+      </div>
+      <div class="action-group-desc">Find content sources, sync state, fix mismatches</div>
+    </div>
+    <div class="action-group">
+      <div class="action-group-title">System</div>
+      <div class="actions">
+        <button class="btn-secondary" onclick="confirmAction('envoy-config','Rebuild Routing','Regenerates Envoy gateway routing config from current profile.')">Rebuild Routing</button>
+        <button class="btn-secondary" style="border-color:var(--warn);color:var(--warn)" onclick="confirmAction('restart-apps','Restart All Apps','Rolling restart of all service containers. Services will be briefly unavailable.')">Restart All</button>
+      </div>
+      <div class="action-group-desc">Routing rules and service lifecycle</div>
+    </div>
+    <div class="action-group">
+      <div class="action-group-title">Security</div>
+      <div class="actions">
+        <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
+        <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
+      </div>
+      <div class="action-group-desc">Regenerate credentials across all services. Affected services restart automatically.</div>
+    </div>
   </div>
 </div>
 
@@ -307,10 +331,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-imports',this)">Discovery Lists</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-indexers',this)">Indexers</button>
     </div>
-    <div id="lib-libraries" class="subtab active">Loading...</div>
-    <div id="lib-history" class="subtab" style="display:none">Loading...</div>
-    <div id="lib-profiles" class="subtab" style="display:none">Loading...</div>
-    <div id="lib-imports" class="subtab" style="display:none">Loading...</div>
+    <div id="lib-libraries" class="subtab active" style="min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading libraries...</span></div>
+    <div id="lib-history" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
+    <div id="lib-profiles" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
+    <div id="lib-imports" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
     <div id="lib-indexers" class="subtab" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="color:var(--fg2);font-size:.9em">Prowlarr Indexers</span>
