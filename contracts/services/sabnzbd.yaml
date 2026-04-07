@@ -12,6 +12,7 @@ service:
   api_key_config: sabnzbd/sabnzbd.ini
   api_key_format: ini
   password_config: sabnzbd/sabnzbd.ini
+  preserve_path_prefix: true
 plugin:
   technology: sabnzbd
   aliases:

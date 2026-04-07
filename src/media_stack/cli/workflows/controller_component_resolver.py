@@ -546,19 +546,38 @@ def _resolve_scale_policy_lists(
     *,
     aliases: dict[str, str],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    # 1. If config.json has explicit scale_policy, use it (per-deploy override)
     hooks = _adapter_hooks(cfg)
     scale_policy = hooks.get("scale_policy")
-    if not isinstance(scale_policy, dict):
-        raise ConfigError(
-            "adapter_hooks.scale_policy must be defined as an object with an 'apps' list."
-        )
+    if isinstance(scale_policy, dict) and scale_policy.get("apps"):
+        managed_apps = _coerce_technology_list(scale_policy.get("apps"), aliases)
+        if managed_apps:
+            scale_to_zero_apps = _coerce_technology_list(
+                scale_policy.get("scale_to_zero_apps"), aliases
+            )
+            filtered = tuple(t for t in scale_to_zero_apps if t in managed_apps)
+            return managed_apps, filtered
 
-    managed_apps = _coerce_technology_list(scale_policy.get("apps"), aliases)
-    if not managed_apps:
-        raise ConfigError("adapter_hooks.scale_policy.apps must be defined and non-empty.")
-    scale_to_zero_apps = _coerce_technology_list(scale_policy.get("scale_to_zero_apps"), aliases)
-    filtered_scale_to_zero = tuple(token for token in scale_to_zero_apps if token in managed_apps)
-    return managed_apps, filtered_scale_to_zero
+    # 2. Derive from per-service YAML registry flags
+    try:
+        from media_stack.api.services.registry import (
+            get_scalable_services,
+            get_scale_to_zero_services,
+        )
+        scalable = get_scalable_services()
+        if scalable:
+            managed_apps = tuple(s.id for s in scalable)
+            scale_to_zero = tuple(
+                s.id for s in get_scale_to_zero_services() if s.id in managed_apps
+            )
+            return managed_apps, scale_to_zero
+    except Exception:
+        pass
+
+    raise ConfigError(
+        "Could not resolve scale policy: no adapter_hooks.scale_policy.apps "
+        "and service registry unavailable."
+    )
 
 
 def resolve_bootstrap_component_plan(config_file: Path) -> ControllerComponentPlan:

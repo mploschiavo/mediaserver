@@ -11,5 +11,7 @@ service:
   port: 9901
   health_path: /ready
 
+  web_ui: false
+  scalable: false
 # No plugin or defaults needed — Envoy config is generated
 # by the envoy-config-init container from the compose/K8s spec.

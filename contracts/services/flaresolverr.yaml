@@ -6,6 +6,8 @@ service:
   host: flaresolverr
   port: 8191
   health_path: /
+  web_ui: false
+  scale_to_zero: true
 plugin:
   technology: flaresolverr
 defaults:

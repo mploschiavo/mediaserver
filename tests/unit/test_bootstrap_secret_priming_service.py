@@ -8,9 +8,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_secret_priming_service import (  # noqa: E402
-    BootstrapSecretPrimingConfig,
-    BootstrapSecretPrimingService,
+from media_stack.cli.workflows.controller_secret_priming_service import (  # noqa: E402
+    ControllerSecretPrimingConfig as BootstrapSecretPrimingConfig,
+    ControllerSecretPrimingService as BootstrapSecretPrimingService,
 )
 from media_stack.core.exceptions import ConfigError
 
@@ -301,6 +301,7 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
         ]
         self.assertEqual(patch_calls, [])
 
+    @mock.patch("media_stack.api.services.registry.SERVICES", [])
     def test_invalid_bootstrap_config_fails_fast(self):
         kube = _Kube()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -318,6 +319,7 @@ class BootstrapSecretPrimingServiceTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 svc.prime_servarr_api_keys()
 
+    @mock.patch("media_stack.api.services.registry.SERVICES", [])
     def test_missing_api_key_technologies_fails_fast(self):
         kube = _Kube()
         with tempfile.TemporaryDirectory() as tmpdir:

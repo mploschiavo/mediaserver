@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_component_resolver import (  # noqa: E402
+from media_stack.cli.workflows.controller_component_resolver import (  # noqa: E402
     evaluate_phase_condition,
     resolve_bootstrap_enable_components,
     resolve_component_deployment_name,

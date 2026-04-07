@@ -12,3 +12,5 @@ service:
   port: 9000
   health_path: /-/health/live/
   profiles: ['auth-authentik']
+
+  scalable: false

@@ -104,14 +104,11 @@ class ControllerSecretPrimingService:
         return f"{token}_API_KEY"
 
     def _resolve_api_key_apps(self) -> list[str]:
+        # 1. If config.json has explicit arr_api_key_technologies, use it
         path = self.cfg.bootstrap_config_file
         if path and path.is_file():
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception as exc:
-                raise ConfigError(f"Could not parse bootstrap config at {path}: {exc}") from exc
-            else:
-                apps: list[str] = []
                 adapter_hooks = payload.get("adapter_hooks")
                 bootstrap_job_hooks = (
                     adapter_hooks.get("bootstrap_job") if isinstance(adapter_hooks, dict) else {}
@@ -122,16 +119,28 @@ class ControllerSecretPrimingService:
                     else None
                 )
                 if isinstance(configured_tokens, list):
+                    apps: list[str] = []
                     for item in configured_tokens:
                         app = self._normalize_deploy_token(item)
                         if app and app not in apps:
                             apps.append(app)
-                if apps:
-                    return apps
+                    if apps:
+                        return apps
+            except Exception:
+                pass
+
+        # 2. Derive from per-service YAML registry (category=automation)
+        try:
+            from media_stack.api.services.registry import SERVICES
+            apps = [s.id for s in SERVICES if s.category == "automation"]
+            if apps:
+                return apps
+        except Exception:
+            pass
 
         raise ConfigError(
             "Could not resolve API-key app list: "
-            "adapter_hooks.bootstrap_job.arr_api_key_technologies must be configured."
+            "no arr_api_key_technologies in config and service registry unavailable."
         )
 
     def _resolve_secret_priming_targets(self) -> dict[str, dict[str, str]]:

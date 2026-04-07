@@ -12,3 +12,5 @@ service:
   port: 9091
   health_path: /api/health
   profiles: ['auth-authelia']
+
+  scalable: false

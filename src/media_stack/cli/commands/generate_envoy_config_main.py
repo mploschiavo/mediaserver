@@ -163,7 +163,7 @@ def main() -> None:
     auth_middleware = str(auth_cfg.get("middleware", "")) or os.environ.get("AUTH_MIDDLEWARE", "")
     project_name = str((profile.get("metadata") or {}).get("name", "")) or os.environ.get("COMPOSE_PROJECT_NAME", "media-dev")
 
-    # Service name lists — from env or bootstrap config edge hooks.
+    # Service name lists — from env, config, or registry.
     preserve_names = _csv(os.environ.get("EDGE_PATH_PREFIX_PRESERVE", ""))
     if not preserve_names:
         by_provider = edge_hooks.get("path_prefix_preserve_service_names_by_provider", {})
@@ -172,6 +172,12 @@ def main() -> None:
             for s in (by_provider.get("envoy") or [])
             if str(s).strip()
         )
+    if not preserve_names:
+        try:
+            from media_stack.api.services.registry import get_preserve_path_prefix_services
+            preserve_names = tuple(s.id for s in get_preserve_path_prefix_services())
+        except Exception:
+            pass
 
     media_server_names = _csv(os.environ.get("MEDIA_SERVER_SERVICES", ""))
     if not media_server_names:
@@ -189,6 +195,12 @@ def main() -> None:
             for s in (by_provider.get("envoy") or [])
             if str(s).strip()
         )
+    if not redirect_names:
+        try:
+            from media_stack.api.services.registry import get_web_ui_services
+            redirect_names = tuple(s.id for s in get_web_ui_services())
+        except Exception:
+            pass
 
     compose_provider_specs: dict = {}
     raw_specs = edge_hooks.get("compose_provider_specs", {})
