@@ -25,9 +25,8 @@ class BootstrapComponentResolverTests(unittest.TestCase):
     def _base_config(self) -> dict:
         import os
         from media_stack.cli.workflows.controller_component_resolver import _merge_platform_adapter_hooks
-        payload = json.loads(
-            (ROOT / "contracts" / "media-stack.config.json").read_text(encoding="utf-8")
-        )
+        config_path = ROOT / "contracts" / "media-stack.config.json"
+        payload = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
         old = os.environ.get("MEDIA_STACK_PLATFORM")
         os.environ["MEDIA_STACK_PLATFORM"] = "k8s"
         try:

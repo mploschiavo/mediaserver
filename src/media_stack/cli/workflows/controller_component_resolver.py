@@ -247,14 +247,15 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
 
 def load_bootstrap_config(config_file: Path) -> dict[str, Any]:
     path = Path(config_file)
-    if not path.exists():
-        raise ConfigError(f"Config file not found: {path}")
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ConfigError(f"Invalid JSON in config file {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise ConfigError("Bootstrap config root must be an object.")
+    if path.is_file():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ConfigError(f"Invalid JSON in config file {path}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ConfigError("Bootstrap config root must be an object.")
+    else:
+        payload = {}
     payload = _merge_platform_adapter_hooks(payload, path.parent)
     try:
         return TopLevelBootstrapConfig.from_dict(payload).to_dict()
