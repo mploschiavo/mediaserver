@@ -18,6 +18,41 @@ logger = logging.getLogger("controller_api")
 
 ActionTriggerFn = Callable[[str, dict[str, Any]], None]
 
+_IMAGE_CONFIG = "/opt/media-stack/contracts/media-stack.config.json"
+_IMAGE_PROFILE = "/opt/media-stack/contracts/media-stack.profile.yaml"
+
+
+def _resolve_config_path(candidate: str | None = None) -> str | None:
+    """Resolve bootstrap config JSON path, trying multiple locations."""
+    import os
+    from pathlib import Path
+
+    candidates = [
+        candidate,
+        os.environ.get("BOOTSTRAP_CONFIG_FILE"),
+        _IMAGE_CONFIG,
+    ]
+    for p in candidates:
+        if p and Path(p).is_file():
+            return p
+    return None
+
+
+def _resolve_profile_path(candidate: str | None = None) -> str | None:
+    """Resolve bootstrap profile YAML path, trying multiple locations."""
+    import os
+    from pathlib import Path
+
+    candidates = [
+        candidate,
+        os.environ.get("BOOTSTRAP_PROFILE_FILE"),
+        _IMAGE_PROFILE,
+    ]
+    for p in candidates:
+        if p and Path(p).is_file():
+            return p
+    return None
+
 
 class _TTLCache:
     """Simple thread-safe TTL cache for expensive API responses."""
@@ -764,11 +799,8 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         from pathlib import Path
 
         profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
-        resolved = _resolve_config_path(profile_file) if not profile_file else profile_file
-        profile_path = Path(profile_file) if profile_file else None
-        if not profile_path or not profile_path.is_file():
-            # Try image-embedded profile
-            profile_path = Path("/opt/media-stack/contracts/media-stack.profile.yaml")
+        resolved = _resolve_profile_path(profile_file)
+        profile_path = Path(resolved) if resolved else None
         routing: dict[str, Any] = {}
         if profile_path and profile_path.is_file():
             try:
@@ -903,18 +935,16 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         from pathlib import Path
 
         profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
-        if not profile_file:
-            return {"profile": None, "error": "BOOTSTRAP_PROFILE_FILE not set"}
-        path = Path(profile_file)
-        if not path.exists():
-            return {"profile": None, "error": f"Profile not found: {profile_file}"}
+        resolved = _resolve_profile_path(profile_file)
+        if not resolved:
+            return {"profile": None, "error": f"Profile not found (tried {profile_file}, image default)"}
+        path = Path(resolved)
         try:
             import yaml
             with open(path) as f:
                 profile = yaml.safe_load(f) or {}
             return {"profile": profile, "file": str(path)}
         except ImportError:
-            # Fallback: return raw text
             return {"profile_raw": path.read_text(encoding="utf-8"), "file": str(path)}
         except Exception as exc:
             return {"profile": None, "error": str(exc)[:120]}
@@ -1385,7 +1415,14 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                             tag = image.split(":")[-1]
                         else:
                             tag = "latest"
-                        results.append({"name": name, "image": image, "tag": tag})
+                        # Get deployment last-updated timestamp
+                        last_updated = ""
+                        if dep.metadata.creation_timestamp:
+                            last_updated = dep.metadata.creation_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                        for cond in (dep.status.conditions or []):
+                            if cond.type == "Progressing" and cond.last_update_time:
+                                last_updated = cond.last_update_time.strftime("%Y-%m-%d %H:%M:%S")
+                        results.append({"name": name, "image": image, "tag": tag, "last_updated": last_updated})
             except Exception as exc:
                 return {"error": str(exc)[:80]}
         else:
@@ -1395,7 +1432,14 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 for c in client.containers.list():
                     image = c.image.tags[0] if c.image.tags else str(c.image.short_id)
                     tag = image.split(":")[-1] if ":" in image else "latest"
-                    results.append({"name": c.name, "image": image, "tag": tag})
+                    # Get container start time and image creation time
+                    started = c.attrs.get("State", {}).get("StartedAt", "")
+                    created = c.image.attrs.get("Created", "") if c.image.attrs else ""
+                    results.append({
+                        "name": c.name, "image": image, "tag": tag,
+                        "started_at": started[:19].replace("T", " ") if started else "",
+                        "image_created": created[:19].replace("T", " ") if created else "",
+                    })
             except Exception as exc:
                 return {"error": str(exc)[:80]}
         pinned = sum(1 for r in results if r["tag"] not in ("latest",))
@@ -1659,11 +1703,10 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         from pathlib import Path
 
         profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
-        profile_path = Path(profile_file) if profile_file else None
-        if not profile_path or not profile_path.is_file():
-            profile_path = Path("/opt/media-stack/contracts/media-stack.profile.yaml")
-        if not profile_path.is_file():
+        resolved = _resolve_profile_path(profile_file)
+        if not resolved:
             return {"error": "Profile file not found"}
+        profile_path = Path(resolved)
 
         try:
             import yaml
@@ -1743,9 +1786,10 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         import os
         from pathlib import Path
         profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
-        if not profile_file:
-            return {"error": "BOOTSTRAP_PROFILE_FILE not set"}
-        path = Path(profile_file)
+        resolved = _resolve_profile_path(profile_file)
+        if not resolved:
+            return {"error": "Profile file not found"}
+        path = Path(resolved)
         try:
             path.write_text(content, encoding="utf-8")
             # Reload config
