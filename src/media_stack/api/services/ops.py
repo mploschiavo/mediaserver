@@ -287,19 +287,89 @@ def get_gpu_info() -> dict[str, Any]:
 
     if result["detected"]:
         gpu = result["gpus"][0]
-        if gpu["type"] == "intel":
+        gpu_type = gpu.get("type", "")
+        if "intel" in gpu_type or "va-api" in gpu_type:
+            result["hw_accel_type"] = "vaapi"
             result["compose_snippet"] = (
                 "# Add to jellyfin service in docker-compose.yml:\n"
                 "    devices:\n      - /dev/dri:/dev/dri\n"
                 "    group_add:\n      - \"44\"   # video\n      - \"109\"  # render"
             )
-        elif gpu["type"] == "nvidia":
+        elif "nvidia" in gpu_type:
+            result["hw_accel_type"] = "nvenc"
             result["compose_snippet"] = (
                 "# Use the jellyfin-nvidia profile:\n# docker compose --profile nvidia up -d\n"
                 "# Or add to jellyfin service:\n    runtime: nvidia\n    environment:\n"
                 "      - NVIDIA_VISIBLE_DEVICES=all\n      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility"
             )
+        result["can_auto_configure"] = result.get("jellyfin_has_gpu", False)
     return result
+
+
+def enable_gpu_transcoding() -> dict[str, Any]:
+    """Auto-configure Jellyfin for hardware transcoding based on detected GPU."""
+    gpu_info = get_gpu_info()
+
+    if not gpu_info.get("detected"):
+        return {"status": "error", "error": "No GPU detected. Mount GPU device to container first."}
+
+    if not gpu_info.get("jellyfin_has_gpu"):
+        return {"status": "error", "error": "Jellyfin container does not have GPU devices mounted.",
+                "compose_snippet": gpu_info.get("compose_snippet", "")}
+
+    hw_type = gpu_info.get("hw_accel_type", "vaapi")
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    system_xml = config_root / "jellyfin" / "config" / "system.xml"
+
+    if not system_xml.is_file():
+        return {"status": "error", "error": "Jellyfin system.xml not found. Start Jellyfin first."}
+
+    import re
+    text = system_xml.read_text(encoding="utf-8")
+    changes: list[str] = []
+
+    def _set_xml(content: str, tag: str, value: str) -> str:
+        pattern = rf"<{tag}>.*?</{tag}>"
+        replacement = f"<{tag}>{value}</{tag}>"
+        if re.search(pattern, content):
+            return re.sub(pattern, replacement, content)
+        # Insert before </ServerConfiguration>
+        return content.replace("</ServerConfiguration>",
+                               f"  {replacement}\n</ServerConfiguration>")
+
+    text = _set_xml(text, "HardwareAccelerationType", hw_type)
+    changes.append(f"HardwareAccelerationType={hw_type}")
+
+    for tag in ("EnableHardwareDecoding", "EnableHardwareEncoding"):
+        text = _set_xml(text, tag, "true")
+        changes.append(f"{tag}=true")
+
+    if hw_type == "vaapi":
+        text = _set_xml(text, "VaapiDevice", "/dev/dri/renderD128")
+        changes.append("VaapiDevice=/dev/dri/renderD128")
+        for codec in ("EnableTonemapping", "EnableVppTonemapping"):
+            text = _set_xml(text, codec, "true")
+            changes.append(f"{codec}=true")
+
+    system_xml.write_text(text, encoding="utf-8")
+
+    # Restart Jellyfin to apply
+    restart_note = ""
+    try:
+        import docker
+        client = docker.from_env()
+        jf = client.containers.get("jellyfin")
+        jf.restart(timeout=30)
+        restart_note = "Jellyfin restarted to apply changes."
+    except Exception:
+        restart_note = "Restart Jellyfin manually to apply changes."
+
+    return {
+        "status": "ok",
+        "hw_accel_type": hw_type,
+        "changes": changes,
+        "note": restart_note,
+    }
 
 
 def take_snapshot() -> dict[str, Any]:
