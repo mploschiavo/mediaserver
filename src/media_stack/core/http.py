@@ -62,6 +62,22 @@ class HttpClient:
                 return resp.status, parsed, body
         except error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
+            # Follow 307/308 redirects that urllib didn't handle automatically.
+            if exc.code in (307, 308):
+                location = exc.headers.get("Location", "")
+                if location:
+                    # Resolve relative Location against the original URL.
+                    if location.startswith("/"):
+                        from urllib.parse import urlparse
+                        parsed = urlparse(req.full_url)
+                        location = f"{parsed.scheme}://{parsed.netloc}{location}"
+                    redirect_req = request.Request(
+                        url=location,
+                        data=req.data,
+                        method=req.get_method(),
+                        headers=dict(req.headers),
+                    )
+                    return self._execute_request(redirect_req, timeout)
             if exc.code in RETRYABLE_HTTP_STATUS_CODES:
                 raise RetryableHttpStatusError(exc.code, body) from exc
             return exc.code, None, body
