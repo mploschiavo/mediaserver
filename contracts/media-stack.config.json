@@ -560,15 +560,5 @@
         }
       ]
     }
-  },
-  "app_auth": {
-    "enabled": true,
-    "method": "Forms",
-    "required": "DisabledForLocalAddresses",
-    "fail_on_error": false,
-    "username_env": "STACK_ADMIN_USERNAME",
-    "password_env": "STACK_ADMIN_PASSWORD",
-    "include": [],
-    "include_note": "Empty = all services with password_api_path in registry"
   }
 }
