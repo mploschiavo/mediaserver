@@ -8,8 +8,8 @@ stateDiagram-v2
   WaitForAction --> EnvoyConfigGen: POST /actions/envoy-config
   WaitForAction --> Reconcile: POST /actions/reconcile
 
-  ParseConfig --> LoadPluginManifests
-  LoadPluginManifests --> MergeHookDefaults
+  ParseConfig --> LoadServiceYAML
+  LoadServiceYAML --> MergeHookDefaults
   MergeHookDefaults --> ResolveBindings
   ResolveBindings --> BuildRuntime
 
@@ -35,5 +35,5 @@ stateDiagram-v2
   FatalFailure --> FireWebhooks
   FireWebhooks --> WaitForAction
 
-  LoadPluginManifests --> FatalFailure: invalid manifest contract
+  LoadServiceYAML --> FatalFailure: invalid service YAML
   ResolveBindings --> FatalFailure: missing or unbound technology
