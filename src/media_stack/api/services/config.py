@@ -189,10 +189,25 @@ def set_envvar(key: str, value: str) -> dict[str, Any]:
 
 
 def get_manifests() -> dict[str, Any]:
-    """Return the compose file or kustomization content."""
+    """Return the compose file, bootstrap config, or kustomization content."""
     namespace = os.environ.get("K8S_NAMESPACE", "")
+
+    # K8s: try to get kustomization or deployment spec
     if namespace:
-        return {"type": "kubernetes", "content": None, "error": "K8s manifests not available from controller"}
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            apps_v1 = k8s_client.AppsV1Api()
+            deps = apps_v1.list_namespaced_deployment(namespace)
+            services = [{"name": d.metadata.name, "image": d.spec.template.spec.containers[0].image if d.spec.template.spec.containers else ""} for d in deps.items]
+            return {"type": "kubernetes", "namespace": namespace, "deployments": len(services), "services": services}
+        except Exception as exc:
+            return {"type": "kubernetes", "error": str(exc)[:80]}
+
+    # Compose: try to find compose file
     compose_file = os.environ.get("COMPOSE_FILE", "")
     if not compose_file:
         for candidate in ["/compose/docker-compose.yml", "./docker-compose.yml"]:
@@ -200,9 +215,31 @@ def get_manifests() -> dict[str, Any]:
                 compose_file = candidate
                 break
     if compose_file and Path(compose_file).is_file():
-        return {
-            "type": "compose",
-            "file": compose_file,
-            "content": Path(compose_file).read_text(encoding="utf-8", errors="replace"),
-        }
-    return {"type": "unknown", "content": None, "error": "No manifest found"}
+        return {"type": "compose", "file": compose_file, "content": Path(compose_file).read_text(encoding="utf-8", errors="replace")}
+
+    # Fallback: show bootstrap config JSON (always available in image)
+    config_path = resolve_config_path()
+    if config_path:
+        try:
+            cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+            # Show a summary, not the full 60KB config
+            summary = {
+                "services": list((cfg.get("services") or {}).keys()) if isinstance(cfg.get("services"), dict) else [],
+                "disk_guardrails": cfg.get("disk_guardrails", {}).get("enabled", False),
+                "preflight_handlers": [h.get("name") for h in cfg.get("container_preflight_handlers", [])],
+                "post_handlers": [h.get("name") for h in cfg.get("container_post_bootstrap_handlers", [])],
+            }
+            return {"type": "bootstrap-config", "file": config_path, "content": json.dumps(summary, indent=2)}
+        except Exception:
+            pass
+
+    # Also try listing running containers as a manifest equivalent
+    try:
+        import docker
+        client = docker.from_env()
+        containers = [{"name": c.name, "image": c.image.tags[0] if c.image.tags else str(c.image.short_id), "status": c.status} for c in client.containers.list()]
+        return {"type": "compose-runtime", "content": json.dumps(containers, indent=2), "note": "Compose file not mounted. Showing running containers."}
+    except Exception:
+        pass
+
+    return {"type": "unknown", "content": None, "error": "No manifest found. Mount compose file or use K8s."}
