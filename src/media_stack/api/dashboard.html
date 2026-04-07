@@ -1351,11 +1351,48 @@ async function loadTraffic(){
 
 /* #3 Action timeline */
 function renderTimeline(){
-  if(!statusData)return;const hist=(statusData.action_history||[]).slice().reverse().slice(0,15);
+  if(!statusData)return;
+  const hist=(statusData.action_history||[]).slice(-20);
   if(!hist.length){document.getElementById('timeline-view').innerHTML='<span style="color:var(--fg3)">No actions yet</span>';return;}
-  const maxDur=Math.max(...hist.map(a=>a.elapsed_seconds||1));
-  let h='';for(const a of hist){const dur=a.elapsed_seconds||0;const pct=Math.max(3,Math.round((dur/maxDur)*100));const c=a.error?'var(--err)':'var(--accent)';
-    h+='<div class="timeline-bar"><span style="min-width:100px;font-weight:600">'+a.name+'</span><span class="tl-bar" style="width:'+pct+'%;background:'+c+'"></span><span style="color:var(--fg3);min-width:50px">'+relTime(dur)+'</span></div>';}
+
+  // Find time range
+  const starts=hist.map(a=>a.started_at||0).filter(t=>t>0);
+  const ends=hist.map(a=>a.completed_at||a.started_at||0).filter(t=>t>0);
+  if(!starts.length){document.getElementById('timeline-view').innerHTML='<span style="color:var(--fg3)">No timing data</span>';return;}
+  const minT=Math.min(...starts);
+  const maxT=Math.max(...ends,minT+1);
+  const range=maxT-minT;
+
+  // Render Gantt chart
+  let h='<div style="position:relative;min-height:'+(hist.length*28+30)+'px;background:var(--bg4);border-radius:6px;padding:10px;overflow-x:auto">';
+
+  // Time axis
+  const ticks=5;
+  h+='<div style="display:flex;justify-content:space-between;font-size:.7em;color:var(--fg3);margin-bottom:6px;padding-left:100px">';
+  for(let i=0;i<=ticks;i++){
+    const t=minT+(range*i/ticks);
+    const ts=new Date((t>1e12?t:t*1000));
+    h+='<span>'+ts.toLocaleTimeString()+'</span>';
+  }
+  h+='</div>';
+
+  // Action bars
+  hist.forEach((a,idx)=>{
+    const start=((a.started_at||minT)-minT)/range*100;
+    const dur=((a.completed_at||a.started_at||minT)-(a.started_at||minT))/range*100;
+    const width=Math.max(dur,1);
+    const c=a.error?'var(--err)':'var(--accent)';
+    const y=idx*28;
+    h+='<div style="position:relative;height:24px;margin-bottom:4px;display:flex;align-items:center">';
+    h+='<span style="min-width:100px;font-size:.78em;font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+a.name+'</span>';
+    h+='<div style="flex:1;position:relative;height:18px">';
+    h+='<div style="position:absolute;left:'+start+'%;width:'+width+'%;height:100%;background:'+c+';border-radius:3px;min-width:4px" title="'+a.name+': '+relTime(a.elapsed_seconds||0)+(a.error?' — ERROR':'')+'"></div>';
+    h+='</div>';
+    h+='<span style="min-width:50px;text-align:right;font-size:.72em;color:var(--fg3);font-family:monospace">'+relTime(a.elapsed_seconds||0)+'</span>';
+    h+='</div>';
+  });
+
+  h+='</div>';
   document.getElementById('timeline-view').innerHTML=h;
 }
 
