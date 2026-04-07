@@ -462,7 +462,6 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div class="card-body" id="hist"></div>
 </div>
 
-<details><summary>Raw Status JSON</summary><pre id="raw" style="background:var(--bg4);padding:12px;border-radius:6px;font-size:.8em;overflow-x:auto"></pre></details>
 <div class="api-footer" id="api-footer"></div>
 </div>
 <div id="settings-root"></div>
@@ -618,13 +617,26 @@ async function load(){
     const hist=(d.action_history||[]).slice().reverse().slice(0,10);
     if(hist.length){
       document.getElementById('hist-card').style.display='block';
-      const maxDur=Math.max(...hist.map(a=>a.elapsed_seconds||1));
-      let hx='';for(const a of hist){const c=a.error?'error':'ok';const dur=a.elapsed_seconds||0;const pct=Math.max(2,Math.round((dur/maxDur)*100));
-        hx+='<div class="svc-row" style="cursor:default"><span class="dot '+c+'"></span><span class="sname">'+a.name+'</span><span class="smeta">'+relTime(dur)+(a.error?' — '+a.error:'')+'<span class="dur-bar'+(a.error?' error':'')+'" style="width:'+pct+'px"></span></span></div>';}
+      let hx='<table style="width:100%;border-collapse:collapse;font-size:.85em">';
+      hx+='<thead><tr style="border-bottom:2px solid var(--border);color:var(--fg3);font-size:.78em;text-transform:uppercase;letter-spacing:.04em"><th style="text-align:left;padding:4px 6px">Action</th><th style="text-align:left;padding:4px 6px">Started</th><th style="text-align:left;padding:4px 6px">Duration</th><th style="text-align:left;padding:4px 6px">User</th><th style="padding:4px 6px">Logs</th></tr></thead><tbody>';
+      for(const a of hist){
+        const c=a.error?'err':'ok';
+        const dur=a.elapsed_seconds||0;
+        const started=a.started_at?new Date((a.started_at>1e12?a.started_at:a.started_at*1000)).toLocaleString():'';
+        const user=a.triggered_by||'system';
+        hx+='<tr style="border-bottom:1px solid var(--border)">';
+        hx+='<td style="padding:5px 6px"><span class="dot '+c+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+a.name+'</td>';
+        hx+='<td style="padding:5px 6px;color:var(--fg3);font-size:.85em">'+started+'</td>';
+        hx+='<td style="padding:5px 6px;font-family:monospace">'+relTime(dur)+'</td>';
+        hx+='<td style="padding:5px 6px;color:var(--fg3)">'+user+'</td>';
+        hx+='<td style="padding:5px 6px;text-align:center"><button class="btn-secondary" style="padding:2px 6px;font-size:.72em" onclick="filterLogsToAction(\''+a.name+'\')">View</button></td>';
+        hx+='</tr>';
+        if(a.error)hx+='<tr><td colspan="5" style="padding:2px 6px 5px;color:var(--err);font-size:.82em">'+a.error.substring(0,150)+'</td></tr>';
+      }
+      hx+='</tbody></table>';
       document.getElementById('hist').innerHTML=hx;
     }
     loadWebhooks(d.webhook_urls||[]);
-    document.getElementById('raw').textContent=JSON.stringify(d,null,2);
   }catch(e){document.getElementById('status-card').innerHTML='<div class="error">'+e+'</div>';}
 }
 
@@ -1021,6 +1033,16 @@ async function testWebhooks(){
 const _activeSvcLogs=new Set();
 let _logSource='controller'; // 'controller' or 'all'
 
+function filterLogsToAction(actionName){
+  // Switch to Logs tab and filter to this action
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-logs').classList.add('active');
+  document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent==='Logs')b.classList.add('active');});
+  location.hash='logs';
+  const sel=document.getElementById('logActionFilter');
+  if(sel){sel.value=actionName;applyLogFilter();}
+}
 function setLogSource(src,btn){
   _logSource=src;
   document.querySelectorAll('#tab-logs > div:first-child > button').forEach(b=>b.classList.remove('active'));
