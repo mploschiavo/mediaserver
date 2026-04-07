@@ -64,3 +64,12 @@ defaults:
       target_disk_used_percent: 58
       protect_recently_added_days: 21
       protect_unwatched_days: 30
+  default_policy:
+    version: 1
+    retention:
+      max_disk_used_percent: 65
+      target_disk_used_percent: 58
+      protect_recently_added_days: 21
+      protect_unwatched_days: 30
+      minimum_rating_to_keep: 6.5
+    rules: []
