@@ -55,8 +55,19 @@ This writes timestamped `.txt` evidence files for:
 - namespace events
 - ingress describe output
 
+## Controller Dashboard
+
+The controller dashboard (port 9100) provides a full operational view of the stack:
+
+![Controller Dashboard](apps/controller_dashboard.png)
+
+Features include service health probes, API authentication validation, download queues,
+library stats, disk usage, live SSE logs, DNS access matrix, indexer management,
+Prometheus metrics, and 40+ API endpoints.
+
 ## Recommended Baseline Set
 
+- controller dashboard
 - homepage
 - jellyfin
 - jellyseerr

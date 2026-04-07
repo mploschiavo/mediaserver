@@ -1,0 +1,23 @@
+# pods
+# command: kubectl -n media-dev get pods -o wide
+# captured_at_utc: 2026-04-07T01:26:20Z
+
+NAME                                         READY   STATUS    RESTARTS   AGE     IP            NODE   NOMINATED NODE   READINESS GATES
+bazarr-5bd985c598-rg8pm                      1/1     Running   0          11m     10.1.55.169   yoda   <none>           <none>
+envoy-c85c58876-66fqh                        1/1     Running   0          7m57s   10.1.55.187   yoda   <none>           <none>
+flaresolverr-8497c74596-mm9d5                1/1     Running   0          14m     10.1.55.128   yoda   <none>           <none>
+homepage-6f9599d749-f99sf                    1/1     Running   0          11m     10.1.55.135   yoda   <none>           <none>
+jellyfin-69cc7ccbbc-lg2b8                    1/1     Running   0          11m     10.1.55.183   yoda   <none>           <none>
+jellyfin-auto-collections-557bbd5679-vlrlq   1/1     Running   0          14m     10.1.55.167   yoda   <none>           <none>
+jellyseerr-5b5fb6dffd-2p469                  1/1     Running   0          11m     10.1.55.153   yoda   <none>           <none>
+lidarr-584dd5d5f5-fl2f2                      1/1     Running   0          11m     10.1.55.140   yoda   <none>           <none>
+maintainerr-b89dc8797-c78nw                  1/1     Running   0          14m     10.1.55.161   yoda   <none>           <none>
+media-stack-controller-7779d4c7cf-w9v2j      1/1     Running   0          14m     10.1.55.159   yoda   <none>           <none>
+plex-5f85974cc9-qt72f                        1/1     Running   0          14m     10.1.55.168   yoda   <none>           <none>
+prowlarr-594647897-74jzk                     1/1     Running   0          11m     10.1.55.174   yoda   <none>           <none>
+qbittorrent-fd47989fc-z4dst                  1/1     Running   0          14m     10.1.55.147   yoda   <none>           <none>
+radarr-848dcc959f-m27z6                      1/1     Running   0          11m     10.1.55.165   yoda   <none>           <none>
+readarr-588b89d8bd-mkt4x                     1/1     Running   0          11m     10.1.55.130   yoda   <none>           <none>
+sabnzbd-5ccff4fd74-6pr57                     1/1     Running   0          13m     10.1.55.144   yoda   <none>           <none>
+sonarr-8686dbc974-lfg4p                      1/1     Running   0          11m     10.1.55.175   yoda   <none>           <none>
+tautulli-775b9c7768-db28v                    1/1     Running   0          14m     10.1.55.157   yoda   <none>           <none>

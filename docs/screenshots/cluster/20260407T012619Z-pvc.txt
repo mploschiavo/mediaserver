@@ -1,0 +1,25 @@
+# pvc
+# command: kubectl -n media-dev get pvc
+# captured_at_utc: 2026-04-07T01:26:21Z
+
+NAME                                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS        VOLUMEATTRIBUTESCLASS   AGE
+media-stack-config-bazarr                      Bound    pvc-78319c1b-8e66-433d-84ed-11c00a9ecef5   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-envoy                       Bound    pvc-3d338629-0f9c-4a27-9897-7c7288e6b33f   100Mi      RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-homepage                    Bound    pvc-cd1492c7-c95f-4771-ac10-8b7759aff2ba   2Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-jellyfin                    Bound    pvc-e727e2a1-6800-4523-93f8-a523c95efd58   20Gi       RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-jellyfin-auto-collections   Bound    pvc-e512ca26-e77a-4e66-8060-438ef1c07343   2Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-jellyseerr                  Bound    pvc-59cae60d-6e14-4b8f-b119-e2058c52f5bb   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-lidarr                      Bound    pvc-96ff88ce-ae45-4b4c-a8f2-8c7fe4a679b9   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-maintainerr                 Bound    pvc-cd2b5207-3b78-40f6-8d58-d45975c0a716   2Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-plex                        Bound    pvc-d1be4ba0-5424-4ae5-bc51-ba3b13a23231   10Gi       RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-prowlarr                    Bound    pvc-b73b60d5-e416-4163-b3b1-0b32ce47229d   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-qbittorrent                 Bound    pvc-9bd678c8-dc36-4571-9c84-00850e40c6dd   10Gi       RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-radarr                      Bound    pvc-60059621-ba6a-4394-9f58-ea602a7adbf0   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-readarr                     Bound    pvc-2ec29f6a-88d1-4854-90c8-0109228f2e3e   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-sabnzbd                     Bound    pvc-26b29982-8531-4b11-908d-71696c819d8a   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-sonarr                      Bound    pvc-83231d1f-ec40-44ba-bc50-1a8eddca49e7   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-config-tautulli                    Bound    pvc-068eedb4-8801-48fe-bbd8-c9c7277c241f   5Gi        RWO            microk8s-hostpath   <unset>                 14m
+media-stack-data-torrents                      Bound    pvc-1aa93eea-2e0d-4897-88c2-626d3a70eb6c   500Gi      RWO            microk8s-hostpath   <unset>                 14m
+media-stack-data-transcode                     Bound    pvc-13f71e83-b1f5-42ba-96b0-094aac143d75   50Gi       RWO            microk8s-hostpath   <unset>                 14m
+media-stack-data-usenet                        Bound    pvc-86e8653f-a789-4a37-a62f-e4980c1ede85   500Gi      RWO            microk8s-hostpath   <unset>                 14m
+media-stack-media                              Bound    pvc-1ade56ad-2857-4eca-acc4-dad1e83fbe79   2Ti        RWO            microk8s-hostpath   <unset>                 14m

@@ -1,0 +1,5 @@
+# kubectl-context
+# command: kubectl config current-context
+# captured_at_utc: 2026-04-07T01:26:19Z
+
+microk8s

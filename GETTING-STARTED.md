@@ -50,11 +50,16 @@ kubectl -n media-stack port-forward svc/media-stack-controller 9100:9100
 Then open **http://localhost:9100**
 
 The dashboard shows:
-- Live progress as each app is configured
-- Health status for all services
-- API credential status (green = ready)
-- Auto-download toggle
-- One-click actions (configure, discover indexers, restart)
+- Live progress as each app is configured (SSE streaming logs)
+- Health status for all 16 services with response times
+- API credential validation (authenticated probe per service)
+- Download queue, library stats, and disk usage widgets
+- Service versions, indexer performance, and quality profiles
+- Auto-download toggle (auto-triggers reconcile)
+- One-click actions (configure, discover indexers, restart, per-service restart)
+- DNS access matrix, service topology map, and container log viewer
+- Prometheus metrics at `/metrics`, RSS feed at `/api/feed.xml`
+- Full OpenAPI spec at `/api/openapi.json` (40 endpoints)
 
 Bootstrap takes 3-5 minutes. When the status shows **Complete**, everything is wired up.
 
@@ -127,14 +132,14 @@ Jellyfin works on every device. Use your server's network IP (not localhost):
 
 The default profile starts in **manual mode**. To enable automatic content discovery:
 
-**From the dashboard:** Toggle "Auto-Downloads" to ON, then click "Configure All Apps"
+**From the dashboard:** Toggle "Auto-Downloads" to ON — the dashboard automatically runs a reconcile to apply the change.
 
 **From the command line:**
 ```bash
 curl -X POST http://localhost:9100/config \
   -H "Content-Type: application/json" \
   -d '{"auto_download_content": true}'
-curl -X POST http://localhost:9100/actions/bootstrap
+curl -X POST http://localhost:9100/actions/reconcile
 ```
 
 This enables:
