@@ -232,14 +232,15 @@ class BootstrapState:
         """Append a log line to the ring buffer and notify SSE waiters."""
         with self._lock:
             self._log_seq += 1
-            self._log_buffer.append((self._log_seq, time.time(), line))
+            action = self.current_action.name if self.current_action else ""
+            self._log_buffer.append((self._log_seq, time.time(), line, action))
             self._log_event.set()
             self._log_event.clear()
 
-    def get_logs_since(self, after_seq: int = 0) -> list[tuple[int, float, str]]:
-        """Return log entries with sequence > after_seq."""
+    def get_logs_since(self, after_seq: int = 0) -> list[tuple[int, float, str, str]]:
+        """Return log entries with sequence > after_seq. Each entry: (seq, ts, msg, action)."""
         with self._lock:
-            return [(seq, ts, msg) for seq, ts, msg in self._log_buffer if seq > after_seq]
+            return [(seq, ts, msg, action) for seq, ts, msg, action, *_ in self._log_buffer if seq > after_seq]
 
     @property
     def log_seq(self) -> int:
