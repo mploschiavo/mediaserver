@@ -414,9 +414,9 @@ let logFilter='all',sseAlive=false,svcSort='default',svcVersions={},prevPhase='i
 const healthHistory={};
 const CATS=[
   {label:'Media',ids:['jellyfin','plex','jellyseerr']},
-  {label:'Automation',ids:['sonarr','radarr','lidarr','readarr','prowlarr']},
+  {label:'Automation',ids:['sonarr','radarr','lidarr','readarr','prowlarr','bazarr']},
   {label:'Downloads',ids:['qbittorrent','sabnzbd','flaresolverr']},
-  {label:'Management',ids:['bazarr','maintainerr','tautulli','homepage','envoy']}
+  {label:'Management',ids:['maintainerr','tautulli','homepage','envoy']}
 ];
 const SVCS=[
   {id:'jellyfin',name:'Jellyfin',desc:'Media server',port:8096},
@@ -1261,7 +1261,7 @@ function renderTopologySVG(){
     {id:'sonarr',x:40,y:130,c:'#fbbf24'},{id:'radarr',x:160,y:130,c:'#fbbf24'},
     {id:'lidarr',x:280,y:130,c:'#fbbf24'},{id:'readarr',x:400,y:130,c:'#fbbf24'},
     {id:'prowlarr',x:200,y:220,c:'#f87171'},{id:'qbittorrent',x:80,y:280,c:'#94a3b8'},
-    {id:'sabnzbd',x:320,y:280,c:'#94a3b8'},{id:'bazarr',x:440,y:40,c:'#94a3b8'},
+    {id:'sabnzbd',x:320,y:280,c:'#94a3b8'},{id:'bazarr',x:520,y:130,c:'#fbbf24'},
     {id:'flaresolverr',x:360,y:220,c:'#64748b'},{id:'envoy',x:520,y:160,c:'#3b82f6'},
   ];
   const edges=[

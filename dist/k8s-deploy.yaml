@@ -110,6 +110,7 @@ metadata:
   name: media-stack-secrets
   namespace: media-stack
 stringData:
+  BAZARR_API_KEY: ""
   JELLYFIN_API_KEY: ""
   JELLYFIN_USER_ID: ""
   JELLYSEERR_API_KEY: ""
@@ -1277,6 +1278,12 @@ spec:
           valueFrom:
             secretKeyRef:
               key: PROWLARR_API_KEY
+              name: media-stack-secrets
+              optional: true
+        - name: BAZARR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: BAZARR_API_KEY
               name: media-stack-secrets
               optional: true
         - name: K8S_NAMESPACE
