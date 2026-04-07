@@ -154,10 +154,16 @@ def check_image_updates() -> dict[str, Any]:
                 tag = image.split(":")[-1] if ":" in image else "latest"
                 started = c.attrs.get("State", {}).get("StartedAt", "")
                 created = c.image.attrs.get("Created", "") if c.image.attrs else ""
+                # Get image digest for rollback reference
+                digest = ""
+                repo_digests = c.image.attrs.get("RepoDigests", []) if c.image.attrs else []
+                if repo_digests:
+                    digest = repo_digests[0].split("@")[-1][:19] + "..." if repo_digests[0] else ""
                 results.append({
                     "name": c.name, "image": image, "tag": tag,
                     "started_at": started[:19].replace("T", " ") if started else "",
                     "image_created": created[:19].replace("T", " ") if created else "",
+                    "digest": digest,
                 })
         except Exception as exc:
             return {"error": str(exc)[:80]}
