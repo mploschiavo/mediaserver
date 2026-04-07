@@ -1,225 +1,124 @@
-"""Service registry — single source of truth for all managed services.
+"""Service registry — loaded from contracts/services.yaml.
 
-Add, remove, or modify services here. Controller, health probes, auth
-probes, key discovery, key rotation, and password reset all read from
-this registry instead of hardcoding service details.
+To add, remove, or modify services, edit the YAML file.
+No Python code changes needed. Third-party developers can extend
+the registry by editing the config file.
 
-To add a new service: add an entry to SERVICES.
-To remove a service: delete its entry.
-No other files need to change.
+The registry is loaded once at import time. The controller, health
+probes, key discovery, rotation, and password reset all read from
+this module.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 
 @dataclass(frozen=True)
 class ServiceDef:
     """Definition of a managed service."""
 
-    id: str                          # e.g. "sonarr"
-    name: str                        # Display name: "Sonarr"
-    desc: str                        # Short description
-    category: str                    # "automation", "media", "downloads", "management"
-    host: str                        # Container/pod hostname
-    port: int                        # Primary port
-    health_path: str = "/"           # HTTP health probe path
-    auth_path: str = ""              # Authenticated API probe path (empty = no auth probe)
-    auth_mode: str = "X-Api-Key"     # Header name or "query:param"
-    api_key_env: str = ""            # Env var name for API key
-    api_key_config: str = ""         # Config file relative path for key discovery
-    api_key_format: str = ""         # "xml", "ini", "yaml", "json", "sqlite"
-    version_path: str = ""           # API path to get version
-    version_json_key: str = ""       # JSON key in version response
-    password_api_path: str = ""      # API path for password change (PUT)
-    password_api_version: str = ""   # "v1" or "v3" for arr apps
-    password_config: str = ""        # Config file for file-based password (yaml/ini)
-    profiles: list[str] = field(default_factory=list)  # Compose profiles (empty = always on)
+    id: str
+    name: str
+    desc: str = ""
+    category: str = "management"
+    host: str = ""
+    port: int = 0
+    health_path: str = "/"
+    auth_path: str = ""
+    auth_mode: str = "X-Api-Key"
+    api_key_env: str = ""
+    api_key_config: str = ""
+    api_key_format: str = ""
+    version_path: str = ""
+    version_json_key: str = ""
+    password_api_path: str = ""
+    password_config: str = ""
+    profiles: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# Service definitions — THE source of truth
+# Load from YAML
 # ---------------------------------------------------------------------------
 
-SERVICES: list[ServiceDef] = [
-    # --- Media servers ---
-    ServiceDef(
-        id="jellyfin", name="Jellyfin", desc="Media server", category="media",
-        host="jellyfin", port=8096,
-        health_path="/System/Info/Public",
-        auth_path="/System/Info", auth_mode="X-Emby-Token",
-        api_key_env="JELLYFIN_API_KEY", api_key_format="sqlite",
-        api_key_config="jellyfin/data/jellyfin.db",
-        version_path="/System/Info/Public", version_json_key="Version",
-    ),
-    ServiceDef(
-        id="plex", name="Plex", desc="Alt media server", category="media",
-        host="plex", port=32400,
-        health_path="/identity",
-        profiles=["plex"],
-    ),
+def _find_services_yaml() -> Path:
+    """Locate the services.yaml config file."""
+    candidates = [
+        Path(os.environ.get("SERVICES_REGISTRY_FILE", "")),
+        Path("/opt/media-stack/contracts/services.yaml"),
+        Path(__file__).resolve().parents[4] / "contracts" / "services.yaml",
+        Path("contracts/services.yaml"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    raise FileNotFoundError(
+        "services.yaml not found. Set SERVICES_REGISTRY_FILE env var "
+        "or place it at contracts/services.yaml"
+    )
 
-    # --- Request management ---
-    ServiceDef(
-        id="jellyseerr", name="Jellyseerr", desc="Request manager", category="media",
-        host="jellyseerr", port=5055,
-        health_path="/api/v1/status",
-        auth_path="/api/v1/settings/main", auth_mode="X-Api-Key",
-        api_key_env="JELLYSEERR_API_KEY", api_key_format="json",
-        api_key_config="jellyseerr/settings.json",
-    ),
 
-    # --- Arr automation ---
-    ServiceDef(
-        id="sonarr", name="Sonarr", desc="TV automation", category="automation",
-        host="sonarr", port=8989,
-        health_path="/ping",
-        auth_path="/api/v3/system/status", auth_mode="X-Api-Key",
-        api_key_env="SONARR_API_KEY", api_key_format="xml",
-        api_key_config="sonarr/config.xml",
-        version_path="/api/v3/system/status", version_json_key="version",
-        password_api_path="/api/v3/config/host", password_api_version="v3",
-    ),
-    ServiceDef(
-        id="radarr", name="Radarr", desc="Movie automation", category="automation",
-        host="radarr", port=7878,
-        health_path="/ping",
-        auth_path="/api/v3/system/status", auth_mode="X-Api-Key",
-        api_key_env="RADARR_API_KEY", api_key_format="xml",
-        api_key_config="radarr/config.xml",
-        version_path="/api/v3/system/status", version_json_key="version",
-        password_api_path="/api/v3/config/host", password_api_version="v3",
-    ),
-    ServiceDef(
-        id="lidarr", name="Lidarr", desc="Music automation", category="automation",
-        host="lidarr", port=8686,
-        health_path="/ping",
-        auth_path="/api/v1/system/status", auth_mode="X-Api-Key",
-        api_key_env="LIDARR_API_KEY", api_key_format="xml",
-        api_key_config="lidarr/config.xml",
-        version_path="/api/v1/system/status", version_json_key="version",
-        password_api_path="/api/v1/config/host", password_api_version="v1",
-    ),
-    ServiceDef(
-        id="readarr", name="Readarr", desc="Books automation", category="automation",
-        host="readarr", port=8787,
-        health_path="/ping",
-        auth_path="/api/v1/system/status", auth_mode="X-Api-Key",
-        api_key_env="READARR_API_KEY", api_key_format="xml",
-        api_key_config="readarr/config.xml",
-        version_path="/api/v1/system/status", version_json_key="version",
-        password_api_path="/api/v1/config/host", password_api_version="v1",
-    ),
-    ServiceDef(
-        id="prowlarr", name="Prowlarr", desc="Indexer manager", category="automation",
-        host="prowlarr", port=9696,
-        health_path="/ping",
-        auth_path="/api/v1/system/status", auth_mode="X-Api-Key",
-        api_key_env="PROWLARR_API_KEY", api_key_format="xml",
-        api_key_config="prowlarr/config.xml",
-        version_path="/api/v1/system/status", version_json_key="version",
-        password_api_path="/api/v1/config/host", password_api_version="v1",
-    ),
-    ServiceDef(
-        id="bazarr", name="Bazarr", desc="Subtitles", category="automation",
-        host="bazarr", port=6767,
-        health_path="/",
-        auth_path="/api/system/status", auth_mode="X-Api-Key",
-        api_key_env="BAZARR_API_KEY", api_key_format="yaml",
-        api_key_config="bazarr/config/config.yaml",
-        version_path="/api/system/status", version_json_key="data.bazarr_version",
-        password_config="bazarr/config/config.yaml",
-    ),
+def _load_registry() -> tuple[list[ServiceDef], list[str]]:
+    """Load services and categories from YAML."""
+    path = _find_services_yaml()
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
 
-    # --- Download clients ---
-    ServiceDef(
-        id="qbittorrent", name="qBittorrent", desc="Torrent client", category="downloads",
-        host="qbittorrent", port=8080,
-        health_path="/",
-    ),
-    ServiceDef(
-        id="sabnzbd", name="SABnzbd", desc="Usenet client", category="downloads",
-        host="sabnzbd", port=8080,
-        health_path="/",
-        auth_path="/api", auth_mode="query:apikey",
-        api_key_env="SABNZBD_API_KEY", api_key_format="ini",
-        api_key_config="sabnzbd/sabnzbd.ini",
-        password_config="sabnzbd/sabnzbd.ini",
-    ),
+    categories = [str(c) for c in (data.get("categories") or []) if c]
+    services: list[ServiceDef] = []
 
-    # --- Support services ---
-    ServiceDef(
-        id="flaresolverr", name="FlareSolverr", desc="Indexer proxy", category="management",
-        host="flaresolverr", port=8191,
-        health_path="/",
-    ),
-    ServiceDef(
-        id="maintainerr", name="Maintainerr", desc="Library cleanup", category="management",
-        host="maintainerr", port=6246,
-        health_path="/app/maintainerr/api/settings",
-    ),
-    ServiceDef(
-        id="tautulli", name="Tautulli", desc="Analytics", category="management",
-        host="tautulli", port=8181,
-        health_path="/",
-        auth_path="/api/v2", auth_mode="query:apikey",
-        api_key_env="TAUTULLI_API_KEY", api_key_format="ini",
-        api_key_config="tautulli/config.ini",
-        password_config="tautulli/config.ini",
-    ),
-    ServiceDef(
-        id="homepage", name="Homepage", desc="Dashboard", category="management",
-        host="homepage", port=3000,
-        health_path="/",
-    ),
-    ServiceDef(
-        id="envoy", name="Envoy", desc="Gateway proxy", category="infrastructure",
-        host="envoy", port=9901,
-        health_path="/ready",
-    ),
+    for entry in data.get("services") or []:
+        if not isinstance(entry, dict) or not entry.get("id"):
+            continue
+        # Convert profiles from YAML list/None to Python list
+        profiles = entry.get("profiles") or []
+        if not isinstance(profiles, list):
+            profiles = [profiles]
+        services.append(ServiceDef(
+            id=str(entry["id"]),
+            name=str(entry.get("name", entry["id"])),
+            desc=str(entry.get("desc", "")),
+            category=str(entry.get("category", "management")),
+            host=str(entry.get("host", entry["id"])),
+            port=int(entry.get("port", 0)),
+            health_path=str(entry.get("health_path", "/")),
+            auth_path=str(entry.get("auth_path", "")),
+            auth_mode=str(entry.get("auth_mode", "X-Api-Key")),
+            api_key_env=str(entry.get("api_key_env", "")),
+            api_key_config=str(entry.get("api_key_config", "")),
+            api_key_format=str(entry.get("api_key_format", "")),
+            version_path=str(entry.get("version_path", "")),
+            version_json_key=str(entry.get("version_json_key", "")),
+            password_api_path=str(entry.get("password_api_path", "")),
+            password_config=str(entry.get("password_config", "")),
+            profiles=[str(p) for p in profiles],
+        ))
 
-    # --- Infrastructure (behind profiles or optional) ---
-    ServiceDef(
-        id="traefik", name="Traefik", desc="Reverse proxy (alt)", category="infrastructure",
-        host="traefik", port=8080,
-        health_path="/ping",
-        profiles=["traefik"],
-    ),
-    ServiceDef(
-        id="authelia", name="Authelia", desc="SSO auth provider", category="infrastructure",
-        host="authelia", port=9091,
-        health_path="/api/health",
-        profiles=["auth-authelia"],
-    ),
-    ServiceDef(
-        id="authentik", name="Authentik", desc="Identity provider", category="infrastructure",
-        host="authentik", port=9000,
-        health_path="/-/health/live/",
-        profiles=["auth-authentik"],
-    ),
-    ServiceDef(
-        id="unpackerr", name="Unpackerr", desc="Archive extractor", category="downloads",
-        host="unpackerr", port=0,  # No HTTP port — background worker
-        health_path="",  # No health endpoint — process check only
-    ),
-]
+    return services, categories
+
+
+# ---------------------------------------------------------------------------
+# Module-level state — loaded once at import
+# ---------------------------------------------------------------------------
+
+SERVICES, _CATEGORY_ORDER = _load_registry()
+SERVICE_MAP: dict[str, ServiceDef] = {s.id: s for s in SERVICES}
+
+CATEGORIES: list[dict[str, Any]] = []
+for _cat in _CATEGORY_ORDER:
+    _ids = [s.id for s in SERVICES if s.category == _cat]
+    if _ids:
+        CATEGORIES.append({"label": _cat.capitalize(), "ids": _ids})
 
 
 # ---------------------------------------------------------------------------
 # Lookup helpers
 # ---------------------------------------------------------------------------
-
-SERVICE_MAP: dict[str, ServiceDef] = {s.id: s for s in SERVICES}
-
-CATEGORIES: list[dict[str, Any]] = []
-_cat_order = ["media", "automation", "downloads", "management", "infrastructure"]
-for _cat in _cat_order:
-    _ids = [s.id for s in SERVICES if s.category == _cat]
-    if _ids:
-        CATEGORIES.append({"label": _cat.capitalize(), "ids": _ids})
-
 
 def get_service(service_id: str) -> ServiceDef | None:
     """Look up a service by ID."""
@@ -244,3 +143,15 @@ def get_services_with_password_config() -> list[ServiceDef]:
 def get_active_service_ids() -> set[str]:
     """Services that are always active (no profile gate)."""
     return {s.id for s in SERVICES if not s.profiles}
+
+
+def reload_registry() -> None:
+    """Reload services from YAML. Call after editing services.yaml."""
+    global SERVICES, SERVICE_MAP, CATEGORIES, _CATEGORY_ORDER
+    SERVICES, _CATEGORY_ORDER = _load_registry()
+    SERVICE_MAP = {s.id: s for s in SERVICES}
+    CATEGORIES.clear()
+    for cat in _CATEGORY_ORDER:
+        ids = [s.id for s in SERVICES if s.category == cat]
+        if ids:
+            CATEGORIES.append({"label": cat.capitalize(), "ids": ids})
