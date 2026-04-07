@@ -1,4 +1,4 @@
-"""Shell script runner for deploy/bootstrap orchestration."""
+"""Script/module runner for deploy/bootstrap orchestration."""
 
 from __future__ import annotations
 
@@ -21,14 +21,22 @@ class DeployScriptRunnerService:
     cfg: DeployScriptRunnerConfig
 
     def run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
-        script_path = self.cfg.root_dir / "bin" / script_name
         merged_env = dict(os.environ)
         merged_env.update({"NAMESPACE": self.cfg.namespace})
         if env:
             merged_env.update({k: str(v) for k, v in env.items()})
 
+        # Python module path (e.g. "media_stack.cli.commands.foo_main")
+        if "." in script_name and not script_name.endswith(".sh"):
+            cmd = [sys.executable, "-m", script_name, *list(args)]
+            label = script_name
+        else:
+            script_path = self.cfg.root_dir / "bin" / script_name
+            cmd = ["bash", str(script_path), *list(args)]
+            label = script_name
+
         proc = subprocess.run(
-            ["bash", str(script_path), *args],
+            cmd,
             cwd=str(self.cfg.root_dir),
             env=merged_env,
             capture_output=True,
@@ -41,6 +49,6 @@ class DeployScriptRunnerService:
             print(proc.stderr.rstrip(), file=sys.stderr)
         if proc.returncode != 0:
             raise RuntimeError(
-                f"{script_name} failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in [str(script_path), *args])}"
+                f"{label} failed ({proc.returncode}): "
+                f"{' '.join(shlex.quote(x) for x in cmd)}"
             )

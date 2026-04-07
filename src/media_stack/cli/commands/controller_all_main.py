@@ -65,12 +65,22 @@ class ControllerAllRunner:
         self.state.load()
 
     def _run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
-        script_path = self.cfg.root_dir / "bin" / script_name
         call_env = dict(os.environ)
         if env:
             call_env.update({k: str(v) for k, v in env.items()})
+
+        # Python module path (e.g. "media_stack.services.apps.foo.cli.bar_main")
+        if "." in script_name and not script_name.endswith(".sh"):
+            cmd = [sys.executable, "-m", script_name, *list(args)]
+            label = script_name
+        else:
+            # Legacy shell script fallback
+            script_path = self.cfg.root_dir / "bin" / script_name
+            cmd = ["bash", str(script_path), *list(args)]
+            label = script_name
+
         proc = subprocess.run(
-            ["bash", str(script_path), *list(args)],
+            cmd,
             cwd=str(self.cfg.root_dir),
             env=call_env,
             check=False,
@@ -83,8 +93,8 @@ class ControllerAllRunner:
             print(proc.stderr.rstrip(), file=sys.stderr)
         if proc.returncode != 0:
             raise RuntimeError(
-                f"{script_name} failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in [str(script_path), *args])}"
+                f"{label} failed ({proc.returncode}): "
+                f"{' '.join(shlex.quote(x) for x in cmd)}"
             )
 
     def _component_plan(self) -> ControllerComponentPlan:
