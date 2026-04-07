@@ -24,7 +24,17 @@ def write_config_and_restart(
         if log:
             log(msg)
 
-    from media_stack.api.preflight.api_keys import _read_xml_api_key
+    import xml.etree.ElementTree as ET
+
+    def _read_xml_api_key(config_path: Path) -> str:
+        if not config_path.is_file():
+            return ""
+        try:
+            tree = ET.parse(config_path)
+            el = tree.find(".//ApiKey")
+            return (el.text or "").strip() if el is not None else ""
+        except Exception:
+            return ""
 
     root = Path(config_root)
     sonarr_key = _read_xml_api_key(root / "sonarr" / "config.xml")
