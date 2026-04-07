@@ -334,6 +334,7 @@ Interpretation:
         )
         self._check_writable("lidarr", "/media/music", "Lidarr can write /media/music")
         self._check_writable("readarr", "/media/books", "Readarr can write /media/books")
+        self._check_writable("bazarr", "/media", "Bazarr can write /media (subtitles)")
         self._check_writable(
             "qbittorrent",
             "/data/torrents/completed/tv",

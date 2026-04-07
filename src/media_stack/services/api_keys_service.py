@@ -109,6 +109,48 @@ class ApiKeysService:
 
             time.sleep(interval_seconds)
 
+    def read_bazarr_api_key(self, config_root: str, timeout_seconds: int = 60) -> str:
+        """Read Bazarr API key from its YAML config file."""
+        yaml_paths = [
+            root / "bazarr" / "config" / "config.yaml"
+            for root in self.candidate_config_roots(config_root)
+        ]
+        start = time.time()
+        next_heartbeat = start
+        interval = 2
+
+        while True:
+            for yaml_path in yaml_paths:
+                if not yaml_path.exists():
+                    continue
+                try:
+                    text = yaml_path.read_text(encoding="utf-8", errors="replace")
+                    match = re.search(
+                        r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", text, flags=re.MULTILINE
+                    )
+                    if match and match.group(1).strip():
+                        return match.group(1).strip()
+                except Exception:
+                    pass
+
+            now = time.time()
+            elapsed = int(now - start)
+            if elapsed >= int(timeout_seconds):
+                raise RuntimeError(
+                    f"Bazarr API key not found after {elapsed}s "
+                    f"(paths={', '.join(str(p) for p in yaml_paths)})"
+                )
+
+            if now >= next_heartbeat:
+                self.log(
+                    f"[WAIT] Bazarr: waiting for api key in "
+                    f"{', '.join(str(p) for p in yaml_paths)} "
+                    f"(elapsed={elapsed}s, timeout={timeout_seconds}s)"
+                )
+                next_heartbeat = now + 15
+
+            time.sleep(interval)
+
     def read_json_file(self, path: Any) -> dict[str, Any]:
         file_path = Path(path)
         if not file_path.exists():
