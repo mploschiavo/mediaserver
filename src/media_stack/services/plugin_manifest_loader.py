@@ -148,7 +148,12 @@ def _load_manifest(path: Path) -> PluginManifest:
 
 
 def _load_from_service_yamls() -> list[PluginManifest]:
-    """Load plugin definitions from per-service YAML files (contracts/services/*.yaml)."""
+    """Load full plugin definitions from per-service YAML files (contracts/services/*.yaml).
+
+    This reads the complete plugin: section including adapter_classes,
+    app_service_classes, service_technology_map, event_handlers, and
+    before_common_steps — everything that was in legacy manifest.json files.
+    """
     import yaml as _yaml
 
     svc_dirs = [
@@ -158,27 +163,37 @@ def _load_from_service_yamls() -> list[PluginManifest]:
     ]
     manifests: list[PluginManifest] = []
     for svc_dir in svc_dirs:
-        if not svc_dir.is_dir():
+        if not svc_dir.is_dir() or not any(svc_dir.glob("*.yaml")):
             continue
         for yaml_file in sorted(svc_dir.glob("*.yaml")):
-            if yaml_file.name.startswith("_"):
+            if yaml_file.name == "_template.yaml":
                 continue
             try:
                 data = _yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
                 plugin = data.get("plugin")
                 if not isinstance(plugin, dict) or not plugin.get("technology"):
                     continue
-                adapter_classes = {}
+
+                adapter_classes = _coerce_str_map(plugin.get("adapter_classes"))
                 ac = plugin.get("adapter_class", "")
-                if ac:
-                    # Single adapter class → use "servarr" as the default role
+                if ac and "servarr" not in adapter_classes:
                     adapter_classes["servarr"] = str(ac)
-                adapter_classes.update(_coerce_str_map(plugin.get("adapter_classes")))
+
+                event_handlers = _coerce_event_handler_map(plugin.get("event_handlers"))
+                legacy_ops = _coerce_str_map(plugin.get("operation_handlers"))
+                if legacy_ops:
+                    event_handlers.setdefault(RunnerEvent.RUN.value, {}).update(legacy_ops)
+
                 manifests.append(PluginManifest(
                     technology=str(plugin["technology"]).lower(),
                     aliases=_coerce_aliases(plugin.get("aliases")),
                     adapter_classes=adapter_classes,
-                    capability_defaults=dict(plugin.get("capabilities") or {}),
+                    before_common_steps=_coerce_str_map(plugin.get("before_common_steps")),
+                    app_service_classes=_coerce_str_map(plugin.get("app_service_classes")),
+                    service_technology_map=_coerce_str_map(plugin.get("service_technology_map")),
+                    event_handlers=event_handlers,
+                    operation_handlers=dict(event_handlers.get(RunnerEvent.RUN.value, {})),
+                    capability_defaults=dict(plugin.get("capabilities") or plugin.get("capability_defaults") or {}),
                     source_path=yaml_file,
                 ))
             except Exception:
@@ -188,17 +203,25 @@ def _load_from_service_yamls() -> list[PluginManifest]:
 
 
 def load_plugin_manifests(manifest_root: Path | None = None) -> list[PluginManifest]:
-    # Load from legacy manifest.json files (these have full adapter/service bindings)
+    # Prefer per-service YAML files (contracts/services/*.yaml)
+    yaml_manifests = _load_from_service_yamls()
+    if yaml_manifests:
+        # Check if YAML manifests have service class bindings (core manifest)
+        has_service_classes = any(m.app_service_classes for m in yaml_manifests)
+        if has_service_classes:
+            return yaml_manifests
+
+    # Fall back to legacy manifest.json files
     root = manifest_root or DEFAULT_PLUGIN_MANIFESTS_DIR
     manifests: list[PluginManifest] = []
     for path in _iter_manifest_files(root):
         manifests.append(_load_manifest(path))
 
-    # Supplement with per-service YAML files (add any technologies not in legacy manifests)
+    # Supplement with any YAML-only technologies
     legacy_techs = {m.technology for m in manifests}
-    for yaml_manifest in _load_from_service_yamls():
-        if yaml_manifest.technology not in legacy_techs:
-            manifests.append(yaml_manifest)
+    for ym in yaml_manifests:
+        if ym.technology not in legacy_techs:
+            manifests.append(ym)
 
     return manifests
 

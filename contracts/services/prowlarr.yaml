@@ -18,3 +18,25 @@ plugin:
   technology: prowlarr
   aliases:
   - prow
+  app_service_classes:
+    prowlarr_service: media_stack.services.apps.prowlarr.service:ProwlarrService
+    prowlarr_flaresolverr_service: media_stack.services.apps.prowlarr.flaresolverr_service:ProwlarrFlareSolverrService
+    prowlarr_precheck_service: media_stack.services.apps.prowlarr.precheck_service:ProwlarrPrecheckService
+    prowlarr_indexer_pipeline_service: media_stack.services.apps.prowlarr.pipeline_service:ProwlarrIndexerPipelineService
+  service_technology_map:
+    prowlarr_service: prowlarr
+    prowlarr_flaresolverr_service: prowlarr
+    prowlarr_precheck_service: prowlarr
+    prowlarr_indexer_pipeline_service: prowlarr
+  event_handlers:
+    VALIDATE:
+      ensure_prowlarr_ready: media_stack.services.apps.prowlarr.runtime_ops:ensure_prowlarr_ready
+    ENSURE:
+      ensure_prowlarr_flaresolverr_proxy: media_stack.services.apps.prowlarr.runtime_ops:ensure_prowlarr_flaresolverr_proxy
+      ensure_prowlarr_indexer: media_stack.services.apps.prowlarr.runtime_ops:ensure_prowlarr_indexer
+    RUN:
+      auto_add_tested_indexers: media_stack.services.apps.prowlarr.runtime_ops:auto_add_tested_indexers
+      run_prowlarr_indexer_pipeline: media_stack.services.apps.prowlarr.runtime_ops:run_prowlarr_indexer_pipeline
+    POST:
+      trigger_prowlarr_sync: media_stack.services.apps.prowlarr.runtime_ops:trigger_prowlarr_sync
+      sync_arr_indexers_from_prowlarr: media_stack.services.apps.prowlarr.runtime_ops:sync_arr_indexers_from_prowlarr

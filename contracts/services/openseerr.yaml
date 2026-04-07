@@ -1,0 +1,14 @@
+plugin:
+  app_service_classes:
+    openseerr_service: media_stack.services.apps.openseerr.service:OpenSeerrService
+    request_manager_service: media_stack.services.apps.openseerr.service:OpenSeerrService
+  service_technology_map:
+    openseerr_service: openseerr
+    request_manager_service: openseerr
+  event_handlers:
+    RUN:
+      configure_jellyseerr: media_stack.services.apps.openseerr.runtime_ops:configure_jellyseerr
+  aliases:
+  - openseer
+  - open-seerr
+  technology: openseerr

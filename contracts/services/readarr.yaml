@@ -23,3 +23,7 @@ plugin:
     default_download_category: books
     monitor_scope_all_value: entireAuthor
     download_client_dual_priority_fields: true
+  before_common_steps:
+    readarr: media_stack.services.servarr_adapters:readarr_before_common_steps
+  adapter_classes:
+    servarr: media_stack.services.apps.servarr.technologies.readarr:ReadarrAdapter

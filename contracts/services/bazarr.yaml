@@ -18,6 +18,13 @@ plugin:
   technology: bazarr
   aliases:
   - barr
+  app_service_classes:
+    bazarr_service: media_stack.services.apps.bazarr.service:BazarrService
+  service_technology_map:
+    bazarr_service: bazarr
+  event_handlers:
+    ENSURE:
+      ensure_bazarr_arr_integration: media_stack.services.apps.bazarr.runtime_ops:ensure_bazarr_arr_integration
 defaults:
   enabled: true
   required: false

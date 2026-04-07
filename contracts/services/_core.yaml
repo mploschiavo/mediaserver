@@ -1,0 +1,35 @@
+# Core framework services — NOT an app service.
+# Registers pipeline-level service classes.
+
+plugin:
+  app_service_classes:
+    auth_service: media_stack.services.auth_service:AuthService
+    arr_service: media_stack.services.arr_service:ArrService
+    arr_indexer_sync_service: media_stack.services.arr_indexer_sync_service:ArrIndexerSyncService
+    arr_queue_cleanup_service: media_stack.services.arr_queue_cleanup_service:ArrQueueCleanupService
+    config_artifacts_service: media_stack.services.config_artifacts_service:ConfigArtifactsService
+    discovery_lists_service: media_stack.services.discovery_lists_service:DiscoveryListsService
+    download_client_pipeline_service: media_stack.services.download_client_pipeline_service:DownloadClientPipelineService
+    disk_guardrails_service: media_stack.services.disk_guardrails_service:DiskGuardrailsService
+    health_service: media_stack.services.health_service:HealthService
+    media_hygiene_service: media_stack.services.media_hygiene_service:MediaHygieneService
+    media_hygiene_ops_service: media_stack.services.media_hygiene_ops_service:MediaHygieneOpsService
+    media_server_adapter_factory: media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory
+    servarr_policy_service: media_stack.services.apps.servarr.policy_service:ServarrPolicyService
+    servarr_pipeline_service: media_stack.services.apps.servarr.pipeline_service:ServarrPipelineService
+  service_technology_map:
+    auth_service: servarr
+    arr_service: servarr
+    arr_indexer_sync_service: prowlarr
+    arr_queue_cleanup_service: servarr
+    config_artifacts_service: bootstrap
+    discovery_lists_service: servarr
+    download_client_pipeline_service: bootstrap
+    disk_guardrails_service: storage
+    health_service: servarr
+    media_hygiene_service: storage
+    media_hygiene_ops_service: storage
+    media_server_adapter_factory: bootstrap
+    servarr_policy_service: servarr
+    servarr_pipeline_service: servarr
+  technology: bootstrap
