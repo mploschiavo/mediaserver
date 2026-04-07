@@ -31,6 +31,7 @@ class ActionRecord:
     error: str | None = None
     overrides: dict[str, Any] = field(default_factory=dict)
     timeout_seconds: int = 600
+    triggered_by: str = "system"
 
     def start(self) -> None:
         self.status = ActionStatus.RUNNING
@@ -87,6 +88,7 @@ class ActionRecord:
             "error": self.error,
             "overrides": dict(self.overrides),
             "timeout_seconds": self.timeout_seconds,
+            "triggered_by": self.triggered_by,
         }
 
 
@@ -174,11 +176,14 @@ class BootstrapState:
     ) -> ActionRecord:
         with self._lock:
             self._action_counter += 1
+            clean_overrides = dict(overrides or {})
+            triggered_by = str(clean_overrides.pop("_triggered_by", "system"))
             action = ActionRecord(
                 id=f"{action_name}-{self._action_counter}",
                 name=action_name,
-                overrides=dict(overrides or {}),
+                overrides=clean_overrides,
                 timeout_seconds=timeout_seconds,
+                triggered_by=triggered_by,
             )
             action.start()
             self.current_action = action

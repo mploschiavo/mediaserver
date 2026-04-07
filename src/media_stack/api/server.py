@@ -233,6 +233,17 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     def _handle_action(self, action_name: str) -> None:
         body = self._read_json_body()
         overrides = body if body else {}
+        # Capture who triggered this action
+        auth_header = self.headers.get("Authorization", "")
+        triggered_by = "system"
+        if auth_header.startswith("Basic "):
+            try:
+                import base64
+                decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+                triggered_by = decoded.partition(":")[0] or "user"
+            except Exception:
+                triggered_by = "user"
+        overrides["_triggered_by"] = triggered_by
         if self.action_trigger:
             self.action_trigger(action_name, overrides)
         self._json_response(200, {"status": "accepted", "action": action_name, "overrides": overrides})
