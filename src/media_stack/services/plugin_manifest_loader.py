@@ -176,7 +176,9 @@ def _load_from_service_yamls() -> list[PluginManifest]:
 
                 adapter_classes = _coerce_str_map(plugin.get("adapter_classes"))
                 ac = plugin.get("adapter_class", "")
-                if ac and "servarr" not in adapter_classes:
+                if ac and not adapter_classes:
+                    # Only use adapter_class as servarr default when no
+                    # explicit adapter_classes are declared
                     adapter_classes["servarr"] = str(ac)
 
                 event_handlers = _coerce_event_handler_map(plugin.get("event_handlers"))

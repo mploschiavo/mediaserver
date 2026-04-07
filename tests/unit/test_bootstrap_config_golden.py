@@ -99,5 +99,25 @@ class BootstrapConfigGoldenTests(unittest.TestCase):
         )
 
 
+    def test_adapter_classes_do_not_cross_contaminate_roles(self):
+        """Media server and download client adapters must NOT appear in servarr role."""
+        manifests = load_plugin_manifests()
+        defaults = build_adapter_hook_defaults(manifests)
+
+        servarr = set(defaults.adapter_classes.keys())
+        media_server = set(defaults.media_server_adapter_classes.keys())
+        download_client = set(defaults.download_client_adapter_classes.keys())
+
+        # Servarr should only contain arr apps
+        self.assertNotIn("plex", servarr, "Plex is a media_server, not servarr")
+        self.assertNotIn("jellyfin", servarr, "Jellyfin is a media_server, not servarr")
+        self.assertNotIn("qbittorrent", servarr, "qBittorrent is a download_client, not servarr")
+        self.assertNotIn("sabnzbd", servarr, "SABnzbd is a download_client, not servarr")
+
+        # No overlap between roles
+        self.assertFalse(servarr & media_server, f"Overlap servarr/media_server: {servarr & media_server}")
+        self.assertFalse(servarr & download_client, f"Overlap servarr/download_client: {servarr & download_client}")
+
+
 if __name__ == "__main__":
     unittest.main()
