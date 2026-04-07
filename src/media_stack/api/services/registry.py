@@ -175,9 +175,34 @@ SERVICES: list[ServiceDef] = [
         health_path="/",
     ),
     ServiceDef(
-        id="envoy", name="Envoy", desc="Gateway proxy", category="management",
+        id="envoy", name="Envoy", desc="Gateway proxy", category="infrastructure",
         host="envoy", port=9901,
         health_path="/ready",
+    ),
+
+    # --- Infrastructure (behind profiles or optional) ---
+    ServiceDef(
+        id="traefik", name="Traefik", desc="Reverse proxy (alt)", category="infrastructure",
+        host="traefik", port=8080,
+        health_path="/ping",
+        profiles=["traefik"],
+    ),
+    ServiceDef(
+        id="authelia", name="Authelia", desc="SSO auth provider", category="infrastructure",
+        host="authelia", port=9091,
+        health_path="/api/health",
+        profiles=["auth-authelia"],
+    ),
+    ServiceDef(
+        id="authentik", name="Authentik", desc="Identity provider", category="infrastructure",
+        host="authentik", port=9000,
+        health_path="/-/health/live/",
+        profiles=["auth-authentik"],
+    ),
+    ServiceDef(
+        id="unpackerr", name="Unpackerr", desc="Archive extractor", category="downloads",
+        host="unpackerr", port=0,  # No HTTP port — background worker
+        health_path="",  # No health endpoint — process check only
     ),
 ]
 
@@ -189,7 +214,7 @@ SERVICES: list[ServiceDef] = [
 SERVICE_MAP: dict[str, ServiceDef] = {s.id: s for s in SERVICES}
 
 CATEGORIES: list[dict[str, Any]] = []
-_cat_order = ["media", "automation", "downloads", "management"]
+_cat_order = ["media", "automation", "downloads", "management", "infrastructure"]
 for _cat in _cat_order:
     _ids = [s.id for s in SERVICES if s.category == _cat]
     if _ids:
