@@ -1,7 +1,12 @@
-"""Admin services: API key rotation, password reset, service restart."""
+"""Admin services: API key rotation, password reset, service restart.
+
+All operations are driven by the service registry — no hardcoded app
+names or paths. To support a new service, add its ServiceDef to registry.py.
+"""
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -12,198 +17,217 @@ import http.cookiejar
 from pathlib import Path
 from typing import Any
 
+from .registry import SERVICES, SERVICE_MAP, get_services_with_api_keys, get_services_with_password_api, get_services_with_password_config
+
+
+# ---------------------------------------------------------------------------
+# Key reading/writing helpers — keyed by api_key_format from registry
+# ---------------------------------------------------------------------------
+
+def _read_key_xml(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    m = re.search(r"<ApiKey>([^<]+)</ApiKey>", path.read_text(encoding="utf-8"))
+    return m.group(1).strip() if m else ""
+
+
+def _write_key_xml(path: Path, new_key: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    content = re.sub(r"<ApiKey>[^<]*</ApiKey>", f"<ApiKey>{new_key}</ApiKey>", content)
+    path.write_text(content, encoding="utf-8")
+
+
+def _read_key_ini(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    m = re.search(r"^\s*api_key\s*=\s*(\S+)", path.read_text(encoding="utf-8"), re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+
+def _write_key_ini(path: Path, new_key: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    content = re.sub(r"^api_key\s*=\s*.*$", f"api_key = {new_key}", content, count=1, flags=re.MULTILINE)
+    path.write_text(content, encoding="utf-8")
+
+
+def _read_key_yaml(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    m = re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", path.read_text(encoding="utf-8"), re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+
+def _write_key_yaml(path: Path, new_key: str) -> None:
+    import yaml
+    with open(path) as f:
+        cfg = yaml.safe_load(f) or {}
+    cfg.setdefault("auth", {})["apikey"] = new_key
+    with open(path, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False)
+
+
+def _read_key_json(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return str((data.get("main") or {}).get("apiKey", "")).strip()
+    except Exception:
+        return ""
+
+
+def _write_key_json(path: Path, new_key: str) -> None:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.setdefault("main", {})["apiKey"] = new_key
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _read_key_sqlite(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        cur = conn.cursor()
+        cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
+        row = cur.fetchone()
+        conn.close()
+        return str(row[0]).strip() if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+_KEY_READERS = {"xml": _read_key_xml, "ini": _read_key_ini, "yaml": _read_key_yaml, "json": _read_key_json, "sqlite": _read_key_sqlite}
+_KEY_WRITERS = {"xml": _write_key_xml, "ini": _write_key_ini, "yaml": _write_key_yaml, "json": _write_key_json}
+# sqlite keys are rotated via API, not file — handled separately
+
+
+# ---------------------------------------------------------------------------
+# API key rotation — registry-driven
+# ---------------------------------------------------------------------------
 
 def rotate_keys() -> dict[str, Any]:
-    """Regenerate API keys for all arr apps and update env/secrets."""
+    """Regenerate API keys for all services that have them."""
     config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
     rotated: dict[str, str] = {}
     errors: list[str] = []
+    file_based_services: list[str] = []
 
-    # Arr apps: regenerate ApiKey in config.xml
-    for app in ("sonarr", "radarr", "lidarr", "readarr", "prowlarr"):
-        cfg_path = Path(config_root) / app / "config.xml"
+    for svc in get_services_with_api_keys():
+        if not svc.api_key_config or not svc.api_key_format:
+            continue
+
+        # Jellyfin: rotate via API, not file
+        if svc.api_key_format == "sqlite":
+            try:
+                old_key = _read_key_sqlite(Path(config_root) / svc.api_key_config)
+                if old_key:
+                    req = urllib.request.Request(
+                        f"http://{svc.host}:{svc.port}/Auth/Keys?app=media-stack-controller",
+                        method="POST", headers={"X-Emby-Token": old_key},
+                    )
+                    urllib.request.urlopen(req, timeout=5)
+                    new_key = _read_key_sqlite(Path(config_root) / svc.api_key_config)
+                    if new_key and new_key != old_key:
+                        os.environ[svc.api_key_env] = new_key
+                        rotated[svc.api_key_env] = new_key
+            except Exception as exc:
+                errors.append(f"{svc.id}: {exc}")
+            continue
+
+        # File-based rotation
+        cfg_path = Path(config_root) / svc.api_key_config
         if not cfg_path.is_file():
             continue
+
+        writer = _KEY_WRITERS.get(svc.api_key_format)
+        if not writer:
+            continue
+
         try:
-            content = cfg_path.read_text(encoding="utf-8")
             new_key = uuid.uuid4().hex
-            content = re.sub(r"<ApiKey>[^<]*</ApiKey>", f"<ApiKey>{new_key}</ApiKey>", content)
-            cfg_path.write_text(content, encoding="utf-8")
-            env_key = f"{app.upper()}_API_KEY"
-            os.environ[env_key] = new_key
-            rotated[env_key] = new_key
+            if svc.api_key_format == "json":
+                new_key = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes).decode("utf-8")
+            writer(cfg_path, new_key)
+            os.environ[svc.api_key_env] = new_key
+            rotated[svc.api_key_env] = new_key
+            file_based_services.append(svc.id)
         except Exception as exc:
-            errors.append(f"{app}: {exc}")
-
-    # Bazarr: regenerate apikey in config/config.yaml
-    bazarr_cfg = Path(config_root) / "bazarr" / "config" / "config.yaml"
-    if bazarr_cfg.is_file():
-        try:
-            import yaml
-            with open(bazarr_cfg) as f:
-                bcfg = yaml.safe_load(f) or {}
-            new_key = uuid.uuid4().hex
-            bcfg.setdefault("auth", {})["apikey"] = new_key
-            with open(bazarr_cfg, "w") as f:
-                yaml.dump(bcfg, f, default_flow_style=False)
-            os.environ["BAZARR_API_KEY"] = new_key
-            rotated["BAZARR_API_KEY"] = new_key
-        except Exception as exc:
-            errors.append(f"bazarr: {exc}")
-
-    # SABnzbd: regenerate api_key in sabnzbd.ini
-    sab_ini = Path(config_root) / "sabnzbd" / "sabnzbd.ini"
-    if sab_ini.is_file():
-        try:
-            content = sab_ini.read_text(encoding="utf-8")
-            new_key = uuid.uuid4().hex
-            content = re.sub(r"^api_key\s*=\s*.*$", f"api_key = {new_key}", content, flags=re.MULTILINE)
-            sab_ini.write_text(content, encoding="utf-8")
-            os.environ["SABNZBD_API_KEY"] = new_key
-            rotated["SABNZBD_API_KEY"] = new_key
-        except Exception as exc:
-            errors.append(f"sabnzbd: {exc}")
-
-    # Tautulli: regenerate api_key in config.ini
-    tautulli_ini = Path(config_root) / "tautulli" / "config.ini"
-    if tautulli_ini.is_file():
-        try:
-            content = tautulli_ini.read_text(encoding="utf-8")
-            new_key = uuid.uuid4().hex
-            content = re.sub(r"^api_key\s*=\s*.*$", f"api_key = {new_key}", content, count=1, flags=re.MULTILINE)
-            tautulli_ini.write_text(content, encoding="utf-8")
-            os.environ["TAUTULLI_API_KEY"] = new_key
-            rotated["TAUTULLI_API_KEY"] = new_key
-        except Exception as exc:
-            errors.append(f"tautulli: {exc}")
-
-    # Jellyfin: create new API key via Jellyfin API, delete old one
-    try:
-        jf_key = os.environ.get("JELLYFIN_API_KEY", "")
-        if not jf_key:
-            import sqlite3
-            jf_db = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
-            if jf_db.exists():
-                conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
-                cur = conn.cursor()
-                cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
-                row = cur.fetchone()
-                conn.close()
-                if row:
-                    jf_key = row[0]
-        if jf_key:
-            import urllib.request as _ur
-            # Create new key
-            req = _ur.Request(
-                "http://jellyfin:8096/Auth/Keys?app=media-stack-controller",
-                method="POST", headers={"X-Emby-Token": jf_key},
-            )
-            _ur.urlopen(req, timeout=5)
-            # Read new key from DB
-            jf_db = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
-            import sqlite3
-            conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
-            cur = conn.cursor()
-            cur.execute("SELECT AccessToken FROM ApiKeys WHERE Name='media-stack-controller' ORDER BY Id DESC LIMIT 1")
-            row = cur.fetchone()
-            conn.close()
-            if row and row[0]:
-                new_key = row[0].strip()
-                os.environ["JELLYFIN_API_KEY"] = new_key
-                rotated["JELLYFIN_API_KEY"] = new_key
-    except Exception as exc:
-        errors.append(f"jellyfin: {exc}")
-
-    # Jellyseerr: regenerate apiKey in settings.json
-    js_settings = Path(config_root) / "jellyseerr" / "settings.json"
-    if js_settings.is_file():
-        try:
-            data = json.loads(js_settings.read_text(encoding="utf-8"))
-            import base64
-            new_key = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes).decode("utf-8")
-            data.setdefault("main", {})["apiKey"] = new_key
-            js_settings.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            os.environ["JELLYSEERR_API_KEY"] = new_key
-            rotated["JELLYSEERR_API_KEY"] = new_key
-        except Exception as exc:
-            errors.append(f"jellyseerr: {exc}")
+            errors.append(f"{svc.id}: {exc}")
 
     persist_keys_to_secret(rotated)
-    # Auto-restart services that need it (file-based config changes)
-    restart_needed = [k.replace("_API_KEY", "").lower() for k in rotated
-                      if k in ("TAUTULLI_API_KEY", "JELLYSEERR_API_KEY",
-                               "SABNZBD_API_KEY", "BAZARR_API_KEY")]
+
+    # Auto-restart file-based services
     restarted = []
-    for svc in restart_needed:
+    for svc_id in file_based_services:
         try:
-            restart_service(svc)
-            restarted.append(svc)
+            restart_service(svc_id)
+            restarted.append(svc_id)
         except Exception:
             pass
-    return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors,
-            "restarted": restarted}
 
+    return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors, "restarted": restarted}
+
+
+# ---------------------------------------------------------------------------
+# Password reset — registry-driven
+# ---------------------------------------------------------------------------
 
 def reset_password(new_password: str) -> dict[str, Any]:
-    """Reset admin password across all services."""
+    """Reset admin password across all services that support it."""
     config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
     old_password = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
     username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
     updated: list[str] = []
     errors: list[str] = []
 
-    # 1. qBittorrent
-    try:
-        cj = http.cookiejar.CookieJar()
-        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        login_data = f"username={username}&password={old_password}".encode()
-        req = urllib.request.Request("http://qbittorrent:8080/api/v2/auth/login", data=login_data)
-        opener.open(req, timeout=5)
-        prefs = json.dumps({"web_ui_password": new_password})
-        req2 = urllib.request.Request(
-            "http://qbittorrent:8080/api/v2/app/setPreferences",
-            data=("json=" + urllib.parse.quote(prefs)).encode(),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        opener.open(req2, timeout=5)
-        updated.append("qbittorrent")
-    except Exception as exc:
-        errors.append(f"qbittorrent: {exc}")
-
-    # 2. Jellyfin
-    try:
-        jf_key = os.environ.get("JELLYFIN_API_KEY", "")
-        jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
-        if jf_key and jf_uid:
-            payload = json.dumps({"CurrentPw": old_password, "NewPw": new_password}).encode()
-            req = urllib.request.Request(
-                f"http://jellyfin:8096/Users/{jf_uid}/Password",
-                data=payload, method="POST",
-                headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(req, timeout=10)
-            updated.append("jellyfin")
-        else:
-            errors.append("jellyfin: JELLYFIN_API_KEY or JELLYFIN_USER_ID not set")
-    except Exception as exc:
-        errors.append(f"jellyfin: {exc}")
-
-    # 3. Arr apps
-    arr_apps = [
-        ("sonarr", 8989, "/api/v3/config/host", "SONARR_API_KEY"),
-        ("radarr", 7878, "/api/v3/config/host", "RADARR_API_KEY"),
-        ("lidarr", 8686, "/api/v1/config/host", "LIDARR_API_KEY"),
-        ("readarr", 8787, "/api/v1/config/host", "READARR_API_KEY"),
-        ("prowlarr", 9696, "/api/v1/config/host", "PROWLARR_API_KEY"),
-    ]
-    for app, port, api_path, key_env in arr_apps:
+    # 1. qBittorrent — special case (form-based auth, not in registry pattern)
+    qbit = SERVICE_MAP.get("qbittorrent")
+    if qbit:
         try:
-            api_key = os.environ.get(key_env, "") or _read_xml_key(Path(config_root) / app / "config.xml")
+            cj = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+            login_data = f"username={username}&password={old_password}".encode()
+            req = urllib.request.Request(f"http://{qbit.host}:{qbit.port}/api/v2/auth/login", data=login_data)
+            opener.open(req, timeout=5)
+            prefs = json.dumps({"web_ui_password": new_password})
+            req2 = urllib.request.Request(
+                f"http://{qbit.host}:{qbit.port}/api/v2/app/setPreferences",
+                data=("json=" + urllib.parse.quote(prefs)).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            opener.open(req2, timeout=5)
+            updated.append("qbittorrent")
+        except Exception as exc:
+            errors.append(f"qbittorrent: {exc}")
+
+    # 2. Jellyfin — special case (user password API)
+    jf = SERVICE_MAP.get("jellyfin")
+    if jf:
+        try:
+            jf_key = os.environ.get("JELLYFIN_API_KEY", "")
+            jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
+            if jf_key and jf_uid:
+                payload = json.dumps({"CurrentPw": old_password, "NewPw": new_password}).encode()
+                req = urllib.request.Request(
+                    f"http://{jf.host}:{jf.port}/Users/{jf_uid}/Password",
+                    data=payload, method="POST",
+                    headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=10)
+                updated.append("jellyfin")
+        except Exception as exc:
+            errors.append(f"jellyfin: {exc}")
+
+    # 3. Arr apps — registry-driven via password_api_path
+    for svc in get_services_with_password_api():
+        try:
+            api_key = os.environ.get(svc.api_key_env, "") or _read_key(svc, config_root)
             if not api_key:
-                errors.append(f"{app}: no API key available")
+                errors.append(f"{svc.id}: no API key available")
                 continue
             req = urllib.request.Request(
-                f"http://{app}:{port}{api_path}",
+                f"http://{svc.host}:{svc.port}{svc.password_api_path}",
                 headers={"X-Api-Key": api_key, "Accept": "application/json"},
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -212,79 +236,73 @@ def reset_password(new_password: str) -> dict[str, Any]:
             cfg["password"] = new_password
             cfg["passwordConfirmation"] = new_password
             put_req = urllib.request.Request(
-                f"http://{app}:{port}{api_path}",
+                f"http://{svc.host}:{svc.port}{svc.password_api_path}",
                 data=json.dumps(cfg).encode(), method="PUT",
                 headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
             )
             urllib.request.urlopen(put_req, timeout=5)
-            updated.append(app)
+            updated.append(svc.id)
         except Exception as exc:
-            errors.append(f"{app}: {exc}")
+            errors.append(f"{svc.id}: {exc}")
 
-    # 4. Bazarr
-    try:
-        bazarr_cfg = Path(config_root) / "bazarr" / "config" / "config.yaml"
-        if bazarr_cfg.is_file():
-            import yaml
-            with open(bazarr_cfg) as f:
-                bcfg = yaml.safe_load(f) or {}
-            bcfg.setdefault("auth", {})["username"] = username
-            bcfg["auth"]["password"] = new_password
-            bcfg["auth"]["type"] = "form"
-            with open(bazarr_cfg, "w") as f:
-                yaml.dump(bcfg, f, default_flow_style=False)
-            updated.append("bazarr")
-    except Exception as exc:
-        errors.append(f"bazarr: {exc}")
-
-    # 5. SABnzbd — set username/password in INI
-    try:
-        sab_ini = Path(config_root) / "sabnzbd" / "sabnzbd.ini"
-        if sab_ini.is_file():
-            content = sab_ini.read_text(encoding="utf-8")
-            content = re.sub(r"^username\s*=\s*.*$", f"username = {username}", content, count=1, flags=re.MULTILINE)
-            content = re.sub(r"^password\s*=\s*.*$", f"password = {new_password}", content, count=1, flags=re.MULTILINE)
-            sab_ini.write_text(content, encoding="utf-8")
-            updated.append("sabnzbd")
-    except Exception as exc:
-        errors.append(f"sabnzbd: {exc}")
-
-    # 6. Tautulli — set http_username/http_password in config.ini
-    try:
-        tautulli_ini = Path(config_root) / "tautulli" / "config.ini"
-        if tautulli_ini.is_file():
-            content = tautulli_ini.read_text(encoding="utf-8")
-            if "http_username" in content:
-                content = re.sub(r"^http_username\s*=\s*.*$", f"http_username = {username}", content, count=1, flags=re.MULTILINE)
-                content = re.sub(r"^http_password\s*=\s*.*$", f"http_password = {new_password}", content, count=1, flags=re.MULTILINE)
-            else:
-                # Append under [General] section
-                content = content.replace("[General]", f"[General]\nhttp_username = {username}\nhttp_password = {new_password}", 1)
-            tautulli_ini.write_text(content, encoding="utf-8")
-            updated.append("tautulli")
-    except Exception as exc:
-        errors.append(f"tautulli: {exc}")
-
-    # 7. Update env var
-    os.environ["STACK_ADMIN_PASSWORD"] = new_password
-
-    # 8. Persist to K8s secret
-    persist_keys_to_secret({
-        "STACK_ADMIN_PASSWORD": new_password,
-        "STACK_ADMIN_USERNAME": username,
-    })
-
-    # Auto-restart file-based services to pick up password change
-    restart_needed = [s for s in updated if s in ("bazarr", "sabnzbd", "tautulli")]
-    restarted = []
-    for svc in restart_needed:
+    # 4. Config-file-based password services — registry-driven
+    for svc in get_services_with_password_config():
+        if svc.id in updated:
+            continue  # Already handled via API
+        cfg_path = Path(config_root) / svc.password_config
+        if not cfg_path.is_file():
+            continue
         try:
-            restart_service(svc)
-            restarted.append(svc)
-        except Exception:
-            pass
+            if svc.password_config.endswith(".yaml"):
+                import yaml
+                with open(cfg_path) as f:
+                    data = yaml.safe_load(f) or {}
+                data.setdefault("auth", {})["username"] = username
+                data["auth"]["password"] = new_password
+                data["auth"]["type"] = "form"
+                with open(cfg_path, "w") as f:
+                    yaml.dump(data, f, default_flow_style=False)
+            elif svc.password_config.endswith(".ini"):
+                content = cfg_path.read_text(encoding="utf-8")
+                if "http_username" in content:
+                    content = re.sub(r"^http_username\s*=\s*.*$", f"http_username = {username}", content, count=1, flags=re.MULTILINE)
+                    content = re.sub(r"^http_password\s*=\s*.*$", f"http_password = {new_password}", content, count=1, flags=re.MULTILINE)
+                else:
+                    content = re.sub(r"^username\s*=\s*.*$", f"username = {username}", content, count=1, flags=re.MULTILINE)
+                    content = re.sub(r"^password\s*=\s*.*$", f"password = {new_password}", content, count=1, flags=re.MULTILINE)
+                cfg_path.write_text(content, encoding="utf-8")
+            updated.append(svc.id)
+        except Exception as exc:
+            errors.append(f"{svc.id}: {exc}")
+
+    # 5. Update env + secret
+    os.environ["STACK_ADMIN_PASSWORD"] = new_password
+    persist_keys_to_secret({"STACK_ADMIN_PASSWORD": new_password, "STACK_ADMIN_USERNAME": username})
+
+    # 6. Auto-restart file-based services
+    restarted = []
+    for svc in get_services_with_password_config():
+        if svc.id in updated:
+            try:
+                restart_service(svc.id)
+                restarted.append(svc.id)
+            except Exception:
+                pass
+
     return {"status": "updated", "services": updated, "errors": errors, "restarted": restarted}
 
+
+def _read_key(svc: Any, config_root: str) -> str:
+    """Read API key for a service using its registry format."""
+    reader = _KEY_READERS.get(svc.api_key_format)
+    if reader and svc.api_key_config:
+        return reader(Path(config_root) / svc.api_key_config)
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Service restart
+# ---------------------------------------------------------------------------
 
 def restart_service(service_name: str) -> dict[str, Any]:
     """Restart a single service container or pod."""
@@ -324,6 +342,10 @@ def batch_restart(service_names: list[str]) -> dict[str, Any]:
     return {"results": results, "restarted": ok, "total": len(service_names)}
 
 
+# ---------------------------------------------------------------------------
+# K8s secret persistence
+# ---------------------------------------------------------------------------
+
 def persist_keys_to_secret(data: dict[str, str]) -> None:
     """Persist key-value pairs to K8s secret if available."""
     namespace = os.environ.get("K8S_NAMESPACE", "")
@@ -331,7 +353,6 @@ def persist_keys_to_secret(data: dict[str, str]) -> None:
         return
     try:
         from kubernetes import client as k8s_client, config as k8s_config
-        import base64
         try:
             k8s_config.load_incluster_config()
         except Exception:
@@ -349,13 +370,3 @@ def persist_keys_to_secret(data: dict[str, str]) -> None:
             pass
     except Exception:
         pass
-
-
-def _read_xml_key(path: Path) -> str:
-    """Read ApiKey from an arr app config.xml."""
-    try:
-        content = path.read_text(encoding="utf-8")
-        m = re.search(r"<ApiKey>([^<]+)</ApiKey>", content)
-        return m.group(1) if m else ""
-    except Exception:
-        return ""

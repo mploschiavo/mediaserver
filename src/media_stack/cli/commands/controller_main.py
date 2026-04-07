@@ -103,6 +103,10 @@ def _run_handler_specs(
         try:
             runtime_platform.log(f"[{phase_label}] {name}: starting")
             handler_fn = _resolve_handler(handler_path)
+            if handler_fn is None:
+                state.record_preflight(name, {"status": "skipped", "reason": "handler not found"})
+                runtime_platform.log(f"[{phase_label}] {name}: skipped (handler not found)")
+                return
             call_args = {**context, **extra_args}
             result = handler_fn(**call_args)
             result_dict = dict(result) if isinstance(result, dict) else {}
@@ -146,14 +150,29 @@ def _run_handler_specs(
 
 
 def _resolve_handler(spec: str):
-    """Import a handler from 'module.path:function_name' spec."""
+    """Import a handler from 'module.path:function_name' spec.
+
+    Returns None if the module doesn't exist (app removed) instead of
+    crashing. This allows services to be removed from the codebase
+    without updating every config JSON handler reference.
+    """
     if ":" in spec:
         module_path, _, attr_name = spec.partition(":")
     else:
         module_path = spec.rsplit(".", 1)[0]
         attr_name = spec.rsplit(".", 1)[1] if "." in spec else spec
-    module = importlib.import_module(module_path)
-    return getattr(module, attr_name)
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, attr_name)
+    except (ImportError, ModuleNotFoundError) as exc:
+        runtime_platform.log(
+            f"[WARN] Handler not found: {spec} ({exc}). "
+            "The app may have been removed. Skipping."
+        )
+        return None
+    except AttributeError as exc:
+        runtime_platform.log(f"[WARN] Handler attribute missing: {spec} ({exc})")
+        return None
 
 
 def _run_preflights(state: object, args: argparse.Namespace) -> None:
