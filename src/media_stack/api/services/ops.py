@@ -236,6 +236,47 @@ def get_gpu_info() -> dict[str, Any]:
     return result
 
 
+def take_snapshot() -> dict[str, Any]:
+    """Take a config snapshot now."""
+    import json as _json
+    import re
+
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    snapshot_dir = config_root / ".snapshots"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    snapshot: dict[str, str] = {}
+    patterns = [
+        ("sonarr", "config.xml"), ("radarr", "config.xml"), ("lidarr", "config.xml"),
+        ("readarr", "config.xml"), ("prowlarr", "config.xml"),
+        ("bazarr", "config/config.yaml"), ("sabnzbd", "sabnzbd.ini"),
+        ("jellyseerr", "settings.json"), ("homepage", "services.yaml"),
+        ("tautulli", "config.ini"),
+    ]
+    for app, rel in patterns:
+        path = config_root / app / rel
+        if path.is_file():
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+                text = re.sub(r"<ApiKey>[^<]+</ApiKey>", "<ApiKey>***</ApiKey>", text)
+                text = re.sub(r"api_key\s*=\s*\S+", "api_key = ***", text)
+                text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
+                snapshot[f"{app}/{rel}"] = text
+            except Exception:
+                pass
+
+    ts = time.strftime("%Y%m%dT%H%M%S")
+    out = snapshot_dir / f"snapshot-{ts}.json"
+    out.write_text(_json.dumps(snapshot, indent=2), encoding="utf-8")
+
+    # Prune old snapshots
+    existing = sorted(snapshot_dir.glob("snapshot-*.json"), reverse=True)
+    for old in existing[24:]:
+        old.unlink(missing_ok=True)
+
+    return {"status": "created", "file": out.name, "configs": len(snapshot)}
+
+
 def get_config_snapshots() -> dict[str, Any]:
     """List available config snapshots."""
     snapshot_dir = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / ".snapshots"

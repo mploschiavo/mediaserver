@@ -458,7 +458,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <div id="gpu-info">Detecting GPU...</div>
     </div>
     <div id="ops-snapshots" class="subtab" style="display:none">
-      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Config snapshots are taken hourly. Keys are redacted. Last 24 kept.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="color:var(--fg2);font-size:.9em">Config snapshots taken hourly. Keys redacted. Last 24 kept.</span>
+        <button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="takeSnapshot()">Take Snapshot Now</button>
+      </div>
       <div id="snapshot-list">Loading...</div>
     </div>
     <div id="ops-mounts" class="subtab" style="display:none">
@@ -1514,6 +1517,14 @@ async function loadGpuInfo(){
 }
 
 /* Config Snapshots */
+async function takeSnapshot(){
+  showLoading();toast('Taking snapshot...');
+  try{const r=await fetch('/api/snapshot',{method:'POST'});const d=await r.json();
+    if(d.status==='created'){toast('Snapshot created: '+d.file+' ('+d.configs+' configs)');loadSnapshots();}
+    else{toast(d.error||'Snapshot failed',true);}
+  }catch(e){toast('Error: '+e.message,true);}
+  finally{hideLoading();}
+}
 async function loadSnapshots(){
   try{const r=await fetch('/api/snapshots');if(!r.ok)return;const d=await r.json();
     const snaps=d.snapshots||[];
