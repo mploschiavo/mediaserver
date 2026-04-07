@@ -443,6 +443,59 @@ def _action_bootstrap(args: argparse.Namespace, state: object) -> None:
     runtime_platform.log("[OK] Bootstrap completed successfully")
 
 
+def _prune_stale_files(args: argparse.Namespace, log: object) -> None:
+    """Clean up files that grow without bounds: XMLTV guides, old logs, temp files."""
+    from pathlib import Path
+
+    config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
+    pruned = 0
+
+    # Jellyfin XMLTV guide files — keep only 2 newest per directory
+    for xmltv_dir in [
+        config_root.parent / "data" / "transcode" / "xmltv",
+        config_root / "jellyfin" / "data" / "xmltv",
+        Path("/srv-stack/data/transcode/xmltv"),
+        Path("/cache/xmltv"),
+    ]:
+        if xmltv_dir.is_dir():
+            xmls = sorted(xmltv_dir.glob("*.xml"), key=lambda f: f.stat().st_mtime, reverse=True)
+            for old in xmls[2:]:
+                try:
+                    sz = old.stat().st_size
+                    old.unlink()
+                    pruned += 1
+                    log(f"[INFO] Pruned stale XMLTV guide: {old.name} ({sz // 1048576}MB)")
+                except Exception:
+                    pass
+
+    # Jellyfin log rotation — keep only 5 newest log files
+    jf_log_dir = config_root / "jellyfin" / "log"
+    if jf_log_dir.is_dir():
+        logs = sorted(jf_log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
+        for old in logs[5:]:
+            try:
+                old.unlink()
+                pruned += 1
+            except Exception:
+                pass
+
+    # Prowlarr/Sonarr/Radarr log rotation — keep 5 newest
+    for app in ("prowlarr", "sonarr", "radarr", "lidarr", "readarr"):
+        log_dir = config_root / app / "logs"
+        if log_dir.is_dir():
+            app_logs = sorted(log_dir.glob("*.txt"), key=lambda f: f.stat().st_mtime, reverse=True)
+            app_logs += sorted(log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
+            for old in app_logs[5:]:
+                try:
+                    old.unlink()
+                    pruned += 1
+                except Exception:
+                    pass
+
+    if pruned:
+        log(f"[INFO] Stale file cleanup: pruned {pruned} files")
+
+
 def _take_config_snapshot(args: argparse.Namespace) -> None:
     """Save a timestamped snapshot of all service config files."""
     import json as _json
@@ -721,12 +774,18 @@ def _run_serve(args: argparse.Namespace) -> None:
     if snapshot_interval > 0:
         def _snapshot_timer() -> None:
             import time as _t
+            from pathlib import Path as _P
             _t.sleep(60)  # Wait 1 min before first snapshot
             while True:
                 try:
                     _take_config_snapshot(args)
                 except Exception as exc:
                     runtime_platform.log(f"[WARN] Config snapshot failed: {exc}")
+                # Prune stale cache/transcode files to prevent disk growth
+                try:
+                    _prune_stale_files(args, runtime_platform.log)
+                except Exception as exc:
+                    runtime_platform.log(f"[WARN] Stale file cleanup failed: {exc}")
                 _t.sleep(snapshot_interval)
         snap_thread = threading.Thread(target=_snapshot_timer, daemon=True, name="config-snapshots")
         snap_thread.start()
