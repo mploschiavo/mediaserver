@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     root_dir = Path(__file__).resolve().parents[2]
-    scripts_dir = root_dir / "scripts"
+    scripts_dir = root_dir / "bin"
 
     info("Starting deploy and verification")
     info(f"Node IP: {node_ip}")

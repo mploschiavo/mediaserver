@@ -25,7 +25,7 @@ class ControllerScriptRunnerService:
         *args: str,
         env: dict[str, str] | None = None,
     ) -> None:
-        script_path = self.cfg.root_dir / "scripts" / script_name
+        script_path = self.cfg.root_dir / "bin" / script_name
         call_env = dict(os.environ)
         if env:
             call_env.update({k: str(v) for k, v in env.items()})
