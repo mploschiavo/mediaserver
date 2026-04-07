@@ -1,15 +1,3 @@
 {
-  "config_version": 2,
-  "adapter_hooks": {
-    "edge": {
-      "media_server_service_names": [
-        "jellyfin",
-        "jellyfin-nvidia"
-      ],
-      "ingress_class_priority": [
-        "public",
-        "nginx"
-      ]
-    }
-  }
+  "config_version": 2
 }

@@ -186,6 +186,10 @@ def main() -> None:
             for s in (edge_hooks.get("media_server_service_names") or [])
             if str(s).strip()
         )
+    if not media_server_names:
+        raw_profile = (profile.get("routing") or {}).get("media_server_service_names")
+        if isinstance(raw_profile, list) and raw_profile:
+            media_server_names = tuple(str(s).strip().lower() for s in raw_profile if str(s).strip())
 
     redirect_names = _csv(os.environ.get("EDGE_PATH_PREFIX_REDIRECT", ""))
     if not redirect_names:

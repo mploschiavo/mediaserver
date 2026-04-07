@@ -45,6 +45,9 @@ routing:
   gateway_host: apps.media-stack.local
   gateway_port: 80
   app_path_prefix: /app
+  media_server_service_names:
+    - jellyfin
+    - jellyfin-nvidia
   direct_hosts:
     media_server: jellyfin.media-stack.local
 
