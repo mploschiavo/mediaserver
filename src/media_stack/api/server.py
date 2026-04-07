@@ -19,6 +19,31 @@ logger = logging.getLogger("controller_api")
 ActionTriggerFn = Callable[[str, dict[str, Any]], None]
 
 
+class _TTLCache:
+    """Simple thread-safe TTL cache for expensive API responses."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, tuple[float, Any]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: str, ttl: float) -> Any | None:
+        with self._lock:
+            entry = self._store.get(key)
+            if entry and (time.time() - entry[0]) < ttl:
+                return entry[1]
+        return None
+
+    def set(self, key: str, value: Any) -> None:
+        with self._lock:
+            self._store[key] = (time.time(), value)
+
+
+_api_cache = _TTLCache()
+
+# Persistent health history file for SLA data that survives restarts.
+_HEALTH_HISTORY_PATH = __import__("pathlib").Path("/tmp/media-stack-health-history.json")
+
+
 def _fire_webhooks(state: BootstrapState, event: str, payload: dict[str, Any]) -> None:
     """POST JSON to all registered webhook URLs (fire-and-forget)."""
     urls = list(state.webhook_urls)
@@ -44,380 +69,9 @@ KNOWN_ACTIONS = frozenset({
     "reconcile",
 })
 
-_DASHBOARD_HTML = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Media Stack Controller</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-*{box-sizing:border-box}
-:root{--bg:#0f1923;--bg2:#162230;--bg3:#1e3044;--bg4:#0b1219;--fg:#e0e0e0;--fg2:#94a3b8;--fg3:#64748b;--border:#1e3044;--ok:#4ade80;--err:#f87171;--warn:#fbbf24;--blue:#3b82f6;--accent:#4ade80}
-body.light{--bg:#f8fafc;--bg2:#fff;--bg3:#e2e8f0;--bg4:#f1f5f9;--fg:#1e293b;--fg2:#475569;--fg3:#94a3b8;--border:#e2e8f0;--ok:#16a34a;--err:#dc2626;--warn:#d97706;--blue:#2563eb;--accent:#16a34a}
-body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:0;transition:background .3s,color .3s}
-header{background:var(--bg2);padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-header h1{margin:0;font-size:1.35em;color:var(--accent);display:flex;align-items:center;gap:8px}
-.badge{font-size:0.55em;padding:3px 8px;border-radius:10px;font-weight:normal;color:var(--bg);display:inline-block}
-.badge.ok{background:var(--ok)}.badge.error{background:var(--err)}.badge.running{background:var(--warn)}.badge.idle{background:var(--fg3)}
-header .links{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-header .links a,header .links button{color:var(--fg2);text-decoration:none;font-size:0.82em;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:transparent;cursor:pointer}
-header .links a:hover,header .links button:hover{color:var(--accent);border-color:var(--accent)}
-.container{max-width:980px;margin:0 auto;padding:16px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-@media(max-width:700px){.grid,.grid3{grid-template-columns:1fr}}
-.card{background:var(--bg2);border-radius:10px;padding:16px;border:1px solid var(--border);margin-bottom:12px}
-.card h2{margin:0 0 10px;font-size:1em;color:var(--fg2);font-weight:600;display:flex;align-items:center;justify-content:space-between}
-.phase{font-size:1.3em;font-weight:bold;margin-bottom:4px}
-.ok{color:var(--ok)}.error{color:var(--err)}.running{color:var(--warn)}.idle{color:var(--fg3)}
-.row{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:0.92em}
-.row:last-child{border:none}
-.dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.dot.ok{background:var(--ok)}.dot.error{background:var(--err)}.dot.warn{background:var(--warn)}.dot.idle{background:var(--fg3)}
-.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-button{border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.85em;transition:all .15s}
-.btn-primary{background:var(--accent);color:var(--bg)}
-.btn-primary:hover{filter:brightness(1.1)}
-.btn-secondary{background:var(--bg3);color:var(--fg);border:1px solid var(--border)}
-.btn-secondary:hover{border-color:var(--accent)}
-.toggle{display:flex;align-items:center;gap:10px;padding:8px 0}
-.switch{position:relative;width:44px;height:24px;cursor:pointer}
-.switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;inset:0;background:var(--bg3);border-radius:12px;transition:.3s}
-.slider:before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:var(--fg3);border-radius:50%;transition:.3s}
-.switch input:checked+.slider{background:var(--ok)}
-.switch input:checked+.slider:before{transform:translateX(20px);background:#fff}
-#toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);color:var(--ok);padding:12px 20px;border-radius:8px;border:1px solid var(--ok);display:none;z-index:99;font-size:0.9em;max-width:340px}
-#toast.err{color:var(--err);border-color:var(--err)}
-#logs{background:var(--bg4);border-radius:6px;padding:10px;max-height:280px;overflow-y:auto;font-family:'Fira Code',monospace;font-size:0.78em;line-height:1.6;white-space:pre-wrap;word-break:break-word}
-.log-line{color:var(--fg2)}.log-line .ts{color:var(--fg3)}.log-line .ok{color:var(--ok)}.log-line .err{color:var(--err)}.log-line .warn{color:var(--warn)}
-.progress-wrap{background:var(--bg4);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
-.progress-bar{height:100%;border-radius:4px;transition:width .6s ease;background:linear-gradient(90deg,var(--accent),var(--blue))}
-.progress-bar.error{background:var(--err)}
-.svc-link{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--bg4);text-decoration:none;color:var(--fg);font-size:0.88em;border:1px solid var(--border);transition:border-color .15s}
-.svc-link:hover{border-color:var(--accent)}
-.svc-link .sname{font-weight:600}
-.dns-entry{font-family:monospace;font-size:0.85em;background:var(--bg4);padding:10px;border-radius:6px;line-height:1.8;user-select:all}
-.dns-test{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:0.88em}
-.dns-test a{color:var(--blue);text-decoration:none}
-.dns-test a:hover{text-decoration:underline}
-.webhook-row{display:flex;gap:6px;align-items:center;margin:4px 0}
-.webhook-row input{flex:1;padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:0.85em}
-details{margin-top:8px}
-details summary{cursor:pointer;color:var(--fg2);font-size:0.9em}
-.tab-bar{display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px}
-.tab-bar button{background:transparent;color:var(--fg3);border:none;padding:6px 12px;border-radius:6px 6px 0 0;font-size:0.85em}
-.tab-bar button.active{color:var(--accent);background:var(--bg4)}
-.tab-content{display:none}.tab-content.active{display:block}
-</style></head><body>
-<header>
-  <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span></h1>
-  <div class="links">
-    <a href="/api/docs">API Docs</a>
-    <a href="/status" target="_blank">JSON</a>
-    <button onclick="toggleTheme()" id="themeBtn">Light Mode</button>
-  </div>
-</header>
-<div class="container">
-
-<!-- Status + Progress -->
-<div class="card" id="status-card"><div class="phase idle">Loading...</div></div>
-
-<!-- Quick Actions -->
-<div class="card">
-  <h2>Quick Actions</h2>
-  <div class="toggle">
-    <label class="switch"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider"></span></label>
-    <span id="autoLabel">Auto-Downloads: <b>off</b></span>
-  </div>
-  <div class="actions">
-    <button class="btn-primary" onclick="act('bootstrap')">Configure All Apps</button>
-    <button class="btn-secondary" onclick="act('auto-indexers')">Discover Indexers</button>
-    <button class="btn-secondary" onclick="act('envoy-config')">Rebuild Routing</button>
-    <button class="btn-secondary" onclick="act('restart-apps')">Restart All Apps</button>
-    <button class="btn-secondary" onclick="act('sync-indexers')">Sync Indexers</button>
-    <button class="btn-secondary" onclick="act('reconcile')">Reconcile</button>
-  </div>
-</div>
-
-<!-- Health + Credentials side by side -->
-<div class="grid">
-<div class="card">
-  <h2>Service Health</h2>
-  <div id="health">Checking...</div>
-</div>
-<div class="card">
-  <h2>API Credentials</h2>
-  <div id="creds">Checking...</div>
-</div>
-</div>
-
-<!-- Service Links with live probes -->
-<div class="card">
-  <h2>Services <button class="btn-secondary" style="padding:4px 10px;font-size:0.78em" onclick="probeServices()">Refresh</button></h2>
-  <div id="svc-links" class="grid3"></div>
-</div>
-
-<!-- Tabbed section: Logs | DNS | Webhooks -->
-<div class="card">
-  <div class="tab-bar">
-    <button class="active" onclick="showTab('tab-logs',this)">Live Activity</button>
-    <button onclick="showTab('tab-dns',this)">DNS Setup</button>
-    <button onclick="showTab('tab-webhooks',this)">Notifications</button>
-  </div>
-  <div id="tab-logs" class="tab-content active">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
-      <button class="btn-secondary" style="padding:4px 10px;font-size:0.78em" onclick="downloadLogs()">Download Logs</button>
-    </div>
-    <div id="logs"></div>
-  </div>
-  <div id="tab-dns" class="tab-content">
-    <p style="color:var(--fg2);font-size:0.9em;margin:0 0 8px">Add these to your hosts file so services are reachable by name:</p>
-    <div class="dns-entry" id="dns-entries">Detecting...</div>
-    <div style="margin-top:6px"><button class="btn-secondary" style="padding:4px 10px;font-size:0.78em" onclick="copyDns()">Copy to Clipboard</button></div>
-    <h2 style="margin-top:16px;font-size:0.95em">Verify Links</h2>
-    <div id="dns-tests"></div>
-  </div>
-  <div id="tab-webhooks" class="tab-content">
-    <p style="color:var(--fg2);font-size:0.9em;margin:0 0 8px">Get notified when actions complete or fail.</p>
-    <div class="webhook-row">
-      <input type="url" id="webhookUrl" placeholder="https://hooks.example.com/media-stack">
-      <button class="btn-primary" style="padding:6px 12px" onclick="addWebhook()">Add</button>
-    </div>
-    <div id="webhook-list" style="margin-top:8px"></div>
-  </div>
-</div>
-
-<!-- History -->
-<div class="card" id="hist-card" style="display:none">
-  <h2>Action History</h2>
-  <div id="hist"></div>
-</div>
-
-<!-- Raw -->
-<details><summary>Raw Status JSON</summary><pre id="raw" style="background:var(--bg4);padding:12px;border-radius:6px;font-size:0.8em;overflow-x:auto"></pre></details>
-</div>
-<div id="toast"></div>
-<script>
-let logBuf=[],logSeq=0,evtSource=null,statusData=null;
-const SVCS=['jellyfin','jellyseerr','sonarr','radarr','lidarr','readarr','prowlarr',
-  'qbittorrent','sabnzbd','bazarr','maintainerr','tautulli','homepage','envoy','plex','flaresolverr'];
-const SVC_HEALTH={};
-
-// --- Theme ---
-function toggleTheme(){
-  const light=document.body.classList.toggle('light');
-  localStorage.setItem('theme',light?'light':'dark');
-  document.getElementById('themeBtn').textContent=light?'Dark Mode':'Light Mode';
-}
-if(localStorage.getItem('theme')==='light'){document.body.classList.add('light');document.getElementById('themeBtn').textContent='Dark Mode';}
-
-// --- Tabs ---
-function showTab(id,btn){
-  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tab-bar button').forEach(b=>b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  if(btn)btn.classList.add('active');
-}
-
-// --- Toast ---
-function toast(msg,err){
-  const t=document.getElementById('toast');t.textContent=msg;
-  t.className=err?'err':'';t.style.display='block';
-  setTimeout(()=>t.style.display='none',4000);
-}
-
-// --- Actions ---
-async function act(name){
-  try{
-    const r=await fetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const d=await r.json();
-    if(r.status>=400)toast(d.error||'Failed',true);
-    else{toast(name+' started');setTimeout(load,1500);}
-  }catch(e){toast(e.toString(),true);}
-}
-
-async function toggleAuto(on){
-  try{
-    await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({auto_download_content:on})});
-    document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(on?'on':'off')+'</b>';
-    toast('Auto-downloads '+(on?'enabled':'disabled'));
-  }catch(e){toast(e.toString(),true);}
-}
-
-// --- Main status load ---
-async function load(){
-  try{
-    const r=await fetch('/status');const d=await r.json();statusData=d;
-    const p=d.phase;
-    const cls=p==='complete'?'ok':p==='error'?'error':p==='running'?'running':'idle';
-    const badge=document.getElementById('hbadge');
-    badge.textContent=p.toUpperCase();badge.className='badge '+cls;
-
-    let h='<div class="phase '+cls+'">'+p.charAt(0).toUpperCase()+p.slice(1)+'</div>';
-    if(d.current_action){
-      const a=d.current_action;
-      const elapsed=a.elapsed_seconds||0;
-      const timeout=a.timeout_seconds||600;
-      const pct=Math.min(100,Math.round((elapsed/timeout)*100));
-      h+='<div class="running" style="font-size:0.95em">Running: '+a.name+' ('+Math.round(elapsed)+'s)</div>';
-      h+='<div class="progress-wrap"><div class="progress-bar" style="width:'+pct+'%"></div></div>';
-    }
-    if(d.error)h+='<div class="error">'+d.error+'</div>';
-    if(d.initial_bootstrap_done)h+='<div class="ok" style="font-size:0.88em">Initial setup complete</div>';
-    document.getElementById('status-card').innerHTML=h;
-
-    // Auto-download toggle
-    const cfg=d.runtime_config||{};
-    const autoOn=cfg.auto_download_content===true||cfg.auto_download_content==='1';
-    document.getElementById('autoToggle').checked=autoOn;
-    document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(autoOn?'on':'off')+'</b>';
-
-    // Preflights
-    const pf=d.preflight_results||{};
-    let hh='';
-    for(const[k,v]of Object.entries(pf)){
-      const s=v.status||'unknown';
-      hh+='<div class="row"><span class="dot '+(s==='ok'?'ok':'error')+'"></span>'+k.replace(/_/g,' ')+'</div>';
-    }
-    if(!hh)hh='<div style="color:var(--fg3)">No health data yet &mdash; run Configure All Apps</div>';
-    document.getElementById('health').innerHTML=hh;
-
-    // Credentials
-    let ch='';const keys=['JELLYFIN_API_KEY','SONARR_API_KEY','RADARR_API_KEY','LIDARR_API_KEY',
-      'READARR_API_KEY','PROWLARR_API_KEY','BAZARR_API_KEY','SABNZBD_API_KEY','JELLYSEERR_API_KEY'];
-    const allKeys={};
-    for(const sec of Object.values(pf)){
-      if(typeof sec==='object')for(const[k,v]of Object.entries(sec))if(k.endsWith('_API_KEY')&&v)allKeys[k]=true;
-    }
-    for(const k of keys){
-      const ok=!!allKeys[k];
-      ch+='<div class="row"><span class="dot '+(ok?'ok':'warn')+'"></span>'+k.replace(/_API_KEY/,'').replace(/_/g,' ')+'</div>';
-    }
-    document.getElementById('creds').innerHTML=ch;
-
-    // History
-    const hist=(d.action_history||[]).slice().reverse().slice(0,10);
-    if(hist.length){
-      document.getElementById('hist-card').style.display='block';
-      let hx='';
-      for(const a of hist){
-        const c=a.error?'error':'ok';
-        hx+='<div class="row"><span class="dot '+c+'"></span>'+a.name+
-          ' <span style="color:var(--fg3)">'+(a.elapsed_seconds||'?')+'s</span>'+
-          (a.error?' &mdash; <span class="error">'+a.error+'</span>':'')+'</div>';
-      }
-      document.getElementById('hist').innerHTML=hx;
-    }
-    // Webhooks
-    loadWebhooks(d.webhook_urls||[]);
-    document.getElementById('raw').textContent=JSON.stringify(d,null,2);
-  }catch(e){document.getElementById('status-card').innerHTML='<div class="error">'+e+'</div>';}
-}
-
-// --- Service Links with probes ---
-function renderServiceLinks(){
-  let html='';
-  for(const s of SVCS){
-    const st=SVC_HEALTH[s];
-    const dcls=st==='ok'?'ok':st==='error'?'error':'idle';
-    const label=s.charAt(0).toUpperCase()+s.slice(1);
-    html+='<a class="svc-link" href="http://'+s+'.local" target="_blank" rel="noopener">'+
-      '<span class="dot '+dcls+'"></span><span class="sname">'+label+'</span></a>';
-  }
-  document.getElementById('svc-links').innerHTML=html;
-}
-async function probeServices(){
-  for(const s of SVCS)SVC_HEALTH[s]='idle';
-  renderServiceLinks();
-  try{
-    const r=await fetch('/api/health');
-    if(r.ok){const d=await r.json();for(const[k,v]of Object.entries(d.services||{}))SVC_HEALTH[k]=v.status;}
-  }catch(e){}
-  renderServiceLinks();
-}
-
-// --- DNS Setup ---
-function buildDns(){
-  const host=location.hostname||'127.0.0.1';
-  const ip=(host==='localhost'||host==='127.0.0.1')?'127.0.0.1':host;
-  const names=SVCS.map(s=>s+'.local').join(' ');
-  const entry=ip+'  apps.media-stack.local '+names;
-  document.getElementById('dns-entries').textContent=entry;
-  // Test links
-  const tests=[
-    {name:'Homepage',url:'http://apps.media-stack.local/app/homepage'},
-    {name:'Jellyfin',url:'http://jellyfin.local'},
-    {name:'Jellyseerr',url:'http://apps.media-stack.local/app/jellyseerr'},
-    {name:'Controller',url:'http://apps.media-stack.local/app/media-stack-controller'},
-  ];
-  let th='';
-  for(const t of tests)th+='<div class="dns-test"><span class="dot idle" id="dns-dot-'+t.name+'"></span><a href="'+t.url+'" target="_blank">'+t.name+'</a> <span style="color:var(--fg3);font-size:0.82em">'+t.url+'</span></div>';
-  document.getElementById('dns-tests').innerHTML=th;
-}
-function copyDns(){
-  const text=document.getElementById('dns-entries').textContent;
-  navigator.clipboard.writeText(text).then(()=>toast('Copied to clipboard')).catch(()=>toast('Copy failed',true));
-}
-
-// --- Webhooks ---
-function loadWebhooks(urls){
-  const el=document.getElementById('webhook-list');
-  if(!urls.length){el.innerHTML='<div style="color:var(--fg3);font-size:0.88em">No webhooks configured</div>';return;}
-  let h='';
-  for(const u of urls)h+='<div class="row" style="font-size:0.85em"><span style="flex:1;word-break:break-all">'+u+'</span><button class="btn-secondary" style="padding:3px 8px;font-size:0.78em" onclick="removeWebhook(\\\''+u.replace(/'/g,"\\\\'")+'\\\')">Remove</button></div>';
-  el.innerHTML=h;
-}
-async function addWebhook(){
-  const url=document.getElementById('webhookUrl').value.trim();
-  if(!url){toast('Enter a URL',true);return;}
-  try{
-    const r=await fetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-    if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}
-    else{const d=await r.json();toast(d.error||'Failed',true);}
-  }catch(e){toast(e.toString(),true);}
-}
-async function removeWebhook(url){
-  try{
-    await fetch('/webhooks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-    toast('Webhook removed');load();
-  }catch(e){toast(e.toString(),true);}
-}
-
-// --- SSE Logs ---
-function startSSE(){
-  if(evtSource)evtSource.close();
-  evtSource=new EventSource('/logs/stream?after_seq='+logSeq);
-  evtSource.onmessage=function(e){
-    try{
-      const d=JSON.parse(e.data);logSeq=d.seq;
-      const msg=d.msg||'';
-      let cls='';
-      if(msg.includes('[OK]')||msg.includes('complete'))cls=' ok';
-      else if(msg.includes('[ERR]')||msg.includes('failed'))cls=' err';
-      else if(msg.includes('[WARN]'))cls=' warn';
-      const line='<div class="log-line"><span class="ts">'+d.ts+'</span> <span class="'+cls+'">'+
-        msg.replace(/</g,'&lt;')+'</span></div>';
-      logBuf.push(line);
-      if(logBuf.length>500)logBuf=logBuf.slice(-300);
-      const el=document.getElementById('logs');
-      el.innerHTML=logBuf.join('');
-      el.scrollTop=el.scrollHeight;
-    }catch(ex){}
-  };
-  evtSource.onerror=function(){setTimeout(startSSE,3000);};
-}
-
-function downloadLogs(){
-  const lines=logBuf.map(l=>l.replace(/<[^>]*>/g,'')).join('\\n');
-  const blob=new Blob([lines],{type:'text/plain'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='media-stack-logs-'+new Date().toISOString().slice(0,19)+'.txt';
-  a.click();URL.revokeObjectURL(a.href);
-}
-
-// --- Init ---
-load();setInterval(load,4000);startSSE();renderServiceLinks();buildDns();
-setTimeout(probeServices,2000);setInterval(probeServices,30000);
-</script></body></html>"""
+# Load dashboard HTML from file at import time.
+_DASHBOARD_HTML_PATH = __import__("pathlib").Path(__file__).with_name("dashboard.html")
+_DASHBOARD_HTML = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8") if _DASHBOARD_HTML_PATH.exists() else """<!DOCTYPE html><html><head><title>Media Stack Controller</title></head><body><h1>Media Stack Controller</h1><p>Dashboard file not found. <a href="/status">View raw status</a>.</p></body></html>"""
 
 
 _API_DOCS_HTML = """<!DOCTYPE html>
@@ -677,29 +331,146 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         "maintainerr": ("maintainerr", 6246, "/app/maintainerr/api/settings"),
         "tautulli": ("tautulli", 8181, "/status"),
         "homepage": ("homepage", 3000, "/"),
-        "envoy": ("envoy", 10000, "/ready"),
+        "envoy": ("envoy", 9901, "/ready"),
         "plex": ("plex", 32400, "/identity"),
         "flaresolverr": ("flaresolverr", 8191, "/"),
     }
 
+    # Authenticated API endpoints used to validate API keys.
+    # Maps service name → (auth_path, key_header_or_mode).
+    # "X-Api-Key" = send key as header; "query:apikey" = send as query param.
+    _AUTH_PROBES: dict[str, tuple[str, int, str, str]] = {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
+        "radarr": ("radarr", 7878, "/api/v3/system/status", "X-Api-Key"),
+        "lidarr": ("lidarr", 8686, "/api/v1/system/status", "X-Api-Key"),
+        "readarr": ("readarr", 8787, "/api/v1/system/status", "X-Api-Key"),
+        "prowlarr": ("prowlarr", 9696, "/api/v1/system/status", "X-Api-Key"),
+        "bazarr": ("bazarr", 6767, "/api/system/status", "X-Api-Key"),
+        "jellyfin": ("jellyfin", 8096, "/System/Info", "X-Emby-Token"),
+        "jellyseerr": ("jellyseerr", 5055, "/api/v1/settings/main", "X-Api-Key"),
+        "sabnzbd": ("sabnzbd", 8080, "/api", "query:apikey"),
+    }
+
+    @staticmethod
+    def _discover_api_keys() -> dict[str, str]:
+        """Read API keys from app config files on disk."""
+        import os
+        import re
+        from pathlib import Path
+
+        config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+        keys: dict[str, str] = {}
+
+        # Arr apps + Prowlarr — XML config
+        for app in ("sonarr", "radarr", "lidarr", "readarr", "prowlarr"):
+            xml = config_root / app / "config.xml"
+            if xml.exists():
+                text = xml.read_text(encoding="utf-8", errors="replace")
+                m = re.search(r"<ApiKey>([^<]+)</ApiKey>", text)
+                if m:
+                    keys[app] = m.group(1).strip()
+
+        # SABnzbd — INI
+        sab_ini = config_root / "sabnzbd" / "sabnzbd.ini"
+        if sab_ini.exists():
+            text = sab_ini.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"^\s*api_key\s*=\s*(\S+)", text, re.MULTILINE)
+            if m:
+                keys["sabnzbd"] = m.group(1).strip()
+
+        # Bazarr — YAML
+        bazarr_cfg = config_root / "bazarr" / "config" / "config.yaml"
+        if bazarr_cfg.exists():
+            text = bazarr_cfg.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", text, re.MULTILINE)
+            if m:
+                keys["bazarr"] = m.group(1).strip()
+
+        # Jellyseerr — JSON settings
+        js_settings = config_root / "jellyseerr" / "settings.json"
+        if js_settings.exists():
+            try:
+                data = json.loads(js_settings.read_text(encoding="utf-8", errors="replace"))
+                api_key = str((data.get("main") or {}).get("apiKey", "")).strip()
+                if api_key:
+                    keys["jellyseerr"] = api_key
+            except Exception:
+                pass
+
+        # Jellyfin — SQLite db
+        import sqlite3
+        jf_db = config_root / "jellyfin" / "data" / "jellyfin.db"
+        if jf_db.exists():
+            try:
+                conn = sqlite3.connect(f"file:{jf_db}?mode=ro", uri=True)
+                cur = conn.cursor()
+                cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
+                row = cur.fetchone()
+                conn.close()
+                if row and row[0]:
+                    keys["jellyfin"] = str(row[0]).strip()
+            except Exception:
+                pass
+
+        return keys
+
     def _probe_services(self) -> dict[str, Any]:
-        """Probe all known services and return health status."""
+        """Probe all known services: reachability + authenticated API validation."""
+        cached = _api_cache.get("health", 10)
+        if cached is not None:
+            return cached
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        api_keys = self._discover_api_keys()
 
         def probe(name: str) -> tuple[str, dict[str, Any]]:
             host, port, path = self._SERVICE_PROBES[name]
             url = f"http://{host}:{port}{path}"
+            t0 = time.time()
+            result: dict[str, Any] = {"url": url}
             try:
                 req = urllib.request.Request(url, method="GET")
                 with urllib.request.urlopen(req, timeout=4) as resp:
-                    return name, {"status": "ok", "code": resp.status, "url": url}
+                    result["status"] = "ok"
+                    result["code"] = resp.status
             except urllib.error.HTTPError as exc:
-                # Some apps return 401/403 but are still up.
                 if exc.code in (401, 403):
-                    return name, {"status": "ok", "code": exc.code, "url": url}
-                return name, {"status": "error", "code": exc.code, "url": url}
+                    result["status"] = "ok"
+                    result["code"] = exc.code
+                else:
+                    result["status"] = "error"
+                    result["code"] = exc.code
             except Exception as exc:
-                return name, {"status": "error", "error": str(exc)[:80], "url": url}
+                result["status"] = "error"
+                result["error"] = str(exc)[:80]
+            result["ms"] = round((time.time() - t0) * 1000)
+
+            # Authenticated probe if we have an API key for this service.
+            key = api_keys.get(name)
+            if key and name in self._AUTH_PROBES:
+                a_host, a_port, a_path, a_mode = self._AUTH_PROBES[name]
+                if a_mode.startswith("query:"):
+                    param = a_mode.split(":", 1)[1]
+                    a_url = f"http://{a_host}:{a_port}{a_path}?{param}={key}&output=json&mode=version"
+                    headers: dict[str, str] = {}
+                else:
+                    a_url = f"http://{a_host}:{a_port}{a_path}"
+                    headers = {a_mode: key}
+                try:
+                    req = urllib.request.Request(a_url, method="GET", headers=headers)
+                    with urllib.request.urlopen(req, timeout=4) as resp:
+                        result["auth"] = "ok"
+                except urllib.error.HTTPError as exc:
+                    result["auth"] = "unauthorized" if exc.code in (401, 403) else "error"
+                except Exception:
+                    result["auth"] = "error"
+            elif name in self._AUTH_PROBES:
+                result["auth"] = "no_key"
+            else:
+                # Services that don't use API keys (homepage, envoy, etc.)
+                result["auth"] = "n/a"
+
+            return name, result
 
         results: dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -709,7 +480,1140 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 results[name] = result
 
         ok_count = sum(1 for v in results.values() if v["status"] == "ok")
-        return {"services": results, "healthy": ok_count, "total": len(results)}
+        auth_ok = sum(1 for v in results.values() if v.get("auth") == "ok")
+        response = {"services": results, "healthy": ok_count, "authenticated": auth_ok, "total": len(results)}
+        _api_cache.set("health", response)
+        # Persist health snapshot for SLA history (#2)
+        self._append_health_history(results)
+        return response
+
+    def _append_health_history(self, services: dict[str, Any]) -> None:
+        """Append a health snapshot to persistent history file."""
+        try:
+            ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+            snapshot = {s: v["status"] for s, v in services.items()}
+            history: list[dict[str, Any]] = []
+            if _HEALTH_HISTORY_PATH.exists():
+                try:
+                    history = json.loads(_HEALTH_HISTORY_PATH.read_text())
+                except Exception:
+                    history = []
+            history.append({"ts": ts, "services": snapshot})
+            # Keep last 2880 entries (~24h at 30s intervals)
+            if len(history) > 2880:
+                history = history[-2880:]
+            _HEALTH_HISTORY_PATH.write_text(json.dumps(history))
+        except Exception:
+            pass
+
+    def _get_health_history(self) -> dict[str, Any]:
+        """Read persistent health history for SLA calculations."""
+        try:
+            if _HEALTH_HISTORY_PATH.exists():
+                history = json.loads(_HEALTH_HISTORY_PATH.read_text())
+                # Calculate SLA per service
+                sla: dict[str, dict[str, Any]] = {}
+                for svc in self._SERVICE_PROBES:
+                    checks = [h["services"].get(svc) for h in history if svc in h.get("services", {})]
+                    if checks:
+                        ok = sum(1 for c in checks if c == "ok")
+                        sla[svc] = {"checks": len(checks), "ok": ok,
+                                    "pct": round(ok / len(checks) * 100, 2)}
+                return {"history_count": len(history), "sla": sla,
+                        "oldest": history[0]["ts"] if history else None,
+                        "newest": history[-1]["ts"] if history else None}
+            return {"history_count": 0, "sla": {}}
+        except Exception as exc:
+            return {"error": str(exc)[:80]}
+
+    def _get_versions(self) -> dict[str, Any]:
+        """Query each service API for its version string."""
+        cached = _api_cache.get("versions", 300)
+        if cached is not None:
+            return cached
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        api_keys = self._discover_api_keys()
+        version_endpoints: dict[str, tuple[str, int, str, str, str]] = {
+            # name: (host, port, path, auth_header, version_json_path)
+            "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key", "version"),
+            "radarr": ("radarr", 7878, "/api/v3/system/status", "X-Api-Key", "version"),
+            "lidarr": ("lidarr", 8686, "/api/v1/system/status", "X-Api-Key", "version"),
+            "readarr": ("readarr", 8787, "/api/v1/system/status", "X-Api-Key", "version"),
+            "prowlarr": ("prowlarr", 9696, "/api/v1/system/status", "X-Api-Key", "version"),
+            "bazarr": ("bazarr", 6767, "/api/system/status", "X-Api-Key", "data.bazarr_version"),
+            "jellyfin": ("jellyfin", 8096, "/System/Info/Public", "", "Version"),
+            "jellyseerr": ("jellyseerr", 5055, "/api/v1/status", "X-Api-Key", "version"),
+            "tautulli": ("tautulli", 8181, "/api/v2?cmd=get_tautulli_info&apikey=", "", "response.data.tautulli_version"),
+            "plex": ("plex", 32400, "/identity", "", "MediaContainer.version"),
+        }
+
+        def fetch_version(name: str) -> tuple[str, str]:
+            if name not in version_endpoints:
+                return name, ""
+            host, port, path, auth_hdr, json_path = version_endpoints[name]
+            key = api_keys.get(name, "")
+            headers: dict[str, str] = {}
+            if auth_hdr and key:
+                headers[auth_hdr] = key
+            url = f"http://{host}:{port}{path}"
+            try:
+                req = urllib.request.Request(url, method="GET", headers=headers)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                # Navigate dotted json_path like "response.data.version"
+                for segment in json_path.split("."):
+                    if isinstance(data, dict):
+                        data = data.get(segment, "")
+                    else:
+                        data = ""
+                        break
+                return name, str(data) if data else ""
+            except Exception:
+                return name, ""
+
+        results: dict[str, str] = {}
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(fetch_version, name) for name in version_endpoints]
+            for f in as_completed(futures):
+                name, version = f.result()
+                if version:
+                    results[name] = version
+        result = {"versions": results}
+        _api_cache.set("versions", result)
+        return result
+
+    def _get_downloads(self) -> dict[str, Any]:
+        """Query qBittorrent and SABnzbd for active downloads."""
+        api_keys = self._discover_api_keys()
+        downloads: dict[str, Any] = {}
+
+        # qBittorrent — get torrent list
+        try:
+            url = "http://qbittorrent:8080/api/v2/torrents/info?filter=active"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                torrents = json.loads(resp.read().decode())
+            active = [t for t in torrents if t.get("state") in ("downloading", "uploading", "stalledDL", "forcedDL")]
+            downloads["qbittorrent"] = {
+                "active": len(active),
+                "total": len(torrents),
+                "items": [
+                    {"name": t.get("name", "")[:60], "progress": round(t.get("progress", 0) * 100, 1),
+                     "size": t.get("size", 0), "dlspeed": t.get("dlspeed", 0), "state": t.get("state", "")}
+                    for t in active[:10]
+                ],
+            }
+        except Exception as exc:
+            downloads["qbittorrent"] = {"error": str(exc)[:80]}
+
+        # SABnzbd — get queue
+        sab_key = api_keys.get("sabnzbd", "")
+        if sab_key:
+            try:
+                url = f"http://sabnzbd:8080/api?mode=queue&output=json&apikey={sab_key}"
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode())
+                q = data.get("queue", {})
+                slots = q.get("slots", [])
+                downloads["sabnzbd"] = {
+                    "active": len(slots),
+                    "speed": q.get("speed", "0"),
+                    "items": [
+                        {"name": s.get("filename", "")[:60], "progress": float(s.get("percentage", 0)),
+                         "size": s.get("size", ""), "status": s.get("status", "")}
+                        for s in slots[:10]
+                    ],
+                }
+            except Exception as exc:
+                downloads["sabnzbd"] = {"error": str(exc)[:80]}
+
+        return downloads
+
+    def _get_stats(self) -> dict[str, Any]:
+        """Query arr apps for library counts."""
+        cached = _api_cache.get("stats", 60)
+        if cached is not None:
+            return cached
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        api_keys = self._discover_api_keys()
+        stats_endpoints: dict[str, tuple[str, int, str, str]] = {
+            "sonarr": ("sonarr", 8989, "/api/v3/series", "series"),
+            "radarr": ("radarr", 7878, "/api/v3/movie", "movies"),
+            "lidarr": ("lidarr", 8686, "/api/v1/artist", "artists"),
+            "readarr": ("readarr", 8787, "/api/v1/book", "books"),
+        }
+
+        def fetch_count(name: str) -> tuple[str, dict[str, Any]]:
+            host, port, path, label = stats_endpoints[name]
+            key = api_keys.get(name, "")
+            if not key:
+                return name, {"count": 0, "label": label, "error": "no_key"}
+            try:
+                url = f"http://{host}:{port}{path}"
+                req = urllib.request.Request(url, headers={"X-Api-Key": key})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode())
+                return name, {"count": len(data) if isinstance(data, list) else 0, "label": label}
+            except Exception as exc:
+                return name, {"count": 0, "label": label, "error": str(exc)[:80]}
+
+        results: dict[str, Any] = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(fetch_count, n) for n in stats_endpoints]
+            for f in as_completed(futures):
+                name, data = f.result()
+                results[name] = data
+        result = {"stats": results}
+        _api_cache.set("stats", result)
+        return result
+
+    def _get_indexers(self) -> dict[str, Any]:
+        """Query Prowlarr for indexer status."""
+        api_keys = self._discover_api_keys()
+        key = api_keys.get("prowlarr", "")
+        if not key:
+            return {"indexers": [], "error": "no_key"}
+        try:
+            url = "http://prowlarr:9696/api/v1/indexer"
+            req = urllib.request.Request(url, headers={"X-Api-Key": key})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                indexers = json.loads(resp.read().decode())
+            result = []
+            for idx in indexers:
+                result.append({
+                    "id": idx.get("id"),
+                    "name": idx.get("name", ""),
+                    "implementation": idx.get("implementation", ""),
+                    "enabled": idx.get("enable", False),
+                    "priority": idx.get("priority", 25),
+                })
+            return {"indexers": result, "total": len(result), "enabled": sum(1 for i in result if i["enabled"])}
+        except Exception as exc:
+            return {"indexers": [], "error": str(exc)[:80]}
+
+    def _get_disk(self) -> dict[str, Any]:
+        """Check disk usage on media/config volumes."""
+        import os
+        from pathlib import Path
+        from shutil import disk_usage
+
+        # Auto-detect volume paths: check common locations.
+        paths_to_check: dict[str, str] = {
+            "config": os.environ.get("CONFIG_ROOT", "/srv-config"),
+        }
+        # Media volume — check several common locations.
+        for label, candidates in [
+            ("media", [os.environ.get("MEDIA_ROOT", ""), "/srv-stack/media", "/media", "/data/media"]),
+            ("torrents", ["/srv-stack/data/torrents", "/data/torrents", "/downloads/torrents"]),
+            ("usenet", ["/srv-stack/data/usenet", "/data/usenet", "/downloads/usenet"]),
+        ]:
+            for p in candidates:
+                if p and Path(p).exists():
+                    paths_to_check[label] = p
+                    break
+        results: dict[str, Any] = {}
+        for label, path_str in paths_to_check.items():
+            path = Path(path_str)
+            if path.exists():
+                try:
+                    usage = disk_usage(path)
+                    results[label] = {
+                        "path": str(path),
+                        "total_bytes": usage.total,
+                        "used_bytes": usage.used,
+                        "free_bytes": usage.free,
+                        "percent_used": round(usage.used / usage.total * 100, 1) if usage.total else 0,
+                    }
+                except Exception as exc:
+                    results[label] = {"path": str(path), "error": str(exc)[:80]}
+            else:
+                results[label] = {"path": str(path), "error": "path not found"}
+        return {"disk": results}
+
+    def _get_env(self) -> dict[str, Any]:
+        """Return runtime environment information."""
+        import os
+        import platform
+        from pathlib import Path
+
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+        profile_name = ""
+        if profile_file:
+            p = Path(profile_file)
+            if p.exists():
+                profile_name = p.name
+
+        # Discover node IP for constructing external URLs.
+        node_ip = os.environ.get("NODE_IP", "")
+        if not node_ip:
+            import socket
+            try:
+                node_ip = socket.gethostbyname(socket.gethostname())
+            except Exception:
+                node_ip = ""
+
+        # Discover ingress hosts if on K8s.
+        ingress_hosts: dict[str, str] = {}
+        gateway_nodeport = 0
+        if namespace:
+            try:
+                from kubernetes import client as k8s_client, config as k8s_config
+                try:
+                    k8s_config.load_incluster_config()
+                except Exception:
+                    k8s_config.load_kube_config()
+                net_v1 = k8s_client.NetworkingV1Api()
+                ingresses = net_v1.list_namespaced_ingress(namespace)
+                for ing in ingresses.items:
+                    for rule in (ing.spec.rules or []):
+                        host = rule.host or ""
+                        if host and rule.http:
+                            for path in rule.http.paths:
+                                svc_name = path.backend.service.name
+                                ingress_hosts[svc_name] = host
+                # Get envoy NodePort for gateway access.
+                core_v1 = k8s_client.CoreV1Api()
+                try:
+                    envoy_svc = core_v1.read_namespaced_service("envoy", namespace)
+                    for port in (envoy_svc.spec.ports or []):
+                        if port.name == "http" and port.node_port:
+                            gateway_nodeport = port.node_port
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        return {
+            "runtime": "kubernetes" if namespace else "compose",
+            "namespace": namespace,
+            "config_root": os.environ.get("CONFIG_ROOT", "/srv-config"),
+            "profile_file": profile_file,
+            "profile_name": profile_name,
+            "hostname": platform.node(),
+            "python_version": platform.python_version(),
+            "api_port": int(os.environ.get("BOOTSTRAP_API_PORT", "9100")),
+            "env": os.environ.get("MEDIA_STACK_ENV", "prod"),
+            "gateway_host": os.environ.get("APP_GATEWAY_HOST", ""),
+            "route_strategy": os.environ.get("ROUTE_STRATEGY", ""),
+            "node_ip": node_ip,
+            "gateway_nodeport": gateway_nodeport,
+            "ingress_hosts": ingress_hosts,
+        }
+
+    def _get_recent(self) -> dict[str, Any]:
+        """Query arr apps for recently added items."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        api_keys = self._discover_api_keys()
+        recent_endpoints: dict[str, tuple[str, int, str, str, str]] = {
+            # name: (host, port, path, title_field, date_field)
+            "sonarr": ("sonarr", 8989, "/api/v3/series?sortKey=dateAdded&sortDirection=descending", "title", "dateAdded"),
+            "radarr": ("radarr", 7878, "/api/v3/movie?sortKey=dateAdded&sortDirection=descending", "title", "dateAdded"),
+        }
+
+        def fetch_recent(name: str) -> tuple[str, list[dict[str, str]]]:
+            host, port, path, title_f, date_f = recent_endpoints[name]
+            key = api_keys.get(name, "")
+            if not key:
+                return name, []
+            try:
+                url = f"http://{host}:{port}{path}"
+                req = urllib.request.Request(url, headers={"X-Api-Key": key})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode())
+                items = data if isinstance(data, list) else []
+                return name, [
+                    {"title": str(it.get(title_f, ""))[:80], "added": str(it.get(date_f, ""))[:10]}
+                    for it in items[:5]
+                ]
+            except Exception:
+                return name, []
+
+        results: dict[str, list[dict[str, str]]] = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(fetch_recent, n) for n in recent_endpoints]
+            for f in as_completed(futures):
+                name, items = f.result()
+                results[name] = items
+        return {"recent": results}
+
+    def _get_profile(self) -> dict[str, Any]:
+        """Read and return the bootstrap profile YAML."""
+        import os
+        from pathlib import Path
+
+        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+        if not profile_file:
+            return {"profile": None, "error": "BOOTSTRAP_PROFILE_FILE not set"}
+        path = Path(profile_file)
+        if not path.exists():
+            return {"profile": None, "error": f"Profile not found: {profile_file}"}
+        try:
+            import yaml
+            with open(path) as f:
+                profile = yaml.safe_load(f) or {}
+            return {"profile": profile, "file": str(path)}
+        except ImportError:
+            # Fallback: return raw text
+            return {"profile_raw": path.read_text(encoding="utf-8"), "file": str(path)}
+        except Exception as exc:
+            return {"profile": None, "error": str(exc)[:120]}
+
+    def _restart_service(self, service_name: str) -> dict[str, Any]:
+        """Restart a single service container or pod."""
+        import os
+
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if namespace:
+            # Kubernetes: patch deployment to trigger rollout restart
+            try:
+                from kubernetes import client as k8s_client, config as k8s_config
+                try:
+                    k8s_config.load_incluster_config()
+                except Exception:
+                    k8s_config.load_kube_config()
+                apps_v1 = k8s_client.AppsV1Api()
+                patch = {"spec": {"template": {"metadata": {"annotations": {
+                    "bootstrap.media-stack.io/restart-trigger": str(int(time.time()))
+                }}}}}
+                apps_v1.patch_namespaced_deployment(service_name, namespace, body=patch)
+                return {"status": "restarted", "service": service_name, "method": "k8s-rollout"}
+            except Exception as exc:
+                return {"status": "error", "service": service_name, "error": str(exc)[:120]}
+        else:
+            # Docker Compose: restart container by name
+            try:
+                import docker
+                client = docker.from_env()
+                container = client.containers.get(service_name)
+                container.restart(timeout=30)
+                return {"status": "restarted", "service": service_name, "method": "docker-restart"}
+            except Exception as exc:
+                return {"status": "error", "service": service_name, "error": str(exc)[:120]}
+
+    def _test_webhook(self) -> dict[str, Any]:
+        """Send a test payload to all registered webhooks."""
+        urls = list(self.state.webhook_urls)
+        if not urls:
+            return {"status": "no_webhooks", "tested": 0}
+        test_payload = json.dumps({
+            "event": "test",
+            "action": "webhook_test",
+            "status": "ok",
+            "message": "This is a test webhook from Media Stack Controller.",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        }).encode("utf-8")
+        results: list[dict[str, Any]] = []
+        for url in urls:
+            try:
+                req = urllib.request.Request(
+                    url, data=test_payload, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    results.append({"url": url, "status": "ok", "code": resp.status})
+            except Exception as exc:
+                results.append({"url": url, "status": "error", "error": str(exc)[:80]})
+        return {"tested": len(results), "results": results}
+
+    def _get_envoy_stats(self) -> dict[str, Any]:
+        """Query Envoy admin for traffic stats."""
+        try:
+            req = urllib.request.Request("http://envoy:9901/stats?format=json")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            stats = data.get("stats", [])
+            result: dict[str, Any] = {"clusters": {}, "listener": {}}
+            for s in stats:
+                name = s.get("name", "")
+                val = s.get("value", 0)
+                # Per-cluster (service) stats
+                for svc in self._SERVICE_PROBES:
+                    prefix = f"cluster.{svc}."
+                    if name.startswith(prefix):
+                        if svc not in result["clusters"]:
+                            result["clusters"][svc] = {}
+                        key = name[len(prefix):]
+                        if key in ("upstream_rq_total", "upstream_rq_2xx", "upstream_rq_4xx",
+                                   "upstream_rq_5xx", "upstream_cx_total", "upstream_cx_active",
+                                   "upstream_rq_time"):
+                            result["clusters"][svc][key] = val
+                # Listener stats
+                if name.startswith("listener.") and ("downstream_cx" in name or "downstream_rq" in name):
+                    result["listener"][name] = val
+            return result
+        except Exception as exc:
+            return {"error": str(exc)[:80]}
+
+    def _get_download_history(self) -> dict[str, Any]:
+        """Get recent download history from arr apps."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        api_keys = self._discover_api_keys()
+        endpoints = {
+            "sonarr": ("sonarr", 8989, "/api/v3/history?pageSize=10&sortKey=date&sortDirection=descending"),
+            "radarr": ("radarr", 7878, "/api/v3/history?pageSize=10&sortKey=date&sortDirection=descending"),
+        }
+        def fetch(name: str) -> tuple[str, list[dict[str, str]]]:
+            host, port, path = endpoints[name]
+            key = api_keys.get(name, "")
+            if not key:
+                return name, []
+            try:
+                url = f"http://{host}:{port}{path}"
+                req = urllib.request.Request(url, headers={"X-Api-Key": key})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode())
+                records = data.get("records", data) if isinstance(data, dict) else data
+                if not isinstance(records, list):
+                    records = []
+                return name, [{"title": str(r.get("sourceTitle", ""))[:80],
+                               "quality": str(r.get("quality", {}).get("quality", {}).get("name", "")),
+                               "date": str(r.get("date", ""))[:19],
+                               "event": str(r.get("eventType", ""))}
+                              for r in records[:10]]
+            except Exception:
+                return name, []
+        results: dict[str, list] = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for f in as_completed([pool.submit(fetch, n) for n in endpoints]):
+                name, items = f.result()
+                results[name] = items
+        return {"history": results}
+
+    def _get_indexer_stats(self) -> dict[str, Any]:
+        """Get indexer performance stats from Prowlarr."""
+        api_keys = self._discover_api_keys()
+        key = api_keys.get("prowlarr", "")
+        if not key:
+            return {"error": "no_key"}
+        try:
+            url = "http://prowlarr:9696/api/v1/indexerstats"
+            req = urllib.request.Request(url, headers={"X-Api-Key": key})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode())
+            indexers = data.get("indexers", data) if isinstance(data, dict) else data
+            if not isinstance(indexers, list):
+                return {"indexers": []}
+            return {"indexers": [{"name": i.get("indexerName", ""), "queries": i.get("numberOfQueries", 0),
+                                  "grabs": i.get("numberOfGrabs", 0), "fails": i.get("numberOfFailedQueries", 0),
+                                  "avgResponseTime": i.get("averageResponseTime", 0)}
+                                 for i in indexers]}
+        except Exception as exc:
+            return {"error": str(exc)[:80]}
+
+    def _get_quality_profiles(self) -> dict[str, Any]:
+        """Get quality profiles from arr apps."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        api_keys = self._discover_api_keys()
+        endpoints = {
+            "sonarr": ("sonarr", 8989, "/api/v3/qualityprofile"),
+            "radarr": ("radarr", 7878, "/api/v3/qualityprofile"),
+        }
+        def fetch(name: str) -> tuple[str, list[dict[str, Any]]]:
+            host, port, path = endpoints[name]
+            key = api_keys.get(name, "")
+            if not key:
+                return name, []
+            try:
+                url = f"http://{host}:{port}{path}"
+                req = urllib.request.Request(url, headers={"X-Api-Key": key})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode())
+                return name, [{"id": p.get("id"), "name": p.get("name", ""), "cutoff": p.get("cutoff", 0)}
+                              for p in (data if isinstance(data, list) else [])]
+            except Exception:
+                return name, []
+        results: dict[str, list] = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for f in as_completed([pool.submit(fetch, n) for n in endpoints]):
+                name, items = f.result()
+                results[name] = items
+        return {"profiles": results}
+
+    def _get_import_lists(self) -> dict[str, Any]:
+        """Get import list status from arr apps."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        api_keys = self._discover_api_keys()
+        endpoints = {
+            "sonarr": ("sonarr", 8989, "/api/v3/importlist"),
+            "radarr": ("radarr", 7878, "/api/v3/importlist"),
+        }
+        def fetch(name: str) -> tuple[str, list[dict[str, Any]]]:
+            host, port, path = endpoints[name]
+            key = api_keys.get(name, "")
+            if not key:
+                return name, []
+            try:
+                url = f"http://{host}:{port}{path}"
+                req = urllib.request.Request(url, headers={"X-Api-Key": key})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode())
+                return name, [{"id": il.get("id"), "name": il.get("name", ""),
+                               "enabled": il.get("enabled", il.get("enableAutomaticAdd", False)),
+                               "type": il.get("listType", il.get("implementation", ""))}
+                              for il in (data if isinstance(data, list) else [])]
+            except Exception:
+                return name, []
+        results: dict[str, list] = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for f in as_completed([pool.submit(fetch, n) for n in endpoints]):
+                name, items = f.result()
+                results[name] = items
+        return {"import_lists": results}
+
+    def _get_backup(self) -> bytes:
+        """Create a JSON backup of all discoverable config."""
+        import os
+        from pathlib import Path
+        backup: dict[str, Any] = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "env": self._get_env(),
+            "state": self.state.to_dict(),
+        }
+        # Include profile
+        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+        if profile_file:
+            p = Path(profile_file)
+            if p.exists():
+                backup["profile_raw"] = p.read_text(encoding="utf-8", errors="replace")
+        return json.dumps(backup, indent=2, default=str).encode("utf-8")
+
+    def _get_namespaces(self) -> dict[str, Any]:
+        """List K8s namespaces with pod details, or compose project info."""
+        import os
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if namespace:
+            try:
+                from kubernetes import client as k8s_client, config as k8s_config
+                try:
+                    k8s_config.load_incluster_config()
+                except Exception:
+                    k8s_config.load_kube_config()
+                core_v1 = k8s_client.CoreV1Api()
+                apps_v1 = k8s_client.AppsV1Api()
+                all_ns = core_v1.list_namespace()
+                ns_results = []
+                for ns in all_ns.items:
+                    name = ns.metadata.name
+                    if "media" not in name and name != namespace:
+                        continue
+                    pods = core_v1.list_namespaced_pod(name)
+                    running = sum(1 for p in pods.items if p.status.phase == "Running")
+                    # Collect problem pods
+                    problems = []
+                    for p in pods.items:
+                        phase = p.status.phase
+                        if phase not in ("Running", "Succeeded"):
+                            reason = ""
+                            if p.status.container_statuses:
+                                for cs in p.status.container_statuses:
+                                    if cs.state.waiting:
+                                        reason = cs.state.waiting.reason or ""
+                                    elif cs.state.terminated:
+                                        reason = cs.state.terminated.reason or ""
+                            problems.append({
+                                "name": p.metadata.name,
+                                "phase": phase,
+                                "reason": reason,
+                            })
+                    ns_results.append({
+                        "namespace": name, "pods": len(pods.items),
+                        "running": running, "current": name == namespace,
+                        "problems": problems,
+                    })
+
+                # Per-service replica info + resource usage for current namespace
+                services: list[dict[str, Any]] = []
+                try:
+                    deployments = apps_v1.list_namespaced_deployment(namespace)
+                    for dep in deployments.items:
+                        svc: dict[str, Any] = {
+                            "name": dep.metadata.name,
+                            "replicas": dep.spec.replicas or 0,
+                            "ready": dep.status.ready_replicas or 0,
+                            "available": dep.status.available_replicas or 0,
+                            "image": "",
+                        }
+                        if dep.spec.template.spec.containers:
+                            svc["image"] = dep.spec.template.spec.containers[0].image or ""
+                            res = dep.spec.template.spec.containers[0].resources
+                            if res:
+                                if res.requests:
+                                    svc["cpu_request"] = str(res.requests.get("cpu", ""))
+                                    svc["mem_request"] = str(res.requests.get("memory", ""))
+                                if res.limits:
+                                    svc["cpu_limit"] = str(res.limits.get("cpu", ""))
+                                    svc["mem_limit"] = str(res.limits.get("memory", ""))
+                        services.append(svc)
+                except Exception:
+                    pass
+
+                # Pod-level resource usage from metrics API (best effort)
+                pod_metrics: list[dict[str, Any]] = []
+                try:
+                    custom = k8s_client.CustomObjectsApi()
+                    metrics = custom.list_namespaced_custom_object(
+                        "metrics.k8s.io", "v1beta1", namespace, "pods"
+                    )
+                    for item in metrics.get("items", []):
+                        pod_name = item.get("metadata", {}).get("name", "")
+                        for c in item.get("containers", []):
+                            usage = c.get("usage", {})
+                            pod_metrics.append({
+                                "pod": pod_name,
+                                "container": c.get("name", ""),
+                                "cpu": usage.get("cpu", ""),
+                                "memory": usage.get("memory", ""),
+                            })
+                except Exception:
+                    pass  # Metrics API may not be available
+
+                return {
+                    "namespaces": ns_results,
+                    "services": services,
+                    "pod_metrics": pod_metrics,
+                }
+            except Exception as exc:
+                return {"error": str(exc)[:120]}
+        # Docker Compose: get container stats (parallelized)
+        try:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import docker
+            client = docker.from_env()
+            containers = client.containers.list(all=True)
+            services: list[dict[str, Any]] = []
+            running_containers = []
+            running = 0
+            for c in containers:
+                name = c.name
+                status = c.status
+                is_running = status == "running"
+                if is_running:
+                    running += 1
+                    running_containers.append(c)
+                svc: dict[str, Any] = {
+                    "name": name,
+                    "replicas": 1,
+                    "ready": 1 if is_running else 0,
+                    "available": 1 if is_running else 0,
+                    "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                }
+                health = c.attrs.get("State", {}).get("Health", {}).get("Status", "")
+                if health:
+                    svc["health"] = health
+                services.append(svc)
+
+            # Parallel stats collection (each call blocks ~1s for CPU delta)
+            def _get_container_stats(c: Any) -> dict[str, Any] | None:
+                try:
+                    stats = c.stats(stream=False)
+                    cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+                    sys_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
+                    ncpus = stats["cpu_stats"].get("online_cpus", 1)
+                    cpu_pct = round((cpu_delta / sys_delta) * ncpus * 100, 2) if sys_delta > 0 else 0
+                    mem_usage = stats["memory_stats"].get("usage", 0)
+                    mem_limit = stats["memory_stats"].get("limit", 0)
+                    return {
+                        "pod": c.name, "container": c.name,
+                        "cpu": f"{cpu_pct}%",
+                        "memory": f"{round(mem_usage / 1024 / 1024, 1)}Mi" if mem_usage else "0",
+                        "mem_limit": f"{round(mem_limit / 1024 / 1024 / 1024, 1)}Gi" if mem_limit else "",
+                    }
+                except Exception:
+                    return None
+
+            pod_metrics: list[dict[str, Any]] = []
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [pool.submit(_get_container_stats, c) for c in running_containers]
+                for f in as_completed(futures):
+                    result = f.result()
+                    if result:
+                        pod_metrics.append(result)
+
+            problems = [{"name": c.name, "phase": c.status, "reason": c.attrs.get("State", {}).get("Error", "")}
+                        for c in containers if c.status not in ("running",)]
+            return {
+                "namespaces": [{"namespace": "compose", "pods": len(containers), "running": running,
+                                "current": True, "problems": problems}],
+                "services": services,
+                "pod_metrics": pod_metrics,
+            }
+        except Exception as exc:
+            return {"namespaces": [{"namespace": "compose", "current": True}], "error": str(exc)[:120]}
+
+    def _get_jellyfin_libraries(self) -> dict[str, Any]:
+        """Browse Jellyfin libraries."""
+        api_keys = self._discover_api_keys()
+        key = api_keys.get("jellyfin", "")
+        if not key:
+            return {"error": "no_key"}
+        try:
+            url = f"http://jellyfin:8096/Library/VirtualFolders"
+            req = urllib.request.Request(url, headers={"X-Emby-Token": key})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            libraries = []
+            for lib in (data if isinstance(data, list) else []):
+                libraries.append({
+                    "name": lib.get("Name", ""),
+                    "type": lib.get("CollectionType", "unknown"),
+                    "locations": lib.get("Locations", []),
+                    "itemId": lib.get("ItemId", ""),
+                })
+            return {"libraries": libraries}
+        except Exception as exc:
+            return {"error": str(exc)[:80]}
+
+    # --- New endpoints for round 4 ---
+
+    def _get_service_logs(self, service_name: str, lines: int = 100) -> dict[str, Any]:
+        """Get logs from a service container/pod."""
+        import os
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if namespace:
+            try:
+                from kubernetes import client as k8s_client, config as k8s_config
+                try:
+                    k8s_config.load_incluster_config()
+                except Exception:
+                    k8s_config.load_kube_config()
+                core_v1 = k8s_client.CoreV1Api()
+                pods = core_v1.list_namespaced_pod(namespace, label_selector=f"app={service_name}")
+                if not pods.items:
+                    return {"service": service_name, "error": "no pods found"}
+                pod_name = pods.items[0].metadata.name
+                log_text = core_v1.read_namespaced_pod_log(
+                    pod_name, namespace, tail_lines=lines, timestamps=True
+                )
+                return {"service": service_name, "pod": pod_name, "lines": log_text.splitlines()[-lines:]}
+            except Exception as exc:
+                return {"service": service_name, "error": str(exc)[:120]}
+        else:
+            try:
+                import docker
+                client = docker.from_env()
+                container = client.containers.get(service_name)
+                log_bytes = container.logs(tail=lines, timestamps=True)
+                log_text = log_bytes.decode("utf-8", errors="replace")
+                return {"service": service_name, "lines": log_text.splitlines()[-lines:]}
+            except Exception as exc:
+                return {"service": service_name, "error": str(exc)[:120]}
+
+    def _check_image_updates(self) -> dict[str, Any]:
+        """Compare running image digests for staleness detection."""
+        import os
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        results: list[dict[str, str]] = []
+        if namespace:
+            try:
+                from kubernetes import client as k8s_client, config as k8s_config
+                try:
+                    k8s_config.load_incluster_config()
+                except Exception:
+                    k8s_config.load_kube_config()
+                apps_v1 = k8s_client.AppsV1Api()
+                deps = apps_v1.list_namespaced_deployment(namespace)
+                for dep in deps.items:
+                    name = dep.metadata.name
+                    if dep.spec.template.spec.containers:
+                        c = dep.spec.template.spec.containers[0]
+                        image = c.image or ""
+                        # Extract tag/digest info
+                        if "@sha256:" in image:
+                            tag = "pinned (digest)"
+                        elif ":" in image.split("/")[-1]:
+                            tag = image.split(":")[-1]
+                        else:
+                            tag = "latest"
+                        results.append({"name": name, "image": image, "tag": tag})
+            except Exception as exc:
+                return {"error": str(exc)[:80]}
+        else:
+            try:
+                import docker
+                client = docker.from_env()
+                for c in client.containers.list():
+                    image = c.image.tags[0] if c.image.tags else str(c.image.short_id)
+                    tag = image.split(":")[-1] if ":" in image else "latest"
+                    results.append({"name": c.name, "image": image, "tag": tag})
+            except Exception as exc:
+                return {"error": str(exc)[:80]}
+        pinned = sum(1 for r in results if r["tag"] not in ("latest",))
+        return {"images": results, "total": len(results), "pinned": pinned}
+
+    def _get_manifests(self) -> dict[str, Any]:
+        """Return the compose file or kustomization content."""
+        import os
+        from pathlib import Path
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if namespace:
+            # Try common kustomization paths
+            for p in ["/opt/media-stack/k8s/kustomization.yaml", "/bootstrap-config/kustomization.yaml"]:
+                path = Path(p)
+                if path.exists():
+                    return {"type": "kustomize", "file": str(path),
+                            "content": path.read_text(encoding="utf-8", errors="replace")}
+            return {"type": "kubernetes", "info": f"namespace={namespace}", "content": ""}
+        else:
+            compose_file = os.environ.get("COMPOSE_FILE", "")
+            if compose_file and compose_file != "/dev/null":
+                path = Path(compose_file)
+                if path.exists():
+                    return {"type": "compose", "file": str(path),
+                            "content": path.read_text(encoding="utf-8", errors="replace")}
+            # Try common paths
+            for p in ["/opt/media-stack/docker/docker-compose.yml", "docker-compose.yml"]:
+                path = Path(p)
+                if path.exists():
+                    return {"type": "compose", "file": str(path),
+                            "content": path.read_text(encoding="utf-8", errors="replace")}
+            return {"type": "compose", "content": "", "error": "compose file not found"}
+
+    def _get_prometheus_metrics(self) -> str:
+        """Generate Prometheus-format metrics."""
+        lines: list[str] = []
+        # Health metrics
+        cached = _api_cache.get("health", 30)
+        if cached:
+            for svc, data in cached.get("services", {}).items():
+                up = 1 if data.get("status") == "ok" else 0
+                lines.append(f'media_stack_service_up{{service="{svc}"}} {up}')
+                if "ms" in data:
+                    lines.append(f'media_stack_service_response_ms{{service="{svc}"}} {data["ms"]}')
+                auth = 1 if data.get("auth") == "ok" else 0
+                lines.append(f'media_stack_service_auth_ok{{service="{svc}"}} {auth}')
+            lines.append(f'media_stack_healthy_total {cached.get("healthy", 0)}')
+            lines.append(f'media_stack_services_total {cached.get("total", 0)}')
+        # State metrics
+        state = self.state.to_dict()
+        phase_val = {"idle": 0, "running": 1, "complete": 2, "error": 3}.get(state.get("phase", ""), -1)
+        lines.append(f"media_stack_phase {phase_val}")
+        lines.append(f'media_stack_bootstrap_done {1 if state.get("initial_bootstrap_done") else 0}')
+        lines.append(f'media_stack_action_history_total {len(state.get("action_history", []))}')
+        return "\n".join(lines) + "\n"
+
+    def _batch_restart(self, service_names: list[str]) -> dict[str, Any]:
+        """Restart multiple services."""
+        results: dict[str, Any] = {}
+        for name in service_names:
+            if name in self._SERVICE_PROBES:
+                results[name] = self._restart_service(name)
+            else:
+                results[name] = {"status": "error", "error": f"unknown service '{name}'"}
+        ok = sum(1 for v in results.values() if v.get("status") == "restarted")
+        return {"results": results, "restarted": ok, "total": len(service_names)}
+
+    def _save_profile(self, content: str) -> dict[str, Any]:
+        """Save bootstrap profile YAML."""
+        import os
+        from pathlib import Path
+        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+        if not profile_file:
+            return {"error": "BOOTSTRAP_PROFILE_FILE not set"}
+        path = Path(profile_file)
+        try:
+            path.write_text(content, encoding="utf-8")
+            # Reload config
+            if self.reload_config:
+                self.reload_config()
+            return {"status": "saved", "file": str(path)}
+        except Exception as exc:
+            return {"error": str(exc)[:120]}
+
+    def _get_envvars(self) -> dict[str, str]:
+        """Return relevant environment variables."""
+        import os
+        relevant_prefixes = ("BOOTSTRAP_", "STACK_", "CONFIG_", "MEDIA_", "K8S_",
+                             "AUTO_", "COMPOSE_", "APP_", "ROUTE_", "ENVOY_")
+        return {k: v for k, v in sorted(os.environ.items())
+                if any(k.startswith(p) for p in relevant_prefixes)}
+
+    def _set_envvar(self, key: str, value: str) -> dict[str, Any]:
+        """Set an environment variable."""
+        import os
+        os.environ[key] = value
+        return {"status": "set", "key": key, "value": value}
+
+    def _get_rss_feed(self) -> str:
+        """Generate RSS/Atom feed of action events and health changes."""
+        state = self.state.to_dict()
+        history = state.get("action_history", [])
+        items = []
+        for a in reversed(history[-20:]):
+            status = "error" if a.get("error") else "complete"
+            title = f"Action: {a.get('name', '?')} — {status}"
+            desc = f"Duration: {a.get('elapsed_seconds', '?')}s"
+            if a.get("error"):
+                desc += f"\nError: {a['error']}"
+            items.append(f"""  <item>
+    <title>{title}</title>
+    <description><![CDATA[{desc}]]></description>
+    <category>{status}</category>
+  </item>""")
+        # Add current health summary as an item
+        cached = _api_cache.get("health", 60)
+        if cached:
+            healthy = cached.get("healthy", 0)
+            total = cached.get("total", 0)
+            items.insert(0, f"""  <item>
+    <title>Health: {healthy}/{total} services up</title>
+    <description><![CDATA[Last probe results]]></description>
+    <category>health</category>
+  </item>""")
+        channel_items = "\n".join(items)
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Media Stack Controller</title>
+  <description>Action events and health status</description>
+  <link>/</link>
+  <lastBuildDate>{time.strftime("%a, %d %b %Y %H:%M:%S %z")}</lastBuildDate>
+{channel_items}
+</channel>
+</rss>"""
+
+    def _get_grafana_dashboard(self) -> dict[str, Any]:
+        """Generate a Grafana dashboard JSON that queries /metrics."""
+        panels = []
+        y = 0
+        # Service up/down panel
+        panels.append({
+            "type": "stat", "title": "Services Up", "gridPos": {"h": 4, "w": 6, "x": 0, "y": y},
+            "targets": [{"expr": "media_stack_healthy_total", "legendFormat": "Healthy"}],
+            "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "red", "value": 0}, {"color": "green", "value": 14}]}}},
+        })
+        panels.append({
+            "type": "stat", "title": "Total Services", "gridPos": {"h": 4, "w": 6, "x": 6, "y": y},
+            "targets": [{"expr": "media_stack_services_total", "legendFormat": "Total"}],
+        })
+        panels.append({
+            "type": "stat", "title": "Bootstrap Done", "gridPos": {"h": 4, "w": 6, "x": 12, "y": y},
+            "targets": [{"expr": "media_stack_bootstrap_done", "legendFormat": "Done"}],
+            "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "No"}, "1": {"text": "Yes"}}}]}},
+        })
+        panels.append({
+            "type": "stat", "title": "Phase", "gridPos": {"h": 4, "w": 6, "x": 18, "y": y},
+            "targets": [{"expr": "media_stack_phase", "legendFormat": "Phase"}],
+            "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "Idle"}, "1": {"text": "Running"}, "2": {"text": "Complete"}, "3": {"text": "Error"}}}]}},
+        })
+        y += 4
+        # Per-service response time
+        panels.append({
+            "type": "timeseries", "title": "Service Response Time (ms)", "gridPos": {"h": 8, "w": 24, "x": 0, "y": y},
+            "targets": [{"expr": "media_stack_service_response_ms", "legendFormat": "{{service}}"}],
+            "fieldConfig": {"defaults": {"unit": "ms"}},
+        })
+        y += 8
+        # Per-service up/down
+        panels.append({
+            "type": "timeseries", "title": "Service Availability", "gridPos": {"h": 8, "w": 24, "x": 0, "y": y},
+            "targets": [{"expr": "media_stack_service_up", "legendFormat": "{{service}}"}],
+        })
+        return {
+            "__inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}],
+            "title": "Media Stack Controller",
+            "uid": "media-stack-controller",
+            "version": 1,
+            "time": {"from": "now-1h", "to": "now"},
+            "refresh": "30s",
+            "panels": panels,
+            "templating": {"list": []},
+            "schemaVersion": 39,
+        }
+
+    def _get_openapi_spec(self) -> dict[str, Any]:
+        """Generate OpenAPI 3.0 spec from registered endpoints."""
+        paths: dict[str, Any] = {}
+        get_endpoints = [
+            ("/healthz", "Liveness probe", {"status": "ok"}),
+            ("/readyz", "Readiness probe", {"status": "ready", "initial_bootstrap_done": True, "phase": "complete"}),
+            ("/status", "Full controller state", {}),
+            ("/apps", "All app statuses", {}),
+            ("/apps/{name}", "Single app status", {}),
+            ("/config", "Runtime config", {}),
+            ("/webhooks", "List webhook URLs", {}),
+            ("/api/health", "Live service health probes with auth validation", {}),
+            ("/api/versions", "Service version strings", {}),
+            ("/api/downloads", "Active download queues from qBittorrent/SABnzbd", {}),
+            ("/api/stats", "Library counts from arr apps", {}),
+            ("/api/indexers", "Prowlarr indexer list", {}),
+            ("/api/indexer-stats", "Prowlarr indexer performance stats", {}),
+            ("/api/disk", "Disk usage on media/config volumes", {}),
+            ("/api/env", "Runtime environment info, ingress hosts, node IP", {}),
+            ("/api/recent", "Recently added media from arr apps", {}),
+            ("/api/profile", "Bootstrap profile YAML", {}),
+            ("/api/health-history", "Persistent health history with SLA percentages", {}),
+            ("/api/logs/{service}", "Container/pod logs for a service (query: ?lines=N)", {}),
+            ("/api/image-updates", "Running image versions and tag info", {}),
+            ("/api/manifests", "Docker Compose or Kustomize manifest content", {}),
+            ("/api/envvars", "Relevant environment variables", {}),
+            ("/api/envoy/stats", "Envoy proxy traffic statistics", {}),
+            ("/api/download-history", "Download history from arr apps", {}),
+            ("/api/quality-profiles", "Quality profiles from arr apps", {}),
+            ("/api/import-lists", "Import list status from arr apps", {}),
+            ("/api/namespaces", "K8s namespaces or Compose containers with resource metrics", {}),
+            ("/api/libraries", "Jellyfin library listing", {}),
+            ("/api/backup", "Download full config backup as JSON", {}),
+            ("/api/feed.xml", "RSS feed of action events and health status", {}),
+            ("/api/grafana.json", "Grafana dashboard JSON for Prometheus", {}),
+            ("/api/openapi.json", "This OpenAPI specification", {}),
+            ("/metrics", "Prometheus metrics endpoint", {}),
+        ]
+        for path, desc, example in get_endpoints:
+            paths[path] = {"get": {
+                "summary": desc,
+                "responses": {"200": {"description": "Success",
+                    "content": {"application/json": {"example": example}} if not path.endswith((".xml", ".json")) or path == "/api/openapi.json" else {}}},
+            }}
+        post_endpoints = [
+            ("/actions/{name}", "Trigger an action (bootstrap, auto-indexers, reconcile, etc.)"),
+            ("/config", "Update runtime config"),
+            ("/webhooks", "Register a webhook URL"),
+            ("/webhooks/test", "Send test payload to all webhooks"),
+            ("/api/restart/{service}", "Restart a single service"),
+            ("/api/batch-restart", "Restart multiple services"),
+            ("/api/profile", "Save bootstrap profile YAML"),
+            ("/api/envvars", "Set an environment variable"),
+            ("/reload", "Reload bootstrap profile"),
+            ("/reset", "Reset controller state"),
+            ("/cancel", "Cancel running action"),
+        ]
+        for path, desc in post_endpoints:
+            if path not in paths:
+                paths[path] = {}
+            paths[path]["post"] = {"summary": desc, "responses": {"200": {"description": "Success"}}}
+        return {
+            "openapi": "3.0.3",
+            "info": {"title": "Media Stack Controller API", "version": "1.0.0",
+                     "description": "API for managing the media automation stack"},
+            "paths": paths,
+        }
+
+    def _load_plugins(self) -> str:
+        """Load custom JS/CSS from plugin mount directory."""
+        import os
+        from pathlib import Path
+        plugin_dir = Path(os.environ.get("PLUGIN_DIR", "/srv-config/controller-plugins"))
+        if not plugin_dir.exists():
+            return ""
+        parts: list[str] = []
+        # Load CSS files
+        for css in sorted(plugin_dir.glob("*.css")):
+            try:
+                parts.append(f"<style>/* plugin: {css.name} */\n{css.read_text(encoding='utf-8')}</style>")
+            except Exception:
+                pass
+        # Load JS files
+        for js in sorted(plugin_dir.glob("*.js")):
+            try:
+                parts.append(f"<script>/* plugin: {js.name} */\n{js.read_text(encoding='utf-8')}</script>")
+            except Exception:
+                pass
+        return "\n".join(parts)
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?")[0]  # strip query string for routing
@@ -741,8 +1645,88 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             self._sse_response()
         elif path == "/api/health":
             self._json_response(200, self._probe_services())
+        elif path == "/api/versions":
+            self._json_response(200, self._get_versions())
+        elif path == "/api/downloads":
+            self._json_response(200, self._get_downloads())
+        elif path == "/api/stats":
+            self._json_response(200, self._get_stats())
+        elif path == "/api/indexers":
+            self._json_response(200, self._get_indexers())
+        elif path == "/api/disk":
+            self._json_response(200, self._get_disk())
+        elif path == "/api/env":
+            self._json_response(200, self._get_env())
+        elif path == "/api/recent":
+            self._json_response(200, self._get_recent())
+        elif path == "/api/profile":
+            self._json_response(200, self._get_profile())
+        elif path == "/api/envoy/stats":
+            self._json_response(200, self._get_envoy_stats())
+        elif path == "/api/download-history":
+            self._json_response(200, self._get_download_history())
+        elif path == "/api/indexer-stats":
+            self._json_response(200, self._get_indexer_stats())
+        elif path == "/api/quality-profiles":
+            self._json_response(200, self._get_quality_profiles())
+        elif path == "/api/import-lists":
+            self._json_response(200, self._get_import_lists())
+        elif path == "/api/namespaces":
+            self._json_response(200, self._get_namespaces())
+        elif path == "/api/libraries":
+            self._json_response(200, self._get_jellyfin_libraries())
+        elif path == "/api/backup":
+            payload = self._get_backup()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Disposition", f'attachment; filename="media-stack-backup-{time.strftime("%Y%m%d-%H%M%S")}.json"')
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        elif path == "/api/health-history":
+            self._json_response(200, self._get_health_history())
+        elif path.startswith("/api/logs/") and path.count("/") == 3:
+            svc = path.split("/")[3]
+            lines = 100
+            if "?" in self.path:
+                for part in self.path.split("?", 1)[1].split("&"):
+                    if part.startswith("lines="):
+                        try:
+                            lines = min(500, int(part.split("=", 1)[1]))
+                        except ValueError:
+                            pass
+            self._json_response(200, self._get_service_logs(svc, lines))
+        elif path == "/api/image-updates":
+            self._json_response(200, self._check_image_updates())
+        elif path == "/api/manifests":
+            self._json_response(200, self._get_manifests())
+        elif path == "/api/envvars":
+            self._json_response(200, self._get_envvars())
+        elif path == "/metrics":
+            payload = self._get_prometheus_metrics().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        elif path == "/api/feed.xml":
+            payload = self._get_rss_feed().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/rss+xml; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        elif path == "/api/grafana.json":
+            self._json_response(200, self._get_grafana_dashboard())
+        elif path == "/api/openapi.json":
+            self._json_response(200, self._get_openapi_spec())
         elif path == "/" or path == "/dashboard":
-            self._html_response(200, _DASHBOARD_HTML)
+            html = _DASHBOARD_HTML
+            # Inject plugins before </body>
+            plugins = self._load_plugins()
+            if plugins:
+                html = html.replace("</body>", plugins + "\n</body>")
+            self._html_response(200, html)
         elif path == "/api/docs":
             self._html_response(200, _API_DOCS_HTML)
         else:
@@ -752,6 +1736,54 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         # POST /run — backward-compatible alias for /actions/bootstrap
         if self.path == "/run":
             self._handle_action("bootstrap")
+            return
+
+        # POST /api/restart/{service}
+        if self.path.startswith("/api/restart/"):
+            service_name = self.path[len("/api/restart/"):]
+            valid_services = set(self._SERVICE_PROBES.keys())
+            if service_name not in valid_services:
+                self._json_response(400, {"error": f"unknown service '{service_name}'", "valid": sorted(valid_services)})
+                return
+            result = self._restart_service(service_name)
+            status_code = 200 if result.get("status") == "restarted" else 500
+            self._json_response(status_code, result)
+            return
+
+        # POST /api/batch-restart — restart multiple services
+        if self.path == "/api/batch-restart":
+            body = self._read_json_body()
+            services = body.get("services", [])
+            if not services:
+                self._json_response(400, {"error": "services list required"})
+                return
+            self._json_response(200, self._batch_restart(services))
+            return
+
+        # POST /api/profile — save bootstrap profile
+        if self.path == "/api/profile":
+            body = self._read_json_body()
+            content = body.get("content", "")
+            if not content:
+                self._json_response(400, {"error": "content field required"})
+                return
+            self._json_response(200, self._save_profile(content))
+            return
+
+        # POST /api/envvars — set environment variable
+        if self.path == "/api/envvars":
+            body = self._read_json_body()
+            key = body.get("key", "")
+            value = body.get("value", "")
+            if not key:
+                self._json_response(400, {"error": "key field required"})
+                return
+            self._json_response(200, self._set_envvar(key, value))
+            return
+
+        # POST /webhooks/test
+        if self.path == "/webhooks/test":
+            self._json_response(200, self._test_webhook())
             return
 
         # POST /actions/{name}
