@@ -50,17 +50,58 @@ def _resolve_config_path(candidate: str | None = None) -> str | None:
 
 
 def _load_handler_specs(key: str) -> list[dict]:
-    """Load handler specs from bootstrap config by key name."""
+    """Load handler specs from per-service YAML and config.json.
+
+    Per-service YAML plugin.preflight_handler / plugin.post_setup_handler
+    are loaded first, then config.json specs are appended (deduped by name).
+    """
     import json
 
+    specs: list[dict] = []
+    seen_names: set[str] = set()
+
+    # 1. Load from per-service YAML (primary source)
+    handler_field = {
+        "container_preflight_handlers": "preflight_handler",
+        "container_post_setup_handlers": "post_setup_handler",
+    }.get(key)
+    if handler_field:
+        try:
+            from media_stack.api.services.registry import SERVICES, _find_services_dir
+            import yaml
+            svc_dir = _find_services_dir()
+            if svc_dir:
+                for yaml_file in sorted(svc_dir.glob("*.yaml")):
+                    if yaml_file.name.startswith("_"):
+                        continue
+                    try:
+                        data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+                        plugin = data.get("plugin") or {}
+                        handler = plugin.get(handler_field)
+                        if isinstance(handler, dict) and handler.get("handler"):
+                            name = handler.get("name", yaml_file.stem)
+                            if name not in seen_names:
+                                specs.append(handler)
+                                seen_names.add(name)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # 2. Load from config.json (backward compat, fills gaps)
     config_path = _resolve_config_path()
-    if not config_path:
-        return []
-    try:
-        cfg = json.loads(__import__("pathlib").Path(config_path).read_text(encoding="utf-8"))
-        return cfg.get(key) or []
-    except Exception:
-        return []
+    if config_path:
+        try:
+            cfg = json.loads(__import__("pathlib").Path(config_path).read_text(encoding="utf-8"))
+            for spec in cfg.get(key) or []:
+                name = spec.get("name", "")
+                if name and name not in seen_names:
+                    specs.append(spec)
+                    seen_names.add(name)
+        except Exception:
+            pass
+
+    return specs
 
 
 def _run_handler_specs(
