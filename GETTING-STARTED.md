@@ -83,11 +83,34 @@ The dashboard shows:
 
 Bootstrap takes 3-5 minutes. When the status shows **Complete**, everything is wired up.
 
+### Direct Access (Docker Compose)
+
+Every service is accessible on localhost immediately — no DNS setup required:
+
+| Service | URL | Port |
+|---|---|---|
+| **Controller Dashboard** | http://localhost:9100 | 9100 |
+| **Jellyfin** (watch stuff) | http://localhost:8096 | 8096 |
+| **Homepage** (start here) | http://localhost:3000 | 3000 |
+| **Jellyseerr** (request stuff) | http://localhost:5055 | 5055 |
+| **Sonarr** (TV) | http://localhost:8989 | 8989 |
+| **Radarr** (Movies) | http://localhost:7878 | 7878 |
+| **Prowlarr** (Indexers) | http://localhost:9696 | 9696 |
+| **Lidarr** (Music) | http://localhost:8686 | 8686 |
+| **Readarr** (Books) | http://localhost:8787 | 8787 |
+| **Bazarr** (Subtitles) | http://localhost:6767 | 6767 |
+| **qBittorrent** | http://localhost:8080 | 8080 |
+| **SABnzbd** | http://localhost:8085 | 8085 |
+| **Tautulli** (Analytics) | http://localhost:8181 | 8181 |
+| **Maintainerr** | http://localhost:6246 | 6246 |
+
+> **Override ports:** Set environment variables like `JELLYFIN_PORT=9096` to change the host port.
+
 ---
 
-## Step 3: Set Up DNS
+## Step 3: Set Up DNS (optional)
 
-After bootstrap completes, the dashboard shows your service URLs. To access them by name, add these to your hosts file:
+For cleaner URLs, you can add DNS entries. This is **optional** — direct port access works immediately.
 
 **Linux / macOS:** `/etc/hosts`
 **Windows:** `C:\Windows\System32\drivers\etc\hosts`
@@ -108,11 +131,11 @@ hostname -I | awk '{print $1}'    # Linux
 ipconfig getifaddr en0            # macOS
 ```
 
-### Verify your links work
+### Verify DNS links work
 
-After setting DNS, these should load in your browser:
+After setting DNS, these should also work:
 
-| Service | URL |
+| Service | DNS URL |
 |---|---|
 | **Homepage** (start here) | http://apps.media-stack.local/app/homepage |
 | **Jellyfin** (watch stuff) | http://jellyfin.media-stack.local |
