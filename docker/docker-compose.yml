@@ -553,7 +553,7 @@ services:
     container_name: media-stack-controller
     command:
       - python3
-      - /opt/media-stack/bin/bootstrap-apps.py
+      - /opt/media-stack/bin/controller.py
       - --serve
       - --config
       - /contracts/media-stack.config.json

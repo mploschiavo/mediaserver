@@ -2261,7 +2261,7 @@ spec:
             - python3
             - /opt/media-stack/bin/controller.py
             - --mode
-            - jellyfin-prewarm
+            - media-server-prewarm
             - --config
             - /bootstrap-config/config.json
             - --config-root
