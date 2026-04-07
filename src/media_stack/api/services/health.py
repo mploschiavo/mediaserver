@@ -13,36 +13,16 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from .registry import SERVICES, SERVICE_MAP
+
+# Build probe dicts from the service registry — no hardcoded service details here
 SERVICE_PROBES: dict[str, tuple[str, int, str]] = {
-    "jellyfin": ("jellyfin", 8096, "/System/Info/Public"),
-    "jellyseerr": ("jellyseerr", 5055, "/api/v1/status"),
-    "sonarr": ("sonarr", 8989, "/ping"),
-    "radarr": ("radarr", 7878, "/ping"),
-    "lidarr": ("lidarr", 8686, "/ping"),
-    "readarr": ("readarr", 8787, "/ping"),
-    "prowlarr": ("prowlarr", 9696, "/ping"),
-    "qbittorrent": ("qbittorrent", 8080, "/"),
-    "sabnzbd": ("sabnzbd", 8080, "/"),
-    "bazarr": ("bazarr", 6767, "/"),
-    "maintainerr": ("maintainerr", 6246, "/app/maintainerr/api/settings"),
-    "tautulli": ("tautulli", 8181, "/status"),
-    "homepage": ("homepage", 3000, "/"),
-    "envoy": ("envoy", 9901, "/ready"),
-    "plex": ("plex", 32400, "/identity"),
-    "flaresolverr": ("flaresolverr", 8191, "/"),
+    s.id: (s.host, s.port, s.health_path) for s in SERVICES
 }
 
 AUTH_PROBES: dict[str, tuple[str, int, str, str]] = {
-    "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
-    "radarr": ("radarr", 7878, "/api/v3/system/status", "X-Api-Key"),
-    "lidarr": ("lidarr", 8686, "/api/v1/system/status", "X-Api-Key"),
-    "readarr": ("readarr", 8787, "/api/v1/system/status", "X-Api-Key"),
-    "prowlarr": ("prowlarr", 9696, "/api/v1/system/status", "X-Api-Key"),
-    "bazarr": ("bazarr", 6767, "/api/system/status", "X-Api-Key"),
-    "jellyfin": ("jellyfin", 8096, "/System/Info", "X-Emby-Token"),
-    "jellyseerr": ("jellyseerr", 5055, "/api/v1/settings/main", "X-Api-Key"),
-    "sabnzbd": ("sabnzbd", 8080, "/api", "query:apikey"),
-    "tautulli": ("tautulli", 8181, "/api/v2", "query:apikey"),
+    s.id: (s.host, s.port, s.auth_path, s.auth_mode)
+    for s in SERVICES if s.auth_path
 }
 
 _HEALTH_HISTORY_PATH = Path(os.environ.get("HEALTH_HISTORY_PATH", "/tmp/media-stack-health-history.json"))
@@ -54,13 +34,8 @@ def discover_api_keys() -> dict[str, str]:
     config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
     keys: dict[str, str] = {}
 
-    env_map = {
-        "sonarr": "SONARR_API_KEY", "radarr": "RADARR_API_KEY",
-        "lidarr": "LIDARR_API_KEY", "readarr": "READARR_API_KEY",
-        "prowlarr": "PROWLARR_API_KEY", "bazarr": "BAZARR_API_KEY",
-        "sabnzbd": "SABNZBD_API_KEY", "jellyseerr": "JELLYSEERR_API_KEY",
-        "jellyfin": "JELLYFIN_API_KEY", "tautulli": "TAUTULLI_API_KEY",
-    }
+    # Built from registry — add a service to registry.py and it auto-discovers
+    env_map = {s.id: s.api_key_env for s in SERVICES if s.api_key_env}
     for app, env_key in env_map.items():
         val = (os.environ.get(env_key) or "").strip()
         if val:
