@@ -592,6 +592,11 @@ tr:hover{{background:#162230}}</style></head><body>
             self._json_response(200, config_svc.restore_backup(body))
             return
 
+        # POST /api/gpu/enable — auto-configure GPU transcoding in Jellyfin
+        if self.path == "/api/gpu/enable":
+            self._json_response(200, ops_svc.enable_gpu_transcoding())
+            return
+
         # POST /api/snapshot — take a config snapshot now
         if self.path == "/api/snapshot":
             self._json_response(200, ops_svc.take_snapshot())
