@@ -409,7 +409,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-sla',this)">Health SLA</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-traffic',this)">Traffic</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-timeline',this)">Timeline</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-timeline',this)">Action History</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-ns',this)">Containers</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-guardrails',this)">Storage</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-images',this)">Images</button>
@@ -433,7 +433,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="ops-bw" class="subtab" style="display:none">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:.82em">
         <label style="color:var(--fg2)">Refresh: <select id="bw-interval" onchange="setBwInterval()" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:1em">
-          <option value="5000">5s</option><option value="10000">10s</option><option value="15000">15s</option><option value="30000">30s</option><option value="60000" selected>60s</option><option value="120000">2m</option><option value="300000">5m</option><option value="600000">10m</option>
+          <option value="2000">2s</option><option value="5000">5s</option><option value="10000">10s</option><option value="15000">15s</option><option value="30000">30s</option><option value="60000" selected>60s</option><option value="120000">2m</option><option value="300000">5m</option><option value="600000">10m</option>
         </select></label>
         <label class="switch" style="width:34px;height:18px"><input type="checkbox" id="bw-auto" checked onchange="setBwInterval()"><span class="slider" style="border-radius:9px"></span></label>
         <span style="color:var(--fg3)">Auto-refresh</span>
@@ -1703,7 +1703,17 @@ function recordBandwidth(data){
   bwHistory.push({ts:Date.now(),total});if(bwHistory.length>60)bwHistory.shift();
 }
 function renderBandwidthChart(){
-  const canvas=document.getElementById('bw-canvas');if(!canvas||bwHistory.length<2)return;
+  const canvas=document.getElementById('bw-canvas');if(!canvas)return;
+  if(bwHistory.length<2){
+    const ctx=canvas.getContext('2d');canvas.width=canvas.offsetWidth;canvas.height=120;
+    ctx.clearRect(0,0,canvas.width,120);
+    ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--fg3').trim();
+    ctx.font='12px system-ui';ctx.textAlign='center';
+    ctx.fillText('Collecting traffic data... Chart appears after 2+ data points.',canvas.width/2,60);
+    ctx.font='10px system-ui';
+    ctx.fillText('Data collected every refresh interval. Switch to a shorter interval for faster results.',canvas.width/2,78);
+    return;
+  }
   const ctx=canvas.getContext('2d');const w=canvas.width=canvas.offsetWidth;const h=canvas.height=120;
   ctx.clearRect(0,0,w,h);
   // Calculate deltas (requests per interval)
