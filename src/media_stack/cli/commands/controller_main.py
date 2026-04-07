@@ -363,6 +363,8 @@ def _dispatch_action(
 
     if action_name == "bootstrap":
         _action_bootstrap(args, state)
+    elif action_name == "finalize":
+        _action_finalize(args, state)
     elif action_name == "auto-indexers":
         _action_auto_indexers(args, state)
     elif action_name == "restart-apps":
@@ -425,27 +427,39 @@ def _persist_preflight_keys_to_secret(state: object) -> None:
 
 
 def _action_bootstrap(args: argparse.Namespace, state: object) -> None:
-    """Full bootstrap pipeline: preflights + configure all apps + post-bootstrap."""
+    """Core bootstrap: preflights + configure arr apps + download clients.
+
+    Post-servarr steps (Jellyfin plugins/Live TV/prewarm, disk guardrails,
+    media hygiene, app restarts) run in the separate 'finalize' action
+    so bootstrap completes fast and downloads can start immediately.
+    """
     run_preflights = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
     if run_preflights:
         _run_preflights(state, args)
         _persist_preflight_keys_to_secret(state)
 
     runner, runtime_state = _build_runner(args)
-    bootstrap_error = None
-    try:
-        runner.run(runtime_state)
-    except Exception as run_exc:
-        bootstrap_error = run_exc
-        runtime_platform.log(f"[ERR] Bootstrap pipeline: {run_exc}")
-
-    # Post-bootstrap handlers run even on partial success.
-    _run_post_bootstrap(state, args)
-
-    if bootstrap_error:
-        raise bootstrap_error
-
+    runner.run(runtime_state)
     runtime_platform.log("[OK] Bootstrap completed successfully")
+
+
+def _action_finalize(args: argparse.Namespace, state: object) -> None:
+    """Deferred post-bootstrap: Jellyfin tuning, disk guardrails, hygiene, app restarts.
+
+    Runs after core bootstrap completes. These steps are important but
+    not required for downloads to start working.
+    """
+    runner, runtime_state = _build_runner(args)
+    # Post-servarr steps: Bazarr, Jellyseerr, Maintainerr, Jellyfin (libraries,
+    # plugins, Live TV, playback, home rails, auto-collections, prewarm).
+    try:
+        runner._run_post_servarr_steps(runtime_state)
+    except Exception as exc:
+        runtime_platform.log(f"[WARN] Finalize post-servarr: {exc}")
+
+    # Post-bootstrap handlers: restart apps, unpackerr config.
+    _run_post_bootstrap(state, args)
+    runtime_platform.log("[OK] Finalize completed")
 
 
 def _action_auto_indexers(args: argparse.Namespace, state: object) -> None:
@@ -653,13 +667,13 @@ def _run_serve(args: argparse.Namespace) -> None:
                     state.initial_bootstrap_done = True
                     runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
 
-                    # Auto-generate envoy config after first bootstrap.
-                    runtime_platform.log("[INFO] Auto-queuing envoy-config after bootstrap")
-                    action_queue.put(("envoy-config", {}))
-
-                    # Auto-queue indexer discovery in background after bootstrap.
-                    runtime_platform.log("[INFO] Auto-queuing auto-indexers after bootstrap")
-                    action_queue.put(("auto-indexers", {}))
+                    # Queue deferred steps: finalize (Jellyfin tuning, restarts,
+                    # guardrails), then envoy config, then indexer discovery.
+                    # Each runs as a separate action so the dashboard shows
+                    # progress and bootstrap is marked complete immediately.
+                    for queued in ["finalize", "envoy-config", "auto-indexers"]:
+                        runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
+                        action_queue.put((queued, {}))
 
                 break  # Success — exit retry loop.
 
