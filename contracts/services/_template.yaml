@@ -1,36 +1,141 @@
-# Service Template — copy this file and customize for your service.
+# =============================================================================
+# Service Template — Third-Party Developer Guide
+# =============================================================================
 #
-# File name should match the service id: myapp.yaml
-# Place in contracts/services/ and restart the controller.
+# To add a new service to the media stack:
+#   1. Copy this file to contracts/services/{your-service-id}.yaml
+#   2. Fill in the 'service' section (required)
+#   3. Add 'plugin' section for deeper integration (optional)
+#   4. Add 'defaults' section for runtime config defaults (optional)
+#   5. Restart the controller — your service appears automatically
 #
-# Only the 'service' section is required. 'plugin' and 'defaults'
-# are optional — add them when you need deeper integration.
+# NO Python code changes required for basic integration.
+# The service registry loads all *.yaml files from this directory.
+#
+# =============================================================================
+# WHAT YOU CAN DO WITHOUT CODE CHANGES:
+# =============================================================================
+#
+# Add a new service (e.g., Transmission as torrent client):
+#   - Create contracts/services/transmission.yaml
+#   - Set technology_bindings.torrent_client: transmission in profile YAML
+#   - Service appears in dashboard, health checks, key rotation
+#
+# Swap an implementation (e.g., Plex instead of Jellyfin):
+#   - Edit contracts/media-stack.profile.yaml
+#   - Set technology_bindings.media_server: plex
+#
+# Add a new technology role (e.g., subtitle_manager):
+#   - Add technology_bindings.subtitle_manager: bazarr in profile YAML
+#   - Reference it in phase plans as a component binding
+#
+# =============================================================================
+# WHAT REQUIRES PYTHON CODE:
+# =============================================================================
+#
+# Add a new edge router (e.g., Caddy, Nginx):
+#   - Create src/media_stack/core/edge/providers/caddy/provider.py
+#   - Define PROVIDER_KEY, ROUTER_SERVICE_NAMES, COMPOSE_LABEL_SPEC
+#   - Set routing.provider: caddy in profile YAML
+#
+# Add a new auth provider (e.g., Keycloak):
+#   - Add to auth_providers list in media-stack.catalog.yaml
+#   - Add middleware default in auth_provider_middleware_defaults
+#   - Set auth.provider: keycloak in profile YAML
+#
+# Add a new pipeline job (like bootstrap):
+#   - Requires Python: phase interpreter, action types, handler dispatch
+#   - Phase plans are YAML-configurable but action executors are Python
+#
+# =============================================================================
 
 service:
-  id: myapp                          # Unique identifier (required)
-  name: My App                       # Display name
-  desc: What this app does           # Short description
-  category: automation               # media | automation | downloads | management | infrastructure
-  host: myapp                        # Container/pod hostname
-  port: 8080                         # Primary HTTP port (0 = no HTTP)
-  health_path: /ping                 # Health check endpoint
-  # auth_path: /api/v1/status        # Auth validation endpoint (optional)
-  # auth_mode: X-Api-Key             # Auth header name or "query:param"
-  # api_key_env: MYAPP_API_KEY       # Env var for API key (optional)
-  # api_key_config: myapp/config.xml # Config file path for key discovery
-  # api_key_format: xml              # xml | ini | yaml | json | sqlite
-  # password_api_path: /api/v1/config/host  # Password change API (optional)
-  # profiles: [myprofile]            # Compose profiles (optional, empty = always on)
+  id: myapp                            # Unique identifier (required, matches filename)
+  name: My App                         # Display name
+  desc: What this app does             # Short description
+  category: automation                 # media | automation | downloads | management | infrastructure
+  host: myapp                          # Container/pod hostname
+  port: 8080                           # Primary HTTP port (0 = no HTTP)
+  health_path: /ping                   # Health check endpoint
 
-# Plugin capabilities — only needed for bootstrap pipeline integration
+  # --- Auth & API Key Discovery (optional) ---
+  # auth_path: /api/v1/status          # Endpoint to validate auth
+  # auth_mode: X-Api-Key              # Header name or "query:param"
+  # api_key_env: MYAPP_API_KEY        # Env var containing API key
+  # api_key_config: myapp/config.xml  # Config file path for key discovery
+  # api_key_format: xml               # xml | ini | yaml | json | sqlite
+  # password_api_path: /api/config    # Password change API endpoint
+  # password_config: myapp/config.ini # Config file for password changes
+
+  # --- Routing & Scaling Flags ---
+  # web_ui: true                      # Has browser-accessible interface (default: true)
+  # preserve_path_prefix: false       # API needs path prefix preserved (default: false)
+  # scalable: true                    # Managed by scale policy (default: true)
+  # scale_to_zero: false              # Starts at 0 replicas (default: false)
+
+  # --- Compose Profiles (optional) ---
+  # profiles: [myprofile]             # Docker Compose profiles (empty = always on)
+
+# =============================================================================
+# Plugin — deeper bootstrap pipeline integration (optional)
+# =============================================================================
 # plugin:
-#   technology: myapp
+#   technology: myapp                  # Technology identifier
+#   aliases:                           # Short names for CLI
+#     - ma
+#
+#   # --- Adapter Classes ---
+#   # Register adapters for specific roles (servarr, download_client, media_server)
 #   adapter_class: media_stack.services.apps.myapp:MyAppAdapter
+#   adapter_classes:
+#     download_client: media_stack.services.apps.myapp:MyAppDownloadAdapter
+#
+#   # --- Service Classes ---
+#   # Register Python service classes for dependency injection
+#   app_service_classes:
+#     myapp_service: media_stack.services.apps.myapp.service:MyAppService
+#   service_technology_map:
+#     myapp_service: myapp
+#
+#   # --- Event Handlers ---
+#   # Called during bootstrap pipeline phases (VALIDATE, ACQUIRE, RUN, ENSURE)
+#   event_handlers:
+#     ENSURE:
+#       ensure_myapp_config: media_stack.services.apps.myapp.ops:ensure_config
+#
+#   # --- Preflight Handlers ---
+#   # HTTP-based checks run before bootstrap (controller HTTP API)
+#   preflight_handler:
+#     name: myapp
+#     handler: media_stack.services.apps.myapp.http_preflight:run_preflight
+#     optional: true
+#
+#   # --- Compose Preflight ---
+#   # Docker-exec-based checks for Docker Compose deployments
+#   compose_preflight_handler: media_stack.services.apps.myapp.compose_preflight:ensure_access
+#
+#   # --- Phase Scripts ---
+#   # Python CLI modules called during K8s deploy phases
+#   phase_scripts:
+#     myapp_ensure: media_stack.services.apps.myapp.cli.ensure_main
+#
+#   # --- Call Handlers ---
+#   # Named handlers invoked by K8s job phase plans
+#   call_handlers:
+#     activate_myapp: media_stack.services.apps.myapp.hooks:activate
+#
+#   # --- Capabilities ---
 #   capabilities:
-#     my_capability: true
+#     my_feature: true
 
-# Default settings — merged into runtime config during bootstrap
+# =============================================================================
+# Defaults — runtime configuration defaults (optional)
+# =============================================================================
+# Merged into the runtime config during bootstrap.
+# Users can override these in their profile YAML.
+#
 # defaults:
-#   my_setting: my_value
-#   nested:
-#     deep_setting: true
+#   enabled: true
+#   required: false
+#   url: http://myapp:8080
+#   my_setting: default_value
