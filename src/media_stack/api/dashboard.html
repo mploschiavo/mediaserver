@@ -731,10 +731,14 @@ function renderServices(pf){
     const hlth=SVC_HEALTH[s.id],ms=SVC_MS[s.id],auth=SVC_AUTH[s.id],ver=svcVersions[s.id]||'';
     const pfEntry=pf?pf[s.id]:null,pfOk=pfEntry&&pfEntry.status==='ok';
     let dotCls='idle';
-    if(hlth==='ok'){dotCls='ok';okCount++;}else if(hlth==='error'){dotCls='error';errCount++;}else if(pfOk){dotCls='ok';okCount++;}else{pendCount++;}
+    if(hlth==='disabled'){dotCls='idle';pendCount++;}
+    else if(hlth==='ok'){dotCls='ok';okCount++;}else if(hlth==='error'){dotCls='error';errCount++;}else if(pfOk){dotCls='ok';okCount++;}else{pendCount++;}
     const meta=[];
-    if(hlth==='ok')meta.push('Running');else if(hlth==='error')meta.push('Down');
-    if(auth==='ok')meta.push('Auth OK');else if(auth==='unauthorized')meta.push('Auth Fail');else if(auth==='no_key')meta.push('No Key');
+    if(hlth==='disabled')meta.push('Not enabled');
+    else if(hlth==='ok')meta.push('Running');else if(hlth==='error')meta.push('Down');
+    if(hlth!=='disabled'){
+      if(auth==='ok')meta.push('Auth OK');else if(auth==='unauthorized')meta.push('Auth Fail');else if(auth==='no_key')meta.push('No Key');
+    }
     const isExp=expanded===s.id;
     html+='<div class="svc-row" onclick="toggleSvc(\''+s.id+'\')"><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"><span class="dot '+dotCls+'"></span><span class="sname">'+s.name+'</span>'+(ver?'<span class="sver">'+ver+'</span>':'')+'<span class="sms">'+(ms?ms+'ms':'')+'</span><span class="smeta">'+(meta.join(' · ')||'...')+sparkHtml(s.id)+resSparkHtml(s.id)+'</span></div>';
     html+='<div class="svc-detail" id="detail-'+s.id+'" style="display:'+(isExp?'block':'none')+'">';
@@ -1521,18 +1525,31 @@ async function loadGpuInfo(){
     h+='<div class="svc-row" style="cursor:default"><span class="dot '+(d.jellyfin_configured?'ok':'idle')+'"></span><span class="sname">HW Decoding</span><span class="smeta">'+(d.jellyfin_configured?'Enabled'+(d.jellyfin_hw_type?' ('+d.jellyfin_hw_type+')':''):'Not enabled in Jellyfin settings')+'</span></div>';
     h+='</div>';
     // Setup instructions
-    if(d.detected&&!d.jellyfin_has_gpu){
-      h+='<div class="action-group"><div class="action-group-title">How to Enable</div>';
-      h+='<div style="font-size:.85em;color:var(--fg2);margin-bottom:6px">GPU detected on host but not passed to Jellyfin. Add these to the jellyfin service in docker-compose.yml:</div>';
-      const isNv=d.gpus.some(g=>g.type==='nvidia');
+    h+='<div class="action-group"><div class="action-group-title">How to Enable</div>';
+    if(d.host_os==='darwin'){
+      h+='<div style="font-size:.85em;color:var(--warn)">GPU passthrough is not available on macOS. Docker Desktop uses a Linux VM without GPU access. Hardware transcoding requires deploying on a Linux host.</div>';
+    }else if(d.host_os==='windows'){
+      h+='<div style="font-size:.85em;color:var(--fg2)">Windows requires Docker Desktop with WSL2 + NVIDIA Container Toolkit.<br>See: <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit" target="_blank" style="color:var(--blue)">NVIDIA Container Toolkit docs</a></div>';
+    }else if(d.runtime==='kubernetes'){
+      h+='<div style="font-size:.85em;color:var(--fg2)">On Kubernetes, add GPU resource limits to the Jellyfin deployment:</div>';
+      h+='<pre class="profile-pre" style="margin-top:6px">resources:\n  limits:\n    nvidia.com/gpu: 1</pre>';
+      h+='<div style="font-size:.82em;color:var(--fg3);margin-top:4px">Requires NVIDIA GPU Operator or device plugin installed on the cluster.</div>';
+    }else if(d.detected&&!d.jellyfin_has_gpu){
+      h+='<div style="font-size:.85em;color:var(--fg2);margin-bottom:6px">GPU detected but not passed to Jellyfin. Two options:</div>';
+      const isNv=d.gpus.some(g=>g.type==='nvidia'||g.type?.includes('nvidia'));
+      h+='<div style="font-size:.85em;color:var(--fg2);margin:4px 0"><b>Option 1:</b> Use the NVIDIA compose profile (easiest)</div>';
+      h+='<pre class="profile-pre">docker compose --profile nvidia up -d</pre>';
+      h+='<div style="font-size:.85em;color:var(--fg2);margin:8px 0 4px"><b>Option 2:</b> Edit docker-compose.yml manually</div>';
       if(isNv){h+='<pre class="profile-pre">    runtime: nvidia\n    environment:\n      - NVIDIA_VISIBLE_DEVICES=all\n      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility</pre>';}
       else{h+='<pre class="profile-pre">    devices:\n      - /dev/dri:/dev/dri\n    group_add:\n      - "44"   # video\n      - "109"  # render</pre>';}
-      h+='<div style="font-size:.82em;color:var(--fg3);margin-top:4px">After updating compose, run: <code>docker compose up -d jellyfin</code></div></div>';
+      h+='<div style="font-size:.82em;color:var(--fg3);margin-top:4px">Then: <code>docker compose up -d jellyfin</code></div>';
     }else if(d.detected&&d.jellyfin_has_gpu&&!d.jellyfin_configured){
-      h+='<div style="font-size:.85em;color:var(--warn);margin-top:6px">GPU is passed through but HW decoding is not enabled in Jellyfin. Go to Jellyfin → Dashboard → Playback → Transcoding and select your hardware acceleration type.</div>';
+      h+='<div style="font-size:.85em;color:var(--warn)">GPU is passed through but HW decoding not enabled in Jellyfin.<br>Go to: Jellyfin → Dashboard → Playback → Transcoding → select hardware acceleration type.</div>';
     }else if(!d.detected){
-      h+='<div style="font-size:.85em;color:var(--fg3);margin-top:6px">To verify your host has a GPU, run on the host:<br><code>ls /dev/dri/ && lspci | grep -iE "VGA|Display|3D"</code></div>';
+      h+='<div style="font-size:.85em;color:var(--fg2)">No GPU detected in any container. To check if your host has a GPU:</div>';
+      h+='<pre class="profile-pre" style="margin-top:6px"># Linux\nls /dev/dri/ && lspci | grep -iE "VGA|Display|3D"\n\n# Windows (PowerShell)\nGet-WmiObject Win32_VideoController | Select Name\n\n# macOS\nsystem_profiler SPDisplaysDataType | grep Chipset</pre>';
     }
+    h+='</div>';
     document.getElementById('gpu-info').innerHTML=h;
   }catch(e){document.getElementById('gpu-info').innerHTML='Error: '+e;}
 }

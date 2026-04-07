@@ -127,6 +127,36 @@ def discover_api_keys() -> dict[str, str]:
     return keys
 
 
+def _get_running_containers() -> set[str]:
+    """Get names of running containers (compose) or pods (K8s)."""
+    namespace = os.environ.get("K8S_NAMESPACE", "")
+    names: set[str] = set()
+    if namespace:
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            v1 = k8s_client.CoreV1Api()
+            pods = v1.list_namespaced_pod(namespace)
+            for p in pods.items:
+                if p.status.phase == "Running":
+                    labels = p.metadata.labels or {}
+                    names.add(labels.get("app", p.metadata.name))
+        except Exception:
+            pass
+    else:
+        try:
+            import docker
+            client = docker.from_env()
+            for c in client.containers.list():
+                names.add(c.name)
+        except Exception:
+            pass
+    return names
+
+
 def probe_services(cache: Any) -> dict[str, Any]:
     """Probe all services: reachability + authenticated API validation."""
     cached = cache.get("health", 10)
@@ -135,8 +165,12 @@ def probe_services(cache: Any) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     api_keys = discover_api_keys()
+    running = _get_running_containers()
 
     def probe(name: str) -> tuple[str, dict[str, Any]]:
+        # Skip services that aren't running (behind inactive profiles)
+        if running and name not in running:
+            return name, {"status": "disabled", "auth": "n/a", "ms": 0}
         host, port, path = SERVICE_PROBES[name]
         result: dict[str, Any] = {"status": "unknown"}
         t0 = time.time()

@@ -237,9 +237,22 @@ def get_gpu_info() -> dict[str, Any]:
         except FileNotFoundError:
             pass
 
+    # Detect host platform
+    import platform
+    host_os = platform.system().lower()
+    result["host_os"] = host_os
+    namespace = os.environ.get("K8S_NAMESPACE", "")
+    result["runtime"] = "kubernetes" if namespace else "compose"
+
     if not result["detected"]:
-        result["note"] = ("No containers have GPU devices mounted. Your host may have a GPU but it needs "
-                          "to be passed through to containers. Check your host: ls /dev/dri/ && lspci | grep VGA")
+        if host_os == "darwin":
+            result["note"] = "GPU passthrough is not supported on macOS (Docker Desktop uses a Linux VM). Hardware transcoding requires a Linux Docker host."
+        elif host_os == "windows":
+            result["note"] = "GPU passthrough on Windows requires Docker Desktop with WSL2 backend and NVIDIA Container Toolkit. See: docs.nvidia.com/datacenter/cloud-native/container-toolkit"
+        elif namespace:
+            result["note"] = "On Kubernetes, request GPU via resource limits: nvidia.com/gpu: 1 in the Jellyfin pod spec."
+        else:
+            result["note"] = "No containers have GPU devices mounted. To enable, update docker-compose.yml and redeploy."
 
     # Check if Jellyfin container has GPU passthrough
     try:
