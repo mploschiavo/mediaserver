@@ -96,11 +96,22 @@ def update_routing(updates: dict[str, Any], action_trigger: Callable | None = No
             changed.append("gateway_host")
         if not changed:
             return {"status": "no_changes", "routing": routing}
-        with open(profile_path, "w") as f:
-            yaml.dump(profile, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        # Try to persist — file may be read-only in container
+        persisted = False
+        try:
+            with open(profile_path, "w") as f:
+                yaml.dump(profile, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            persisted = True
+        except OSError:
+            pass  # Read-only mount — changes are in-memory only
         if action_trigger:
-            action_trigger("envoy-config", {})
-        return {"status": "updated", "changed": changed, "routing": routing}
+            action_trigger("envoy-config", {"routing_overrides": routing})
+        return {
+            "status": "updated",
+            "persisted": persisted,
+            "changed": changed,
+            "routing": routing,
+        }
     except Exception as exc:
         return {"error": str(exc)[:200]}
 
