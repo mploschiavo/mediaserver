@@ -31,13 +31,28 @@ def get_disk() -> dict[str, Any]:
         if path.exists():
             try:
                 usage = disk_usage(path)
-                results[label] = {
+                # Detect filesystem type
+                fstype = ""
+                try:
+                    with open("/proc/mounts") as f:
+                        for line in f:
+                            parts = line.split()
+                            if len(parts) >= 3 and parts[1] == str(path) or str(path).startswith(parts[1] + "/"):
+                                fstype = parts[2]
+                except Exception:
+                    pass
+                entry: dict[str, Any] = {
                     "path": str(path),
                     "total_bytes": usage.total,
                     "used_bytes": usage.used,
                     "free_bytes": usage.free,
                     "percent_used": round(usage.used / usage.total * 100, 1) if usage.total else 0,
                 }
+                if fstype:
+                    entry["fstype"] = fstype
+                if fstype in ("tmpfs", "ramfs"):
+                    entry["warning"] = "RAM-backed filesystem — data lost on reboot"
+                results[label] = entry
             except Exception as exc:
                 results[label] = {"path": str(path), "error": str(exc)[:80]}
         else:

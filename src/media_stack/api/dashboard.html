@@ -708,7 +708,9 @@ async function loadDisk(){
     let h='';for(const[k,v]of Object.entries(disks)){
       if(v.error){h+='<div class="stat-item"><span class="label">'+k+'</span><span class="val" style="color:var(--fg3)">'+v.error+'</span></div>';continue;}
       const pct=v.percent_used||0;const cls=pct>gMax?'crit':pct>gTarget?'warn':'';
-      h+='<div class="stat-item"><span class="label">'+k+'</span><span class="val">'+fmtBytes(v.used_bytes)+' / '+fmtBytes(v.total_bytes)+' ('+pct.toFixed(1)+'%)</span></div>';
+      const fst=v.fstype?' <span style="font-size:.75em;color:var(--fg3)">['+v.fstype+']</span>':'';
+      h+='<div class="stat-item"><span class="label">'+k+fst+'</span><span class="val">'+fmtBytes(v.used_bytes)+' / '+fmtBytes(v.total_bytes)+' ('+pct.toFixed(1)+'%)</span></div>';
+      if(v.warning){h+='<div style="font-size:.72em;color:var(--warn);margin-bottom:2px">&#9888; '+v.warning+'</div>';}
       h+='<div class="disk-bar">';
       if(gEnabled){h+='<div class="disk-thresh target" style="left:'+gTarget+'%" title="Target: '+gTarget+'%"></div>';
         h+='<div class="disk-thresh max" style="left:'+gMax+'%" title="Max: '+gMax+'% — cleanup triggers"></div>';}
