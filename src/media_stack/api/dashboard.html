@@ -713,7 +713,12 @@ async function loadDisk(){
       if(gEnabled){h+='<div class="disk-thresh target" style="left:'+gTarget+'%" title="Target: '+gTarget+'%"></div>';
         h+='<div class="disk-thresh max" style="left:'+gMax+'%" title="Max: '+gMax+'% — cleanup triggers"></div>';}
       h+='<div class="disk-fill '+cls+'" style="width:'+pct+'%"></div></div>';
-      if(gEnabled&&pct>gTarget){h+='<div style="font-size:.72em;color:var(--fg3);margin-bottom:4px">Guardrail: '+(pct>gMax?'<span style="color:var(--err)">cleanup will trigger</span>':'<span style="color:var(--warn)">approaching threshold</span>')+' (target '+gTarget+'% / max '+gMax+'%)</div>';}}
+      if(gEnabled&&pct>gTarget){
+        const overMax=pct>gMax;
+        const statusText=overMax?'<span style="color:var(--err)">over threshold</span>':'<span style="color:var(--warn)">approaching threshold</span>';
+        h+='<div style="font-size:.72em;color:var(--fg3);margin-bottom:4px">'+statusText+' ('+pct.toFixed(1)+'% used, target '+gTarget+'%, max '+gMax+'%)';
+        if(overMax)h+=' — <a href="#" onclick="event.preventDefault();showTab(\'tab-ops\',document.querySelector(\'#main-tabs button:nth-child(4)\'));setTimeout(()=>document.querySelector(\'[onclick*=ops-guardrails]\')?.click(),100)" style="color:var(--blue);font-size:1em">view cleanup details</a>';
+        h+='</div>';}}
     document.getElementById('stats-disk').innerHTML=h||'No volumes found';
     renderGuardrailConfig();}}catch(e){}
 }
@@ -765,7 +770,13 @@ async function previewCleanup(){
   try{const r=await fetch('/api/cleanup-preview');const d=await r.json();
     if(d.error){el.innerHTML='<span class="error">'+d.error+'</span>';return;}
     if(!d.candidates||!d.candidates.length){
-      el.innerHTML='<div style="color:var(--fg3);font-size:.88em">No torrents match cleanup criteria.'+(d.message?' '+d.message:'')+'</div>';return;}
+      let noMsg='<div style="font-size:.88em">';
+      if(d.message){noMsg+='<span style="color:var(--fg3)">'+d.message+'</span>';}
+      else if(d.over_threshold){
+        noMsg+='<span style="color:var(--warn)">Disk is over '+d.max_used_percent+'% threshold, but no completed torrents meet the cleanup criteria.</span>';
+        noMsg+='<div style="color:var(--fg3);margin-top:4px;font-size:.9em">Possible reasons:<ul style="margin:4px 0;padding-left:20px"><li>No completed torrents in qBittorrent</li><li>All torrents are younger than the min age setting</li><li>No torrents have reached the min seed ratio</li><li>Consider lowering min age/ratio thresholds, or free space manually</li></ul></div>';
+      }else{noMsg+='<span style="color:var(--ok)">Disk usage is within threshold — no cleanup needed.</span>';}
+      noMsg+='</div>';el.innerHTML=noMsg;return;}
     let h='<div style="font-size:.85em;margin-bottom:6px;color:var(--fg2)">';
     h+=d.over_threshold?'<span class="warn">Disk over '+d.max_used_percent+'% — cleanup would trigger</span>':'<span style="color:var(--ok)">Disk below '+d.max_used_percent+'% — no cleanup needed yet</span>';
     h+=' · <b>'+d.total_candidates+'</b> torrent(s) eligible for deletion</div>';
