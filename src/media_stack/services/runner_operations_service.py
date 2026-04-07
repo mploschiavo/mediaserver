@@ -2,32 +2,19 @@
 
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .adapter_factory import load_adapter_class
 from .enums import RunnerEvent
 
 OperationHandler = Callable[..., Any]
 
 
 def _load_handler_from_spec(spec: str) -> OperationHandler:
-    raw = str(spec or "").strip()
-    if ":" not in raw:
-        raise ValueError(
-            f"Invalid operation handler spec '{raw}'. Expected 'module.submodule:callable_name'."
-        )
-    module_name, attr_name = raw.rsplit(":", 1)
-    module_name = module_name.strip()
-    attr_name = attr_name.strip()
-    if not module_name or not attr_name:
-        raise ValueError(
-            f"Invalid operation handler spec '{raw}'. Expected 'module.submodule:callable_name'."
-        )
-    module = importlib.import_module(module_name)
-    handler = getattr(module, attr_name, None)
-    if handler is None or not callable(handler):
-        raise TypeError(f"Operation handler spec '{raw}' does not resolve to a callable.")
+    handler = load_adapter_class(spec, base_class=None, role="operation_handler")
+    if not callable(handler):
+        raise TypeError(f"Operation handler spec '{spec}' does not resolve to a callable.")
     return handler
 
 
