@@ -1,6 +1,17 @@
+# MythTV — alternative media server (community)
+# To use: set technology_bindings.media_server: mythtv in profile YAML
+
+service:
+  id: mythtv
+  name: MythTV
+  desc: PVR and media server
+  category: media
+  host: mythtv
+  port: 6544
+  health_path: /
 plugin:
+  technology: mythtv
+  aliases:
+    - myth
   adapter_classes:
     media_server: media_stack.services.media_server_adapters.mythtv:MythTvMediaServerAdapter
-  aliases:
-  - myth
-  technology: mythtv
