@@ -2,14 +2,17 @@
 
 `contracts/media-stack.profile.yaml` is the canonical deployment profile for rebuild/install defaults.
 
-It is intentionally brief and strict:
-- platform target (`metadata.platform`)
+It is the single file that defines a deployment:
+- platform target (`metadata.platform`: compose | k8s)
 - environment purpose (`metadata.purpose`)
 - stack identity (`metadata.name`)
 - storage + network intent (`resources.*`)
 - install tier (`install_profile`: `minimal` | `standard` | `full`)
 - optional per-app overrides (`apps`)
+- bootstrap behavior (`bootstrap` — preconfigure, indexer sync, health refresh)
+- technology bindings (`technology_bindings` — which implementation for each role)
 - routing/auth posture (`routing` + `auth`)
+- service-level auth (`app_auth` — set passwords on Sonarr, Radarr, etc.)
 - optional chaos recovery test window (`chaos`)
 - Live TV source defaults (`live_tv_defaults`)
 
@@ -17,7 +20,7 @@ It is intentionally brief and strict:
 
 - Profile: `contracts/media-stack.profile.yaml`
 - Schema: `contracts/media-stack.profile.schema.json`
-- Validator: `bash bin/validate-bootstrap-profile.sh`
+- Validator: `bash bin/utils/validate-bootstrap-profile.sh`
 - Example set: `examples/bootstrap-profiles/`
 
 ## Canonical Example
@@ -47,6 +50,16 @@ bootstrap:
   preconfigure_api_keys: true
   apply_initial_preferences: true
   auto_download_content: false
+  trigger_indexer_sync: true
+  refresh_health_after_setup: true
+
+# Role-to-technology mappings — swap implementations here
+technology_bindings:
+  torrent_client: qbittorrent
+  usenet_client: sabnzbd
+  media_server: jellyfin
+  request_manager: jellyseerr
+  indexer_manager: prowlarr
 
 routing:
   internet_exposed: false
@@ -62,6 +75,15 @@ routing:
 auth:
   enabled: false
   provider: none
+
+# Service-level auth (set passwords on Sonarr, Radarr, etc.)
+app_auth:
+  enabled: true
+  method: Forms
+  required: DisabledForLocalAddresses
+  fail_on_error: false
+  username_env: STACK_ADMIN_USERNAME
+  password_env: STACK_ADMIN_PASSWORD
 
 chaos:
   enabled: false
@@ -117,8 +139,8 @@ Chaos keys:
 
 ## Live TV URLs Used In Code
 
-These profile defaults intentionally match the current bootstrap config defaults in
-`contracts/media-stack.config.json` (`jellyfin_livetv` section):
+These profile defaults match the Jellyfin per-service YAML defaults
+(`contracts/services/jellyfin.yaml` livetv section):
 
 - Tuner playlist: `https://iptv-org.github.io/iptv/countries/us.m3u`
 - XMLTV guide: `https://iptv-epg.org/files/epg-us.xml`
@@ -138,6 +160,6 @@ bash bin/deploy-stack.sh \
 Quick validation:
 
 ```bash
-bash bin/validate-bootstrap-profile.sh
-bash bin/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-k8s-full.yaml
+bash bin/utils/validate-bootstrap-profile.sh
+bash bin/utils/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-k8s-full.yaml
 ```

@@ -11,8 +11,8 @@ Design model reference:
 
 Swaps are controlled by:
 
-1. `technology_bindings` in `contracts/media-stack.config.json`
-2. Per-technology plugin manifests in `src/media_stack/contracts/plugins/<technology>/manifest.json`
+1. `technology_bindings` in `contracts/media-stack.profile.yaml`
+2. Per-service YAML in `contracts/services/<technology>.yaml` (plugin section)
 3. Per-technology adapter/service modules under `src/media_stack/services/...`
 
 ## Manifest Contract Surface
@@ -145,7 +145,7 @@ Bootstrap handler wiring now calls Jellyfin operations from this app-local bound
 4. Validate config:
 
 ```bash
-bash bin/validate-bootstrap-config.sh --config contracts/media-stack.config.json --schema contracts/media-stack.schema.json
+bash bin/utils/validate-bootstrap-config.sh
 ```
 
 5. Verify manifest contracts and swap matrix:
@@ -174,7 +174,7 @@ Bootstrap wrapper flow is config-first:
 - `phase_plan[*].when`: declarative condition object (`all_of`, `any_of`, `not`, `var`, `equals`, `in`, `truthy`, `exists`).
 - `phase_plan[*].skip_flag`: generates CLI flags (for example `skip_torrent_client_ensure` => `--skip-torrent-client-ensure`).
 
-Legacy flag aliases remain supported (`--skip-qbit-ensure`, `--skip-sab-ensure`, `--skip-jellyfin-bootstrap`) for backward compatibility.
+Skip flags are auto-generated from phase plan keys (e.g., `skip_torrent_client_ensure` => `--skip-torrent-client-ensure`).
 
 ### Example: Jellyfin -> Plex
 

@@ -1,52 +1,72 @@
-# Scripts Lifecycle Guide
+# Scripts Directory
 
-This directory intentionally contains both:
-- stable shell entrypoints (`*.sh`) for operators
-- framework/orchestration Python CLIs in `src/media_stack/cli/commands/`
-- app-specific Python CLIs in `src/media_stack/services/apps/<app>/cli/`
+## Structure
+
+```
+bin/
+  install.sh              # Pre-deploy stack setup
+  deploy-stack.sh         # Deploy to K8s
+  bootstrap-all.sh        # Full K8s bootstrap pipeline
+  run-bootstrap-job.sh    # Bootstrap job runner
+  build-controller-image.sh # Build Docker image
+  test.sh                 # Run test suite
+  with-env.sh             # Load env file + run command
+  controller.py           # Controller entrypoint
+
+  lib/
+    run-python-cli.sh     # Python CLI resolver (used by all wrappers)
+
+  utils/                  # Operational utilities
+    validate-bootstrap-config.sh
+    validate-bootstrap-profile.sh
+    backup-stack.sh / restore-stack.sh
+    generate-secrets.sh
+    setup-lan-tls.sh
+    stack-status.sh
+    apply-scale-policy.sh
+    set-pvc-storage-class.sh
+    prepare-host.sh / fix-media-perms.sh
+    render-hosts-example.sh / render-dnsmasq-snippet.sh
+
+  debug/                  # Per-service debugging
+    ensure-qbit-credentials.sh
+    ensure-sabnzbd-api-access.sh
+    ensure-jellyfin-bootstrap.sh
+    seed-jellyseerr-local-admin.sh
+    sync-unpackerr-keys.sh
+    reset-qbit-webui-auth.sh
+    set-jellyfin-api-key.sh / set-qbit-secret.sh
+    toggle-jellyfin-intel-gpu.sh
+    reconcile-jellyfin-home-rails.sh
+    run-prowlarr-auto-indexers.sh
+    capture-k8s-snapshots.sh
+
+  test/                   # Test and verification
+    deploy-verify.sh / verify-flow.sh
+    microk8s-smoke-test.sh
+    run-playwright-smoke.sh / run-playwright-screenshots.sh
+    run-api-e2e.sh / run-integration-test.sh
+    fast-first-run.sh / watch-install.sh
+
+  k8s/                    # K8s-specific
+    microk8s-reconcile.sh
+    microk8s-patch-ingress-class.sh
+
+  docs/                   # Documentation
+    render-architecture-diagrams.sh
+```
 
 ## Design Rules
 
-- Keep shell scripts as thin wrappers around Python CLIs when logic is non-trivial.
-- Shared wrapper behavior lives in [`bin/lib/run-python-cli.sh`](./lib/run-python-cli.sh).
-- Framework/orchestration CLIs should live in `src/media_stack/cli/commands/*_main.py`.
-- App-specific CLIs should live in `src/media_stack/services/apps/<app>/cli/*_main.py`.
-- Avoid new root-level Python compatibility wrappers.
-- `install.sh`, `deploy-stack.sh`, `run-bootstrap-job.sh`, and `bootstrap-all.sh`
-  are now Python-backed wrappers with
-  phase logging and checkpoint-aware orchestration.
+- Shell scripts are thin wrappers around Python CLIs via `lib/run-python-cli.sh`
+- Framework CLIs: `src/media_stack/cli/commands/*_main.py`
+- App CLIs: `src/media_stack/services/apps/<app>/cli/*_main.py`
+- The controller calls Python modules directly (not shell scripts)
+- Shell scripts exist for operators to run manually
 
 ## Pluggable Runtime Contract
 
-- Technology registration is manifest-driven under `src/media_stack/contracts/plugins/*/manifest.json`.
-- Shared orchestration scripts must remain technology-neutral.
-- Runtime hook overrides are limited to event handlers, phase plans, bootstrap wrapper phase-script maps, and scale-policy/worker lists in `adapter_hooks`.
-- Concrete lifecycle events (`RunnerEvent`) drive orchestration; technologies provide handler bindings per event.
-- Operator shell entrypoints are thin wrappers, and app implementation modules live under
-  `src/media_stack/services/apps/<app>/cli/`.
-
-## Stable Operator Entrypoints
-
-- `install.sh`
-- `deploy-stack.sh`
-- `bootstrap-all.sh`
-- `run-bootstrap-job.sh`
-- `with-env.sh` (load env-file + run command with safe defaults)
-- `ensure-qbit-credentials.sh`
-- `ensure-jellyfin-bootstrap.sh`
-- `ensure-sabnzbd-api-access.sh`
-- `run-prowlarr-auto-indexers.sh`
-- `sync-unpackerr-keys.sh`
-- `validate-bootstrap-config.sh`
-- `set-pvc-storage-class.sh`
-- `run-playwright-smoke.sh`
-- `run-playwright-screenshots.sh`
-- `capture-k8s-snapshots.sh`
-- `test.sh`
-
-Playwright split:
-- `run-playwright-smoke.sh` -> fast ingress/UX assertions only
-- `run-playwright-screenshots.sh` -> screenshot artifact generation
-
-**Project Steward**
-Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)
+- Technology registration is per-service YAML-driven (`contracts/services/*.yaml`)
+- Shared orchestration scripts remain technology-neutral
+- Runtime hook overrides are in per-service YAML plugin sections
+- Pipeline phases are in `contracts/adapter-hooks.k8s.yaml` (K8s only)
