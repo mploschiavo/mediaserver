@@ -23,9 +23,20 @@ from media_stack.core.exceptions import ConfigError  # noqa: E402
 
 class BootstrapComponentResolverTests(unittest.TestCase):
     def _base_config(self) -> dict:
-        return json.loads(
+        import os
+        from media_stack.cli.workflows.controller_component_resolver import _merge_platform_adapter_hooks
+        payload = json.loads(
             (ROOT / "contracts" / "media-stack.config.json").read_text(encoding="utf-8")
         )
+        old = os.environ.get("MEDIA_STACK_PLATFORM")
+        os.environ["MEDIA_STACK_PLATFORM"] = "k8s"
+        try:
+            return _merge_platform_adapter_hooks(payload, ROOT / "contracts")
+        finally:
+            if old is None:
+                os.environ.pop("MEDIA_STACK_PLATFORM", None)
+            else:
+                os.environ["MEDIA_STACK_PLATFORM"] = old
 
     def _write_config(self, payload: dict) -> Path:
         tmpdir = tempfile.TemporaryDirectory()

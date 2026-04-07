@@ -193,6 +193,58 @@ def _resolve_skip_flag_aliases(cfg: dict[str, Any]) -> dict[str, dict[str, tuple
     return aliases
 
 
+def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> dict[str, Any]:
+    """Merge platform-specific adapter hooks from YAML (e.g. adapter-hooks.k8s.yaml)."""
+    import os
+    try:
+        import yaml
+    except ImportError:
+        return payload
+
+    platform = os.environ.get("MEDIA_STACK_PLATFORM", "").strip().lower()
+    if not platform:
+        for pf in [Path(os.environ.get("BOOTSTRAP_PROFILE_FILE", "").strip() or "/dev/null"),
+                    Path("/opt/media-stack/contracts/media-stack.profile.yaml"),
+                    config_dir / "media-stack.profile.yaml"]:
+            if pf.is_file():
+                try:
+                    profile = yaml.safe_load(pf.read_text(encoding="utf-8")) or {}
+                    platform = str(
+                        (profile.get("metadata") or {}).get("platform", "")
+                    ).strip().lower()
+                    if platform:
+                        break
+                except Exception:
+                    pass
+    if not platform:
+        return payload
+
+    filename = f"adapter-hooks.{platform}.yaml"
+    for candidate_dir in [config_dir, Path("/opt/media-stack/contracts")]:
+        hooks_file = candidate_dir / filename
+        if hooks_file.is_file():
+            try:
+                platform_hooks = yaml.safe_load(hooks_file.read_text(encoding="utf-8")) or {}
+                if isinstance(platform_hooks, dict):
+                    existing = payload.get("adapter_hooks")
+                    if not isinstance(existing, dict):
+                        existing = {}
+                    merged = dict(existing)
+                    for key, value in platform_hooks.items():
+                        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                            combined = dict(merged[key])
+                            combined.update(value)
+                            merged[key] = combined
+                        else:
+                            merged[key] = value
+                    payload = dict(payload)
+                    payload["adapter_hooks"] = merged
+            except Exception:
+                pass
+            break
+    return payload
+
+
 def load_bootstrap_config(config_file: Path) -> dict[str, Any]:
     path = Path(config_file)
     if not path.exists():
@@ -203,6 +255,7 @@ def load_bootstrap_config(config_file: Path) -> dict[str, Any]:
         raise ConfigError(f"Invalid JSON in config file {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ConfigError("Bootstrap config root must be an object.")
+    payload = _merge_platform_adapter_hooks(payload, path.parent)
     try:
         return TopLevelBootstrapConfig.from_dict(payload).to_dict()
     except ValueError as exc:
