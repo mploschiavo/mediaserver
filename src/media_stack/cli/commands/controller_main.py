@@ -35,16 +35,29 @@ logger = logging.getLogger("bootstrap_service")
 # Handler spec loading and execution
 # ---------------------------------------------------------------------------
 
+def _resolve_config_path(candidate: str | None = None) -> str | None:
+    """Resolve the bootstrap config JSON path, trying multiple locations."""
+    _IMAGE_CONFIG = "/opt/media-stack/contracts/media-stack.config.json"
+    candidates = [
+        candidate,
+        os.environ.get("BOOTSTRAP_CONFIG_FILE"),
+        _IMAGE_CONFIG,
+    ]
+    for p in candidates:
+        if p and __import__("pathlib").Path(p).is_file():
+            return p
+    return None
+
+
 def _load_handler_specs(key: str) -> list[dict]:
     """Load handler specs from bootstrap config by key name."""
     import json
 
-    main_config = os.environ.get("BOOTSTRAP_CONFIG_FILE", "/contracts/media-stack.config.json")
-    path = __import__("pathlib").Path(main_config)
-    if not path.exists():
+    config_path = _resolve_config_path()
+    if not config_path:
         return []
     try:
-        cfg = json.loads(path.read_text(encoding="utf-8"))
+        cfg = json.loads(__import__("pathlib").Path(config_path).read_text(encoding="utf-8"))
         return cfg.get(key) or []
     except Exception:
         return []
@@ -242,10 +255,11 @@ def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = Fa
         ),
         config_policy=_build_config_policy(),
     )
+    resolved_config = _resolve_config_path(args.config) or args.config
     build_result = runtime_factory.build_from_cli(
         BootstrapCliArgs(
             mode=BootstrapMode.from_cli(args.mode),
-            config_path=args.config,
+            config_path=resolved_config,
             config_root=args.config_root,
             wait_timeout=args.wait_timeout,
             auto_prowlarr_indexers=auto_prowlarr_indexers or args.auto_prowlarr_indexers,
@@ -534,6 +548,14 @@ def _run_serve(args: argparse.Namespace) -> None:
     """
     from media_stack.api.server import _fire_webhooks, start_api_server
     from media_stack.api.state import BootstrapState
+
+    # Resolve config path: try CLI arg, env var, then image-embedded path.
+    resolved = _resolve_config_path(args.config)
+    if resolved and resolved != args.config:
+        runtime_platform.log(
+            f"[INFO] Config resolved: {args.config} → {resolved}"
+        )
+        args.config = resolved
 
     # Load profile if available (ConfigMap may not be mounted yet on first start).
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
