@@ -38,10 +38,10 @@ Self-review checklist:
 - Could a new senior engineer understand top-level architecture quickly?
 
 ## Source Of Truth (Priority Order)
-1. Declarative config in `bootstrap/media-stack.bootstrap.json`
-2. Declarative catalogs/policy maps in `bootstrap/*.catalog.yaml` and `bootstrap/*.policy.yaml`
+1. Declarative profile config in `contracts/media-stack.profile.yaml` and per-service YAML in `contracts/services/*.yaml`
+2. Declarative catalogs/policy maps in `contracts/*.catalog.yaml` and `contracts/*.policy.yaml`
 3. Kubernetes manifests in `k8s/**/*.yaml`
-4. Typed/defaulted behavior in Python services under `scripts/bootstrap_services/`
+4. Typed/defaulted behavior in Python services under `src/media_stack/services/`
 5. Runtime app state (UI edits) as temporary drift to be reconciled back into code
 
 If a behavior differs between UI and repo code, repo code wins after next reconcile/bootstrap.
@@ -55,12 +55,12 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - During refactors, preserve native manifest readability and portability over framework-specific abstractions.
 
 ## Config-Driven Mapping Policy
-- Keep static mapping data in declarative files under `bootstrap/`, not Python conditionals/maps.
+- Keep static mapping data in declarative files under `contracts/`, not Python conditionals/maps.
 - Mappings include (non-exhaustive): install-profile app lists, app toggle->section maps, reserved-key lists, and policy path bindings.
 - Python policy modules should interpret config; they should not be the source of truth for mapping data.
 - If a mapping update requires code edits instead of config edits, stop and refactor before merge.
 - Do not embed structured runtime payload templates (JSON/YAML bodies) as Python dict literals in services.
-- Keep payload templates in declarative config files (for example under `bootstrap/` or `config/defaults/`) and load/patch them in code.
+- Keep payload templates in declarative config files (for example under `contracts/` or `contracts/defaults/`) and load/patch them in code.
 
 ## Runtime Artifact Replay Contract
 - Each rebuild/bootstrap run must emit target-separated runtime artifacts under `.state/runtime-artifacts/<run-id>/`.
@@ -81,14 +81,14 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
   Target identifier is namespace for Kubernetes and compose project name for Compose.
 - All destructive operations must emit a prominently labelled `[DESTRUCTIVE]` log line before executing that names what will be removed and how to disable it.
 - Calling a CLI script with no arguments must never trigger a destructive side effect; it must either show help, fail fast with a clear error, or perform a read-only/dry-run action.
-- If `scripts/with-env.sh` and the Python CLI have defaults for the same variable, they must agree. `with-env.sh` is the canonical shell default; the Python CLI must match it.
+- If `bin/with-env.sh` and the Python CLI have defaults for the same variable, they must agree. `with-env.sh` is the canonical shell default; the Python CLI must match it.
 - Automation/CI workflows that require teardown must set the relevant env var explicitly in their pipeline config — not rely on the CLI default.
 
 ## Machine Patch And Drift Control Policy
 - Host/machine patching must be declarative, versioned, and automated from repo code.
 - Do not rely on ad-hoc/manual host edits for Docker, Kubernetes, edge routing, auth providers, certificates, or filesystem prerequisites.
 - If a machine patch is required:
-  - encode it as platform/provider-owned code under the owning folder (`scripts/core/platforms/**`, `scripts/core/edge/providers/**`, `scripts/core/auth/providers/**`),
+  - encode it as platform/provider-owned code under the owning folder (`src/media_stack/core/platforms/**`, `src/media_stack/core/edge/providers/**`, `src/media_stack/core/auth/providers/**`),
   - document required inputs and idempotency behavior,
   - emit structured logs for patch start/result and artifact path(s),
   - persist replayable artifacts under `.state/runtime-artifacts/<run-id>/...` when applicable.
@@ -98,7 +98,7 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 ## Shim Removal Policy
 - Compatibility shims are temporary and must have explicit removal intent.
 - Once migration completes, remove old shims/wrappers/re-export modules in the same or immediate follow-up change.
-- Do not retain stale alias modules (for example old `scripts/cli/rebuild_*` re-export stubs) after callers are moved.
+- Do not retain stale alias modules (for example old `src/media_stack/cli/commands/rebuild_*` re-export stubs) after callers are moved.
 - New work must import/use canonical module paths only; do not introduce fresh compatibility indirection without explicit policy approval.
 
 ## SDK-First Integration Policy
@@ -109,24 +109,24 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 
 ## Architecture Layers
 - Orchestration entrypoints:
-  - Bash wrappers in `scripts/*.sh` (thin only)
-  - Python CLIs in `scripts/cli/*.py` (and `scripts/controller.py` composition root)
+  - Bash wrappers in `bin/*.sh` (thin only)
+  - Python CLIs in `src/media_stack/cli/commands/*.py` (and `bin/controller.py` composition root)
 - Domain/service logic:
-  - `scripts/bootstrap_services/`
-  - App-scoped compatibility/service modules in `scripts/bootstrap_services/apps/<app>/`
-- Reusable bootstrap helpers:
-  - `scripts/bootstrap_lib/`
+  - `src/media_stack/services/`
+  - App-scoped compatibility/service modules in `src/media_stack/services/apps/<app>/`
+- Reusable adapters:
+  - `src/media_stack/adapters/`
 - Cross-cutting infrastructure helpers:
-  - `scripts/core/`
+  - `src/media_stack/core/`
 - Platform-specific runtime/adapters:
-  - `scripts/core/platforms/kubernetes/**`
-  - `scripts/core/platforms/compose/**`
+  - `src/media_stack/core/platforms/kubernetes/**`
+  - `src/media_stack/core/platforms/compose/**`
 - Auth provider implementations:
-  - `scripts/core/auth/providers/<provider>/**`
+  - `src/media_stack/core/auth/providers/<provider>/**`
 - Edge/router provider implementations:
-  - `scripts/core/edge/providers/<provider>/**`
+  - `src/media_stack/core/edge/providers/<provider>/**`
 - Shell shared helpers:
-  - `scripts/lib/`
+  - `bin/lib/`
 
 ### Boundary Rules
 - Domain modules do not call shell directly.
@@ -134,7 +134,7 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 - Stateless transforms stay as pure functions.
 - Avoid hidden global state when dependency injection is practical.
 - Any extensible taxonomy (app names, aliases, install profiles, auth providers, route aliases, env passthrough keys, host/url templates) must be declarative and config-driven.
-- Do not hardcode app/provider/profile lists in `scripts/core/`, `scripts/cli/`, `scripts/bootstrap_lib/`, or platform/framework layers.
+- Do not hardcode app/provider/profile lists in `src/media_stack/core/`, `src/media_stack/cli/`, `src/media_stack/adapters/`, or platform/framework layers.
 - If extending apps/providers/profiles requires a code edit instead of a config edit, stop and refactor before merge.
 - Provider identifiers (for example `traefik`, `authelia`, `authentik`, `nginx`, `caddy`) are data, not control flow constants.
 - Use canonical provider keys in declarative config/profile fields (for example `routing.provider`, `adapter_hooks.edge.router_provider`).
@@ -146,8 +146,8 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 Swapping a technology should be app-local and config-driven.
 
 Primary binding points:
-- `technology_bindings` in `bootstrap/media-stack.bootstrap.json`
-- plugin manifests in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
+- `technology_bindings` in `contracts/media-stack.profile.yaml`
+- per-service YAML in `contracts/services/<technology>.yaml`
   - `adapter_classes` (servarr/download_client/media_server)
   - `app_service_classes`
   - `service_technology_map`
@@ -160,10 +160,10 @@ Primary binding points:
   - `adapter_hooks.media_server_operation_plans`
 
 Swap workflow:
-1. Add/replace app adapter/service module under `scripts/bootstrap_services/apps/<app>/...`
-2. Register the technology in `scripts/bootstrap_defaults/plugins/<technology>/manifest.json`
+1. Add/replace app adapter/service module under `src/media_stack/services/apps/<app>/...`
+2. Register the technology in `contracts/services/<technology>.yaml`
 3. Bind the role in `technology_bindings`
-3. Rebuild and push the controller image (`scripts/build-controller-image.sh`)
+3. Rebuild and push the controller image (`bin/build-controller-image.sh`)
 4. Run unit tests + live bootstrap smoke
 
 Do not add new hard-coded `if implementation == ...` logic in orchestration layers when a hookable adapter path is sufficient.
@@ -190,36 +190,36 @@ The target deployment experience for each platform:
 Swapping deployment platforms/runtimes must be platform-local and config-driven, with the same isolation expectations as app swaps.
 
 Primary binding points:
-- `platform_target` / `PLATFORM_TARGET` in deploy CLI config (`scripts/cli/deploy_cli_config_service.py`)
-- platform adapter factory in `scripts/core/platform_adapter.py`
+- `platform_target` / `PLATFORM_TARGET` in deploy CLI config (`src/media_stack/cli/workflows/deploy_cli_config_service.py`)
+- platform adapter factory in `src/media_stack/core/platform_adapter.py`
 - platform adapter modules implementing `RebuildPlatformAdapter`:
-  - `scripts/core/platforms/kubernetes/**`
-  - `scripts/core/platforms/compose/**`
+  - `src/media_stack/core/platforms/kubernetes/**`
+  - `src/media_stack/core/platforms/compose/**`
 - SDK/runtime adapters live under their platform folders:
-  - `scripts/core/platforms/kubernetes/kube_client.py`
-  - `scripts/core/platforms/compose/docker_client.py`
+  - `src/media_stack/core/platforms/kubernetes/kube_client.py`
+  - `src/media_stack/core/platforms/compose/docker_client.py`
 
 Swap workflow:
 1. Add a new platform adapter module that implements the shared platform interface.
 2. Keep runtime definition native-first (Kubernetes YAML, Docker Compose YAML, or equivalent native spec for the target).
-3. Register target alias/dependencies in `scripts/core/platform_adapter.py` without leaking target logic into orchestration flows.
+3. Register target alias/dependencies in `src/media_stack/core/platform_adapter.py` without leaking target logic into orchestration flows.
 4. Add/update SDK adapter boundaries for the target runtime (for example Docker, containerd-backed engines) before adding custom abstractions.
 5. Add unit tests for target normalization, adapter construction, and platform lifecycle behavior.
 
 ### Platform Isolation Rules
-- Shared orchestration entrypoints (`scripts/cli/*.py`, `scripts/bootstrap_services/bootstrap_runner_service.py`) must remain platform-neutral; they may select a target and call adapter interfaces only.
+- Shared orchestration entrypoints (`src/media_stack/cli/commands/*.py`, `src/media_stack/services/runner_operations_service.py`) must remain platform-neutral; they may select a target and call adapter interfaces only.
 - Do not add new target-specific branching in orchestration phases when behavior can live inside a platform adapter.
 - If adding/swapping a platform requires broad edits across shared orchestration modules, treat it as a design bug and refactor behind adapter boundaries before merge.
 - Prefer additive target plugins/adapters over mutating existing targets.
-- `scripts/core/platform_adapter.py` must remain a plugin discovery/dispatch layer only.
+- `src/media_stack/core/platform_adapter.py` must remain a plugin discovery/dispatch layer only.
   - Do not hardcode target branches like `if target == "k8s"` / `if target == "compose"` in this shared module.
-  - Resolve targets through plugin registry discovery under `scripts/core/platforms/*/plugin.py`.
-- `scripts/cli/deploy_stack_main.py` must not import platform-specific modules directly.
+  - Resolve targets through plugin registry discovery under `src/media_stack/core/platforms/*/plugin.py`.
+- `src/media_stack/cli/commands/deploy_stack_main.py` must not import platform-specific modules directly.
   - It must bind to platform behavior via shared contracts/registry only.
 - Hard folder boundary for platform implementations:
-  - Kubernetes-specific Python code must live under `scripts/core/platforms/kubernetes/**`.
-  - Compose/Docker-specific Python code must live under `scripts/core/platforms/compose/**`.
-  - Shared `scripts/core/**` modules must stay platform-neutral and must not embed target-specific constants/branches.
+  - Kubernetes-specific Python code must live under `src/media_stack/core/platforms/kubernetes/**`.
+  - Compose/Docker-specific Python code must live under `src/media_stack/core/platforms/compose/**`.
+  - Shared `src/media_stack/core/**` modules must stay platform-neutral and must not embed target-specific constants/branches.
   - A platform swap should be achievable by adding/removing one platform folder plus declarative bindings, without editing unrelated platform folders.
 - Keep isolation on separate axes:
   - deployment target (`k8s`, `compose`, future targets)
@@ -254,11 +254,11 @@ Swap workflow:
 - Shared orchestration must not embed provider-specific branches like `if auth_provider == ...`; use provider adapter bindings.
 - Shared orchestration must not embed provider allow-lists like `{none, authelia, authentik}`; allowed providers must come from declarative config/catalog.
 - Hard folder boundary for edge providers:
-  - Provider-specific implementation must live under `scripts/core/edge/providers/<provider>/**`.
-  - Shared modules may load providers via discovery/registry (`scripts/core/edge/provider_registry.py`), but must not hardcode provider behavior inline.
+  - Provider-specific implementation must live under `src/media_stack/core/edge/providers/<provider>/**`.
+  - Shared modules may load providers via discovery/registry (`src/media_stack/core/edge/provider_registry.py`), but must not hardcode provider behavior inline.
   - Adding/removing an edge provider should primarily be folder add/delete + config updates.
 - Hard folder boundary for auth providers:
-  - Provider-specific implementation must live under `scripts/core/auth/providers/<provider>/**`.
+  - Provider-specific implementation must live under `src/media_stack/core/auth/providers/<provider>/**`.
   - Shared modules may load providers via discovery/registry, but must not hardcode provider behavior inline.
   - Adding/removing an auth provider should primarily be folder add/delete + config updates.
 - Route strategy (`subdomain` vs `path-prefix`) must be configurable and provider-agnostic.
@@ -277,10 +277,10 @@ Swap workflow:
   - adapter module
   - declarative config binding
   - contract tests proving no shared-orchestration code changes are required for provider swaps
-- Compose edge providers must be plugin-discovered from provider-local modules under `scripts/core/platforms/compose/edge/providers/<provider>/`.
-- `scripts/core/platforms/compose/rebuild_platform_adapter.py` must not hardcode provider branches (`traefik`/`envoy`) or import provider implementation classes directly.
+- Compose edge providers must be plugin-discovered from provider-local modules under `src/media_stack/core/platforms/compose/edge/providers/<provider>/`.
+- `src/media_stack/core/platforms/compose/rebuild_platform_adapter.py` must not hardcode provider branches (`traefik`/`envoy`) or import provider implementation classes directly.
 - Provider swaps (add/remove/change) must be achievable by provider folder/config changes plus tests, without editing shared compose adapter orchestration.
-- Provider-specific runtime implementation files must not live under `scripts/core/platforms/compose/services/`; keep them inside provider folders only.
+- Provider-specific runtime implementation files must not live under `src/media_stack/core/platforms/compose/services/`; keep them inside provider folders only.
 - Removing an unused provider (for example deleting `edge/providers/traefik` or `edge/providers/envoy`) must not require shared compose service/orchestration edits beyond declarative config selection updates.
 - New edge providers (for example `nginx`) must be introduced by adding a new provider folder + plugin + tests, not by adding shared-layer branching.
 
@@ -293,9 +293,9 @@ Swap workflow:
 - Acceptance must validate representative app pages render as usable UIs from the gateway path-prefix URLs (not just HTTP 200).
 
 ### Non-Negotiable Isolation Rules
-- `scripts/bootstrap_services/bootstrap_runner_service.py` must remain orchestration-only.
+- `src/media_stack/services/bootstrap_runner_service.py` must remain orchestration-only.
 - App/technology-specific branching belongs in:
-  - `scripts/bootstrap_services/apps/<app>/**`
+  - `src/media_stack/services/apps/<app>/**`
   - adapter modules referenced by plugin manifests
   - declarative phase plans under `adapter_hooks.runner_event_plans` /
     `adapter_hooks.media_server_event_plans` (or legacy `*_operation_plans`)
@@ -303,23 +303,23 @@ Swap workflow:
 - If adding/swapping an app requires edits in runner orchestration logic, treat it as a design bug and refactor before merge.
 - Prefer adding a new adapter/service + config hook over adding conditionals in shared runtime modules.
 - Keep operation names stable; change bindings/hook paths for swaps, not runner internals.
-- Do not place app-specific implementation files at `scripts/bootstrap_services/*` root when an app package exists.
-- App-specific types/policies/pipelines must live under `scripts/bootstrap_services/apps/<app>/`.
+- Do not place app-specific implementation files at `src/media_stack/services/*` root when an app package exists.
+- App-specific types/policies/pipelines must live under `src/media_stack/services/apps/<app>/`.
 - If a root-level shared module becomes app-specific during refactor, move it (do not leave duplicate logic in root).
 - Hard-fail leakage rule:
-  - Platform/framework modules outside `scripts/bootstrap_services/apps/**` must not contain app keywords.
+  - Platform/framework modules outside `src/media_stack/services/apps/**` must not contain app keywords.
   - Treat these tokens as app-specific leakage indicators: `arr`, `homepage`, `jelly`, `maintainerr`, `qb`, `sab`, `goodread`.
   - If any leakage is found, fail the build and move that logic into the owning app package.
 
 ### Event Contract (Required)
 - Runtime handlers are lifecycle-event driven.
-- Use `RunnerEvent` values (in `scripts/bootstrap_services/enums.py`) for all plugin handler registration.
+- Use `RunnerEvent` values (in `src/media_stack/services/enums.py`) for all plugin handler registration.
 - Plugin manifests register handlers under `event_handlers.<EVENT>.<handler_key>`.
 - Runner/media-server phase plans must declare `event` + `handler` (legacy `operation` is compatibility-only).
 - Do not re-introduce bespoke per-operation wiring classes in orchestration layers.
-- `scripts/controller.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
+- `bin/controller.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
 - Runtime binding context must be sourced from `technology_bindings` (config/manifests), not hard-coded role maps in entrypoints.
-- Keep app-specific runtime modules under `scripts/bootstrap_services/apps/<app>/runtime/*`; shared runtime modules must stay technology-neutral, and pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) plus declarative RunnerEvent config.
+- Keep app-specific runtime modules under `src/media_stack/services/apps/<app>/runtime/*`; shared runtime modules must stay technology-neutral, and pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) plus declarative RunnerEvent config.
 - `TechnologyLifecycle*` orchestration classes are obsolete in this repo; lifecycle flow must be expressed through `RunnerEvent` plans and handlers.
 
 ## Design Rules
@@ -351,14 +351,14 @@ Migrate Bash to Python when logic includes non-trivial branching, loops, parsing
 For Kubernetes and Docker runtime operations, Python SDK adapters are required; do not implement runtime behavior via CLI wrapper scripts.
 
 ## Kubernetes Client Policy
-- Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `scripts/core/platforms/kubernetes/kube_client.py`.
+- Python Kubernetes helpers must use the official Kubernetes Python client (`kubernetes-client/python`) through `src/media_stack/core/platforms/kubernetes/kube_client.py`.
 - Use `KubernetesClient` naming in Python code; do not add new `KubectlClient` imports/usages.
 - Do not add new Python code that shells out to `kubectl`; use the Kubernetes API adapter instead.
 - Kubernetes orchestration/runtime behavior must be implemented in Python service/adapters, not CLI command wrappers.
 - Do not use Helm. Use Kustomize overlays (`k8s/profiles/*/kustomization.yaml`) for profile-driven manifest management. Helm charts, values.yaml, and Chart.yaml are prohibited.
 
 ## Docker Client Policy
-- Python Docker helpers must use the official Docker SDK for Python (`docker-py`) through `scripts/core/platforms/compose/docker_client.py` adapter boundaries.
+- Python Docker helpers must use the official Docker SDK for Python (`docker-py`) through `src/media_stack/core/platforms/compose/docker_client.py` adapter boundaries.
 - Do not add new Python code that shells out to `docker` or `docker compose`; use Docker SDK adapters/services instead.
 - Compose/runtime orchestration must be API/SDK-driven in Python, not wrappers around Docker CLI commands.
 - If an operator-facing shell wrapper exists, it must remain a thin entrypoint and must not be the implementation boundary for runtime logic.
@@ -455,8 +455,8 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 
 ## Controller Image Packaging Contract
 The controller service runs from a prebuilt image (`docker/controller.Dockerfile`).
-- Any new module imported by `scripts/controller.py` must be included by the image build context.
-- Keep runtime Python under `scripts/` so `COPY scripts /opt/media-stack/scripts` captures required modules.
+- Any new module imported by `bin/controller.py` must be included by the image build context.
+- Keep runtime Python under `bin/` and `src/media_stack/` so `COPY bin /opt/media-stack/bin` captures required modules.
 - Validate runtime changes by rebuilding/pushing the controller image before live bootstrap tests.
 - When code changes impact bootstrap/runtime behavior, rebuild the controller image before manual compose/k8s verification to avoid stale-image false negatives.
 - Mandatory sequencing for image-backed validation:
@@ -465,31 +465,31 @@ The controller service runs from a prebuilt image (`docker/controller.Dockerfile
   - Explicitly log the rebuild command/result before reporting compose/k8s runtime outcomes.
 
 ## Scripts Directory Policy
-- Keep `scripts/*.sh` as user/operator entrypoints and small compatibility wrappers.
-- Keep `scripts/*.py` limited to CLI entrypoints and intentionally shared tooling.
-- Put domain behavior in `scripts/bootstrap_services/**` rather than root `scripts/` where possible.
-- App-specific Python implementation must not live under `scripts/cli/`; place it under `scripts/bootstrap_services/apps/<app>/**`.
-- `scripts/cli/*.py` must remain app/technology-neutral orchestration glue.
-  - Do not hard-code technology/app names in `scripts/cli`.
-  - If a CLI is app-specific or stack-composed, move it under `scripts/bootstrap_services/apps/<app>/cli/` (or `apps/stack/cli/` for stack-level UX flows).
-  - Shell wrappers should use current canonical naming and resolve via `scripts/lib/run-python-cli.sh`.
+- Keep `bin/*.sh` as user/operator entrypoints and small compatibility wrappers.
+- Keep Python CLIs in `src/media_stack/cli/commands/` limited to CLI entrypoints and intentionally shared tooling.
+- Put domain behavior in `src/media_stack/services/**` rather than root `bin/` and `src/media_stack/` where possible.
+- App-specific Python implementation must not live under `src/media_stack/cli/commands/`; place it under `src/media_stack/services/apps/<app>/**`.
+- `src/media_stack/cli/commands/*.py` must remain app/technology-neutral orchestration glue.
+  - Do not hard-code technology/app names in `src/media_stack/cli/commands`.
+  - If a CLI is app-specific or stack-composed, move it under `src/media_stack/services/apps/<app>/cli/` (or `apps/stack/cli/` for stack-level UX flows).
+  - Shell wrappers should use current canonical naming and resolve via `bin/lib/run-python-cli.sh`.
 - Reconcile orchestration contract:
   - `adapter_hooks.microk8s_reconcile.phase_plan` is the source of truth for reconcile order/conditions.
   - Reconcile steps must declare `event` + `handler` and use `RunnerEvent`.
   - Do not add bespoke hard-coded reconcile sequencing in CLI modules.
 
 ## Platform Keyword Ownership Policy
-- Files containing platform-specific implementation keywords (`kubelet`, `kubectl`, `kube`, `k8s`, `kubernetes`) should live under `scripts/core/platforms/kubernetes/**` unless they are thin compatibility wrappers.
-- Files containing compose/runtime-specific implementation keywords (`compose`, `docker`) should live under `scripts/core/platforms/compose/**` unless they are thin compatibility wrappers.
-- `scripts/cli/*.py` may orchestrate platform selection, but platform implementation logic must be delegated to platform-local modules.
+- Files containing platform-specific implementation keywords (`kubelet`, `kubectl`, `kube`, `k8s`, `kubernetes`) should live under `src/media_stack/core/platforms/kubernetes/**` unless they are thin compatibility wrappers.
+- Files containing compose/runtime-specific implementation keywords (`compose`, `docker`) should live under `src/media_stack/core/platforms/compose/**` unless they are thin compatibility wrappers.
+- `src/media_stack/cli/commands/*.py` may orchestrate platform selection, but platform implementation logic must be delegated to platform-local modules.
 - If a CLI file accumulates platform implementation behavior, move that behavior into platform-local services/modules and keep the CLI as a boundary wrapper.
-- `scripts/cli/deploy_cli_config_service.py` must remain orchestration glue; compose-specific arg/path handling must be implemented in compose-platform helpers.
-- `scripts/cli/apply_scale_policy_main.py` must remain a compatibility wrapper only; kubernetes scale behavior belongs in kubernetes platform modules.
+- `src/media_stack/cli/workflows/deploy_cli_config_service.py` must remain orchestration glue; compose-specific arg/path handling must be implemented in compose-platform helpers.
+- `src/media_stack/cli/commands/apply_scale_policy_main.py` must remain a compatibility wrapper only; kubernetes scale behavior belongs in kubernetes platform modules.
 
 ## Logging, Errors, and Secrets
-- Use structured logging via `scripts/core/logging_utils.py`.
+- Use structured logging via `src/media_stack/core/logging_utils.py`.
 - Never log secrets, tokens, passwords, or API keys.
-- Raise typed exceptions from `scripts/core/exceptions.py` for expected operational failures.
+- Raise typed exceptions from `src/media_stack/core/exceptions.py` for expected operational failures.
 - Include enough context for diagnosis: namespace, app, phase, command target, remediation hints.
 
 ## Compatibility Requirements
@@ -511,7 +511,7 @@ Minimum for refactor PRs:
 - For request-manager auth bootstrap (Jellyseerr/OpenSeerr), include tests that prove local-admin credential seeding still happens when downstream integration/config calls fail.
 - For optional integrations (for example Tautulli in Maintainerr), tests must cover partial-degrade behavior so one optional dependency failure does not block all integration/main-setting seeding.
 - For edge/path-prefix changes, add/maintain smoke coverage that validates browser-usable navigation (route + critical assets + homepage tile destinations), not only HTTP 200 checks.
-- Rebuild required runtime images after code changes and before live testing (for example `scripts/build-controller-image.sh` before compose/k8s bootstrap validation).
+- Rebuild required runtime images after code changes and before live testing (for example `bin/build-controller-image.sh` before compose/k8s bootstrap validation).
 - For compose gateway verification, validate all enabled app routes under `/app/<service>` and verify homepage tile links navigate to working destinations, not placeholder/broken URLs.
 - For profile-driven bootstrap behavior, add/maintain tests that assert:
   - tile links resolve to working app destinations through the configured gateway path-prefix routes.
@@ -524,7 +524,7 @@ Current key test suites:
 
 ## Test Execution Safety Rules
 - Default to targeted unit-test execution first; do not run the full suite when a narrower pattern can validate the change.
-- Use `scripts/cli/run_unit_tests_main.py` (or `bash scripts/test.sh`) so per-test resource telemetry is emitted.
+- Use `src/media_stack/cli/commands/run_unit_tests_main.py` (or `bash bin/test.sh`) so per-test resource telemetry is emitted.
 - Treat resource-heavy suites (full unit sweep, Playwright, API e2e) as opt-in and announce intent before running them on developer workstations.
 - When resource risk is unknown, run with constrained discovery (for example `UNIT_TEST_PATTERN=...`) and review telemetry offenders before broadening scope.
 - Prefer setting `UNIT_TEST_TIMEOUT_SECONDS` for workstation runs when investigating instability or potential hangs.
@@ -545,31 +545,31 @@ Current key test suites:
 
 ## Controller Image Dev Workflow
 
-Use this sequence whenever making changes to code that runs inside the controller container (`scripts/bootstrap_services/**`, `scripts/controller.py`, or any module imported by the controller).
+Use this sequence whenever making changes to code that runs inside the controller container (`src/media_stack/services/**`, `bin/controller.py`, or any module imported by the controller).
 
 ```
 # 1. Make code changes
 # 2. Rebuild the controller image locally (no registry push)
-PUSH_IMAGE=0 bash scripts/build-controller-image.sh
+PUSH_IMAGE=0 bash bin/build-controller-image.sh
 
 # 3. Deploy and run bootstrap against the compose stack
-bash scripts/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
+bash bin/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
 ```
 
 If you need a clean slate (full teardown + redeploy):
 ```
 DELETE_NAMESPACE=1 DELETE_NAMESPACE_CONFIRM=<compose_project_name> \
-  bash scripts/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
+  bash bin/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-compose-standard.yaml
 ```
 
 Key rules:
 - Never test bootstrap runtime behavior with a stale image. Rebuild first, validate second.
 - `PUSH_IMAGE=0` builds and loads the image locally without pushing to the registry.
-- Changes to `scripts/cli/`, `scripts/core/`, or `scripts/bootstrap_services/apps/stack/bootstrap_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
-- Changes to `scripts/bootstrap_services/runtime_factory/`, `scripts/bootstrap_services/apps/*/`, or `scripts/controller.py` **do** require an image rebuild.
+- Changes to `src/media_stack/cli/commands/`, `src/media_stack/core/`, or `src/media_stack/services/apps/stack/bootstrap_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
+- Changes to `src/media_stack/services/runtime_factory/`, `src/media_stack/services/apps/*/`, or `bin/controller.py` **do** require an image rebuild.
 
 ## Validation Checklist (Pre-Merge)
-1. `bash -n scripts/*.sh scripts/lib/*.sh`
+1. `bash -n bin/*.sh bin/*/*.sh`
 2. `python3 -m py_compile` for modified Python files
 3. `ruff check scripts tests`
 4. `black --check scripts tests`
@@ -577,17 +577,17 @@ Key rules:
 6. `rg -n "from core.platforms.kubernetes.kube_client import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
 7. For modified Python files, verify no new subprocess/shell invocations execute `kubectl`, `docker`, or `docker compose`; use SDK adapters instead.
 8. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
-9. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" scripts/bootstrap_services scripts/core scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns no matches
-10. `rg -n -i "(jellyfin|jellyseerr|prowlarr|qbittorrent|qbit|sabnzbd|sonarr|radarr|lidarr|readarr|bazarr|unpackerr|maintainerr|tautulli|homepage|plex|emby|flaresolverr)" scripts/cli/*.py` returns no matches
+9. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" src/media_stack/services src/media_stack/core src/media_stack/adapters --glob '!src/media_stack/services/apps/**'` returns no matches
+10. `rg -n -i "(jellyfin|jellyseerr|prowlarr|qbittorrent|qbit|sabnzbd|sonarr|radarr|lidarr|readarr|bazarr|unpackerr|maintainerr|tautulli|homepage|plex|emby|flaresolverr)" src/media_stack/cli/commands/*.py` returns no matches
 11. For manifest/config changes, confirm no new bespoke manifest DSL was introduced where native Kubernetes/Compose YAML fields would suffice.
 12. For new integrations, confirm official SDK/client options were evaluated and used unless explicitly documented otherwise.
 13. For platform/auth/routing changes, verify bindings remain declarative (target/runtime/router/auth provider) and no new provider-specific branching appears in shared orchestration modules.
-14. `rg -n -i "(traefik|authelia|authentik|nginx|caddy)" scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/bootstrap_services/apps/**'` returns only declarative adapter/binding definitions (no hardcoded provider branching or allow-lists).
-15. `rg -n "if\\s+.*\\b(k8s|kubernetes|compose|docker-compose)\\b" scripts/core/platform_adapter.py scripts/cli/deploy_stack_main.py` returns no shared-orchestration hardcoded platform branches.
-16. `rg -n "from core\\.platforms\\.(kubernetes|compose)" scripts/cli/deploy_stack_main.py` returns no matches.
-17. `rg -n "from core\\.(edge|auth)\\.providers\\." scripts/core scripts/cli scripts/bootstrap_lib --glob '!scripts/core/edge/provider_registry.py' --glob '!scripts/core/auth/provider_registry.py'` returns no matches.
+14. `rg -n -i "(traefik|authelia|authentik|nginx|caddy)" src/media_stack/core src/media_stack/cli/commands src/media_stack/adapters --glob '!src/media_stack/services/apps/**'` returns only declarative adapter/binding definitions (no hardcoded provider branching or allow-lists).
+15. `rg -n "if\\s+.*\\b(k8s|kubernetes|compose|docker-compose)\\b" src/media_stack/core/platform_adapter.py src/media_stack/cli/commands/deploy_stack_main.py` returns no shared-orchestration hardcoded platform branches.
+16. `rg -n "from core\\.platforms\\.(kubernetes|compose)" src/media_stack/cli/commands/deploy_stack_main.py` returns no matches.
+17. `rg -n "from core\\.(edge|auth)\\.providers\\." src/media_stack/core src/media_stack/cli/commands src/media_stack/adapters --glob '!src/media_stack/core/edge/provider_registry.py' --glob '!src/media_stack/core/auth/provider_registry.py'` returns no matches.
 18. Live bootstrap smoke in cluster:
-   - `bash scripts/bootstrap-all.sh`
+   - `bash bin/bootstrap-all.sh`
    - confirm final phase summary is all `ok`
 19. For rebuild/bootstrap runs, verify runtime artifacts were written under `.state/runtime-artifacts/<run-id>/` with target-separated `kubernetes/` and/or `compose/` payloads and replay metadata.
 20. For modified non-generated files, verify `wc -l` shows no newly introduced file above `900` lines and no existing `>900` line file was expanded without same-change decomposition.
@@ -603,7 +603,7 @@ Key rules:
    - `/app/bazarr`
    - `/app/jellyseerr`
 27. After runtime-impacting code changes in bootstrap/services/platform adapters:
-   - run `PUSH_IMAGE=0 bash scripts/build-controller-image.sh` before live checks
+   - run `PUSH_IMAGE=0 bash bin/build-controller-image.sh` before live checks
    - run compose deploy/bootstrap verification after rebuild
    - confirm homepage tile destinations and enabled app URLs are validated in the same post-rebuild run.
 
@@ -618,7 +618,7 @@ Key rules:
 
 ## Refactor Sequencing (Ongoing)
 High-value next slices:
-1. Continue reducing `scripts/controller.py` by extracting remaining cohesive domains.
-2. Keep moving subprocess/network/file IO behind `scripts/core/` adapters.
+1. Continue reducing `bin/controller.py` by extracting remaining cohesive domains.
+2. Keep moving subprocess/network/file IO behind `src/media_stack/core/` adapters.
 3. Expand contract tests for additional shell wrappers and job-manifest parity.
 4. Promote typed config models incrementally for bootstrap JSON sections.
