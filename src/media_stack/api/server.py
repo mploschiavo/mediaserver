@@ -62,6 +62,7 @@ def _fire_webhooks(state: BootstrapState, event: str, payload: dict[str, Any]) -
 
 KNOWN_ACTIONS = frozenset({
     "bootstrap",
+    "finalize",
     "auto-indexers",
     "restart-apps",
     "sync-indexers",
@@ -1452,6 +1453,174 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
         lines.append(f'media_stack_action_history_total {len(state.get("action_history", []))}')
         return "\n".join(lines) + "\n"
 
+    def _rotate_keys(self) -> dict[str, Any]:
+        """Regenerate API keys for all arr apps and update env/secrets."""
+        import os
+        import re
+        import uuid
+        from pathlib import Path
+
+        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        rotated: dict[str, str] = {}
+        errors: list[str] = []
+
+        # Arr apps: regenerate ApiKey in config.xml
+        arr_apps = ["sonarr", "radarr", "lidarr", "readarr", "prowlarr"]
+        for app in arr_apps:
+            cfg_path = Path(config_root) / app / "config.xml"
+            if not cfg_path.is_file():
+                continue
+            try:
+                content = cfg_path.read_text(encoding="utf-8")
+                new_key = uuid.uuid4().hex
+                content = re.sub(r"<ApiKey>[^<]*</ApiKey>", f"<ApiKey>{new_key}</ApiKey>", content)
+                cfg_path.write_text(content, encoding="utf-8")
+                env_key = f"{app.upper()}_API_KEY"
+                os.environ[env_key] = new_key
+                rotated[env_key] = new_key
+            except Exception as exc:
+                errors.append(f"{app}: {exc}")
+
+        # SABnzbd: regenerate api_key in sabnzbd.ini
+        sab_ini = Path(config_root) / "sabnzbd" / "sabnzbd.ini"
+        if sab_ini.is_file():
+            try:
+                content = sab_ini.read_text(encoding="utf-8")
+                new_key = uuid.uuid4().hex
+                content = re.sub(r"^api_key\s*=\s*.*$", f"api_key = {new_key}", content, flags=re.MULTILINE)
+                sab_ini.write_text(content, encoding="utf-8")
+                os.environ["SABNZBD_API_KEY"] = new_key
+                rotated["SABNZBD_API_KEY"] = new_key
+            except Exception as exc:
+                errors.append(f"sabnzbd: {exc}")
+
+        # Persist to K8s secret if available
+        self._persist_keys_to_secret(rotated)
+
+        return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors}
+
+    def _reset_password(self, new_password: str) -> dict[str, Any]:
+        """Reset admin password across all services."""
+        import os
+        import re
+        from pathlib import Path
+
+        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+        updated: list[str] = []
+        errors: list[str] = []
+
+        # Update env var
+        os.environ["STACK_ADMIN_PASSWORD"] = new_password
+
+        # qBittorrent: change via API
+        try:
+            from media_stack.services.runtime_platform import http_request
+            # Login with old password first
+            old_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+            import urllib.request, http.cookiejar
+            cj = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+            login_data = f"username={username}&password={old_pass}".encode()
+            req = urllib.request.Request("http://qbittorrent:8080/api/v2/auth/login", data=login_data)
+            try:
+                opener.open(req, timeout=5)
+            except Exception:
+                pass
+            # Set new password
+            prefs = f'{{"web_ui_password": "{new_password}"}}'.encode()
+            req2 = urllib.request.Request(
+                "http://qbittorrent:8080/api/v2/app/setPreferences",
+                data=b"json=" + prefs,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            opener.open(req2, timeout=5)
+            updated.append("qbittorrent")
+        except Exception as exc:
+            errors.append(f"qbittorrent: {exc}")
+
+        # Persist to K8s secret
+        self._persist_keys_to_secret({
+            "STACK_ADMIN_PASSWORD": new_password,
+            "STACK_ADMIN_USERNAME": username,
+        })
+
+        return {"status": "updated", "services": updated, "errors": errors}
+
+    def _update_routing(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update routing config in profile YAML and trigger regeneration."""
+        import os
+        from pathlib import Path
+
+        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+        profile_path = Path(profile_file) if profile_file else None
+        if not profile_path or not profile_path.is_file():
+            profile_path = Path("/opt/media-stack/contracts/media-stack.profile.yaml")
+        if not profile_path.is_file():
+            return {"error": "Profile file not found"}
+
+        try:
+            import yaml
+            with open(profile_path) as f:
+                profile = yaml.safe_load(f) or {}
+
+            routing = profile.setdefault("routing", {})
+            allowed_keys = {"base_domain", "stack_subdomain", "gateway_host", "gateway_port", "app_path_prefix", "strategy", "internet_exposed"}
+            changed = []
+            for key, value in updates.items():
+                if key in allowed_keys and str(routing.get(key, "")) != str(value):
+                    routing[key] = value
+                    changed.append(key)
+
+            # Auto-derive gateway_host if subdomain or domain changed
+            if "stack_subdomain" in changed or "base_domain" in changed:
+                sub = routing.get("stack_subdomain", "media-stack")
+                dom = routing.get("base_domain", "local")
+                routing["gateway_host"] = f"apps.{sub}.{dom}"
+                if "gateway_host" not in changed:
+                    changed.append("gateway_host")
+
+            if not changed:
+                return {"status": "no_changes", "routing": routing}
+
+            with open(profile_path, "w") as f:
+                yaml.dump(profile, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+            # Queue envoy-config regeneration
+            if self.action_trigger:
+                self.action_trigger("envoy-config", {})
+
+            return {"status": "updated", "changed": changed, "routing": routing}
+        except Exception as exc:
+            return {"error": str(exc)[:200]}
+
+    def _persist_keys_to_secret(self, data: dict[str, str]) -> None:
+        """Persist key-value pairs to K8s secret if available."""
+        import os
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if not namespace or not data:
+            return
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            v1 = k8s_client.CoreV1Api()
+            import base64
+            secret_data = {k: base64.b64encode(v.encode()).decode() for k, v in data.items()}
+            try:
+                existing = v1.read_namespaced_secret("media-stack-secrets", namespace)
+                if existing.data:
+                    existing.data.update(secret_data)
+                else:
+                    existing.data = secret_data
+                v1.patch_namespaced_secret("media-stack-secrets", namespace, existing)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _batch_restart(self, service_names: list[str]) -> dict[str, Any]:
         """Restart multiple services."""
         results: dict[str, Any] = {}
@@ -1837,6 +2006,30 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"error": "key field required"})
                 return
             self._json_response(200, self._set_envvar(key, value))
+            return
+
+        # POST /api/rotate-keys — regenerate API keys for all services
+        if self.path == "/api/rotate-keys":
+            self._json_response(200, self._rotate_keys())
+            return
+
+        # POST /api/reset-password — reset admin password across all services
+        if self.path == "/api/reset-password":
+            body = self._read_json_body()
+            new_password = body.get("password", "")
+            if not new_password or len(new_password) < 4:
+                self._json_response(400, {"error": "password field required (min 4 chars)"})
+                return
+            self._json_response(200, self._reset_password(new_password))
+            return
+
+        # POST /api/routing — update routing config and regenerate envoy
+        if self.path == "/api/routing":
+            body = self._read_json_body()
+            if not body:
+                self._json_response(400, {"error": "JSON body required"})
+                return
+            self._json_response(200, self._update_routing(body))
             return
 
         # POST /webhooks/test

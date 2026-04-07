@@ -207,6 +207,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <button class="btn-secondary" onclick="confirmAction('restart-apps','Restart All Apps','Rolling restart of all services.')">Restart All</button>
     <button class="btn-secondary" onclick="confirmAction('sync-indexers','Sync Indexers','Push Prowlarr indexers to Arr apps.')">Sync Indexers</button>
     <button class="btn-secondary" onclick="confirmAction('reconcile','Reconcile','Re-run config to fix drift.')">Reconcile</button>
+    <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
+    <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
   </div>
   </div>
 </div>
@@ -281,7 +283,16 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <!-- Routing tab (was DNS) -->
   <div id="tab-routing" class="tab-content">
     <div id="routing-config" style="margin-bottom:12px"></div>
-    <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — 3 access patterns per service.</p>
+    <details style="margin-bottom:12px"><summary style="color:var(--fg2);font-size:.88em;cursor:pointer;font-weight:600">Edit Routing Config</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:.88em">
+        <label style="color:var(--fg2)">Base Domain<input type="text" id="rt-domain" class="svc-search" style="margin:4px 0" placeholder="local"></label>
+        <label style="color:var(--fg2)">Subdomain<input type="text" id="rt-subdomain" class="svc-search" style="margin:4px 0" placeholder="media-stack"></label>
+        <label style="color:var(--fg2)">Path Prefix<input type="text" id="rt-prefix" class="svc-search" style="margin:4px 0" placeholder="/app"></label>
+        <label style="color:var(--fg2)">Gateway Port<input type="number" id="rt-port" class="svc-search" style="margin:4px 0" placeholder="80"></label>
+      </div>
+      <button class="btn-primary" style="margin-top:6px" onclick="saveRouting()">Save & Rebuild Routing</button>
+    </details>
+    <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — 4 access patterns per service.</p>
     <div class="dns-entry" id="dns-entries">Detecting...</div>
     <div style="margin:8px 0;display:flex;gap:6px">
       <button class="btn-secondary" style="padding:5px 12px;font-size:.82em" onclick="copyDns()">Copy Hosts</button>
@@ -712,6 +723,11 @@ function getHostIp(){const h=location.hostname;return (h==='localhost'||h==='127
 async function loadRoutingConfig(){
   try{const r=await fetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
   renderRoutingPanel();buildDns();
+  // Populate edit form
+  const de=document.getElementById('rt-domain');if(de)de.value=_routingCfg.base_domain||'';
+  const se=document.getElementById('rt-subdomain');if(se)se.value=_routingCfg.stack_subdomain||'';
+  const pe=document.getElementById('rt-prefix');if(pe)pe.value=_routingCfg.app_path_prefix||'';
+  const po=document.getElementById('rt-port');if(po)po.value=_routingCfg.gateway_port||80;
 }
 function renderRoutingPanel(){
   const rc=_routingCfg;const el=document.getElementById('routing-config');if(!el)return;
@@ -768,6 +784,47 @@ async function probeMatrix(){
   const ok=Object.values(matrixState).filter(v=>v==='ok').length;toast(ok+'/'+(SVCS.length*4)+' paths reachable');
 }
 function copyDns(){navigator.clipboard.writeText(document.getElementById('dns-entries').textContent).then(()=>toast('Copied!')).catch(()=>toast('Copy failed',true));}
+
+/* Rotate API Keys */
+function confirmRotateKeys(){
+  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Rotate All API Keys</h3><p>This regenerates API keys for all Arr apps and SABnzbd. Existing integrations using old keys will break until reconfigured. Run <b>Reconcile</b> after to re-wire connections.</p><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-danger" onclick="rotateKeys();this.closest(\'.confirm-overlay\').remove()">Rotate Keys</button></div></div></div>';
+}
+async function rotateKeys(){
+  toast('Rotating API keys...');
+  try{const r=await fetch('/api/rotate-keys',{method:'POST'});const d=await r.json();
+    if(d.status==='rotated'){toast('Rotated '+d.keys.length+' keys'+(d.errors.length?' ('+d.errors.length+' errors)':''));}
+    else{toast(d.error||'Rotation failed',true);}}catch(e){toast('Error: '+e.message,true);}
+}
+
+/* Reset Password */
+function promptResetPassword(){
+  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Reset Admin Password</h3><p>Changes the admin password for the stack (qBittorrent and other services).</p><div style="margin:8px 0"><input type="password" id="new-pass-input" placeholder="New password" style="width:100%;padding:8px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.9em"></div><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-primary" onclick="resetPassword();this.closest(\'.confirm-overlay\').remove()">Reset Password</button></div></div></div>';
+}
+async function resetPassword(){
+  const pw=document.getElementById('new-pass-input')?.value||'';
+  if(pw.length<4){toast('Password must be at least 4 characters',true);return;}
+  toast('Resetting password...');
+  try{const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const d=await r.json();
+    if(d.status==='updated'){toast('Password updated for '+d.services.join(', '));}
+    else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+e.message,true);}
+}
+
+/* Save Routing Config */
+async function saveRouting(){
+  const body={};
+  const dom=document.getElementById('rt-domain')?.value?.trim();if(dom)body.base_domain=dom;
+  const sub=document.getElementById('rt-subdomain')?.value?.trim();if(sub)body.stack_subdomain=sub;
+  const pfx=document.getElementById('rt-prefix')?.value?.trim();if(pfx)body.app_path_prefix=pfx;
+  const port=document.getElementById('rt-port')?.value?.trim();if(port)body.gateway_port=parseInt(port);
+  if(!Object.keys(body).length){toast('No changes',true);return;}
+  toast('Saving routing config...');
+  try{const r=await fetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.status==='updated'){toast('Routing updated: '+d.changed.join(', ')+'. Envoy rebuild queued.');loadRoutingConfig();}
+    else if(d.status==='no_changes'){toast('No changes needed');}
+    else{toast(d.error||'Update failed',true);}}catch(e){toast('Error: '+e.message,true);}
+}
 
 /* Webhooks + Test */
 function loadWebhooks(urls){
