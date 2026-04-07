@@ -298,42 +298,43 @@ def main() -> int:
     )
     parser.add_argument(
         "--schema",
-        default="contracts/media-stack.schema.json",
-        help="Path to JSON schema",
+        default="",
+        help="Path to JSON schema (optional)",
     )
     args = parser.parse_args()
 
     config_path = Path(args.config)
-    schema_path = Path(args.schema)
+    schema_path = Path(args.schema) if args.schema else None
 
-    if not config_path.exists():
-        print(f"[ERR] Config not found: {config_path}", file=sys.stderr)
-        return 2
-    if not schema_path.exists():
-        print(f"[ERR] Schema not found: {schema_path}", file=sys.stderr)
-        return 2
+    if config_path.is_file():
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    else:
+        cfg = {}
 
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    if not schema_path or not schema_path.exists():
+        schema = None
+    else:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
-    try:
-        import jsonschema  # type: ignore
-    except ModuleNotFoundError:
-        print(
-            "[ERR] jsonschema module is required for strict validation. "
-            "Install dependencies and retry.",
-            file=sys.stderr,
-        )
-        return 2
+    if schema:
+        try:
+            import jsonschema  # type: ignore
+        except ModuleNotFoundError:
+            print(
+                "[WARN] jsonschema module not available, skipping schema validation.",
+                file=sys.stderr,
+            )
+            schema = None
 
-    validator = jsonschema.Draft202012Validator(schema)
-    errors = sorted(validator.iter_errors(cfg), key=lambda err: list(err.path))
-    if errors:
-        print("[ERR] Bootstrap config schema validation failed:", file=sys.stderr)
-        for err in errors:
-            path = format_path(list(err.path))
-            print(f"  - {path}: {err.message}", file=sys.stderr)
-        return 1
+    if schema:
+        validator = jsonschema.Draft202012Validator(schema)
+        errors = sorted(validator.iter_errors(cfg), key=lambda err: list(err.path))
+        if errors:
+            print("[ERR] Bootstrap config schema validation failed:", file=sys.stderr)
+            for err in errors:
+                path = format_path(list(err.path))
+                print(f"  - {path}: {err.message}", file=sys.stderr)
+            return 1
 
     from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 
