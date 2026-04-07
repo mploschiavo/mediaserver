@@ -293,13 +293,13 @@ Swap workflow:
 - Acceptance must validate representative app pages render as usable UIs from the gateway path-prefix URLs (not just HTTP 200).
 
 ### Non-Negotiable Isolation Rules
-- `src/media_stack/services/bootstrap_runner_service.py` must remain orchestration-only.
+- `src/media_stack/services/runner_operations_service.py` must remain orchestration-only.
 - App/technology-specific branching belongs in:
   - `src/media_stack/services/apps/<app>/**`
   - adapter modules referenced by plugin manifests
   - declarative phase plans under `adapter_hooks.runner_event_plans` /
     `adapter_hooks.media_server_event_plans` (or legacy `*_operation_plans`)
-- Do not add new app-specific conditionals in `BootstrapRunnerService` for precheck/ensure/indexer flow; bind operations through phase plans instead.
+- Do not add new app-specific conditionals in `RunnerOperationRegistry` for precheck/ensure/indexer flow; bind operations through phase plans instead.
 - If adding/swapping an app requires edits in runner orchestration logic, treat it as a design bug and refactor before merge.
 - Prefer adding a new adapter/service + config hook over adding conditionals in shared runtime modules.
 - Keep operation names stable; change bindings/hook paths for swaps, not runner internals.
@@ -464,7 +464,7 @@ The controller service runs from a prebuilt image (`docker/controller.Dockerfile
   - If image rebuild did not happen in the same iteration, treat runtime test results as invalid.
   - Explicitly log the rebuild command/result before reporting compose/k8s runtime outcomes.
 
-## Scripts Directory Policy
+## Source Directory Policy
 - Keep `bin/*.sh` as user/operator entrypoints and small compatibility wrappers.
 - Keep Python CLIs in `src/media_stack/cli/commands/` limited to CLI entrypoints and intentionally shared tooling.
 - Put domain behavior in `src/media_stack/services/**` rather than root `bin/` and `src/media_stack/` where possible.
@@ -565,16 +565,16 @@ DELETE_NAMESPACE=1 DELETE_NAMESPACE_CONFIRM=<compose_project_name> \
 Key rules:
 - Never test bootstrap runtime behavior with a stale image. Rebuild first, validate second.
 - `PUSH_IMAGE=0` builds and loads the image locally without pushing to the registry.
-- Changes to `src/media_stack/cli/commands/`, `src/media_stack/core/`, or `src/media_stack/services/apps/stack/bootstrap_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
+- Changes to `src/media_stack/cli/commands/`, `src/media_stack/core/`, or `src/media_stack/services/apps/stack/controller_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
 - Changes to `src/media_stack/services/runtime_factory/`, `src/media_stack/services/apps/*/`, or `bin/controller.py` **do** require an image rebuild.
 
 ## Validation Checklist (Pre-Merge)
 1. `bash -n bin/*.sh bin/*/*.sh`
 2. `python3 -m py_compile` for modified Python files
-3. `ruff check scripts tests`
-4. `black --check scripts tests`
+3. `ruff check src tests`
+4. `black --check src tests`
 5. `python3 -m unittest discover -s tests/unit -p 'test_*.py'`
-6. `rg -n "from core.platforms.kubernetes.kube_client import KubectlClient|KubectlClient.from_environment" scripts tests` returns no matches
+6. `rg -n "from core.platforms.kubernetes.kube_client import KubectlClient|KubectlClient.from_environment" src tests` returns no matches
 7. For modified Python files, verify no new subprocess/shell invocations execute `kubectl`, `docker`, or `docker compose`; use SDK adapters instead.
 8. `git ls-files | rg -i "debug"` contains no tracked debug wrapper/CLI files
 9. `rg -n -i "\\b(arr|homepage|jelly|maintainerr|qb|sab|goodread)\\w*\\b" src/media_stack/services src/media_stack/core src/media_stack/adapters --glob '!src/media_stack/services/apps/**'` returns no matches
@@ -621,4 +621,4 @@ High-value next slices:
 1. Continue reducing `bin/controller.py` by extracting remaining cohesive domains.
 2. Keep moving subprocess/network/file IO behind `src/media_stack/core/` adapters.
 3. Expand contract tests for additional shell wrappers and job-manifest parity.
-4. Promote typed config models incrementally for bootstrap JSON sections.
+4. Promote typed config models incrementally for profile YAML and per-service YAML config sections.
