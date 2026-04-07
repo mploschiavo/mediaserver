@@ -1,8 +1,3 @@
-# Tautulli — Analytics
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: tautulli
   name: Tautulli
@@ -17,3 +12,7 @@ service:
   api_key_config: tautulli/config.ini
   api_key_format: ini
   password_config: tautulli/config.ini
+plugin:
+  technology: tautulli
+  aliases:
+  - tau

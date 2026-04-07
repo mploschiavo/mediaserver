@@ -1,8 +1,3 @@
-# Radarr — Movie automation
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: radarr
   name: Radarr
@@ -19,3 +14,10 @@ service:
   version_path: /api/v3/system/status
   version_json_key: version
   password_api_path: /api/v3/config/host
+plugin:
+  technology: radarr
+  aliases:
+  - rarr
+  adapter_class: media_stack.services.apps.servarr.technologies.radarr:RadarrAdapter
+  capabilities:
+    default_download_category: movies

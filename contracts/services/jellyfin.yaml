@@ -1,9 +1,3 @@
-# Jellyfin — primary media server
-#
-# This single file fully defines the Jellyfin service.
-# To add Jellyfin: place this file in contracts/services/
-# To remove Jellyfin: delete this file.
-
 service:
   id: jellyfin
   name: Jellyfin
@@ -19,7 +13,6 @@ service:
   api_key_format: sqlite
   version_path: /System/Info/Public
   version_json_key: Version
-
 plugin:
   technology: jellyfin
   adapter_class: media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins
@@ -30,45 +23,421 @@ plugin:
     supports_plugins: true
     supports_playback_defaults: true
     supports_home_rails: true
-
 defaults:
-  # Library definitions — created during bootstrap
   libraries:
     enabled: true
-    items:
-      - name: Movies
-        type: movies
-        path: /media/movies
-      - name: TV Shows
-        type: tvshows
-        path: /media/tv
-      - name: Music
-        type: music
-        path: /media/music
-      - name: Books
-        type: books
-        path: /media/books
-
-  # Live TV — IPTV tuner and EPG guide
+    required: false
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
+    tuning:
+      enabled: true
+      preferred_metadata_language: en
+      metadata_country_code: US
+      metadata_provider_priority:
+      - TheMovieDb
+      - TheTVDB
+      - The Open Movie Database
+      - Fanart
+      - TheAudioDb
+      - MusicBrainz
+      - Google Books
+      - Discogs
+      - Cover Art Archive
+      - Open Library
+      image_provider_priority:
+      - TheMovieDb
+      - TheTVDB
+      - Fanart
+      - The Open Movie Database
+      - TheAudioDb
+      - MusicBrainz
+      - Google Books
+      - Discogs
+      - Cover Art Archive
+      - Embedded Image Extractor
+      - Screen Grabber
+      artwork_profile:
+        Backdrop:
+          limit: 3
+          min_width: 1280
+        Logo:
+          limit: 1
+          min_width: 0
+        Primary:
+          limit: 1
+          min_width: 0
+        Thumb:
+          limit: 1
+          min_width: 0
+      enable_realtime_monitor: true
+      enable_preview_thumbnails_movies: true
+      enable_preview_thumbnails_tv: true
+      scan_all_libraries_after_reconcile: true
+    libraries:
+    - name: Movies
+      collection_type: movies
+      paths:
+      - /media/movies
+    - name: TV Shows
+      collection_type: tvshows
+      paths:
+      - /media/tv
+    - name: Music
+      collection_type: music
+      paths:
+      - /media/music
+    - name: Books
+      collection_type: books
+      paths:
+      - /media/books
   livetv:
     enabled: true
+    required: false
+    refresh_on_bootstrap: true
+    cleanup_duplicates: true
+    recreate_managed_guides: true
+    prune_unmanaged_tuners: true
+    prune_unmanaged_guides: true
+    fallback_enable_all_tuners_when_mapping_missing: true
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
     tuners:
-      - name: IPTV
-        url: https://iptv-org.github.io/iptv/index.m3u
-        type: m3u
+    - name: IPTV-ORG US
+      type: m3u
+      url: https://iptv-org.github.io/iptv/countries/us.m3u
+      normalize_tvg_id_suffix: true
+      filter_to_guide_channels: true
+      materialized_output_path: jellyfin/livetv-tuners/iptv-org-us-epg.m3u
+      allow_hw_transcoding: true
     guides:
-      - name: EPG
-        url: https://iptv-org.github.io/epg/guides/en/example.xml
-        type: xmltv
-
-  # Plugin installation
+    - type: xmltv
+      path: https://iptv-epg.org/files/epg-us.xml
+      materialized_output_path: jellyfin/livetv-guides/iptv-org-us-epg.enriched.xml
+      enrich_program_icons_from_tuner_logo: true
+      replace_existing_program_icons_with_tuner_logo: false
+      default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+      enrich_program_categories_from_tuner_groups: true
+      movie_categories:
+      - Movie
+      - Movies
+      - Film
+      - Cinema
+      sports_categories:
+      - Sports
+      - Sport
+      kids_categories:
+      - Kids
+      - Children
+      - Family
+      - Animation
+      news_categories:
+      - News
+      - Weather
+      - Politics
+      enable_all_tuners: false
+      enabled_tuners:
+      - tuner-url:https://iptv-org.github.io/iptv/countries/us.m3u
   plugins:
     enabled: true
-
-  # Playback defaults
+    required: false
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
+    repositories:
+    - name: Intro Skipper
+      url: https://intro-skipper.org/manifest.json
+      enabled: true
+    install:
+    - name: Intro Skipper
+      repository_url: https://intro-skipper.org/manifest.json
+    - name: TMDb Box Sets
+    - name: Fanart
+    - name: Artwork
+    - name: Open Subtitles
+    - name: Trakt
+    - name: Google Books
+    - name: Cover Art Archive
+    - name: Discogs
+    - name: LrcLib Lyrics
+    - name: Local Intros
   playback:
     enabled: true
-
-  # Prewarm — refresh metadata and artwork after bootstrap
+    required: false
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
+    auto_discover_user_id: true
+    preferred_username_env: STACK_ADMIN_USERNAME
+    check_intro_skip_plugin: true
+    user_defaults:
+      AudioLanguagePreference: eng
+      PlayDefaultAudioTrack: true
+      SubtitleLanguagePreference: eng
+      SubtitleMode: Smart
+      RememberAudioSelections: true
+      RememberSubtitleSelections: true
+      EnableNextEpisodeAutoPlay: true
+      DisplayCollectionsView: false
+      HidePlayedInLatest: false
+    server_defaults:
+      PreferredMetadataLanguage: en
+      MetadataCountryCode: US
+      UICulture: en-US
+      ImageSavingConvention: Compatible
+      ChapterImageResolution: P720
+      EnableGroupingMoviesIntoCollections: true
+      EnableGroupingShowsIntoCollections: true
+      EnableExternalContentInSuggestions: true
+      TrickplayOptions:
+        EnableHwAcceleration: false
+        EnableHwEncoding: false
+        EnableKeyFrameOnlyExtraction: false
+        ScanBehavior: NonBlocking
+        ProcessPriority: BelowNormal
+        Interval: 10000
+        WidthResolutions:
+        - 320
+        TileWidth: 10
+        TileHeight: 10
+        Qscale: 4
+        JpegQuality: 90
+        ProcessThreads: 1
+    display_preferences:
+      enabled: true
+      client: emby
+      preference_ids:
+      - usersettings
+      - home
+      - libraries
+      - movies
+      - tv
+      - music
+      - books
+      - livetv
+      show_backdrop: true
+      custom_prefs:
+        enableNextVideoInfoOverlay: true
+        enableBackdrops: true
+        enableLibraryBackdrops: true
+        enableThemeVideos: true
+        homesection0: smalllibrarytiles
+        homesection1: resume
+        homesection2: livetv
+        homesection3: nextup
+        homesection4: latestmedia
+        homesection5: none
+        homesection6: none
+        homesection7: none
+        homesection8: none
+        homesection9: none
+      update_existing_custom_prefs_only: false
+    home_media:
+      enabled: true
+      exclude_collections: true
+      exclude_playlists: true
+      additional_excluded_collection_types:
+      - livetv
+      cleanup_managed_exclusions: true
   prewarm:
     enabled: true
+    required: false
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
+    refresh_library: true
+    refresh_channels: true
+    refresh_guide: true
+    book_sidecar_artwork:
+      enabled: true
+      books_root_path: /srv-stack/media/books
+      books_root_paths:
+      - /srv-stack/media/books
+      output_filename: folder.jpg
+      write_per_book_sidecars: true
+      per_book_output_extension: .jpg
+      replace_existing: false
+      max_books_per_run: 500
+    music_sidecar_artwork:
+      enabled: true
+      music_root_path: /srv-stack/media/music
+      music_root_paths:
+      - /srv-stack/media/music
+      output_filename: folder.jpg
+      replace_existing: false
+      max_albums_per_run: 1200
+    metadata_backfill:
+      enabled: true
+      required: false
+      libraries:
+      - Movies
+      - TV Shows
+      - Music
+      - Books
+      refresh_missing_primary_image: true
+      refresh_missing_overview: true
+      max_refresh_per_library: 80
+      sample_multiplier: 4
+      refresh_query:
+        metadataRefreshMode: FullRefresh
+        imageRefreshMode: FullRefresh
+        replaceAllMetadata: 'true'
+        replaceAllImages: 'true'
+    artwork_health_check:
+      enabled: true
+      required: false
+      libraries:
+      - Movies
+      - TV Shows
+      - Music
+      - Books
+      - Live TV
+      max_items_per_library: 400
+      warn_below_coverage_percent: 70
+      fail_below_coverage_percent: 30
+    library_refresh_query:
+      metadataRefreshMode: FullRefresh
+      imageRefreshMode: FullRefresh
+      replaceAllMetadata: 'false'
+      replaceAllImages: 'false'
+  home_rails:
+    enabled: false
+    required: false
+    cleanup_collections_when_disabled: true
+    cleanup_collection_names:
+    - Trending
+    - Top Rated
+    - New This Week
+    - Because You Watched
+    - Trending TV
+    - Top Music
+    - Top Books
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
+    auto_discover_user_id: true
+    preferred_username_env: STACK_ADMIN_USERNAME
+    max_items_per_rail: 40
+    rails:
+    - name: Trending
+      path: /Items
+      query:
+        includeItemTypes: Movie
+        recursive: 'true'
+        sortBy: PlayCount,DatePlayed
+        sortOrder: Descending
+      allowed_item_types:
+      - Movie
+      limit: 40
+    - name: Top Rated
+      path: /Items
+      query:
+        includeItemTypes: Movie
+        recursive: 'true'
+        sortBy: CommunityRating,CriticRating
+        sortOrder: Descending
+        minCommunityRating: '7'
+      allowed_item_types:
+      - Movie
+      limit: 40
+    - name: New This Week
+      path: /Items
+      query:
+        includeItemTypes: Movie
+        recursive: 'true'
+        sortBy: DateCreated,PremiereDate
+        sortOrder: Descending
+      allowed_item_types:
+      - Movie
+      rolling_premiere_days: 7
+      limit: 40
+    - name: Because You Watched
+      path: /Items/Suggestions
+      query:
+        mediaType: Video
+        type: Movie
+      allowed_item_types:
+      - Movie
+      fallback_query:
+        path: /Items
+        query:
+          includeItemTypes: Movie
+          recursive: 'true'
+          isPlayed: 'true'
+          sortBy: DatePlayed,CommunityRating
+          sortOrder: Descending
+      limit: 40
+    - name: Trending TV
+      path: /Items
+      query:
+        includeItemTypes: Series
+        recursive: 'true'
+        sortBy: PlayCount,DatePlayed,CommunityRating
+        sortOrder: Descending
+      allowed_item_types:
+      - Series
+      limit: 40
+    - name: Top Music
+      path: /Items
+      query:
+        includeItemTypes: MusicAlbum
+        recursive: 'true'
+        sortBy: CommunityRating,PlayCount,DatePlayed
+        sortOrder: Descending
+      allowed_item_types:
+      - MusicAlbum
+      limit: 30
+    - name: Top Books
+      path: /Items
+      query:
+        includeItemTypes: Book
+        recursive: 'true'
+        sortBy: CommunityRating,DateCreated
+        sortOrder: Descending
+      allowed_item_types:
+      - Book
+      limit: 30
+  auto_collections:
+    enabled: true
+    required: false
+    url: http://jellyfin:8096
+    api_key_env: JELLYFIN_API_KEY
+    auto_discover_api_key_from_db: true
+    api_key_db_path: jellyfin/data/jellyfin.db
+    api_key_name_preference:
+    - Jellyfin
+    - Jellyseerr
+    auto_discover_user_id: true
+    preferred_username_env: STACK_ADMIN_USERNAME
+    timezone: America/Chicago
+    crontab: 0 */6 * * *
+    config_relative_path: jellyfin-auto-collections/config.yaml
+    plugins:
+      jellyfin_api:
+        enabled: false
+        list_ids: []

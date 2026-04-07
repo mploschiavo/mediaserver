@@ -27,25 +27,29 @@ class ControllerConfigLoader:
         return (root_dir / candidate).resolve()
 
     def _load_yaml_defaults(self, config_dir: Path) -> dict[str, object]:
-        """Load default settings from contracts/defaults/*.yaml files."""
+        """Load default settings from contracts/defaults/*.yaml and contracts/services/*.yaml."""
         import yaml
 
         defaults: dict[str, object] = {}
-        defaults_dir = config_dir / "defaults"
-        if not defaults_dir.is_dir():
-            # Try image-embedded path
-            defaults_dir = Path("/opt/media-stack/contracts/defaults")
-        if not defaults_dir.is_dir():
-            return defaults
 
-        for yaml_file in sorted(defaults_dir.glob("*.yaml")):
-            try:
-                with open(yaml_file, encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                if isinstance(data, dict):
-                    defaults.update(data)
-            except Exception:
-                pass
+        # 1. Load from contracts/defaults/*.yaml (stack-level defaults)
+        for defaults_dir in [config_dir / "defaults", Path("/opt/media-stack/contracts/defaults")]:
+            if defaults_dir.is_dir():
+                for yaml_file in sorted(defaults_dir.glob("*.yaml")):
+                    try:
+                        with open(yaml_file, encoding="utf-8") as f:
+                            data = yaml.safe_load(f) or {}
+                        if isinstance(data, dict):
+                            defaults.update(data)
+                    except Exception:
+                        pass
+                break
+
+        # Per-service YAML files (contracts/services/*.yaml) contain defaults:
+        # sections, but these are loaded by the registry for future use.
+        # The contracts/defaults/*.yaml files remain the active source for
+        # runtime config defaults until the key naming is fully standardized.
+
         return defaults
 
     def load_config(self, config_path: str, runtime_env: str = "prod") -> dict[str, object]:

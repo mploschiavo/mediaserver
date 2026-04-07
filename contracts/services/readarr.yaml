@@ -1,8 +1,3 @@
-# Readarr — Books automation
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: readarr
   name: Readarr
@@ -19,3 +14,12 @@ service:
   version_path: /api/v1/system/status
   version_json_key: version
   password_api_path: /api/v1/config/host
+plugin:
+  technology: readarr
+  aliases:
+  - rdr
+  adapter_class: media_stack.services.apps.servarr.technologies.readarr:ReadarrAdapter
+  capabilities:
+    default_download_category: books
+    monitor_scope_all_value: entireAuthor
+    download_client_dual_priority_fields: true

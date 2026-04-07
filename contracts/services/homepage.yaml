@@ -1,8 +1,3 @@
-# Homepage — Dashboard
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: homepage
   name: Homepage
@@ -11,3 +6,10 @@ service:
   host: homepage
   port: 3000
   health_path: /
+plugin:
+  technology: homepage
+defaults:
+  enabled: true
+  required: false
+  scheme: http
+  services_relative_path: homepage/services.yaml
