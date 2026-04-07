@@ -365,6 +365,18 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         elif path == "/logs/stream":
             self._sse_response()
 
+        # --- Services (registry) ---
+        elif path == "/api/services":
+            from media_stack.api.services.registry import SERVICES
+            self._json_response(200, [
+                {"id": s.id, "name": s.name, "desc": s.desc, "category": s.category,
+                 "host": s.host, "port": s.port}
+                for s in SERVICES
+            ])
+        elif path == "/api/services/categories":
+            from media_stack.api.services.registry import CATEGORIES
+            self._json_response(200, CATEGORIES)
+
         # --- Health ---
         elif path == "/api/health":
             result = health_svc.probe_services(_api_cache)
