@@ -22,3 +22,5 @@ plugin:
   capabilities:
     default_download_category: music
     monitor_scope_all_value: entireArtist
+  adapter_classes:
+    servarr: media_stack.services.apps.servarr.technologies.lidarr:LidarrAdapter

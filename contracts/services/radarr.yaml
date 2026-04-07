@@ -21,3 +21,5 @@ plugin:
   adapter_class: media_stack.services.apps.servarr.technologies.radarr:RadarrAdapter
   capabilities:
     default_download_category: movies
+  adapter_classes:
+    servarr: media_stack.services.apps.servarr.technologies.radarr:RadarrAdapter

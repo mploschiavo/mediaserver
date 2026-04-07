@@ -8,6 +8,13 @@ service:
   health_path: /
 plugin:
   technology: homepage
+  app_service_classes:
+    homepage_service: media_stack.services.apps.homepage.service:HomepageService
+  service_technology_map:
+    homepage_service: homepage
+  event_handlers:
+    ENSURE:
+      ensure_homepage_services_config: media_stack.services.apps.homepage.runtime_ops:ensure_homepage_services_config
 defaults:
   enabled: true
   required: false

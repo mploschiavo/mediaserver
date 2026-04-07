@@ -8,6 +8,16 @@ service:
   health_path: /app/maintainerr/api/settings
 plugin:
   technology: maintainerr
+  app_service_classes:
+    maintainerr_service: media_stack.services.apps.maintainerr.service:MaintainerrService
+    maintainerr_policy_service: media_stack.services.apps.maintainerr.policy_service:MaintainerrPolicyService
+  service_technology_map:
+    maintainerr_service: maintainerr
+    maintainerr_policy_service: maintainerr
+  event_handlers:
+    ENSURE:
+      ensure_maintainerr_policy: media_stack.services.apps.maintainerr.runtime_ops:ensure_maintainerr_policy
+      ensure_maintainerr_integrations: media_stack.services.apps.maintainerr.runtime_ops:ensure_maintainerr_integrations
 defaults:
   enabled: true
   required: false

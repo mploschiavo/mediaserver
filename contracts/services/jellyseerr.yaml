@@ -15,6 +15,15 @@ plugin:
   technology: jellyseerr
   aliases:
   - seerr
+  app_service_classes:
+    jellyseerr_service: media_stack.services.apps.jellyseerr.service:JellyseerrService
+    request_manager_service: media_stack.services.apps.jellyseerr.service:JellyseerrService
+  service_technology_map:
+    jellyseerr_service: jellyseerr
+    request_manager_service: jellyseerr
+  event_handlers:
+    RUN:
+      configure_jellyseerr: media_stack.services.apps.jellyseerr.runtime_ops:configure_jellyseerr
 defaults:
   enabled: true
   required: false

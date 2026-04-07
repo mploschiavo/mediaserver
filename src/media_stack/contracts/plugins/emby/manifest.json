@@ -1,7 +1,0 @@
-{
-  "technology": "emby",
-  "aliases": ["embyserver"],
-  "adapter_classes": {
-    "media_server": "media_stack.services.media_server_adapters.emby:EmbyMediaServerAdapter"
-  }
-}

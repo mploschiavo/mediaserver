@@ -12,3 +12,16 @@ plugin:
   - qbit
   - qb
   adapter_class: media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter
+  app_service_classes:
+    qbittorrent_service: media_stack.services.apps.qbittorrent.service:QBittorrentService
+    torrent_client_service: media_stack.services.apps.qbittorrent.service:QBittorrentService
+  service_technology_map:
+    qbittorrent_service: qbittorrent
+    torrent_client_service: qbittorrent
+  event_handlers:
+    ACQUIRE:
+      torrent_client_login: media_stack.services.apps.qbittorrent.runtime_ops:torrent_client_login
+    ENSURE:
+      setup_torrent_categories: media_stack.services.apps.qbittorrent.runtime_ops:setup_torrent_categories
+  adapter_classes:
+    download_client: media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter

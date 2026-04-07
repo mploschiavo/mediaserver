@@ -1,7 +1,0 @@
-{
-  "technology": "nzbget",
-  "aliases": ["nzb"],
-  "adapter_classes": {
-    "download_client": "media_stack.services.download_client_adapters.nzbget:NzbgetDownloadClientAdapter"
-  }
-}
