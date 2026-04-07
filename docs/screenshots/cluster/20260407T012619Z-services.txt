@@ -1,0 +1,22 @@
+# services
+# command: kubectl -n media-dev get svc
+# captured_at_utc: 2026-04-07T01:26:20Z
+
+NAME                     TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                       AGE
+bazarr                   ClusterIP   10.152.183.191   <none>        6767/TCP                      14m
+envoy                    NodePort    10.152.183.78    <none>        80:30180/TCP,9901:32456/TCP   14m
+flaresolverr             ClusterIP   10.152.183.130   <none>        8191/TCP                      14m
+homepage                 ClusterIP   10.152.183.214   <none>        3000/TCP                      14m
+jellyfin                 ClusterIP   10.152.183.23    <none>        8096/TCP                      14m
+jellyseerr               ClusterIP   10.152.183.44    <none>        5055/TCP                      14m
+lidarr                   ClusterIP   10.152.183.90    <none>        8686/TCP                      14m
+maintainerr              ClusterIP   10.152.183.170   <none>        6246/TCP                      14m
+media-stack-controller   ClusterIP   10.152.183.96    <none>        9100/TCP                      14m
+plex                     ClusterIP   10.152.183.29    <none>        32400/TCP                     14m
+prowlarr                 ClusterIP   10.152.183.209   <none>        9696/TCP                      14m
+qbittorrent              ClusterIP   10.152.183.185   <none>        8080/TCP                      14m
+radarr                   ClusterIP   10.152.183.210   <none>        7878/TCP                      14m
+readarr                  ClusterIP   10.152.183.243   <none>        8787/TCP                      14m
+sabnzbd                  ClusterIP   10.152.183.120   <none>        8080/TCP                      14m
+sonarr                   ClusterIP   10.152.183.68    <none>        8989/TCP                      14m
+tautulli                 ClusterIP   10.152.183.40    <none>        8181/TCP                      14m

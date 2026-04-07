@@ -1,0 +1,6 @@
+# ingress
+# command: kubectl -n media-dev get ingress
+# captured_at_utc: 2026-04-07T01:26:20Z
+
+NAME                  CLASS    HOSTS                                                         ADDRESS     PORTS   AGE
+media-stack-ingress   public   homepage.local,jellyfin.local,jellyseerr.local + 12 more...   127.0.0.1   80      14m

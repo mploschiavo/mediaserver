@@ -409,6 +409,23 @@ bash bin/deploy-verify.sh 192.168.1.60 media-stack full
 bash bin/deploy-verify.sh 192.168.1.60 media-stack-dev power-user
 ```
 
+## Controller Dashboard
+
+The controller runs an HTTP API server on port 9100 with a built-in operational dashboard:
+
+![Controller Dashboard](docs/screenshots/apps/controller_dashboard.png)
+
+Key capabilities:
+- **40 API endpoints** covering health probes, service management, downloads, stats, and configuration
+- **Authenticated health probes** — validates API keys against each service, not just TCP reachability
+- **Service management** — per-service restart, container log viewer, batch operations
+- **Observability** — download queues, library stats, disk usage, indexer performance, health SLA
+- **Integrations** — Prometheus metrics (`/metrics`), RSS feed (`/api/feed.xml`), Grafana dashboard export (`/api/grafana.json`)
+- **OpenAPI spec** — full spec at `/api/openapi.json` for client code generation
+- **Plugin system** — load custom JS/CSS from `/srv-config/controller-plugins/`
+
+See the [API documentation](http://localhost:9100/api/docs) when running.
+
 ## Controller Image
 
 The controller service and CronJobs run from a prebuilt image.

@@ -1,0 +1,49 @@
+# describe-ingress
+# command: kubectl -n media-dev describe ingress media-stack-ingress
+# captured_at_utc: 2026-04-07T01:26:22Z
+
+Name:             media-stack-ingress
+Labels:           <none>
+Namespace:        media-dev
+Address:          127.0.0.1
+Ingress Class:    public
+Default backend:  <default>
+Rules:
+  Host               Path  Backends
+  ----               ----  --------
+  homepage.local     
+                     /   homepage:3000 (10.1.55.135:3000)
+  jellyfin.local     
+                     /   jellyfin:8096 (10.1.55.183:8096)
+  jellyseerr.local   
+                     /   jellyseerr:5055 (10.1.55.153:5055)
+  sonarr.local       
+                     /   sonarr:8989 (10.1.55.175:8989)
+  radarr.local       
+                     /   radarr:7878 (10.1.55.165:7878)
+  lidarr.local       
+                     /   lidarr:8686 (10.1.55.140:8686)
+  readarr.local      
+                     /   readarr:8787 (10.1.55.130:8787)
+  bazarr.local       
+                     /   bazarr:6767 (10.1.55.169:6767)
+  prowlarr.local     
+                     /   prowlarr:9696 (10.1.55.174:9696)
+  qbittorrent.local  
+                     /   qbittorrent:8080 (10.1.55.147:8080)
+  sabnzbd.local      
+                     /   sabnzbd:8080 (10.1.55.144:8080)
+  maintainerr.local  
+                     /   maintainerr:6246 (10.1.55.161:6246)
+  tautulli.local     
+                     /   tautulli:8181 (10.1.55.157:8181)
+  authelia.local     
+                     /   authelia:9091 (<error: services "authelia" not found>)
+  authentik.local    
+                     /   authentik:9000 (<error: services "authentik" not found>)
+Annotations:         kubernetes.io/ingress.class: public
+                     media-stack.io/author: Matthew Loschiavo
+                     media-stack.io/contact: mploschiavo@gmail.com
+                     media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
+                     media-stack.io/site: https://matthewloschiavo.com
+Events:              <none>

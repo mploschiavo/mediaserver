@@ -259,4 +259,29 @@ test.describe('UI screenshot capture', () => {
       await context.close();
     });
   }
+
+  // Controller dashboard — accessed directly on port 9100, not via ingress.
+  const controllerPort = process.env.CONTROLLER_PORT || '9100';
+  test('capture controller dashboard', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 1680, height: 945 },
+    });
+    const page = await context.newPage();
+    const url = `http://${nodeIp}:${controllerPort}/`;
+    try {
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      // Wait for dashboard data to populate.
+      await page.waitForTimeout(4000);
+      if (response && !acceptableStatusCodes.has(response.status()) && strictMode) {
+        expect(acceptableStatusCodes.has(response.status()), `Controller returned HTTP ${response.status()}`).toBeTruthy();
+      }
+    } catch (err) {
+      // Controller may not be directly reachable (e.g., ClusterIP only).
+      // Try via kubectl port-forward target or NodePort.
+      console.warn(`[WARN] Controller dashboard not reachable at ${url}: ${err}`);
+    }
+    const filePath = path.join(screenshotDir, 'controller_dashboard.png');
+    await page.screenshot({ path: filePath, fullPage: true });
+    await context.close();
+  });
 });

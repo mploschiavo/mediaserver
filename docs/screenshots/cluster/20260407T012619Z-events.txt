@@ -1,0 +1,4 @@
+# events
+# command: kubectl -n media-dev get events --sort-by=.lastTimestamp
+# captured_at_utc: 2026-04-07T01:26:21Z
+
