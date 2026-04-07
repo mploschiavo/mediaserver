@@ -34,8 +34,8 @@ def validate_profile(profile_file: str | None, *, log: Any = None) -> dict:
         return {}
 
     path = Path(profile_file)
-    if not path.exists():
-        raise RuntimeError(f"Profile file not found: {path}")
+    if not path.is_file():
+        raise RuntimeError(f"Profile file not found (or is a directory): {path}")
 
     import yaml
 

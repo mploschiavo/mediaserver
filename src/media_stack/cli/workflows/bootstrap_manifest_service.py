@@ -169,7 +169,7 @@ class BootstrapManifestService:
             self._replace_or_create_yaml(configmap_yaml, "configmap/media-stack-controller-config")
 
         profile_path = str(self.cfg.bootstrap_profile_file or "").strip()
-        if profile_path and Path(profile_path).exists():
+        if profile_path and Path(profile_path).is_file():
             self.info("Updating bootstrap profile ConfigMap")
             with TemporaryDirectory(prefix="media-stack-controller-profile-") as tmpdir:
                 profile_yaml = Path(tmpdir) / "bootstrap-profile.yaml"
