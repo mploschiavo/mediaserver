@@ -102,6 +102,35 @@ _KEY_WRITERS = {"xml": _write_key_xml, "ini": _write_key_ini, "yaml": _write_key
 # sqlite keys are rotated via API, not file — handled separately
 
 
+def _discover_jellyfin_api_key(config_root: str) -> str:
+    """Discover Jellyfin API key from the SQLite DB."""
+    db_path = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
+    return _read_key_sqlite(db_path)
+
+
+def _discover_jellyfin_admin_user_id(base_url: str, api_key: str, preferred_name: str = "admin") -> str:
+    """Find the admin user ID in Jellyfin."""
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/Users?api_key={api_key}",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            users = json.loads(resp.read())
+        if not users:
+            return ""
+        # Prefer exact name match, then first admin
+        for u in users:
+            if str(u.get("Name", "")).strip().lower() == preferred_name.lower():
+                return str(u.get("Id", ""))
+        for u in users:
+            if u.get("Policy", {}).get("IsAdministrator"):
+                return str(u.get("Id", ""))
+        return str(users[0].get("Id", ""))
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # API key rotation — registry-driven
 # ---------------------------------------------------------------------------
@@ -207,15 +236,59 @@ def reset_password(new_password: str) -> dict[str, Any]:
         try:
             jf_key = os.environ.get("JELLYFIN_API_KEY", "")
             jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
+            jf_base = f"http://{jf.host}:{jf.port}"
+
+            # Auto-discover API key and user ID if not in env
+            if not jf_key:
+                jf_key = _discover_jellyfin_api_key(config_root)
+                if jf_key:
+                    os.environ["JELLYFIN_API_KEY"] = jf_key
+            if jf_key and not jf_uid:
+                jf_uid = _discover_jellyfin_admin_user_id(jf_base, jf_key, username)
+                if jf_uid:
+                    os.environ["JELLYFIN_USER_ID"] = jf_uid
+
             if jf_key and jf_uid:
-                payload = json.dumps({"CurrentPw": old_password, "NewPw": new_password}).encode()
-                req = urllib.request.Request(
-                    f"http://{jf.host}:{jf.port}/Users/{jf_uid}/Password",
-                    data=payload, method="POST",
-                    headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
-                )
-                urllib.request.urlopen(req, timeout=10)
-                updated.append("jellyfin")
+                # Try with current password first, then empty password
+                pw_set = False
+                for current_pw in [old_password, ""]:
+                    try:
+                        payload = json.dumps({"CurrentPw": current_pw, "NewPw": new_password}).encode()
+                        req = urllib.request.Request(
+                            f"{jf_base}/Users/{jf_uid}/Password",
+                            data=payload, method="POST",
+                            headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
+                        )
+                        urllib.request.urlopen(req, timeout=10)
+                        pw_set = True
+                        break
+                    except Exception:
+                        continue
+                if pw_set:
+                    updated.append("jellyfin")
+                else:
+                    # Hard reset: use ResetPassword endpoint (Jellyfin 10.9+)
+                    try:
+                        req = urllib.request.Request(
+                            f"{jf_base}/Users/{jf_uid}/Password",
+                            data=json.dumps({"ResetPassword": True}).encode(),
+                            method="POST",
+                            headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
+                        )
+                        urllib.request.urlopen(req, timeout=10)
+                        # Now set the new password with empty current
+                        payload = json.dumps({"CurrentPw": "", "NewPw": new_password}).encode()
+                        req = urllib.request.Request(
+                            f"{jf_base}/Users/{jf_uid}/Password",
+                            data=payload, method="POST",
+                            headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
+                        )
+                        urllib.request.urlopen(req, timeout=10)
+                        updated.append("jellyfin")
+                    except Exception as exc2:
+                        errors.append(f"jellyfin: hard reset failed: {exc2}")
+            else:
+                errors.append("jellyfin: no API key or user ID discoverable")
         except Exception as exc:
             errors.append(f"jellyfin: {exc}")
 
