@@ -13,6 +13,7 @@ import yaml
 _POLICY_CATALOG_PATH = (
     Path(__file__).resolve().parents[5] / "contracts" / "media-stack.bootstrap.policy.yaml"
 )
+_IMAGE_POLICY_PATH = Path("/opt/media-stack/contracts/media-stack.bootstrap.policy.yaml")
 
 
 def _tokenize(value: str) -> str:
@@ -70,16 +71,27 @@ def _set_bool_path(cfg: dict[str, object], path: str, value: bool) -> None:
 
 @lru_cache(maxsize=1)
 def _load_policy_catalog() -> dict[str, Any]:
-    if not _POLICY_CATALOG_PATH.exists():
-        raise RuntimeError(
-            "Bootstrap runtime policy catalog file not found: " f"{_POLICY_CATALOG_PATH}"
-        )
-    payload = yaml.safe_load(_POLICY_CATALOG_PATH.read_text(encoding="utf-8"))
-    if payload is None:
-        payload = {}
-    if not isinstance(payload, dict):
-        raise RuntimeError("Bootstrap runtime policy catalog must be an object")
-    return payload
+    for path in [_POLICY_CATALOG_PATH, _IMAGE_POLICY_PATH]:
+        if path.is_file():
+            payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return payload
+    # Generate a minimal policy from the service registry
+    try:
+        from media_stack.api.services.registry import SERVICES
+        arr_keys = [s.id for s in SERVICES if s.category == "automation" and s.api_key_format == "xml"]
+        toggle_sections = {s.id: s.id for s in SERVICES if s.category in ("management", "media") and s.id not in ("envoy", "homepage")}
+        return {
+            "selected_apps_policy": {
+                "app_toggle_sections": toggle_sections,
+                "arr_app_keys": arr_keys,
+                "selected_app_expansions": {},
+                "arr_disable_sections_when_unselected": ["arr_media_management", "arr_download_handling", "arr_quality_upgrade", "arr_discovery_lists", "disk_guardrails", "media_hygiene"],
+                "arr_discovery_reserved_keys": ["enabled", "required", "trigger_initial_sync", "prune_unmanaged"],
+            }
+        }
+    except Exception:
+        return {"selected_apps_policy": {"app_toggle_sections": {}, "arr_app_keys": []}}
 
 
 def _selected_apps_policy_cfg() -> dict[str, Any]:
