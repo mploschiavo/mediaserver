@@ -44,18 +44,31 @@ def save_profile(content: str, reload_config: Callable[[], None] | None = None) 
 
 
 def get_routing() -> dict[str, Any]:
-    """Return current routing configuration from profile."""
-    resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
-    profile_path = Path(resolved) if resolved else None
+    """Return current routing configuration — persisted overrides take precedence."""
+    import yaml
+
     routing: dict[str, Any] = {}
-    if profile_path and profile_path.is_file():
+
+    # 1. Load base from profile YAML
+    resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+    if resolved:
         try:
-            import yaml
-            with open(profile_path) as f:
+            with open(resolved) as f:
                 profile = yaml.safe_load(f) or {}
-            routing = profile.get("routing") or {}
+            routing = dict(profile.get("routing") or {})
         except Exception:
             pass
+
+    # 2. Overlay persisted runtime overrides (from POST /api/routing)
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    overrides_path = config_root / ".controller" / "routing-overrides.yaml"
+    if overrides_path.is_file():
+        try:
+            overrides = yaml.safe_load(overrides_path.read_text(encoding="utf-8")) or {}
+            routing.update(overrides.get("routing") or {})
+        except Exception:
+            pass
+
     return {
         "base_domain": str(routing.get("base_domain", "local")),
         "stack_subdomain": str(routing.get("stack_subdomain", "media-stack")),
@@ -96,19 +109,23 @@ def update_routing(updates: dict[str, Any], action_trigger: Callable | None = No
             changed.append("gateway_host")
         if not changed:
             return {"status": "no_changes", "routing": routing}
-        # Try to persist — file may be read-only in container
-        persisted = False
+        # Persist to writable config root (survives container restarts)
+        config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+        overrides_path = config_root / ".controller" / "routing-overrides.yaml"
+        overrides_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(overrides_path, "w") as f:
+            yaml.dump({"routing": routing}, f, default_flow_style=False, sort_keys=False)
+        # Also try to update the profile source (may be read-only)
         try:
             with open(profile_path, "w") as f:
                 yaml.dump(profile, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            persisted = True
         except OSError:
-            pass  # Read-only mount — changes are in-memory only
+            pass
         if action_trigger:
-            action_trigger("envoy-config", {"routing_overrides": routing})
+            action_trigger("envoy-config", {})
         return {
             "status": "updated",
-            "persisted": persisted,
+            "persisted_to": str(overrides_path),
             "changed": changed,
             "routing": routing,
         }
