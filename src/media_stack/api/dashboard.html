@@ -639,29 +639,52 @@ async function toggleAuto(on){
 function relTime(sec){if(!sec&&sec!==0)return '?';sec=Math.round(sec);if(sec<60)return sec+'s';if(sec<3600)return Math.floor(sec/60)+'m '+sec%60+'s';return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';}
 function fmtBytes(b){if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;let v=b;while(v>=1024&&i<u.length-1){v/=1024;i++;}return v.toFixed(i>1?1:0)+' '+u[i];}
 
-/* Sortable tables — click any th to sort */
+/* Sortable tables — click any th to sort, persists across re-renders */
+const _tableSortState={};  // tableId -> {col, dir}
 function makeSortable(table){
   if(!table||table.dataset.sortable)return;
   table.dataset.sortable='1';
+  const tableId=table.id||('tbl-'+Math.random().toString(36).slice(2,8));
+  if(!table.id)table.id=tableId;
   const headers=table.querySelectorAll('thead th');
   headers.forEach((th,colIdx)=>{
-    th.innerHTML+=`<span class="sort-arrow">&#9650;</span>`;
+    if(!th.querySelector('.sort-arrow'))th.innerHTML+=`<span class="sort-arrow">&#9650;</span>`;
     th.addEventListener('click',()=>{
-      const tbody=table.querySelector('tbody');if(!tbody)return;
-      const rows=Array.from(tbody.querySelectorAll('tr'));
-      const asc=th.dataset.sortDir!=='asc';
-      headers.forEach(h=>{h.classList.remove('sorted');h.dataset.sortDir='';});
-      th.classList.add('sorted');th.dataset.sortDir=asc?'asc':'desc';
-      th.querySelector('.sort-arrow').innerHTML=asc?'&#9650;':'&#9660;';
-      rows.sort((a,b)=>{
-        const ac=(a.cells[colIdx]?.textContent||'').trim();
-        const bc=(b.cells[colIdx]?.textContent||'').trim();
-        const an=parseFloat(ac),bn=parseFloat(bc);
-        if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;
-        return asc?ac.localeCompare(bc):bc.localeCompare(ac);
-      });
-      rows.forEach(r=>tbody.appendChild(r));
+      const saved=_tableSortState[tableId]||{};
+      const asc=!(saved.col===colIdx&&saved.dir==='asc');
+      _tableSortState[tableId]={col:colIdx,dir:asc?'asc':'desc'};
+      _applySortToTable(table,colIdx,asc);
     });
+  });
+  // Re-apply saved sort state
+  const saved=_tableSortState[tableId];
+  if(saved&&saved.col!==undefined){_applySortToTable(table,saved.col,saved.dir==='asc');}
+}
+function _applySortToTable(table,colIdx,asc){
+  const headers=table.querySelectorAll('thead th');
+  const tbody=table.querySelector('tbody');if(!tbody)return;
+  // Only sort non-detail rows (skip .svc-detail rows)
+  const allRows=Array.from(tbody.querySelectorAll('tr'));
+  const dataRows=allRows.filter(r=>!r.classList.contains('svc-detail'));
+  const detailMap={};
+  allRows.forEach(r=>{if(r.classList.contains('svc-detail')&&r.id){detailMap[r.id]=r;}});
+  headers.forEach(h=>{h.classList.remove('sorted');});
+  if(headers[colIdx]){headers[colIdx].classList.add('sorted');
+    const arrow=headers[colIdx].querySelector('.sort-arrow');
+    if(arrow)arrow.innerHTML=asc?'&#9650;':'&#9660;';}
+  dataRows.sort((a,b)=>{
+    const ac=(a.cells[colIdx]?.textContent||'').trim();
+    const bc=(b.cells[colIdx]?.textContent||'').trim();
+    const an=parseFloat(ac),bn=parseFloat(bc);
+    if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;
+    return asc?ac.localeCompare(bc):bc.localeCompare(ac);
+  });
+  // Re-append in sorted order, keeping detail rows after their parent
+  dataRows.forEach(r=>{
+    tbody.appendChild(r);
+    // Find matching detail row by id pattern
+    const svcId=r.querySelector('[data-svc]')?.dataset?.svc;
+    if(svcId&&detailMap['detail-'+svcId])tbody.appendChild(detailMap['detail-'+svcId]);
   });
 }
 // Auto-apply to tables after render
