@@ -61,6 +61,9 @@ plugin:
     optional: true
   phase_scripts:
     media_server_bootstrap: media_stack.services.apps.jellyfin.cli.ensure_jellyfin_controller_main
+  call_handlers:
+    activate_media_server_plugins: media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins
+  compose_preflight_handler: media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access
 defaults:
   libraries:
     enabled: true

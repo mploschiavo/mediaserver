@@ -24,6 +24,8 @@ bootstrap:
   preconfigure_api_keys: true
   apply_initial_preferences: true
   auto_download_content: false
+  trigger_indexer_sync: true
+  refresh_health_after_setup: true
 
 # Technology bindings — which implementation to use for each role.
 # Change these to swap implementations (e.g., qbittorrent → transmission).

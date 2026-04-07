@@ -91,8 +91,14 @@ class ControllerConfigLoader:
             merged_loaded.update(loaded)
             loaded = merged_loaded
 
-        # Load technology_bindings from profile YAML if not in config.json
-        if "technology_bindings" not in loaded:
+        # Load settings from profile YAML when not in config.json
+        _profile_keys_needed = {
+            "technology_bindings": ("technology_bindings",),
+            "trigger_indexer_sync": ("bootstrap", "trigger_indexer_sync"),
+            "refresh_health_after_setup": ("bootstrap", "refresh_health_after_setup"),
+        }
+        missing_keys = [k for k in _profile_keys_needed if k not in loaded]
+        if missing_keys:
             import yaml
             profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
             for pf in [Path(profile_file) if profile_file else None,
@@ -101,10 +107,18 @@ class ControllerConfigLoader:
                 if pf and pf.is_file():
                     try:
                         profile = yaml.safe_load(pf.read_text(encoding="utf-8")) or {}
-                        tb = profile.get("technology_bindings")
-                        if isinstance(tb, dict):
-                            loaded["technology_bindings"] = tb
-                            break
+                        for cfg_key in missing_keys:
+                            path = _profile_keys_needed[cfg_key]
+                            value = profile
+                            for part in path:
+                                if isinstance(value, dict):
+                                    value = value.get(part)
+                                else:
+                                    value = None
+                                    break
+                            if value is not None:
+                                loaded[cfg_key] = value
+                        break
                     except Exception:
                         pass
 

@@ -31,3 +31,4 @@ plugin:
     optional: true
   phase_scripts:
     torrent_client_credentials: media_stack.services.apps.qbittorrent.cli.ensure_qbit_credentials_main
+  compose_preflight_handler: media_stack.services.apps.qbittorrent.compose_preflight:ensure_compose_torrent_client_credentials

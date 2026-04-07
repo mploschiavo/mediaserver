@@ -226,18 +226,42 @@ def compose_passthrough_env_vars(bootstrap_job_cfg: dict[str, object]) -> tuple[
 
 
 def compose_preflight_handlers(bootstrap_job_cfg: dict[str, object]) -> tuple[str, ...]:
-    raw = bootstrap_job_cfg.get("compose_preflight_handlers")
-    if not isinstance(raw, list):
-        return ()
     handlers: list[str] = []
-    for item in raw:
-        spec = str(item or "").strip()
-        if not spec:
-            continue
-        if ":" not in spec:
-            raise ValueError(
-                "adapter_hooks.bootstrap_job.compose_preflight_handlers entries must be "
-                "module.path:Symbol"
-            )
-        handlers.append(spec)
+    seen: set[str] = set()
+
+    # 1. Load from per-service YAML plugin.compose_preflight_handler
+    try:
+        from media_stack.api.services.registry import _find_services_dir
+        import yaml
+        svc_dir = _find_services_dir()
+        if svc_dir:
+            for yaml_file in sorted(svc_dir.glob("*.yaml")):
+                if yaml_file.name.startswith("_"):
+                    continue
+                try:
+                    data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+                    spec = str((data.get("plugin") or {}).get("compose_preflight_handler") or "").strip()
+                    if spec and ":" in spec and spec not in seen:
+                        handlers.append(spec)
+                        seen.add(spec)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 2. Fill gaps from config.json (backward compat)
+    raw = bootstrap_job_cfg.get("compose_preflight_handlers")
+    if isinstance(raw, list):
+        for item in raw:
+            spec = str(item or "").strip()
+            if not spec:
+                continue
+            if ":" not in spec:
+                raise ValueError(
+                    "adapter_hooks.bootstrap_job.compose_preflight_handlers entries must be "
+                    "module.path:Symbol"
+                )
+            if spec not in seen:
+                handlers.append(spec)
+                seen.add(spec)
     return tuple(handlers)

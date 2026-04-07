@@ -213,24 +213,45 @@ class RunBootstrapJobRunner:
         return actions
 
     def _resolve_call_handler_specs(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+
+        # 1. Load from per-service YAML plugin.call_handlers
+        try:
+            from media_stack.api.services.registry import _find_services_dir
+            import yaml
+            svc_dir = _find_services_dir()
+            if svc_dir:
+                for yaml_file in sorted(svc_dir.glob("*.yaml")):
+                    if yaml_file.name.startswith("_"):
+                        continue
+                    try:
+                        data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+                        call_handlers = (data.get("plugin") or {}).get("call_handlers")
+                        if isinstance(call_handlers, dict):
+                            for key, spec in call_handlers.items():
+                                k = str(key or "").strip()
+                                s = str(spec or "").strip()
+                                if k and s and ":" in s:
+                                    out[k] = s
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # 2. Fill gaps from config.json (backward compat)
         hooks = self._bootstrap_job_hooks()
         raw_map = hooks.get("call_handlers")
-        if raw_map is None:
-            return {}
-        if not isinstance(raw_map, dict):
-            raise ConfigError("adapter_hooks.bootstrap_job.call_handlers must be an object")
-        out: dict[str, str] = {}
-        for key, spec in raw_map.items():
-            handler_key = str(key or "").strip()
-            hook_spec = str(spec or "").strip()
-            if not handler_key or not hook_spec:
-                continue
-            if ":" not in hook_spec:
-                raise ConfigError(
-                    "adapter_hooks.bootstrap_job.call_handlers"
-                    f".{handler_key} must be module.path:Symbol"
-                )
-            out[handler_key] = hook_spec
+        if isinstance(raw_map, dict):
+            for key, spec in raw_map.items():
+                handler_key = str(key or "").strip()
+                hook_spec = str(spec or "").strip()
+                if handler_key and hook_spec and handler_key not in out:
+                    if ":" not in hook_spec:
+                        raise ConfigError(
+                            "adapter_hooks.bootstrap_job.call_handlers"
+                            f".{handler_key} must be module.path:Symbol"
+                        )
+                    out[handler_key] = hook_spec
         return out
 
     @staticmethod
