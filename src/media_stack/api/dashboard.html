@@ -1737,7 +1737,11 @@ async function loadGpuInfo(){
       else{h+='<pre class="profile-pre">    devices:\n      - /dev/dri:/dev/dri\n    group_add:\n      - "44"   # video\n      - "109"  # render</pre>';}
       h+='<div style="font-size:.82em;color:var(--fg3);margin-top:4px">Then: <code>docker compose up -d jellyfin</code></div>';
     }else if(d.detected&&d.jellyfin_has_gpu&&!d.jellyfin_configured){
-      h+='<div style="font-size:.85em;color:var(--warn)">GPU is passed through but HW decoding not enabled in Jellyfin.<br>Go to: Jellyfin → Dashboard → Playback → Transcoding → select hardware acceleration type.</div>';
+      h+='<div style="font-size:.85em;color:var(--warn);margin-bottom:8px">GPU is passed through but hardware transcoding is not enabled in Jellyfin.</div>';
+      h+='<button class="btn" onclick="enableGpuTranscoding()">Enable Hardware Transcoding</button>';
+      h+='<span style="font-size:.82em;color:var(--fg3);margin-left:8px">Auto-configures Jellyfin and restarts the container</span>';
+    }else if(d.detected&&d.jellyfin_has_gpu&&d.jellyfin_configured){
+      h+='<div style="font-size:.85em;color:var(--ok)">Hardware transcoding is enabled ('+(d.hw_accel_type||d.jellyfin_hw_type||'configured')+')</div>';
     }else if(!d.detected){
       h+='<div style="font-size:.85em;color:var(--fg2)">No GPU detected in any container. To check if your host has a GPU:</div>';
       h+='<pre class="profile-pre" style="margin-top:6px"># Linux\nls /dev/dri/ && lspci | grep -iE "VGA|Display|3D"\n\n# Windows (PowerShell)\nGet-WmiObject Win32_VideoController | Select Name\n\n# macOS\nsystem_profiler SPDisplaysDataType | grep Chipset</pre>';
@@ -1745,6 +1749,23 @@ async function loadGpuInfo(){
     h+='</div>';
     document.getElementById('gpu-info').innerHTML=h;
   }catch(e){document.getElementById('gpu-info').innerHTML='Error: '+e;}
+}
+
+/* GPU Enable */
+async function enableGpuTranscoding(){
+  if(!confirm('Enable hardware transcoding in Jellyfin? This will modify system.xml and restart Jellyfin.'))return;
+  showLoading();toast('Enabling GPU transcoding...');
+  try{
+    const r=await fetch('/api/gpu/enable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    hideLoading();
+    if(d.status==='ok'){
+      toast('Hardware transcoding enabled ('+d.hw_accel_type+'). '+(d.note||''));
+      setTimeout(loadGpuInfo,3000);
+    }else{
+      toast(d.error||'Failed to enable GPU transcoding','error');
+    }
+  }catch(e){hideLoading();toast('Error: '+e,'error');}
 }
 
 /* Config Snapshots */
