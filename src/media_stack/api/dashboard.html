@@ -996,7 +996,8 @@ async function saveRouting(){
     const d=await r.json();
     if(d.status==='updated'){toast('Routing updated: '+d.changed.join(', ')+'. Envoy rebuild queued.');loadRoutingConfig();}
     else if(d.status==='no_changes'){toast('No changes needed');}
-    else{toast(d.error||'Update failed',true);}}catch(e){toast('Error: '+e.message,true);}
+    else{toast(d.error||'Update failed',true);loadRoutingConfig();}}
+  catch(e){toast('Error: '+e.message,true);loadRoutingConfig();}
 }
 
 /* Webhooks + Test */

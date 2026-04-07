@@ -85,12 +85,15 @@ def update_routing(updates: dict[str, Any], action_trigger: Callable | None = No
             if key in allowed_keys and str(routing.get(key, "")) != str(value):
                 routing[key] = value
                 changed.append(key)
-        if "stack_subdomain" in changed or "base_domain" in changed:
+        # Only auto-derive gateway_host if it wasn't explicitly set
+        if ("stack_subdomain" in changed or "base_domain" in changed) and "gateway_host" not in changed:
             sub = routing.get("stack_subdomain", "media-stack")
             dom = routing.get("base_domain", "local")
-            routing["gateway_host"] = f"apps.{sub}.{dom}"
-            if "gateway_host" not in changed:
-                changed.append("gateway_host")
+            # Preserve existing prefix (e.g. "apps" from "apps.old.local")
+            old_host = str(routing.get("gateway_host", ""))
+            prefix = old_host.split(".")[0] if old_host and "." in old_host else "apps"
+            routing["gateway_host"] = f"{prefix}.{sub}.{dom}"
+            changed.append("gateway_host")
         if not changed:
             return {"status": "no_changes", "routing": routing}
         with open(profile_path, "w") as f:

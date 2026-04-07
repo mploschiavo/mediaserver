@@ -116,8 +116,15 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     """HTTP request handler for controller API endpoints."""
 
     state: BootstrapState
-    action_trigger: ActionTriggerFn | None = None
-    reload_config: Callable[[], None] | None = None
+    _callbacks: dict[str, Any] = {}
+
+    @property
+    def action_trigger(self) -> ActionTriggerFn | None:
+        return self._callbacks.get("action_trigger")
+
+    @property
+    def reload_config(self) -> Callable[[], None] | None:
+        return self._callbacks.get("reload_config")
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -594,8 +601,12 @@ def start_api_server(
 ) -> ThreadingHTTPServer:
     """Start the API server in a background thread."""
     ControllerAPIHandler.state = state
-    ControllerAPIHandler.action_trigger = action_trigger
-    ControllerAPIHandler.reload_config = reload_config
+    # Store callables in a dict to avoid Python's descriptor protocol
+    # binding them to self when accessed as class attributes.
+    ControllerAPIHandler._callbacks = {
+        "action_trigger": action_trigger,
+        "reload_config": reload_config,
+    }
 
     server = ThreadingHTTPServer(("0.0.0.0", port), ControllerAPIHandler)
     server.daemon_threads = True
