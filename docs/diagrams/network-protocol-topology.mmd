@@ -5,9 +5,9 @@ flowchart TD
     FW["Router / Firewall / NAT"]
   end
 
-  subgraph Z1["Zone 1: Kubernetes Edge (node IPs, e.g. 192.168.1.60)"]
-    INGR["Ingress Controller\nTraefik/NGINX\n443/80 entrypoint"]
-    HOSTS["Ingress host routes\nhomepage.local, jellyfin.local,\n*jellyseerr/arr/qb/sab*\nmaintainerr.local, tautulli.local"]
+  subgraph Z1["Zone 1: Edge Gateway (node IPs, e.g. 192.168.1.60)"]
+    INGR["Gateway\nCompose: Envoy :80\nK8s: Ingress Controller"]
+    HOSTS["Host + path-prefix routes\nhomepage.local, jellyfin.local,\n*jellyseerr/arr/qb/sab*\nmaintainerr.local, tautulli.local"]
   end
 
   subgraph Z2["Zone 2: Service CIDR (example 10.152.183.0/24)"]
@@ -20,7 +20,7 @@ flowchart TD
     P_UI["UI Pods\nhomepage jellyfin jellyseerr"]
     P_AUT["Automation Pods\narr + bazarr + prowlarr"]
     P_DL["Downloader Pods\nqB sab flaresolverr unpackerr\ntautulli maintainerr"]
-    P_JOB["Job/Cron Pods\nbootstrap prewarm hygiene indexers"]
+    P_JOB["Controller + Job Pods\ncontroller prewarm hygiene indexers"]
   end
 
   subgraph Z4["Zone 4: Storage/Data Plane (PVC-backed)"]
