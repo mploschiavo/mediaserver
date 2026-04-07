@@ -3,18 +3,6 @@
   "trigger_indexer_sync": true,
   "refresh_health_after_setup": true,
   "adapter_hooks": {
-    "event_handlers": {
-      "VALIDATE": {
-        "ensure_app_auth_settings": "media_stack.services.apps.servarr.runtime.arr_ops:ensure_app_auth_settings"
-      },
-      "RUN": {
-        "run_servarr_pipeline": "media_stack.services.apps.servarr.runtime_ops:run_servarr_pipeline",
-        "run_media_hygiene": "media_stack.services.apps.servarr.runtime.hygiene_ops:run_media_hygiene"
-      },
-      "ENSURE": {
-        "enforce_disk_guardrails": "media_stack.services.apps.servarr.runtime.hygiene_ops:enforce_disk_guardrails"
-      }
-    },
     "edge": {
       "media_server_service_names": [
         "jellyfin",
@@ -167,23 +155,6 @@
           }
         }
       ],
-      "components": {
-        "torrent_client": {
-          "binding": "torrent_client"
-        },
-        "media_server": {
-          "binding": "media_server"
-        },
-        "usenet_client": {
-          "binding": "usenet_client"
-        },
-        "request_manager": {
-          "binding": "request_manager"
-        },
-        "indexer_manager": {
-          "technology": "prowlarr"
-        }
-      },
       "enable_components": [
         "unpackerr"
       ],
@@ -195,17 +166,6 @@
       }
     },
     "bootstrap_job": {
-      "components": {
-        "torrent_client": {
-          "binding": "torrent_client"
-        },
-        "usenet_client": {
-          "binding": "usenet_client"
-        },
-        "request_manager": {
-          "binding": "request_manager"
-        }
-      },
       "call_handlers": {
         "activate_media_server_plugins": "media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins"
       },

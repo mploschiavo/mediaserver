@@ -200,23 +200,17 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             ["prepare_bootstrap_job_config", "ensure_bootstrap_pvc_prereqs"],
         )
 
-    def test_resolve_bootstrap_all_components_prefers_declared_components_map(self):
+    def test_resolve_components_auto_derives_from_role_bindings_and_overlays_explicit(self):
         cfg = {
             "adapter_hooks": {
                 "bootstrap_all": {
                     "components": {
-                        "download": {"binding": "torrent_client"},
                         "indexer": {"technology": "Prowlarr"},
-                        "requests": "jellyseerr",
                     }
                 }
             }
         }
-        aliases = {
-            "qbittorrent": "qbittorrent",
-            "prowlarr": "prowlarr",
-            "jellyseerr": "jellyseerr",
-        }
+        aliases = {"prowlarr": "prowlarr"}
         role_bindings = {"torrent_client": "qbittorrent", "request_manager": "jellyseerr"}
 
         resolved = resolve_pipeline_components(
@@ -226,19 +220,16 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             role_bindings=role_bindings,
         )
 
-        self.assertEqual(
-            resolved,
-            {
-                "download": "qbittorrent",
-                "indexer": "prowlarr",
-                "requests": "jellyseerr",
-            },
-        )
+        # Auto-derived from role_bindings
+        self.assertEqual(resolved["torrent_client"], "qbittorrent")
+        self.assertEqual(resolved["request_manager"], "jellyseerr")
+        # Explicit overlay
+        self.assertEqual(resolved["indexer"], "prowlarr")
 
-    def test_resolve_pipeline_components_requires_non_empty_components_map(self):
-        cfg = {"adapter_hooks": {"bootstrap_all": {"components": {}}}}
-        aliases = {"qbittorrent": "qbittorrent"}
-        role_bindings = {"torrent_client": "qbittorrent"}
+    def test_resolve_pipeline_components_requires_non_empty_result(self):
+        cfg = {"adapter_hooks": {"bootstrap_all": {}}}
+        aliases = {}
+        role_bindings = {}
         with self.assertRaises(ConfigError):
             resolve_pipeline_components(
                 cfg,
