@@ -1,8 +1,3 @@
-# Maintainerr — Library cleanup
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: maintainerr
   name: Maintainerr
@@ -11,3 +6,51 @@ service:
   host: maintainerr
   port: 6246
   health_path: /app/maintainerr/api/settings
+plugin:
+  technology: maintainerr
+defaults:
+  enabled: true
+  required: false
+  url: http://maintainerr:6246
+  integrations:
+    enabled: true
+    required: false
+    test_connections: true
+    main:
+      enabled: true
+      media_server_type: jellyfin
+      jellyfin_url: http://jellyfin:8096
+      jellyfin_server_name: Jellyfin
+      jellyfin_api_key_env: JELLYFIN_API_KEY
+      jellyfin_user_id_env: JELLYFIN_USER_ID
+    radarr:
+      enabled: true
+      server_name: Radarr
+      url: http://radarr:7878
+      api_key_env: RADARR_API_KEY
+    sonarr:
+      enabled: true
+      server_name: Sonarr
+      url: http://sonarr:8989
+      api_key_env: SONARR_API_KEY
+    jellyseerr:
+      enabled: true
+      url: http://jellyseerr:5055
+      api_key_env: JELLYSEERR_API_KEY
+    tautulli:
+      enabled: true
+      url: http://tautulli:8181
+      api_key_env: TAUTULLI_API_KEY
+      api_key_config_path: tautulli/config.ini
+  policy_relative_path: maintainerr/policy.json
+  rules_library:
+    enabled: true
+    include_defaults: true
+    relative_path: maintainerr/rules
+    merge_mode: append
+  policy:
+    retention:
+      max_disk_used_percent: 65
+      target_disk_used_percent: 58
+      protect_recently_added_days: 21
+      protect_unwatched_days: 30

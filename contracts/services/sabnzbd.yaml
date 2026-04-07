@@ -1,8 +1,3 @@
-# SABnzbd — Usenet client
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: sabnzbd
   name: SABnzbd
@@ -17,3 +12,8 @@ service:
   api_key_config: sabnzbd/sabnzbd.ini
   api_key_format: ini
   password_config: sabnzbd/sabnzbd.ini
+plugin:
+  technology: sabnzbd
+  aliases:
+  - sab
+  adapter_class: media_stack.services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter

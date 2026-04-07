@@ -1,8 +1,3 @@
-# qBittorrent — Torrent client
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: qbittorrent
   name: qBittorrent
@@ -11,3 +6,9 @@ service:
   host: qbittorrent
   port: 8080
   health_path: /
+plugin:
+  technology: qbittorrent
+  aliases:
+  - qbit
+  - qb
+  adapter_class: media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter

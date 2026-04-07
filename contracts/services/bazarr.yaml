@@ -1,8 +1,3 @@
-# Bazarr — Subtitles
-#
-# Single-file service definition. Drop in contracts/services/ to enable.
-# Delete to disable. No Python code changes needed.
-
 service:
   id: bazarr
   name: Bazarr
@@ -19,3 +14,28 @@ service:
   version_path: /api/system/status
   version_json_key: data.bazarr_version
   password_config: bazarr/config/config.yaml
+plugin:
+  technology: bazarr
+  aliases:
+  - barr
+defaults:
+  enabled: true
+  required: false
+  url: http://bazarr:6767
+  base_url: /app/bazarr
+  config_relative_path: bazarr/config/config.yaml
+  subtitle_defaults:
+    enabled: true
+    providers:
+    - opensubtitlescom
+    - podnapisi
+    - addic7ed
+    general:
+      serie_default_enabled: true
+      movie_default_enabled: true
+      single_language: false
+      minimum_score: 70
+      minimum_score_movie: 70
+      use_embedded_subs: true
+      ignore_pgs_subs: true
+      ignore_vobsub_subs: true
