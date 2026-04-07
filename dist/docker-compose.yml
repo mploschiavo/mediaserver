@@ -486,6 +486,11 @@ services:
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f unpackerr || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [sonarr, radarr, lidarr, readarr]
 
   recyclarr:
@@ -495,6 +500,7 @@ services:
       - "-text=Recyclarr stub endpoint. Enable and configure a real Recyclarr runtime when ready."
       - "-listen=:80"
     restart: unless-stopped
+    # No healthcheck — scratch-based image has no shell or tools
     labels:
       - traefik.enable=true
       - traefik.http.routers.recyclarr.rule=Host(`recyclarr.local`)
@@ -517,7 +523,7 @@ services:
       - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${BASE_PATH:-/}"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${MAINTAINERR_BASE_PATH:-/app/maintainerr}/api/settings || wget -qO- http://127.0.0.1:6246/"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -572,7 +578,7 @@ services:
       - "${TAUTULLI_PORT:-8181}:8181"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8181/status"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -590,6 +596,11 @@ services:
     ports:
       - "${FLARESOLVERR_PORT:-8191}:8191"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8191/"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
     labels:
       - traefik.enable=true
       - traefik.http.routers.flaresolverr.rule=Host(`flaresolverr.local`)
