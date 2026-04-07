@@ -168,6 +168,11 @@ def resolve_pipeline_phase_plan(
 
 
 def _resolve_skip_flag_aliases(cfg: dict[str, Any]) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Load legacy skip flag aliases from config.json (backward compat only).
+
+    Generic skip flags (--skip-torrent-client-ensure, SKIP_TORRENT_CLIENT_ENSURE)
+    are auto-generated from phase_plan skip_flag keys — no aliases needed.
+    """
     hooks = _adapter_hooks(cfg)
     raw = hooks.get("skip_flag_aliases")
     if not isinstance(raw, dict):
@@ -178,17 +183,13 @@ def _resolve_skip_flag_aliases(cfg: dict[str, Any]) -> dict[str, dict[str, tuple
         token = normalize_flag_token(key)
         if not token or not isinstance(value, dict):
             continue
-        options: list[str] = []
-        env_vars: list[str] = []
-        for opt in value.get("options") or ():
-            option = str(opt).strip()
-            if option and option not in options:
-                options.append(option)
-        for env in value.get("env_vars") or ():
-            env_var = str(env).strip()
-            if env_var and env_var not in env_vars:
-                env_vars.append(env_var)
-        aliases[token] = {"options": tuple(options), "env_vars": tuple(env_vars)}
+        options = tuple(
+            str(o).strip() for o in (value.get("options") or ()) if str(o).strip()
+        )
+        env_vars = tuple(
+            str(e).strip() for e in (value.get("env_vars") or ()) if str(e).strip()
+        )
+        aliases[token] = {"options": options, "env_vars": env_vars}
     return aliases
 
 
@@ -295,14 +296,39 @@ def resolve_runner_phase_script(
     aliases: dict[str, str] | None = None,
 ) -> str:
     normalized_aliases = dict(aliases or {})
+    raw_tech = normalize_technology_token(technology)
+    canonical = canonicalize_technology(raw_tech, normalized_aliases)
+
+    # 1. Load from per-service YAML plugin.phase_scripts
+    try:
+        from media_stack.api.services.registry import _find_services_dir
+        import yaml as _yaml
+        svc_dir = _find_services_dir()
+        if svc_dir:
+            for tech_id in (canonical, raw_tech):
+                if not tech_id:
+                    continue
+                yaml_file = svc_dir / f"{tech_id}.yaml"
+                if yaml_file.is_file():
+                    try:
+                        data = _yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+                        phase_scripts = (data.get("plugin") or {}).get("phase_scripts")
+                        if isinstance(phase_scripts, dict):
+                            result = str(phase_scripts.get(phase_key) or "").strip()
+                            if result:
+                                return result
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # 2. Fall back to config.json runner_phase_scripts
     hooks = _adapter_hooks(cfg)
     mappings = hooks.get("runner_phase_scripts")
     if isinstance(mappings, dict):
         phase_map = mappings.get(phase_key)
         if isinstance(phase_map, dict):
             candidates: list[str] = []
-            raw_tech = normalize_technology_token(technology)
-            canonical = canonicalize_technology(raw_tech, normalized_aliases)
             for token in (raw_tech, canonical, "*"):
                 if token and token not in candidates:
                     candidates.append(token)

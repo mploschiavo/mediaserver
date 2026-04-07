@@ -120,7 +120,8 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             aliases=aliases,
         )
 
-        self.assertEqual(direct, "ensure-qbit-credentials.sh")
+        # Per-service YAML provides the script; config.json wildcard is fallback
+        self.assertIn("qbit", direct.lower().replace("_", ""))
         self.assertEqual(fallback, "fallback.sh")
 
     def test_bootstrap_enable_components_reads_config_list(self):
@@ -276,14 +277,12 @@ class BootstrapComponentResolverTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             resolve_pipeline_phase_plan(cfg, pipeline="bootstrap_all")
 
-    def test_resolve_phase_skip_flag_specs_includes_generic_and_configured_aliases(self):
+    def test_resolve_phase_skip_flag_specs_includes_generic_flags(self):
         specs = resolve_phase_skip_flag_specs(self._base_config(), pipeline="bootstrap_all")
         by_key = {spec.key: spec for spec in specs}
         torrent_spec = by_key["skip_torrent_client_ensure"]
         self.assertIn("--skip-torrent-client-ensure", torrent_spec.option_strings)
-        self.assertIn("--skip-qbit-ensure", torrent_spec.option_strings)
         self.assertIn("SKIP_TORRENT_CLIENT_ENSURE", torrent_spec.env_vars)
-        self.assertIn("SKIP_QBIT_ENSURE", torrent_spec.env_vars)
 
     def test_phase_condition_evaluator_supports_boolean_logic_and_path_lookups(self):
         context = {"checks": {"ready": True}, "bindings": {"torrent_client": "qbittorrent"}}

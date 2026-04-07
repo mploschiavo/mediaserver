@@ -59,6 +59,8 @@ plugin:
     handler: media_stack.services.apps.jellyfin.http_preflight:run_preflight
     export_env: true
     optional: true
+  phase_scripts:
+    media_server_bootstrap: media_stack.services.apps.jellyfin.cli.ensure_jellyfin_controller_main
 defaults:
   libraries:
     enabled: true
