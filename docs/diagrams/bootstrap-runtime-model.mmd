@@ -8,6 +8,10 @@ stateDiagram-v2
   WaitForAction --> RunIndexerPipeline: POST /actions/auto-indexers
   WaitForAction --> EnvoyConfigGen: POST /actions/envoy-config
   WaitForAction --> Reconcile: POST /actions/reconcile
+  WaitForAction --> RestartApps: POST /actions/restart-apps
+  WaitForAction --> SyncIndexers: POST /actions/sync-indexers
+  RestartApps --> WaitForAction
+  SyncIndexers --> WaitForAction
 
   ParseConfig --> LoadServiceYAML
   LoadServiceYAML --> MergeHookDefaults

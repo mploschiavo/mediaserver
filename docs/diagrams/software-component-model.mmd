@@ -51,17 +51,18 @@ flowchart TD
   K8S --> RF
   RPLAN --> RF
 
-  MAIN --> RF --> REG --> WIRE
+  MAIN --> RF --> WIRE
 
-  REG --> CFGM
-  REG --> CORE_RT
-  REG --> CORE_SEC
-  REG --> ARR
-  REG --> LIB
+  RF --> CFGM
+  RF --> CORE_RT
+  RF --> CORE_SEC
+  RF --> ARR
+  RF --> LIB
 
   REG --> DL
   REG --> MS
   REG --> SA
+  RF --> REG
 
   WIRE --> APPMOD
 
