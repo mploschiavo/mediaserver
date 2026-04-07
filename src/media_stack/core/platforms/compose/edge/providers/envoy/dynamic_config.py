@@ -582,7 +582,20 @@ class EnvoyDynamicConfigService:
                 if not strip_prefix:
                     strip_prefix = _strip_prefix_value(middleware_cfg)
 
-            if strip_prefix and strip_prefix == path_prefix and path_prefix != "/":
+            # Determine if this service needs prefix stripping.
+            # 1. Explicit stripPrefix middleware in labels (legacy)
+            # 2. Registry flag: preserve_path_prefix=False means strip
+            needs_strip = bool(strip_prefix and strip_prefix == path_prefix)
+            if not needs_strip and path_prefix != "/":
+                try:
+                    from media_stack.api.services.registry import get_service
+                    svc = get_service(service_name)
+                    if svc and not svc.preserve_path_prefix:
+                        needs_strip = True
+                except Exception:
+                    pass
+
+            if needs_strip and path_prefix != "/":
                 regex_rewrite = {
                     "pattern": {
                         "google_re2": {},
