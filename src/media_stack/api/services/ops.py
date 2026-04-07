@@ -244,6 +244,39 @@ def get_config_snapshots() -> dict[str, Any]:
     return {"snapshots": snapshots[:50], "dir": str(snapshot_dir)}
 
 
+def get_snapshot_detail(filename: str) -> dict[str, Any]:
+    """Read a specific snapshot file."""
+    import json as _json
+    snapshot_dir = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / ".snapshots"
+    path = snapshot_dir / filename
+    if not path.is_file() or not filename.startswith("snapshot-"):
+        return {"error": "Snapshot not found"}
+    try:
+        return {"snapshot": _json.loads(path.read_text(encoding="utf-8")), "file": filename}
+    except Exception as exc:
+        return {"error": str(exc)[:120]}
+
+
+def diff_snapshots(file_a: str, file_b: str) -> dict[str, Any]:
+    """Compare two snapshots and return differences."""
+    import json as _json
+    snapshot_dir = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / ".snapshots"
+    try:
+        a = _json.loads((snapshot_dir / file_a).read_text(encoding="utf-8"))
+        b = _json.loads((snapshot_dir / file_b).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"error": str(exc)[:120]}
+
+    diffs: list[dict[str, str]] = []
+    all_keys = set(a.keys()) | set(b.keys())
+    for key in sorted(all_keys):
+        val_a = a.get(key, "(absent)")
+        val_b = b.get(key, "(absent)")
+        if val_a != val_b:
+            diffs.append({"file": key, "status": "changed" if key in a and key in b else "added" if key not in a else "removed"})
+    return {"diffs": diffs, "file_a": file_a, "file_b": file_b, "total_changes": len(diffs)}
+
+
 def get_mount_info() -> dict[str, Any]:
     """Detect NFS/CIFS/local mounts relevant to media storage."""
     mounts: list[dict[str, str]] = []

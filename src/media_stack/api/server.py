@@ -409,6 +409,18 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             self._json_response(200, ops_svc.get_gpu_info())
         elif path == "/api/snapshots":
             self._json_response(200, ops_svc.get_config_snapshots())
+        elif path.startswith("/api/snapshots/") and path.count("/") == 3:
+            filename = path.split("/")[3]
+            self._json_response(200, ops_svc.get_snapshot_detail(filename))
+        elif path == "/api/snapshot-diff":
+            # ?a=snapshot-xxx.json&b=snapshot-yyy.json
+            params = {}
+            if "?" in self.path:
+                for part in self.path.split("?", 1)[1].split("&"):
+                    if "=" in part:
+                        k, v = part.split("=", 1)
+                        params[k] = v
+            self._json_response(200, ops_svc.diff_snapshots(params.get("a", ""), params.get("b", "")))
         elif path == "/api/mounts":
             self._json_response(200, ops_svc.get_mount_info())
         elif path.startswith("/api/logs/") and path.count("/") == 3:
