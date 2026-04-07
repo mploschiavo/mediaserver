@@ -264,13 +264,26 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 
   <!-- Logs tab -->
   <div id="tab-logs" class="tab-content active">
+    <!-- Source selector: controller stream + individual service containers -->
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span style="color:var(--fg3);font-size:.82em;font-weight:600">Source:</span>
+      <button class="btn-secondary active" style="padding:3px 8px;font-size:.75em" onclick="setLogSource('controller',this)">Controller</button>
+      <select id="svcLogPicker" onchange="loadSvcLogFromPicker()" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.78em">
+        <option value="">+ Add Service Logs</option>
+      </select>
+      <span id="activeSvcLogs" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:4px">
+        <span id="tailIndicator" class="conn-dot live" title="Auto-tailing" style="width:6px;height:6px"></span>
+        <span style="color:var(--fg3);font-size:.72em" id="tailLabel">Tailing</span>
+      </span>
+    </div>
     <div class="filter-bar">
       <button class="active" onclick="setLogFilter('all',this)">All</button>
       <button onclick="setLogFilter('ok',this)">OK</button>
       <button onclick="setLogFilter('warn',this)">Warn</button>
       <button onclick="setLogFilter('err',this)">Error</button>
       <input type="text" id="logSearch" placeholder="Search logs (regex with /pattern/)" oninput="applyLogFilter()">
-      <select id="logActionFilter" onchange="applyLogFilter()" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.78em"><option value="">All Actions</option></select>
+      <select id="logActionFilter" onchange="applyLogFilter()" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.78em"><option value="">All Sources</option></select>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" id="scrollBtn" onclick="logAutoScroll=!logAutoScroll;updateScrollBtn()">Pause</button>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleFullscreenLogs()">Expand</button>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="downloadLogs()">Export</button>
@@ -950,30 +963,87 @@ async function testWebhooks(){
     else{const ok=d.results.filter(r=>r.status==='ok').length;toast(ok+'/'+d.tested+' webhooks delivered',ok<d.tested);}}catch(e){toast(e.toString(),true);}
 }
 
-/* Log filtering */
+/* Log filtering + multi-source */
+const _activeSvcLogs=new Set();
+let _logSource='controller'; // 'controller' or 'all'
+
+function setLogSource(src,btn){
+  _logSource=src;
+  document.querySelectorAll('#tab-logs > div:first-child > button').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  applyLogFilter();
+}
 function setLogFilter(f,btn){logFilter=f;document.querySelectorAll('.filter-bar button').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');applyLogFilter();}
+
+function loadSvcLogFromPicker(){
+  const sel=document.getElementById('svcLogPicker');
+  const svc=sel.value;sel.value='';
+  if(!svc||_activeSvcLogs.has(svc))return;
+  _fetchSvcLogs(svc);
+}
+async function _fetchSvcLogs(svcId){
+  _activeSvcLogs.add(svcId);
+  _renderActiveSvcBadges();
+  toast('Loading '+svcId+' logs...');
+  try{
+    const r=await fetch('/api/logs/'+svcId+'?lines=200');const d=await r.json();
+    for(const line of(d.lines||[])){
+      const cls=line.includes('error')||line.includes('ERR')?'err':line.includes('warn')||line.includes('WARN')?'warn':'';
+      const html='<div class="log-line" data-action="'+svcId+'"><span class="ts" style="color:var(--blue)">['+svcId+']</span> <span class="'+cls+'">'+line.replace(/</g,'&lt;')+'</span></div>';
+      logRaw.push({msg:'['+svcId+'] '+line,cls,html,action:svcId});
+    }
+    if(logRaw.length>800)logRaw=logRaw.slice(-500);
+    applyLogFilter();
+    toast(svcId+': '+(d.lines||[]).length+' lines loaded');
+  }catch(e){toast('Error: '+e.message,true);}
+}
+function removeSvcLog(svcId){
+  _activeSvcLogs.delete(svcId);
+  logRaw=logRaw.filter(e=>e.action!==svcId);
+  _renderActiveSvcBadges();
+  applyLogFilter();
+}
+function _renderActiveSvcBadges(){
+  const el=document.getElementById('activeSvcLogs');if(!el)return;
+  let h='';
+  for(const svc of _activeSvcLogs){
+    h+='<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);font-size:.75em;color:var(--blue)">';
+    h+=svc+' <span style="cursor:pointer;color:var(--fg3)" onclick="removeSvcLog(\''+svc+'\')">&times;</span></span>';
+  }
+  el.innerHTML=h;
+}
+
 function applyLogFilter(){
   const search=(document.getElementById('logSearch').value||'').toLowerCase();const el=document.getElementById('logs');
   const actionFilter=(document.getElementById('logActionFilter')?.value||'');
   let filtered=logRaw;
+  // Source filter
+  if(_logSource==='controller')filtered=filtered.filter(e=>!_activeSvcLogs.has(e.action));
   if(logFilter!=='all')filtered=filtered.filter(e=>{if(logFilter==='ok')return e.cls==='ok';if(logFilter==='warn')return e.cls==='warn';if(logFilter==='err')return e.cls==='err';return true;});
   if(actionFilter)filtered=filtered.filter(e=>e.action===actionFilter);
   if(search){const isRegex=search.startsWith('/')&&search.lastIndexOf('/')>0;
     if(isRegex){try{const rx=new RegExp(search.slice(1,search.lastIndexOf('/')),'i');filtered=filtered.filter(e=>rx.test(e.msg));}catch(ex){}}
     else{filtered=filtered.filter(e=>e.msg.toLowerCase().includes(search));}}
   el.innerHTML=filtered.map(e=>e.html).join('');if(logAutoScroll)el.scrollTop=el.scrollHeight;
-  // Update action filter dropdown with known actions
+  // Update source filter dropdown with all known sources
   const sel=document.getElementById('logActionFilter');if(sel){
-    const actions=new Set(logRaw.map(e=>e.action).filter(Boolean));
-    const cur=sel.value;sel.innerHTML='<option value="">All Actions</option>';
-    for(const a of[...actions].sort())sel.innerHTML+='<option value="'+a+'"'+(a===cur?' selected':'')+'>'+a+'</option>';
+    const sources=new Set(logRaw.map(e=>e.action).filter(Boolean));
+    const cur=sel.value;sel.innerHTML='<option value="">All Sources</option>';
+    for(const a of[...sources].sort())sel.innerHTML+='<option value="'+a+'"'+(a===cur?' selected':'')+'>'+a+'</option>';
   }
+  // Update tail indicator
+  const ti=document.getElementById('tailIndicator');const tl=document.getElementById('tailLabel');
+  if(ti&&tl){ti.className='conn-dot '+(logAutoScroll?'live':'dead');tl.textContent=logAutoScroll?'Tailing':'Paused';}
 }
 function toggleFullscreenLogs(){document.getElementById('logs').classList.toggle('fullscreen');}
 
 /* SSE */
 function setSseStatus(alive){sseAlive=alive;const d=document.getElementById('sse-dot');d.className='conn-dot '+(alive?'live':'dead');d.title=alive?'Log stream connected':'Log stream disconnected';}
-function updateScrollBtn(){document.getElementById('scrollBtn').textContent=logAutoScroll?'Pause':'Resume';}
+function updateScrollBtn(){
+  document.getElementById('scrollBtn').textContent=logAutoScroll?'Pause':'Resume';
+  const ti=document.getElementById('tailIndicator');const tl=document.getElementById('tailLabel');
+  if(ti&&tl){ti.className='conn-dot '+(logAutoScroll?'live':'dead');tl.textContent=logAutoScroll?'Tailing':'Paused';}
+}
 function startSSE(){if(evtSource)evtSource.close();evtSource=new EventSource('/logs/stream?after_seq='+logSeq);
   evtSource.onopen=function(){setSseStatus(true);};
   evtSource.onmessage=function(e){try{const d=JSON.parse(e.data);logSeq=d.seq;const msg=d.msg||'';const action=d.action||'';
@@ -1217,29 +1287,16 @@ async function loadNamespaces(){
 
 /* #5 Container log viewer */
 async function viewSvcLogs(svcId){
-  // Fetch container logs and inject into the main Logs tab
-  try{
-    const r=await fetch('/api/logs/'+svcId+'?lines=150');const d=await r.json();
-    const lines=(d.lines||[]);
-    // Add to logRaw as synthetic entries
-    for(const line of lines){
-      const cls=line.includes('error')||line.includes('ERR')?'err':line.includes('warn')||line.includes('WARN')?'warn':'';
-      const html='<div class="log-line" data-action="'+svcId+'"><span class="ts" style="color:var(--blue)">['+svcId+']</span> <span class="'+cls+'">'+line.replace(/</g,'&lt;')+'</span></div>';
-      logRaw.push({msg:'['+svcId+'] '+line,cls,html,action:svcId});
-    }
-    // Switch to Logs tab with service filter
-    const tab=document.getElementById('tab-logs');const btn=document.querySelector('#main-tabs button');
-    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-    document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
-    tab.classList.add('active');
-    document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent==='Logs')b.classList.add('active');});
-    location.hash='logs';
-    // Set action filter to this service
-    applyLogFilter();
-    const sel=document.getElementById('logActionFilter');
-    if(sel){sel.value=svcId;applyLogFilter();}
-    toast('Loaded '+lines.length+' log lines from '+svcId);
-  }catch(e){toast('Error loading logs: '+e.message,true);}
+  // Switch to Logs tab and add this service as a log source
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-logs').classList.add('active');
+  document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent==='Logs')b.classList.add('active');});
+  location.hash='logs';
+  // Load service logs and set filter
+  await _fetchSvcLogs(svcId);
+  const sel=document.getElementById('logActionFilter');
+  if(sel){sel.value=svcId;applyLogFilter();}
 }
 
 /* #6 Auto-remediation — runs during health check cycle */
@@ -1625,6 +1682,10 @@ async function timedFetch(url){const t0=performance.now();const r=await fetch(ur
 
 /* Init */
 load();setInterval(load,dashSettings.refreshInterval);startSSE();loadRoutingConfig();buildQuickLinks();
+// Populate service log picker
+(function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;
+  for(const s of SVCS){sel.innerHTML+='<option value="'+s.id+'">'+s.name+'</option>';}
+})();
 setTimeout(probeServices,2000);
 setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();renderTimingFooter();});},dashSettings.healthInterval);
 setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();},3000);
