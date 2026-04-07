@@ -569,31 +569,32 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 let logRaw=[],logSeq=0,evtSource=null,statusData=null,logAutoScroll=true;
 let logFilter='all',sseAlive=false,svcSort='default',svcVersions={},prevPhase='idle';
 const healthHistory={};
-const CATS=[
-  {label:'Media',ids:['jellyfin','plex','jellyseerr']},
-  {label:'Automation',ids:['sonarr','radarr','lidarr','readarr','prowlarr','bazarr']},
-  {label:'Downloads',ids:['qbittorrent','sabnzbd','flaresolverr']},
-  {label:'Management',ids:['maintainerr','tautulli','homepage','envoy']}
-];
-const SVCS=[
-  {id:'jellyfin',name:'Jellyfin',desc:'Media server',port:8096},
-  {id:'plex',name:'Plex',desc:'Alt media server',port:32400},
-  {id:'jellyseerr',name:'Jellyseerr',desc:'Request manager',port:5055},
-  {id:'sonarr',name:'Sonarr',desc:'TV automation',port:8989},
-  {id:'radarr',name:'Radarr',desc:'Movie automation',port:7878},
-  {id:'lidarr',name:'Lidarr',desc:'Music automation',port:8686},
-  {id:'readarr',name:'Readarr',desc:'Books automation',port:8787},
-  {id:'prowlarr',name:'Prowlarr',desc:'Indexer manager',port:9696},
-  {id:'qbittorrent',name:'qBittorrent',desc:'Torrent client',port:8080},
-  {id:'sabnzbd',name:'SABnzbd',desc:'Usenet client',port:8085},
-  {id:'flaresolverr',name:'FlareSolverr',desc:'Indexer proxy',port:8191},
-  {id:'bazarr',name:'Bazarr',desc:'Subtitles',port:6767},
-  {id:'maintainerr',name:'Maintainerr',desc:'Library cleanup',port:6246},
-  {id:'tautulli',name:'Tautulli',desc:'Analytics',port:8181},
-  {id:'homepage',name:'Homepage',desc:'Dashboard',port:3000},
-  {id:'envoy',name:'Envoy',desc:'Gateway proxy',port:9901}
-];
-const SVC_MAP=Object.fromEntries(SVCS.map(s=>[s.id,s]));
+let CATS=[];
+let SVCS=[];
+let SVC_MAP={};
+async function loadServicesFromAPI(){
+  try{
+    const[svcsRes,catsRes]=await Promise.all([fetch('/api/services'),fetch('/api/services/categories')]);
+    if(svcsRes.ok)SVCS=await svcsRes.json();
+    if(catsRes.ok)CATS=await catsRes.json();
+  }catch(e){console.warn('Failed to load services from API, using fallback');}
+  if(!SVCS.length)SVCS=[
+    {id:'jellyfin',name:'Jellyfin',desc:'Media server',port:8096},
+    {id:'jellyseerr',name:'Jellyseerr',desc:'Request manager',port:5055},
+    {id:'sonarr',name:'Sonarr',desc:'TV automation',port:8989},
+    {id:'radarr',name:'Radarr',desc:'Movie automation',port:7878},
+    {id:'prowlarr',name:'Prowlarr',desc:'Indexer manager',port:9696},
+    {id:'qbittorrent',name:'qBittorrent',desc:'Torrent client',port:8080},
+    {id:'homepage',name:'Homepage',desc:'Dashboard',port:3000}
+  ];
+  if(!CATS.length)CATS=[
+    {label:'Media',ids:SVCS.filter(s=>s.category==='media').map(s=>s.id)},
+    {label:'Automation',ids:SVCS.filter(s=>s.category==='automation').map(s=>s.id)},
+    {label:'Downloads',ids:SVCS.filter(s=>s.category==='downloads').map(s=>s.id)},
+    {label:'Management',ids:SVCS.filter(s=>['management','infrastructure'].includes(s.category)).map(s=>s.id)}
+  ];
+  SVC_MAP=Object.fromEntries(SVCS.map(s=>[s.id,s]));
+}
 const SVC_HEALTH={},SVC_AUTH={},SVC_MS={};
 let expanded=null;
 const matrixState={};
@@ -2129,6 +2130,7 @@ const apiTimings={};
 async function timedFetch(url){const t0=performance.now();const r=await fetch(url);const ms=Math.round(performance.now()-t0);apiTimings[url]=ms;return r;}
 
 /* Init */
+loadServicesFromAPI().then(()=>{
 load();setInterval(load,dashSettings.refreshInterval);startSSE();loadRoutingConfig();buildQuickLinks();
 // Populate service log picker
 (function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;
@@ -2148,4 +2150,5 @@ setInterval(loadVersions,300000);
 // Load namespace metrics for resource sparklines
 setInterval(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},30000);
 setTimeout(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},5000);
+});
 </script></body></html>
