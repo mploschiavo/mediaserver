@@ -256,13 +256,22 @@ def _build_config_policy() -> object | None:
 
 def _build_runner(args: argparse.Namespace, *, auto_prowlarr_indexers: bool = False) -> tuple:
     """Build the bootstrap runner and runtime state from CLI args."""
-    servarr_runtime_arr_ops = importlib.import_module(
-        "media_stack.services.apps.servarr.runtime.arr_ops"
-    )
-    build_sab_remote_path_mappings = getattr(
-        servarr_runtime_arr_ops,
-        "build_sab_remote_path_mappings",
-    )
+    # Dynamically load SABnzbd path mapping — optional dependency.
+    # If SABnzbd app code is removed, this gracefully returns an empty list.
+    def _noop_sab_mappings(cfg: dict) -> list:
+        return []
+
+    build_sab_remote_path_mappings = _noop_sab_mappings
+    try:
+        servarr_runtime_arr_ops = importlib.import_module(
+            "media_stack.services.apps.servarr.runtime.arr_ops"
+        )
+        build_sab_remote_path_mappings = getattr(
+            servarr_runtime_arr_ops, "build_sab_remote_path_mappings",
+            _noop_sab_mappings,
+        )
+    except ImportError:
+        runtime_platform.log("[INFO] SABnzbd path mappings not available — skipping")
 
     runtime_factory = ControllerRuntimeFactoryService(
         deps=ControllerRuntimeFactoryDependencies(
