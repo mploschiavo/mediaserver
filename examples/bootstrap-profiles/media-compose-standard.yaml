@@ -20,11 +20,11 @@ routing:
   strategy: hybrid
   provider: envoy
   base_domain: local
-  gateway_host: apps.media-dev.local
-  gateway_port: 18080
+  gateway_host: docker.media-stack.local
+  gateway_port: 80
   app_path_prefix: /app
   direct_hosts:
-    media_server: jellyfin.media-dev.local
+    media_server: jellyfin.docker.media-stack.local
   media_server_service_names:
   - jellyfin
   - jellyfin-nvidia
