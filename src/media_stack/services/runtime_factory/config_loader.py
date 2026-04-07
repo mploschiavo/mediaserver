@@ -135,7 +135,10 @@ class ControllerConfigLoader:
 
     def load_config(self, config_path: str, runtime_env: str = "prod") -> dict[str, object]:
         config_file = Path(config_path).resolve()
-        loaded = json.loads(config_file.read_text(encoding="utf-8"))
+        if config_file.is_file():
+            loaded = json.loads(config_file.read_text(encoding="utf-8"))
+        else:
+            loaded = {}
 
         # Merge YAML defaults as the base, then overlay config.json on top.
         # This means config.json values take precedence over defaults.

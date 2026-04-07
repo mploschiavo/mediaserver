@@ -18,6 +18,8 @@ def load_json_default(
 ) -> Any:
     path = defaults_dir / filename
     if not path.exists():
+        if default_value is not None:
+            return default_value
         raise FileNotFoundError(f"Bootstrap defaults file missing: {path}")
 
     try:
