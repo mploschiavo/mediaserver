@@ -4,17 +4,17 @@ import sys
 import time
 from urllib import error, request
 
-from .jellyfin_bootstrap_api_key_service import (
+from .jellyfin_controller_api_key_service import (
     ensure_api_key,
     lookup_user_id_with_api_key,
     validate_api_key,
 )
-from .jellyfin_bootstrap_auth_service import JellyfinBootstrapAuthService
-from .jellyfin_bootstrap_config_service import parse_jellyfin_bootstrap_config
-from .jellyfin_bootstrap_db_discovery_service import (
+from .jellyfin_controller_auth_service import JellyfinBootstrapAuthService
+from .jellyfin_controller_config_service import parse_jellyfin_bootstrap_config
+from .jellyfin_controller_db_discovery_service import (
     discover_api_key_from_jellyfin_db,
 )
-from .jellyfin_bootstrap_kube_service import (
+from .jellyfin_controller_kube_service import (
     PortForward,
     choose_kubectl,
     get_secret,

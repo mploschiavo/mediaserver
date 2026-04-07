@@ -22,7 +22,7 @@ from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 from media_stack.core.state_store import CheckpointStateStore
 
-from media_stack.cli.workflows.bootstrap_component_resolver import (
+from media_stack.cli.workflows.controller_component_resolver import (
     ControllerComponentPlan,
     ControllerPhasePlanStep,
     PhaseSkipFlagSpec,
@@ -524,7 +524,7 @@ class ControllerAllRunner:
             if not action_name:
                 raise ConfigError("http_action requires params.action_name")
 
-            from media_stack.cli.workflows.bootstrap_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
+            from media_stack.cli.workflows.controller_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
 
             wait_svc = ControllerJobWaitService(
                 cfg=ControllerJobWaitConfig(

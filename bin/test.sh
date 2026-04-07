@@ -17,7 +17,7 @@ bash -n bin/*.sh
   bin/controller.py \
   src/media_stack/cli/commands/run_unit_tests_main.py \
   src/media_stack/cli/workflows/unit_test_runner_service.py \
-  src/media_stack/services/apps/jellyfin/cli/ensure_jellyfin_bootstrap_main.py
+  src/media_stack/services/apps/jellyfin/cli/ensure_jellyfin_controller_main.py
 bash bin/validate-bootstrap-config.sh
 
 if [[ "$RUN_PLAYWRIGHT" == "1" ]]; then

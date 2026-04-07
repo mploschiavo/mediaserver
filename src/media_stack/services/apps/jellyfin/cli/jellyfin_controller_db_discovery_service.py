@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 from typing import Callable
 
-from .jellyfin_bootstrap_kube_service import run_cmd
+from .jellyfin_controller_kube_service import run_cmd
 
 
 def discover_api_key_from_jellyfin_db(

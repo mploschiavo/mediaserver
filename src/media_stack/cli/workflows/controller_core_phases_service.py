@@ -6,7 +6,7 @@ from typing import Callable
 
 from media_stack.core.exceptions import ConfigError
 
-from media_stack.cli.workflows.bootstrap_component_resolver import (
+from media_stack.cli.workflows.controller_component_resolver import (
     ControllerComponentPlan,
     ControllerPhasePlanStep,
     evaluate_phase_condition,

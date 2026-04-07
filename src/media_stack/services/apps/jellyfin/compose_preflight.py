@@ -6,12 +6,12 @@ import json
 from typing import Any, Callable
 from urllib import error, request
 
-from .cli.jellyfin_bootstrap_api_key_service import (
+from .cli.jellyfin_controller_api_key_service import (
     ensure_api_key,
     lookup_user_id_with_api_key,
     validate_api_key,
 )
-from .cli.jellyfin_bootstrap_auth_service import JellyfinBootstrapAuthService
+from .cli.jellyfin_controller_auth_service import JellyfinBootstrapAuthService
 
 InfoFn = Callable[[str], None]
 

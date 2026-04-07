@@ -14,7 +14,7 @@ from typing import Any, Callable
 from media_stack.services.enums import RunnerEvent
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
-from media_stack.cli.workflows.bootstrap_component_resolver import evaluate_phase_condition
+from media_stack.cli.workflows.controller_component_resolver import evaluate_phase_condition
 from media_stack.cli.workflows.cli_common import kube_cmd, repo_root_from_script_file, run_command
 
 

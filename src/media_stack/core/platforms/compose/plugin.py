@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from media_stack.core.platform_plugin_contract import PlatformPlugin
-from media_stack.core.platforms.compose.bootstrap_service import ComposeBootstrapConfig, ComposeBootstrapService
+from media_stack.core.platforms.compose.controller_service import ComposeBootstrapConfig, ComposeBootstrapService
 from media_stack.core.platforms.compose.docker_client import DockerClient
 from media_stack.core.platforms.compose.rebuild_platform_adapter import (
     ComposeRebuildPlatformAdapter,
