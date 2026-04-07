@@ -316,9 +316,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <div class="card">
   <h2 onclick="toggleCard(this)">Services <span id="svc-summary" class="status-counts"></span> <span class="collapse-icon">&#9660;</span></h2>
   <div class="card-body">
-  <input type="text" class="svc-search" id="svcSearch" placeholder="Filter services..." oninput="renderServices(statusData?statusData.preflight_results:{})">
-  <div class="svc-sort">Sort: <button class="active" onclick="setSvcSort('default',this)">Default</button><button onclick="setSvcSort('name',this)">Name</button><button onclick="setSvcSort('status',this)">Status</button><button onclick="setSvcSort('ms',this)">Latency</button>
-  <span style="margin-left:auto;display:flex;gap:4px"><button onclick="selectAllSvcs()">Select All</button><button onclick="batchRestart()">Restart Selected</button></span></div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+    <input type="text" class="svc-search" id="svcSearch" placeholder="Filter services..." oninput="renderServices(statusData?statusData.preflight_results:{})" style="flex:1;margin:0">
+    <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="selectAllSvcs()">Select All</button>
+    <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="batchRestart()">Restart Selected</button>
+  </div>
   <div id="services-list"></div>
   <!-- Service management tips -->
   <details style="margin-top:8px;font-size:.82em"><summary style="color:var(--fg3);cursor:pointer">Service Management</summary>
@@ -760,54 +762,76 @@ async function load(){
 }
 
 /* Service sort */
-function setSvcSort(s,btn){svcSort=s;document.querySelectorAll('.svc-sort button').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');renderServices(statusData?statusData.preflight_results:{});}
+function setSvcSort(s,btn){svcSort=s;renderServices(statusData?statusData.preflight_results:{});}
 
 /* Sparkline */
 function sparkHtml(id){const hist=healthHistory[id]||[];return '<span class="sparkline">'+hist.slice(-12).map(s=>'<span class="sp '+s+'"></span>').join('')+'</span>';}
 
-/* Services */
+/* Services — rendered as a sortable table */
 function renderServices(pf){
   const search=(document.getElementById('svcSearch').value||'').toLowerCase();
   let allSvcs=[];
   for(const cat of CATS)for(const sid of cat.ids){const s=SVC_MAP[sid];if(s)allSvcs.push({...s,cat:cat.label});}
   if(search)allSvcs=allSvcs.filter(s=>s.name.toLowerCase().includes(search)||s.id.includes(search)||s.desc.toLowerCase().includes(search));
 
-  if(svcSort==='name')allSvcs.sort((a,b)=>a.name.localeCompare(b.name));
-  else if(svcSort==='status')allSvcs.sort((a,b)=>{const o={ok:0,error:1};return (o[SVC_HEALTH[a.id]]||2)-(o[SVC_HEALTH[b.id]]||2);});
-  else if(svcSort==='ms')allSvcs.sort((a,b)=>(SVC_MS[a.id]||9999)-(SVC_MS[b.id]||9999));
+  let html='',okCount=0,errCount=0,pendCount=0;
 
-  let html='',okCount=0,errCount=0,pendCount=0,curCat='';
+  html+='<table class="idx-table" id="svc-table"><thead><tr>';
+  html+='<th style="width:30px"></th><th>Service</th><th>Status</th><th>Auth</th><th>Latency</th><th>Version</th><th>Category</th><th style="width:60px">Actions</th>';
+  html+='</tr></thead><tbody>';
+
   for(const s of allSvcs){
-    if(svcSort==='default'&&s.cat!==curCat){curCat=s.cat;html+='<div class="cat-label">'+curCat+'</div>';}
     const hlth=SVC_HEALTH[s.id],ms=SVC_MS[s.id],auth=SVC_AUTH[s.id],ver=svcVersions[s.id]||'';
     const pfEntry=pf?pf[s.id]:null,pfOk=pfEntry&&pfEntry.status==='ok';
-    let dotCls='idle';
-    if(hlth==='disabled'){dotCls='idle';pendCount++;}
-    else if(hlth==='ok'){dotCls='ok';okCount++;}else if(hlth==='error'){dotCls='error';errCount++;}else if(pfOk){dotCls='ok';okCount++;}else{pendCount++;}
-    const meta=[];
-    if(hlth==='disabled')meta.push('Not enabled');
-    else if(hlth==='ok')meta.push('Running');else if(hlth==='error')meta.push('Down');
+    let dotCls='idle',statusText='Pending';
+    if(hlth==='disabled'){dotCls='idle';statusText='Not enabled';pendCount++;}
+    else if(hlth==='ok'){dotCls='ok';statusText='Running';okCount++;}
+    else if(hlth==='error'){dotCls='error';statusText='Down';errCount++;}
+    else if(pfOk){dotCls='ok';statusText='Running';okCount++;}
+    else{pendCount++;}
+
+    let authText='—',authCls='';
     if(hlth!=='disabled'){
-      if(auth==='ok')meta.push('Auth OK');else if(auth==='unauthorized')meta.push('Auth Fail');else if(auth==='no_key')meta.push('No Key');
+      if(auth==='ok'){authText='OK';authCls='ok';}
+      else if(auth==='unauthorized'){authText='Fail';authCls='warn';}
+      else if(auth==='no_key'){authText='No Key';authCls='idle';}
+      else if(auth==='n/a'){authText='N/A';}
     }
+
+    html+='<tr style="cursor:pointer" onclick="toggleSvc(\''+s.id+'\')">';
+    html+='<td><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"></td>';
+    html+='<td style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+sparkHtml(s.id)+'</td>';
+    html+='<td class="'+dotCls+'">'+statusText+'</td>';
+    html+='<td class="'+authCls+'">'+authText+'</td>';
+    html+='<td style="font-family:monospace;font-size:.82em">'+(ms?ms+'ms':'—')+'</td>';
+    html+='<td style="font-size:.78em;color:var(--fg3)">'+(ver||'—')+'</td>';
+    html+='<td style="font-size:.78em;color:var(--fg3)">'+s.cat+'</td>';
+    html+='<td><button class="btn-secondary" style="padding:2px 6px;font-size:.68em" onclick="event.stopPropagation();viewSvcLogs(\''+s.id+'\')">Logs</button></td>';
+    html+='</tr>';
+
+    // Expandable detail row
     const isExp=expanded===s.id;
-    html+='<div class="svc-row" onclick="toggleSvc(\''+s.id+'\')"><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"><span class="dot '+dotCls+'"></span><span class="sname">'+s.name+'</span>'+(ver?'<span class="sver">'+ver+'</span>':'')+'<span class="sms">'+(ms?ms+'ms':'')+'</span><span class="smeta">'+(meta.join(' · ')||'...')+sparkHtml(s.id)+resSparkHtml(s.id)+'</span></div>';
-    html+='<div class="svc-detail" id="detail-'+s.id+'" style="display:'+(isExp?'block':'none')+'">';
-    html+='<div>'+s.desc+' · Port '+s.port+(ver?' · v'+ver:'')+'</div>';
+    html+='<tr class="svc-detail" id="detail-'+s.id+'" style="display:'+(isExp?'table-row':'none')+'">';
+    html+='<td></td><td colspan="7" style="padding:6px 10px;font-size:.85em;color:var(--fg2)">';
+    html+=s.desc+' · Port '+s.port;
     const sUrl=getSvcUrl(s.id);
-    html+='<div>Open: <a href="'+sUrl+'" target="_blank">'+sUrl.replace('http://','')+'</a></div>';
-    html+='<div>API Auth: '+(auth==='ok'?'<span class="ok">OK</span>':auth==='unauthorized'?'<span class="error">Invalid Key</span>':auth==='no_key'?'<span class="running">No Key</span>':auth==='n/a'?'<span style="color:var(--fg3)">N/A</span>':'<span class="idle">...</span>')+'</div>';
-    html+='<button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="event.stopPropagation();restartService(\''+s.id+'\')">Restart</button> ';
-    html+='<button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="event.stopPropagation();viewSvcLogs(\''+s.id+'\')">View Logs</button>';
-    html+='</div>';
+    html+=' · <a href="'+sUrl+'" target="_blank" style="color:var(--blue)">Open</a>';
+    html+=' · <button class="btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="event.stopPropagation();restartService(\''+s.id+'\')">Restart</button>';
+    html+='</td></tr>';
   }
+  html+='</tbody></table>';
   document.getElementById('services-list').innerHTML=html;
   document.getElementById('svc-summary').innerHTML=
     '<span><span class="dot ok" style="width:6px;height:6px"></span> '+okCount+' ok</span>'+
     (errCount?'<span><span class="dot error" style="width:6px;height:6px"></span> '+errCount+' err</span>':'')+
     (pendCount?'<span><span class="dot idle" style="width:6px;height:6px"></span> '+pendCount+' pending</span>':'');
 }
-function toggleSvc(id){expanded=expanded===id?null:id;renderServices(statusData?statusData.preflight_results:{});}
+function toggleSvc(id){
+  if(expanded===id){expanded=null;}else{expanded=id;}
+  // Toggle detail row visibility without full re-render
+  document.querySelectorAll('.svc-detail').forEach(r=>r.style.display='none');
+  if(expanded){const el=document.getElementById('detail-'+expanded);if(el)el.style.display='table-row';}
+}
 
 /* Per-service restart */
 async function restartService(name){
