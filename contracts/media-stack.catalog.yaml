@@ -49,26 +49,10 @@ auth_provider_middleware_defaults:
   authelia: authelia@docker
   authentik: authentik@docker
 
+# App keys — auto-populated from contracts/services/*.yaml at runtime.
+# Add new services there and they appear here automatically.
 apps:
-  keys:
-    - traefik
-    - envoy
-    - jellyfin
-    - jellyseerr
-    - sonarr
-    - radarr
-    - lidarr
-    - readarr
-    - bazarr
-    - prowlarr
-    - qbittorrent
-    - sabnzbd
-    - tautulli
-    - maintainerr
-    - unpackerr
-    - recyclarr
-    - homepage
-    - flaresolverr
+  keys: []
 
 install_profiles:
   minimal:
@@ -112,7 +96,7 @@ install_profiles:
       - sabnzbd
       - unpackerr
       - maintainerr
-      - recyclarr
+      # - recyclarr  # Removed — uncomment when Recyclarr is added to services/
       - homepage
 
 chaos_defaults:

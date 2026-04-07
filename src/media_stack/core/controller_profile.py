@@ -386,6 +386,9 @@ def _resolve_catalog_path(path: Path | None = None) -> Path:
 def _load_bootstrap_profile_catalog_cached(path_token: str) -> ControllerProfileCatalog:
     path = Path(path_token)
     if not path.exists():
+        # Try image-embedded path
+        path = Path("/opt/media-stack/contracts/media-stack.catalog.yaml")
+    if not path.exists():
         raise ValueError(f"Bootstrap profile catalog file not found: {path}")
 
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -393,6 +396,18 @@ def _load_bootstrap_profile_catalog_cached(path_token: str) -> ControllerProfile
         payload = {}
     if not isinstance(payload, dict):
         raise ValueError("Bootstrap profile catalog must contain an object at root")
+
+    # Enrich apps.keys from service registry if available
+    try:
+        from media_stack.api.services.registry import SERVICES
+        registry_app_keys = [s.id for s in SERVICES]
+        apps_section = payload.setdefault("apps", {})
+        existing_keys = set(apps_section.get("keys", []))
+        for key in registry_app_keys:
+            if key not in existing_keys:
+                apps_section.setdefault("keys", []).append(key)
+    except Exception:
+        pass
 
     deployment_aliases = _normalize_alias_dict(
         payload.get("deployment_aliases"),
