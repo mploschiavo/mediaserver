@@ -33,7 +33,7 @@
       "optional": true
     }
   ],
-  "container_post_bootstrap_handlers": [
+  "container_post_setup_handlers": [
     {
       "name": "unpackerr",
       "handler": "media_stack.api.preflight.unpackerr:write_config_and_restart",
@@ -42,7 +42,7 @@
   ],
   "prowlarr_url": "http://prowlarr:9696",
   "trigger_indexer_sync": true,
-  "refresh_health_after_bootstrap": true,
+  "refresh_health_after_setup": true,
   "technology_bindings": {
     "torrent_client": "qbittorrent",
     "usenet_client": "sabnzbd",
@@ -395,9 +395,9 @@
         }
       },
       "call_handlers": {
-        "activate_media_server_plugins": "media_stack.services.apps.jellyfin.cli.bootstrap_hooks:activate_media_server_plugins"
+        "activate_media_server_plugins": "media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins"
       },
-      "runtime_config_policy_handler": "media_stack.services.apps.stack.bootstrap_config_policy:apply_bootstrap_runtime_policy",
+      "runtime_config_policy_handler": "media_stack.services.apps.stack.controller_config_policy:apply_bootstrap_runtime_policy",
       "compose_preflight_handlers": [
         "media_stack.services.apps.stack.compose_preflight:ensure_compose_stack_filesystem_paths",
         "media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",

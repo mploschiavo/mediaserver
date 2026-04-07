@@ -24,7 +24,7 @@ def build_plan_summary(runtime: ControllerRuntime) -> ControllerPlanSummary:
         configure_arr_discovery_lists=runtime.configure_arr_discovery_lists,
         set_torrent_categories=runtime.set_torrent_categories,
         torrent_client_login_required=runtime.torrent_client_login_required,
-        refresh_health_after_bootstrap=runtime.refresh_health_after_bootstrap,
+        refresh_health_after_setup=runtime.refresh_health_after_setup,
         app_auth_enabled=bool((runtime.app_auth_cfg or {}).get("enabled", False)),
         configure_homepage=runtime.configure_homepage_services,
         configure_bazarr=runtime.configure_bazarr_integration,

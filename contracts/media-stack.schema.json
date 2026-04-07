@@ -430,7 +430,7 @@
       "type": "object",
       "additionalProperties": true
     },
-    "refresh_health_after_bootstrap": {
+    "refresh_health_after_setup": {
       "type": "boolean"
     },
     "trigger_indexer_sync": {
@@ -927,7 +927,7 @@
         ]
       }
     },
-    "container_post_bootstrap_handlers": {
+    "container_post_setup_handlers": {
       "type": "array",
       "description": "Declarative post-bootstrap handlers run after the main pipeline completes.",
       "items": {

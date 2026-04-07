@@ -54,7 +54,7 @@ def action_auto_indexers(args: argparse.Namespace, build_runner: Any) -> None:
 def action_restart_apps(args: argparse.Namespace, state: object,
                         load_handler_specs: Any, run_handler_specs: Any) -> None:
     """Restart all apps to pick up config changes."""
-    specs = load_handler_specs("container_post_bootstrap_handlers")
+    specs = load_handler_specs("container_post_setup_handlers")
     restart_specs = [s for s in specs if s.get("name") == "restart_apps"]
     if restart_specs:
         run_handler_specs(restart_specs, state, args, phase_label="RESTART")

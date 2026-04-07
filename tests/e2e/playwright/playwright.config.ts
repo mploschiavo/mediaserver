@@ -11,7 +11,7 @@ export default defineConfig({
   projects: [
     {
       name: 'api',
-      testMatch: ['ux-smoke.spec.ts', 'ingress.spec.ts'],
+      testMatch: ['ux-smoke.spec.ts', 'ingress.spec.ts', 'controller-api.spec.ts'],
     },
     {
       name: 'browser',
@@ -22,6 +22,10 @@ export default defineConfig({
       name: 'screenshots',
       testMatch: ['screenshot-capture.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'deploy',
+      testMatch: ['standalone-compose-deploy.spec.ts'],
     },
   ],
 });

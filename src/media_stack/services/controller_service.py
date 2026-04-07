@@ -270,7 +270,7 @@ class ControllerService:
                     qbit_login_ok=qbit_login_ok,
                     configure_sab_arr_clients=rt.configure_sab_arr_clients,
                     sab_api_key=sab_api_key,
-                    refresh_health_after_bootstrap=rt.refresh_health_after_bootstrap,
+                    refresh_health_after_setup=rt.refresh_health_after_setup,
                 ),
             ),
         )

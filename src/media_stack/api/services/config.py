@@ -227,7 +227,7 @@ def get_manifests() -> dict[str, Any]:
                 "services": list((cfg.get("services") or {}).keys()) if isinstance(cfg.get("services"), dict) else [],
                 "disk_guardrails": cfg.get("disk_guardrails", {}).get("enabled", False),
                 "preflight_handlers": [h.get("name") for h in cfg.get("container_preflight_handlers", [])],
-                "post_handlers": [h.get("name") for h in cfg.get("container_post_bootstrap_handlers", [])],
+                "post_handlers": [h.get("name") for h in cfg.get("container_post_setup_handlers", [])],
             }
             return {"type": "bootstrap-config", "file": config_path, "content": json.dumps(summary, indent=2)}
         except Exception:

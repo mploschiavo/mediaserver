@@ -15,7 +15,7 @@ class ServarrRunConfig:
     qbit_login_ok: bool
     configure_sab_arr_clients: bool
     sab_api_key: str
-    refresh_health_after_bootstrap: bool
+    refresh_health_after_setup: bool
 
 
 @dataclass(frozen=True)
