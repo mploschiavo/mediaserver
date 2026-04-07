@@ -5,6 +5,8 @@ service:
   category: downloads
   host: unpackerr
   port: 0
+  web_ui: false
+  scale_to_zero: true
 plugin:
   post_setup_handler:
     name: unpackerr

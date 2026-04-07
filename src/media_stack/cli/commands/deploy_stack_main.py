@@ -207,6 +207,7 @@ class DeployStackRunner:
         return tuple(out)
 
     def _edge_path_prefix_redirect_service_names(self) -> tuple[str, ...]:
+        # 1. Config.json override (per-deployment customization)
         out: list[str] = []
         seen: set[str] = set()
         for item in self._edge_provider_hook_values(
@@ -218,9 +219,20 @@ class DeployStackRunner:
                 continue
             seen.add(token)
             out.append(token)
-        return tuple(out)
+        if out:
+            return tuple(out)
+        # 2. Derive from per-service YAML registry (web_ui=true)
+        try:
+            from media_stack.api.services.registry import get_web_ui_services
+            svcs = get_web_ui_services()
+            if svcs:
+                return tuple(s.id for s in svcs)
+        except Exception:
+            pass
+        return ()
 
     def _edge_path_prefix_preserve_service_names(self) -> tuple[str, ...]:
+        # 1. Config.json override (per-deployment customization)
         out: list[str] = []
         seen: set[str] = set()
         for item in self._edge_provider_hook_values(
@@ -232,7 +244,17 @@ class DeployStackRunner:
                 continue
             seen.add(token)
             out.append(token)
-        return tuple(out)
+        if out:
+            return tuple(out)
+        # 2. Derive from per-service YAML registry (preserve_path_prefix=true)
+        try:
+            from media_stack.api.services.registry import get_preserve_path_prefix_services
+            svcs = get_preserve_path_prefix_services()
+            if svcs:
+                return tuple(s.id for s in svcs)
+        except Exception:
+            pass
+        return ()
 
     def _edge_compose_provider_specs(self) -> dict[str, dict[str, str]]:
         out: dict[str, dict[str, str]] = {

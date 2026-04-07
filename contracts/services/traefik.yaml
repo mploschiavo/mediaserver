@@ -12,3 +12,6 @@ service:
   port: 8080
   health_path: /ping
   profiles: ['traefik']
+
+  web_ui: false
+  scalable: false

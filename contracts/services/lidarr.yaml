@@ -14,6 +14,7 @@ service:
   version_path: /api/v1/system/status
   version_json_key: version
   password_api_path: /api/v1/config/host
+  preserve_path_prefix: true
 plugin:
   technology: lidarr
   aliases:

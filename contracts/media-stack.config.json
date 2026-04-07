@@ -15,27 +15,6 @@
         "enforce_disk_guardrails": "media_stack.services.apps.servarr.runtime.hygiene_ops:enforce_disk_guardrails"
       }
     },
-    "scale_policy": {
-      "apps": [
-        "jellyfin",
-        "jellyseerr",
-        "qbittorrent",
-        "sabnzbd",
-        "sonarr",
-        "radarr",
-        "lidarr",
-        "readarr",
-        "prowlarr",
-        "bazarr",
-        "maintainerr",
-        "unpackerr",
-        "flaresolverr"
-      ],
-      "scale_to_zero_apps": [
-        "unpackerr",
-        "flaresolverr"
-      ]
-    },
     "edge": {
       "router_provider": "envoy",
       "router_service_names_by_provider": {
@@ -44,38 +23,6 @@
         ],
         "envoy": [
           "envoy"
-        ]
-      },
-      "path_prefix_redirect_service_names_by_provider": {
-        "traefik": [
-          "homepage",
-          "jellyfin",
-          "jellyseerr",
-          "sonarr",
-          "radarr",
-          "lidarr",
-          "readarr",
-          "bazarr",
-          "prowlarr",
-          "qbittorrent",
-          "sabnzbd",
-          "maintainerr",
-          "tautulli",
-          "plex"
-        ],
-        "envoy": []
-      },
-      "path_prefix_preserve_service_names_by_provider": {
-        "traefik": [],
-        "envoy": [
-          "sonarr",
-          "radarr",
-          "lidarr",
-          "readarr",
-          "prowlarr",
-          "bazarr",
-          "sabnzbd",
-          "maintainerr"
         ]
       },
       "media_server_service_names": [
@@ -356,14 +303,6 @@
         "media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
         "media_stack.services.apps.sabnzbd.compose_preflight:ensure_compose_sabnzbd_api_access",
         "media_stack.services.apps.qbittorrent.compose_preflight:ensure_compose_torrent_client_credentials"
-      ],
-      "arr_api_key_technologies": [
-        "sonarr",
-        "radarr",
-        "lidarr",
-        "readarr",
-        "prowlarr",
-        "bazarr"
       ],
       "secret_priming_targets": {
         "usenet_client": {

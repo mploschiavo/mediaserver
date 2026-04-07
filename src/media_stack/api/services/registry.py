@@ -40,6 +40,10 @@ class ServiceDef:
     password_api_path: str = ""
     password_config: str = ""
     profiles: list[str] = field(default_factory=list)
+    web_ui: bool = True
+    preserve_path_prefix: bool = False
+    scalable: bool = True
+    scale_to_zero: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +105,10 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         password_api_path=str(entry.get("password_api_path", "")),
         password_config=str(entry.get("password_config", "")),
         profiles=[str(p) for p in profiles],
+        web_ui=bool(entry.get("web_ui", True)),
+        preserve_path_prefix=bool(entry.get("preserve_path_prefix", False)),
+        scalable=bool(entry.get("scalable", True)),
+        scale_to_zero=bool(entry.get("scale_to_zero", False)),
     )
 
 
@@ -189,6 +197,26 @@ def get_services_with_password_config() -> list[ServiceDef]:
 def get_active_service_ids() -> set[str]:
     """Services that are always active (no profile gate)."""
     return {s.id for s in SERVICES if not s.profiles}
+
+
+def get_scalable_services() -> list[ServiceDef]:
+    """Services that participate in scale policy (replicas managed by deploy)."""
+    return [s for s in SERVICES if s.scalable]
+
+
+def get_scale_to_zero_services() -> list[ServiceDef]:
+    """Services that start at 0 replicas and are enabled on demand."""
+    return [s for s in SERVICES if s.scale_to_zero]
+
+
+def get_web_ui_services() -> list[ServiceDef]:
+    """Services that have a browser-accessible web interface."""
+    return [s for s in SERVICES if s.web_ui]
+
+
+def get_preserve_path_prefix_services() -> list[ServiceDef]:
+    """Services whose APIs require the path prefix to be preserved (not stripped)."""
+    return [s for s in SERVICES if s.preserve_path_prefix]
 
 
 def reload_registry() -> None:
