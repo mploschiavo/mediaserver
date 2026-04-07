@@ -246,6 +246,8 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${HOMEPAGE_PORT:-3000}:3000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
@@ -275,6 +277,8 @@ services:
       - ${CONFIG_ROOT:-./config}/jellyfin:/config
       - ${DATA_ROOT:-./data}/transcode:/cache
       - ${MEDIA_ROOT:-./media}/media:/media
+    ports:
+      - "${JELLYFIN_PORT:-8096}:8096"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8096/health"]
@@ -295,6 +299,8 @@ services:
       BASE_URL: ${JELLYSEERR_BASE_PATH:-}
     volumes:
       - ${CONFIG_ROOT:-./config}/jellyseerr:/app/config
+    ports:
+      - "${JELLYSEERR_PORT:-5055}:5055"
     restart: unless-stopped
     depends_on:
       jellyfin:
@@ -315,6 +321,8 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/prowlarr:/config
+    ports:
+      - "${PROWLARR_PORT:-9696}:9696"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
@@ -362,6 +370,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    ports:
+      - "${SONARR_PORT:-8989}:8989"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -383,6 +393,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -404,6 +416,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    ports:
+      - "${LIDARR_PORT:-8686}:8686"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -425,6 +439,8 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
+    ports:
+      - "${READARR_PORT:-8787}:8787"
     restart: unless-stopped
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
@@ -444,6 +460,8 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/bazarr:/config
       - ${MEDIA_ROOT:-./media}/media:/media
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
     restart: unless-stopped
     depends_on: [sonarr, radarr]
     healthcheck:
@@ -494,6 +512,8 @@ services:
       BASE_PATH: ${MAINTAINERR_BASE_PATH:-/app/maintainerr}
     volumes:
       - ${CONFIG_ROOT:-./config}/maintainerr:/opt/data
+    ports:
+      - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${BASE_PATH:-/}"]
@@ -547,6 +567,8 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/tautulli:/config
+    ports:
+      - "${TAUTULLI_PORT:-8181}:8181"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8181/status"]
