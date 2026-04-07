@@ -33,13 +33,13 @@
     "prowlarr_url": "string",
     "quality_profiles": "object",
     "readarr": "object",
-    "refresh_health_after_bootstrap": "boolean",
+    "refresh_health_after_setup": "boolean",
     "sonarr_seed_series": "object",
     "technology_bindings": "object",
     "trigger_indexer_sync": "boolean",
     "config_overlays": "object",
     "container_preflight_handlers": "array",
-    "container_post_bootstrap_handlers": "array"
+    "container_post_setup_handlers": "array"
   },
   "required_keys": [
     "config_version"

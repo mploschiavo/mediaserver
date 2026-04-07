@@ -43,7 +43,7 @@ class ControllerPlanSummary:
     configure_arr_discovery_lists: bool
     set_torrent_categories: bool
     torrent_client_login_required: bool
-    refresh_health_after_bootstrap: bool
+    refresh_health_after_setup: bool
     app_auth_enabled: bool
     configure_homepage: bool
     configure_bazarr: bool
@@ -92,7 +92,7 @@ class ControllerPlanSummary:
             f"configure_arr_discovery_lists={self.configure_arr_discovery_lists}, "
             f"set_torrent_categories={self.set_torrent_categories}, "
             f"torrent_client_login_required={self.torrent_client_login_required}, "
-            f"refresh_health_after_bootstrap={self.refresh_health_after_bootstrap}, "
+            f"refresh_health_after_setup={self.refresh_health_after_setup}, "
             f"app_auth_enabled={self.app_auth_enabled}, "
             f"configure_homepage={self.configure_homepage}, "
             f"configure_bazarr={self.configure_bazarr}, "

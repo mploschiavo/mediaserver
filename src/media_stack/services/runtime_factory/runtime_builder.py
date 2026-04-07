@@ -315,7 +315,7 @@ class ControllerRuntimeBuilder:
         qbit_login_required = bool(
             torrent_client_key and qbit_cfg.get("login_required", fully_preconfigured)
         )
-        refresh_health_after_bootstrap = bool(cfg.get("refresh_health_after_bootstrap", True))
+        refresh_health_after_setup = bool(cfg.get("refresh_health_after_setup", True))
 
         configure_jellyseerr_services = jellyseerr_model.enabled
         jellyseerr_required = jellyseerr_model.required
@@ -426,7 +426,7 @@ class ControllerRuntimeBuilder:
             configure_arr_discovery_lists=configure_arr_discovery_lists,
             set_qbit_categories=set_qbit_categories,
             qbit_login_required=qbit_login_required,
-            refresh_health_after_bootstrap=refresh_health_after_bootstrap,
+            refresh_health_after_setup=refresh_health_after_setup,
             configure_maintainerr_policy=configure_maintainerr_policy,
             maintainerr_required=maintainerr_required,
             configure_maintainerr_integrations=configure_maintainerr_integrations,

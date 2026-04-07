@@ -408,7 +408,7 @@ class ServarrAdapterBase:
                 self.context.app_key,
             )
 
-        if run_cfg.refresh_health_after_bootstrap and self.context.app_caps.supports_health_check:
+        if run_cfg.refresh_health_after_setup and self.context.app_caps.supports_health_check:
             self.deps.trigger_health_check(
                 self.context.app_name,
                 self.context.app_url,
