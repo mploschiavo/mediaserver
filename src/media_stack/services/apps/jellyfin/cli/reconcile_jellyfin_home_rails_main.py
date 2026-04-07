@@ -112,7 +112,7 @@ def _wait_http_ok(url: str, timeout_seconds: int = 30) -> bool:
 
 
 def _load_jellyfin_runtime_module(root_dir: Path):
-    sys.path.insert(0, str(root_dir / "scripts"))
+    sys.path.insert(0, str(root_dir / "bin"))
     import media_stack.services.apps.jellyfin.runtime_ops as runtime_ops
 
     return runtime_ops

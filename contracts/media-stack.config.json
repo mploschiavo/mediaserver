@@ -106,9 +106,6 @@
       "request_manager_seed_local_admin": {
         "jellyseerr": "seed-jellyseerr-local-admin.sh"
       },
-      "indexer_auto_discovery": {
-        "prowlarr": "run-prowlarr-auto-indexers.sh"
-      },
       "component_key_sync": {
         "unpackerr": "sync-unpackerr-keys.sh"
       }

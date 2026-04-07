@@ -21,7 +21,7 @@ class DeployScriptRunnerService:
     cfg: DeployScriptRunnerConfig
 
     def run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
-        script_path = self.cfg.root_dir / "scripts" / script_name
+        script_path = self.cfg.root_dir / "bin" / script_name
         merged_env = dict(os.environ)
         merged_env.update({"NAMESPACE": self.cfg.namespace})
         if env:

@@ -169,7 +169,7 @@ class InstallRunner:
         env: dict[str, str] | None = None,
         ignore_failure: bool = False,
     ) -> None:
-        script_path = self.cfg.root_dir / "scripts" / script_name
+        script_path = self.cfg.root_dir / "bin" / script_name
         merged_env = dict(os.environ)
         if env:
             merged_env.update({k: str(v) for k, v in env.items()})
