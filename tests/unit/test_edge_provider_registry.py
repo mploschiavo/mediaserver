@@ -12,14 +12,15 @@ from media_stack.core.edge.provider_registry import (  # noqa: E402
 
 
 class EdgeProviderRegistryTests(unittest.TestCase):
-    def test_compose_label_specs_include_builtin_traefik_none_and_envoy_stub(self):
+    def test_compose_label_specs_include_builtin_traefik_none_and_envoy(self):
         specs = compose_label_specs_by_provider()
         self.assertIn("traefik", specs)
         self.assertIn("none", specs)
         self.assertIn("envoy", specs)
         self.assertEqual(specs["traefik"].get("enable_label_key"), "traefik.enable")
         self.assertEqual(specs["none"], {})
-        self.assertEqual(specs["envoy"], {})
+        self.assertEqual(specs["envoy"].get("enable_label_key"), "traefik.enable")
+        self.assertIn("path_rule_template", specs["envoy"])
 
     def test_router_service_names_include_builtin_defaults(self):
         names = router_service_names_by_provider()

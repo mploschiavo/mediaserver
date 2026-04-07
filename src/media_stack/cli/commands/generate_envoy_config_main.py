@@ -202,12 +202,18 @@ def main() -> None:
         except Exception:
             pass
 
-    compose_provider_specs: dict = {}
+    # Load compose label specs from provider builtins, overlay config.json if present
+    from media_stack.core.edge.provider_registry import compose_label_specs_by_provider
+    compose_provider_specs: dict = {
+        p: dict(s) for p, s in compose_label_specs_by_provider().items()
+    }
     raw_specs = edge_hooks.get("compose_provider_specs", {})
     if isinstance(raw_specs, dict):
-        envoy_spec = raw_specs.get("envoy", {})
-        if isinstance(envoy_spec, dict):
-            compose_provider_specs = {"envoy": envoy_spec}
+        for provider_key, spec in raw_specs.items():
+            if isinstance(spec, dict) and spec:
+                merged = dict(compose_provider_specs.get(provider_key) or {})
+                merged.update(spec)
+                compose_provider_specs[provider_key] = merged
 
     # Environment overrides for compose spec resolution.
     environment_overrides = {
