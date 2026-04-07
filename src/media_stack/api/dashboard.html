@@ -233,14 +233,15 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <!-- Tabs -->
 <div class="card">
   <div class="tab-bar" id="main-tabs">
-    <button class="active" onclick="showTab('tab-logs',this)">Activity</button>
-    <button onclick="showTab('tab-dns',this)">DNS</button>
-    <button onclick="showTab('tab-indexers',this)">Indexers</button>
-    <button onclick="showTab('tab-library',this)">Library</button>
-    <button onclick="showTab('tab-profile',this)">Config</button>
+    <button class="active" onclick="showTab('tab-logs',this)">Logs</button>
+    <button onclick="showTab('tab-content',this)">Content</button>
+    <button onclick="showTab('tab-routing',this)">Routing</button>
     <button onclick="showTab('tab-ops',this)">Ops</button>
+    <button onclick="showTab('tab-profile',this)">Config</button>
     <button onclick="showTab('tab-webhooks',this)">Alerts</button>
   </div>
+
+  <!-- Logs tab -->
   <div id="tab-logs" class="tab-content active">
     <div class="filter-bar">
       <button class="active" onclick="setLogFilter('all',this)">All</button>
@@ -254,7 +255,31 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     </div>
     <div id="logs"></div>
   </div>
-  <div id="tab-dns" class="tab-content">
+
+  <!-- Content tab (merged Library + Indexers) -->
+  <div id="tab-content" class="tab-content">
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-libraries',this)">Libraries</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-history',this)">Downloads</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-profiles',this)">Quality</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-imports',this)">Discovery Lists</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-indexers',this)">Indexers</button>
+    </div>
+    <div id="lib-libraries" class="subtab active">Loading...</div>
+    <div id="lib-history" class="subtab" style="display:none">Loading...</div>
+    <div id="lib-profiles" class="subtab" style="display:none">Loading...</div>
+    <div id="lib-imports" class="subtab" style="display:none">Loading...</div>
+    <div id="lib-indexers" class="subtab" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="color:var(--fg2);font-size:.9em">Prowlarr Indexers</span>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadIndexers()">Refresh</button>
+      </div>
+      <div id="indexer-list">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Routing tab (was DNS) -->
+  <div id="tab-routing" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 6px">Reachability matrix — 3 access patterns per service.</p>
     <div class="dns-entry" id="dns-entries">Detecting...</div>
     <div style="margin:8px 0;display:flex;gap:6px">
@@ -263,56 +288,28 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     </div>
     <div id="dns-matrix"></div>
   </div>
-  <div id="tab-indexers" class="tab-content">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span style="color:var(--fg2);font-size:.9em">Prowlarr Indexers</span>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadIndexers()">Refresh</button>
-    </div>
-    <div id="indexer-list">Loading...</div>
-  </div>
-  <div id="tab-library" class="tab-content">
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-libraries',this)">Libraries</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-history',this)">Download History</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-profiles',this)">Quality Profiles</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-imports',this)">Import Lists</button>
-    </div>
-    <div id="lib-libraries" class="subtab active">Loading...</div>
-    <div id="lib-history" class="subtab" style="display:none">Loading...</div>
-    <div id="lib-profiles" class="subtab" style="display:none">Loading...</div>
-    <div id="lib-imports" class="subtab" style="display:none">Loading...</div>
-  </div>
-  <div id="tab-profile" class="tab-content">
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-profile',this)">Profile</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-drift',this)">Config Drift</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-deps',this)">Topology</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-manifest',this)">Manifests</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-envvars',this)">Env Vars</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
-    </div>
-    <div id="cfg-profile" class="subtab active"><div id="profile-view">Loading...</div></div>
-    <div id="cfg-drift" class="subtab" style="display:none"><div id="drift-view">Checking config drift...</div></div>
-    <div id="cfg-deps" class="subtab" style="display:none"></div>
-    <div id="cfg-manifest" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-envvars" class="subtab" style="display:none">Loading...</div>
-  </div>
+
+  <!-- Ops tab -->
   <div id="tab-ops" class="tab-content">
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-traffic',this)">Traffic</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-sla',this)">Health SLA</button>
+      <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-sla',this)">Health SLA</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-traffic',this)">Traffic</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-timeline',this)">Timeline</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-ns',this)">Namespaces</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-ns',this)">Containers</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-guardrails',this)">Storage</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-images',this)">Images</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-heatmap',this)">Heatmap</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-bw',this)">Bandwidth</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-schedule',this)">Schedule</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-guardrails',this)">Disk Guardrails</button>
     </div>
-    <div id="ops-traffic" class="subtab active"><div id="traffic-view">Loading...</div></div>
-    <div id="ops-sla" class="subtab" style="display:none"><div id="sla-view"></div></div>
+    <div id="ops-sla" class="subtab active"><div id="sla-view"></div></div>
+    <div id="ops-traffic" class="subtab" style="display:none"><div id="traffic-view">Loading...</div></div>
     <div id="ops-timeline" class="subtab" style="display:none"><div id="timeline-view"></div></div>
     <div id="ops-ns" class="subtab" style="display:none"><div id="ns-view">Loading...</div></div>
+    <div id="ops-guardrails" class="subtab" style="display:none">
+      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Disk guardrails automatically clean completed torrents when storage exceeds the threshold.</p>
+      <div id="guardrail-config">Loading guardrail config...</div>
+    </div>
     <div id="ops-images" class="subtab" style="display:none">Loading...</div>
     <div id="ops-heatmap" class="subtab" style="display:none"></div>
     <div id="ops-bw" class="subtab" style="display:none"><canvas id="bw-canvas" style="width:100%;height:120px;border-radius:6px;background:var(--bg4)"></canvas><div style="font-size:.78em;color:var(--fg3);margin-top:4px">Request throughput per refresh interval. Updates every 60s.</div></div>
@@ -329,10 +326,23 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       </div>
       <div id="schedule-list"></div>
     </div>
-    <div id="ops-guardrails" class="subtab" style="display:none">
-      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Disk guardrails automatically clean completed torrents when storage exceeds the threshold.</p>
-      <div id="guardrail-config">Loading guardrail config...</div>
+  </div>
+
+  <!-- Config tab -->
+  <div id="tab-profile" class="tab-content">
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn-secondary active" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-profile',this)">Profile</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-drift',this)">Config Drift</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-deps',this)">Topology</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-manifest',this)">Manifests</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-envvars',this)">Env Vars</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
     </div>
+    <div id="cfg-profile" class="subtab active"><div id="profile-view">Loading...</div></div>
+    <div id="cfg-drift" class="subtab" style="display:none"><div id="drift-view">Checking config drift...</div></div>
+    <div id="cfg-deps" class="subtab" style="display:none"></div>
+    <div id="cfg-manifest" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-envvars" class="subtab" style="display:none">Loading...</div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -1229,8 +1239,8 @@ function renderTimingFooter(){
 const tabLoaded={};
 function onTabShow(tabId){
   if(tabLoaded[tabId])return;tabLoaded[tabId]=true;
-  if(tabId==='tab-indexers'){loadIndexers();setTimeout(loadIndexerStats,1000);}
-  if(tabId==='tab-dns'){buildDns();}
+  if(tabId==='tab-content'){loadIndexers();setTimeout(loadIndexerStats,1000);}
+  if(tabId==='tab-routing'){buildDns();}
   if(tabId==='tab-ops'){loadTraffic();}
 }
 

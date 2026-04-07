@@ -78,7 +78,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 5
 
@@ -104,7 +104,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -130,10 +130,10 @@ services:
       test:
         - CMD-SHELL
         - pg_isready -d $${POSTGRES_DB:-authentik} -U $${POSTGRES_USER:-authentik}
-      interval: 30s
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
 
   authentik:
     image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2-rc1}
@@ -157,10 +157,10 @@ services:
     shm_size: 512mb
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9000/-/health/live/"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
-      start_period: 40s
+      start_period: 10s
     labels:
       - traefik.enable=true
       - traefik.http.routers.authentik.rule=Host(`authentik.local`)
@@ -229,7 +229,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 5
     labels:
@@ -252,7 +252,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 5
     labels:
@@ -283,10 +283,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8096/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 40s
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
     labels:
       - traefik.enable=true
       - traefik.http.routers.jellyfin.rule=Host(`jellyfin.local`)
@@ -308,7 +308,7 @@ services:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5055${JELLYSEERR_BASE_PATH:-}/api/v1/status"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -327,7 +327,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -354,7 +354,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -377,7 +377,7 @@ services:
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8989/ping"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -400,7 +400,7 @@ services:
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7878/ping"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -423,7 +423,7 @@ services:
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8686/ping"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -446,7 +446,7 @@ services:
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8787/ping"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -467,7 +467,7 @@ services:
     depends_on: [sonarr, radarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:6767"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -518,7 +518,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${BASE_PATH:-/}"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -538,7 +538,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -573,7 +573,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8181/status"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
       retries: 10
     labels:
@@ -646,16 +646,8 @@ services:
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      jellyfin:
-        condition: service_healthy
-      prowlarr:
-        condition: service_healthy
-      sonarr:
-        condition: service_healthy
-      radarr:
-        condition: service_healthy
-      qbittorrent:
-        condition: service_healthy
+      init-permissions:
+        condition: service_completed_successfully
     ports:
       - "${BOOTSTRAP_API_PORT:-9100}:9100"
     healthcheck:
