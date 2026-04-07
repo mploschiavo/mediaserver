@@ -1,49 +1,54 @@
 schema_version: 1
 kind: media_stack_profile
-
 metadata:
   name: media-stack
   platform: k8s
   purpose: dev
-
-storage:
-  config_root: /srv/media-stack/config
-  media_root: /srv/media-stack
-  data_root: /srv/media-stack/data
-
 resources:
   disk_space_gb: 500
   network_cidr: 192.168.1.0/24
-
 install_profile: minimal
-
 bootstrap:
   preconfigure_apps: true
   preconfigure_api_keys: true
   apply_initial_preferences: true
   auto_download_content: false
-
+  trigger_indexer_sync: true
+  refresh_health_after_setup: true
 routing:
   internet_exposed: false
   strategy: subdomain
   provider: traefik
   base_domain: local
-
+  media_server_service_names:
+  - jellyfin
+  - jellyfin-nvidia
 auth:
   enabled: false
   provider: none
-
 chaos:
   enabled: false
   duration_minutes: 5
   interval_seconds: 60
   actions:
-    - restart_container
-    - pause_container
-    - network_disconnect
-
+  - restart_container
+  - pause_container
+  - network_disconnect
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
   default_program_icon_urls:
-    - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+  - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+technology_bindings:
+  torrent_client: qbittorrent
+  usenet_client: sabnzbd
+  media_server: jellyfin
+  request_manager: jellyseerr
+  indexer_manager: prowlarr
+app_auth:
+  enabled: true
+  method: Forms
+  required: DisabledForLocalAddresses
+  fail_on_error: false
+  username_env: STACK_ADMIN_USERNAME
+  password_env: STACK_ADMIN_PASSWORD
