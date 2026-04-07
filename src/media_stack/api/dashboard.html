@@ -91,7 +91,13 @@ header .switch input:checked+.slider:before{transform:translateX(16px)}
 .filter-bar input{flex:1;min-width:120px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.82em}
 #logs{background:var(--bg4);border-radius:6px;padding:10px;max-height:280px;overflow-y:auto;font-family:'Fira Code',monospace;font-size:.78em;line-height:1.6;white-space:pre-wrap;word-break:break-word;scroll-behavior:smooth;transition:max-height .3s}
 #logs.fullscreen{position:fixed;inset:60px 16px 16px;max-height:none;z-index:50;border-radius:10px;border:1px solid var(--accent);box-shadow:0 0 40px rgba(0,0,0,.6)}
-.log-line{color:var(--fg2)}.log-line .ts{color:var(--fg3)}.log-line .ok{color:var(--ok)}.log-line .err{color:var(--err)}.log-line .warn{color:var(--warn)}
+.log-line{color:var(--fg2);display:grid;grid-template-columns:140px 100px 42px 1fr;gap:6px;padding:2px 0;border-bottom:1px solid var(--bg4);align-items:baseline}
+.log-line .ts{color:var(--fg3);font-size:.78em;white-space:nowrap;overflow:hidden}
+.log-line .src{font-weight:700;font-size:.78em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log-line .lvl{font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.log-line .msg{word-break:break-word}
+.log-line .ok{color:var(--ok)}.log-line .err{color:var(--err)}.log-line .warn{color:var(--warn)}
+@media(max-width:700px){.log-line{grid-template-columns:60px 60px 1fr;}.log-line .lvl{display:none}}
 .matrix-table{width:100%;border-collapse:collapse;font-size:.85em;margin-top:8px}
 .matrix-table th{text-align:left;padding:8px 6px;color:var(--fg3);font-weight:600;font-size:.82em;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--border)}
 .matrix-table td{padding:6px;border-bottom:1px solid var(--border);vertical-align:middle}
@@ -288,6 +294,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleFullscreenLogs()">Expand</button>
       <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="downloadLogs()">Export</button>
     </div>
+    <div class="log-line" style="border-bottom:2px solid var(--border);font-weight:700;color:var(--fg3);font-size:.72em;text-transform:uppercase;letter-spacing:.04em;padding:4px 0"><span class="ts">Time</span><span class="src">Source</span><span class="lvl">Level</span><span class="msg">Message</span></div>
     <div id="logs"></div>
   </div>
 
@@ -987,9 +994,11 @@ async function _fetchSvcLogs(svcId){
   toast('Loading '+svcId+' logs...');
   try{
     const r=await fetch('/api/logs/'+svcId+'?lines=200');const d=await r.json();
+    const c=_srcColor(svcId);
     for(const line of(d.lines||[])){
       const cls=line.includes('error')||line.includes('ERR')?'err':line.includes('warn')||line.includes('WARN')?'warn':'';
-      const html='<div class="log-line" data-action="'+svcId+'"><span class="ts" style="color:var(--blue)">['+svcId+']</span> <span class="'+cls+'">'+line.replace(/</g,'&lt;')+'</span></div>';
+      const lvl=cls==='err'?'ERR':cls==='warn'?'WARN':'INFO';
+      const html='<div class="log-line" data-action="'+svcId+'"><span class="ts"></span><span class="src" style="color:'+c+'">'+svcId+'</span><span class="lvl '+cls+'">'+lvl+'</span><span class="msg '+cls+'">'+line.replace(/</g,'&lt;')+'</span></div>';
       logRaw.push({msg:'['+svcId+'] '+line,cls,html,action:svcId});
     }
     if(logRaw.length>800)logRaw=logRaw.slice(-500);
@@ -1003,11 +1012,22 @@ function removeSvcLog(svcId){
   _renderActiveSvcBadges();
   applyLogFilter();
 }
+/* Source colors for log lines — distinct hues per source */
+const _SRC_COLORS=['#4ade80','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4','#f97316','#14b8a6','#e879f9','#84cc16','#ef4444','#6366f1','#22d3ee','#a3e635','#fb923c','#f472b6','#a78bfa','#2dd4bf'];
+const _srcColorMap={};let _srcColorIdx=0;
+function _srcColor(src){
+  if(!src)return 'var(--fg3)';
+  if(src==='controller')return 'var(--accent)';
+  if(!_srcColorMap[src]){_srcColorMap[src]=_SRC_COLORS[_srcColorIdx%_SRC_COLORS.length];_srcColorIdx++;}
+  return _srcColorMap[src];
+}
+
 function _renderActiveSvcBadges(){
   const el=document.getElementById('activeSvcLogs');if(!el)return;
   let h='';
   for(const svc of _activeSvcLogs){
-    h+='<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);font-size:.75em;color:var(--blue)">';
+    const c=_srcColor(svc);
+    h+='<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;background:var(--bg3);border:1px solid '+c+';font-size:.75em;color:'+c+'">';
     h+=svc+' <span style="cursor:pointer;color:var(--fg3)" onclick="removeSvcLog(\''+svc+'\')">&times;</span></span>';
   }
   el.innerHTML=h;
@@ -1046,10 +1066,11 @@ function updateScrollBtn(){
 }
 function startSSE(){if(evtSource)evtSource.close();evtSource=new EventSource('/logs/stream?after_seq='+logSeq);
   evtSource.onopen=function(){setSseStatus(true);};
-  evtSource.onmessage=function(e){try{const d=JSON.parse(e.data);logSeq=d.seq;const msg=d.msg||'';const action=d.action||'';
+  evtSource.onmessage=function(e){try{const d=JSON.parse(e.data);logSeq=d.seq;const msg=d.msg||'';const action=d.action||'controller';
     let cls='';if(msg.includes('[OK]')||msg.includes('complete'))cls='ok';else if(msg.includes('[ERR]')||msg.includes('failed'))cls='err';else if(msg.includes('[WARN]'))cls='warn';
-    const tag=action?'<span style="color:var(--blue);font-size:.78em;margin-left:4px">['+action+']</span>':'';
-    const html='<div class="log-line" data-action="'+action+'"><span class="ts">'+d.ts+'</span> <span class="'+cls+'">'+msg.replace(/</g,'&lt;')+'</span>'+tag+'</div>';
+    const c=_srcColor(action);
+    const lvl=cls==='ok'?'OK':cls==='err'?'ERR':cls==='warn'?'WARN':'INFO';
+    const html='<div class="log-line" data-action="'+action+'"><span class="ts">'+d.ts+'</span><span class="src" style="color:'+c+'">'+action+'</span><span class="lvl '+cls+'">'+lvl+'</span><span class="msg '+cls+'">'+msg.replace(/</g,'&lt;')+'</span></div>';
     logRaw.push({msg,cls,html,action});if(logRaw.length>500)logRaw=logRaw.slice(-300);applyLogFilter();
   }catch(ex){}};
   evtSource.onerror=function(){setSseStatus(false);setTimeout(startSSE,3000);};}
@@ -1684,6 +1705,7 @@ async function timedFetch(url){const t0=performance.now();const r=await fetch(ur
 load();setInterval(load,dashSettings.refreshInterval);startSSE();loadRoutingConfig();buildQuickLinks();
 // Populate service log picker
 (function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;
+  sel.innerHTML+='<option value="media-stack-controller">Controller (container)</option>';
   for(const s of SVCS){sel.innerHTML+='<option value="'+s.id+'">'+s.name+'</option>';}
 })();
 setTimeout(probeServices,2000);
