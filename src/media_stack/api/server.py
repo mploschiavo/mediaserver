@@ -379,13 +379,12 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             if m:
                 keys["sabnzbd"] = m.group(1).strip()
 
-        # Bazarr — YAML
+        # Bazarr — YAML (uses shared reader)
+        from media_stack.api.preflight.api_keys import _read_bazarr_api_key
         bazarr_cfg = config_root / "bazarr" / "config" / "config.yaml"
-        if bazarr_cfg.exists():
-            text = bazarr_cfg.read_text(encoding="utf-8", errors="replace")
-            m = re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", text, re.MULTILINE)
-            if m:
-                keys["bazarr"] = m.group(1).strip()
+        bazarr_key = _read_bazarr_api_key(bazarr_cfg)
+        if bazarr_key:
+            keys["bazarr"] = bazarr_key
 
         # Jellyseerr — JSON settings
         js_settings = config_root / "jellyseerr" / "settings.json"
@@ -1633,7 +1632,15 @@ class BootstrapAPIHandler(BaseHTTPRequestHandler):
             "STACK_ADMIN_USERNAME": username,
         })
 
-        return {"status": "updated", "services": updated, "errors": errors}
+        # Note which services need restart (file-based config vs live API)
+        restart_needed = [s for s in updated if s in ("bazarr",)]
+
+        return {
+            "status": "updated",
+            "services": updated,
+            "errors": errors,
+            "restart_needed": restart_needed,
+        }
 
     @staticmethod
     def _read_xml_key(path) -> str:

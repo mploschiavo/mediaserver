@@ -30,6 +30,15 @@ def _read_ini_api_key(config_path: Path) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _read_bazarr_api_key(config_path: Path) -> str:
+    """Extract API key from Bazarr's YAML config (auth.apikey)."""
+    if not config_path.exists():
+        return ""
+    text = config_path.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", text, flags=re.MULTILINE)
+    return match.group(1).strip() if match else ""
+
+
 # Map of env var name → (relative config path, reader function).
 _KEY_SOURCES: dict[str, tuple[str, Any]] = {
     "SONARR_API_KEY": ("sonarr/config.xml", _read_xml_api_key),
@@ -37,18 +46,9 @@ _KEY_SOURCES: dict[str, tuple[str, Any]] = {
     "LIDARR_API_KEY": ("lidarr/config.xml", _read_xml_api_key),
     "READARR_API_KEY": ("readarr/config.xml", _read_xml_api_key),
     "PROWLARR_API_KEY": ("prowlarr/config.xml", _read_xml_api_key),
-    "BAZARR_API_KEY": ("bazarr/config/config.yaml", None),  # Bazarr uses YAML
+    "BAZARR_API_KEY": ("bazarr/config/config.yaml", _read_bazarr_api_key),
     "SABNZBD_API_KEY": ("sabnzbd/sabnzbd.ini", _read_ini_api_key),
 }
-
-
-def _read_bazarr_api_key(config_path: Path) -> str:
-    """Extract API key from Bazarr's YAML config."""
-    if not config_path.exists():
-        return ""
-    text = config_path.read_text(encoding="utf-8", errors="replace")
-    match = re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", text, flags=re.MULTILINE)
-    return match.group(1).strip() if match else ""
 
 
 def run_preflight(
@@ -71,12 +71,7 @@ def run_preflight(
 
     for env_var, (rel_path, reader) in _KEY_SOURCES.items():
         config_path = root / rel_path
-        if reader is None and env_var == "BAZARR_API_KEY":
-            value = _read_bazarr_api_key(config_path)
-        elif reader is not None:
-            value = reader(config_path)
-        else:
-            continue
+        value = reader(config_path)
 
         if value:
             discovered[env_var] = value

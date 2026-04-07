@@ -806,8 +806,11 @@ async function resetPassword(){
   toast('Resetting password...');
   try{const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
     const d=await r.json();
-    if(d.status==='updated'){toast('Password updated for '+d.services.join(', '));}
-    else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+e.message,true);}
+    if(d.status==='updated'){
+      let msg='Password updated for '+d.services.join(', ');
+      if(d.restart_needed&&d.restart_needed.length){msg+=' (restart needed: '+d.restart_needed.join(', ')+')';}
+      toast(msg);
+    }else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+e.message,true);}
 }
 
 /* Save Routing Config */
