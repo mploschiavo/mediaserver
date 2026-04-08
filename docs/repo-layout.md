@@ -11,15 +11,34 @@ The repository keeps deployable runtime assets in existing stable paths while in
 - `tests/`: unit and e2e test suites
 - `docs/`: architecture, operations, and design documents
 
-Manifest-driven pluggability paths inside `bin/`:
-- `src/media_stack/contracts/plugins/<technology>/manifest.json`: technology registration contract
-- `src/media_stack/contracts/runner_operation_plans.json`: shared runner phase contract
-- `src/media_stack/contracts/media_server_operation_plans.json`: media-server phase contract
-- Event-driven handler registration in plugin manifests: `event_handlers.<EVENT>.<handler_key>`
-- `src/media_stack/services/apps/<app>/`: app-local implementations
-- `src/media_stack/services/download_client_adapters/`: torrent/usenet adapters
-- `src/media_stack/services/media_server_adapters/`: media server adapters
-- `src/media_stack/services/apps/servarr/technologies/`: Servarr adapters
+### Plugin Architecture (service-specific code)
+
+All service-specific code lives in `src/media_stack/services/apps/`:
+
+```
+services/apps/
+  bazarr/           # subtitle automation
+  download_clients/ # shared download client helpers, registry_helpers, runtime_compat
+  flaresolverr/     # indexer helper
+  homepage/         # dashboard constants, config
+  integrations/     # cross-service config resolvers
+  jellyfin/         # media server: gpu, api_key_db, config_resolver, home_rails, libraries
+  jellyseerr/       # request management
+  maintainerr/      # retention policy
+  openseerr/        # alternative request management
+  plex/             # alternative media server
+  prowlarr/         # indexer manager: api_key_reader, runtime_compat
+  qbittorrent/      # torrent client adapter
+  readarr/          # books automation
+  sabnzbd/          # usenet client adapter
+  servarr/          # shared arr app framework: pipeline, technologies, traits
+  sonarr/           # TV automation (sonarr_seed)
+  stack/            # stack-level: routing_defaults, config_diagnostics, config_policy
+  tautulli/         # analytics
+  unpackerr/        # post-download extraction
+```
+
+Service contracts in `contracts/services/*.yaml` declare metadata (host, port, API key format, health paths). The registry at `src/media_stack/api/services/registry.py` loads these at import time. **Zero platform code changes needed for new services.**
 
 ## Product-Oriented Structure Scaffolding
 
@@ -36,9 +55,9 @@ These directories are intentionally introduced without breaking existing scripts
 
 - Platform manifests and cluster primitives: `k8s/`, `platform/`
 - App wiring and defaults: `contracts/`, `apps/`, `config/`
-- Technology registration and role bindings: `contracts/media-stack.config.json`, `src/media_stack/contracts/plugins/`
-- Shared runtime lifecycle orchestration: `bin/controller.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/services/runner_operations_service.py`
-- App/technology behavior modules: `src/media_stack/services/apps/*`, adapter directories
+- Technology registration and role bindings: `contracts/services/*.yaml`, `contracts/defaults/*.yaml`
+- Shared runtime lifecycle orchestration: `bin/controller.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/cli/commands/`
+- App/technology behavior modules: `src/media_stack/services/apps/*` (fully isolated, extractable)
 - Quality gates and regressions: `tests/`
 - Product narrative and operator docs: `docs/`
 

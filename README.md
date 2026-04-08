@@ -85,9 +85,13 @@ If UI state conflicts with bootstrap config, reconciliation pushes runtime back 
 
 See [docs/source-of-truth.md](docs/source-of-truth.md).
 
+### Plugin-Ready Architecture
+
+All service-specific code lives in `src/media_stack/services/apps/{service}/`. Platform code contains **zero hardcoded service references** (enforced by CI scanner with 0 allowlist entries). Third-party developers can add services by editing only YAML contracts and app directories -- no platform code changes needed.
+
 Technology backends are selected declaratively via:
-- `technology_bindings` (active backend per role)
-- plugin manifests (`src/media_stack/contracts/plugins/<technology>/manifest.json`)
+- `technology_bindings` in the bootstrap profile (active backend per role)
+- per-service YAML contracts (`contracts/services/{service}.yaml`)
 
 Manifest contract keys:
 - `adapter_classes`
@@ -711,4 +715,4 @@ bash bin/bootstrap-debug.sh
 
 ## License
 
-Licensed under Apache License 2.0. See [LICENSE](LICENSE).
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See [LICENSE](LICENSE).

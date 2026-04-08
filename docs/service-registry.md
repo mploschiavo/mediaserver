@@ -4,25 +4,27 @@ The service registry (`src/media_stack/api/services/registry.py`) is the **singl
 
 ## Adding a Service
 
-Add a `ServiceDef` to the `SERVICES` list in `registry.py`:
+Create a YAML contract file at `contracts/services/myapp.yaml`:
 
-```python
-ServiceDef(
-    id="myapp",               # Unique identifier (used in URLs, config keys, etc.)
-    name="MyApp",             # Display name
-    desc="My cool app",       # Short description
-    category="automation",    # automation | media | downloads | management
-    host="myapp",             # Container/pod hostname
-    port=8080,                # Primary port
-    health_path="/ping",      # HTTP health check path
-    auth_path="/api/v1/status",    # Authenticated API probe (empty = skip)
-    auth_mode="X-Api-Key",         # Auth header or "query:paramname"
-    api_key_env="MYAPP_API_KEY",   # Env var for the API key
-    api_key_config="myapp/config.xml",  # Config file path (relative to config root)
-    api_key_format="xml",          # xml | ini | yaml | json | sqlite
-    password_api_path="/api/v1/config/host",  # Password change API (empty = none)
-)
+```yaml
+service:
+  id: myapp                          # Unique identifier
+  name: MyApp                        # Display name
+  desc: My cool app                  # Short description
+  category: automation               # automation | media | downloads | management
+  host: myapp                        # Container/pod hostname
+  port: 8080                         # Primary port
+  health_path: /ping                 # HTTP health check path
+  auth_path: /api/v1/status          # Authenticated API probe (empty = skip)
+  auth_mode: X-Api-Key               # Auth header name
+  api_key_env: MYAPP_API_KEY         # Env var for the API key
+  api_key_config: myapp/config.xml   # Config file path (relative to CONFIG_ROOT)
+  api_key_format: xml                # xml | ini | yaml | json | sqlite
+  api_key_http_path: /initialize.js  # HTTP fallback for key discovery
+  password_api_path: /api/v1/config/host  # Password change API (empty = none)
 ```
+
+No Python code changes needed. The registry auto-loads from `contracts/services/*.yaml`.
 
 That's it. These operations now work automatically:
 - Health probes (dashboard services panel)
@@ -33,8 +35,8 @@ That's it. These operations now work automatically:
 
 ## Removing a Service
 
-1. Delete the `ServiceDef` from `registry.py`
-2. Optionally remove the app directory from `services/apps/`
+1. Delete `contracts/services/myapp.yaml`
+2. Optionally remove the app directory from `services/apps/myapp/`
 3. The controller handles missing handlers gracefully — no crash
 
 If config JSON still references handlers for the removed app, the controller logs a warning and skips: `[WARN] Handler not found: media_stack.services.apps.myapp... Skipping.`

@@ -30,19 +30,50 @@ def run_preflight(
 ) -> dict[str, str]:
     """Discover API keys from app config files.
 
-    Iterates the service registry. For each service with an api_key_env
-    and api_key_config, reads the key using the format-appropriate reader.
+    Runs auto-discovery preflight first to detect the real CONFIG_ROOT
+    and any API keys injected into container environments, then falls
+    back to the standard file-based key readers from the registry.
     """
 
     def info(msg: str) -> None:
         if log:
             log(msg)
 
-    root = Path(config_root)
+    # --- Auto-discovery preflight (runs before file-based discovery) ---
     discovered: dict[str, str] = {}
+    try:
+        from media_stack.api.preflight.config_root_discovery import discover_config_root
+
+        discovery = discover_config_root(current_root=config_root, log=log)
+
+        # If discovery found a different config root, switch to it
+        if discovery.config_root and discovery.config_root != config_root:
+            info(
+                f"[WARN] CONFIG_ROOT mismatch: configured={config_root}, "
+                f"discovered={discovery.config_root} (via {discovery.source}). "
+                f"Using discovered path."
+            )
+            config_root = discovery.config_root
+            import os as _os
+            _os.environ["CONFIG_ROOT"] = config_root
+
+        # Merge any keys found from container environments
+        if discovery.keys:
+            discovered.update(discovery.keys)
+            info(
+                f"Auto-discovery preflight: {len(discovery.keys)} key(s) "
+                f"from container inspection"
+            )
+    except Exception as exc:
+        info(f"[WARN] Auto-discovery preflight failed (non-fatal): {exc}")
+
+    root = Path(config_root)
 
     for svc in SERVICES:
         if not svc.api_key_env or not svc.api_key_config or not svc.api_key_format:
+            continue
+        # Skip if auto-discovery already found this key
+        if svc.api_key_env in discovered:
             continue
 
         config_path = root / svc.api_key_config
