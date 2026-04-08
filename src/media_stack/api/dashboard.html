@@ -317,6 +317,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div class="card-body">
   <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
     <input type="text" class="svc-search" id="svcSearch" placeholder="Filter services..." oninput="renderServices(statusData?statusData.preflight_results:{})" style="flex:1;margin:0">
+    <label style="display:flex;align-items:center;gap:4px;font-size:.75em;color:var(--fg3);white-space:nowrap;cursor:pointer"><input type="checkbox" id="hideDisabledCb" checked onchange="hideDisabled=this.checked;renderServices(statusData?statusData.preflight_results:{})"> Hide Disabled</label>
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="selectAllSvcs()">Select All</button>
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="batchRestart()">Restart Selected</button>
   </div>
@@ -568,6 +569,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <script>
 let logRaw=[],logSeq=0,evtSource=null,statusData=null,logAutoScroll=true;
 let logFilter='all',sseAlive=false,svcSort='default',svcVersions={},prevPhase='idle';
+let hideDisabled=true;
 const healthHistory={};
 let CATS=[];
 let SVCS=[];
@@ -756,6 +758,16 @@ async function load(){
       else if(d.elapsed_seconds){completedAt=' in '+relTime(d.elapsed_seconds);}
       h+='<div class="ok" style="font-size:.85em">Setup complete'+completedAt+'</div>';
     }
+    // Pending queue display
+    const pq=d.pending_actions||[];
+    if(pq.length){
+      h+='<div style="margin-top:8px"><div style="font-size:.82em;color:var(--fg3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Queue ('+pq.length+')</div>';
+      h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
+      for(const p of pq){
+        h+='<span style="background:var(--bg2);padding:2px 8px;border-radius:4px;font-size:.82em;border:1px solid var(--border)">'+p.name+'<span style="color:var(--fg3);margin-left:4px;font-size:.85em">P'+p.priority+'</span></span>';
+      }
+      h+='</div></div>';
+    }
     document.getElementById('status-card').innerHTML=h;
 
     // Sound on phase transition
@@ -771,20 +783,21 @@ async function load(){
     if(hist.length){
       document.getElementById('hist-card').style.display='block';
       let hx='<table style="width:100%;border-collapse:collapse;font-size:.85em">';
-      hx+='<thead><tr style="border-bottom:2px solid var(--border);color:var(--fg3);font-size:.78em;text-transform:uppercase;letter-spacing:.04em"><th style="text-align:left;padding:4px 6px">Action</th><th style="text-align:left;padding:4px 6px">Started</th><th style="text-align:left;padding:4px 6px">Duration</th><th style="text-align:left;padding:4px 6px">User</th><th style="padding:4px 6px">Logs</th></tr></thead><tbody>';
+      hx+='<thead><tr style="border-bottom:2px solid var(--border);color:var(--fg3);font-size:.78em;text-transform:uppercase;letter-spacing:.04em"><th style="text-align:left;padding:4px 6px">Action</th><th style="text-align:left;padding:4px 6px">Status</th><th style="text-align:left;padding:4px 6px">Started</th><th style="text-align:left;padding:4px 6px">Duration</th><th style="text-align:left;padding:4px 6px">User</th><th style="padding:4px 6px">Logs</th></tr></thead><tbody>';
       for(const a of hist){
-        const c=a.error?'err':'ok';
+        const c=a.status==='cancelled'?'warn':a.error?'err':'ok';
         const dur=a.elapsed_seconds||0;
         const started=a.started_at?new Date((a.started_at>1e12?a.started_at:a.started_at*1000)).toLocaleString():'';
         const user=a.triggered_by||'system';
         hx+='<tr style="border-bottom:1px solid var(--border)">';
         hx+='<td style="padding:5px 6px"><span class="dot '+c+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+a.name+'</td>';
+        hx+='<td style="padding:5px 6px;font-size:.82em">'+(a.status||'complete')+'</td>';
         hx+='<td style="padding:5px 6px;color:var(--fg3);font-size:.85em">'+started+'</td>';
         hx+='<td style="padding:5px 6px;font-family:monospace">'+relTime(dur)+'</td>';
         hx+='<td style="padding:5px 6px;color:var(--fg3)">'+user+'</td>';
         hx+='<td style="padding:5px 6px;text-align:center"><button class="btn-secondary" style="padding:2px 6px;font-size:.72em" onclick="filterLogsToAction(\''+a.name+'\')">View</button></td>';
         hx+='</tr>';
-        if(a.error)hx+='<tr><td colspan="5" style="padding:2px 6px 5px;color:var(--err);font-size:.82em">'+a.error.substring(0,150)+'</td></tr>';
+        if(a.error)hx+='<tr><td colspan="6" style="padding:2px 6px 5px;color:var(--err);font-size:.82em">'+a.error.substring(0,150)+'</td></tr>';
       }
       hx+='</tbody></table>';
       document.getElementById('hist').innerHTML=hx;
@@ -805,6 +818,7 @@ function renderServices(pf){
   let allSvcs=[];
   for(const cat of CATS)for(const sid of cat.ids){const s=SVC_MAP[sid];if(s)allSvcs.push({...s,cat:cat.label});}
   if(search)allSvcs=allSvcs.filter(s=>s.name.toLowerCase().includes(search)||s.id.includes(search)||s.desc.toLowerCase().includes(search));
+  if(hideDisabled)allSvcs=allSvcs.filter(s=>SVC_HEALTH[s.id]!=='disabled');
 
   let html='',okCount=0,errCount=0,pendCount=0;
 
@@ -1049,13 +1063,23 @@ function getHostIp(){const h=location.hostname;return (h==='localhost'||h==='127
 async function loadRoutingConfig(){
   try{const r=await fetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
   renderRoutingPanel();buildDns();
-  // Populate edit form
-  // Extract gateway prefix from gateway_host (e.g. "apps" from "apps.media-stack.local")
+  // Populate edit form — derive prefix/subdomain/domain from gateway_host
   const gwHost=_routingCfg.gateway_host||'';
-  const gwPrefix=gwHost.split('.')[0]||'apps';
+  const parts=gwHost.split('.');
+  let gwPrefix='apps',sub=_routingCfg.stack_subdomain||'media-stack',dom=_routingCfg.base_domain||'local';
+  if(parts.length>=3){
+    gwPrefix=parts[0];sub=parts[1];dom=parts.slice(2).join('.');
+  }else if(parts.length===2){
+    gwPrefix=parts[0];dom=parts[1];sub='';
+  }else if(parts.length===1&&gwHost){
+    gwPrefix=gwHost;sub='';dom='';
+  }
+  // Also sync the config fields so renderRoutingPanel uses consistent values
+  if(sub&&_routingCfg.stack_subdomain!==sub)_routingCfg.stack_subdomain=sub;
+  if(dom&&_routingCfg.base_domain!==dom)_routingCfg.base_domain=dom;
   const gpe=document.getElementById('rt-gwprefix');if(gpe)gpe.value=gwPrefix;
-  const de=document.getElementById('rt-domain');if(de)de.value=_routingCfg.base_domain||'';
-  const se=document.getElementById('rt-subdomain');if(se)se.value=_routingCfg.stack_subdomain||'';
+  const de=document.getElementById('rt-domain');if(de)de.value=dom;
+  const se=document.getElementById('rt-subdomain');if(se)se.value=sub;
   const pe=document.getElementById('rt-prefix');if(pe)pe.value=_routingCfg.app_path_prefix||'';
   const po=document.getElementById('rt-port');if(po)po.value=_routingCfg.gateway_port||80;
   updateRoutingPreview();
@@ -1133,14 +1157,21 @@ async function rotateKeys(){
 }
 
 /* Reset Password */
+const _PW_SERVICES=['jellyfin','qbittorrent','sonarr','radarr','prowlarr','bazarr','readarr','lidarr'];
 function promptResetPassword(){
-  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Reset Admin Password</h3><p>Changes the admin password for the stack (qBittorrent and other services).</p><div style="margin:8px 0"><input type="password" id="new-pass-input" placeholder="New password" style="width:100%;padding:8px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.9em"></div><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-primary" onclick="resetPassword();this.closest(\'.confirm-overlay\').remove()">Reset Password</button></div></div></div>';
+  let cbHtml=_PW_SERVICES.map(id=>{
+    const s=SVC_MAP[id];const name=s?s.name:id;
+    return '<label style="display:flex;align-items:center;gap:4px;font-size:.88em;color:var(--fg2)"><input type="checkbox" class="pw-svc-cb" value="'+id+'" checked> '+name+'</label>';
+  }).join('');
+  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Reset Admin Password</h3><p style="font-size:.88em;color:var(--fg2)">Select which services to reset:</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 0">'+cbHtml+'</div><div style="margin:8px 0"><input type="password" id="new-pass-input" placeholder="New password" style="width:100%;padding:8px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.9em"></div><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-primary" onclick="resetPassword();this.closest(\'.confirm-overlay\').remove()">Reset Password</button></div></div></div>';
 }
 async function resetPassword(){
   const pw=document.getElementById('new-pass-input')?.value||'';
   if(pw.length<4){toast('Password must be at least 4 characters',true);return;}
-  toast('Resetting password...');showLoading();
-  try{const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  const selected=[...document.querySelectorAll('.pw-svc-cb:checked')].map(cb=>cb.value);
+  if(!selected.length){toast('Select at least one service',true);return;}
+  toast('Resetting password for '+selected.length+' services...');showLoading();
+  try{const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,services:selected})});
     const d=await r.json();
     if(d.status==='updated'){
       let msg='Password updated for '+d.services.join(', ');

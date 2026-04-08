@@ -842,6 +842,236 @@ test.describe('App browser navigation tests', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Lidarr
+  // -------------------------------------------------------------------------
+  test.describe('Lidarr', () => {
+    test('L1: UI renders navigation bar', async ({ page }) => {
+      await gotoApp(page, '/app/lidarr');
+      await expect(
+        page.locator('a[href*="artist"]').or(page.locator('a[href*="album"]')).or(page.locator('nav')).first(),
+      ).toBeVisible({ timeout: 15_000 });
+    });
+
+    test('L2: Artist nav link stays within base path', async ({ page }) => {
+      await gotoApp(page, '/app/lidarr');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const artistLink = page.locator('a:has-text("Artist")').or(page.locator('a[href*="/artist"]')).first();
+      if (await artistLink.isVisible().catch(() => false)) {
+        await artistLink.click();
+        await page.waitForTimeout(2000);
+        expect(page.url(), 'Navigation should stay under /app/lidarr').toContain('/app/lidarr');
+      }
+    });
+
+    test('L2: Settings > General page renders within base path', async ({ page }) => {
+      await gotoApp(page, '/app/lidarr/settings/general');
+      await expect(page.locator('input').or(page.locator('select')).first()).toBeVisible({
+        timeout: 15_000,
+      });
+      expect(page.url()).toContain('/app/lidarr');
+    });
+
+    test('L3: System > Status page renders version info', async ({ page }) => {
+      await gotoApp(page, '/app/lidarr/system/status');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const body = await page.content();
+      expect(
+        body.toLowerCase().includes('version') || body.toLowerCase().includes('status'),
+        'Lidarr system status should show version info',
+      ).toBeTruthy();
+      expect(page.url()).toContain('/app/lidarr');
+    });
+
+    test('L3: click System → Status via navigation', async ({ page }) => {
+      await gotoApp(page, '/app/lidarr');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const systemLink = page.locator('a:has-text("System")').first();
+      if (await systemLink.isVisible().catch(() => false)) {
+        await systemLink.click();
+        await page.waitForTimeout(2000);
+        const statusLink = page.locator('a:has-text("Status")').first();
+        if (await statusLink.isVisible().catch(() => false)) {
+          await statusLink.click();
+          await page.waitForTimeout(2000);
+        }
+      }
+      expect(page.url()).toContain('/app/lidarr');
+      const body = await page.content();
+      expect(body).not.toContain('TypeError');
+    });
+
+    test('L3: direct URL /app/lidarr/system/status loads without crash', async ({ page }) => {
+      const notFoundUrls: string[] = [];
+      page.on('response', (response) => {
+        if (response.status() === 404 && response.url().includes(gatewayHost)) {
+          notFoundUrls.push(response.url());
+        }
+      });
+      await gotoApp(page, '/app/lidarr/system/status');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      expect(
+        notFoundUrls.filter((u) => u.includes('/assets/')),
+        `Lidarr system/status had 404 asset loads:\n${notFoundUrls.join('\n')}`,
+      ).toHaveLength(0);
+      const body = await page.content();
+      expect(body).not.toContain('TypeError');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Readarr
+  // -------------------------------------------------------------------------
+  test.describe('Readarr', () => {
+    test('L1: UI renders navigation bar', async ({ page }) => {
+      await gotoApp(page, '/app/readarr');
+      await expect(
+        page.locator('a[href*="author"]').or(page.locator('a[href*="book"]')).or(page.locator('nav')).first(),
+      ).toBeVisible({ timeout: 15_000 });
+    });
+
+    test('L2: Author nav link stays within base path', async ({ page }) => {
+      await gotoApp(page, '/app/readarr');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const authorLink = page.locator('a:has-text("Author")').or(page.locator('a[href*="/author"]')).first();
+      if (await authorLink.isVisible().catch(() => false)) {
+        await authorLink.click();
+        await page.waitForTimeout(2000);
+        expect(page.url(), 'Navigation should stay under /app/readarr').toContain('/app/readarr');
+      }
+    });
+
+    test('L2: Settings > General page renders within base path', async ({ page }) => {
+      await gotoApp(page, '/app/readarr/settings/general');
+      await expect(page.locator('input').or(page.locator('select')).first()).toBeVisible({
+        timeout: 15_000,
+      });
+      expect(page.url()).toContain('/app/readarr');
+    });
+
+    test('L3: System > Status page renders version info', async ({ page }) => {
+      await gotoApp(page, '/app/readarr/system/status');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const body = await page.content();
+      expect(
+        body.toLowerCase().includes('version') || body.toLowerCase().includes('status'),
+        'Readarr system status should show version info',
+      ).toBeTruthy();
+      expect(page.url()).toContain('/app/readarr');
+    });
+
+    test('L3: click System → Status via navigation', async ({ page }) => {
+      await gotoApp(page, '/app/readarr');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const systemLink = page.locator('a:has-text("System")').first();
+      if (await systemLink.isVisible().catch(() => false)) {
+        await systemLink.click();
+        await page.waitForTimeout(2000);
+        const statusLink = page.locator('a:has-text("Status")').first();
+        if (await statusLink.isVisible().catch(() => false)) {
+          await statusLink.click();
+          await page.waitForTimeout(2000);
+        }
+      }
+      expect(page.url()).toContain('/app/readarr');
+      const body = await page.content();
+      expect(body).not.toContain('TypeError');
+    });
+
+    test('L3: direct URL /app/readarr/system/status loads without crash', async ({ page }) => {
+      const notFoundUrls: string[] = [];
+      page.on('response', (response) => {
+        if (response.status() === 404 && response.url().includes(gatewayHost)) {
+          notFoundUrls.push(response.url());
+        }
+      });
+      await gotoApp(page, '/app/readarr/system/status');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      expect(
+        notFoundUrls.filter((u) => u.includes('/assets/')),
+        `Readarr system/status had 404 asset loads:\n${notFoundUrls.join('\n')}`,
+      ).toHaveLength(0);
+      const body = await page.content();
+      expect(body).not.toContain('TypeError');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Tautulli
+  // -------------------------------------------------------------------------
+  test.describe('Tautulli', () => {
+    test('L1: UI renders main page with Tautulli branding or activity', async ({ page }) => {
+      await gotoApp(page, '/app/tautulli');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const body = await page.content();
+      expect(
+        body.toLowerCase().includes('tautulli') ||
+          body.toLowerCase().includes('activity') ||
+          body.toLowerCase().includes('current streams') ||
+          body.toLowerCase().includes('watch statistics'),
+        'Tautulli main page should render UI with branding or activity section',
+      ).toBeTruthy();
+    });
+
+    test('L1: page loads without 404 asset errors', async ({ page }) => {
+      const notFoundUrls: string[] = [];
+      page.on('response', (response) => {
+        if (response.status() === 404 && response.url().includes(gatewayHost)) {
+          notFoundUrls.push(response.url());
+        }
+      });
+      await gotoApp(page, '/app/tautulli');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      expect(
+        notFoundUrls,
+        `Tautulli page load produced 404s:\n${notFoundUrls.join('\n')}`,
+      ).toHaveLength(0);
+    });
+
+    test('L2: Settings page is accessible', async ({ page }) => {
+      await gotoApp(page, '/app/tautulli/settings');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const body = await page.content();
+      expect(
+        body.toLowerCase().includes('settings') ||
+          body.toLowerCase().includes('general') ||
+          body.toLowerCase().includes('configuration') ||
+          body.toLowerCase().includes('tautulli'),
+        'Tautulli settings page should render settings UI',
+      ).toBeTruthy();
+      expect(page.url()).toContain('/app/tautulli');
+    });
+
+    test('L3: navigation within UI works (click Settings link)', async ({ page }) => {
+      await gotoApp(page, '/app/tautulli');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const settingsLink = page
+        .locator('a[href*="settings"]')
+        .or(page.locator('a:has-text("Settings")'))
+        .first();
+      if (await settingsLink.isVisible().catch(() => false)) {
+        await settingsLink.click();
+        await page.waitForTimeout(3000);
+        expect(page.url()).toContain('/app/tautulli');
+        const body = await page.content();
+        expect(body).not.toContain('404 Not Found');
+      }
+    });
+
+    test('L3: History page renders via direct URL', async ({ page }) => {
+      await gotoApp(page, '/app/tautulli/history');
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const body = await page.content();
+      expect(
+        body.toLowerCase().includes('history') ||
+          body.toLowerCase().includes('watch') ||
+          body.toLowerCase().includes('tautulli'),
+        'Tautulli history page should render',
+      ).toBeTruthy();
+      expect(page.url()).toContain('/app/tautulli');
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Cross-app: verify all /app/* routes render without 404 asset errors
   // -------------------------------------------------------------------------
   test.describe('Cross-app asset integrity', () => {
@@ -850,11 +1080,14 @@ test.describe('App browser navigation tests', () => {
       { name: 'Radarr', path: '/app/radarr' },
       { name: 'Prowlarr', path: '/app/prowlarr' },
       { name: 'Bazarr', path: '/app/bazarr' },
+      { name: 'Lidarr', path: '/app/lidarr' },
+      { name: 'Readarr', path: '/app/readarr' },
       { name: 'SABnzbd', path: '/app/sabnzbd/' },
       { name: 'Jellyseerr', path: '/app/jellyseerr' },
       { name: 'qBittorrent', path: '/app/qbittorrent' },
       { name: 'Homepage', path: '/app/homepage' },
       { name: 'Maintainerr', path: '/app/maintainerr' },
+      { name: 'Tautulli', path: '/app/tautulli' },
     ];
 
     for (const app of apps) {
