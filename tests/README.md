@@ -1,10 +1,22 @@
 # Automated Tests
 
+## Test Suite Summary
+
+- **2294+ unit tests** covering business logic, service wiring, config parsing
+- **9 architecture enforcement tests** preventing service-name leaks into platform code
+- **4 singleton cache isolation tests** preventing LRU cache pollution across tests
+- **E2E API and Playwright tests** for runtime verification
+
+See [docs/testing.md](../docs/testing.md) for the full testing guide and [docs/sdlc.md](../docs/sdlc.md) for the development lifecycle.
+
 ## Folder layout
-- `tests/unit/` -> Python unit tests for reusable bootstrap helpers.
-- `tests/e2e/playwright/` -> Playwright ingress/browser smoke tests.
-- `tests/e2e/api/` -> API-level integration checks for Arr/Prowlarr/Jellyseerr/qB/SAB/Bazarr wiring.
-- `tests/e2e/playwright/tests/screenshot-capture.spec.ts` -> deterministic app UI screenshot capture.
+- `tests/unit/` -- Python unit tests (2294+), architecture enforcement, cache isolation
+- `tests/unit/conftest.py` -- Autouse fixture that clears LRU caches between tests
+- `tests/unit/test_no_hardcoded_services.py` -- Architecture scanner (0 allowlist entries)
+- `tests/unit/test_singleton_cache_isolation.py` -- Cache isolation validation
+- `tests/e2e/playwright/` -- Playwright ingress/browser smoke tests
+- `tests/e2e/api/` -- API-level integration checks
+- `tests/e2e/playwright/tests/screenshot-capture.spec.ts` -- deterministic app UI screenshots
 
 ## Run locally
 ```bash

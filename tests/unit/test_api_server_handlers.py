@@ -641,6 +641,48 @@ class TestQueryStringHandling(unittest.TestCase):
             self.assertTrue(result)
 
 
+class TestGetApiKeys(unittest.TestCase):
+    """GET /api/keys returns discovered API keys and admin credentials."""
+
+    @mock.patch("media_stack.api.services.health.discover_api_keys",
+                return_value={"sonarr": "abc123", "radarr": "def456"})
+    @mock.patch.dict(os.environ, {
+        "STACK_ADMIN_USERNAME": "admin",
+        "STACK_ADMIN_PASSWORD": "media-stack",
+    })
+    def test_keys_returns_discovered_keys(self, mock_discover):
+        h = make_handler("GET", "/api/keys")
+        h.do_GET()
+        body = _get_json_written(h)
+        self.assertEqual(_get_response_code(h), 200)
+        self.assertEqual(body["keys"]["sonarr"], "abc123")
+        self.assertEqual(body["keys"]["radarr"], "def456")
+        self.assertEqual(body["count"], 2)
+
+    @mock.patch("media_stack.api.services.health.discover_api_keys",
+                return_value={"sonarr": "abc123"})
+    @mock.patch.dict(os.environ, {
+        "STACK_ADMIN_USERNAME": "myuser",
+        "STACK_ADMIN_PASSWORD": "mypass",
+    })
+    def test_keys_includes_admin_credentials(self, mock_discover):
+        h = make_handler("GET", "/api/keys")
+        h.do_GET()
+        body = _get_json_written(h)
+        self.assertEqual(body["admin"]["username"], "myuser")
+        self.assertEqual(body["admin"]["password"], "mypass")
+
+    @mock.patch("media_stack.api.services.health.discover_api_keys",
+                return_value={})
+    def test_keys_empty_when_none_discovered(self, mock_discover):
+        h = make_handler("GET", "/api/keys")
+        h.do_GET()
+        body = _get_json_written(h)
+        self.assertEqual(_get_response_code(h), 200)
+        self.assertEqual(body["keys"], {})
+        self.assertEqual(body["count"], 0)
+
+
 class TestApiDocsEndpoints(unittest.TestCase):
     """GET /api/docs and /api/openapi.yaml serve documentation."""
 
@@ -678,7 +720,7 @@ class TestOpenApiServersFromRouting(unittest.TestCase):
         )
 
     @mock.patch("media_stack.api.services.config.get_routing")
-    def test_servers_include_gateway_from_routing(self, mock_routing):
+    def test_servers_include_gateway_with_path_prefix(self, mock_routing):
         mock_routing.return_value = {
             "gateway_host": "comp.my",
             "gateway_port": 9100,
@@ -687,6 +729,7 @@ class TestOpenApiServersFromRouting(unittest.TestCase):
         from media_stack.api.server import _build_openapi_servers
         servers = _build_openapi_servers()
         urls = [s["url"] for s in servers]
+        self.assertIn("http://comp.my:9100/app/media-stack-controller", urls)
         self.assertIn("http://comp.my:9100", urls)
 
     @mock.patch("media_stack.api.services.config.get_routing")
@@ -699,6 +742,7 @@ class TestOpenApiServersFromRouting(unittest.TestCase):
         from media_stack.api.server import _build_openapi_servers
         servers = _build_openapi_servers()
         urls = [s["url"] for s in servers]
+        self.assertIn("http://k8s.my/app/media-stack-controller", urls)
         self.assertIn("http://k8s.my", urls)
         self.assertFalse(any(":80" in u for u in urls if "k8s.my" in u))
 
@@ -712,6 +756,7 @@ class TestOpenApiServersFromRouting(unittest.TestCase):
         from media_stack.api.server import _build_openapi_servers
         servers = _build_openapi_servers()
         urls = [s["url"] for s in servers]
+        self.assertIn("http://apps.media-stack.local/app/media-stack-controller", urls)
         self.assertIn("http://apps.media-stack.local", urls)
 
     @mock.patch.dict(os.environ, {"MEDIA_STACK_RUNTIME": "kubernetes"})
@@ -751,6 +796,74 @@ class TestOpenApiServersFromRouting(unittest.TestCase):
         body = h.wfile.getvalue().decode("utf-8", errors="replace")
         self.assertIn("url: /", body)
         self.assertIn("localhost", body)
+
+
+# ===========================================================================
+# Swagger UI / API docs browsing and execute tests
+# ===========================================================================
+
+class TestSwaggerUIBrowsingAndExecute(unittest.TestCase):
+    """Test that the Swagger UI and OpenAPI docs are functional and
+    that the 'Try It Out' / Execute flow returns proper responses.
+    """
+
+    def test_api_docs_page_loads_swagger_ui_bundle(self):
+        """GET /api/docs serves HTML with Swagger UI bundle script."""
+        h = make_handler("GET", "/api/docs")
+        h.do_GET()
+        self.assertEqual(_get_response_code(h), 200)
+        body = h.wfile.getvalue().decode("utf-8", errors="replace")
+        self.assertIn("swagger-ui-bundle.js", body)
+        self.assertIn("/api/openapi.yaml", body)
+
+    def test_openapi_yaml_contains_keys_endpoint(self):
+        """The served YAML spec must include the new /api/keys endpoint."""
+        h = make_handler("GET", "/api/openapi.yaml")
+        h.do_GET()
+        self.assertEqual(_get_response_code(h), 200)
+        body = h.wfile.getvalue().decode("utf-8", errors="replace")
+        self.assertIn("/api/keys", body)
+        self.assertIn("getKeys", body)
+
+    def test_openapi_json_contains_keys_endpoint(self):
+        """The abridged JSON spec includes /api/keys."""
+        h = make_handler("GET", "/api/openapi.json")
+        h.do_GET()
+        body = _get_json_written(h)
+        self.assertIn("/api/keys", body["paths"])
+        self.assertIn("get", body["paths"]["/api/keys"])
+
+    @mock.patch("media_stack.api.services.config.get_routing")
+    def test_openapi_servers_include_gateway_path_prefix_for_execute(self, mock_routing):
+        """Swagger Execute must work through the gateway by including the
+        path prefix (/app/media-stack-controller) in the server URL."""
+        mock_routing.return_value = {
+            "gateway_host": "comp.my",
+            "gateway_port": 80,
+            "app_path_prefix": "/app",
+        }
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        # Must have the prefixed URL so Execute works through the gateway
+        self.assertIn("http://comp.my/app/media-stack-controller", urls)
+        # Also must have root for direct access
+        self.assertIn("/", urls)
+
+    @mock.patch("media_stack.api.services.health.discover_api_keys",
+                return_value={"sonarr": "test-key-123"})
+    @mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""})
+    def test_execute_keys_endpoint_returns_valid_json(self, mock_discover):
+        """Simulates the Swagger Execute button hitting GET /api/keys."""
+        h = make_handler("GET", "/api/keys")
+        h.do_GET()
+        self.assertEqual(_get_response_code(h), 200)
+        body = _get_json_written(h)
+        self.assertIsInstance(body, dict)
+        self.assertIn("keys", body)
+        self.assertIn("admin", body)
+        self.assertIn("count", body)
+        self.assertEqual(body["keys"]["sonarr"], "test-key-123")
 
 
 if __name__ == "__main__":

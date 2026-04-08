@@ -52,12 +52,19 @@ def _build_openapi_servers() -> list[dict]:
         routing = config_svc.get_routing()
         gw_host = routing.get("gateway_host", "")
         gw_port = int(routing.get("gateway_port", 80))
-        prefix = routing.get("app_path_prefix", "/app")
+        prefix = str(routing.get("app_path_prefix", "/app")).rstrip("/")
         port_str = "" if gw_port == 80 else f":{gw_port}"
         if gw_host:
+            # Gateway with path prefix (e.g. http://comp.my/app/media-stack-controller)
+            ctrl_name = os.environ.get("CONTROLLER_CONTAINER_NAME", "media-stack-controller")
+            servers.append({
+                "url": f"http://{gw_host}{port_str}{prefix}/{ctrl_name}",
+                "description": f"Gateway ({gw_host}{prefix}/{ctrl_name})",
+            })
+            # Gateway root (no prefix — for direct-host routing)
             servers.append({
                 "url": f"http://{gw_host}{port_str}",
-                "description": f"Gateway ({gw_host})",
+                "description": f"Gateway root ({gw_host})",
             })
     except Exception:
         pass
@@ -158,6 +165,10 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     elif path == "/api/recent":
         handler._json_response(200, content_svc.get_recent())
 
+    # --- Keys ---
+    elif path == "/api/keys":
+        _handle_keys(handler)
+
     # --- Disk ---
     elif path == "/api/disk":
         handler._json_response(200, disk_svc.get_disk())
@@ -237,6 +248,18 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
 # ---------------------------------------------------------------------------
 # Helper functions for complex route handlers
 # ---------------------------------------------------------------------------
+
+def _handle_keys(handler: ControllerAPIHandler) -> None:
+    """Return all discovered API keys and admin credentials."""
+    keys = health_svc.discover_api_keys()
+    admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+    handler._json_response(200, {
+        "keys": keys,
+        "admin": {"username": admin_user, "password": admin_pass},
+        "count": len(keys),
+    })
+
 
 def _handle_services(handler: ControllerAPIHandler) -> None:
     from media_stack.api.services.registry import SERVICES

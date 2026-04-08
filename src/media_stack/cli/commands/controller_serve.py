@@ -98,17 +98,21 @@ def _run_serve(args: argparse.Namespace) -> None:
                 "will apply from config when action is triggered"
             )
 
-    # Pre-discover API keys from config files so auth probes work
-    # even before bootstrap preflights run (or after controller restart).
+    # Pre-discover API keys: auto-discovery preflight detects the real
+    # CONFIG_ROOT (via Docker mounts/env or path scanning) before falling
+    # back to the standard file-based key readers.
     try:
         from media_stack.api.preflight.api_keys import run_preflight as _discover_keys
         config_root = getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config"))
+        runtime_platform.log(f"[INFO] Config root discovery starting (configured: {config_root})")
         discovered = _discover_keys(config_root=config_root, log=runtime_platform.log)
+        # Update CONFIG_ROOT in case discovery changed it
+        config_root = os.environ.get("CONFIG_ROOT", config_root)
         for env_key, val in discovered.items():
             if val and not os.environ.get(env_key):
                 os.environ[env_key] = val
         if discovered:
-            runtime_platform.log(f"[INFO] Pre-discovered {len(discovered)} API keys from config files")
+            runtime_platform.log(f"[INFO] Pre-discovered {len(discovered)} API keys (config_root={config_root})")
         # Validate a key against a running service to detect mount mismatches
         _validate_key_against_service(discovered, config_root, runtime_platform.log)
     except Exception as exc:

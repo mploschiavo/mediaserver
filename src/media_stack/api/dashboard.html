@@ -302,10 +302,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div class="action-group">
       <div class="action-group-title">Security</div>
       <div class="actions">
+        <button class="btn-secondary" onclick="showExportKeys()">Export Keys</button>
         <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
         <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
       </div>
-      <div class="action-group-desc">Regenerate credentials. Services restart automatically.</div>
+      <div class="action-group-desc">View, export, or regenerate credentials.</div>
     </div>
     </div>
   </div>
@@ -1139,6 +1140,37 @@ async function probeMatrix(){
   hideLoading();const ok=Object.values(matrixState).filter(v=>v==='ok').length;toast(ok+'/'+(SVCS.length*4)+' paths reachable');
 }
 function copyDns(){navigator.clipboard.writeText(document.getElementById('dns-entries').textContent).then(()=>toast('Copied!')).catch(()=>toast('Copy failed',true));}
+
+/* Export Keys */
+async function showExportKeys(){
+  try{
+    const r=await fetch('/api/keys');const d=await r.json();
+    let rows='';
+    for(const [id,key] of Object.entries(d.keys||{})){
+      const s=SVC_MAP[id];const name=s?s.name:id;
+      rows+='<tr><td style="padding:4px 8px;font-weight:600">'+name+'</td><td style="padding:4px 8px"><code style="font-size:.82em;word-break:break-all;user-select:all">'+key+'</code></td></tr>';
+    }
+    if(d.admin){
+      rows+='<tr><td colspan="2" style="padding:8px 8px 4px;font-weight:700;border-top:1px solid var(--border)">Admin Credentials</td></tr>';
+      rows+='<tr><td style="padding:4px 8px">Username</td><td style="padding:4px 8px"><code style="user-select:all">'+d.admin.username+'</code></td></tr>';
+      rows+='<tr><td style="padding:4px 8px">Password</td><td style="padding:4px 8px"><code style="user-select:all">'+d.admin.password+'</code></td></tr>';
+    }
+    const html='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box" style="max-width:600px"><h3>API Keys &amp; Credentials</h3>'
+      +'<p style="font-size:.82em;color:var(--fg2)">'+Object.keys(d.keys||{}).length+' keys discovered</p>'
+      +'<div style="max-height:400px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:.88em">'+rows+'</table></div>'
+      +'<div class="actions" style="margin-top:10px"><button class="btn-secondary" onclick="copyKeysToClipboard()">Copy All</button>'
+      +'<button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Close</button></div></div></div>';
+    document.getElementById('confirm-root').innerHTML=html;
+    window._lastKeysPayload=d;
+  }catch(e){toast('Failed to load keys: '+e.message,true);}
+}
+function copyKeysToClipboard(){
+  const d=window._lastKeysPayload;if(!d)return;
+  let lines=[];
+  for(const [id,key] of Object.entries(d.keys||{}))lines.push(id.toUpperCase()+'_API_KEY='+key);
+  if(d.admin){lines.push('STACK_ADMIN_USERNAME='+d.admin.username);lines.push('STACK_ADMIN_PASSWORD='+d.admin.password);}
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>toast('Keys copied to clipboard')).catch(()=>toast('Copy failed',true));
+}
 
 /* Rotate API Keys */
 /* Toggle all checkboxes in a modal */

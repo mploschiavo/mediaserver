@@ -2053,6 +2053,61 @@ paths:
                       added: "2026-04-06"
 
   # =========================================================================
+  # Keys
+  # =========================================================================
+
+  /api/keys:
+    get:
+      operationId: getKeys
+      tags: [Security]
+      summary: All API keys and admin credentials
+      description: |
+        Returns all discovered API keys for managed services and the admin
+        credentials. Keys are discovered from environment variables, config
+        files, or HTTP fallback in that priority order.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/keys | jq '.keys'
+        - lang: Python
+          source: |
+            import urllib.request, json
+            r = urllib.request.urlopen("http://localhost:9100/api/keys")
+            data = json.loads(r.read())
+            for svc, key in data["keys"].items():
+                print(f"{svc}: {key}")
+      responses:
+        '200':
+          description: Discovered API keys and admin credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: object
+                    description: Map of service ID to API key
+                    additionalProperties:
+                      type: string
+                    example:
+                      sonarr: "abc123def456"
+                      radarr: "789ghi012jkl"
+                  admin:
+                    type: object
+                    properties:
+                      username:
+                        type: string
+                        example: admin
+                      password:
+                        type: string
+                        example: media-stack
+                  count:
+                    type: integer
+                    description: Number of keys discovered
+                    example: 10
+
+  # =========================================================================
   # Disk
   # =========================================================================
 

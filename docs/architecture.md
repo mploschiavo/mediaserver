@@ -28,24 +28,38 @@ Features:
 - **Webhook notifications** on action complete/error
 - **Runtime config toggles** persist across actions and merge into every action as defaults
 
-## Pluggable Layers and Contracts
+## Plugin Isolation Architecture
 
-The runtime is intentionally layered so technologies can be swapped locally without editing shared orchestration:
+The platform enforces strict isolation between platform code and service-specific code.
+A third-party developer can implement any service by editing only two locations:
 
-1. **Declarative bindings layer**
-   `contracts/media-stack.config.json` selects active technologies per role through `technology_bindings`.
-2. **Manifest registration layer**
-   `src/media_stack/contracts/plugins/<technology>/manifest.json` declares adapter classes, service classes, operation handlers, and aliases.
+1. `contracts/services/{service}.yaml` -- service metadata, API key format, health path, etc.
+2. `src/media_stack/services/apps/{service}/` -- all implementation code
+
+**Zero platform code changes are required.** The `services/apps/` directory is designed to be extractable into a separate git repo.
+
+### Enforcement
+
+`tests/unit/test_no_hardcoded_services.py` scans all platform Python files for hardcoded service names.
+**Current state: 0 allowlist entries.** Any new violation fails CI.
+
+### Layers
+
+1. **Service registry layer**
+   `contracts/services/*.yaml` -- per-service YAML contracts declare metadata, API key format, health endpoints, version paths, etc. The registry loads at import time.
+2. **YAML defaults layer**
+   `contracts/defaults/*.yaml` -- operational defaults (arr settings, download client config, disk guardrails).
 3. **App/technology implementation layer**
-   `src/media_stack/services/apps/<app>/`, `download_client_adapters/`, `media_server_adapters/`, and `apps/servarr/technologies/`.
+   `src/media_stack/services/apps/{app}/` -- all service-specific code: adapters, config resolvers, runtime ops, preflight handlers, CLI tools.
 4. **Shared orchestration layer**
-   `controller.py`, `runtime_factory/*`, and `runner_operations_service.py` stay technology-neutral.
+   `cli/commands/`, `services/runtime_factory/`, `api/` -- technology-neutral orchestration, routing, and API handlers.
 
-Contract rules:
-- Registration is manifest-first, not runtime-config overrides.
-- `adapter_hooks` is runtime-only for operation handlers, phase plans, wrapper phase-script maps, and scale-policy/component orchestration lists.
+### Contract Rules
+
+- Registration is YAML-contract-first -- the service registry is the single source of truth.
+- `adapter_hooks` in profile YAML is runtime-only for phase plans, scale-policy, and operation handlers.
 - Shared operation contracts are generic (`torrent_client_login`, `setup_torrent_categories`).
-- `BootstrapRunnerService` remains orchestration-only; app-specific branching belongs in app/adapter modules or declarative plans.
+- Platform code uses registry lookups by category (e.g. `category="torrent"`) not by service name.
 
 ## Diagram Catalog
 

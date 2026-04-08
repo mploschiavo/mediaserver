@@ -287,6 +287,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             ("/api/import-lists", "Import/discovery lists"),
             ("/api/libraries", "Media server libraries"),
             ("/api/recent", "Recently added items"),
+            ("/api/keys", "All API keys and admin credentials"),
             ("/api/disk", "Disk usage + guardrails"),
             ("/api/cleanup-preview", "Guardrail cleanup preview"),
             ("/api/env", "Runtime environment"),
