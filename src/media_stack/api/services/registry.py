@@ -44,6 +44,7 @@ class ServiceDef:
     preserve_path_prefix: bool = False
     scalable: bool = True
     scale_to_zero: bool = False
+    asset_prefixes: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +110,7 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         preserve_path_prefix=bool(entry.get("preserve_path_prefix", False)),
         scalable=bool(entry.get("scalable", True)),
         scale_to_zero=bool(entry.get("scale_to_zero", False)),
+        asset_prefixes=[str(p) for p in (entry.get("asset_prefixes") or []) if str(p).strip()],
     )
 
 
