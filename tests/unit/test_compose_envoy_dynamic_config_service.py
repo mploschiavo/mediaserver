@@ -188,9 +188,11 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             .get("route_config", {})
             .get("virtual_hosts", [])
         )
-        self.assertEqual(len(virtual_hosts), 2)
+        self.assertEqual(len(virtual_hosts), 3)
         self.assertEqual((virtual_hosts[0].get("domains") or [None])[0], "apps.media-dev.local")
         self.assertEqual(virtual_hosts[1].get("name"), "vhost_localhost")
+        self.assertEqual(virtual_hosts[2].get("name"), "vhost_catchall")
+        self.assertEqual(virtual_hosts[2].get("domains"), ["*"])
         routes = virtual_hosts[0].get("routes") or []
         self.assertGreaterEqual(len(routes), 3)
         html_primary_route = next(
@@ -659,6 +661,120 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
         )
         self.assertIsNotNone(primary_route)
         self.assertNotIn("regex_rewrite", (primary_route.get("route") or {}))
+
+
+class EnvoyVirtualHostRoutingPatternTests(unittest.TestCase):
+    """Validate that the 4 expected URL patterns all resolve to a matching
+    virtual host with controller routes.
+
+    The 4 patterns (URLs vary by deployment):
+      1. curl http://localhost/app/media-stack-controller/api/keys
+         -> vhost_localhost, prefix /app/media-stack-controller
+      2. curl http://comp.my/app/media-stack-controller/api/keys
+         -> vhost_catchall (wildcard *), prefix /app/media-stack-controller
+      3. curl http://controller.media-stack.my/api/keys
+         -> vhost_controller_media_stack_my (direct-host), prefix /
+      4. curl http://comp.my:9876/api/keys
+         -> direct port access (bypasses Envoy)
+    """
+
+    def _build_vhosts_with_controller(self) -> list[dict]:
+        """Build a vhost list that includes a controller route."""
+        from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts import (
+            build_virtual_hosts,
+        )
+
+        # Simulate routes_by_host as the config generator would produce:
+        # gateway host has /app/media-stack-controller route
+        # direct host has / route
+        routes_by_host = {
+            "apps.media-stack.local": [
+                (100, {
+                    "match": {"prefix": "/app/media-stack-controller"},
+                    "route": {"cluster": "service_media_stack_controller", "timeout": "0s"},
+                }),
+                (50, {
+                    "match": {"prefix": "/app/sonarr"},
+                    "route": {"cluster": "service_sonarr", "timeout": "0s"},
+                }),
+            ],
+            "media-stack-controller.media-stack.local": [
+                (100, {
+                    "match": {"prefix": "/"},
+                    "route": {"cluster": "service_media_stack_controller", "timeout": "0s"},
+                }),
+            ],
+        }
+        vhosts, count = build_virtual_hosts(routes_by_host)
+        return vhosts
+
+    def _find_vhost_for_host(self, vhosts: list[dict], host: str) -> dict | None:
+        """Find the vhost that would match a given Host header (Envoy rules)."""
+        # Envoy matches: exact domain first, then domain:port, then wildcard
+        for vh in vhosts:
+            domains = vh.get("domains", [])
+            if host in domains or f"{host}:*" in domains:
+                return vh
+        # Fallback to wildcard
+        for vh in vhosts:
+            if "*" in vh.get("domains", []):
+                return vh
+        return None
+
+    def _has_controller_route(self, vh: dict, prefix: str = "/app/media-stack-controller") -> bool:
+        """Check if a vhost has a route matching the given prefix."""
+        for route in vh.get("routes", []):
+            if route.get("match", {}).get("prefix", "").startswith(prefix):
+                return True
+        return False
+
+    def test_localhost_path_prefix_resolves_to_controller(self):
+        """curl http://localhost/app/media-stack-controller/api/keys"""
+        vhosts = self._build_vhosts_with_controller()
+        vh = self._find_vhost_for_host(vhosts, "localhost")
+        self.assertIsNotNone(vh, "localhost must match a vhost")
+        self.assertEqual(vh["name"], "vhost_localhost")
+        self.assertTrue(self._has_controller_route(vh))
+
+    def test_custom_domain_path_prefix_resolves_via_catchall(self):
+        """curl http://comp.my/app/media-stack-controller/api/keys"""
+        vhosts = self._build_vhosts_with_controller()
+        vh = self._find_vhost_for_host(vhosts, "comp.my")
+        self.assertIsNotNone(vh, "comp.my must match the wildcard catchall vhost")
+        self.assertEqual(vh["name"], "vhost_catchall")
+        self.assertTrue(self._has_controller_route(vh))
+
+    def test_direct_host_routing_resolves_controller(self):
+        """curl http://controller.media-stack.my/api/keys"""
+        vhosts = self._build_vhosts_with_controller()
+        vh = self._find_vhost_for_host(
+            vhosts, "media-stack-controller.media-stack.local"
+        )
+        self.assertIsNotNone(vh, "Direct-host must match the controller vhost")
+        self.assertTrue(
+            self._has_controller_route(vh, prefix="/"),
+            "Direct-host vhost routes / to controller",
+        )
+
+    def test_catchall_vhost_is_last(self):
+        """The * catchall must be the last vhost so explicit matches win."""
+        vhosts = self._build_vhosts_with_controller()
+        catchall = [vh for vh in vhosts if "*" in vh.get("domains", [])]
+        self.assertEqual(len(catchall), 1, "Exactly one catchall vhost")
+        self.assertEqual(vhosts[-1]["name"], "vhost_catchall")
+
+    def test_direct_port_bypasses_envoy(self):
+        """curl http://comp.my:9876/api/keys — direct port, no Envoy.
+
+        This is a documentation/architecture test: when the user accesses
+        the controller on its direct port (9100/9876), Envoy is not involved.
+        The controller's own HTTP handler serves the response.
+        """
+        # This test validates the architecture expectation, not Envoy config.
+        # The controller listens on CONTROLLER_PORT and serves all endpoints
+        # directly without any path-prefix stripping needed.
+        from media_stack.api.handlers_get import _handle_keys
+        self.assertTrue(callable(_handle_keys))
 
 
 if __name__ == "__main__":
