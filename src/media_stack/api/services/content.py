@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from .health import discover_api_keys
+from .registry import SERVICES
 
 
 def get_versions(cache: Any) -> dict[str, Any]:
@@ -22,13 +23,8 @@ def get_versions(cache: Any) -> dict[str, Any]:
 
     api_keys = discover_api_keys()
     version_endpoints: dict[str, tuple[str, int, str, str]] = {
-        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "version"),
-        "radarr": ("radarr", 7878, "/api/v3/system/status", "version"),
-        "lidarr": ("lidarr", 8686, "/api/v1/system/status", "version"),
-        "readarr": ("readarr", 8787, "/api/v1/system/status", "version"),
-        "prowlarr": ("prowlarr", 9696, "/api/v1/system/status", "version"),
-        "bazarr": ("bazarr", 6767, "/api/system/status", "data.bazarr_version"),
-        "jellyfin": ("jellyfin", 8096, "/System/Info/Public", "Version"),
+        s.id: (s.host, s.port, s.version_path, s.version_json_key)
+        for s in SERVICES if s.version_path
     }
 
     def fetch_version(name: str) -> tuple[str, str]:
@@ -135,14 +131,12 @@ def get_stats(cache: Any) -> dict[str, Any]:
         return cached
     api_keys = discover_api_keys()
     apps = [
-        ("sonarr", 8989, "/api/v3/series", "series", "SONARR_API_KEY"),
-        ("radarr", 7878, "/api/v3/movie", "movies", "RADARR_API_KEY"),
-        ("lidarr", 8686, "/api/v1/artist", "artists", "LIDARR_API_KEY"),
-        ("readarr", 8787, "/api/v1/author", "books", "READARR_API_KEY"),
+        (s.id, s.host, s.port, s.stats_path, s.stats_label)
+        for s in SERVICES if s.stats_path
     ]
 
     def fetch_count(name: str) -> tuple[str, dict[str, Any]]:
-        host, port, path, label, key_env = [(a[0], a[1], a[2], a[3], a[4]) for a in apps if a[0] == name][0]
+        host, port, path, label = [(a[1], a[2], a[3], a[4]) for a in apps if a[0] == name][0]
         key = api_keys.get(name, "")
         if not key:
             return name, {"count": 0, "label": label}
@@ -169,14 +163,18 @@ def get_stats(cache: Any) -> dict[str, Any]:
 
 
 def get_indexers() -> dict[str, Any]:
-    """Fetch Prowlarr indexer list."""
+    """Fetch indexer list from services with indexer_path (e.g. Prowlarr)."""
     api_keys = discover_api_keys()
-    key = api_keys.get("prowlarr", "")
+    indexer_services = [s for s in SERVICES if s.indexer_path]
+    if not indexer_services:
+        return {"indexers": [], "total": 0, "enabled": 0}
+    svc = indexer_services[0]
+    key = api_keys.get(svc.id, "")
     if not key:
         return {"indexers": [], "total": 0, "enabled": 0}
     try:
         req = urllib.request.Request(
-            "http://prowlarr:9696/api/v1/indexer",
+            f"http://{svc.host}:{svc.port}{svc.indexer_path}",
             headers={"X-Api-Key": key},
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -193,14 +191,18 @@ def get_indexers() -> dict[str, Any]:
 
 
 def get_indexer_stats() -> dict[str, Any]:
-    """Fetch Prowlarr indexer performance stats."""
+    """Fetch indexer performance stats from services with indexer_stats_path."""
     api_keys = discover_api_keys()
-    key = api_keys.get("prowlarr", "")
+    stats_services = [s for s in SERVICES if s.indexer_stats_path]
+    if not stats_services:
+        return {"stats": []}
+    svc = stats_services[0]
+    key = api_keys.get(svc.id, "")
     if not key:
         return {"stats": []}
     try:
         req = urllib.request.Request(
-            "http://prowlarr:9696/api/v1/indexerstats",
+            f"http://{svc.host}:{svc.port}{svc.indexer_stats_path}",
             headers={"X-Api-Key": key},
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -215,12 +217,12 @@ def get_download_history() -> dict[str, Any]:
     """Fetch recent download history from arr apps."""
     api_keys = discover_api_keys()
     apps = [
-        ("sonarr", 8989, "/api/v3/history?pageSize=10&sortDirection=descending&sortKey=date"),
-        ("radarr", 7878, "/api/v3/history?pageSize=10&sortDirection=descending&sortKey=date"),
+        (s.id, s.host, s.port, s.history_path)
+        for s in SERVICES if s.history_path
     ]
 
     def fetch(name: str) -> tuple[str, list[dict[str, str]]]:
-        host, port, path = [(a[0], a[1], a[2]) for a in apps if a[0] == name][0]
+        host, port, path = [(a[1], a[2], a[3]) for a in apps if a[0] == name][0]
         key = api_keys.get(name, "")
         if not key:
             return name, []
@@ -252,12 +254,12 @@ def get_quality_profiles() -> dict[str, Any]:
     """Fetch quality profiles from arr apps."""
     api_keys = discover_api_keys()
     apps = [
-        ("sonarr", 8989, "/api/v3/qualityprofile"),
-        ("radarr", 7878, "/api/v3/qualityprofile"),
+        (s.id, s.host, s.port, s.quality_profile_path)
+        for s in SERVICES if s.quality_profile_path
     ]
 
     def fetch(name: str) -> tuple[str, list[dict[str, Any]]]:
-        host, port, path = [(a[0], a[1], a[2]) for a in apps if a[0] == name][0]
+        host, port, path = [(a[1], a[2], a[3]) for a in apps if a[0] == name][0]
         key = api_keys.get(name, "")
         if not key:
             return name, []
@@ -284,12 +286,12 @@ def get_import_lists() -> dict[str, Any]:
     """Fetch import/discovery lists from arr apps."""
     api_keys = discover_api_keys()
     apps = [
-        ("sonarr", 8989, "/api/v3/importlist"),
-        ("radarr", 7878, "/api/v3/importlist"),
+        (s.id, s.host, s.port, s.import_list_path)
+        for s in SERVICES if s.import_list_path
     ]
 
     def fetch(name: str) -> tuple[str, list[dict[str, Any]]]:
-        host, port, path = [(a[0], a[1], a[2]) for a in apps if a[0] == name][0]
+        host, port, path = [(a[1], a[2], a[3]) for a in apps if a[0] == name][0]
         key = api_keys.get(name, "")
         if not key:
             return name, []
@@ -342,12 +344,12 @@ def get_recent() -> dict[str, Any]:
     """Fetch recently added items from arr apps."""
     api_keys = discover_api_keys()
     apps = [
-        ("sonarr", 8989, "/api/v3/series?sortKey=dateAdded&sortDirection=descending"),
-        ("radarr", 7878, "/api/v3/movie?sortKey=dateAdded&sortDirection=descending"),
+        (s.id, s.host, s.port, s.recent_path)
+        for s in SERVICES if s.recent_path
     ]
 
     def fetch_recent(name: str) -> tuple[str, list[dict[str, str]]]:
-        host, port, path = [(a[0], a[1], a[2]) for a in apps if a[0] == name][0]
+        host, port, path = [(a[1], a[2], a[3]) for a in apps if a[0] == name][0]
         key = api_keys.get(name, "")
         if not key:
             return name, []

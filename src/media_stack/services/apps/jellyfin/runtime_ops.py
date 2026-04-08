@@ -11,10 +11,10 @@ import os
 import re
 from urllib import parse
 
-from media_stack.adapters.homepage import DEFAULT_HOSTS as _lib_default_homepage_hosts
-from media_stack.adapters.homepage import render_services_yaml as _lib_render_homepage_services_yaml
-from media_stack.adapters.jellyfin import apply_artwork_profile as _lib_jellyfin_apply_artwork_profile
-from media_stack.adapters.jellyfin import reorder_provider_names as _lib_jellyfin_reorder_provider_names
+from media_stack.services.apps.homepage.adapters import DEFAULT_HOSTS as _lib_default_homepage_hosts
+from media_stack.services.apps.homepage.adapters import render_services_yaml as _lib_render_homepage_services_yaml
+from .adapters import apply_artwork_profile as _lib_jellyfin_apply_artwork_profile
+from .adapters import reorder_provider_names as _lib_jellyfin_reorder_provider_names
 
 from media_stack.services.config_artifacts_service import ConfigArtifactsService
 from media_stack.services.runtime_platform import (

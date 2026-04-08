@@ -17,7 +17,7 @@ plugin:
   technology: sabnzbd
   aliases:
   - sab
-  adapter_class: media_stack.services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter
+  adapter_class: media_stack.services.apps.sabnzbd.download_client_adapter:SabnzbdDownloadClientAdapter
   app_service_classes:
     sabnzbd_service: media_stack.services.apps.sabnzbd.service:SabnzbdService
     usenet_client_service: media_stack.services.apps.sabnzbd.service:SabnzbdService
@@ -31,7 +31,7 @@ plugin:
       ensure_sabnzbd_defaults: media_stack.services.apps.sabnzbd.runtime_ops:ensure_sabnzbd_defaults
       ensure_sabnzbd_categories: media_stack.services.apps.sabnzbd.runtime_ops:ensure_sabnzbd_categories
   adapter_classes:
-    download_client: media_stack.services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter
+    download_client: media_stack.services.apps.sabnzbd.download_client_adapter:SabnzbdDownloadClientAdapter
   preflight_handler:
     name: sabnzbd
     handler: media_stack.services.apps.sabnzbd.http_preflight:run_preflight

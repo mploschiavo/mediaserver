@@ -4,10 +4,10 @@ from .base import MediaServerAdapterBase, MediaServerAdapterContext
 from .emby import EmbyMediaServerAdapter
 from .factory import MediaServerAdapterFactory
 from .generic import GenericMediaServerAdapter
-from .jellyfin import JellyfinMediaServerAdapter
+from media_stack.services.apps.jellyfin.media_server_adapter import JellyfinMediaServerAdapter
 from .mythtv import MythTvMediaServerAdapter
 from .planned import PlannedMediaServerAdapter
-from .plex import PlexMediaServerAdapter
+from media_stack.services.apps.plex.media_server_adapter import PlexMediaServerAdapter
 
 __all__ = [
     "MediaServerAdapterBase",

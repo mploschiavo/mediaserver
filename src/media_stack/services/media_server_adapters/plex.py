@@ -1,11 +1,7 @@
-"""Plex media-server adapter."""
+"""Backward-compatible shim -- canonical home is services.apps.plex.media_server_adapter."""
 
-from __future__ import annotations
+from media_stack.services.apps.plex.media_server_adapter import (  # noqa: F401
+    PlexMediaServerAdapter,
+)
 
-from .planned import PlannedMediaServerAdapter
-
-
-class PlexMediaServerAdapter(PlannedMediaServerAdapter):
-    """Plex backend adapter driven by configured phase plans."""
-
-    pass
+__all__ = ["PlexMediaServerAdapter"]

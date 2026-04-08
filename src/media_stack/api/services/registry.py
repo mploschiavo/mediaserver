@@ -38,6 +38,14 @@ class ServiceDef:
     api_key_http_path: str = ""
     version_path: str = ""
     version_json_key: str = ""
+    stats_path: str = ""
+    stats_label: str = ""
+    history_path: str = ""
+    quality_profile_path: str = ""
+    import_list_path: str = ""
+    recent_path: str = ""
+    indexer_path: str = ""
+    indexer_stats_path: str = ""
     password_api_path: str = ""
     password_config: str = ""
     profiles: list[str] = field(default_factory=list)
@@ -104,6 +112,14 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         api_key_http_path=str(entry.get("api_key_http_path", "")),
         version_path=str(entry.get("version_path", "")),
         version_json_key=str(entry.get("version_json_key", "")),
+        stats_path=str(entry.get("stats_path", "")),
+        stats_label=str(entry.get("stats_label", "")),
+        history_path=str(entry.get("history_path", "")),
+        quality_profile_path=str(entry.get("quality_profile_path", "")),
+        import_list_path=str(entry.get("import_list_path", "")),
+        recent_path=str(entry.get("recent_path", "")),
+        indexer_path=str(entry.get("indexer_path", "")),
+        indexer_stats_path=str(entry.get("indexer_stats_path", "")),
         password_api_path=str(entry.get("password_api_path", "")),
         password_config=str(entry.get("password_config", "")),
         profiles=[str(p) for p in profiles],

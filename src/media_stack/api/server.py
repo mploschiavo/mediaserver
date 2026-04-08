@@ -2,6 +2,7 @@
 
 Handles URL dispatch, auth, SSE streaming, and response formatting.
 Business logic lives in api/services/*.py modules.
+Route handling lives in api/handlers_get.py and api/handlers_post.py.
 """
 
 from __future__ import annotations
@@ -19,134 +20,21 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .state import ControllerState
-from .services import health as health_svc
-from .services import disk as disk_svc
-from .services import content as content_svc
-from .services import config as config_svc
-from .services import admin as admin_svc
-from .services import metrics as metrics_svc
-from .services import ops as ops_svc
+from . import handlers_get
+from . import handlers_post
+
+# Re-export for backward compatibility — other modules import these from server.py
+from .webhooks import _fire_webhooks  # noqa: F401
+from .cache import api_cache as _api_cache  # noqa: F401
+from .handlers_get import _build_openapi_servers  # noqa: F401
 
 logger = logging.getLogger("controller_api")
 
 ActionTriggerFn = Callable[[str, dict[str, Any]], None]
 
 
-# ---------------------------------------------------------------------------
-# TTL cache (shared across request handlers)
-# ---------------------------------------------------------------------------
-
-class _TTLCache:
-    """Simple thread-safe TTL cache for expensive API responses."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, tuple[float, Any]] = {}
-        self._lock = threading.Lock()
-
-    def get(self, key: str, ttl: float) -> Any | None:
-        with self._lock:
-            entry = self._store.get(key)
-            if entry and (time.time() - entry[0]) < ttl:
-                return entry[1]
-        return None
-
-    def set(self, key: str, value: Any) -> None:
-        with self._lock:
-            self._store[key] = (time.time(), value)
-
-
-_api_cache = _TTLCache()
-
-
-# ---------------------------------------------------------------------------
-# Webhook firing
-# ---------------------------------------------------------------------------
-
-def _fire_webhooks(state: ControllerState, event: str, payload: dict[str, Any]) -> None:
-    """Fire webhooks for action events (best-effort, non-blocking)."""
-    urls = list(state.webhook_urls)
-    if not urls:
-        return
-    data = json.dumps({"event": event, **payload}).encode("utf-8")
-    for url in urls:
-        try:
-            req = urllib.request.Request(
-                url, data=data, method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(req, timeout=5)
-        except Exception:
-            pass
-
-
-# ---------------------------------------------------------------------------
-# Dashboard HTML
-# ---------------------------------------------------------------------------
-
-_DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
-_DASHBOARD_HTML = ""
-try:
-    _DASHBOARD_HTML = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8")
-except Exception:
-    _DASHBOARD_HTML = "<html><body><h1>Dashboard not found</h1></body></html>"
-
-_OPENAPI_YAML_PATH = Path(__file__).parent / "openapi.yaml"
-_OPENAPI_YAML = ""
-try:
-    _OPENAPI_YAML = _OPENAPI_YAML_PATH.read_text(encoding="utf-8")
-except Exception:
-    _OPENAPI_YAML = ""
-
-
-def _build_openapi_servers() -> list[dict]:
-    """Build the OpenAPI servers list from the live routing config.
-
-    This ensures /api/docs always shows the correct URLs for the
-    current deployment — no hardcoded hosts that break across envs.
-    """
-    servers = [{"url": "/", "description": "Current host (auto-detected)"}]
-    try:
-        routing = config_svc.get_routing()
-        gw_host = routing.get("gateway_host", "")
-        gw_port = int(routing.get("gateway_port", 80))
-        prefix = routing.get("app_path_prefix", "/app")
-        port_str = "" if gw_port == 80 else f":{gw_port}"
-        if gw_host:
-            servers.append({
-                "url": f"http://{gw_host}{port_str}",
-                "description": f"Gateway ({gw_host})",
-            })
-    except Exception:
-        pass
-    ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9100"))
-    servers.append({
-        "url": f"http://localhost:{ctrl_port}",
-        "description": "Localhost direct",
-    })
-    runtime = os.environ.get("MEDIA_STACK_RUNTIME", "compose")
-    if runtime == "kubernetes":
-        servers.append({
-            "url": f"http://media-stack-controller.media-stack.svc:{ctrl_port}",
-            "description": "Kubernetes in-cluster",
-        })
-    return servers
-
-
-# ---------------------------------------------------------------------------
-# Auth + known actions
-# ---------------------------------------------------------------------------
-
-_AUTH_REQUIRED_PATHS = frozenset({
-    "/api/rotate-keys", "/api/reset-password", "/api/routing",
-    "/api/batch-restart", "/api/profile", "/api/envvars",
-    "/api/guardrails", "/webhooks/test", "/config", "/cancel",
-})
-_AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/")
-
-KNOWN_ACTIONS = frozenset({
-    "bootstrap", "finalize", "auto-indexers", "restart-apps",
-    "sync-indexers", "envoy-config", "reconcile",
-})
+# Re-export constants that other modules import from server.py
+KNOWN_ACTIONS = handlers_post.KNOWN_ACTIONS
 
 # Lower number = higher priority. Used by PriorityQueue in the dispatch loop.
 ACTION_PRIORITY: dict[str, int] = {
@@ -159,6 +47,18 @@ ACTION_PRIORITY: dict[str, int] = {
     "auto-indexers": 70,
 }
 DEFAULT_ACTION_PRIORITY = 50
+
+
+# ---------------------------------------------------------------------------
+# Auth + known actions
+# ---------------------------------------------------------------------------
+
+_AUTH_REQUIRED_PATHS = frozenset({
+    "/api/rotate-keys", "/api/reset-password", "/api/routing",
+    "/api/batch-restart", "/api/profile", "/api/envvars",
+    "/api/guardrails", "/webhooks/test", "/config", "/cancel",
+})
+_AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/")
 
 
 # ---------------------------------------------------------------------------
@@ -447,457 +347,22 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         }
 
     # =======================================================================
-    # GET routing
+    # GET routing — delegates to handlers_get
     # =======================================================================
 
     def do_GET(self) -> None:  # noqa: N802
         if not self._check_auth():
             return
-        path = self.path.split("?")[0]
-
-        # --- Probes ---
-        if path == "/healthz":
-            self._json_response(200, {"status": "ok"})
-        elif path == "/readyz":
-            self._json_response(200, {
-                "status": "ready",
-                "initial_bootstrap_done": self.state.initial_bootstrap_done,
-                "phase": self.state.phase,
-            })
-
-        # --- State ---
-        elif path == "/status":
-            self._json_response(200, self.state.to_dict())
-        elif path == "/apps":
-            self._json_response(200, {"apps": dict(self.state.app_status)})
-        elif path.startswith("/apps/") and path.count("/") == 2:
-            app_name = path.split("/")[2]
-            info = self.state.app_status.get(app_name)
-            self._json_response(200 if info else 404, {app_name: info} if info else {"error": f"app '{app_name}' not found"})
-        elif path == "/config":
-            self._json_response(200, {"config": dict(self.state.runtime_config)})
-        elif path == "/webhooks":
-            self._json_response(200, {"webhook_urls": list(self.state.webhook_urls)})
-
-        # --- SSE ---
-        elif path == "/logs/stream":
-            self._sse_response()
-
-        # --- Services (registry) ---
-        elif path == "/api/services":
-            from media_stack.api.services.registry import SERVICES
-            svc_list = [
-                {"id": s.id, "name": s.name, "desc": s.desc, "category": s.category,
-                 "host": s.host, "port": s.port}
-                for s in SERVICES
-            ]
-            # Include the controller itself as a virtual service entry
-            ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9876"))
-            svc_list.append({
-                "id": "controller", "name": "Media Stack Controller",
-                "desc": "Orchestration API and dashboard",
-                "category": "infrastructure", "host": "localhost", "port": ctrl_port,
-            })
-            self._json_response(200, svc_list)
-        elif path == "/api/services/categories":
-            from media_stack.api.services.registry import CATEGORIES
-            import copy
-            cats = copy.deepcopy(CATEGORIES)
-            # Ensure controller appears in infrastructure category
-            infra = next((c for c in cats if c["label"].lower() == "infrastructure"), None)
-            if infra:
-                if "controller" not in infra["ids"]:
-                    infra["ids"].append("controller")
-            else:
-                cats.append({"label": "Infrastructure", "ids": ["controller"]})
-            self._json_response(200, cats)
-
-        # --- Per-service API key status ---
-        elif path.startswith("/api/services/") and path.endswith("/api-key"):
-            parts = path.split("/")
-            svc_id = parts[3] if len(parts) >= 5 else ""
-            from media_stack.api.services.registry import SERVICE_MAP
-            svc = SERVICE_MAP.get(svc_id)
-            if not svc or not svc.api_key_env:
-                self._json_response(404, {"error": f"Service '{svc_id}' not found or has no API key"})
-            else:
-                current = (os.environ.get(svc.api_key_env) or "").strip()
-                self._json_response(200, {
-                    "service": svc_id, "env": svc.api_key_env,
-                    "has_key": bool(current),
-                    "key_preview": f"{current[:4]}...{current[-4:]}" if len(current) > 8 else ("set" if current else ""),
-                })
-
-        # --- Auto-heal / failed services ---
-        elif path == "/api/failed-services":
-            self._json_response(200, {
-                "failed_services": self.state.get_failed_services(),
-                "count": len(self.state.get_failed_services()),
-            })
-
-        # --- Health ---
-        elif path == "/api/health":
-            result = health_svc.probe_services(_api_cache)
-            health_svc.append_health_history(result.get("services", {}))
-            self._json_response(200, result)
-        elif path == "/api/health-history":
-            self._json_response(200, health_svc.get_health_history())
-
-        # --- Content ---
-        elif path == "/api/versions":
-            self._json_response(200, content_svc.get_versions(_api_cache))
-        elif path == "/api/downloads":
-            self._json_response(200, content_svc.get_downloads())
-        elif path == "/api/stats":
-            self._json_response(200, content_svc.get_stats(_api_cache))
-        elif path == "/api/indexers":
-            self._json_response(200, content_svc.get_indexers())
-        elif path == "/api/indexer-stats":
-            self._json_response(200, content_svc.get_indexer_stats())
-        elif path == "/api/download-history":
-            self._json_response(200, content_svc.get_download_history())
-        elif path == "/api/quality-profiles":
-            self._json_response(200, content_svc.get_quality_profiles())
-        elif path == "/api/import-lists":
-            self._json_response(200, content_svc.get_import_lists())
-        elif path == "/api/libraries":
-            self._json_response(200, content_svc.get_jellyfin_libraries())
-        elif path == "/api/recent":
-            self._json_response(200, content_svc.get_recent())
-
-        # --- Disk ---
-        elif path == "/api/disk":
-            self._json_response(200, disk_svc.get_disk())
-        elif path == "/api/cleanup-preview":
-            self._json_response(200, disk_svc.preview_cleanup())
-
-        # --- Config ---
-        elif path == "/api/env":
-            self._json_response(200, config_svc.get_env())
-        elif path == "/api/routing":
-            self._json_response(200, config_svc.get_routing())
-        elif path == "/api/profile":
-            self._json_response(200, config_svc.get_profile())
-        elif path == "/api/manifests":
-            self._json_response(200, config_svc.get_manifests())
-        elif path == "/api/envvars":
-            self._json_response(200, config_svc.get_envvars())
-        elif path == "/api/backup":
-            payload = config_svc.get_backup(self.state)
-            self._raw_response(200, "application/json", payload, {
-                "Content-Disposition": f'attachment; filename="media-stack-backup-{time.strftime("%Y%m%d-%H%M%S")}.json"',
-            })
-
-        # --- Ops ---
-        elif path == "/api/namespaces":
-            self._json_response(200, ops_svc.get_namespaces())
-        elif path == "/api/image-updates":
-            self._json_response(200, ops_svc.check_image_updates())
-        elif path == "/api/gpu":
-            self._json_response(200, ops_svc.get_gpu_info())
-        elif path == "/api/snapshots":
-            self._json_response(200, ops_svc.get_config_snapshots())
-        elif path.startswith("/api/snapshots/") and path.count("/") == 3:
-            filename = path.split("/")[3]
-            self._json_response(200, ops_svc.get_snapshot_detail(filename))
-        elif path == "/api/snapshot-diff":
-            # ?a=snapshot-xxx.json&b=snapshot-yyy.json
-            params = {}
-            if "?" in self.path:
-                for part in self.path.split("?", 1)[1].split("&"):
-                    if "=" in part:
-                        k, v = part.split("=", 1)
-                        params[k] = v
-            self._json_response(200, ops_svc.diff_snapshots(params.get("a", ""), params.get("b", "")))
-        elif path == "/api/mounts":
-            self._json_response(200, ops_svc.get_mount_info())
-        elif path.startswith("/api/logs/") and path.count("/") == 3:
-            svc = path.split("/")[3]
-            lines = 100
-            if "?" in self.path:
-                for part in self.path.split("?", 1)[1].split("&"):
-                    if part.startswith("lines="):
-                        try:
-                            lines = min(500, int(part.split("=", 1)[1]))
-                        except ValueError:
-                            pass
-            self._json_response(200, ops_svc.get_service_logs(svc, lines))
-
-        # --- Metrics ---
-        elif path == "/metrics":
-            self._raw_response(200, "text/plain; version=0.0.4; charset=utf-8",
-                               metrics_svc.get_prometheus_metrics(_api_cache).encode("utf-8"))
-        elif path == "/api/envoy/stats":
-            self._json_response(200, metrics_svc.get_envoy_stats())
-        elif path == "/api/feed.xml":
-            self._raw_response(200, "application/rss+xml; charset=utf-8",
-                               metrics_svc.get_rss_feed(self.state, _api_cache).encode("utf-8"))
-        elif path == "/api/grafana.json":
-            self._json_response(200, metrics_svc.get_grafana_dashboard())
-        elif path == "/api/openapi.json":
-            self._json_response(200, self._get_openapi_spec())
-        elif path == "/api/openapi.yaml":
-            import yaml as _yaml
-            try:
-                spec = _yaml.safe_load(_OPENAPI_YAML) or {}
-                spec["servers"] = _build_openapi_servers()
-                rendered = _yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            except Exception:
-                rendered = _OPENAPI_YAML
-            self._raw_response(200, "text/yaml; charset=utf-8", rendered.encode("utf-8"))
-
-        # --- Static assets (Swagger UI) ---
-        elif path.startswith("/api/static/"):
-            static_dir = Path(__file__).resolve().parent / "static"
-            filename = path.split("/api/static/", 1)[1]
-            if ".." in filename or "/" in filename:
-                self._json_response(400, {"error": "invalid path"})
-            else:
-                static_file = static_dir / filename
-                if static_file.is_file():
-                    ct = "text/css" if filename.endswith(".css") else "application/javascript"
-                    self._raw_response(200, ct, static_file.read_bytes(), {
-                        "Cache-Control": "public, max-age=86400",
-                    })
-                else:
-                    self._json_response(404, {"error": "not found"})
-
-        # --- Dashboard ---
-        elif path in ("/", "/dashboard"):
-            html = _DASHBOARD_HTML
-            plugins = self._load_plugins()
-            if plugins:
-                html = html.replace("</body>", plugins + "\n</body>")
-            self._html_response(200, html)
-        elif path == "/api/docs":
-            html = """<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Media Stack Controller API</title>
-  <link rel="stylesheet" href="/api/static/swagger-ui.css">
-  <style>
-    body{margin:0;background:#fafafa}
-    .swagger-ui .topbar{display:none}
-    .swagger-ui{font-family:system-ui,sans-serif}
-    #swagger-ui{max-width:1200px;margin:0 auto;padding:20px}
-  </style>
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="/api/static/swagger-ui-bundle.js"></script>
-  <script>
-    SwaggerUIBundle({
-      url:'/api/openapi.yaml',
-      dom_id:'#swagger-ui',
-      deepLinking:true,
-      defaultModelsExpandDepth:1,
-      defaultModelExpandDepth:2,
-      docExpansion:'list',
-      filter:true,
-      tryItOutEnabled:true,
-      layout:'BaseLayout',
-    });
-  </script>
-</body>
-</html>"""
-            self._html_response(200, html)
-
-        else:
-            self._json_response(404, {"error": "not found"})
+        handlers_get.handle(self)
 
     # =======================================================================
-    # POST routing
+    # POST routing — delegates to handlers_post
     # =======================================================================
 
     def do_POST(self) -> None:  # noqa: N802
         if not self._check_auth():
             return
-
-        # POST /run — backward-compatible alias
-        if self.path == "/run":
-            self._handle_action("bootstrap")
-            return
-
-        # POST /api/restart/{service}
-        if self.path.startswith("/api/restart/"):
-            svc = self.path[len("/api/restart/"):]
-            self._json_response(200, admin_svc.restart_service(svc))
-            return
-
-        # POST /api/batch-restart
-        if self.path == "/api/batch-restart":
-            body = self._read_json_body()
-            services = body.get("services", [])
-            if not services:
-                self._json_response(400, {"error": "services list required"})
-                return
-            self._json_response(200, admin_svc.batch_restart(services))
-            return
-
-        # POST /api/rotate-keys
-        if self.path == "/api/rotate-keys":
-            body = self._read_json_body() or {}
-            target = body.get("services")  # optional list of service IDs
-            self._json_response(200, admin_svc.rotate_keys(target))
-            return
-
-        # POST /api/reset-password
-        if self.path == "/api/reset-password":
-            body = self._read_json_body()
-            new_password = body.get("password", "")
-            if not new_password or len(new_password) < 4:
-                self._json_response(400, {"error": "password field required (min 4 chars)"})
-                return
-            target = body.get("services")  # optional list of service IDs
-            self._json_response(200, admin_svc.reset_password(new_password, target))
-            return
-
-        # POST /api/services/{id}/api-key — manually set or discover a service API key
-        if self.path.startswith("/api/services/") and self.path.endswith("/api-key"):
-            parts = self.path.split("/")
-            svc_id = parts[3] if len(parts) >= 5 else ""
-            from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
-            svc = SERVICE_MAP.get(svc_id)
-            if not svc or not svc.api_key_env:
-                self._json_response(404, {"error": f"Service '{svc_id}' not found or has no API key"})
-                return
-            body = self._read_json_body() or {}
-            manual_key = str(body.get("api_key", "")).strip()
-            if manual_key:
-                os.environ[svc.api_key_env] = manual_key
-                admin_svc.persist_keys_to_secret({svc.api_key_env: manual_key})
-                self._json_response(200, {"status": "set", "service": svc_id, "env": svc.api_key_env})
-                return
-            # Auto-discover: try file, then HTTP
-            config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
-            key = read_api_key_from_file(svc_id, config_root)
-            source = "config_file"
-            if not key:
-                key = read_api_key_via_http(svc_id)
-                source = "http"
-            if key:
-                os.environ[svc.api_key_env] = key
-                admin_svc.persist_keys_to_secret({svc.api_key_env: key})
-                self._json_response(200, {"status": "discovered", "service": svc_id, "source": source})
-            else:
-                self._json_response(404, {"error": f"Could not discover API key for {svc_id}. Provide it manually via api_key field."})
-            return
-
-        # POST /api/routing
-        if self.path == "/api/routing":
-            body = self._read_json_body()
-            if not body:
-                self._json_response(400, {"error": "JSON body required"})
-                return
-            self._json_response(200, config_svc.update_routing(body, self.action_trigger))
-            return
-
-        # POST /api/restore — restore config from backup JSON
-        if self.path == "/api/restore":
-            body = self._read_json_body()
-            if not body or "service_configs" not in body:
-                self._json_response(400, {"error": "backup JSON with service_configs required"})
-                return
-            self._json_response(200, config_svc.restore_backup(body))
-            return
-
-        # POST /api/jellyfin/reset — hard-reset Jellyfin credentials via DB
-        if self.path == "/api/jellyfin/reset":
-            body = self._read_json_body()
-            username = body.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
-            password = body.get("password", os.environ.get("STACK_ADMIN_PASSWORD", "media-stack"))
-            if not password or len(password) < 4:
-                self._json_response(400, {"error": "password required (min 4 chars)"})
-                return
-            self._json_response(200, admin_svc.jellyfin_hard_reset(username, password))
-            return
-
-        # POST /api/gpu/enable — auto-configure GPU transcoding in Jellyfin
-        if self.path == "/api/gpu/enable":
-            self._json_response(200, ops_svc.enable_gpu_transcoding())
-            return
-
-        # POST /api/snapshot — take a config snapshot now
-        if self.path == "/api/snapshot":
-            self._json_response(200, ops_svc.take_snapshot())
-            return
-
-        # POST /api/guardrails
-        if self.path == "/api/guardrails":
-            body = self._read_json_body()
-            if not body:
-                self._json_response(400, {"error": "JSON body required"})
-                return
-            self._json_response(200, disk_svc.update_guardrails(body))
-            return
-
-        # POST /api/profile
-        if self.path == "/api/profile":
-            body = self._read_json_body()
-            content = body.get("content", "")
-            if not content:
-                self._json_response(400, {"error": "content field required"})
-                return
-            self._json_response(200, config_svc.save_profile(content, self.reload_config))
-            return
-
-        # POST /api/envvars
-        if self.path == "/api/envvars":
-            body = self._read_json_body()
-            key = body.get("key", "")
-            value = body.get("value", "")
-            if not key:
-                self._json_response(400, {"error": "key field required"})
-                return
-            self._json_response(200, config_svc.set_envvar(key, value))
-            return
-
-        # POST /webhooks/test
-        if self.path == "/webhooks/test":
-            self._json_response(200, self._test_webhook())
-            return
-
-        # POST /cancel or POST /actions/cancel — cancel running action
-        if self.path in ("/cancel", "/actions/cancel"):
-            cancelled = self.state.cancel_action()
-            self._json_response(200, {
-                "status": "cancel_requested" if cancelled else "no_action_running",
-                "current_action": self.state.current_action.to_dict() if self.state.current_action else None,
-            })
-            return
-
-        # POST /actions/{name}
-        if self.path.startswith("/actions/"):
-            action_name = self.path[len("/actions/"):]
-            if action_name not in KNOWN_ACTIONS:
-                self._json_response(404, {"error": f"unknown action '{action_name}'", "known": sorted(KNOWN_ACTIONS)})
-                return
-            self._handle_action(action_name)
-            return
-
-        # POST /config
-        if self.path == "/config":
-            body = self._read_json_body()
-            if not body:
-                self._json_response(400, {"error": "JSON body required"})
-                return
-            updated = self.state.update_config(body)
-            logger.info("Config updated: %s", body)
-            self._json_response(200, {"status": "updated", "config": updated})
-            return
-
-        # POST /webhooks
-        if self.path == "/webhooks":
-            body = self._read_json_body()
-            url = body.get("url", "").strip()
-            if url:
-                self.state.webhook_urls.add(url)
-            self._json_response(200, {"webhook_urls": list(self.state.webhook_urls)})
-            return
-
-        self._json_response(404, {"error": "not found"})
+        handlers_post.handle(self)
 
 
 # ---------------------------------------------------------------------------

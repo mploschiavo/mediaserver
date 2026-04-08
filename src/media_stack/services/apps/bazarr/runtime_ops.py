@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from media_stack.adapters.bazarr import apply_scalar_updates as _lib_bazarr_apply_scalar_updates
+from .adapters import apply_scalar_updates as _lib_bazarr_apply_scalar_updates
 
 from media_stack.services.apps.servarr.runtime.common import get_arr_app
 from media_stack.services.runtime_platform import (

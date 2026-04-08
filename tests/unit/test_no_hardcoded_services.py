@@ -15,7 +15,6 @@ reference to the allowlist with a justification.
 from __future__ import annotations
 
 import re
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -84,7 +83,7 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # To add a new exception: run the test, copy the ``(line, service)`` pair
 # from the failure message, and paste it here with a brief comment.
 
-ALLOWLIST: dict[str, set[tuple[int, str]]] = {
+ALLOWLIST: dict[str, set] = {
     # ── Adapters ──────────────────────────────────────────────────────
     # These adapter modules are service-specific by nature.  They provide
     # config-file helpers consumed by the app layer.  Long-term they
@@ -289,6 +288,14 @@ ALLOWLIST: dict[str, set[tuple[int, str]]] = {
     "api/server.py": {
         # Jellyfin hard-reset endpoint — unique auth mechanism can't be
         # registry-driven (SQLite DB password reset).
+        "WHOLE_FILE",
+    },
+    "api/handlers_get.py": {
+        # GET route handlers extracted from server.py — same allowances apply.
+        "WHOLE_FILE",
+    },
+    "api/handlers_post.py": {
+        # POST route handlers extracted from server.py — same allowances apply.
         "WHOLE_FILE",
     },
     "api/services/content.py": {

@@ -12,6 +12,6 @@ plugin:
   technology: plex
   aliases:
   - plexmediaserver
-  adapter_class: media_stack.services.media_server_adapters.plex:PlexMediaServerAdapter
+  adapter_class: media_stack.services.apps.plex.media_server_adapter:PlexMediaServerAdapter
   adapter_classes:
-    media_server: media_stack.services.media_server_adapters.plex:PlexMediaServerAdapter
+    media_server: media_stack.services.apps.plex.media_server_adapter:PlexMediaServerAdapter

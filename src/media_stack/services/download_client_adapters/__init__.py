@@ -10,8 +10,8 @@ from .generic import GenericDownloadClientAdapter
 from .grabit import GrabitDownloadClientAdapter
 from .jdownloader import JdownloaderDownloadClientAdapter
 from .nzbget import NzbgetDownloadClientAdapter
-from .qbittorrent import QbittorrentDownloadClientAdapter
-from .sabnzbd import SabnzbdDownloadClientAdapter
+from media_stack.services.apps.qbittorrent.download_client_adapter import QbittorrentDownloadClientAdapter
+from media_stack.services.apps.sabnzbd.download_client_adapter import SabnzbdDownloadClientAdapter
 from .transmission import TransmissionDownloadClientAdapter
 from .usenet import GenericUsenetDownloadClientAdapter
 

@@ -1,9 +1,7 @@
-"""Jellyfin media-server adapter."""
+"""Backward-compatible shim -- canonical home is services.apps.jellyfin.media_server_adapter."""
 
-from __future__ import annotations
+from media_stack.services.apps.jellyfin.media_server_adapter import (  # noqa: F401
+    JellyfinMediaServerAdapter,
+)
 
-from .planned import PlannedMediaServerAdapter
-
-
-class JellyfinMediaServerAdapter(PlannedMediaServerAdapter):
-    """Jellyfin-specific bootstrap orchestration."""
+__all__ = ["JellyfinMediaServerAdapter"]
