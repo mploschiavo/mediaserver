@@ -75,11 +75,18 @@ def action_sync_indexers(args: argparse.Namespace, build_runner: Any) -> None:
 def action_envoy_config(args: argparse.Namespace) -> None:
     """Regenerate Envoy routing config from profile and bootstrap config."""
     runtime_platform.log("[INFO] Generating Envoy config")
+
+    # Ensure CONFIG_ROOT is set — default to /srv-config for Docker containers.
+    if not os.environ.get("CONFIG_ROOT"):
+        os.environ["CONFIG_ROOT"] = "/srv-config"
+
     try:
         from media_stack.cli.commands.generate_envoy_config_main import main as gen_main
         gen_main()
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        if exc.code:
+            runtime_platform.log(f"[ERROR] Envoy config generation failed (exit {exc.code})")
+            return
     runtime_platform.log("[OK] Envoy config written")
 
     # Restart envoy to pick up new config
