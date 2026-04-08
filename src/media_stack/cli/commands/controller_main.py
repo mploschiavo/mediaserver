@@ -604,12 +604,18 @@ def _run_serve(args: argparse.Namespace) -> None:
 
     state = ControllerState()
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
-    action_queue: queue.Queue[tuple[str, dict]] = queue.Queue()
+    action_queue: queue.PriorityQueue[tuple[int, int, str, dict]] = queue.PriorityQueue()
     action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
     max_retries = int(os.environ.get("BOOTSTRAP_ACTION_MAX_RETRIES", "0"))
+    _queue_seq = 0
 
     def action_trigger(action_name: str, overrides: dict) -> None:
-        action_queue.put((action_name, overrides))
+        nonlocal _queue_seq
+        from media_stack.api.server import ACTION_PRIORITY, DEFAULT_ACTION_PRIORITY
+        prio = int(overrides.pop("_priority", ACTION_PRIORITY.get(action_name, DEFAULT_ACTION_PRIORITY)))
+        _queue_seq += 1
+        action_queue.put((prio, _queue_seq, action_name, overrides))
+        state.add_pending(action_name, prio, overrides)
 
     # Wrap runtime_platform.log to also feed the SSE ring buffer.
     _original_log = runtime_platform.log
@@ -664,16 +670,18 @@ def _run_serve(args: argparse.Namespace) -> None:
     auto_run = args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
     if auto_run:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
-        action_queue.put(("bootstrap", {}))
+        action_trigger("bootstrap", {})
 
     # Main action dispatch loop — runs forever.
     while True:
         try:
-            action_name, overrides = action_queue.get()
+            _prio, _seq, action_name, overrides = action_queue.get()
         except KeyboardInterrupt:
             runtime_platform.log("[INFO] Shutting down bootstrap service")
             server.shutdown()
             return
+
+        state.pop_pending(action_name)
 
         # Retry support: allow per-action retry via override or env default.
         retry_limit = int(overrides.pop("retry", max_retries))
@@ -692,6 +700,14 @@ def _run_serve(args: argparse.Namespace) -> None:
 
             try:
                 _dispatch_action(action_name, overrides, args, state)
+
+                # Check if cancelled during execution.
+                if state.is_cancelled:
+                    state.current_action.cancel()
+                    state.finish_action(error="cancelled by user")
+                    runtime_platform.log(f"[ACTION] {action_name}: cancelled by user")
+                    break
+
                 state.finish_action()
 
                 # Fire webhooks on success.
@@ -712,7 +728,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                     # progress and bootstrap is marked complete immediately.
                     for queued in ["finalize", "envoy-config", "auto-indexers"]:
                         runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
-                        action_queue.put((queued, {}))
+                        action_trigger(queued, {})
 
                 break  # Success — exit retry loop.
 

@@ -98,15 +98,25 @@ def update_routing(updates: dict[str, Any], action_trigger: Callable | None = No
             if key in allowed_keys and str(routing.get(key, "")) != str(value):
                 routing[key] = value
                 changed.append(key)
-        # Only auto-derive gateway_host if it wasn't explicitly set
+        # Sync gateway_host <-> subdomain/domain in both directions
         if ("stack_subdomain" in changed or "base_domain" in changed) and "gateway_host" not in changed:
+            # Derive gateway_host from subdomain + domain
             sub = routing.get("stack_subdomain", "media-stack")
             dom = routing.get("base_domain", "local")
-            # Preserve existing prefix (e.g. "apps" from "apps.old.local")
             old_host = str(routing.get("gateway_host", ""))
             prefix = old_host.split(".")[0] if old_host and "." in old_host else "apps"
             routing["gateway_host"] = f"{prefix}.{sub}.{dom}"
             changed.append("gateway_host")
+        elif "gateway_host" in changed and "stack_subdomain" not in changed and "base_domain" not in changed:
+            # Derive subdomain + domain from gateway_host
+            parts = str(routing["gateway_host"]).split(".")
+            if len(parts) >= 3:
+                routing["stack_subdomain"] = parts[1]
+                routing["base_domain"] = ".".join(parts[2:])
+                if "stack_subdomain" not in changed:
+                    changed.append("stack_subdomain")
+                if "base_domain" not in changed:
+                    changed.append("base_domain")
         if not changed:
             return {"status": "no_changes", "routing": routing}
         # Persist to writable config root (survives container restarts)

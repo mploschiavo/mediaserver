@@ -11,11 +11,11 @@ export default defineConfig({
   projects: [
     {
       name: 'api',
-      testMatch: ['ux-smoke.spec.ts', 'ingress.spec.ts', 'controller-api.spec.ts'],
+      testMatch: ['ux-smoke.spec.ts', 'ingress.spec.ts', 'controller-api.spec.ts', 'multi-gateway.spec.ts'],
     },
     {
       name: 'browser',
-      testMatch: ['app-navigation.spec.ts'],
+      testMatch: ['app-navigation.spec.ts', 'dashboard-ui.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -26,6 +26,10 @@ export default defineConfig({
     {
       name: 'deploy',
       testMatch: ['standalone-compose-deploy.spec.ts'],
+    },
+    {
+      name: 'k8s-deploy',
+      testMatch: ['k8s-deploy.spec.ts'],
     },
   ],
 });

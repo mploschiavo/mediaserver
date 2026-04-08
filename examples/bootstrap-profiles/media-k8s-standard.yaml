@@ -1,9 +1,9 @@
 schema_version: 1
 kind: media_stack_profile
 metadata:
-  name: media-dev
+  name: media-stack
   platform: k8s
-  purpose: dev
+  purpose: standard
 resources:
   disk_space_gb: 500
   network_cidr: 192.168.1.0/24

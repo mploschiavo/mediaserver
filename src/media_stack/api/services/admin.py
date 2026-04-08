@@ -295,17 +295,22 @@ def rotate_keys() -> dict[str, Any]:
 # Password reset — registry-driven
 # ---------------------------------------------------------------------------
 
-def reset_password(new_password: str) -> dict[str, Any]:
-    """Reset admin password across all services that support it."""
+def reset_password(new_password: str, target_services: list[str] | None = None) -> dict[str, Any]:
+    """Reset admin password across services that support it.
+
+    If *target_services* is provided, only reset passwords for those service IDs.
+    """
     config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
     old_password = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
     username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
     updated: list[str] = []
     errors: list[str] = []
 
+    _filter = set(target_services) if target_services else None
+
     # 1. qBittorrent — special case (form-based auth, not in registry pattern)
     qbit = SERVICE_MAP.get("qbittorrent")
-    if qbit:
+    if qbit and (_filter is None or "qbittorrent" in _filter):
         try:
             cj = http.cookiejar.CookieJar()
             opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
@@ -325,7 +330,7 @@ def reset_password(new_password: str) -> dict[str, Any]:
 
     # 2. Jellyfin — special case (user password API)
     jf = SERVICE_MAP.get("jellyfin")
-    if jf:
+    if jf and (_filter is None or "jellyfin" in _filter):
         try:
             jf_key = os.environ.get("JELLYFIN_API_KEY", "")
             jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
@@ -387,6 +392,8 @@ def reset_password(new_password: str) -> dict[str, Any]:
 
     # 3. Arr apps — registry-driven via password_api_path
     for svc in get_services_with_password_api():
+        if _filter is not None and svc.id not in _filter:
+            continue
         try:
             api_key = os.environ.get(svc.api_key_env, "") or _read_key(svc, config_root)
             if not api_key:
@@ -413,7 +420,7 @@ def reset_password(new_password: str) -> dict[str, Any]:
 
     # 4. Bazarr — special case (must set password via API, not config file)
     bazarr = SERVICE_MAP.get("bazarr")
-    if bazarr and bazarr.id not in updated:
+    if bazarr and bazarr.id not in updated and (_filter is None or "bazarr" in _filter):
         try:
             bz_key = os.environ.get(bazarr.api_key_env, "") or _read_key(bazarr, config_root)
             if bz_key:
@@ -432,6 +439,8 @@ def reset_password(new_password: str) -> dict[str, Any]:
     for svc in get_services_with_password_config():
         if svc.id in updated:
             continue  # Already handled via API
+        if _filter is not None and svc.id not in _filter:
+            continue
         cfg_path = Path(config_root) / svc.password_config
         if not cfg_path.is_file():
             continue

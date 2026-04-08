@@ -98,7 +98,7 @@ except Exception:
 _AUTH_REQUIRED_PATHS = frozenset({
     "/api/rotate-keys", "/api/reset-password", "/api/routing",
     "/api/batch-restart", "/api/profile", "/api/envvars",
-    "/api/guardrails", "/webhooks/test", "/config",
+    "/api/guardrails", "/webhooks/test", "/config", "/cancel",
 })
 _AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/")
 
@@ -106,6 +106,18 @@ KNOWN_ACTIONS = frozenset({
     "bootstrap", "finalize", "auto-indexers", "restart-apps",
     "sync-indexers", "envoy-config", "reconcile",
 })
+
+# Lower number = higher priority. Used by PriorityQueue in the dispatch loop.
+ACTION_PRIORITY: dict[str, int] = {
+    "bootstrap":     10,
+    "finalize":      20,
+    "envoy-config":  30,
+    "restart-apps":  40,
+    "reconcile":     50,
+    "sync-indexers": 60,
+    "auto-indexers": 70,
+}
+DEFAULT_ACTION_PRIORITY = 50
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +278,13 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         overrides["_triggered_by"] = triggered_by
         if self.action_trigger:
             self.action_trigger(action_name, overrides)
-        self._json_response(200, {"status": "accepted", "action": action_name, "overrides": overrides})
+        priority = ACTION_PRIORITY.get(action_name, DEFAULT_ACTION_PRIORITY)
+        self._json_response(200, {
+            "status": "accepted",
+            "action": action_name,
+            "priority": priority,
+            "overrides": overrides,
+        })
 
     # --- Plugin loader ---
 
@@ -388,14 +406,31 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         # --- Services (registry) ---
         elif path == "/api/services":
             from media_stack.api.services.registry import SERVICES
-            self._json_response(200, [
+            svc_list = [
                 {"id": s.id, "name": s.name, "desc": s.desc, "category": s.category,
                  "host": s.host, "port": s.port}
                 for s in SERVICES
-            ])
+            ]
+            # Include the controller itself as a virtual service entry
+            ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9876"))
+            svc_list.append({
+                "id": "controller", "name": "Media Stack Controller",
+                "desc": "Orchestration API and dashboard",
+                "category": "infrastructure", "host": "localhost", "port": ctrl_port,
+            })
+            self._json_response(200, svc_list)
         elif path == "/api/services/categories":
             from media_stack.api.services.registry import CATEGORIES
-            self._json_response(200, CATEGORIES)
+            import copy
+            cats = copy.deepcopy(CATEGORIES)
+            # Ensure controller appears in infrastructure category
+            infra = next((c for c in cats if c["label"].lower() == "infrastructure"), None)
+            if infra:
+                if "controller" not in infra["ids"]:
+                    infra["ids"].append("controller")
+            else:
+                cats.append({"label": "Infrastructure", "ids": ["controller"]})
+            self._json_response(200, cats)
 
         # --- Health ---
         elif path == "/api/health":
@@ -571,7 +606,8 @@ tr:hover{{background:#162230}}</style></head><body>
             if not new_password or len(new_password) < 4:
                 self._json_response(400, {"error": "password field required (min 4 chars)"})
                 return
-            self._json_response(200, admin_svc.reset_password(new_password))
+            target = body.get("services")  # optional list of service IDs
+            self._json_response(200, admin_svc.reset_password(new_password, target))
             return
 
         # POST /api/routing
@@ -646,6 +682,15 @@ tr:hover{{background:#162230}}</style></head><body>
         # POST /webhooks/test
         if self.path == "/webhooks/test":
             self._json_response(200, self._test_webhook())
+            return
+
+        # POST /cancel or POST /actions/cancel — cancel running action
+        if self.path in ("/cancel", "/actions/cancel"):
+            cancelled = self.state.cancel_action()
+            self._json_response(200, {
+                "status": "cancel_requested" if cancelled else "no_action_running",
+                "current_action": self.state.current_action.to_dict() if self.state.current_action else None,
+            })
             return
 
         # POST /actions/{name}

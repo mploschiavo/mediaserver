@@ -114,6 +114,7 @@ class ControllerState:
     initial_bootstrap_done: bool = False
     current_action: ActionRecord | None = None
     action_history: list[ActionRecord] = field(default_factory=list)
+    pending_actions: list[dict[str, Any]] = field(default_factory=list)
 
     # Runtime config overrides (persisted across actions, togglable via /config).
     runtime_config: dict[str, Any] = field(default_factory=dict)
@@ -217,6 +218,34 @@ class ControllerState:
     def is_cancelled(self) -> bool:
         return self._cancel_event.is_set()
 
+    # --- pending queue tracking ---
+
+    def add_pending(self, action_name: str, priority: int, overrides: dict[str, Any] | None = None) -> None:
+        """Track a newly queued action as pending."""
+        with self._lock:
+            clean = {k: v for k, v in (overrides or {}).items() if not k.startswith("_")}
+            self.pending_actions.append({
+                "name": action_name,
+                "priority": priority,
+                "queued_at": time.time(),
+                "overrides": clean,
+            })
+
+    def pop_pending(self, action_name: str) -> None:
+        """Remove the first pending entry matching this action name."""
+        with self._lock:
+            for i, item in enumerate(self.pending_actions):
+                if item["name"] == action_name:
+                    self.pending_actions.pop(i)
+                    break
+
+    def clear_pending(self) -> int:
+        """Remove all pending actions. Returns count removed."""
+        with self._lock:
+            count = len(self.pending_actions)
+            self.pending_actions.clear()
+            return count
+
     @property
     def action_running(self) -> bool:
         with self._lock:
@@ -294,4 +323,5 @@ class ControllerState:
                 "webhook_urls": list(self.webhook_urls),
                 "current_action": self.current_action.to_dict() if self.current_action else None,
                 "action_history": [a.to_dict() for a in self.action_history],
+                "pending_actions": [dict(p) for p in self.pending_actions],
             }
