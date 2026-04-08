@@ -432,6 +432,22 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 cats.append({"label": "Infrastructure", "ids": ["controller"]})
             self._json_response(200, cats)
 
+        # --- Per-service API key status ---
+        elif path.startswith("/api/services/") and path.endswith("/api-key"):
+            parts = path.split("/")
+            svc_id = parts[3] if len(parts) >= 5 else ""
+            from media_stack.api.services.registry import SERVICE_MAP
+            svc = SERVICE_MAP.get(svc_id)
+            if not svc or not svc.api_key_env:
+                self._json_response(404, {"error": f"Service '{svc_id}' not found or has no API key"})
+            else:
+                current = (os.environ.get(svc.api_key_env) or "").strip()
+                self._json_response(200, {
+                    "service": svc_id, "env": svc.api_key_env,
+                    "has_key": bool(current),
+                    "key_preview": f"{current[:4]}...{current[-4:]}" if len(current) > 8 else ("set" if current else ""),
+                })
+
         # --- Health ---
         elif path == "/api/health":
             result = health_svc.probe_services(_api_cache)
@@ -596,7 +612,9 @@ tr:hover{{background:#162230}}</style></head><body>
 
         # POST /api/rotate-keys
         if self.path == "/api/rotate-keys":
-            self._json_response(200, admin_svc.rotate_keys())
+            body = self._read_json_body() or {}
+            target = body.get("services")  # optional list of service IDs
+            self._json_response(200, admin_svc.rotate_keys(target))
             return
 
         # POST /api/reset-password
@@ -608,6 +626,37 @@ tr:hover{{background:#162230}}</style></head><body>
                 return
             target = body.get("services")  # optional list of service IDs
             self._json_response(200, admin_svc.reset_password(new_password, target))
+            return
+
+        # POST /api/services/{id}/api-key — manually set or discover a service API key
+        if self.path.startswith("/api/services/") and self.path.endswith("/api-key"):
+            parts = self.path.split("/")
+            svc_id = parts[3] if len(parts) >= 5 else ""
+            from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
+            svc = SERVICE_MAP.get(svc_id)
+            if not svc or not svc.api_key_env:
+                self._json_response(404, {"error": f"Service '{svc_id}' not found or has no API key"})
+                return
+            body = self._read_json_body() or {}
+            manual_key = str(body.get("api_key", "")).strip()
+            if manual_key:
+                os.environ[svc.api_key_env] = manual_key
+                admin_svc.persist_keys_to_secret({svc.api_key_env: manual_key})
+                self._json_response(200, {"status": "set", "service": svc_id, "env": svc.api_key_env})
+                return
+            # Auto-discover: try file, then HTTP
+            config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+            key = read_api_key_from_file(svc_id, config_root)
+            source = "config_file"
+            if not key:
+                key = read_api_key_via_http(svc_id)
+                source = "http"
+            if key:
+                os.environ[svc.api_key_env] = key
+                admin_svc.persist_keys_to_secret({svc.api_key_env: key})
+                self._json_response(200, {"status": "discovered", "service": svc_id, "source": source})
+            else:
+                self._json_response(404, {"error": f"Could not discover API key for {svc_id}. Provide it manually via api_key field."})
             return
 
         # POST /api/routing

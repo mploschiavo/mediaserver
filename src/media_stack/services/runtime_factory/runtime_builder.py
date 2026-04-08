@@ -362,16 +362,37 @@ class ControllerRuntimeBuilder:
         trigger_sync = bool(cfg.get("trigger_indexer_sync", True))
 
         app_keys: dict[str, str] = {}
+        skipped_apps: list[str] = []
         prowlarr_key = ""
         if args.mode in (BootstrapMode.FULL, BootstrapMode.MEDIA_HYGIENE):
             for app in arr_apps:
                 app_dir = app.implementation.lower()
-                api_key = self.deps.read_api_key(args.config_root, app_dir)
-                app_keys[app.implementation] = api_key
-                app_keys[app.implementation.lower()] = api_key
+                try:
+                    api_key = self.deps.read_api_key(args.config_root, app_dir)
+                    app_keys[app.implementation] = api_key
+                    app_keys[app.implementation.lower()] = api_key
+                except RuntimeError as exc:
+                    self.deps.log(
+                        f"[WARN] {app_dir}: API key unavailable, skipping "
+                        f"({exc}). Service will be configured on next reconcile."
+                    )
+                    skipped_apps.append(app_dir)
 
         if args.mode == BootstrapMode.FULL and prowlarr_url:
-            prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
+            try:
+                prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
+            except RuntimeError as exc:
+                self.deps.log(
+                    f"[WARN] prowlarr: API key unavailable, skipping indexer sync ({exc}). "
+                    "Run Reconcile after Prowlarr generates its config."
+                )
+                skipped_apps.append("prowlarr")
+
+        if skipped_apps:
+            self.deps.log(
+                f"[WARN] Bootstrap continuing without: {', '.join(skipped_apps)}. "
+                "These services will be configured when their API keys become available."
+            )
 
         qb_user = self._resolve_optional_env_value(qbit_cfg, "username_env")
         qb_pass = self._resolve_optional_env_value(qbit_cfg, "password_env")

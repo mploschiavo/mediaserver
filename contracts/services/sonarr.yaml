@@ -11,6 +11,7 @@ service:
   api_key_env: SONARR_API_KEY
   api_key_config: sonarr/config.xml
   api_key_format: xml
+  api_key_http_path: /initialize.js
   version_path: /api/v3/system/status
   version_json_key: version
   password_api_path: /api/v3/config/host
