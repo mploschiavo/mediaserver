@@ -305,7 +305,7 @@ def main() -> None:
     payload = render_result.payload
 
     # Override listener port if specified (K8s needs non-privileged port).
-    listener_port = int(os.environ.get("ENVOY_LISTENER_PORT", "0"))
+    listener_port = int(os.environ.get("ENVOY_LISTENER_PORT", "8080"))
     if listener_port > 0:
         try:
             listeners = payload.get("static_resources", {}).get("listeners", [])
