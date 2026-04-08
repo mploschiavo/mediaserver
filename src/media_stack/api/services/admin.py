@@ -411,7 +411,24 @@ def reset_password(new_password: str) -> dict[str, Any]:
         except Exception as exc:
             errors.append(f"{svc.id}: {exc}")
 
-    # 4. Config-file-based password services — registry-driven
+    # 4. Bazarr — special case (must set password via API, not config file)
+    bazarr = SERVICE_MAP.get("bazarr")
+    if bazarr and bazarr.id not in updated:
+        try:
+            bz_key = os.environ.get(bazarr.api_key_env, "") or _read_key(bazarr, config_root)
+            if bz_key:
+                req = urllib.request.Request(
+                    f"http://{bazarr.host}:{bazarr.port}/api/system/settings",
+                    data=json.dumps({"auth": {"type": "basic", "username": username, "password": new_password}}).encode(),
+                    method="PATCH",
+                    headers={"X-API-KEY": bz_key, "Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=10)
+                updated.append("bazarr")
+        except Exception as exc:
+            errors.append(f"bazarr: {exc}")
+
+    # 5. Config-file-based password services — registry-driven
     for svc in get_services_with_password_config():
         if svc.id in updated:
             continue  # Already handled via API
@@ -425,7 +442,7 @@ def reset_password(new_password: str) -> dict[str, Any]:
                     data = yaml.safe_load(f) or {}
                 data.setdefault("auth", {})["username"] = username
                 data["auth"]["password"] = new_password
-                data["auth"]["type"] = "form"
+                data["auth"]["type"] = "basic"
                 with open(cfg_path, "w") as f:
                     yaml.dump(data, f, default_flow_style=False)
             elif svc.password_config.endswith(".ini"):

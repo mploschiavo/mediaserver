@@ -440,6 +440,59 @@ class EnvoyDynamicConfigService:
         return route_cfg
 
     @classmethod
+    def _asset_referer_fallback_route_cfg(
+        cls,
+        *,
+        host: str,
+        path_prefix: str,
+        cluster_name: str,
+        regex_rewrite: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Fallback for ES module dynamic import() — Referer is the parent JS URL.
+
+        When <script type="module" crossorigin> dynamically imports a chunk,
+        the browser sets Referer to the importing JS file URL (e.g. /assets/main.js),
+        not the page URL. Cookies aren't sent in crossorigin anonymous mode.
+        This route catches those requests by matching any same-host Referer.
+        """
+        route_cfg: dict[str, Any] = {
+            "match": {
+                "prefix": "/",
+                "headers": [
+                    {
+                        "name": "referer",
+                        "safe_regex_match": {
+                            "google_re2": {},
+                            "regex": (
+                                f"^https?://{re.escape(str(host or '').strip())}"
+                                r"(?:\:[0-9]+)?/.*$"
+                            ),
+                        },
+                    },
+                    {
+                        "name": "cookie",
+                        "safe_regex_match": {
+                            "google_re2": {},
+                            "regex": (
+                                rf".*(?:^|;\s*)"
+                                rf"{re.escape(_session_cookie_name(path_prefix))}=1"
+                                rf"(?:;|$).*"
+                            ),
+                        },
+                    },
+                ],
+            },
+            "route": {
+                "cluster": cluster_name,
+                "timeout": "0s",
+            },
+        }
+        if regex_rewrite is not None:
+            route_cfg["route"]["regex_rewrite"] = dict(regex_rewrite)
+        route_cfg.update(cls._route_headers(path_prefix, host, include_session_cookie=False))
+        return route_cfg
+
+    @classmethod
     def _cookie_fallback_route_cfg(
         cls,
         *,
@@ -471,10 +524,22 @@ class EnvoyDynamicConfigService:
                 "cluster": cluster_name,
                 "timeout": "0s",
             },
+            # CORS headers so ES module dynamic import() includes credentials.
+            # Without this, <script type="module" crossorigin> scripts can't
+            # send cookies on import(), causing asset 404s for SPAs like Bazarr.
+            "response_headers_to_add": [
+                {"header": {"key": "access-control-allow-origin", "value": f"http://{host}"},
+                 "append_action": "OVERWRITE_IF_EXISTS_OR_ADD"},
+                {"header": {"key": "access-control-allow-credentials", "value": "true"},
+                 "append_action": "OVERWRITE_IF_EXISTS_OR_ADD"},
+            ],
         }
         if regex_rewrite is not None:
             route_cfg["route"]["regex_rewrite"] = dict(regex_rewrite)
-        route_cfg.update(cls._route_headers(path_prefix, host, include_session_cookie=False))
+        extras = cls._route_headers(path_prefix, host, include_session_cookie=False)
+        if "response_headers_to_add" in extras:
+            route_cfg["response_headers_to_add"].extend(extras.pop("response_headers_to_add"))
+        route_cfg.update(extras)
         return route_cfg
 
     @classmethod
