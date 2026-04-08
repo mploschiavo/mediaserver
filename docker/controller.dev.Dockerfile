@@ -6,15 +6,29 @@
 
 FROM python:3.12-alpine
 
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
+LABEL org.opencontainers.image.title="Media Stack Controller (Dev)" \
+      org.opencontainers.image.description="Development image with tests, docs, and dev tools" \
+      org.opencontainers.image.version="${VERSION}-dev" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/mploschiavo/mediaserver" \
+      org.opencontainers.image.licenses="AGPL-3.0"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/opt/media-stack/src:/opt/media-stack
+    PYTHONPATH=/opt/media-stack/src:/opt/media-stack \
+    MEDIA_STACK_VERSION=${VERSION}-dev
 
 WORKDIR /opt/media-stack
 
 RUN pip install --no-cache-dir bcrypt docker kubernetes pyyaml requests
 
 # Full repo copy (production + dev)
+COPY VERSION /opt/media-stack/VERSION
 COPY bin /opt/media-stack/bin
 COPY src /opt/media-stack/src
 COPY contracts /opt/media-stack/contracts

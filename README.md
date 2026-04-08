@@ -712,6 +712,9 @@ bash bin/bootstrap-debug.sh
 - [docs/compose-guide.md](docs/compose-guide.md)
 - [docs/service-guide.md](docs/service-guide.md)
 - [docs/first-run-wiring.md](docs/first-run-wiring.md)
+- [docs/teardown.md](docs/teardown.md)
+- [docs/testing.md](docs/testing.md)
+- [docs/sdlc.md](docs/sdlc.md)
 
 ## License
 
