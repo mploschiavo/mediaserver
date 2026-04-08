@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -372,9 +373,10 @@ class ControllerRuntimeBuilder:
                     app_keys[app.implementation] = api_key
                     app_keys[app.implementation.lower()] = api_key
                 except RuntimeError as exc:
-                    self.deps.log(
+                    print(
                         f"[WARN] {app_dir}: API key unavailable, skipping "
-                        f"({exc}). Service will be configured on next reconcile."
+                        f"({exc}). Service will be configured on next reconcile.",
+                        file=sys.stderr,
                     )
                     skipped_apps.append(app_dir)
 
@@ -382,16 +384,18 @@ class ControllerRuntimeBuilder:
             try:
                 prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
             except RuntimeError as exc:
-                self.deps.log(
+                print(
                     f"[WARN] prowlarr: API key unavailable, skipping indexer sync ({exc}). "
-                    "Run Reconcile after Prowlarr generates its config."
+                    "Run Reconcile after Prowlarr generates its config.",
+                    file=sys.stderr,
                 )
                 skipped_apps.append("prowlarr")
 
         if skipped_apps:
-            self.deps.log(
+            print(
                 f"[WARN] Bootstrap continuing without: {', '.join(skipped_apps)}. "
-                "These services will be configured when their API keys become available."
+                "These services will be configured when their API keys become available.",
+                file=sys.stderr,
             )
 
         qb_user = self._resolve_optional_env_value(qbit_cfg, "username_env")
