@@ -598,6 +598,22 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         elif path == "/api/openapi.yaml":
             self._raw_response(200, "text/yaml; charset=utf-8", _OPENAPI_YAML.encode("utf-8"))
 
+        # --- Static assets (Swagger UI) ---
+        elif path.startswith("/api/static/"):
+            static_dir = Path(__file__).resolve().parent / "static"
+            filename = path.split("/api/static/", 1)[1]
+            if ".." in filename or "/" in filename:
+                self._json_response(400, {"error": "invalid path"})
+            else:
+                static_file = static_dir / filename
+                if static_file.is_file():
+                    ct = "text/css" if filename.endswith(".css") else "application/javascript"
+                    self._raw_response(200, ct, static_file.read_bytes(), {
+                        "Cache-Control": "public, max-age=86400",
+                    })
+                else:
+                    self._json_response(404, {"error": "not found"})
+
         # --- Dashboard ---
         elif path in ("/", "/dashboard"):
             html = _DASHBOARD_HTML
@@ -612,49 +628,29 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Media Stack Controller API</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/api/static/swagger-ui.css">
   <style>
-    body { margin: 0; padding: 0; }
-    /* Redoc theme overrides for dark-friendly rendering */
-    .redoc-wrap { font-family: 'Inter', system-ui, sans-serif; }
+    body{margin:0;background:#fafafa}
+    .swagger-ui .topbar{display:none}
+    .swagger-ui{font-family:system-ui,sans-serif}
+    #swagger-ui{max-width:1200px;margin:0 auto;padding:20px}
   </style>
 </head>
 <body>
-  <div id="redoc-container"></div>
-  <script src="https://cdn.redoc.ly/redoc/v2.4.0/bundles/redoc.standalone.min.js"></script>
+  <div id="swagger-ui"></div>
+  <script src="/api/static/swagger-ui-bundle.js"></script>
   <script>
-    Redoc.init('/api/openapi.yaml', {
-      theme: {
-        colors: {
-          primary: { main: '#4ade80' },
-          success: { main: '#4ade80' },
-          error: { main: '#ef4444' },
-          warning: { main: '#f59e0b' },
-          text: { primary: '#1e293b', secondary: '#64748b' },
-        },
-        typography: {
-          fontFamily: "'Inter', system-ui, sans-serif",
-          headings: { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: '700' },
-          code: { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' },
-        },
-        sidebar: {
-          width: '280px',
-          backgroundColor: '#0f172a',
-          textColor: '#94a3b8',
-          activeTextColor: '#4ade80',
-        },
-        rightPanel: {
-          backgroundColor: '#1e293b',
-          textColor: '#e2e8f0',
-        },
-      },
-      expandResponses: '200',
-      hideDownloadButton: false,
-      nativeScrollbars: true,
-      pathInMiddlePanel: true,
-      sortPropsAlphabetically: false,
-      menuToggle: true,
-    }, document.getElementById('redoc-container'));
+    SwaggerUIBundle({
+      url:'/api/openapi.yaml',
+      dom_id:'#swagger-ui',
+      deepLinking:true,
+      defaultModelsExpandDepth:1,
+      defaultModelExpandDepth:2,
+      docExpansion:'list',
+      filter:true,
+      tryItOutEnabled:true,
+      layout:'BaseLayout',
+    });
   </script>
 </body>
 </html>"""
