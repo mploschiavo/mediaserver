@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..apps.prowlarr.runtime_compat import LEGACY_ARG_TOKEN_ALIASES as _PROWLARR_TOKEN_ALIASES
 from ..runner_phase_plan_service import run_phase_plan as run_event_phase_plan
 from .base import MediaServerAdapterContext
 
@@ -19,8 +20,10 @@ _ARG_TOKEN_ATTRS: dict[str, str] = {
     "qbit_cfg": "qbit_cfg",
     "qb_user": "qb_user",
     "qb_pass": "qb_pass",
-    "prowlarr_url": "prowlarr_url",
-    "prowlarr_key": "prowlarr_key",
+    "indexer_manager_url": "prowlarr_url",
+    "indexer_manager_key": "prowlarr_key",
+    # Legacy token aliases from app-layer compat modules.
+    **_PROWLARR_TOKEN_ALIASES,
 }
 
 

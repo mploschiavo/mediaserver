@@ -11,8 +11,9 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from media_stack.services.apps.download_clients.registry_helpers import DOWNLOAD_CLIENT_CATEGORIES
 from .health import discover_api_keys
-from .registry import SERVICES
+from .registry import SERVICE_MAP, SERVICES
 
 
 def get_versions(cache: Any) -> dict[str, Any]:
@@ -60,67 +61,84 @@ def get_versions(cache: Any) -> dict[str, Any]:
     return result
 
 
+def _fetch_qbit_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
+    """Fetch active torrents from the torrent client API."""
+    import http.cookiejar
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+    login = urllib.request.Request(
+        f"http://{svc_host}:{svc_port}/api/v2/auth/login",
+        data=f"username={user}&password={pw}".encode(),
+    )
+    opener.open(login, timeout=5)
+    req = urllib.request.Request(f"http://{svc_host}:{svc_port}/api/v2/torrents/info?filter=active")
+    with opener.open(req, timeout=5) as resp:
+        torrents = json.loads(resp.read())
+    items = [
+        {"name": t.get("name", "")[:80],
+         "progress": round((t.get("progress", 0) or 0) * 100, 1),
+         "state": t.get("state", ""), "size": t.get("size", 0),
+         "dlspeed": t.get("dlspeed", 0)}
+        for t in torrents[:10]
+    ]
+    return {"active": len(torrents), "items": items}
+
+
+def _fetch_sab_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
+    """Fetch active NZB downloads from a usenet-client-compatible API."""
+    from pathlib import Path
+    from .registry import read_api_key_from_file
+    # Discover the usenet client service ID from the download client registry.
+    _usenet_ids = [sid for sid, cat in DOWNLOAD_CLIENT_CATEGORIES.items() if cat == "usenet"]
+    _usenet_svc_id = _usenet_ids[0] if _usenet_ids else "usenet"
+    _usenet_svc = SERVICE_MAP.get(_usenet_svc_id)
+    _key_env = _usenet_svc.api_key_env if _usenet_svc else ""
+    sab_key = os.environ.get(_key_env, "") if _key_env else ""
+    if not sab_key:
+        sab_key = read_api_key_from_file(_usenet_svc_id, os.environ.get("CONFIG_ROOT", "/srv-config"))
+    if not sab_key:
+        return {"active": 0, "speed": "0", "items": []}
+    req = urllib.request.Request(
+        f"http://{svc_host}:{svc_port}/api?mode=queue&output=json&apikey={sab_key}"
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.loads(resp.read())
+    queue = data.get("queue", {})
+    slots = queue.get("slots", [])
+    items = [
+        {"name": s.get("filename", "")[:80],
+         "progress": round(float(s.get("percentage", 0)), 1)}
+        for s in slots[:10]
+    ]
+    return {"active": len(slots), "speed": f"{queue.get('speed', '0')} KB/s", "items": items}
+
+
+# Download client category → fetch function.  Extend for new client types.
+_DOWNLOAD_FETCHERS: dict[str, Any] = {
+    "torrent": _fetch_qbit_downloads,
+    "usenet": _fetch_sab_downloads,
+}
+
+# Map service IDs to their download category (from app layer).
+_DOWNLOAD_CLIENT_IDS: dict[str, str] = DOWNLOAD_CLIENT_CATEGORIES
+
+
 def get_downloads() -> dict[str, Any]:
-    """Fetch active downloads from qBittorrent and SABnzbd."""
+    """Fetch active downloads from registered download client services."""
     result: dict[str, Any] = {}
-
-    # qBittorrent
-    try:
-        import http.cookiejar
-        cj = http.cookiejar.CookieJar()
-        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-        pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
-        login = urllib.request.Request(
-            "http://qbittorrent:8080/api/v2/auth/login",
-            data=f"username={user}&password={pw}".encode(),
-        )
-        opener.open(login, timeout=5)
-        req = urllib.request.Request("http://qbittorrent:8080/api/v2/torrents/info?filter=active")
-        with opener.open(req, timeout=5) as resp:
-            torrents = json.loads(resp.read())
-        items = []
-        for t in torrents[:10]:
-            items.append({
-                "name": t.get("name", "")[:80],
-                "progress": round((t.get("progress", 0) or 0) * 100, 1),
-                "state": t.get("state", ""),
-                "size": t.get("size", 0),
-                "dlspeed": t.get("dlspeed", 0),
-            })
-        result["qbittorrent"] = {"active": len(torrents), "items": items}
-    except Exception as exc:
-        result["qbittorrent"] = {"active": 0, "items": [], "error": str(exc)[:60]}
-
-    # SABnzbd
-    try:
-        sab_key = os.environ.get("SABNZBD_API_KEY", "")
-        if not sab_key:
-            from pathlib import Path
-            sab_ini = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / "sabnzbd" / "sabnzbd.ini"
-            if sab_ini.exists():
-                m = re.search(r"^\s*api_key\s*=\s*(\S+)", sab_ini.read_text(), re.MULTILINE)
-                if m:
-                    sab_key = m.group(1)
-        if sab_key:
-            req = urllib.request.Request(
-                f"http://sabnzbd:8080/api?mode=queue&output=json&apikey={sab_key}"
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read())
-            queue = data.get("queue", {})
-            slots = queue.get("slots", [])
-            items = []
-            for s in slots[:10]:
-                items.append({
-                    "name": s.get("filename", "")[:80],
-                    "progress": round(float(s.get("percentage", 0)), 1),
-                })
-            speed = queue.get("speed", "0")
-            result["sabnzbd"] = {"active": len(slots), "speed": f"{speed} KB/s", "items": items}
-    except Exception as exc:
-        result["sabnzbd"] = {"active": 0, "speed": "0", "items": [], "error": str(exc)[:60]}
-
+    for svc_id, category in _DOWNLOAD_CLIENT_IDS.items():
+        svc = SERVICE_MAP.get(svc_id)
+        if not svc or not svc.host or not svc.port:
+            continue
+        fetcher = _DOWNLOAD_FETCHERS.get(category)
+        if not fetcher:
+            continue
+        try:
+            result[svc_id] = fetcher(svc.host, svc.port)
+        except Exception as exc:
+            result[svc_id] = {"active": 0, "items": [], "error": str(exc)[:60]}
     return result
 
 
@@ -163,7 +181,7 @@ def get_stats(cache: Any) -> dict[str, Any]:
 
 
 def get_indexers() -> dict[str, Any]:
-    """Fetch indexer list from services with indexer_path (e.g. Prowlarr)."""
+    """Fetch indexer list from services with indexer_path."""
     api_keys = discover_api_keys()
     indexer_services = [s for s in SERVICES if s.indexer_path]
     if not indexer_services:
@@ -318,26 +336,38 @@ def get_import_lists() -> dict[str, Any]:
     return {"lists": lists}
 
 
-def get_jellyfin_libraries() -> dict[str, Any]:
-    """Fetch Jellyfin library list."""
-    key = os.environ.get("JELLYFIN_API_KEY", "")
-    if not key:
-        return {"libraries": []}
-    try:
-        req = urllib.request.Request(
-            "http://jellyfin:8096/Library/VirtualFolders",
-            headers={"X-Emby-Token": key},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-        libs = [
-            {"name": lib.get("Name", ""), "type": lib.get("CollectionType", ""),
-             "paths": lib.get("Locations", []), "count": lib.get("ItemCount", 0)}
-            for lib in (data if isinstance(data, list) else [])
-        ]
-        return {"libraries": libs}
-    except Exception:
-        return {"libraries": []}
+def get_media_server_libraries() -> dict[str, Any]:
+    """Fetch library list from the active media server (registry-driven)."""
+    # Find the media server service that has a host/port configured
+    for svc in SERVICES:
+        if svc.category != "media-server" or not svc.host or not svc.port:
+            continue
+        env_key = svc.api_key_env or f"{svc.id.upper()}_API_KEY"
+        key = os.environ.get(env_key, "")
+        if not key:
+            continue
+        try:
+            # Emby/Jellyfin use X-Emby-Token, Plex uses X-Plex-Token
+            auth_header = "X-Emby-Token" if svc.auth_mode == "X-Emby-Token" else svc.auth_mode
+            req = urllib.request.Request(
+                f"http://{svc.host}:{svc.port}/Library/VirtualFolders",
+                headers={auth_header: key},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            libs = [
+                {"name": lib.get("Name", ""), "type": lib.get("CollectionType", ""),
+                 "paths": lib.get("Locations", []), "count": lib.get("ItemCount", 0)}
+                for lib in (data if isinstance(data, list) else [])
+            ]
+            return {"libraries": libs}
+        except Exception:
+            return {"libraries": []}
+    return {"libraries": []}
+
+
+# Backward compat alias
+get_jellyfin_libraries = get_media_server_libraries
 
 
 def get_recent() -> dict[str, Any]:

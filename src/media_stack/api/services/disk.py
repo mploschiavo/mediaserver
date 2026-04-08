@@ -9,6 +9,7 @@ from shutil import disk_usage
 from typing import Any
 
 from media_stack.api.services._resolve import resolve_config_path
+from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
 
 
 def get_disk() -> dict[str, Any]:
@@ -147,16 +148,17 @@ def preview_cleanup() -> dict[str, Any]:
 
     # List completed torrents
     try:
+        _qbit_url = default_torrent_client_url()
         user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
         cj = http.cookiejar.CookieJar()
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
         login = urllib.request.Request(
-            "http://qbittorrent:8080/api/v2/auth/login",
+            f"{_qbit_url}/api/v2/auth/login",
             data=f"username={user}&password={pw}".encode(),
         )
         opener.open(login, timeout=5)
-        req = urllib.request.Request("http://qbittorrent:8080/api/v2/torrents/info?filter=completed")
+        req = urllib.request.Request(f"{_qbit_url}/api/v2/torrents/info?filter=completed")
         with opener.open(req, timeout=5) as resp:
             import json as _json
             torrents = _json.loads(resp.read())

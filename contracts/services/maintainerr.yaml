@@ -7,6 +7,7 @@ service:
   port: 6246
   health_path: /app/maintainerr/api/settings
   preserve_path_prefix: true
+  top_level_config_key: true
 plugin:
   technology: maintainerr
   app_service_classes:

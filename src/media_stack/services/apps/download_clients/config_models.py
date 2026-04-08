@@ -282,6 +282,8 @@ class TechnologyBindingsConfig:
     usenet_client: str = ""
     media_server: str = ""
     request_manager: str = ""
+    #: Default request manager technology when none is explicitly bound.
+    default_request_manager: str = "jellyseerr"
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

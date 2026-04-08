@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
+
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 CoerceListFn = Callable[[Any], list[Any]]
@@ -110,7 +112,7 @@ class DiskGuardrailsService:
             )
             return
 
-        qbit_url = self.normalize_url(qbit_cfg.get("url", "http://qbittorrent:8080"))
+        qbit_url = self.normalize_url(qbit_cfg.get("url", default_torrent_client_url()))
         min_age_hours = (
             self.to_float(qbit_cleanup_cfg.get("min_completion_age_hours"), 36.0) or 36.0
         )
@@ -199,7 +201,7 @@ class DiskGuardrailsService:
             if used_after > target_used_percent:
                 self.log(
                     "[WARN] Disk guardrails: still above target after cleanup. "
-                    "Consider stronger retention rules (Maintainerr) or larger storage."
+                    "Consider stronger retention rules or larger storage."
                 )
         except Exception:
             pass

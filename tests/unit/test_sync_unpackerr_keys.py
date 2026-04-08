@@ -80,9 +80,9 @@ class SyncUnpackerrKeysTests(unittest.TestCase):
         cfg = MODULE.parse_config([])
         self.assertEqual(cfg.namespace, "media-stack")
         self.assertEqual(cfg.secret_name, "media-stack-secrets")
-        self.assertTrue(
-            str(cfg.bootstrap_config_file or "").endswith("contracts/media-stack.config.json")
-        )
+        # bootstrap_config_file is None when contracts/media-stack.config.json
+        # does not exist (file was removed — config now in YAML).
+        self.assertIsNone(cfg.bootstrap_config_file)
 
     def test_service_updates_secret_with_all_keys(self):
         kube = FakeKube(

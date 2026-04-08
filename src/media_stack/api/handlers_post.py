@@ -100,8 +100,8 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, config_svc.restore_backup(body))
         return
 
-    # POST /api/jellyfin/reset -- hard-reset Jellyfin credentials via DB
-    if handler.path == "/api/jellyfin/reset":
+    # POST /api/media-server/reset -- hard-reset media server credentials via DB
+    if handler.path == "/api/media-server/reset" or admin_svc.is_media_server_reset_path(handler.path):
         body = handler._read_json_body()
         username = body.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
         password = body.get("password", os.environ.get("STACK_ADMIN_PASSWORD", "media-stack"))

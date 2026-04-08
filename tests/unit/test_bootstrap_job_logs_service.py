@@ -6,9 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_job_logs_service import (  # noqa: E402
-    BootstrapJobLogsConfig,
-    BootstrapJobLogsService,
+from media_stack.cli.workflows.controller_job_logs_service import (  # noqa: E402
+    ControllerJobLogsConfig,
+    ControllerJobLogsService,
 )
 
 
@@ -30,12 +30,12 @@ class _Kube:
         return _Result(self.returncode, self.output, "boom" if self.returncode else "")
 
 
-class BootstrapJobLogsServiceTests(unittest.TestCase):
+class ControllerJobLogsServiceTests(unittest.TestCase):
     def test_capture_and_contains(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_file = Path(tmp) / "job.log"
-            svc = BootstrapJobLogsService(
-                cfg=BootstrapJobLogsConfig(
+            svc = ControllerJobLogsService(
+                cfg=ControllerJobLogsConfig(
                     namespace="media-stack",
                     job_name="media-stack-controller",
                     log_file=log_file,

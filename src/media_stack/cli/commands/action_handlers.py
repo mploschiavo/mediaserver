@@ -28,7 +28,7 @@ def action_bootstrap(args: argparse.Namespace, state: object,
 
 def action_finalize(args: argparse.Namespace, state: object,
                     build_runner: Any, run_post_bootstrap: Any) -> None:
-    """Deferred post-bootstrap: Jellyfin tuning, disk guardrails, hygiene, app restarts."""
+    """Deferred post-bootstrap: media-server tuning, disk guardrails, hygiene, app restarts."""
     runner, runtime_state = build_runner(args)
     try:
         runner._run_post_servarr_steps(runtime_state)
@@ -40,7 +40,7 @@ def action_finalize(args: argparse.Namespace, state: object,
 
 
 def action_auto_indexers(args: argparse.Namespace, build_runner: Any) -> None:
-    """Run Prowlarr auto-indexer discovery (indexer phase only)."""
+    """Run auto-indexer discovery (indexer phase only)."""
     runtime_platform.log("[INFO] Auto-indexer: building runner with auto_prowlarr_indexers=True")
     runner, runtime_state = build_runner(args, auto_prowlarr_indexers=True)
     try:
@@ -63,7 +63,7 @@ def action_restart_apps(args: argparse.Namespace, state: object,
 
 
 def action_sync_indexers(args: argparse.Namespace, build_runner: Any) -> None:
-    """Trigger Prowlarr ApplicationIndexerSync."""
+    """Trigger indexer-manager ApplicationIndexerSync."""
     runner, runtime_state = build_runner(args)
     try:
         runner._run_runner_plan_phase(runtime_state, "indexer_steps")

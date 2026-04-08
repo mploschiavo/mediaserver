@@ -1,0 +1,295 @@
+"""HTTP API serve mode for the bootstrap controller."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import queue
+import threading
+import traceback
+
+import media_stack.services.runtime_platform as runtime_platform
+
+from media_stack.cli.commands.controller_dispatch import (
+    _dispatch_action,
+    _track_failed_service,
+)
+from media_stack.cli.commands.controller_handlers import (
+    _resolve_config_path,
+)
+from media_stack.cli.commands.controller_profile import (
+    _apply_profile_env,
+)
+
+
+def _validate_key_against_service(discovered: dict, config_root: str, log: object) -> None:
+    """Quick check: does a discovered key actually work against the running service?
+
+    If not, the controller's config mount likely points to a different directory
+    than the services. This is a common compose context mismatch.
+    """
+    import urllib.request
+    import urllib.error
+
+    # Pick the first arr app with a discovered key as the canary for mount validation
+    from media_stack.api.services.registry import SERVICES
+    canary = None
+    canary_key = ""
+    for svc in SERVICES:
+        if svc.api_key_env and svc.auth_path and svc.api_key_format == "xml":
+            canary_key = discovered.get(svc.api_key_env, "")
+            if canary_key:
+                canary = svc
+                break
+    if not canary:
+        return
+    try:
+        req = urllib.request.Request(
+            f"http://{canary.host}:{canary.port}{canary.auth_path}",
+            headers={canary.auth_mode: canary_key},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                return  # Key works — mounts are consistent
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            log(
+                f"[WARN] Config mount mismatch detected: API key from "
+                f"{config_root}/{canary.api_key_config} does not match the running "
+                f"{canary.name} container. This usually means the controller and "
+                "services are using different config directories. "
+                "Re-run 'docker compose down && docker compose up -d' from "
+                "the same directory to fix."
+            )
+            return
+    except Exception:
+        pass  # Service not ready yet — skip validation
+
+
+def _run_serve(args: argparse.Namespace) -> None:
+    """HTTP API server with action dispatch loop.
+
+    The server stays alive indefinitely, processing actions from a queue.
+    Actions are triggered via POST /actions/{name} or POST /run.
+    """
+    from media_stack.api.server import _fire_webhooks, start_api_server
+    from media_stack.api.state import ControllerState
+
+    # Resolve config path: try CLI arg, env var, then image-embedded path.
+    resolved = _resolve_config_path(args.config)
+    if resolved and resolved != args.config:
+        runtime_platform.log(
+            f"[INFO] Config resolved: {args.config} → {resolved}"
+        )
+        args.config = resolved
+
+    # Load profile if available (ConfigMap may not be mounted yet on first start).
+    profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
+    if profile_file:
+        profile_path = __import__("pathlib").Path(profile_file)
+        if profile_path.is_file():
+            from media_stack.api.preflight.profile_validation import validate_profile
+
+            validate_profile(profile_file, log=runtime_platform.log)
+            _apply_profile_env(profile_file)
+        else:
+            runtime_platform.log(
+                f"[INFO] Profile not yet available at {profile_file} — "
+                "will apply from config when action is triggered"
+            )
+
+    # Pre-discover API keys from config files so auth probes work
+    # even before bootstrap preflights run (or after controller restart).
+    try:
+        from media_stack.api.preflight.api_keys import run_preflight as _discover_keys
+        config_root = getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config"))
+        discovered = _discover_keys(config_root=config_root, log=runtime_platform.log)
+        for env_key, val in discovered.items():
+            if val and not os.environ.get(env_key):
+                os.environ[env_key] = val
+        if discovered:
+            runtime_platform.log(f"[INFO] Pre-discovered {len(discovered)} API keys from config files")
+        # Validate a key against a running service to detect mount mismatches
+        _validate_key_against_service(discovered, config_root, runtime_platform.log)
+    except Exception as exc:
+        runtime_platform.log(f"[WARN] API key pre-discovery failed: {exc}")
+
+    state = ControllerState()
+    port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
+    action_queue: queue.PriorityQueue[tuple[int, int, str, dict]] = queue.PriorityQueue()
+    action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
+    max_retries = int(os.environ.get("BOOTSTRAP_ACTION_MAX_RETRIES", "0"))
+    _queue_seq = 0
+
+    def action_trigger(action_name: str, overrides: dict) -> None:
+        nonlocal _queue_seq
+        from media_stack.api.server import ACTION_PRIORITY, DEFAULT_ACTION_PRIORITY
+        prio = int(overrides.pop("_priority", ACTION_PRIORITY.get(action_name, DEFAULT_ACTION_PRIORITY)))
+        _queue_seq += 1
+        action_queue.put((prio, _queue_seq, action_name, overrides))
+        state.add_pending(action_name, prio, overrides)
+
+    # Wrap runtime_platform.log to also feed the SSE ring buffer.
+    _original_log = runtime_platform.log
+
+    def _instrumented_log(msg: str) -> None:
+        _original_log(msg)
+        state.append_log(msg)
+
+    runtime_platform.log = _instrumented_log
+
+    def reload_config() -> None:
+        """Reload profile YAML and re-apply env vars."""
+        pf = os.environ.get("BOOTSTRAP_PROFILE_FILE")
+        if pf:
+            from media_stack.api.preflight.profile_validation import validate_profile
+
+            validate_profile(pf, log=runtime_platform.log)
+            _apply_profile_env(pf)
+        runtime_platform.log("[OK] Config reloaded from profile")
+
+    server = start_api_server(
+        state, port=port, action_trigger=action_trigger, reload_config=reload_config,
+    )
+    runtime_platform.log(f"[INFO] Bootstrap service listening on :{port}")
+    runtime_platform.log(f"[INFO] Dashboard: http://127.0.0.1:{port}/")
+    runtime_platform.log(f"[INFO] Actions: POST /actions/{{name}} | GET /status")
+    runtime_platform.log(f"[INFO] SSE log stream: GET /logs/stream")
+
+    # Start config snapshot background timer
+    snapshot_interval = int(os.environ.get("CONFIG_SNAPSHOT_INTERVAL_SECONDS", "3600"))  # 1h default
+    if snapshot_interval > 0:
+        def _snapshot_timer() -> None:
+            import time as _t
+            _t.sleep(60)  # Wait 1 min before first snapshot
+            while True:
+                try:
+                    from media_stack.cli.commands.maintenance import take_config_snapshot
+                    take_config_snapshot(args)
+                except Exception as exc:
+                    runtime_platform.log(f"[WARN] Config snapshot failed: {exc}")
+                # Prune stale cache/transcode files to prevent disk growth
+                try:
+                    from media_stack.cli.commands.maintenance import prune_stale_files
+                    prune_stale_files(args, runtime_platform.log)
+                except Exception as exc:
+                    runtime_platform.log(f"[WARN] Stale file cleanup failed: {exc}")
+                _t.sleep(snapshot_interval)
+        snap_thread = threading.Thread(target=_snapshot_timer, daemon=True, name="config-snapshots")
+        snap_thread.start()
+
+    auto_run = args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
+    if auto_run:
+        runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
+        action_trigger("bootstrap", {})
+
+    # Main action dispatch loop — runs forever.
+    while True:
+        try:
+            _prio, _seq, action_name, overrides = action_queue.get()
+        except KeyboardInterrupt:
+            runtime_platform.log("[INFO] Shutting down bootstrap service")
+            server.shutdown()
+            return
+
+        state.pop_pending(action_name)
+
+        # Retry support: allow per-action retry via override or env default.
+        retry_limit = int(overrides.pop("retry", max_retries))
+        attempt = 0
+
+        while True:
+            attempt += 1
+            action_record = state.start_action(
+                action_name, overrides=overrides, timeout_seconds=action_timeout
+            )
+            suffix = f" (attempt {attempt}/{retry_limit + 1})" if retry_limit > 0 else ""
+            runtime_platform.log(
+                f"[ACTION] {action_name} [{action_record.id}]: dispatching "
+                f"(timeout={action_timeout}s){suffix}"
+            )
+
+            try:
+                _dispatch_action(action_name, overrides, args, state)
+
+                # Check if cancelled during execution.
+                if state.is_cancelled:
+                    state.current_action.cancel()
+                    state.finish_action(error="cancelled by user")
+                    runtime_platform.log(f"[ACTION] {action_name}: cancelled by user")
+                    break
+
+                state.finish_action()
+
+                # Fire webhooks on success.
+                _fire_webhooks(state, "action_complete", {
+                    "action": action_name,
+                    "status": "complete",
+                    "elapsed_seconds": action_record.elapsed_seconds,
+                })
+
+                # Mark initial bootstrap done on first successful bootstrap.
+                if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                    state.initial_bootstrap_done = True
+                    runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
+
+                    # Queue deferred steps: finalize (Jellyfin tuning, restarts,
+                    # guardrails), then envoy config, then indexer discovery.
+                    # Each runs as a separate action so the dashboard shows
+                    # progress and bootstrap is marked complete immediately.
+                    for queued in ["finalize", "envoy-config", "auto-indexers"]:
+                        runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
+                        action_trigger(queued, {})
+
+                break  # Success — exit retry loop.
+
+            except Exception as exc:
+                state.finish_action(error=str(exc))
+                runtime_platform.log(f"[ERR] Action {action_name} failed: {exc}")
+                trace = traceback.format_exc().strip()
+                if trace:
+                    for line in trace.splitlines():
+                        runtime_platform.log(f"[TRACE] {line}")
+
+                # Still mark initial bootstrap done if it was the bootstrap action
+                # and the error was in post-bootstrap (apps were configured).
+                if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                    state.initial_bootstrap_done = True
+                    runtime_platform.log(
+                        "[WARN] Initial bootstrap had errors but service is marked ready"
+                    )
+
+                # Retry if attempts remain.
+                if attempt <= retry_limit:
+                    delay = min(10.0, 2.0 ** (attempt - 1))
+                    runtime_platform.log(
+                        f"[RETRY] {action_name}: retrying in {delay:.0f}s "
+                        f"(attempt {attempt}/{retry_limit + 1})"
+                    )
+                    import time as _time
+
+                    _time.sleep(delay)
+                    continue
+
+                # Track failed services for auto-heal.
+                _track_failed_service(state, str(exc))
+
+                # Fire webhooks on final failure.
+                _fire_webhooks(state, "action_error", {
+                    "action": action_name,
+                    "status": "error",
+                    "error": str(exc),
+                    "elapsed_seconds": action_record.elapsed_seconds,
+                })
+
+                # Auto-queue reconcile if services failed (heal after delay).
+                if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
+                    heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
+                    runtime_platform.log(
+                        f"[HEAL] {len(state.get_failed_services())} services need healing. "
+                        f"Auto-queuing reconcile in {heal_delay}s."
+                    )
+                    import threading as _threading
+                    _threading.Timer(heal_delay, lambda: action_trigger("reconcile", {})).start()
+
+                break  # Exhausted retries.

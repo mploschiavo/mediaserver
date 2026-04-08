@@ -30,7 +30,12 @@ from media_stack.services.runtime_platform import (
     to_int,
     wait_for_service,
 )
-from media_stack.services.runtime_secrets import api_keys_service, candidate_config_roots
+from media_stack.services.runtime_secrets import candidate_config_roots
+
+from .api_key_db import (
+    read_jellyfin_api_key_from_db as _read_jellyfin_api_key_from_db,
+    resolve_jellyfin_api_key as _resolve_jellyfin_api_key,
+)
 
 from .home_rails_service import JellyfinHomeRailsDependencies, JellyfinHomeRailsService
 from .libraries_service import JellyfinLibrariesDependencies, JellyfinLibrariesService
@@ -201,11 +206,20 @@ def prepare_jellyfin_xmltv_guide_path(guide, tuners, config_root):
 
 
 def read_jellyfin_api_key_from_db(config_root, jellyfin_cfg):
-    return api_keys_service().read_jellyfin_api_key_from_db(config_root, jellyfin_cfg)
+    return _read_jellyfin_api_key_from_db(
+        config_root, jellyfin_cfg, coerce_list=coerce_list, resolve_path=resolve_path
+    )
 
 
 def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
-    return api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
+    return _resolve_jellyfin_api_key(
+        jellyfin_cfg,
+        config_root,
+        log=log,
+        bool_cfg=bool_cfg,
+        coerce_list=coerce_list,
+        resolve_path=resolve_path,
+    )
 
 
 def load_jellyfin_livetv_state(config_root, live_cfg):
@@ -428,7 +442,6 @@ def ensure_jellyfin_plugins(cfg, config_root, wait_timeout):
 def _jellyfin_auto_collections_service() -> JellyfinAutoCollectionsService:
     return JellyfinAutoCollectionsService(
         bool_cfg=bool_cfg,
-        coerce_list=coerce_list,
         resolve_path=resolve_path,
         normalize_url=normalize_url,
         wait_for_service=wait_for_service,

@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.services.api_keys_service import ApiKeysService  # noqa: E402
+from media_stack.services.apps.jellyfin.api_key_db import read_jellyfin_api_key_from_db  # noqa: E402
 
 
 class ApiKeysServiceTests(unittest.TestCase):
@@ -49,7 +50,8 @@ class ApiKeysServiceTests(unittest.TestCase):
             self.assertEqual(svc.read_api_key(tmp, "sonarr"), "abc123")
 
     def test_read_jellyfin_api_key_from_db_prefers_name(self):
-        svc = self._svc()
+        coerce_list_fn = lambda value: value if isinstance(value, list) else [value]
+        resolve_path_fn = lambda root, rel: Path(root) / Path(str(rel))
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "jellyfin" / "data" / "jellyfin.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,12 +72,14 @@ class ApiKeysServiceTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            token, source = svc.read_jellyfin_api_key_from_db(
+            token, source = read_jellyfin_api_key_from_db(
                 tmp,
                 {
                     "api_key_db_path": "jellyfin/data/jellyfin.db",
                     "api_key_name_preference": ["Jellyfin"],
                 },
+                coerce_list=coerce_list_fn,
+                resolve_path=resolve_path_fn,
             )
             self.assertEqual(token, "preferred-token")
             self.assertEqual(source, "jellyfin")

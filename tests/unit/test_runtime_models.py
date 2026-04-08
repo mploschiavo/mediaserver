@@ -96,13 +96,13 @@ class TestControllerRuntimeConstruction(unittest.TestCase):
 class TestControllerRuntimeDefaults(unittest.TestCase):
     """Test default values for optional parameters."""
 
-    def test_media_server_backend_default(self):
+    def test_media_server_backend_default_empty(self):
         rt = _minimal_runtime()
-        self.assertEqual(rt.media_server_backend, "jellyfin")
+        self.assertEqual(rt.media_server_backend, "")
 
-    def test_request_manager_backend_default(self):
+    def test_request_manager_backend_default_empty(self):
         rt = _minimal_runtime()
-        self.assertEqual(rt.request_manager_backend, "jellyseerr")
+        self.assertEqual(rt.request_manager_backend, "")
 
     def test_feature_flags_default_empty(self):
         rt = _minimal_runtime()
@@ -140,17 +140,17 @@ class TestControllerRuntimeMediaServerBackend(unittest.TestCase):
         rt = _minimal_runtime(media_server_backend="plex")
         self.assertEqual(rt.media_server_backend, "plex")
 
-    def test_none_falls_back_to_jellyfin(self):
+    def test_none_becomes_empty(self):
         rt = _minimal_runtime(media_server_backend=None)
-        self.assertEqual(rt.media_server_backend, "jellyfin")
+        self.assertEqual(rt.media_server_backend, "")
 
-    def test_empty_string_falls_back_to_jellyfin(self):
+    def test_empty_string_stays_empty(self):
         rt = _minimal_runtime(media_server_backend="")
-        self.assertEqual(rt.media_server_backend, "jellyfin")
+        self.assertEqual(rt.media_server_backend, "")
 
-    def test_whitespace_only_falls_back_to_jellyfin(self):
+    def test_whitespace_only_becomes_empty(self):
         rt = _minimal_runtime(media_server_backend="   ")
-        self.assertEqual(rt.media_server_backend, "jellyfin")
+        self.assertEqual(rt.media_server_backend, "")
 
     def test_strips_whitespace(self):
         rt = _minimal_runtime(media_server_backend="  emby  ")
@@ -164,13 +164,13 @@ class TestControllerRuntimeRequestManagerBackend(unittest.TestCase):
         rt = _minimal_runtime(request_manager_backend="overseerr")
         self.assertEqual(rt.request_manager_backend, "overseerr")
 
-    def test_none_falls_back_to_jellyseerr(self):
+    def test_none_becomes_empty(self):
         rt = _minimal_runtime(request_manager_backend=None)
-        self.assertEqual(rt.request_manager_backend, "jellyseerr")
+        self.assertEqual(rt.request_manager_backend, "")
 
-    def test_empty_falls_back_to_jellyseerr(self):
+    def test_empty_stays_empty(self):
         rt = _minimal_runtime(request_manager_backend="")
-        self.assertEqual(rt.request_manager_backend, "jellyseerr")
+        self.assertEqual(rt.request_manager_backend, "")
 
 
 class TestControllerRuntimeFeatureFlags(unittest.TestCase):
@@ -262,15 +262,15 @@ class TestControllerRuntimeProperties(unittest.TestCase):
 
     def test_torrent_client_cfg_returns_qbit_cfg(self):
         cfg = {"host": "localhost", "port": 8080}
-        rt = _minimal_runtime(qbit_cfg=cfg)
+        rt = _minimal_runtime(qbit_cfg=cfg, torrent_client_key="qbittorrent")
         self.assertIs(rt.torrent_client_cfg, rt.qbit_cfg)
 
     def test_torrent_client_username_returns_qb_user(self):
-        rt = _minimal_runtime(qb_user="myuser")
+        rt = _minimal_runtime(qb_user="myuser", torrent_client_key="qbittorrent")
         self.assertEqual(rt.torrent_client_username, "myuser")
 
     def test_torrent_client_password_returns_qb_pass(self):
-        rt = _minimal_runtime(qb_pass="mypass")
+        rt = _minimal_runtime(qb_pass="mypass", torrent_client_key="qbittorrent")
         self.assertEqual(rt.torrent_client_password, "mypass")
 
     def test_configure_torrent_arr_clients_false_by_default(self):

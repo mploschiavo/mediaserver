@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from media_stack.cli.workflows.run_bootstrap_job_cli_config_service import parse_run_bootstrap_job_config
+from media_stack.cli.workflows.run_controller_job_cli_config_service import parse_run_bootstrap_job_config
 
 
 class RunBootstrapJobCliConfigServiceTests(unittest.TestCase):

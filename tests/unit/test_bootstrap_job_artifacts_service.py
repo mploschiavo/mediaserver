@@ -1,11 +1,11 @@
 import unittest
 
-from media_stack.cli.workflows.bootstrap_job_artifacts_service import BootstrapJobArtifactsService
+from media_stack.cli.workflows.controller_job_artifacts_service import ControllerJobArtifactsService
 
 
-class BootstrapJobArtifactsServiceTests(unittest.TestCase):
+class ControllerJobArtifactsServiceTests(unittest.TestCase):
     def test_create_and_cleanup(self):
-        svc = BootstrapJobArtifactsService()
+        svc = ControllerJobArtifactsService()
         artifacts = svc.create()
         self.assertTrue(artifacts.job_log_file.exists())
         self.assertTrue(artifacts.job_config_file.exists())

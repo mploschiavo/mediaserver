@@ -420,6 +420,21 @@ class TestLookupHelpers(unittest.TestCase):
 class TestReloadRegistry(unittest.TestCase):
     """Test that reload_registry() refreshes module globals."""
 
+    def setUp(self):
+        # Save original registry state so we can restore after each test.
+        # reload_registry() rebinds module globals; without restoration
+        # subsequent tests in the suite see a corrupted SERVICES list.
+        self._orig_services = registry_mod.SERVICES
+        self._orig_service_map = registry_mod.SERVICE_MAP
+        self._orig_categories = list(registry_mod.CATEGORIES)
+        self._orig_category_order = registry_mod._CATEGORY_ORDER
+
+    def tearDown(self):
+        registry_mod.SERVICES = self._orig_services
+        registry_mod.SERVICE_MAP = self._orig_service_map
+        registry_mod.CATEGORIES[:] = self._orig_categories
+        registry_mod._CATEGORY_ORDER = self._orig_category_order
+
     def test_reload_refreshes_globals(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             svc_dir = Path(tmpdir) / "services"

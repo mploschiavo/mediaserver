@@ -6,6 +6,7 @@ service:
   host: homepage
   port: 3000
   health_path: /
+  top_level_config_key: true
 plugin:
   technology: homepage
   app_service_classes:

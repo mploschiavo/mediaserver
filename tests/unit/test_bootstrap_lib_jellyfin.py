@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.adapters.jellyfin import apply_artwork_profile, reorder_provider_names  # noqa: E402
+from media_stack.services.apps.jellyfin.adapters import apply_artwork_profile, reorder_provider_names  # noqa: E402
 
 
 class BootstrapJellyfinHelperTests(unittest.TestCase):

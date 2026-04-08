@@ -16,7 +16,7 @@ class DeployScriptRunnerServiceTests(unittest.TestCase):
     def test_run_script_executes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            scripts = root / "scripts"
+            scripts = root / "bin"
             scripts.mkdir(parents=True, exist_ok=True)
             file = scripts / "ok.sh"
             file.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
@@ -30,7 +30,7 @@ class DeployScriptRunnerServiceTests(unittest.TestCase):
     def test_run_script_failure_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            scripts = root / "scripts"
+            scripts = root / "bin"
             scripts.mkdir(parents=True, exist_ok=True)
             file = scripts / "bad.sh"
             file.write_text("#!/usr/bin/env bash\nexit 4\n", encoding="utf-8")

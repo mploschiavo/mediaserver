@@ -6,10 +6,23 @@ from pathlib import Path
 
 from media_stack.api.preflight.api_keys import (
     _read_bazarr_api_key,
-    _read_ini_api_key,
-    _read_xml_api_key,
     run_preflight,
 )
+from media_stack.api.services.registry import KEY_READERS
+
+
+def _read_xml_api_key(path: Path) -> str:
+    try:
+        return KEY_READERS["xml"](path)
+    except Exception:
+        return ""
+
+
+def _read_ini_api_key(path: Path) -> str:
+    try:
+        return KEY_READERS["ini"](path)
+    except Exception:
+        return ""
 
 
 class TestXmlApiKeyReader(unittest.TestCase):

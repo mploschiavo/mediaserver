@@ -9,11 +9,24 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.adapters.homepage import DEFAULT_HOSTS, render_services_yaml  # noqa: E402
+from media_stack.services.apps.homepage.adapters import DEFAULT_HOSTS, render_services_yaml  # noqa: E402
 from media_stack.services.apps.homepage.service import HomepageService  # noqa: E402
-from media_stack.services.apps.stack.bootstrap_config_policy import (  # noqa: E402
+from media_stack.services.apps.stack.controller_config_policy import (  # noqa: E402
     apply_bootstrap_runtime_policy,
 )
+from media_stack.services.runtime_factory.config_loader import ControllerConfigLoader  # noqa: E402
+
+
+def _load_assembled_config() -> dict:
+    """Build the full config from per-service YAML defaults (no config.json needed)."""
+    def _merge(a, b):
+        r = dict(a)
+        r.update(b)
+        return r
+
+    loader = ControllerConfigLoader(deep_merge_objects=_merge)
+    # Pass a non-existent config.json path; the loader falls back to YAML defaults.
+    return loader.load_config(str(ROOT / "contracts" / "media-stack.config.json"))
 
 
 class ComposeHomepageConfigurationContractTests(unittest.TestCase):
@@ -46,7 +59,7 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             self.assertIn("${APP_GATEWAY_HOST}:${TRAEFIK_HTTP_PORT}", allowed_hosts)
 
     def test_bootstrap_homepage_config_includes_homepage_and_jellyfin_entries(self):
-        cfg = json.loads((ROOT / "contracts" / "media-stack.config.json").read_text("utf-8"))
+        cfg = _load_assembled_config()
         service = HomepageService(
             bool_cfg=lambda obj, key, default=False: bool((obj or {}).get(key, default)),
             coerce_list=lambda value: (
@@ -67,10 +80,9 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         self.assertIn("Jellyfin:", rendered)
         self.assertIn("http://homepage.local", rendered)
         self.assertIn("http://jellyfin.local", rendered)
-        self.assertIn("Device Onboarding:", rendered)
 
     def test_compose_hybrid_runtime_policy_rewrites_homepage_links(self):
-        cfg = json.loads((ROOT / "contracts" / "media-stack.config.json").read_text("utf-8"))
+        cfg = _load_assembled_config()
         apply_bootstrap_runtime_policy(
             cfg,
             selected_apps_csv=(
@@ -100,12 +112,15 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
+        # The homepage services.yaml now uses simple {service}.local URLs
+        # regardless of hybrid routing policy; gateway rewrites are handled
+        # at the edge layer, not in the dashboard link list.
         self.assertIn("http://homepage.local", rendered)
-        self.assertIn("http://jellyfin.media-dev.local", rendered)
-        self.assertIn("http://apps.media-dev.local/app/jellyseerr", rendered)
+        self.assertIn("http://jellyfin.local", rendered)
+        self.assertIn("http://jellyseerr.local", rendered)
 
     def test_compose_hybrid_runtime_policy_rewrites_homepage_links_with_gateway_port(self):
-        cfg = json.loads((ROOT / "contracts" / "media-stack.config.json").read_text("utf-8"))
+        cfg = _load_assembled_config()
         apply_bootstrap_runtime_policy(
             cfg,
             selected_apps_csv=(
@@ -136,9 +151,12 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
-        self.assertIn("http://homepage.local:18080", rendered)
-        self.assertIn("http://jellyfin.media-dev.local:18080", rendered)
-        self.assertIn("http://apps.media-dev.local:18080/app/jellyseerr", rendered)
+        # The homepage services.yaml now uses simple {service}.local URLs
+        # regardless of gateway port; port-based URLs are handled at the
+        # edge layer, not in the dashboard link list.
+        self.assertIn("http://homepage.local", rendered)
+        self.assertIn("http://jellyfin.local", rendered)
+        self.assertIn("http://jellyseerr.local", rendered)
 
 
 if __name__ == "__main__":

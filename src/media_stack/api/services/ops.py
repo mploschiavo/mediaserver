@@ -250,182 +250,43 @@ def get_gpu_info() -> dict[str, Any]:
         elif host_os == "windows":
             result["note"] = "GPU passthrough on Windows requires Docker Desktop with WSL2 backend and NVIDIA Container Toolkit. See: docs.nvidia.com/datacenter/cloud-native/container-toolkit"
         elif namespace:
-            result["note"] = "On Kubernetes, request GPU via resource limits: nvidia.com/gpu: 1 in the Jellyfin pod spec."
+            result["note"] = "On Kubernetes, request GPU via resource limits: nvidia.com/gpu: 1 in the media-server pod spec."
         else:
             result["note"] = "No containers have GPU devices mounted. To enable, update docker-compose.yml and redeploy."
 
-    # Check if Jellyfin container has GPU passthrough
+    # Check if Jellyfin container has GPU passthrough (delegated to app layer)
     try:
         import docker
         client = docker.from_env()
-        jf = client.containers.get("jellyfin")
-        devices = jf.attrs.get("HostConfig", {}).get("Devices") or []
-        groups = jf.attrs.get("HostConfig", {}).get("GroupAdd") or []
-        if any("/dev/dri" in str(d) for d in devices):
-            result["jellyfin_has_gpu"] = True
-        elif any("dri" in str(d) for d in devices):
-            result["jellyfin_has_gpu"] = True
-        # Check runtime for nvidia
-        runtime = jf.attrs.get("HostConfig", {}).get("Runtime", "")
-        if runtime == "nvidia":
-            result["jellyfin_has_gpu"] = True
+        from media_stack.services.apps.jellyfin.gpu import check_jellyfin_gpu
+        result.update(check_jellyfin_gpu(client))
     except Exception:
         pass
-
-    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
-    jf_system = Path(config_root) / "jellyfin" / "config" / "system.xml"
-    if jf_system.is_file():
-        try:
-            import re
-            text = jf_system.read_text(encoding="utf-8")
-            result["jellyfin_configured"] = "EnableHardwareDecoding" in text and ">true<" in text.lower()
-            m = re.search(r"<HardwareAccelerationType>(\w+)</HardwareAccelerationType>", text)
-            if m:
-                result["jellyfin_hw_type"] = m.group(1)
-        except Exception:
-            pass
 
     if result["detected"]:
         gpu = result["gpus"][0]
         gpu_type = gpu.get("type", "")
         if "intel" in gpu_type or "va-api" in gpu_type:
             result["hw_accel_type"] = "vaapi"
-            result["compose_snippet"] = (
-                "# Add to jellyfin service in docker-compose.yml:\n"
-                "    devices:\n      - /dev/dri:/dev/dri\n"
-                "    group_add:\n      - \"44\"   # video\n      - \"109\"  # render"
-            )
         elif "nvidia" in gpu_type:
             result["hw_accel_type"] = "nvenc"
-            result["compose_snippet"] = (
-                "# Use the jellyfin-nvidia profile:\n# docker compose --profile nvidia up -d\n"
-                "# Or add to jellyfin service:\n    runtime: nvidia\n    environment:\n"
-                "      - NVIDIA_VISIBLE_DEVICES=all\n      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility"
-            )
+        if "hw_accel_type" in result:
+            from media_stack.services.apps.jellyfin.gpu import build_compose_snippet
+            result["compose_snippet"] = build_compose_snippet(result["hw_accel_type"])
         result["can_auto_configure"] = result.get("jellyfin_has_gpu", False)
     return result
 
 
 def enable_gpu_transcoding() -> dict[str, Any]:
-    """Auto-configure Jellyfin for hardware transcoding based on detected GPU.
+    """Auto-configure media server for hardware transcoding based on detected GPU.
 
-    Creates a backup of system.xml before modifying. If Jellyfin fails to
-    restart, automatically rolls back to the backup.
+    Delegates to the media-server app layer which owns the config parsing
+    and container restart logic.
     """
-    gpu_info = get_gpu_info()
-
-    if not gpu_info.get("detected"):
-        return {"status": "error", "error": "No GPU detected. Mount GPU device to container first."}
-
-    if not gpu_info.get("jellyfin_has_gpu"):
-        return {"status": "error", "error": "Jellyfin container does not have GPU devices mounted.",
-                "compose_snippet": gpu_info.get("compose_snippet", "")}
-
-    hw_type = gpu_info.get("hw_accel_type", "vaapi")
-    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
-    system_xml = config_root / "jellyfin" / "config" / "system.xml"
-
-    if not system_xml.is_file():
-        return {"status": "error", "error": "Jellyfin system.xml not found. Start Jellyfin first."}
-
-    import re
-
-    original_text = system_xml.read_text(encoding="utf-8")
-
-    if "</ServerConfiguration>" not in original_text:
-        return {"status": "error", "error": "system.xml does not contain expected XML structure."}
-
-    # Backup before modifying
-    backup_path = system_xml.with_suffix(".xml.gpu-backup")
-    try:
-        backup_path.write_text(original_text, encoding="utf-8")
-    except Exception as exc:
-        return {"status": "error", "error": f"Failed to create backup: {exc}"}
-
-    text = original_text
-    changes: list[str] = []
-
-    def _set_xml(content: str, tag: str, value: str) -> str:
-        pattern = rf"<{tag}>.*?</{tag}>"
-        replacement = f"<{tag}>{value}</{tag}>"
-        if re.search(pattern, content):
-            return re.sub(pattern, replacement, content)
-        return content.replace("</ServerConfiguration>",
-                               f"  {replacement}\n</ServerConfiguration>")
-
-    text = _set_xml(text, "HardwareAccelerationType", hw_type)
-    changes.append(f"HardwareAccelerationType={hw_type}")
-
-    for tag in ("EnableHardwareDecoding", "EnableHardwareEncoding"):
-        text = _set_xml(text, tag, "true")
-        changes.append(f"{tag}=true")
-
-    if hw_type == "vaapi":
-        text = _set_xml(text, "VaapiDevice", "/dev/dri/renderD128")
-        changes.append("VaapiDevice=/dev/dri/renderD128")
-        for codec in ("EnableTonemapping", "EnableVppTonemapping"):
-            text = _set_xml(text, codec, "true")
-            changes.append(f"{codec}=true")
-
-    try:
-        system_xml.write_text(text, encoding="utf-8")
-    except Exception as exc:
-        return {"status": "error", "error": f"Failed to write system.xml: {exc}"}
-
-    # Restart Jellyfin and verify it comes back healthy
-    restart_note = ""
-    rollback = False
-    try:
-        import docker
-        client = docker.from_env()
-        jf = client.containers.get("jellyfin")
-        jf.restart(timeout=30)
-        # Wait up to 30s for Jellyfin to come back healthy
-        import time as _time
-        for _ in range(15):
-            _time.sleep(2)
-            jf.reload()
-            status = jf.status
-            if status == "running":
-                health = (jf.attrs.get("State") or {}).get("Health", {}).get("Status", "")
-                if health in ("healthy", ""):
-                    restart_note = "Jellyfin restarted and running."
-                    break
-            elif status in ("exited", "dead"):
-                rollback = True
-                restart_note = "Jellyfin failed to start after config change."
-                break
-        else:
-            restart_note = "Jellyfin restarted (health check pending)."
-    except Exception:
-        restart_note = "Restart Jellyfin manually to apply changes."
-
-    if rollback:
-        # Roll back to backup
-        try:
-            system_xml.write_text(backup_path.read_text(encoding="utf-8"), encoding="utf-8")
-            import docker
-            client = docker.from_env()
-            client.containers.get("jellyfin").restart(timeout=30)
-            restart_note += " Rolled back to previous config and restarted."
-        except Exception:
-            restart_note += " Rollback written but manual restart needed."
-        return {
-            "status": "error",
-            "error": "Jellyfin crashed after enabling GPU transcoding. Config rolled back.",
-            "hw_accel_type": hw_type,
-            "changes": changes,
-            "note": restart_note,
-            "backup": str(backup_path),
-        }
-
-    return {
-        "status": "ok",
-        "hw_accel_type": hw_type,
-        "changes": changes,
-        "note": restart_note,
-        "backup": str(backup_path),
-    }
+    from media_stack.services.apps.jellyfin.gpu import (
+        enable_gpu_transcoding as _enable,
+    )
+    return _enable()
 
 
 def take_snapshot() -> dict[str, Any]:
@@ -438,13 +299,16 @@ def take_snapshot() -> dict[str, Any]:
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 
     snapshot: dict[str, str] = {}
-    patterns = [
-        ("sonarr", "config.xml"), ("radarr", "config.xml"), ("lidarr", "config.xml"),
-        ("readarr", "config.xml"), ("prowlarr", "config.xml"),
-        ("bazarr", "config/config.yaml"), ("sabnzbd", "sabnzbd.ini"),
-        ("jellyseerr", "settings.json"), ("homepage", "services.yaml"),
-        ("tautulli", "config.ini"),
-    ]
+    # Build snapshot list from the service registry — every service that
+    # declares an api_key_config path has a config file worth snapshotting.
+    from .registry import SERVICES as _SERVICES
+    patterns: list[tuple[str, str]] = []
+    for svc in _SERVICES:
+        if svc.api_key_config:
+            # api_key_config is e.g. "sonarr/config.xml" → ("sonarr", "config.xml")
+            parts = svc.api_key_config.split("/", 1)
+            if len(parts) == 2:
+                patterns.append((parts[0], parts[1]))
     for app, rel in patterns:
         path = config_root / app / rel
         if path.is_file():

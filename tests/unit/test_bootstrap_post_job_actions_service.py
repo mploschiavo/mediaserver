@@ -1,28 +1,28 @@
 import unittest
 
-from media_stack.cli.workflows.bootstrap_post_job_actions_service import (
-    BootstrapPostJobAction,
-    BootstrapPostJobActionsService,
+from media_stack.cli.workflows.controller_post_job_actions_service import (
+    ControllerPostJobAction,
+    ControllerPostJobActionsService,
 )
 
 
-class BootstrapPostJobActionsServiceTests(unittest.TestCase):
+class ControllerPostJobActionsServiceTests(unittest.TestCase):
     def test_runs_only_matching_actions(self):
-        service = BootstrapPostJobActionsService(
+        service = ControllerPostJobActionsService(
             actions=[
-                BootstrapPostJobAction(
+                ControllerPostJobAction(
                     marker="Jellyseerr: settings file bootstrap applied",
                     phase_name="Restart Jellyseerr after file bootstrap",
                     deployment="jellyseerr",
                     restart_if_exists=False,
                 ),
-                BootstrapPostJobAction(
+                ControllerPostJobAction(
                     marker="Homepage: wrote services config",
                     phase_name="Restart Homepage after config sync",
                     deployment="homepage",
                     restart_if_exists=True,
                 ),
-                BootstrapPostJobAction(
+                ControllerPostJobAction(
                     marker="Bazarr: wrote integration config",
                     phase_name="Restart Bazarr after config sync",
                     deployment="bazarr",

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
-CoerceListFn = Callable[[Any], list[Any]]
 ResolvePathFn = Callable[[str | Path, str], Path]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
@@ -21,7 +20,6 @@ RenderYamlFn = Callable[[Any, int], list[str]]
 @dataclass
 class JellyfinAutoCollectionsService:
     bool_cfg: BoolCfgFn
-    coerce_list: CoerceListFn
     resolve_path: ResolvePathFn
     normalize_url: NormalizeUrlFn
     wait_for_service: WaitForServiceFn

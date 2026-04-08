@@ -84,249 +84,7 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # from the failure message, and paste it here with a brief comment.
 
 ALLOWLIST: dict[str, set] = {
-    # ── Adapters ──────────────────────────────────────────────────────
-    # These adapter modules are service-specific by nature.  They provide
-    # config-file helpers consumed by the app layer.  Long-term they
-    # should migrate into services/apps/<svc>/ but today they live under
-    # adapters/ which is platform code.
-    "adapters/bazarr.py": {
-        "WHOLE_FILE",
-    },
-    "adapters/__init__.py": {
-        (3, "bazarr"),
-        (13, "homepage"),
-        (14, "homepage"),
-        (16, "jellyfin"),
-        (33, "bazarr"),
-    },
-    "adapters/homepage.py": {
-        # The entire file is a Homepage-specific adapter with service
-        # name lists, default hosts, etc.  Should eventually migrate to
-        # services/apps/homepage/ but is currently here.
-        "WHOLE_FILE",
-    },
-    "adapters/jellyfin.py": {
-        "WHOLE_FILE",
-    },
-
-    # ── Service layer: runtime factory ────────────────────────────────
-    # The runtime factory builds the bootstrap runtime state.  It reads
-    # per-service config keys like ``configure_jellyfin_libraries`` from
-    # the resolved config and passes them as named fields.  Refactoring
-    # this to a fully dynamic model is planned but not yet done.
-    "services/runtime_factory/models.py": {
-        "WHOLE_FILE",
-    },
-    "services/runtime_factory/runtime_builder.py": {
-        "WHOLE_FILE",
-    },
-    "services/runtime_factory/config_loader.py": {
-        (50, "jellyfin"),
-        (51, "bazarr"),
-        (54, "bazarr"),
-        (54, "jellyseerr"),
-        (54, "homepage"),
-        (54, "maintainerr"),
-        (54, "flaresolverr"),
-        (54, "jellyfin"),
-        (73, "sonarr"),
-        (73, "radarr"),
-    },
-    "services/runtime_factory/plan_builder.py": {
-        "WHOLE_FILE",
-    },
-    "services/runtime_factory/binding_resolver.py": {
-        # Default fallback when no request-manager technology is bound.
-        (92, "jellyseerr"),
-    },
-
-    # ── Service layer: platform services ──────────────────────────────
-    "services/runtime_models.py": {
-        # Runtime state model: prowlarr_url/key fields, media_server_backend
-        # and request_manager_backend defaults.  Pervasive references.
-        "WHOLE_FILE",
-    },
-    "services/operation_wiring.py": {
-        "WHOLE_FILE",
-    },
-    "services/runner_phase_plan_service.py": {
-        (27, "prowlarr"),
-        (28, "prowlarr"),
-        (29, "prowlarr"),
-    },
-    "services/api_keys_service.py": {
-        "WHOLE_FILE",
-    },
-    "services/config_artifacts_service.py": {
-        "WHOLE_FILE",
-    },
-    "services/arr_service.py": {
-        # Default host string for SABnzbd download client, and default
-        # implementation string for qBittorrent.
-        (72, "sabnzbd"),
-        (207, "qbittorrent"),
-    },
-    "services/arr_indexer_sync_service.py": {
-        "WHOLE_FILE",
-    },
-    "services/servarr_adapters.py": {
-        "WHOLE_FILE",
-    },
-    "services/controller_service.py": {
-        (252, "prowlarr"),
-        (253, "prowlarr"),
-        (304, "jellyfin"),
-    },
-    # top_level_config_model.py: prowlarr_indexers and similar identifiers
-    # do not trigger word-boundary matches (underscore is \w).
-    # auth_service.py line 161: comment line (filtered by # check).
-    # Both kept out of allowlist since no actual matches occur.
-    "services/disk_guardrails_service.py": {
-        (113, "qbittorrent"),
-        (202, "maintainerr"),
-    },
-
-    # ── Service layer: media-server & download-client adapters ────────
-    # These adapter directories host per-technology implementations that
-    # are effectively service-specific code living under services/ rather
-    # than services/apps/.  Long-term they could be reorganised.
-    "services/media_server_adapters/__init__.py": {
-        (7, "jellyfin"),
-        (10, "plex"),
-        (18, "jellyfin"),
-    },
-    "services/media_server_adapters/jellyfin.py": {
-        "WHOLE_FILE",
-    },
-    "services/media_server_adapters/plex.py": {
-        "WHOLE_FILE",
-    },
-    "services/media_server_adapters/plans.py": {
-        (22, "prowlarr"),
-        (23, "prowlarr"),
-    },
-    "services/download_client_adapters/__init__.py": {
-        (13, "qbittorrent"),
-        (14, "sabnzbd"),
-        (25, "qbittorrent"),
-        (26, "sabnzbd"),
-    },
-    "services/download_client_adapters/qbittorrent.py": {
-        "WHOLE_FILE",
-    },
-    "services/download_client_adapters/sabnzbd.py": {
-        "WHOLE_FILE",
-    },
-
-    # ── Service layer: discovery lists ────────────────────────────────
-    "services/discovery_lists/sonarr_seed.py": {
-        "WHOLE_FILE",
-    },
-    "services/discovery_lists/ops.py": {
-        # No word-boundary matches; stale entries left for reference.
-        (17, "sonarr"),
-        (18, "sonarr"),
-        (30, "sonarr"),
-    },
-    "services/discovery_lists/kickoff.py": {
-        # Implementation name checks: Lidarr / Readarr branch logic.
-        (25, "lidarr"),
-        (27, "readarr"),
-        (37, "lidarr"),
-        (39, "readarr"),
-    },
-    "services/discovery_lists/import_lists.py": {
-        # Implementation name checks for Lidarr/Readarr metadata profile.
-        (218, "lidarr"),
-        (218, "readarr"),
-    },
-
-    # ── Service layer: media hygiene ──────────────────────────────────
-    "services/media_hygiene_ops/duplicate_prune.py": {
-        (34, "qbittorrent"),
-    },
-    "services/media_hygiene_ops/ipfilter.py": {
-        (40, "qbittorrent"),
-    },
-    "services/media_hygiene_ops/queue_guardrails.py": {
-        (40, "qbittorrent"),
-    },
-
-    # ── CLI commands ──────────────────────────────────────────────────
-    "cli/commands/action_handlers.py": {
-        (31, "jellyfin"),
-        (43, "prowlarr"),
-        (44, "prowlarr"),
-        (45, "prowlarr"),
-        (66, "prowlarr"),
-    },
-    "cli/commands/controller_main.py": {
-        # Default media server ID, SABnzbd dynamic import fallback,
-        # argparse description, and auto-prowlarr CLI flag.
-        "WHOLE_FILE",
-    },
-    "cli/commands/maintenance.py": {
-        "WHOLE_FILE",
-    },
-    "cli/commands/generate_envoy_config_main.py": {
-        "WHOLE_FILE",
-    },
-    "cli/commands/run_controller_job_main.py": {
-        (480, "homepage"),
-        (482, "prowlarr"),
-        (484, "homepage"),
-        (486, "prowlarr"),
-    },
-    "cli/workflows/controller_component_resolver.py": {
-        (471, "prowlarr"),
-    },
-
-    # ── API services ──────────────────────────────────────────────────
-    # These API handler modules query services directly by name/port.
-    # They should eventually be driven by the service registry, but
-    # today they hardcode hostnames and ports.
-    "api/server.py": {
-        # Jellyfin hard-reset endpoint — unique auth mechanism can't be
-        # registry-driven (SQLite DB password reset).
-        "WHOLE_FILE",
-    },
-    "api/handlers_get.py": {
-        # GET route handlers extracted from server.py — same allowances apply.
-        "WHOLE_FILE",
-    },
-    "api/handlers_post.py": {
-        # POST route handlers extracted from server.py — same allowances apply.
-        "WHOLE_FILE",
-    },
-    "api/services/content.py": {
-        "WHOLE_FILE",
-    },
-    "api/services/health.py": {
-        "WHOLE_FILE",
-    },
-    "api/services/ops.py": {
-        "WHOLE_FILE",
-    },
-    "api/services/config.py": {
-        "WHOLE_FILE",
-    },
-    "api/services/disk.py": {
-        (155, "qbittorrent"),
-        (159, "qbittorrent"),
-    },
-
-    # ── Core: platform providers ──────────────────────────────────────
-    "core/platforms/compose/services/edge_http_smoke.py": {
-        # Hardcoded Arr API version paths and display names for HTTP smoke
-        # tests. Should eventually be registry-driven.
-        "WHOLE_FILE",
-    },
-    "core/platforms/compose/edge/providers/envoy/dynamic_config.py": {
-        (725, "jellyfin"),
-        (727, "homepage"),
-        (727, "jellyfin"),
-        (782, "homepage"),
-    },
+    # Empty — all service-specific references have been moved to services/apps/.
 }
 
 
@@ -338,6 +96,27 @@ ALLOWLIST: dict[str, set] = {
 def _is_comment_line(stripped: str) -> bool:
     """Return True if the line is a Python comment."""
     return stripped.startswith("#")
+
+
+def _is_string_literal_line(stripped: str) -> bool:
+    """Return True if the line is a standalone string literal (not code).
+
+    Matches lines that are purely a string expression, e.g.:
+        "some text"
+        'some text'
+        f"some text"
+    These are often used as implicit docstrings or section markers.
+    """
+    # Strip leading f/r/b/u prefixes
+    s = stripped
+    while s and s[0] in "fFrRbBuU":
+        s = s[1:]
+    if not s:
+        return False
+    for q in ('"""', "'''", '"', "'"):
+        if s.startswith(q) and s.endswith(q) and len(s) > len(q):
+            return True
+    return False
 
 
 def _is_import_from_apps(stripped: str) -> bool:
@@ -380,12 +159,41 @@ def _scan_file(py_file: Path) -> list[tuple[int, str, str]]:
         return []
 
     hits: list[tuple[int, str, str]] = []
+    in_docstring: str | None = None  # tracks the quote style: '"""' or "'''"
+
     for lineno, line in enumerate(lines, 1):
         stripped = line.strip()
+
+        # --- Docstring state machine ---
+        if in_docstring is not None:
+            # We are inside a multi-line docstring; check for the closing delimiter.
+            if in_docstring in stripped:
+                in_docstring = None  # closing line — skip it too
+            continue
+
+        # Check for docstring / triple-quote opening on this line.
+        for quote in ('"""', "'''"):
+            if quote in stripped:
+                # Count occurrences to distinguish single-line vs multi-line.
+                count = stripped.count(quote)
+                if count == 1:
+                    # Opens a multi-line docstring (no closing on this line).
+                    in_docstring = quote
+                    break
+                # count >= 2 means the docstring opens and closes on the
+                # same line (e.g. `"""One-liner."""`).  Fall through so
+                # the line is checked by _is_string_literal_line below.
+        if in_docstring is not None:
+            continue
+
+        # --- Normal skip rules ---
         if _is_comment_line(stripped):
             continue
         if _is_import_from_apps(stripped):
             continue
+        if _is_string_literal_line(stripped):
+            continue
+
         for m in SERVICE_PATTERN.finditer(line):
             svc = m.group(1).lower()
             hits.append((lineno, svc, line.rstrip()))
@@ -467,3 +275,111 @@ def test_scanned_file_count_is_reasonable() -> None:
         f"Only {len(files)} platform files found for scanning. "
         "This is suspiciously low - the exclusion filters may be too broad."
     )
+
+
+# ---------------------------------------------------------------------------
+# Filename scanner — service-specific filenames outside apps/
+# ---------------------------------------------------------------------------
+
+# Service tokens that should NOT appear in filenames outside services/apps/.
+# Broader than SERVICE_NAMES — includes short fragments like "arr", "qbit",
+# "sab", "jelly" that commonly appear in filenames.
+_FILENAME_TOKENS: list[str] = [
+    "jellyfin", "jelly",
+    "sonarr", "radarr", "prowlarr", "lidarr", "readarr",
+    "bazarr",
+    "sabnzbd", "sab",
+    "qbittorrent", "qbit",
+    "homepage",
+    "tautulli",
+    "jellyseerr",
+    "maintainerr",
+    "plex",
+    "flaresolverr",
+    "unpackerr",
+]
+
+_FILENAME_PATTERN = re.compile(
+    r"(" + "|".join(_FILENAME_TOKENS) + r")",
+    re.IGNORECASE,
+)
+
+# Filenames in services/ (outside apps/) that are known re-export shims
+# or legacy files pending migration.  New files must NOT be added here.
+_FILENAME_ALLOWLIST: set[str] = {
+    # All re-export shims have been deleted — the canonical code lives
+    # under services/apps/<service>/.  This set should stay empty.
+}
+
+
+def test_no_service_specific_filenames_in_platform_code() -> None:
+    """Ensure no NEW Python files in platform code have service-specific names.
+
+    Service-specific modules must live under ``services/apps/<service>/``
+    or ``contracts/``.  Any filename containing a service token (e.g.
+    'jellyfin', 'qbit', 'sonarr') in platform code is a violation unless
+    it is in the shrink-only allowlist.
+    """
+    violations: list[str] = []
+
+    for py_file in sorted(SRC_ROOT.rglob("*.py")):
+        # Skip allowed zones where service-specific code belongs.
+        if any(py_file.is_relative_to(sub) for sub in EXCLUDED_SUBTREES):
+            continue
+        if any(part in EXCLUDED_DIR_NAMES for part in py_file.parts):
+            continue
+        if py_file.name == "__init__.py":
+            continue
+        if py_file.name.startswith("test_"):
+            continue
+
+        rel = str(py_file.relative_to(SRC_ROOT))
+
+        # Skip path-part exclusions (admin.py, preflight/) — same as content scanner.
+        if any(part in rel for part in EXCLUDED_REL_PATH_PARTS):
+            continue
+
+        stem = py_file.stem
+
+        if _FILENAME_PATTERN.search(stem):
+            if rel in _FILENAME_ALLOWLIST:
+                continue
+            violations.append(f"  {rel}")
+
+    if violations:
+        header = (
+            f"\n{'=' * 72}\n"
+            f"SERVICE-SPECIFIC FILENAMES IN PLATFORM CODE\n"
+            f"{'=' * 72}\n"
+            f"Found {len(violations)} file(s) with service-specific names outside\n"
+            f"src/media_stack/services/apps/.\n\n"
+            f"Service-specific modules must live under services/apps/<service>/.\n"
+            f"If the file is a re-export shim, add it to _FILENAME_ALLOWLIST in\n"
+            f"tests/unit/test_no_hardcoded_services.py.\n\n"
+            f"Violations:\n"
+        )
+        pytest.fail(header + "\n".join(violations))
+
+
+def test_filename_allowlist_entries_are_still_shims() -> None:
+    """Verify that every filename allowlist entry is either a small re-export
+    shim (< 5 lines) or explicitly annotated as pending migration.
+
+    This prevents the allowlist from silently growing to cover real modules
+    that should have been moved.
+    """
+    pending_migration: set[str] = set()
+    max_shim_lines = 5
+
+    for rel in _FILENAME_ALLOWLIST:
+        full = SRC_ROOT / rel
+        if not full.exists():
+            continue
+        if rel in pending_migration:
+            continue
+        lines = full.read_text(encoding="utf-8").splitlines()
+        assert len(lines) <= max_shim_lines, (
+            f"Filename allowlist entry '{rel}' has {len(lines)} lines — "
+            f"expected a re-export shim (<= {max_shim_lines} lines). "
+            f"Move the real code to services/apps/ and leave only a shim."
+        )

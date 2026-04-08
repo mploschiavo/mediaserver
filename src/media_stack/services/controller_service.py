@@ -249,8 +249,8 @@ class ControllerService:
                 cfg=rt.cfg,
                 arr_apps=rt.arr_apps,
                 app_keys=rt.app_keys,
-                prowlarr_url=rt.prowlarr_url,
-                prowlarr_key=rt.prowlarr_key,
+                indexer_manager_url=rt.service_urls.get("indexer_manager", ""),
+                indexer_manager_key=rt.service_keys.get("indexer_manager", ""),
                 app_auth_cfg=rt.app_auth_cfg,
                 arr_media_management_cfg=rt.arr_media_management_cfg,
                 arr_download_handling_cfg=rt.arr_download_handling_cfg,
@@ -300,8 +300,8 @@ class ControllerService:
 
             qbit_login_ok, sab_api_key = self._run_full_prechecks(rt)
             self._run_servarr_pipeline(rt, qbit_login_ok=qbit_login_ok, sab_api_key=sab_api_key)
-            # Core bootstrap complete — apps are configured with download clients,
-            # root folders, and quality profiles. Post-servarr steps (Jellyfin
+            # Core bootstrap complete -- apps are configured with download clients,
+            # root folders, and quality profiles.  Post-servarr steps (media-server
             # plugins, Live TV, prewarm, disk guardrails, media hygiene) run as
             # a separate queued "finalize" action so the dashboard shows complete
             # faster and downloads can start immediately.

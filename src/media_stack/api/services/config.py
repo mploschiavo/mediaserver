@@ -208,17 +208,26 @@ def get_backup(state: Any) -> bytes:
     if resolved_profile:
         backup["profile_raw"] = Path(resolved_profile).read_text(encoding="utf-8", errors="replace")
 
-    # Service configs from config root (sonarr/config.xml, sabnzbd/sabnzbd.ini, etc.)
+    # Service configs from config root — registry-driven paths
+    from .registry import SERVICES as _backup_svcs
     config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
     service_configs: dict[str, str] = {}
     if config_root.is_dir():
-        config_files = [
-            "sonarr/config.xml", "radarr/config.xml", "lidarr/config.xml",
-            "readarr/config.xml", "prowlarr/config.xml", "bazarr/config/config.ini",
-            "sabnzbd/sabnzbd.ini", "jellyseerr/settings.json",
-            "homepage/services.yaml", "homepage/settings.yaml",
-        ]
-        for rel_path in config_files:
+        # Collect config file paths from the service registry
+        config_files: list[str] = []
+        for svc in _backup_svcs:
+            if svc.api_key_config:
+                config_files.append(svc.api_key_config)
+            if svc.password_config:
+                config_files.append(svc.password_config)
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique_configs: list[str] = []
+        for cf in config_files:
+            if cf not in seen:
+                seen.add(cf)
+                unique_configs.append(cf)
+        for rel_path in unique_configs:
             full_path = config_root / rel_path
             if full_path.is_file():
                 try:

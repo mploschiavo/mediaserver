@@ -17,13 +17,13 @@ from media_stack.services.runtime_platform import (
     resolve_path,
     wait_for_service,
 )
-from media_stack.services.runtime_secrets import api_keys_service, read_api_key
+from media_stack.services.runtime_secrets import read_api_key
 
 from .policy_service import MaintainerrPolicyService
 
 
 def _read_jellyseerr_api_key(config_root, timeout_seconds=120):
-    return api_keys_service().read_jellyseerr_api_key(config_root, timeout_seconds=timeout_seconds)
+    return read_api_key(config_root, "jellyseerr")
 
 
 def _maintainerr_policy_service(_cfg=None) -> MaintainerrPolicyService:

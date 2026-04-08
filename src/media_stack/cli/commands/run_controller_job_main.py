@@ -477,14 +477,8 @@ class RunBootstrapJobRunner:
             encoding="utf-8",
         )
         # Log key config values after policy application.
-        homepage_hosts = (cfg.get("homepage") or {}).get("hosts", [])
-        technology_bindings = cfg.get("technology_bindings", {})
-        prowlarr_url = cfg.get("prowlarr_url", "")
-        app_auth_url_bases = (cfg.get("app_auth") or {}).get("path_prefix_url_base_by_app", {})
-        info(f"Config policy applied: homepage.hosts={homepage_hosts}")
-        info(f"Config policy applied: technology_bindings={technology_bindings}")
-        info(f"Config policy applied: prowlarr_url={prowlarr_url}")
-        info(f"Config policy applied: app_auth.url_bases={app_auth_url_bases}")
+        from media_stack.services.apps.stack.config_diagnostics import log_config_policy_values
+        log_config_policy_values(cfg, info)
         info(
             "Bootstrap preconfigure flags: "
             f"api_keys={'on' if self.cfg.preconfigure_api_keys else 'off'}, "

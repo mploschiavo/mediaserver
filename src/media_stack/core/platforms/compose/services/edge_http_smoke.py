@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib import parse
 
+from media_stack.api.services.registry import SERVICE_MAP
+from media_stack.services.apps.homepage.constants import DASHBOARD_SLUG, DASHBOARD_LABEL
 from media_stack.core.platforms.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
 from media_stack.core.platforms.compose.services.labels import ComposeLabelService
 from media_stack.core.platforms.compose.services.spec import ComposeSpecResolver
@@ -26,21 +28,29 @@ _OPTIONAL_ASSET_BASENAMES = {
     "safari-pinned-tab.svg",
     "site.webmanifest",
 }
-_SERVARR_STATUS_API_VERSION = {
-    "sonarr": "v3",
-    "radarr": "v3",
-    "lidarr": "v1",
-    "readarr": "v1",
-    "prowlarr": "v1",
-}
-_SERVARR_APP_NAME = {
-    "sonarr": "Sonarr",
-    "radarr": "Radarr",
-    "lidarr": "Lidarr",
-    "readarr": "Readarr",
-    "prowlarr": "Prowlarr",
-}
+_SERVARR_STATUS_RE = re.compile(r"/api/(v\d+)/system/status$")
 _XML_API_KEY_RE = re.compile(r"<ApiKey>([^<]+)</ApiKey>", flags=re.IGNORECASE)
+
+
+def _build_servarr_maps() -> tuple[dict[str, str], dict[str, str]]:
+    """Build servarr API-version and app-name maps from the service registry.
+
+    A service is considered a servarr app when its ``version_path`` matches
+    ``/api/v<N>/system/status``.  Returns ``(api_version_map, app_name_map)``
+    keyed by service id.
+    """
+    api_versions: dict[str, str] = {}
+    app_names: dict[str, str] = {}
+    for svc in SERVICE_MAP.values():
+        m = _SERVARR_STATUS_RE.search(svc.version_path)
+        if not m:
+            continue
+        api_versions[svc.id] = m.group(1)
+        app_names[svc.id] = svc.name
+    return api_versions, app_names
+
+
+_SERVARR_STATUS_API_VERSION, _SERVARR_APP_NAME = _build_servarr_maps()
 
 
 def _extract_backtick_tokens(value: str) -> tuple[str, ...]:
@@ -417,28 +427,29 @@ class ComposeEdgeHttpSmokeService:
         gateway_port: int,
         app_prefix: str,
     ) -> tuple[str, ...]:
-        api_path = f"{app_prefix}/homepage/api/services"
+        api_path = f"{app_prefix}/{DASHBOARD_SLUG}/api/services"
         response = self._http_get(
             host_header=gateway_host,
             port=gateway_port,
             path=api_path,
             headers={"Accept": "application/json"},
         )
+        _fail_prefix = f"Compose {DASHBOARD_LABEL} tile validation failed: "
         if response.status >= 400:
             raise RuntimeError(
-                "Compose homepage tile validation failed: "
+                f"{_fail_prefix}"
                 f"services API returned HTTP {response.status} at {api_path}."
             )
         try:
             payload = json.loads(str(response.body or ""))
         except Exception as exc:
             raise RuntimeError(
-                "Compose homepage tile validation failed: "
+                f"{_fail_prefix}"
                 f"services API payload is not valid JSON ({exc})."
             ) from exc
         if not isinstance(payload, list):
             raise RuntimeError(
-                "Compose homepage tile validation failed: " "services API payload is not a list."
+                f"{_fail_prefix}" "services API payload is not a list."
             )
 
         out: list[str] = []
@@ -471,7 +482,7 @@ class ComposeEdgeHttpSmokeService:
         if not out:
             sample = ", ".join(discovered_hrefs[:5]) if discovered_hrefs else "<none>"
             raise RuntimeError(
-                "Compose homepage tile validation failed: "
+                f"Compose {DASHBOARD_LABEL} tile validation failed: "
                 "services API returned no gateway path-prefix tile links "
                 f"(expected host={gateway_host} with prefix {app_prefix}/..., "
                 f"sample_hrefs={sample})."
@@ -514,9 +525,9 @@ class ComposeEdgeHttpSmokeService:
                 failures=failures,
             )
 
-        homepage_path = f"{app_prefix}/homepage"
+        dashboard_path = f"{app_prefix}/{DASHBOARD_SLUG}"
         checked_links = 0
-        if homepage_path in set(routes):
+        if dashboard_path in set(routes):
             tile_paths = self._homepage_tile_paths(
                 gateway_host=gateway_host,
                 gateway_port=gateway_port,
@@ -533,7 +544,7 @@ class ComposeEdgeHttpSmokeService:
 
         self.info(
             "Compose edge HTTP smoke check: "
-            f"validated {checked_routes} path route(s) and {checked_links} homepage tile link(s) "
+            f"validated {checked_routes} path route(s) and {checked_links} dashboard tile link(s) "
             f"via {gateway_host}:{gateway_port}."
         )
         if failures:

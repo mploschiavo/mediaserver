@@ -614,7 +614,8 @@ class TestResetPasswordServiceFilter(unittest.TestCase):
     @patch("media_stack.api.services.admin.SERVICE_MAP", {})
     def test_reset_all_services_when_target_is_none(self, mock_pw_api, mock_pw_config, mock_persist):
         from media_stack.api.services.admin import reset_password
-        result = reset_password("newpass123", None)
+        with patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": "old", "STACK_ADMIN_USERNAME": "admin"}):
+            result = reset_password("newpass123", None)
         self.assertEqual(result["status"], "updated")
         # With empty SERVICE_MAP and no services, only env update happens
         self.assertIsInstance(result["services"], list)

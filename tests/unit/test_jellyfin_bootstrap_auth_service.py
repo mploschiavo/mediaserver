@@ -1,6 +1,6 @@
 import unittest
 
-from media_stack.services.apps.jellyfin.cli.jellyfin_bootstrap_auth_service import (
+from media_stack.services.apps.jellyfin.cli.jellyfin_controller_auth_service import (
     JellyfinBootstrapAuthService,
 )
 

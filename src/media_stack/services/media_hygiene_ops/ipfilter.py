@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from urllib import request
 
+from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
+
 
 def run_qbit_ipfilter_refresh(
     ops,
@@ -37,7 +39,7 @@ def run_qbit_ipfilter_refresh(
             "qB IP filter refresh requires qB credentials (STACK_ADMIN_USERNAME/STACK_ADMIN_PASSWORD)."
         )
 
-    qbit_url = ops.normalize_url((qbit_cfg or {}).get("url", "http://qbittorrent:8080"))
+    qbit_url = ops.normalize_url((qbit_cfg or {}).get("url", default_torrent_client_url()))
     required = ops.bool_cfg(ipf_cfg, "required", False)
     apply_existing_on_failure = ops.bool_cfg(ipf_cfg, "apply_existing_on_download_failure", True)
     source_url = str(

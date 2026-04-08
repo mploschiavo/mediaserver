@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..apps.servarr.config_models import ArrDiscoveryListEntry, ArrDiscoveryListsConfig
+from ..apps.servarr.technologies.traits import get_import_list_traits
 from ..apps.servarr.config_models_discovery import (
     GenericDiscoveryProviderOptions,
     GoodreadsListImportOptions,
@@ -13,7 +14,7 @@ from ..apps.servarr.config_models_discovery import (
     TraktPopularImportOptions,
 )
 from .common import coerce_for_example
-from .sonarr_seed import ensure_sonarr_seed_series
+from media_stack.services.apps.sonarr.sonarr_seed import ensure_sonarr_seed_series
 
 
 def resolve_import_list_definitions(
@@ -215,7 +216,7 @@ def ensure_arr_discovery_lists_for_app(
 
     app_impl = str(app_cfg.get("implementation") or "").strip().lower()
     selected_metadata_profile_id = None
-    if app_impl in ("lidarr", "readarr"):
+    if get_import_list_traits(app_impl).requires_metadata_profile:
         for metadata_endpoint in ("metadataprofile", "metadataProfile"):
             try:
                 selected_metadata_profile_id = service.pick_first_profile_id(

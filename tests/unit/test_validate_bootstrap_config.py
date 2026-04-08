@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = ROOT / "src" / "media_stack" / "cli" / "commands" / "validate_bootstrap_config_main.py"
+SCRIPT_PATH = ROOT / "src" / "media_stack" / "cli" / "commands" / "validate_controller_config_main.py"
 
 
 def _load_module():
@@ -239,8 +239,9 @@ class ValidateBootstrapConfigTests(unittest.TestCase):
             errors,
         )
 
-    def test_basic_checks_reject_missing_config_version(self):
+    def test_basic_checks_reject_invalid_config_version(self):
         cfg = {
+            "config_version": "not-an-int",
             "prowlarr_url": "http://prowlarr:9696",
             "arr_apps": [],
             "technology_bindings": {

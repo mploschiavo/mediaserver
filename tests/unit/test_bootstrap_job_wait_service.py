@@ -7,9 +7,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_job_wait_service import (  # noqa: E402
-    BootstrapJobWaitConfig,
-    BootstrapJobWaitService,
+from media_stack.cli.workflows.controller_job_wait_service import (  # noqa: E402
+    ControllerJobWaitConfig,
+    ControllerJobWaitService,
 )
 from media_stack.core.exceptions import KubernetesError  # noqa: E402
 
@@ -80,10 +80,10 @@ class _Kube:
         return _Result(0, "")
 
 
-class BootstrapJobWaitServiceTests(unittest.TestCase):
-    def _svc(self, kube: _Kube) -> BootstrapJobWaitService:
-        return BootstrapJobWaitService(
-            cfg=BootstrapJobWaitConfig(
+class ControllerJobWaitServiceTests(unittest.TestCase):
+    def _svc(self, kube: _Kube) -> ControllerJobWaitService:
+        return ControllerJobWaitService(
+            cfg=ControllerJobWaitConfig(
                 namespace="media-stack",
                 timeout_seconds=60,
                 timeout_raw="1m",
@@ -109,8 +109,8 @@ class BootstrapJobWaitServiceTests(unittest.TestCase):
 
     def test_wait_for_job_returns_when_success_marker_appears_in_logs(self):
         times = iter([0, 0, 15, 15])
-        svc = BootstrapJobWaitService(
-            cfg=BootstrapJobWaitConfig(
+        svc = ControllerJobWaitService(
+            cfg=ControllerJobWaitConfig(
                 namespace="media-stack",
                 timeout_seconds=60,
                 timeout_raw="1m",

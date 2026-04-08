@@ -9,9 +9,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.services.enums import BootstrapMode  # noqa: E402
 from media_stack.services.runtime_factory import (  # noqa: E402
-    BootstrapCliArgs,
-    BootstrapRuntimeFactoryDependencies,
-    BootstrapRuntimeFactoryService,
+    ControllerCliArgs,
+    ControllerRuntimeFactoryDependencies,
+    ControllerRuntimeFactoryService,
 )
 from media_stack.services.download_client_pipeline_service import (  # noqa: E402
     DownloadClientPipelineInputs,
@@ -21,7 +21,7 @@ from media_stack.services.download_client_pipeline_service import (  # noqa: E40
 
 class TechnologySwapMatrixE2ETests(unittest.TestCase):
     def _factory(self):
-        deps = BootstrapRuntimeFactoryDependencies(
+        deps = ControllerRuntimeFactoryDependencies(
             load_bootstrap_default_json=lambda _filename, fallback: fallback,
             deep_merge_objects=lambda base, override: {**dict(base or {}), **dict(override or {})},
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
@@ -35,11 +35,11 @@ class TechnologySwapMatrixE2ETests(unittest.TestCase):
             read_api_key=lambda _config_root, app: f"{app}-key",
             build_sab_remote_path_mappings=lambda _cfg: [],
         )
-        return BootstrapRuntimeFactoryService(deps=deps)
+        return ControllerRuntimeFactoryService(deps=deps)
 
     @staticmethod
-    def _args() -> BootstrapCliArgs:
-        return BootstrapCliArgs(
+    def _args() -> ControllerCliArgs:
+        return ControllerCliArgs(
             mode=BootstrapMode.FULL,
             config_path="contracts/media-stack.config.json",
             config_root="/srv-config",

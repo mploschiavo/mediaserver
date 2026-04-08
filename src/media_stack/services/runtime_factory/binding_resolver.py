@@ -89,7 +89,7 @@ class RuntimeBindingResolver:
             aliases,
         )
         if not request_manager_key:
-            request_manager_key = "jellyseerr"
+            request_manager_key = technology_bindings.default_request_manager
 
         return RuntimeBindingResolution(
             technology_aliases=aliases,

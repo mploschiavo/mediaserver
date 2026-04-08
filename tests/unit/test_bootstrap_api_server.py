@@ -5,7 +5,7 @@ import unittest
 from http.client import HTTPConnection
 
 from media_stack.api.server import start_api_server
-from media_stack.api.state import BootstrapState
+from media_stack.api.state import ControllerState as BootstrapState
 
 
 class TestBootstrapAPIServerHealthz(unittest.TestCase):
@@ -93,20 +93,20 @@ class TestBootstrapAPIServerRouting(unittest.TestCase):
         finally:
             server.shutdown()
 
-    def test_run_503_without_trigger(self):
-        """POST /run returns 503 when no action trigger is bound."""
+    def test_run_200_without_trigger(self):
+        """POST /run returns 200 accepted even without action trigger."""
         state = BootstrapState()
         server = start_api_server(state, port=19107)
         try:
             conn = HTTPConnection("127.0.0.1", 19107, timeout=5)
             conn.request("POST", "/run")
             resp = conn.getresponse()
-            self.assertEqual(resp.status, 503)
+            self.assertEqual(resp.status, 200)
             conn.close()
         finally:
             server.shutdown()
 
-    def test_run_202_with_trigger(self):
+    def test_run_200_with_trigger(self):
         """POST /run accepts bootstrap action when trigger is bound."""
         state = BootstrapState()
         triggered = []
@@ -118,7 +118,7 @@ class TestBootstrapAPIServerRouting(unittest.TestCase):
             conn = HTTPConnection("127.0.0.1", 19108, timeout=5)
             conn.request("POST", "/run")
             resp = conn.getresponse()
-            self.assertEqual(resp.status, 202)
+            self.assertEqual(resp.status, 200)
             self.assertEqual(triggered[0][0], "bootstrap")
             conn.close()
         finally:

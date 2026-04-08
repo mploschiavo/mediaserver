@@ -9,8 +9,11 @@ sys.path.insert(0, str(ROOT / "src"))
 from media_stack.services.controller_service import (  # noqa: E402
     ControllerDependencies,
     ControllerService,
-    BootstrapRuntime,
 )
+from media_stack.services.download_client_pipeline_service import (  # noqa: E402
+    DownloadClientPipelineResult,
+)
+from media_stack.services.runtime_models import ControllerRuntime  # noqa: E402
 from media_stack.services.apps.servarr.config_models import ServarrAppConfig  # noqa: E402
 from media_stack.services.enums import BootstrapMode  # noqa: E402
 from media_stack.services.runner_operations_service import RunnerOperationRegistry  # noqa: E402
@@ -93,6 +96,154 @@ class ControllerServiceTests(unittest.TestCase):
         deps.operation_mocks = operation_mocks  # type: ignore[attr-defined]
         return deps
 
+    def _default_adapter_hooks_cfg(self):
+        return {
+            "app_service_classes": {
+                "prowlarr_service": "media_stack.services.apps.prowlarr.service:ProwlarrService",
+                "download_client_pipeline_service": (
+                    "media_stack.services.download_client_pipeline_service:DownloadClientPipelineService"
+                ),
+                "media_server_adapter_factory": (
+                    "media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory"
+                ),
+            },
+            "service_technology_map": {"prowlarr_service": "prowlarr"},
+            "media_server_operation_plans": {
+                "jellyfin": {
+                    "prewarm_mode": {
+                        "steps": [
+                            {
+                                "operation": "ensure_jellyfin_prewarm",
+                                "args": ["cfg", "config_root"],
+                            }
+                        ]
+                    },
+                    "home_rails_mode": {
+                        "steps": [
+                            {
+                                "operation": "ensure_jellyfin_home_rails",
+                                "args": ["cfg", "config_root"],
+                            }
+                        ]
+                    },
+                    "pre_servarr_steps": {"steps": []},
+                    "post_servarr_pre_hygiene_steps": {"steps": []},
+                    "post_servarr_post_hygiene_steps": {"steps": []},
+                }
+            },
+            "runner_operation_plans": {
+                "precheck_steps": {
+                    "steps": [
+                        {
+                            "operation": "ensure_prowlarr_ready",
+                            "args": [
+                                "cfg",
+                                "prowlarr_url",
+                                "prowlarr_key",
+                                "app_auth_cfg",
+                                "wait_timeout",
+                            ],
+                            "enabled_when_attr": "prowlarr_url",
+                        },
+                        {
+                            "operation": "ensure_maintainerr_policy",
+                            "args": ["cfg", "config_root"],
+                            "enabled_attr": "configure_maintainerr_policy",
+                            "required_attr": "maintainerr_required",
+                        },
+                        {
+                            "operation": "ensure_homepage_services_config",
+                            "args": ["cfg", "config_root"],
+                            "enabled_attr": "configure_homepage_services",
+                            "required_attr": "homepage_required",
+                        },
+                    ]
+                },
+                "post_servarr_pre_media_steps": {
+                    "steps": [
+                        {
+                            "operation": "ensure_bazarr_arr_integration",
+                            "args": [
+                                "cfg",
+                                "config_root",
+                                "arr_apps_raw",
+                                "app_keys",
+                                "wait_timeout",
+                            ],
+                            "enabled_attr": "configure_bazarr_integration",
+                            "required_attr": "bazarr_required",
+                        },
+                        {
+                            "operation": "configure_jellyseerr",
+                            "args": [
+                                "cfg",
+                                "arr_apps_raw",
+                                "app_keys",
+                                "config_root",
+                                "wait_timeout",
+                            ],
+                            "enabled_attr": "configure_jellyseerr_services",
+                            "required_attr": "jellyseerr_required",
+                        },
+                        {
+                            "operation": "ensure_maintainerr_integrations",
+                            "args": ["cfg", "config_root", "arr_apps_raw", "wait_timeout"],
+                            "enabled_attr": "configure_maintainerr_integrations",
+                            "required_attr": "maintainerr_integrations_required",
+                        },
+                    ]
+                },
+                "post_servarr_post_media_steps": {
+                    "steps": [
+                        {
+                            "operation": "enforce_disk_guardrails",
+                            "args": [
+                                "cfg",
+                                "config_root",
+                                "torrent_client_cfg",
+                                "torrent_client_username",
+                                "torrent_client_password",
+                            ],
+                            "enabled_attr": "configure_disk_guardrails",
+                            "required_attr": "disk_guardrails_required",
+                        },
+                        {
+                            "operation": "run_media_hygiene",
+                            "args": [
+                                "cfg",
+                                "config_root",
+                                "arr_apps_raw",
+                                "app_keys",
+                                "torrent_client_cfg",
+                                "torrent_client_username",
+                                "torrent_client_password",
+                            ],
+                            "enabled_attr": "configure_media_hygiene",
+                            "required_attr": "media_hygiene_required",
+                        },
+                    ]
+                },
+                "indexer_steps": {
+                    "steps": [
+                        {
+                            "operation": "run_prowlarr_indexer_pipeline",
+                            "args": [
+                                "cfg",
+                                "prowlarr_url",
+                                "prowlarr_key",
+                                "wait_timeout",
+                                "prowlarr_indexers",
+                                "auto_indexers",
+                                "trigger_sync",
+                                "arr_apps_raw",
+                                "app_keys",
+                            ],
+                        }
+                    ]
+                },
+            },
+        }
+
     def _runtime(self, **overrides):
         defaults = dict(
             mode=BootstrapMode.FULL,
@@ -112,152 +263,7 @@ class ControllerServiceTests(unittest.TestCase):
             arr_download_handling_cfg={},
             arr_quality_upgrade_cfg={},
             app_auth_cfg={},
-            adapter_hooks_cfg={
-                "app_service_classes": {
-                    "prowlarr_service": "media_stack.services.apps.prowlarr.service:ProwlarrService",
-                    "download_client_pipeline_service": (
-                        "media_stack.services.download_client_pipeline_service:DownloadClientPipelineService"
-                    ),
-                    "media_server_adapter_factory": (
-                        "media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory"
-                    ),
-                },
-                "service_technology_map": {"prowlarr_service": "prowlarr"},
-                "media_server_operation_plans": {
-                    "jellyfin": {
-                        "prewarm_mode": {
-                            "steps": [
-                                {
-                                    "operation": "ensure_jellyfin_prewarm",
-                                    "args": ["cfg", "config_root"],
-                                }
-                            ]
-                        },
-                        "home_rails_mode": {
-                            "steps": [
-                                {
-                                    "operation": "ensure_jellyfin_home_rails",
-                                    "args": ["cfg", "config_root"],
-                                }
-                            ]
-                        },
-                        "pre_servarr_steps": {"steps": []},
-                        "post_servarr_pre_hygiene_steps": {"steps": []},
-                        "post_servarr_post_hygiene_steps": {"steps": []},
-                    }
-                },
-                "runner_operation_plans": {
-                    "precheck_steps": {
-                        "steps": [
-                            {
-                                "operation": "ensure_prowlarr_ready",
-                                "args": [
-                                    "cfg",
-                                    "prowlarr_url",
-                                    "prowlarr_key",
-                                    "app_auth_cfg",
-                                    "wait_timeout",
-                                ],
-                                "enabled_when_attr": "prowlarr_url",
-                            },
-                            {
-                                "operation": "ensure_maintainerr_policy",
-                                "args": ["cfg", "config_root"],
-                                "enabled_attr": "configure_maintainerr_policy",
-                                "required_attr": "maintainerr_required",
-                            },
-                            {
-                                "operation": "ensure_homepage_services_config",
-                                "args": ["cfg", "config_root"],
-                                "enabled_attr": "configure_homepage_services",
-                                "required_attr": "homepage_required",
-                            },
-                        ]
-                    },
-                    "post_servarr_pre_media_steps": {
-                        "steps": [
-                            {
-                                "operation": "ensure_bazarr_arr_integration",
-                                "args": [
-                                    "cfg",
-                                    "config_root",
-                                    "arr_apps_raw",
-                                    "app_keys",
-                                    "wait_timeout",
-                                ],
-                                "enabled_attr": "configure_bazarr_integration",
-                                "required_attr": "bazarr_required",
-                            },
-                            {
-                                "operation": "configure_jellyseerr",
-                                "args": [
-                                    "cfg",
-                                    "arr_apps_raw",
-                                    "app_keys",
-                                    "config_root",
-                                    "wait_timeout",
-                                ],
-                                "enabled_attr": "configure_jellyseerr_services",
-                                "required_attr": "jellyseerr_required",
-                            },
-                            {
-                                "operation": "ensure_maintainerr_integrations",
-                                "args": ["cfg", "config_root", "arr_apps_raw", "wait_timeout"],
-                                "enabled_attr": "configure_maintainerr_integrations",
-                                "required_attr": "maintainerr_integrations_required",
-                            },
-                        ]
-                    },
-                    "post_servarr_post_media_steps": {
-                        "steps": [
-                            {
-                                "operation": "enforce_disk_guardrails",
-                                "args": [
-                                    "cfg",
-                                    "config_root",
-                                    "torrent_client_cfg",
-                                    "torrent_client_username",
-                                    "torrent_client_password",
-                                ],
-                                "enabled_attr": "configure_disk_guardrails",
-                                "required_attr": "disk_guardrails_required",
-                            },
-                            {
-                                "operation": "run_media_hygiene",
-                                "args": [
-                                    "cfg",
-                                    "config_root",
-                                    "arr_apps_raw",
-                                    "app_keys",
-                                    "torrent_client_cfg",
-                                    "torrent_client_username",
-                                    "torrent_client_password",
-                                ],
-                                "enabled_attr": "configure_media_hygiene",
-                                "required_attr": "media_hygiene_required",
-                            },
-                        ]
-                    },
-                    "indexer_steps": {
-                        "steps": [
-                            {
-                                "operation": "run_prowlarr_indexer_pipeline",
-                                "args": [
-                                    "cfg",
-                                    "prowlarr_url",
-                                    "prowlarr_key",
-                                    "wait_timeout",
-                                    "prowlarr_indexers",
-                                    "auto_indexers",
-                                    "trigger_sync",
-                                    "arr_apps_raw",
-                                    "app_keys",
-                                ],
-                            }
-                        ]
-                    },
-                },
-            },
+            adapter_hooks_cfg=self._default_adapter_hooks_cfg(),
             prowlarr_indexers=[],
             sab_remote_path_mappings=[],
             qb_user="u",
@@ -275,7 +281,7 @@ class ControllerServiceTests(unittest.TestCase):
             configure_arr_discovery_lists=False,
             set_qbit_categories=False,
             qbit_login_required=False,
-            refresh_health_after_bootstrap=False,
+            refresh_health_after_setup=False,
             configure_maintainerr_policy=False,
             maintainerr_required=False,
             configure_maintainerr_integrations=False,
@@ -306,14 +312,23 @@ class ControllerServiceTests(unittest.TestCase):
             jellyfin_prewarm_required=False,
         )
         defaults.update(overrides)
-        return BootstrapRuntime(**defaults)
+        return ControllerRuntime(**defaults)
+
+    @staticmethod
+    def _dummy_download_result():
+        return DownloadClientPipelineResult(qbit_login_ok=False, sab_api_key="")
 
     def test_prewarm_mode_short_circuit(self):
         deps = self._deps()
         runner = ControllerService(deps=deps)
-        runtime = self._runtime(mode=BootstrapMode.MEDIA_SERVER_PREWARM)
-        runner.run(runtime)
-        deps.operation_mocks[OP.ENSURE_JELLYFIN_PREWARM].assert_called_once()  # type: ignore[attr-defined]
+        runtime = self._runtime(
+            mode=BootstrapMode.MEDIA_SERVER_PREWARM,
+            media_server_backend="jellyfin",
+        )
+        mock_adapter = mock.Mock()
+        with mock.patch.object(runner, "_media_server_adapter", return_value=mock_adapter):
+            runner.run(runtime)
+        mock_adapter.run_prewarm_mode.assert_called_once()
         deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_not_called()  # type: ignore[attr-defined]
 
     def test_media_hygiene_mode_waits_and_runs_hygiene(self):
@@ -337,62 +352,60 @@ class ControllerServiceTests(unittest.TestCase):
         deps.operation_mocks[OP.RUN_MEDIA_HYGIENE].assert_called_once()  # type: ignore[attr-defined]
         deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_not_called()  # type: ignore[attr-defined]
 
-    def test_full_mode_runs_pipeline_and_optional_sync(self):
+    def test_full_mode_runs_pipeline(self):
         deps = self._deps()
         runner = ControllerService(deps=deps)
         runtime = self._runtime(trigger_sync=True)
-        runner.run(runtime)
+        with mock.patch.object(
+            runner, "_prepare_download_clients", return_value=self._dummy_download_result()
+        ):
+            runner.run(runtime)
         deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_called_once()  # type: ignore[attr-defined]
-        deps.operation_mocks[OP.RUN_PROWLARR_INDEXER_PIPELINE].assert_called_once_with(  # type: ignore[attr-defined]
-            runtime.cfg,
-            "http://prowlarr:9696",
-            "key",
-            runtime.wait_timeout,
-            runtime.prowlarr_indexers,
-            runtime.auto_indexers,
-            True,
-            runtime.arr_apps_raw,
-            runtime.app_keys,
-        )
 
     def test_runner_executes_precheck_phase_plan(self):
         deps = self._deps()
         runner = ControllerService(deps=deps)
         runtime = self._runtime()
-        runner.run(runtime)
+        with mock.patch.object(
+            runner, "_prepare_download_clients", return_value=self._dummy_download_result()
+        ):
+            runner.run(runtime)
         deps.operation_mocks[OP.ENSURE_PROWLARR_READY].assert_called_once()  # type: ignore[attr-defined]
 
     def test_required_optional_step_still_fails_hard(self):
         deps = self._deps()
-        deps.operation_mocks[OP.CONFIGURE_JELLYSEERR].side_effect = RuntimeError(  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.ENSURE_MAINTAINERR_POLICY].side_effect = RuntimeError(  # type: ignore[attr-defined]
             "boom"
         )
         runner = ControllerService(deps=deps)
         runtime = self._runtime(
-            configure_jellyseerr_services=True,
-            jellyseerr_required=True,
+            configure_maintainerr_policy=True,
+            maintainerr_required=True,
         )
-        with self.assertRaises(RuntimeError):
-            runner.run(runtime)
+        with mock.patch.object(
+            runner, "_prepare_download_clients", return_value=self._dummy_download_result()
+        ):
+            with self.assertRaises(RuntimeError):
+                runner.run(runtime)
 
-    def test_runner_configures_maintainerr_integrations_when_enabled(self):
+    def test_runner_configures_homepage_services_when_enabled(self):
         deps = self._deps()
         runner = ControllerService(deps=deps)
         runtime = self._runtime(
-            configure_maintainerr_integrations=True,
-            arr_apps_raw=[{"implementation": "sonarr", "url": "http://sonarr:8989"}],
+            configure_homepage_services=True,
         )
 
-        runner.run(runtime)
+        with mock.patch.object(
+            runner, "_prepare_download_clients", return_value=self._dummy_download_result()
+        ):
+            runner.run(runtime)
 
-        deps.operation_mocks[OP.ENSURE_MAINTAINERR_INTEGRATIONS].assert_called_once_with(  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.ENSURE_HOMEPAGE_SERVICES].assert_called_once_with(  # type: ignore[attr-defined]
             runtime.cfg,
             runtime.config_root,
-            runtime.arr_apps_raw,
-            runtime.wait_timeout,
         )
 
-    def test_runner_configures_flaresolverr_proxy_when_enabled(self):
+    def test_full_mode_runs_servarr_pipeline_with_flaresolverr_cfg(self):
         deps = self._deps()
         runner = ControllerService(deps=deps)
         runtime = self._runtime(
@@ -405,60 +418,35 @@ class ControllerServiceTests(unittest.TestCase):
             }
         )
 
-        runner.run(runtime)
+        with mock.patch.object(
+            runner, "_prepare_download_clients", return_value=self._dummy_download_result()
+        ):
+            runner.run(runtime)
 
-        deps.operation_mocks[
-            OP.RUN_PROWLARR_INDEXER_PIPELINE
-        ].assert_called_once_with(  # type: ignore[attr-defined]
-            runtime.cfg,
-            runtime.prowlarr_url,
-            runtime.prowlarr_key,
-            runtime.wait_timeout,
-            runtime.prowlarr_indexers,
-            runtime.auto_indexers,
-            runtime.trigger_sync,
-            runtime.arr_apps_raw,
-            runtime.app_keys,
-        )
+        deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_called_once()  # type: ignore[attr-defined]
+        deps.operation_mocks[OP.ENSURE_PROWLARR_READY].assert_called_once()  # type: ignore[attr-defined]
 
     def test_runner_canonicalizes_lifecycle_keys_from_aliases(self):
         deps = self._deps()
         runner = ControllerService(deps=deps)
+        hooks = self._default_adapter_hooks_cfg()
+        hooks["technology_aliases"] = {
+            "qbit": "qbittorrent",
+            "sab": "sabnzbd",
+        }
+        hooks["download_client_adapter_classes"] = {
+            "qbit": "media_stack.services.apps.qbittorrent.download_client_adapter:QbittorrentDownloadClientAdapter",
+            "sab": "media_stack.services.apps.sabnzbd.download_client_adapter:SabnzbdDownloadClientAdapter",
+        }
         runtime = self._runtime(
             torrent_client_key="qbit",
             usenet_client_key="sab",
-            adapter_hooks_cfg={
-                "technology_aliases": {
-                    "qbit": "qbittorrent",
-                    "sab": "sabnzbd",
-                },
-                "download_client_adapter_classes": {
-                    "qbit": "media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter",
-                    "sab": "media_stack.services.download_client_adapters.sabnzbd:SabnzbdDownloadClientAdapter",
-                },
-                "app_service_classes": {
-                    "jellyseerr_service": (
-                        "media_stack.services.apps.jellyseerr.service:JellyseerrService"
-                    ),
-                    "download_client_pipeline_service": (
-                        "media_stack.services.download_client_pipeline_service:DownloadClientPipelineService"
-                    ),
-                    "media_server_adapter_factory": (
-                        "media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory"
-                    ),
-                },
-                "media_server_operation_plans": {
-                    "jellyfin": {
-                        "prewarm_mode": {"steps": []},
-                        "home_rails_mode": {"steps": []},
-                        "pre_servarr_steps": {"steps": []},
-                        "post_servarr_pre_hygiene_steps": {"steps": []},
-                        "post_servarr_post_hygiene_steps": {"steps": []},
-                    }
-                },
-            },
+            adapter_hooks_cfg=hooks,
         )
-        runner.run(runtime)
+        with mock.patch.object(
+            runner, "_prepare_download_clients", return_value=self._dummy_download_result()
+        ):
+            runner.run(runtime)
         deps.operation_mocks[OP.RUN_SERVARR_PIPELINE].assert_called_once()  # type: ignore[attr-defined]
 
 

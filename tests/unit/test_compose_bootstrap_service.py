@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -7,13 +8,34 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.core.platforms.compose.bootstrap_service import (  # noqa: E402
+from media_stack.core.platforms.compose.controller_service import (  # noqa: E402
     ComposeBootstrapConfig,
     ComposeBootstrapService,
 )
 
 
 class ComposeBootstrapServiceTests(unittest.TestCase):
+    _MINIMAL_CONFIG = {
+        "config_version": 2,
+        "technology_bindings": {
+            "media_server": "jellyfin",
+            "torrent_client": "qbittorrent",
+            "usenet_client": "sabnzbd",
+            "indexer_manager": "prowlarr",
+        },
+        "download_clients": {
+            "qbittorrent": {"url": "http://qbittorrent:8080"},
+            "sabnzbd": {"url": "http://sabnzbd:8080"},
+        },
+        "prowlarr_url": "http://prowlarr:9696",
+        "arr_apps": [],
+    }
+
+    def _write_temp_config(self, dest_dir: str) -> Path:
+        path = Path(dest_dir) / "media-stack.config.json"
+        path.write_text(json.dumps(self._MINIMAL_CONFIG, indent=2), encoding="utf-8")
+        return path
+
     def test_run_mounts_stack_root_and_sets_disk_guardrails_monitor_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -74,7 +96,7 @@ class ComposeBootstrapServiceTests(unittest.TestCase):
                 ),
                 mock.patch.object(service, "_run_preflight_handlers", return_value={}),
                 mock.patch(
-                    "media_stack.core.platforms.compose.bootstrap_service.time.sleep",
+                    "media_stack.core.platforms.compose.controller_service.time.sleep",
                     return_value=None,
                 ),
             ):
@@ -147,7 +169,7 @@ class ComposeBootstrapServiceTests(unittest.TestCase):
                 ),
                 mock.patch.object(service, "_run_preflight_handlers", return_value={}),
                 mock.patch(
-                    "media_stack.core.platforms.compose.bootstrap_service.time.sleep",
+                    "media_stack.core.platforms.compose.controller_service.time.sleep",
                     return_value=None,
                 ),
             ):
@@ -158,7 +180,7 @@ class ComposeBootstrapServiceTests(unittest.TestCase):
     def test_prepare_runtime_config_writes_runtime_artifact_when_configured(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            bootstrap_config_file = ROOT / "contracts" / "media-stack.config.json"
+            bootstrap_config_file = self._write_temp_config(tmp)
             artifacts_dir = root / "artifacts"
             cfg = ComposeBootstrapConfig(
                 namespace="media-dev",
@@ -173,7 +195,7 @@ class ComposeBootstrapServiceTests(unittest.TestCase):
                 apply_initial_preferences=True,
                 auto_download_content=False,
                 runtime_config_policy_handler=(
-                    "media_stack.services.apps.stack.bootstrap_config_policy:"
+                    "media_stack.services.apps.stack.controller_config_policy:"
                     "apply_bootstrap_runtime_policy"
                 ),
                 runtime_artifacts_dir=artifacts_dir,
@@ -212,7 +234,7 @@ class ComposeBootstrapServiceTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            bootstrap_config_file = ROOT / "contracts" / "media-stack.config.json"
+            bootstrap_config_file = self._write_temp_config(tmp)
             runtime_cfg_file = root / "runtime-config.json"
             runtime_cfg_file.write_text("{}", encoding="utf-8")
 
@@ -244,7 +266,7 @@ class ComposeBootstrapServiceTests(unittest.TestCase):
                 ),
                 mock.patch.object(service, "_run_preflight_handlers", return_value={}),
                 mock.patch(
-                    "media_stack.core.platforms.compose.bootstrap_service.time.sleep",
+                    "media_stack.core.platforms.compose.controller_service.time.sleep",
                     return_value=None,
                 ),
             ):

@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from media_stack.services.apps.jellyfin.cli import (
-    jellyfin_bootstrap_db_discovery_service as svc,
+    jellyfin_controller_db_discovery_service as svc,
 )
 
 

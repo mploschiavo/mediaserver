@@ -53,6 +53,7 @@ class ServiceDef:
     preserve_path_prefix: bool = False
     scalable: bool = True
     scale_to_zero: bool = False
+    top_level_config_key: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         preserve_path_prefix=bool(entry.get("preserve_path_prefix", False)),
         scalable=bool(entry.get("scalable", True)),
         scale_to_zero=bool(entry.get("scale_to_zero", False)),
+        top_level_config_key=bool(entry.get("top_level_config_key", False)),
     )
 
 
