@@ -131,12 +131,20 @@ info:
     name: MIT
 
 servers:
+  - url: /
+    description: Current host (auto-detected from browser URL)
   - url: http://localhost:9100
-    description: Default controller port (Docker Compose)
-  - url: http://controller:9100
-    description: Internal service name (container-to-container)
-  - url: http://media-stack-controller.media-stack.svc:9100
-    description: Kubernetes in-cluster (ClusterIP service)
+    description: Localhost direct
+  - url: http://{host}:{port}
+    description: Custom gateway (edit host and port to match your deployment)
+    variables:
+      host:
+        default: comp.my
+        description: Gateway hostname — e.g. comp.my, k8s.my, apps.media-stack.local
+      port:
+        default: "9100"
+        description: Controller port
+        enum: ["80", "443", "8080", "9100", "30180"]
 
 tags:
   - name: Health
