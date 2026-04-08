@@ -35,12 +35,9 @@ from media_stack.services.runtime_service_registry import (
 
 
 def _detect_arr_api_base(app_name, app_url, api_key):
-    for version in ("v3", "v1"):
-        status, _, _ = http_request(app_url, f"/api/{version}/system/status", api_key=api_key)
-        if status == 200:
-            return f"/api/{version}"
-
-    raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
+    """Detect API base with retry — delegates to arr_ops.detect_arr_api_base."""
+    from .arr_ops import detect_arr_api_base
+    return detect_arr_api_base(app_name, app_url, api_key)
 
 
 def _choose_category(app_cfg, client_cfg):

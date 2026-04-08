@@ -528,6 +528,13 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                     "key_preview": f"{current[:4]}...{current[-4:]}" if len(current) > 8 else ("set" if current else ""),
                 })
 
+        # --- Auto-heal / failed services ---
+        elif path == "/api/failed-services":
+            self._json_response(200, {
+                "failed_services": self.state.get_failed_services(),
+                "count": len(self.state.get_failed_services()),
+            })
+
         # --- Health ---
         elif path == "/api/health":
             result = health_svc.probe_services(_api_cache)

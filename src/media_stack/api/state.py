@@ -129,6 +129,30 @@ class ControllerState:
     # Webhook URLs notified on action completion/error.
     webhook_urls: list[str] = field(default_factory=list)
 
+    # Auto-heal: services that failed during bootstrap/reconcile.
+    # Keyed by service_id → {error, failed_at, attempts, last_attempt}.
+    failed_services: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def mark_service_failed(self, service_id: str, error: str) -> None:
+        with self._lock:
+            entry = self.failed_services.get(service_id, {
+                "error": "", "failed_at": 0, "attempts": 0, "last_attempt": 0,
+            })
+            entry["error"] = str(error)[:200]
+            entry["attempts"] = entry.get("attempts", 0) + 1
+            entry["last_attempt"] = time.time()
+            if not entry.get("failed_at"):
+                entry["failed_at"] = time.time()
+            self.failed_services[service_id] = entry
+
+    def mark_service_healed(self, service_id: str) -> None:
+        with self._lock:
+            self.failed_services.pop(service_id, None)
+
+    def get_failed_services(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            return dict(self.failed_services)
+
     # --- legacy single-run interface (used by first bootstrap via _run_serve) ---
 
     def start(self) -> None:
@@ -324,4 +348,5 @@ class ControllerState:
                 "current_action": self.current_action.to_dict() if self.current_action else None,
                 "action_history": [a.to_dict() for a in self.action_history],
                 "pending_actions": [dict(p) for p in self.pending_actions],
+                "failed_services": dict(self.failed_services),
             }
