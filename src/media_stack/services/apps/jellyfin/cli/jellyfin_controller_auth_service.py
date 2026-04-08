@@ -119,14 +119,26 @@ class JellyfinBootstrapAuthService:
             "MetadataCountryCode": "US",
             "PreferredMetadataLanguage": "en",
         }
-        status, _, body = self.http_request(
-            base_url,
-            "/Startup/Configuration",
-            method="POST",
-            payload=config_payload,
-        )
-        if status not in (200, 201, 202, 204):
-            self.warn(f"Jellyfin startup config step returned HTTP {status}: {body}")
+        # Retry the startup config step — Jellyfin may return 503 while its
+        # internal services are still initializing even after /System/Info/Public
+        # returns 200.  Give it up to ~30s to become ready.
+        config_ok = False
+        for attempt in range(8):
+            status, _, body = self.http_request(
+                base_url,
+                "/Startup/Configuration",
+                method="POST",
+                payload=config_payload,
+            )
+            if status in (200, 201, 202, 204):
+                config_ok = True
+                break
+            if status in (500, 502, 503) and attempt < 7:
+                self.info(f"Jellyfin startup config returned HTTP {status}, retrying in {2 + attempt}s...")
+                time.sleep(2 + attempt)
+            else:
+                self.warn(f"Jellyfin startup config step returned HTTP {status}: {body}")
+                break
 
         # Retry user creation — Jellyfin may return 500 if internal DB
         # init is still settling after the configuration step.
