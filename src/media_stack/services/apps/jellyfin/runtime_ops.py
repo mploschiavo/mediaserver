@@ -16,6 +16,7 @@ from media_stack.services.apps.homepage.adapters import render_services_yaml as 
 from .adapters import apply_artwork_profile as _lib_jellyfin_apply_artwork_profile
 from .adapters import reorder_provider_names as _lib_jellyfin_reorder_provider_names
 
+from media_stack.services.apps.jellyfin.auto_collections import JellyfinAutoCollectionsService
 from media_stack.services.config_artifacts_service import ConfigArtifactsService
 from media_stack.services.runtime_platform import (
     bool_cfg,
@@ -424,8 +425,8 @@ def ensure_jellyfin_plugins(cfg, config_root, wait_timeout):
     _jellyfin_plugins_service(cfg).ensure(cfg, config_root, wait_timeout)
 
 
-def detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username):
-    service = resolve_app_service_class("config_artifacts_service", ConfigArtifactsService)(
+def _jellyfin_auto_collections_service() -> JellyfinAutoCollectionsService:
+    return JellyfinAutoCollectionsService(
         bool_cfg=bool_cfg,
         coerce_list=coerce_list,
         resolve_path=resolve_path,
@@ -434,28 +435,18 @@ def detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username):
         resolve_jellyfin_api_key=resolve_jellyfin_api_key,
         jellyfin_request=jellyfin_request,
         log=log,
-        load_bootstrap_default_json=load_bootstrap_default_json,
-        default_homepage_hosts=list(_lib_default_homepage_hosts),
-        render_homepage_services_yaml=_lib_render_homepage_services_yaml,
+        render_yaml=ConfigArtifactsService.render_yaml,
     )
-    return service.detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username)
+
+
+def detect_jellyfin_user_id(jellyfin_url, jellyfin_api_key, preferred_username):
+    return _jellyfin_auto_collections_service().detect_jellyfin_user_id(
+        jellyfin_url, jellyfin_api_key, preferred_username
+    )
 
 
 def ensure_jellyfin_auto_collections_config(cfg, config_root, wait_timeout):
-    service = resolve_app_service_class("config_artifacts_service", ConfigArtifactsService)(
-        bool_cfg=bool_cfg,
-        coerce_list=coerce_list,
-        resolve_path=resolve_path,
-        normalize_url=normalize_url,
-        wait_for_service=wait_for_service,
-        resolve_jellyfin_api_key=resolve_jellyfin_api_key,
-        jellyfin_request=jellyfin_request,
-        log=log,
-        load_bootstrap_default_json=load_bootstrap_default_json,
-        default_homepage_hosts=list(_lib_default_homepage_hosts),
-        render_homepage_services_yaml=_lib_render_homepage_services_yaml,
-    )
-    service.ensure_jellyfin_auto_collections_config(
+    _jellyfin_auto_collections_service().ensure_config(
         cfg=cfg,
         config_root=config_root,
         wait_timeout=wait_timeout,
