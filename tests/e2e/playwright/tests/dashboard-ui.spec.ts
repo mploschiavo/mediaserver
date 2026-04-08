@@ -448,4 +448,20 @@ test.describe('Dashboard UI', () => {
     expect(gwVal.length).toBeGreaterThan(0);
     expect(domVal.length).toBeGreaterThan(0);
   });
+
+  // -----------------------------------------------------------------------
+  // API docs
+  // -----------------------------------------------------------------------
+
+  test('API docs page loads with Redoc UI', async ({ page }) => {
+    await page.goto(baseUrl + '/api/docs', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+    // Page should contain the Redoc container and load the spec
+    await page.waitForSelector('redoc', { timeout: 10_000 });
+    // Title from the OpenAPI spec should render
+    const heading = page.locator('h1:has-text("Media Stack Controller")');
+    await expect(heading).toBeVisible({ timeout: 10_000 });
+    // At least one API tag section should be visible
+    const tagSection = page.locator('[data-section-id]').first();
+    await expect(tagSection).toBeVisible({ timeout: 10_000 });
+  });
 });
