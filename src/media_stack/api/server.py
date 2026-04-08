@@ -90,6 +90,13 @@ try:
 except Exception:
     _DASHBOARD_HTML = "<html><body><h1>Dashboard not found</h1></body></html>"
 
+_OPENAPI_YAML_PATH = Path(__file__).parent / "openapi.yaml"
+_OPENAPI_YAML = ""
+try:
+    _OPENAPI_YAML = _OPENAPI_YAML_PATH.read_text(encoding="utf-8")
+except Exception:
+    _OPENAPI_YAML = ""
+
 
 # ---------------------------------------------------------------------------
 # Auth + known actions
@@ -326,34 +333,69 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             ("/healthz", "Liveness probe"),
             ("/readyz", "Readiness probe"),
             ("/status", "Full controller state"),
+            ("/apps", "All app statuses"),
+            ("/apps/{name}", "Single app status"),
+            ("/config", "Runtime configuration"),
+            ("/webhooks", "List webhook URLs"),
+            ("/logs/stream", "Real-time log stream (SSE)"),
+            ("/api/services", "List managed services"),
+            ("/api/services/categories", "Service categories"),
+            ("/api/services/{id}/api-key", "API key status for a service"),
             ("/api/health", "Live service health probes"),
+            ("/api/health-history", "Health history and SLA metrics"),
             ("/api/versions", "Service versions"),
             ("/api/downloads", "Active downloads"),
             ("/api/stats", "Library counts"),
             ("/api/indexers", "Prowlarr indexers"),
+            ("/api/indexer-stats", "Indexer performance stats"),
+            ("/api/download-history", "Recent download history"),
+            ("/api/quality-profiles", "Quality profiles"),
+            ("/api/import-lists", "Import/discovery lists"),
+            ("/api/libraries", "Jellyfin libraries"),
+            ("/api/recent", "Recently added items"),
             ("/api/disk", "Disk usage + guardrails"),
+            ("/api/cleanup-preview", "Guardrail cleanup preview"),
             ("/api/env", "Runtime environment"),
             ("/api/routing", "Routing configuration"),
             ("/api/profile", "Bootstrap profile"),
+            ("/api/envvars", "Stack environment variables"),
+            ("/api/manifests", "Deployment manifests"),
+            ("/api/backup", "Config backup download"),
             ("/api/namespaces", "Containers / namespaces"),
-            ("/api/libraries", "Jellyfin libraries"),
             ("/api/image-updates", "Image versions + staleness"),
             ("/api/gpu", "GPU detection for transcoding"),
             ("/api/snapshots", "Config snapshots"),
+            ("/api/snapshots/{file}", "Snapshot detail"),
+            ("/api/snapshot-diff", "Compare two snapshots"),
             ("/api/mounts", "Filesystem mounts"),
-            ("/api/backup", "Config backup download"),
+            ("/api/logs/{service}", "Service container logs"),
             ("/metrics", "Prometheus metrics"),
+            ("/api/envoy/stats", "Envoy proxy traffic stats"),
             ("/api/feed.xml", "RSS feed"),
-            ("/api/openapi.json", "This spec"),
+            ("/api/grafana.json", "Grafana dashboard JSON"),
+            ("/api/openapi.json", "This spec (abridged)"),
+            ("/api/openapi.yaml", "Full OpenAPI 3.0.3 spec"),
         ]
         post_endpoints = [
             ("/actions/{name}", "Trigger action"),
+            ("/cancel", "Cancel running action"),
+            ("/run", "Trigger bootstrap (legacy)"),
+            ("/api/services/{id}/api-key", "Set/discover API key"),
             ("/api/rotate-keys", "Rotate all API keys"),
             ("/api/reset-password", "Reset admin password"),
+            ("/api/jellyfin/reset", "Hard-reset Jellyfin credentials"),
             ("/api/routing", "Update routing config"),
             ("/api/guardrails", "Update guardrail settings"),
+            ("/api/profile", "Save bootstrap profile"),
+            ("/api/envvars", "Set environment variable"),
+            ("/api/restore", "Restore config from backup"),
             ("/api/batch-restart", "Restart multiple services"),
+            ("/api/restart/{service}", "Restart a single service"),
+            ("/api/gpu/enable", "Auto-configure GPU transcoding"),
+            ("/api/snapshot", "Take a config snapshot"),
             ("/config", "Update runtime config"),
+            ("/webhooks", "Register webhook URL"),
+            ("/webhooks/test", "Test all webhooks"),
         ]
         paths: dict[str, Any] = {}
         for ep, desc in get_endpoints:
@@ -362,7 +404,11 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             paths[ep] = {"post": {"summary": desc, "responses": {"200": {"description": "OK"}}}}
         return {
             "openapi": "3.0.3",
-            "info": {"title": "Media Stack Controller API", "version": "1.0.0"},
+            "info": {
+                "title": "Media Stack Controller API",
+                "version": "1.0.0",
+                "description": "Abridged spec. For the full OpenAPI 3.0.3 specification with schemas, examples, and descriptions, see GET /api/openapi.yaml or visit /api/docs.",
+            },
             "paths": paths,
         }
 
@@ -549,6 +595,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             self._json_response(200, metrics_svc.get_grafana_dashboard())
         elif path == "/api/openapi.json":
             self._json_response(200, self._get_openapi_spec())
+        elif path == "/api/openapi.yaml":
+            self._raw_response(200, "text/yaml; charset=utf-8", _OPENAPI_YAML.encode("utf-8"))
 
         # --- Dashboard ---
         elif path in ("/", "/dashboard"):
@@ -558,24 +606,58 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 html = html.replace("</body>", plugins + "\n</body>")
             self._html_response(200, html)
         elif path == "/api/docs":
-            spec = self._get_openapi_spec()
-            rows = ""
-            for ep, info in sorted(spec.get("paths", {}).items()):
-                for method, details in info.items():
-                    color = "#4ade80" if method == "get" else "#3b82f6"
-                    rows += f'<tr><td><span style="color:{color};font-weight:700;text-transform:uppercase;font-size:.82em">{method}</span></td><td style="font-family:monospace">{ep}</td><td>{details.get("summary","")}</td></tr>'
-            html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>API Documentation</title>
-<style>body{{font-family:system-ui;background:#0f1923;color:#e0e0e0;margin:0;padding:24px}}
-h1{{color:#4ade80;font-size:1.4em}}a{{color:#3b82f6}}
-table{{width:100%;border-collapse:collapse;margin-top:16px}}
-th{{text-align:left;padding:8px;border-bottom:2px solid #1e3044;color:#94a3b8;font-size:.82em;text-transform:uppercase}}
-td{{padding:6px 8px;border-bottom:1px solid #1e3044;font-size:.9em}}
-tr:hover{{background:#162230}}</style></head><body>
-<h1>Media Stack Controller API</h1>
-<p style="color:#94a3b8">Base URL: <code>http://localhost:9100</code> · <a href="/api/openapi.json">OpenAPI JSON</a> · <a href="/">Dashboard</a></p>
-<table><thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead><tbody>{rows}</tbody></table>
-<p style="color:#64748b;margin-top:24px;font-size:.82em">POST endpoints require Basic Auth (admin credentials). GET endpoints are public.</p>
-</body></html>"""
+            html = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Media Stack Controller API</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; padding: 0; }
+    /* Redoc theme overrides for dark-friendly rendering */
+    .redoc-wrap { font-family: 'Inter', system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="redoc-container"></div>
+  <script src="https://cdn.redoc.ly/redoc/v2.4.0/bundles/redoc.standalone.min.js"></script>
+  <script>
+    Redoc.init('/api/openapi.yaml', {
+      theme: {
+        colors: {
+          primary: { main: '#4ade80' },
+          success: { main: '#4ade80' },
+          error: { main: '#ef4444' },
+          warning: { main: '#f59e0b' },
+          text: { primary: '#1e293b', secondary: '#64748b' },
+        },
+        typography: {
+          fontFamily: "'Inter', system-ui, sans-serif",
+          headings: { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: '700' },
+          code: { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' },
+        },
+        sidebar: {
+          width: '280px',
+          backgroundColor: '#0f172a',
+          textColor: '#94a3b8',
+          activeTextColor: '#4ade80',
+        },
+        rightPanel: {
+          backgroundColor: '#1e293b',
+          textColor: '#e2e8f0',
+        },
+      },
+      expandResponses: '200',
+      hideDownloadButton: false,
+      nativeScrollbars: true,
+      pathInMiddlePanel: true,
+      sortPropsAlphabetically: false,
+      menuToggle: true,
+    }, document.getElementById('redoc-container'));
+  </script>
+</body>
+</html>"""
             self._html_response(200, html)
 
         else:

@@ -1,0 +1,3236 @@
+openapi: 3.0.3
+info:
+  title: Media Stack Controller API
+  version: 1.0.0
+  description: |
+    REST API for the Media Stack Controller -- the orchestration layer that
+    manages Sonarr, Radarr, Lidarr, Readarr, Prowlarr, Bazarr, Jellyfin,
+    qBittorrent, SABnzbd, and supporting infrastructure (Envoy, Homepage,
+    Tautulli, Jellyseerr).
+
+    ## Authentication
+
+    The controller supports HTTP Basic Auth with three modes controlled by
+    the `CONTROLLER_AUTH` environment variable:
+
+    | Mode    | Behavior |
+    |---------|----------|
+    | `none`  | No auth required (default when `STACK_ADMIN_PASSWORD` is empty) |
+    | `write` | POST/PUT/DELETE require auth; GET is open (default when password is set) |
+    | `all`   | Every request requires auth |
+
+    Credentials: username from `STACK_ADMIN_USERNAME` (default `admin`),
+    password from `STACK_ADMIN_PASSWORD`.
+
+    Health probes (`/healthz`, `/readyz`) are always unauthenticated.
+
+    ## Server-Sent Events
+
+    The `/logs/stream` endpoint provides a real-time log stream via SSE.
+    Connect with `EventSource` or `curl -N`.
+
+    ## Action Queue
+
+    Actions are asynchronous. POST to `/actions/{name}` returns immediately
+    with `202 Accepted`-style semantics (HTTP 200, status=accepted). Poll
+    `/status` to track progress, or subscribe to `/logs/stream` for live
+    output. Actions execute in priority order via an internal queue.
+
+  contact:
+    name: Media Stack Controller
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:9100
+    description: Default controller port (Docker Compose)
+  - url: http://controller:9100
+    description: Internal service name (container-to-container)
+
+tags:
+  - name: Health
+    description: Liveness/readiness probes and service health checks
+  - name: State
+    description: Controller state, action history, runtime config, webhooks
+  - name: Actions
+    description: Trigger and cancel asynchronous orchestration actions
+  - name: Services
+    description: Service registry, categories, and per-service API key management
+  - name: Content
+    description: Library stats, downloads, indexers, quality profiles, recently added
+  - name: Routing
+    description: Envoy gateway routing configuration
+  - name: Security
+    description: API key rotation and password reset across all managed services
+  - name: Operations
+    description: Containers, images, GPU, snapshots, mounts, service logs
+  - name: Disk
+    description: Disk usage monitoring and guardrail configuration
+  - name: Config
+    description: Environment, profile, manifests, env vars, backup/restore
+  - name: Metrics
+    description: Prometheus metrics, Envoy stats, RSS feed, Grafana dashboard
+  - name: Webhooks
+    description: Webhook management and testing
+  - name: Dashboard
+    description: Web dashboard and API documentation UI
+
+# ---------------------------------------------------------------------------
+# Reusable components
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        HTTP Basic Auth. Username from STACK_ADMIN_USERNAME (default: admin),
+        password from STACK_ADMIN_PASSWORD.
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "not found"
+      required: [error]
+
+    ActionAccepted:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [accepted]
+        action:
+          type: string
+          example: bootstrap
+        priority:
+          type: integer
+          example: 10
+        overrides:
+          type: object
+          additionalProperties: true
+      required: [status, action, priority]
+
+    ActionRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          example: bootstrap-1
+        name:
+          type: string
+          example: bootstrap
+        status:
+          type: string
+          enum: [pending, running, complete, error, cancelled, timeout]
+        started_at:
+          type: number
+          nullable: true
+          example: 1712505600.0
+        completed_at:
+          type: number
+          nullable: true
+          example: 1712505660.5
+        elapsed_seconds:
+          type: number
+          nullable: true
+          example: 60.5
+        error:
+          type: string
+          nullable: true
+        overrides:
+          type: object
+          additionalProperties: true
+        timeout_seconds:
+          type: integer
+          example: 600
+        triggered_by:
+          type: string
+          example: admin
+
+    ControllerState:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [idle, running, complete, error]
+          example: complete
+        started_at:
+          type: number
+          nullable: true
+        completed_at:
+          type: number
+          nullable: true
+        elapsed_seconds:
+          type: number
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        phases_completed:
+          type: array
+          items:
+            type: string
+          example: [preflight, containers, post-setup, envoy]
+        preflight_results:
+          type: object
+          additionalProperties: true
+        app_status:
+          type: object
+          additionalProperties: true
+        run_overrides:
+          type: object
+          additionalProperties: true
+        initial_bootstrap_done:
+          type: boolean
+          example: true
+        runtime_config:
+          type: object
+          additionalProperties: true
+        webhook_urls:
+          type: array
+          items:
+            type: string
+        current_action:
+          $ref: '#/components/schemas/ActionRecord'
+        action_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionRecord'
+        pending_actions:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              priority:
+                type: integer
+              queued_at:
+                type: number
+              overrides:
+                type: object
+
+    ServiceEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          example: sonarr
+        name:
+          type: string
+          example: Sonarr
+        desc:
+          type: string
+          example: TV series management and automation
+        category:
+          type: string
+          example: management
+        host:
+          type: string
+          example: sonarr
+        port:
+          type: integer
+          example: 8989
+
+    CategoryEntry:
+      type: object
+      properties:
+        label:
+          type: string
+          example: Management
+        ids:
+          type: array
+          items:
+            type: string
+          example: [sonarr, radarr, lidarr, readarr]
+
+    ServiceHealth:
+      type: object
+      properties:
+        services:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [ok, error, disabled, unknown]
+              code:
+                type: integer
+              ms:
+                type: integer
+              auth:
+                type: string
+                enum: [ok, unauthorized, error, no_key, n/a]
+              error:
+                type: string
+        healthy:
+          type: integer
+          example: 12
+        total:
+          type: integer
+          example: 14
+
+    DiskInfo:
+      type: object
+      properties:
+        disk:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              path:
+                type: string
+              total_bytes:
+                type: integer
+              used_bytes:
+                type: integer
+              free_bytes:
+                type: integer
+              percent_used:
+                type: number
+              fstype:
+                type: string
+              warning:
+                type: string
+              error:
+                type: string
+        guardrails:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            max_used_percent:
+              type: number
+            target_used_percent:
+              type: number
+            monitor_path:
+              type: string
+            qbit_cleanup:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                min_completion_age_hours:
+                  type: number
+                min_ratio:
+                  type: number
+                min_seeding_time_minutes:
+                  type: integer
+                max_delete_per_run:
+                  type: integer
+                delete_files:
+                  type: boolean
+                categories:
+                  type: array
+                  items:
+                    type: string
+
+    RoutingConfig:
+      type: object
+      properties:
+        base_domain:
+          type: string
+          example: example.com
+        stack_subdomain:
+          type: string
+          example: media-stack
+        gateway_host:
+          type: string
+          example: apps.media-stack.example.com
+        gateway_port:
+          type: integer
+          example: 80
+        app_path_prefix:
+          type: string
+          example: /app
+        strategy:
+          type: string
+          enum: [hybrid, subdomain, path]
+          example: hybrid
+        internet_exposed:
+          type: boolean
+          example: false
+        direct_hosts:
+          type: object
+          additionalProperties:
+            type: string
+
+    GpuInfo:
+      type: object
+      properties:
+        detected:
+          type: boolean
+        gpus:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: intel/va-api
+              name:
+                type: string
+              driver:
+                type: string
+              devices:
+                type: array
+                items:
+                  type: string
+              container:
+                type: string
+        jellyfin_configured:
+          type: boolean
+        jellyfin_has_gpu:
+          type: boolean
+        host_os:
+          type: string
+          example: linux
+        runtime:
+          type: string
+          enum: [compose, kubernetes]
+        hw_accel_type:
+          type: string
+          enum: [vaapi, nvenc]
+        compose_snippet:
+          type: string
+        can_auto_configure:
+          type: boolean
+        note:
+          type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "not found"
+    Unauthorized:
+      description: Authentication required
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: 'Basic realm="Media Stack Controller"'
+    BadRequest:
+      description: Invalid request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # =========================================================================
+  # Health
+  # =========================================================================
+
+  /healthz:
+    get:
+      operationId: getLiveness
+      tags: [Health]
+      summary: Liveness probe
+      description: |
+        Kubernetes/Docker liveness probe. Always returns 200 if the controller
+        process is running. Use this for container orchestrator health checks.
+        This endpoint never requires authentication.
+      responses:
+        "200":
+          description: Controller is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+              example:
+                status: ok
+
+  /readyz:
+    get:
+      operationId: getReadiness
+      tags: [Health]
+      summary: Readiness probe
+      description: |
+        Kubernetes/Docker readiness probe. Returns the bootstrap phase and
+        whether the initial bootstrap has completed. Use this to gate traffic
+        until the stack is fully configured. Never requires authentication.
+      responses:
+        "200":
+          description: Readiness status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+                  initial_bootstrap_done:
+                    type: boolean
+                  phase:
+                    type: string
+              example:
+                status: ready
+                initial_bootstrap_done: true
+                phase: complete
+
+  /api/health:
+    get:
+      operationId: getServiceHealth
+      tags: [Health]
+      summary: Live service health probes
+      description: |
+        Probes every registered service for HTTP reachability and API key
+        authentication validity. Results are cached for 10 seconds. Each
+        service reports status (ok/error/disabled), response time in ms,
+        and auth status (ok/unauthorized/no_key/n/a).
+
+        Use this to build a service status dashboard or trigger alerts when
+        services go down.
+      responses:
+        "200":
+          description: Health probe results for all services
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceHealth'
+              example:
+                services:
+                  sonarr:
+                    status: ok
+                    code: 200
+                    ms: 12
+                    auth: ok
+                  radarr:
+                    status: ok
+                    code: 200
+                    ms: 8
+                    auth: ok
+                  jellyfin:
+                    status: ok
+                    code: 200
+                    ms: 15
+                    auth: n/a
+                healthy: 12
+                total: 14
+
+  /api/health-history:
+    get:
+      operationId: getHealthHistory
+      tags: [Health]
+      summary: Health history and SLA metrics
+      description: |
+        Returns up to 24 hours of health probe history (sampled at ~1 minute
+        intervals, max 1440 entries). Includes per-service uptime percentage
+        for SLA calculations.
+      responses:
+        "200":
+          description: Health history with SLA data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sla:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                        ok:
+                          type: integer
+                        uptime_pct:
+                          type: number
+                  period_hours:
+                    type: number
+                  entries:
+                    type: integer
+              example:
+                sla:
+                  sonarr:
+                    total: 1440
+                    ok: 1438
+                    uptime_pct: 99.86
+                  radarr:
+                    total: 1440
+                    ok: 1440
+                    uptime_pct: 100.0
+                period_hours: 24.0
+                entries: 1440
+
+  # =========================================================================
+  # State
+  # =========================================================================
+
+  /status:
+    get:
+      operationId: getStatus
+      tags: [State]
+      summary: Full controller state
+      description: |
+        Returns the complete controller state: current phase, action history,
+        pending queue, app status, preflight results, runtime config, and
+        webhook URLs. This is the primary endpoint for monitoring the
+        controller's lifecycle.
+      responses:
+        "200":
+          description: Complete controller state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllerState'
+
+  /apps:
+    get:
+      operationId: getApps
+      tags: [State]
+      summary: All app statuses
+      description: |
+        Returns the bootstrap status of every managed application. Each entry
+        shows the configuration outcome from the last bootstrap run.
+      responses:
+        "200":
+          description: Map of app names to their status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps:
+                    type: object
+                    additionalProperties:
+                      type: object
+              example:
+                apps:
+                  sonarr:
+                    status: configured
+                  radarr:
+                    status: configured
+                  jellyfin:
+                    status: configured
+
+  /apps/{appName}:
+    get:
+      operationId: getAppStatus
+      tags: [State]
+      summary: Single app status
+      description: |
+        Returns the bootstrap status for a specific application by name.
+        Returns 404 if the app is not tracked.
+      parameters:
+        - name: appName
+          in: path
+          required: true
+          schema:
+            type: string
+          example: sonarr
+      responses:
+        "200":
+          description: App status
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                sonarr:
+                  status: configured
+        "404":
+          description: App not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "app 'unknown' not found"
+
+  /config:
+    get:
+      operationId: getConfig
+      tags: [State]
+      summary: Runtime configuration
+      description: |
+        Returns the current runtime config overrides. These are key-value
+        settings that persist across actions and can be toggled via POST.
+      responses:
+        "200":
+          description: Runtime configuration map
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    type: object
+                    additionalProperties: true
+              example:
+                config:
+                  skip_envoy: false
+                  dry_run: false
+    post:
+      operationId: updateConfig
+      tags: [State]
+      summary: Update runtime configuration
+      description: |
+        Merge key-value pairs into the runtime config. These overrides affect
+        subsequent action runs (e.g., set `skip_envoy: true` to skip Envoy
+        regeneration). Returns the full config after update.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              skip_envoy: true
+              dry_run: false
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [updated]
+                  config:
+                    type: object
+                    additionalProperties: true
+              example:
+                status: updated
+                config:
+                  skip_envoy: true
+                  dry_run: false
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Actions
+  # =========================================================================
+
+  /actions/{name}:
+    post:
+      operationId: triggerAction
+      tags: [Actions]
+      summary: Trigger an orchestration action
+      description: |
+        Queue an asynchronous action for execution. The request returns
+        immediately with `status: accepted`. Actions run in priority order:
+
+        | Action          | Priority | Description |
+        |-----------------|----------|-------------|
+        | `bootstrap`     | 10       | Full stack setup: preflight, containers, post-setup, envoy config |
+        | `finalize`      | 20       | Run post-bootstrap finalization tasks |
+        | `envoy-config`  | 30       | Regenerate Envoy proxy configuration |
+        | `restart-apps`  | 40       | Restart all managed service containers |
+        | `reconcile`     | 50       | Check and fix configuration drift |
+        | `sync-indexers`  | 60       | Sync Prowlarr indexers to arr apps |
+        | `auto-indexers` | 70       | Auto-discover and add indexers |
+
+        Pass optional overrides in the request body to customize behavior
+        (e.g., `{"skip_envoy": true}`).
+
+        Monitor progress via `GET /status` or `GET /logs/stream` (SSE).
+      security:
+        - basicAuth: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [bootstrap, finalize, auto-indexers, restart-apps, sync-indexers, envoy-config, reconcile]
+          description: The action to trigger
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Optional overrides for the action
+            example:
+              skip_envoy: true
+      responses:
+        "200":
+          description: Action accepted and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionAccepted'
+              example:
+                status: accepted
+                action: bootstrap
+                priority: 10
+                overrides:
+                  skip_envoy: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Unknown action name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  known:
+                    type: array
+                    items:
+                      type: string
+              example:
+                error: "unknown action 'foo'"
+                known: [auto-indexers, bootstrap, envoy-config, finalize, reconcile, restart-apps, sync-indexers]
+
+  /cancel:
+    post:
+      operationId: cancelAction
+      tags: [Actions]
+      summary: Cancel running action
+      description: |
+        Request cancellation of the currently running action. If an action
+        is running, it will be signalled to stop at the next checkpoint.
+        Also accessible as `POST /actions/cancel`.
+      security:
+        - basicAuth: []
+      responses:
+        "200":
+          description: Cancellation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [cancel_requested, no_action_running]
+                  current_action:
+                    $ref: '#/components/schemas/ActionRecord'
+              example:
+                status: cancel_requested
+                current_action:
+                  id: bootstrap-3
+                  name: bootstrap
+                  status: running
+                  started_at: 1712505600.0
+                  elapsed_seconds: 12.3
+
+  /run:
+    post:
+      operationId: triggerBootstrapLegacy
+      tags: [Actions]
+      summary: Trigger bootstrap (legacy alias)
+      description: |
+        Backward-compatible alias for `POST /actions/bootstrap`. Triggers a
+        full bootstrap run. Prefer `/actions/bootstrap` for new integrations.
+      security:
+        - basicAuth: []
+      responses:
+        "200":
+          description: Bootstrap action accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionAccepted'
+
+  # =========================================================================
+  # Services
+  # =========================================================================
+
+  /api/services:
+    get:
+      operationId: listServices
+      tags: [Services]
+      summary: List all managed services
+      description: |
+        Returns every service in the registry, including the controller itself
+        as a virtual entry. Each entry includes the service ID, display name,
+        description, category, hostname, and port. Use this to discover which
+        services are available in the stack.
+      responses:
+        "200":
+          description: Array of service entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceEntry'
+              example:
+                - id: sonarr
+                  name: Sonarr
+                  desc: TV series management and automation
+                  category: management
+                  host: sonarr
+                  port: 8989
+                - id: radarr
+                  name: Radarr
+                  desc: Movie management and automation
+                  category: management
+                  host: radarr
+                  port: 7878
+                - id: controller
+                  name: Media Stack Controller
+                  desc: Orchestration API and dashboard
+                  category: infrastructure
+                  host: localhost
+                  port: 9876
+
+  /api/services/categories:
+    get:
+      operationId: listServiceCategories
+      tags: [Services]
+      summary: Service categories
+      description: |
+        Returns service categories with their member service IDs. Useful for
+        building grouped UI views. Categories are derived from the service
+        registry YAML.
+      responses:
+        "200":
+          description: Array of category objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryEntry'
+              example:
+                - label: Management
+                  ids: [sonarr, radarr, lidarr, readarr]
+                - label: Downloads
+                  ids: [qbittorrent, sabnzbd, prowlarr]
+                - label: Media
+                  ids: [jellyfin, bazarr, jellyseerr, tautulli]
+                - label: Infrastructure
+                  ids: [envoy, homepage, controller]
+
+  /api/services/{serviceId}/api-key:
+    get:
+      operationId: getServiceApiKey
+      tags: [Services]
+      summary: Get API key status for a service
+      description: |
+        Check whether an API key is configured for a service, and get a
+        masked preview. Does not return the full key for security.
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: sonarr
+      responses:
+        "200":
+          description: API key status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  env:
+                    type: string
+                  has_key:
+                    type: boolean
+                  key_preview:
+                    type: string
+              example:
+                service: sonarr
+                env: SONARR_API_KEY
+                has_key: true
+                key_preview: "a1b2...y8z9"
+        "404":
+          description: Service not found or has no API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Service 'envoy' not found or has no API key"
+    post:
+      operationId: setServiceApiKey
+      tags: [Services]
+      summary: Set or auto-discover a service API key
+      description: |
+        Manually set an API key for a service, or trigger auto-discovery.
+
+        **Manual set**: provide `api_key` in the request body.
+
+        **Auto-discover**: send an empty body or omit `api_key`. The controller
+        will try to read the key from the service's config file, then fall back
+        to HTTP-based discovery (e.g., reading `/initialize.js`).
+
+        The discovered/set key is persisted to the environment and K8s secret.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: sonarr
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key:
+                  type: string
+                  description: API key to set. Omit for auto-discovery.
+            example:
+              api_key: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+      responses:
+        "200":
+          description: Key set or discovered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [set, discovered]
+                  service:
+                    type: string
+                  env:
+                    type: string
+                  source:
+                    type: string
+                    description: Only present for auto-discovery
+              examples:
+                manual:
+                  summary: Manually set
+                  value:
+                    status: set
+                    service: sonarr
+                    env: SONARR_API_KEY
+                autodiscovered:
+                  summary: Auto-discovered from config file
+                  value:
+                    status: discovered
+                    service: sonarr
+                    source: config_file
+        "404":
+          description: Service not found or key could not be discovered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # =========================================================================
+  # Content
+  # =========================================================================
+
+  /api/versions:
+    get:
+      operationId: getVersions
+      tags: [Content]
+      summary: Service version strings
+      description: |
+        Fetches version strings from all arr apps, Jellyfin, and Bazarr.
+        Cached for 5 minutes. Useful for inventory and update tracking.
+      responses:
+        "200":
+          description: Map of service names to version strings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: object
+                    additionalProperties:
+                      type: string
+              example:
+                versions:
+                  sonarr: "4.0.14.2939"
+                  radarr: "5.19.3.9730"
+                  lidarr: "2.9.6.4552"
+                  prowlarr: "1.31.2.4975"
+                  jellyfin: "10.10.6"
+                  bazarr: "1.5.6"
+
+  /api/downloads:
+    get:
+      operationId: getDownloads
+      tags: [Content]
+      summary: Active downloads
+      description: |
+        Returns active downloads from qBittorrent (torrents) and SABnzbd
+        (usenet). Includes download name, progress percentage, speed, and
+        state. Limited to 10 items per client.
+      responses:
+        "200":
+          description: Active downloads from all clients
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qbittorrent:
+                    type: object
+                    properties:
+                      active:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            progress:
+                              type: number
+                            state:
+                              type: string
+                            size:
+                              type: integer
+                            dlspeed:
+                              type: integer
+                      error:
+                        type: string
+                  sabnzbd:
+                    type: object
+                    properties:
+                      active:
+                        type: integer
+                      speed:
+                        type: string
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            progress:
+                              type: number
+                      error:
+                        type: string
+              example:
+                qbittorrent:
+                  active: 3
+                  items:
+                    - name: "Ubuntu.22.04.ISO"
+                      progress: 67.3
+                      state: downloading
+                      size: 4200000000
+                      dlspeed: 12500000
+                sabnzbd:
+                  active: 1
+                  speed: "15000 KB/s"
+                  items:
+                    - name: "Another.File.nzb"
+                      progress: 45.2
+
+  /api/stats:
+    get:
+      operationId: getStats
+      tags: [Content]
+      summary: Library counts
+      description: |
+        Returns the number of items (series, movies, artists, books) in
+        each arr app library. Cached for 60 seconds.
+      responses:
+        "200":
+          description: Per-service library counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        count:
+                          type: integer
+                        label:
+                          type: string
+                        error:
+                          type: string
+              example:
+                stats:
+                  sonarr:
+                    count: 142
+                    label: series
+                  radarr:
+                    count: 891
+                    label: movies
+                  lidarr:
+                    count: 67
+                    label: artists
+                  readarr:
+                    count: 23
+                    label: books
+
+  /api/indexers:
+    get:
+      operationId: getIndexers
+      tags: [Content]
+      summary: Prowlarr indexer list
+      description: |
+        Returns all indexers configured in Prowlarr with their enabled/disabled
+        status and protocol (torrent/usenet).
+      responses:
+        "200":
+          description: Indexer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  indexers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        enable:
+                          type: boolean
+                        protocol:
+                          type: string
+                  total:
+                    type: integer
+                  enabled:
+                    type: integer
+              example:
+                indexers:
+                  - id: 1
+                    name: "1337x"
+                    enable: true
+                    protocol: torrent
+                  - id: 2
+                    name: "NZBgeek"
+                    enable: true
+                    protocol: usenet
+                total: 12
+                enabled: 10
+
+  /api/indexer-stats:
+    get:
+      operationId: getIndexerStats
+      tags: [Content]
+      summary: Prowlarr indexer performance stats
+      description: |
+        Returns query/grab/failure counts per indexer from Prowlarr's
+        statistics API. Useful for identifying underperforming indexers.
+      responses:
+        "200":
+          description: Indexer statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: array
+                    items:
+                      type: object
+
+  /api/download-history:
+    get:
+      operationId: getDownloadHistory
+      tags: [Content]
+      summary: Recent download history
+      description: |
+        Fetches the 10 most recent download history entries from Sonarr and
+        Radarr. Includes title, event type (grabbed/imported/failed), and
+        date.
+      responses:
+        "200":
+          description: Download history per service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          title:
+                            type: string
+                          event:
+                            type: string
+                          date:
+                            type: string
+              example:
+                history:
+                  sonarr:
+                    - title: "Breaking Bad S05E16"
+                      event: downloadFolderImported
+                      date: "2026-04-07T10:30:00"
+                  radarr:
+                    - title: "Inception (2010)"
+                      event: grabbed
+                      date: "2026-04-07T09:15:00"
+
+  /api/quality-profiles:
+    get:
+      operationId: getQualityProfiles
+      tags: [Content]
+      summary: Quality profiles
+      description: |
+        Returns quality profiles configured in Sonarr and Radarr. Useful for
+        displaying available quality tiers or building import list UIs.
+      responses:
+        "200":
+          description: Quality profiles per service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+              example:
+                profiles:
+                  sonarr:
+                    - id: 1
+                      name: "HD-1080p"
+                    - id: 4
+                      name: "Ultra-HD"
+                  radarr:
+                    - id: 1
+                      name: "HD-1080p"
+
+  /api/import-lists:
+    get:
+      operationId: getImportLists
+      tags: [Content]
+      summary: Import/discovery lists
+      description: |
+        Returns import lists (automatic discovery lists) configured in Sonarr
+        and Radarr. Shows list name, type, and auto-add status.
+      responses:
+        "200":
+          description: Import lists per service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lists:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          enabled:
+                            type: boolean
+                          listType:
+                            type: string
+              example:
+                lists:
+                  sonarr:
+                    - id: 1
+                      name: "Trakt Popular"
+                      enabled: true
+                      listType: trakt
+                  radarr:
+                    - id: 1
+                      name: "IMDb Top 250"
+                      enabled: true
+                      listType: imdb
+
+  /api/libraries:
+    get:
+      operationId: getJellyfinLibraries
+      tags: [Content]
+      summary: Jellyfin libraries
+      description: |
+        Returns the virtual folder (library) list from Jellyfin, including
+        library name, collection type, content paths, and item count.
+      responses:
+        "200":
+          description: Jellyfin library list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  libraries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        type:
+                          type: string
+                        paths:
+                          type: array
+                          items:
+                            type: string
+                        count:
+                          type: integer
+              example:
+                libraries:
+                  - name: Movies
+                    type: movies
+                    paths: ["/media/movies"]
+                    count: 891
+                  - name: TV Shows
+                    type: tvshows
+                    paths: ["/media/tv"]
+                    count: 142
+
+  /api/recent:
+    get:
+      operationId: getRecent
+      tags: [Content]
+      summary: Recently added items
+      description: |
+        Returns the 5 most recently added items from Sonarr (series) and
+        Radarr (movies). Useful for "recently added" widgets.
+      responses:
+        "200":
+          description: Recently added items per service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recent:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          title:
+                            type: string
+                          added:
+                            type: string
+              example:
+                recent:
+                  sonarr:
+                    - title: "The Last of Us"
+                      added: "2026-04-05"
+                  radarr:
+                    - title: "Oppenheimer"
+                      added: "2026-04-06"
+
+  # =========================================================================
+  # Disk
+  # =========================================================================
+
+  /api/disk:
+    get:
+      operationId: getDisk
+      tags: [Disk]
+      summary: Disk usage and guardrails
+      description: |
+        Returns disk usage for config, media, torrent, and usenet volumes,
+        along with the current guardrail configuration (automatic cleanup
+        thresholds). Detects filesystem type and warns about RAM-backed
+        filesystems.
+      responses:
+        "200":
+          description: Disk usage and guardrail config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiskInfo'
+              example:
+                disk:
+                  config:
+                    path: /srv-config
+                    total_bytes: 107374182400
+                    used_bytes: 2147483648
+                    free_bytes: 105226698752
+                    percent_used: 2.0
+                  media:
+                    path: /srv-stack/media
+                    total_bytes: 2199023255552
+                    used_bytes: 1429365116108
+                    free_bytes: 769658139444
+                    percent_used: 65.0
+                guardrails:
+                  enabled: true
+                  max_used_percent: 65
+                  target_used_percent: 58
+                  monitor_path: ""
+                  qbit_cleanup:
+                    enabled: true
+                    min_completion_age_hours: 36
+                    min_ratio: 1.0
+                    min_seeding_time_minutes: 720
+                    max_delete_per_run: 80
+                    delete_files: true
+                    categories: []
+
+  /api/cleanup-preview:
+    get:
+      operationId: getCleanupPreview
+      tags: [Disk]
+      summary: Preview guardrail cleanup
+      description: |
+        Dry-run preview of which completed torrents would be deleted by the
+        disk guardrail cleanup policy. Shows each candidate with name, size,
+        age, ratio, and seeding time. Also indicates whether the disk is
+        currently over the threshold.
+      responses:
+        "200":
+          description: Cleanup preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        category:
+                          type: string
+                        age_hours:
+                          type: number
+                        ratio:
+                          type: number
+                        seed_minutes:
+                          type: integer
+                  total_candidates:
+                    type: integer
+                  over_threshold:
+                    type: boolean
+                  max_used_percent:
+                    type: number
+                  would_trigger:
+                    type: boolean
+              example:
+                candidates:
+                  - name: "Old.Torrent.Name"
+                    size: 4200000000
+                    category: movies
+                    age_hours: 120.5
+                    ratio: 2.15
+                    seed_minutes: 8640
+                total_candidates: 15
+                over_threshold: true
+                max_used_percent: 65
+                would_trigger: true
+
+  /api/guardrails:
+    post:
+      operationId: updateGuardrails
+      tags: [Disk]
+      summary: Update guardrail settings
+      description: |
+        Update disk guardrail thresholds and qBittorrent cleanup policy in the
+        bootstrap config. Changes are persisted to the config JSON file.
+
+        Top-level keys: `enabled`, `max_used_percent`, `target_used_percent`,
+        `monitor_path`.
+
+        qBittorrent cleanup keys (prefix with `qbit_`): `qbit_enabled`,
+        `qbit_min_completion_age_hours`, `qbit_min_ratio`,
+        `qbit_min_seeding_time_minutes`, `qbit_max_delete_per_run`,
+        `qbit_delete_files`.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                max_used_percent:
+                  type: number
+                target_used_percent:
+                  type: number
+                monitor_path:
+                  type: string
+                qbit_enabled:
+                  type: boolean
+                qbit_min_completion_age_hours:
+                  type: number
+                qbit_min_ratio:
+                  type: number
+                qbit_min_seeding_time_minutes:
+                  type: integer
+                qbit_max_delete_per_run:
+                  type: integer
+                qbit_delete_files:
+                  type: boolean
+            example:
+              enabled: true
+              max_used_percent: 70
+              qbit_min_ratio: 1.5
+      responses:
+        "200":
+          description: Guardrail update result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [updated, no_changes]
+                  changed:
+                    type: array
+                    items:
+                      type: string
+              example:
+                status: updated
+                changed: [max_used_percent, qbit_min_ratio]
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Routing
+  # =========================================================================
+
+  /api/routing:
+    get:
+      operationId: getRouting
+      tags: [Routing]
+      summary: Get routing configuration
+      description: |
+        Returns the current Envoy gateway routing configuration. Values come
+        from the bootstrap profile YAML, overlaid with any persisted runtime
+        overrides from previous POST requests.
+      responses:
+        "200":
+          description: Current routing configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingConfig'
+              example:
+                base_domain: example.com
+                stack_subdomain: media-stack
+                gateway_host: apps.media-stack.example.com
+                gateway_port: 80
+                app_path_prefix: /app
+                strategy: hybrid
+                internet_exposed: false
+                direct_hosts: {}
+    post:
+      operationId: updateRouting
+      tags: [Routing]
+      summary: Update routing configuration
+      description: |
+        Update the Envoy routing configuration. Changes are persisted to both
+        the routing overrides file and the profile YAML. Automatically triggers
+        an `envoy-config` action to regenerate the Envoy configuration.
+
+        The controller auto-syncs related fields: changing `stack_subdomain` or
+        `base_domain` updates `gateway_host`, and vice versa.
+
+        Allowed keys: `base_domain`, `stack_subdomain`, `gateway_host`,
+        `gateway_port`, `app_path_prefix`, `strategy`, `internet_exposed`.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                base_domain:
+                  type: string
+                stack_subdomain:
+                  type: string
+                gateway_host:
+                  type: string
+                gateway_port:
+                  type: integer
+                app_path_prefix:
+                  type: string
+                strategy:
+                  type: string
+                  enum: [hybrid, subdomain, path]
+                internet_exposed:
+                  type: boolean
+            example:
+              base_domain: home.lan
+              strategy: path
+      responses:
+        "200":
+          description: Routing update result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [updated, no_changes]
+                  persisted_to:
+                    type: string
+                  changed:
+                    type: array
+                    items:
+                      type: string
+                  routing:
+                    $ref: '#/components/schemas/RoutingConfig'
+              example:
+                status: updated
+                persisted_to: /srv-config/.controller/routing-overrides.yaml
+                changed: [base_domain, gateway_host]
+                routing:
+                  base_domain: home.lan
+                  stack_subdomain: media-stack
+                  gateway_host: apps.media-stack.home.lan
+                  gateway_port: 80
+                  app_path_prefix: /app
+                  strategy: path
+                  internet_exposed: false
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Security
+  # =========================================================================
+
+  /api/rotate-keys:
+    post:
+      operationId: rotateKeys
+      tags: [Security]
+      summary: Rotate API keys
+      description: |
+        Regenerate API keys for all services (or a targeted subset). For
+        file-based services (arr apps, SABnzbd, Bazarr), generates a new
+        UUID key and writes it to the config file. For Jellyfin, creates a
+        new key via the Jellyfin API. Services with rotated file-based keys
+        are automatically restarted.
+
+        Keys are persisted to the K8s secret (if running in Kubernetes) and
+        to environment variables.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                services:
+                  type: array
+                  items:
+                    type: string
+                  description: |
+                    Optional list of service IDs to target. Omit to rotate all.
+            example:
+              services: [sonarr, radarr]
+      responses:
+        "200":
+          description: Key rotation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [rotated]
+                  keys:
+                    type: array
+                    items:
+                      type: string
+                    description: List of env var names that were rotated
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  restarted:
+                    type: array
+                    items:
+                      type: string
+              example:
+                status: rotated
+                keys: [SONARR_API_KEY, RADARR_API_KEY, PROWLARR_API_KEY]
+                errors: []
+                restarted: [sonarr, radarr, prowlarr]
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [Security]
+      summary: Reset admin password across services
+      description: |
+        Changes the admin password on all services that support it (or a
+        targeted subset). Handles each service's unique password change
+        mechanism:
+
+        - **qBittorrent**: form-based login + preferences API
+        - **Jellyfin**: user password API (auto-discovers API key and user ID)
+        - **Arr apps** (Sonarr, Radarr, etc.): config API PUT
+        - **Bazarr**: PATCH settings API
+        - **Config-file services**: direct file edit + restart
+
+        Also updates the `STACK_ADMIN_PASSWORD` environment variable and
+        K8s secret.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  minLength: 4
+                  description: New admin password (min 4 characters)
+                services:
+                  type: array
+                  items:
+                    type: string
+                  description: Optional list of service IDs to target. Omit for all.
+            example:
+              password: "my-new-secure-password"
+              services: [sonarr, radarr, jellyfin]
+      responses:
+        "200":
+          description: Password reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [updated]
+                  services:
+                    type: array
+                    items:
+                      type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  restarted:
+                    type: array
+                    items:
+                      type: string
+              example:
+                status: updated
+                services: [qbittorrent, jellyfin, sonarr, radarr, prowlarr, bazarr]
+                errors: []
+                restarted: [bazarr]
+        "400":
+          description: Password too short
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "password field required (min 4 chars)"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/jellyfin/reset:
+    post:
+      operationId: jellyfinHardReset
+      tags: [Security]
+      summary: Hard-reset Jellyfin credentials
+      description: |
+        Emergency reset for Jellyfin when the admin password is unknown
+        (e.g., after the startup wizard auto-completes with random
+        credentials). This performs a direct SQLite database modification:
+
+        1. Clears the password hash in the Jellyfin database
+        2. Sets the username to the requested value
+        3. Restarts the Jellyfin container
+        4. Sets the new password via the Jellyfin API
+
+        Use this when `POST /api/reset-password` fails for Jellyfin because
+        the current password is unknown.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: Desired admin username (defaults to STACK_ADMIN_USERNAME)
+                password:
+                  type: string
+                  minLength: 4
+                  description: New password (min 4 characters)
+            example:
+              username: admin
+              password: "my-new-password"
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, partial, error]
+                  user:
+                    type: string
+                  note:
+                    type: string
+                  error:
+                    type: string
+              examples:
+                success:
+                  summary: Successful reset
+                  value:
+                    status: ok
+                    user: admin
+                    note: "Jellyfin restarted."
+                partial:
+                  summary: DB updated but password set failed
+                  value:
+                    status: partial
+                    error: "Password set failed: connection refused"
+                    note: "Restart Jellyfin manually."
+        "400":
+          description: Password too short
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "password required (min 4 chars)"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Operations
+  # =========================================================================
+
+  /api/namespaces:
+    get:
+      operationId: getNamespaces
+      tags: [Operations]
+      summary: Containers and resource usage
+      description: |
+        In Kubernetes mode: returns namespace info, deployments with replica
+        counts and resource requests, pod metrics (CPU/memory), and problem
+        pods.
+
+        In Compose mode: returns container list with status, images, and
+        live CPU/memory usage from Docker stats.
+      responses:
+        "200":
+          description: Container/namespace info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  namespaces:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        namespace:
+                          type: string
+                        current:
+                          type: boolean
+                        pods:
+                          type: integer
+                        running:
+                          type: integer
+                        problems:
+                          type: array
+                          items:
+                            type: object
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        replicas:
+                          type: integer
+                        ready:
+                          type: integer
+                        image:
+                          type: string
+                        cpu_request:
+                          type: string
+                        mem_request:
+                          type: string
+                  pod_metrics:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pod:
+                          type: string
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+              example:
+                namespaces:
+                  - namespace: media-stack
+                    current: true
+                    pods: 14
+                    running: 14
+                    problems: []
+                services:
+                  - name: sonarr
+                    replicas: 1
+                    ready: 1
+                    image: "lscr.io/linuxserver/sonarr:4.0.14"
+                pod_metrics:
+                  - pod: sonarr-abc123
+                    cpu: "50m"
+                    memory: "256Mi"
+
+  /api/image-updates:
+    get:
+      operationId: getImageUpdates
+      tags: [Operations]
+      summary: Image versions and staleness
+      description: |
+        Lists all running container images with their tags, start times, and
+        image creation dates. Reports how many images are pinned (not using
+        `latest`). Useful for tracking which services need updates.
+      responses:
+        "200":
+          description: Image update info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        image:
+                          type: string
+                        tag:
+                          type: string
+                        started_at:
+                          type: string
+                        image_created:
+                          type: string
+                        digest:
+                          type: string
+                  total:
+                    type: integer
+                  pinned:
+                    type: integer
+              example:
+                images:
+                  - name: sonarr
+                    image: "lscr.io/linuxserver/sonarr:4.0.14"
+                    tag: "4.0.14"
+                    started_at: "2026-04-01 08:00:00"
+                    image_created: "2026-03-28 12:00:00"
+                    digest: "sha256:abc123..."
+                total: 14
+                pinned: 12
+
+  /api/gpu:
+    get:
+      operationId: getGpuInfo
+      tags: [Operations]
+      summary: GPU detection for transcoding
+      description: |
+        Detects GPU hardware available for Jellyfin transcoding. Checks
+        Docker containers for mounted GPU devices, Docker runtime for NVIDIA
+        support, and `/dev/dri` for Intel VA-API. Reports whether Jellyfin
+        has GPU access and whether hardware transcoding is configured.
+
+        Includes platform-specific guidance (Linux, macOS, Windows, K8s)
+        and a compose snippet for enabling GPU passthrough.
+      responses:
+        "200":
+          description: GPU detection results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuInfo'
+              example:
+                detected: true
+                gpus:
+                  - type: intel/va-api
+                    name: "GPU passed to jellyfin (/dev/dri)"
+                    container: jellyfin
+                jellyfin_configured: true
+                jellyfin_has_gpu: true
+                host_os: linux
+                runtime: compose
+                hw_accel_type: vaapi
+                can_auto_configure: true
+
+  /api/gpu/enable:
+    post:
+      operationId: enableGpuTranscoding
+      tags: [Operations]
+      summary: Auto-configure GPU transcoding
+      description: |
+        Automatically configures Jellyfin for hardware transcoding based on
+        the detected GPU type. Modifies `system.xml`, creates a backup, and
+        restarts Jellyfin. If Jellyfin fails to start after the change, the
+        configuration is automatically rolled back.
+
+        Prerequisites: GPU must be detected and Jellyfin must have GPU
+        devices mounted in its container.
+      security:
+        - basicAuth: []
+      responses:
+        "200":
+          description: GPU configuration result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, error]
+                  hw_accel_type:
+                    type: string
+                  changes:
+                    type: array
+                    items:
+                      type: string
+                  note:
+                    type: string
+                  backup:
+                    type: string
+                  error:
+                    type: string
+                  compose_snippet:
+                    type: string
+              examples:
+                success:
+                  summary: Successfully configured
+                  value:
+                    status: ok
+                    hw_accel_type: vaapi
+                    changes: ["HardwareAccelerationType=vaapi", "EnableHardwareDecoding=true", "EnableHardwareEncoding=true", "VaapiDevice=/dev/dri/renderD128"]
+                    note: "Jellyfin restarted and running."
+                    backup: "/srv-config/jellyfin/config/system.xml.gpu-backup"
+                no_gpu:
+                  summary: No GPU detected
+                  value:
+                    status: error
+                    error: "No GPU detected. Mount GPU device to container first."
+
+  /api/snapshots:
+    get:
+      operationId: listSnapshots
+      tags: [Operations]
+      summary: List config snapshots
+      description: |
+        Returns available configuration snapshots with file name, size, and
+        creation timestamp. Snapshots capture the state of all service config
+        files with API keys redacted. Maximum 24 snapshots retained.
+      responses:
+        "200":
+          description: Snapshot list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshots:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        file:
+                          type: string
+                        size:
+                          type: integer
+                        created:
+                          type: string
+                  dir:
+                    type: string
+              example:
+                snapshots:
+                  - file: snapshot-20260407T120000.json
+                    size: 45280
+                    created: "2026-04-07 12:00:00"
+                dir: /srv-config/.snapshots
+
+  /api/snapshots/{filename}:
+    get:
+      operationId: getSnapshotDetail
+      tags: [Operations]
+      summary: Read a config snapshot
+      description: |
+        Returns the full content of a specific snapshot file. The snapshot
+        is a JSON object mapping service config paths to their content
+        (with API keys redacted).
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+          example: snapshot-20260407T120000.json
+      responses:
+        "200":
+          description: Snapshot content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  file:
+                    type: string
+        "200 ":
+          description: Snapshot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Snapshot not found"
+
+  /api/snapshot:
+    post:
+      operationId: takeSnapshot
+      tags: [Operations]
+      summary: Take a config snapshot now
+      description: |
+        Immediately captures the current state of all service configuration
+        files into a new snapshot. API keys are automatically redacted.
+        Old snapshots beyond 24 are pruned.
+      security:
+        - basicAuth: []
+      responses:
+        "200":
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [created]
+                  file:
+                    type: string
+                  configs:
+                    type: integer
+              example:
+                status: created
+                file: snapshot-20260407T143022.json
+                configs: 10
+
+  /api/snapshot-diff:
+    get:
+      operationId: diffSnapshots
+      tags: [Operations]
+      summary: Compare two snapshots
+      description: |
+        Returns a diff between two snapshots, listing which config files
+        changed, were added, or were removed.
+      parameters:
+        - name: a
+          in: query
+          required: true
+          schema:
+            type: string
+          description: First snapshot filename
+          example: snapshot-20260406T120000.json
+        - name: b
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Second snapshot filename
+          example: snapshot-20260407T120000.json
+      responses:
+        "200":
+          description: Snapshot diff result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diffs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        file:
+                          type: string
+                        status:
+                          type: string
+                          enum: [changed, added, removed]
+                  file_a:
+                    type: string
+                  file_b:
+                    type: string
+                  total_changes:
+                    type: integer
+              example:
+                diffs:
+                  - file: sonarr/config.xml
+                    status: changed
+                  - file: tautulli/config.ini
+                    status: added
+                file_a: snapshot-20260406T120000.json
+                file_b: snapshot-20260407T120000.json
+                total_changes: 2
+
+  /api/mounts:
+    get:
+      operationId: getMounts
+      tags: [Operations]
+      summary: Filesystem mounts
+      description: |
+        Detects NFS, CIFS/SMB, and local mounts relevant to media storage.
+        Scans `/proc/mounts` for paths containing `/media`, `/data`,
+        `/config`, `/srv`, `/mnt`, or `/nas`, plus any NFS/CIFS mounts
+        regardless of path.
+      responses:
+        "200":
+          description: Mount information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        device:
+                          type: string
+                        mountpoint:
+                          type: string
+                        fstype:
+                          type: string
+                  nfs_available:
+                    type: boolean
+                  cifs_available:
+                    type: boolean
+              example:
+                mounts:
+                  - device: "192.168.1.100:/volume1/media"
+                    mountpoint: /srv-stack/media
+                    fstype: nfs4
+                  - device: /dev/sda1
+                    mountpoint: /srv-config
+                    fstype: ext4
+                nfs_available: true
+                cifs_available: false
+
+  /api/logs/{service}:
+    get:
+      operationId: getServiceLogs
+      tags: [Operations]
+      summary: Service container logs
+      description: |
+        Fetches the most recent log lines from a service's container (Docker)
+        or pod (Kubernetes). Defaults to 100 lines, configurable up to 500
+        via the `lines` query parameter.
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema:
+            type: string
+          example: sonarr
+        - name: lines
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+          description: Number of log lines to retrieve (max 500)
+      responses:
+        "200":
+          description: Log lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines:
+                    type: array
+                    items:
+                      type: string
+                  error:
+                    type: string
+              example:
+                lines:
+                  - "[2026-04-07 12:00:01] INFO: Application started"
+                  - "[2026-04-07 12:00:02] INFO: Listening on port 8989"
+
+  /api/restart/{service}:
+    post:
+      operationId: restartService
+      tags: [Operations]
+      summary: Restart a single service
+      description: |
+        Restarts a service container (Docker) or deletes its pod (Kubernetes,
+        triggering recreation by the Deployment controller). Use this for
+        applying config changes that require a restart.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema:
+            type: string
+          example: sonarr
+      responses:
+        "200":
+          description: Restart result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [restarted, error]
+                  method:
+                    type: string
+                    enum: [docker, k8s]
+                  error:
+                    type: string
+              example:
+                status: restarted
+                method: docker
+
+  /api/batch-restart:
+    post:
+      operationId: batchRestart
+      tags: [Operations]
+      summary: Restart multiple services
+      description: |
+        Restarts multiple services in one request. Each service is restarted
+        independently; failures on one do not block others. Returns per-service
+        results.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [services]
+              properties:
+                services:
+                  type: array
+                  items:
+                    type: string
+                  description: List of service names to restart
+            example:
+              services: [sonarr, radarr, prowlarr]
+      responses:
+        "200":
+          description: Batch restart results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+                        method:
+                          type: string
+                        error:
+                          type: string
+                  restarted:
+                    type: integer
+                  total:
+                    type: integer
+              example:
+                results:
+                  sonarr:
+                    status: restarted
+                    method: docker
+                  radarr:
+                    status: restarted
+                    method: docker
+                  prowlarr:
+                    status: restarted
+                    method: docker
+                restarted: 3
+                total: 3
+        "400":
+          description: Missing services list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "services list required"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Config / System
+  # =========================================================================
+
+  /api/env:
+    get:
+      operationId: getEnv
+      tags: [Config]
+      summary: Runtime environment
+      description: |
+        Returns runtime environment information: K8s namespace, profile name,
+        node IPs, platform details, Python version, and runtime type
+        (compose vs kubernetes).
+      responses:
+        "200":
+          description: Environment info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  namespace:
+                    type: string
+                  profile_name:
+                    type: string
+                  node_ip:
+                    type: string
+                  node_ips:
+                    type: array
+                    items:
+                      type: string
+                  node_count:
+                    type: integer
+                  platform:
+                    type: string
+                  python:
+                    type: string
+                  runtime:
+                    type: string
+                    enum: [compose, kubernetes]
+              example:
+                namespace: ""
+                profile_name: media-compose-standard.yaml
+                node_ip: "192.168.1.50"
+                node_ips: ["192.168.1.50"]
+                node_count: 1
+                platform: "Linux-6.8.0-x86_64-with-glibc2.39"
+                python: "3.12.3"
+                runtime: compose
+
+  /api/profile:
+    get:
+      operationId: getProfile
+      tags: [Config]
+      summary: Bootstrap profile
+      description: |
+        Returns the parsed bootstrap profile YAML document. The profile
+        defines routing, service selection, and deployment-specific settings.
+      responses:
+        "200":
+          description: Profile content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    type: object
+                    nullable: true
+                  file:
+                    type: string
+                  error:
+                    type: string
+    post:
+      operationId: saveProfile
+      tags: [Config]
+      summary: Save bootstrap profile
+      description: |
+        Overwrite the bootstrap profile YAML with new content. Triggers a
+        config reload if available. Use this to change the stack's
+        deployment profile (routing strategy, enabled services, etc.).
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  description: Full YAML content to write
+            example:
+              content: |
+                routing:
+                  base_domain: example.com
+                  strategy: hybrid
+      responses:
+        "200":
+          description: Save result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [saved]
+                  file:
+                    type: string
+                  error:
+                    type: string
+              example:
+                status: saved
+                file: /opt/media-stack/contracts/media-stack.profile.yaml
+        "400":
+          description: Missing content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "content field required"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/envvars:
+    get:
+      operationId: getEnvVars
+      tags: [Config]
+      summary: Stack environment variables
+      description: |
+        Returns all environment variables with recognized prefixes
+        (BOOTSTRAP_, STACK_, K8S_, SONARR_, RADARR_, JELLYFIN_, etc.).
+        Useful for debugging configuration without shell access.
+      security:
+        - basicAuth: []
+      responses:
+        "200":
+          description: Filtered environment variables
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+              example:
+                STACK_ADMIN_USERNAME: admin
+                STACK_ADMIN_PASSWORD: "****"
+                TZ: America/New_York
+                SONARR_API_KEY: a1b2c3d4...
+    post:
+      operationId: setEnvVar
+      tags: [Config]
+      summary: Set an environment variable
+      description: |
+        Set or update an environment variable in the controller process.
+        The change is effective immediately for subsequent API calls and
+        action runs. Note: this does not persist across container restarts.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+                  description: Environment variable name
+                value:
+                  type: string
+                  description: Value to set
+            example:
+              key: TZ
+              value: America/Chicago
+      responses:
+        "200":
+          description: Variable set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [set]
+                  key:
+                    type: string
+                  value:
+                    type: string
+              example:
+                status: set
+                key: TZ
+                value: America/Chicago
+        "400":
+          description: Missing key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "key field required"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/manifests:
+    get:
+      operationId: getManifests
+      tags: [Config]
+      summary: Deployment manifests
+      description: |
+        Returns the deployment manifest: Kubernetes deployments (in K8s mode),
+        Docker Compose file content (in compose mode), or bootstrap config
+        summary as a fallback. If no manifest is found, falls back to listing
+        running containers.
+      responses:
+        "200":
+          description: Manifest content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [kubernetes, compose, bootstrap-config, compose-runtime, unknown]
+                  file:
+                    type: string
+                  content:
+                    type: string
+                    nullable: true
+                  namespace:
+                    type: string
+                  deployments:
+                    type: integer
+                  services:
+                    type: array
+                    items:
+                      type: object
+                  error:
+                    type: string
+                  note:
+                    type: string
+
+  /api/backup:
+    get:
+      operationId: getBackup
+      tags: [Config]
+      summary: Download config backup
+      description: |
+        Downloads a JSON backup file containing: environment info, controller
+        state, bootstrap profile, all discoverable service config files, and
+        masked API keys. The response has a `Content-Disposition` header for
+        browser download.
+
+        Use this backup with `POST /api/restore` to restore configuration.
+      responses:
+        "200":
+          description: Backup JSON file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                  version:
+                    type: string
+                  env:
+                    type: object
+                  state:
+                    type: object
+                  profile_raw:
+                    type: string
+                  service_configs:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  api_keys_masked:
+                    type: object
+                    additionalProperties:
+                      type: string
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: 'attachment; filename="media-stack-backup-20260407-143022.json"'
+
+  /api/restore:
+    post:
+      operationId: restoreBackup
+      tags: [Config]
+      summary: Restore config from backup
+      description: |
+        Restores service configuration files from a backup JSON payload
+        (created by `GET /api/backup`). Only writes to known config paths
+        under the config root. Path traversal is blocked for safety.
+
+        After restoring, restart the affected services to apply the changes.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_configs]
+              properties:
+                service_configs:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Map of relative config paths to file contents
+            example:
+              service_configs:
+                "sonarr/config.xml": "<Config>...</Config>"
+                "radarr/config.xml": "<Config>...</Config>"
+      responses:
+        "200":
+          description: Restore result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, partial]
+                  restored:
+                    type: array
+                    items:
+                      type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  note:
+                    type: string
+              example:
+                status: ok
+                restored: ["sonarr/config.xml", "radarr/config.xml"]
+                errors: []
+                note: "Restart services to apply restored configs"
+        "400":
+          description: Invalid backup format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "backup JSON with service_configs required"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Metrics
+  # =========================================================================
+
+  /metrics:
+    get:
+      operationId: getPrometheusMetrics
+      tags: [Metrics]
+      summary: Prometheus metrics
+      description: |
+        Returns Prometheus-format metrics for service health. Exposes:
+
+        - `media_stack_service_up{service="..."}` (gauge, 1=up, 0=down)
+        - `media_stack_service_latency_ms{service="..."}` (gauge, probe ms)
+        - `media_stack_healthy_total` (gauge, total healthy count)
+        - `media_stack_total_services` (gauge, total monitored count)
+
+        Configure your Prometheus instance to scrape this endpoint.
+      responses:
+        "200":
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP media_stack_service_up Whether a service is reachable (1=up, 0=down)
+                # TYPE media_stack_service_up gauge
+                media_stack_service_up{service="sonarr"} 1
+                media_stack_service_up{service="radarr"} 1
+                # HELP media_stack_healthy_total Total healthy services
+                # TYPE media_stack_healthy_total gauge
+                media_stack_healthy_total 12
+
+  /api/envoy/stats:
+    get:
+      operationId: getEnvoyStats
+      tags: [Metrics]
+      summary: Envoy proxy traffic statistics
+      description: |
+        Fetches traffic statistics from the Envoy proxy admin interface
+        (port 9901). Returns filtered stats for downstream/upstream
+        connections and request counts (2xx, 4xx, 5xx).
+      responses:
+        "200":
+          description: Envoy statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  raw_count:
+                    type: integer
+                  error:
+                    type: string
+              example:
+                stats:
+                  "http.ingress_http.downstream_rq_total": 15423
+                  "http.ingress_http.downstream_rq_2xx": 14891
+                  "http.ingress_http.downstream_rq_4xx": 412
+                  "http.ingress_http.downstream_rq_5xx": 3
+                raw_count: 2847
+
+  /api/feed.xml:
+    get:
+      operationId: getRssFeed
+      tags: [Metrics]
+      summary: RSS feed of events
+      description: |
+        Returns an RSS 2.0 feed of controller action events and the latest
+        health status. Subscribe in any RSS reader to monitor your stack.
+      responses:
+        "200":
+          description: RSS XML feed
+          content:
+            application/rss+xml:
+              schema:
+                type: string
+
+  /api/grafana.json:
+    get:
+      operationId: getGrafanaDashboard
+      tags: [Metrics]
+      summary: Grafana dashboard JSON
+      description: |
+        Returns a pre-built Grafana dashboard JSON that queries the `/metrics`
+        endpoint. Import this into Grafana to get service health and latency
+        panels out of the box.
+      responses:
+        "200":
+          description: Grafana dashboard model
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dashboard:
+                    type: object
+                  overwrite:
+                    type: boolean
+
+  /api/openapi.json:
+    get:
+      operationId: getOpenApiJson
+      tags: [Metrics]
+      summary: OpenAPI spec (JSON, abridged)
+      description: |
+        Returns an abridged OpenAPI 3.0 JSON spec generated at runtime.
+        For the full specification, use `GET /api/openapi.yaml`.
+      responses:
+        "200":
+          description: OpenAPI 3.0 JSON
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/openapi.yaml:
+    get:
+      operationId: getOpenApiYaml
+      tags: [Dashboard]
+      summary: OpenAPI spec (YAML, full)
+      description: |
+        Returns the complete OpenAPI 3.0.3 specification as YAML. This is
+        the authoritative API reference used by the `/api/docs` viewer.
+      responses:
+        "200":
+          description: OpenAPI 3.0.3 YAML specification
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  # =========================================================================
+  # Webhooks
+  # =========================================================================
+
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [Webhooks]
+      summary: List registered webhook URLs
+      description: |
+        Returns the list of webhook URLs that receive notifications on action
+        completion, error, or cancellation events.
+      responses:
+        "200":
+          description: Webhook URL list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook_urls:
+                    type: array
+                    items:
+                      type: string
+              example:
+                webhook_urls:
+                  - "https://hooks.example.com/media-stack"
+    post:
+      operationId: addWebhook
+      tags: [Webhooks]
+      summary: Register a webhook URL
+      description: |
+        Add a webhook URL to receive POST notifications on action events.
+        Each event payload includes `event` (action_complete, action_error)
+        and action details. Duplicate URLs are ignored (set semantics).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Webhook URL to register
+            example:
+              url: "https://hooks.example.com/media-stack"
+      responses:
+        "200":
+          description: Updated webhook list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook_urls:
+                    type: array
+                    items:
+                      type: string
+
+  /webhooks/test:
+    post:
+      operationId: testWebhooks
+      tags: [Webhooks]
+      summary: Test all registered webhooks
+      description: |
+        Sends a test payload (`{"event": "test", "status": "ok"}`) to all
+        registered webhook URLs and reports the result for each. Use this
+        to verify webhook connectivity before relying on them for alerts.
+      security:
+        - basicAuth: []
+      responses:
+        "200":
+          description: Test results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [tested, no_webhooks]
+                  results:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  tested:
+                    type: integer
+              examples:
+                with_webhooks:
+                  summary: Webhooks tested
+                  value:
+                    status: tested
+                    results:
+                      "https://hooks.example.com/media-stack": "ok (200)"
+                    tested: 1
+                no_webhooks:
+                  summary: No webhooks registered
+                  value:
+                    status: no_webhooks
+                    tested: 0
+
+  # =========================================================================
+  # SSE Streaming
+  # =========================================================================
+
+  /logs/stream:
+    get:
+      operationId: streamLogs
+      tags: [State]
+      summary: Real-time log stream (SSE)
+      description: |
+        Server-Sent Events stream of controller log lines. Each event
+        contains a JSON payload with `seq` (sequence number), `ts`
+        (timestamp), `msg` (log message), and `action` (current action
+        name, if any).
+
+        Use the `after_seq` query parameter to resume from a specific
+        sequence number (e.g., after a reconnect).
+
+        **Example (JavaScript):**
+        ```javascript
+        const es = new EventSource('/logs/stream');
+        es.onmessage = (e) => {
+          const data = JSON.parse(e.data);
+          console.log(`[${data.ts}] ${data.msg}`);
+        };
+        ```
+      parameters:
+        - name: after_seq
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Resume from this sequence number (exclusive)
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                id: 42
+                data: {"seq": 42, "ts": "2026-04-07T12:00:01", "msg": "Bootstrap started", "action": "bootstrap"}
+
+                id: 43
+                data: {"seq": 43, "ts": "2026-04-07T12:00:02", "msg": "Preflight: checking services", "action": "bootstrap"}
+
+  # =========================================================================
+  # Dashboard
+  # =========================================================================
+
+  /:
+    get:
+      operationId: getDashboard
+      tags: [Dashboard]
+      summary: Web dashboard
+      description: |
+        Serves the single-page dashboard HTML application. Supports custom
+        plugins (JS/CSS) loaded from `{CONFIG_ROOT}/controller/plugins/`.
+      responses:
+        "200":
+          description: Dashboard HTML
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/docs:
+    get:
+      operationId: getApiDocs
+      tags: [Dashboard]
+      summary: Interactive API documentation
+      description: |
+        Serves an interactive API documentation viewer powered by Redoc,
+        loading the full OpenAPI spec from `/api/openapi.yaml`. Use this
+        to explore all endpoints, request/response schemas, and examples
+        directly in your browser.
+      responses:
+        "200":
+          description: API documentation HTML page
+          content:
+            text/html:
+              schema:
+                type: string
