@@ -82,6 +82,13 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         _handle_service_api_key_post(handler)
         return
 
+    # POST /api/services/{id}/reset -- hard-reset a service (restart + re-discover key + re-run preflight)
+    if handler.path.startswith("/api/services/") and handler.path.endswith("/reset"):
+        svc_id = handler.path.split("/")[3]
+        body = handler._read_json_body()
+        handler._json_response(200, admin_svc.hard_reset_service(svc_id, body or {}))
+        return
+
     # POST /api/routing
     if handler.path == "/api/routing":
         body = handler._read_json_body()

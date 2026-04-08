@@ -866,5 +866,47 @@ class TestSwaggerUIBrowsingAndExecute(unittest.TestCase):
         self.assertEqual(body["keys"]["sonarr"], "test-key-123")
 
 
+# ===========================================================================
+# Hard Reset Service
+# ===========================================================================
+
+class TestHardResetService(unittest.TestCase):
+    """POST /api/services/{id}/reset — hard-reset a service."""
+
+    @mock.patch("media_stack.api.services.admin.hard_reset_service",
+                return_value={"status": "reset", "service": "sonarr", "restarted": True, "key_discovered": True})
+    @mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""})
+    def test_reset_service_returns_200(self, mock_reset):
+        h = make_handler("POST", "/api/services/sonarr/reset", body="{}")
+        h.do_POST()
+        self.assertEqual(_get_response_code(h), 200)
+        body = _get_json_written(h)
+        self.assertEqual(body["status"], "reset")
+        self.assertEqual(body["service"], "sonarr")
+        self.assertTrue(body["restarted"])
+        mock_reset.assert_called_once_with("sonarr", {})
+
+    @mock.patch("media_stack.api.services.admin.hard_reset_service",
+                return_value={"status": "error", "error": "Unknown service 'nonexistent'"})
+    @mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""})
+    def test_reset_unknown_service_returns_error(self, mock_reset):
+        h = make_handler("POST", "/api/services/nonexistent/reset", body="{}")
+        h.do_POST()
+        self.assertEqual(_get_response_code(h), 200)
+        body = _get_json_written(h)
+        self.assertEqual(body["status"], "error")
+        self.assertIn("Unknown service", body["error"])
+
+    @mock.patch("media_stack.api.services.admin.hard_reset_service",
+                return_value={"status": "reset", "service": "radarr", "restarted": True, "key_discovered": False})
+    @mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""})
+    def test_reset_with_options_passes_body(self, mock_reset):
+        h = make_handler("POST", "/api/services/radarr/reset",
+                         body='{"username":"admin","password":"test"}')
+        h.do_POST()
+        self.assertEqual(_get_response_code(h), 200)
+        mock_reset.assert_called_once_with("radarr", {"username": "admin", "password": "test"})
+
+
 if __name__ == "__main__":
     unittest.main()

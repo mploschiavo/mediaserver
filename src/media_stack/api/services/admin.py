@@ -17,7 +17,11 @@ import http.cookiejar
 from pathlib import Path
 from typing import Any
 
-from .registry import SERVICES, SERVICE_MAP, get_services_with_api_keys, get_services_with_password_api, get_services_with_password_config
+from .registry import (
+    SERVICES, SERVICE_MAP,
+    get_services_with_api_keys, get_services_with_password_api, get_services_with_password_config,
+    read_api_key_from_file, read_api_key_via_http,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +212,69 @@ def jellyfin_hard_reset(username: str, password: str) -> dict[str, Any]:
     if pw_set:
         return {"status": "ok", "user": username, "note": restart_msg}
     return {"status": "partial", "error": "Could not set password after DB reset", "note": restart_msg}
+
+
+def hard_reset_service(service_id: str, options: dict) -> dict[str, Any]:
+    """Hard-reset a service: restart container, re-discover API key, re-run health check.
+
+    For Jellyfin/media-server services, delegates to jellyfin_hard_reset().
+    For all others: restart + re-discover key if applicable.
+    """
+    svc = SERVICE_MAP.get(service_id)
+    if not svc:
+        return {"status": "error", "error": f"Unknown service '{service_id}'"}
+
+    # Jellyfin / media-server: delegate to existing hard-reset
+    if service_id == "jellyfin" or svc.category == "media-server":
+        username = options.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
+        password = options.get("password", os.environ.get("STACK_ADMIN_PASSWORD", "media-stack"))
+        return jellyfin_hard_reset(username, password)
+
+    restarted = False
+    key_discovered = False
+    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+
+    # 1. Restart the container
+    try:
+        result = restart_service(service_id)
+        restarted = result.get("status") == "restarted"
+    except Exception:
+        pass
+
+    # 2. Wait for health endpoint
+    if restarted and svc.host and svc.port:
+        import time
+        health_url = f"http://{svc.host}:{svc.port}{svc.health_path}"
+        for _ in range(15):
+            time.sleep(2)
+            try:
+                req = urllib.request.Request(health_url)
+                urllib.request.urlopen(req, timeout=5)
+                break
+            except Exception:
+                continue
+
+    # 3. Re-discover API key if service has one
+    if svc.api_key_env:
+        try:
+            key = read_api_key_from_file(service_id, config_root)
+            source = "config_file"
+            if not key:
+                key = read_api_key_via_http(service_id)
+                source = "http"
+            if key:
+                os.environ[svc.api_key_env] = key
+                persist_keys_to_secret({svc.api_key_env: key})
+                key_discovered = True
+        except Exception:
+            pass
+
+    return {
+        "status": "reset",
+        "service": service_id,
+        "restarted": restarted,
+        "key_discovered": key_discovered,
+    }
 
 
 def _discover_jellyfin_admin_user_id(base_url: str, api_key: str, preferred_name: str = "admin") -> str:
