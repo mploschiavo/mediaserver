@@ -10,7 +10,7 @@ from media_stack.services.apps.servarr.runtime.common import (
     normalize_remote_path_mappings,
     resolve_arr_quality_preferences,
 )
-from media_stack.services.arr_indexer_sync_service import ArrIndexerSyncService
+from media_stack.services.apps.prowlarr.indexer_sync_service import ArrIndexerSyncService
 from media_stack.services.arr_queue_cleanup_service import ArrQueueCleanupService
 from media_stack.services.arr_service import ArrService
 from media_stack.services.auth_service import AuthService

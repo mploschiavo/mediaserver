@@ -5,7 +5,7 @@ plugin:
   app_service_classes:
     auth_service: media_stack.services.auth_service:AuthService
     arr_service: media_stack.services.arr_service:ArrService
-    arr_indexer_sync_service: media_stack.services.arr_indexer_sync_service:ArrIndexerSyncService
+    arr_indexer_sync_service: media_stack.services.apps.prowlarr.indexer_sync_service:ArrIndexerSyncService
     arr_queue_cleanup_service: media_stack.services.arr_queue_cleanup_service:ArrQueueCleanupService
     config_artifacts_service: media_stack.services.config_artifacts_service:ConfigArtifactsService
     discovery_lists_service: media_stack.services.discovery_lists_service:DiscoveryListsService
