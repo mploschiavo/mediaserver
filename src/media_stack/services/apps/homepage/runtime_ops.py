@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from media_stack.adapters.homepage import DEFAULT_HOSTS as _lib_default_homepage_hosts
-from media_stack.adapters.homepage import render_services_yaml as _lib_render_homepage_services_yaml
+from .adapters import DEFAULT_HOSTS as _lib_default_homepage_hosts
+from .adapters import render_services_yaml as _lib_render_homepage_services_yaml
 
 from media_stack.services.runtime_platform import (
     bool_cfg,

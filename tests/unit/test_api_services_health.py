@@ -16,6 +16,21 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.health as health_mod  # noqa: E402
+from media_stack.api.services.registry import ServiceDef  # noqa: E402
+import media_stack.api.services.registry as registry_mod  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Helper: build ServiceDef instances for test patches
+# ---------------------------------------------------------------------------
+
+def _svc(id: str, api_key_env: str = "", api_key_config: str = "",
+         api_key_format: str = "", **kw) -> ServiceDef:
+    return ServiceDef(
+        id=id, name=id.capitalize(),
+        api_key_env=api_key_env, api_key_config=api_key_config,
+        api_key_format=api_key_format, **kw,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -27,8 +42,8 @@ class TestDiscoverApiKeysEnvVars(unittest.TestCase):
     """discover_api_keys should prefer env vars over config files."""
 
     @patch.object(health_mod, "SERVICES", [
-        MagicMock(id="sonarr", api_key_env="SONARR_API_KEY"),
-        MagicMock(id="radarr", api_key_env="RADARR_API_KEY"),
+        _svc("sonarr", api_key_env="SONARR_API_KEY", api_key_config="sonarr/config.xml", api_key_format="xml"),
+        _svc("radarr", api_key_env="RADARR_API_KEY", api_key_config="radarr/config.xml", api_key_format="xml"),
     ])
     @patch.dict(os.environ, {
         "SONARR_API_KEY": "env-sonarr-key",
@@ -41,7 +56,7 @@ class TestDiscoverApiKeysEnvVars(unittest.TestCase):
         self.assertEqual(keys["radarr"], "env-radarr-key")
 
     @patch.object(health_mod, "SERVICES", [
-        MagicMock(id="sonarr", api_key_env="SONARR_API_KEY"),
+        _svc("sonarr", api_key_env="SONARR_API_KEY", api_key_config="sonarr/config.xml", api_key_format="xml"),
     ])
     @patch.dict(os.environ, {
         "SONARR_API_KEY": "  ",
@@ -53,9 +68,8 @@ class TestDiscoverApiKeysEnvVars(unittest.TestCase):
 
 
 class TestDiscoverApiKeysXml(unittest.TestCase):
-    """discover_api_keys should parse *arr XML config files."""
+    """discover_api_keys should parse *arr XML config files via registry."""
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_xml_config_sonarr(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             sonarr_dir = Path(tmpdir) / "sonarr"
@@ -63,11 +77,15 @@ class TestDiscoverApiKeysXml(unittest.TestCase):
             (sonarr_dir / "config.xml").write_text(
                 "<Config><ApiKey>test123</ApiKey></Config>"
             )
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("sonarr", api_key_env="SONARR_API_KEY",
+                        api_key_config="sonarr/config.xml", api_key_format="xml")
+            svc_map = {"sonarr": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys.get("sonarr"), "test123")
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_xml_config_multiple_arr(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             for app, key in [("radarr", "radarr-key"), ("prowlarr", "prowl-key")]:
@@ -76,15 +94,28 @@ class TestDiscoverApiKeysXml(unittest.TestCase):
                 (d / "config.xml").write_text(
                     f"<Config><ApiKey>{key}</ApiKey></Config>"
                 )
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svcs = [
+                _svc("radarr", api_key_env="RADARR_API_KEY",
+                     api_key_config="radarr/config.xml", api_key_format="xml"),
+                _svc("prowlarr", api_key_env="PROWLARR_API_KEY",
+                     api_key_config="prowlarr/config.xml", api_key_format="xml"),
+            ]
+            svc_map = {s.id: s for s in svcs}
+            with patch.object(health_mod, "SERVICES", svcs), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys["radarr"], "radarr-key")
             self.assertEqual(keys["prowlarr"], "prowl-key")
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_xml_missing_file_skipped(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("sonarr", api_key_env="SONARR_API_KEY",
+                        api_key_config="sonarr/config.xml", api_key_format="xml")
+            svc_map = {"sonarr": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             # Should not raise; sonarr simply absent
             self.assertNotIn("sonarr", keys)
@@ -93,7 +124,6 @@ class TestDiscoverApiKeysXml(unittest.TestCase):
 class TestDiscoverApiKeysIni(unittest.TestCase):
     """discover_api_keys should parse INI config files (sabnzbd, tautulli)."""
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_sabnzbd_ini(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             sab_dir = Path(tmpdir) / "sabnzbd"
@@ -104,11 +134,15 @@ class TestDiscoverApiKeysIni(unittest.TestCase):
                 api_key = abc456
                 """)
             )
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("sabnzbd", api_key_env="SABNZBD_API_KEY",
+                        api_key_config="sabnzbd/sabnzbd.ini", api_key_format="ini")
+            svc_map = {"sabnzbd": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys.get("sabnzbd"), "abc456")
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_tautulli_ini(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tau_dir = Path(tmpdir) / "tautulli"
@@ -119,31 +153,37 @@ class TestDiscoverApiKeysIni(unittest.TestCase):
                 api_key = tau-secret-999
                 """)
             )
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("tautulli", api_key_env="TAUTULLI_API_KEY",
+                        api_key_config="tautulli/config.ini", api_key_format="ini")
+            svc_map = {"tautulli": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys.get("tautulli"), "tau-secret-999")
 
 
 class TestDiscoverApiKeysBazarr(unittest.TestCase):
-    """discover_api_keys should read Bazarr's YAML config via helper."""
+    """discover_api_keys should read Bazarr's YAML config via registry reader."""
 
-    @patch.object(health_mod, "SERVICES", [])
-    @patch("media_stack.api.preflight.api_keys._read_bazarr_api_key", return_value="baz-key-789")
-    def test_bazarr_yaml(self, mock_reader):
+    def test_bazarr_yaml(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             bazarr_cfg = Path(tmpdir) / "bazarr" / "config"
             bazarr_cfg.mkdir(parents=True)
             (bazarr_cfg / "config.yaml").write_text("auth:\n  apikey: baz-key-789\n")
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("bazarr", api_key_env="BAZARR_API_KEY",
+                        api_key_config="bazarr/config/config.yaml", api_key_format="yaml")
+            svc_map = {"bazarr": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys.get("bazarr"), "baz-key-789")
-            mock_reader.assert_called_once()
 
 
 class TestDiscoverApiKeysJellyseerr(unittest.TestCase):
-    """discover_api_keys should read Jellyseerr's settings.json."""
+    """discover_api_keys should read Jellyseerr's settings.json via registry reader."""
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_jellyseerr_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             js_dir = Path(tmpdir) / "jellyseerr"
@@ -151,25 +191,33 @@ class TestDiscoverApiKeysJellyseerr(unittest.TestCase):
             (js_dir / "settings.json").write_text(
                 json.dumps({"main": {"apiKey": "jseerr-key-42"}})
             )
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("jellyseerr", api_key_env="JELLYSEERR_API_KEY",
+                        api_key_config="jellyseerr/settings.json", api_key_format="json")
+            svc_map = {"jellyseerr": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys.get("jellyseerr"), "jseerr-key-42")
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_jellyseerr_malformed_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             js_dir = Path(tmpdir) / "jellyseerr"
             js_dir.mkdir()
             (js_dir / "settings.json").write_text("NOT JSON AT ALL")
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("jellyseerr", api_key_env="JELLYSEERR_API_KEY",
+                        api_key_config="jellyseerr/settings.json", api_key_format="json")
+            svc_map = {"jellyseerr": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertNotIn("jellyseerr", keys)
 
 
 class TestDiscoverApiKeysJellyfin(unittest.TestCase):
-    """discover_api_keys should read Jellyfin's SQLite DB."""
+    """discover_api_keys should read Jellyfin's SQLite DB via registry reader."""
 
-    @patch.object(health_mod, "SERVICES", [])
     def test_jellyfin_sqlite(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             jf_dir = Path(tmpdir) / "jellyfin" / "data"
@@ -182,7 +230,12 @@ class TestDiscoverApiKeysJellyfin(unittest.TestCase):
             conn.execute("INSERT INTO ApiKeys (AccessToken) VALUES ('jf-token-abc')")
             conn.commit()
             conn.close()
-            with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
+            svc = _svc("jellyfin", api_key_env="JELLYFIN_API_KEY",
+                        api_key_config="jellyfin/data/jellyfin.db", api_key_format="sqlite")
+            svc_map = {"jellyfin": svc}
+            with patch.object(health_mod, "SERVICES", [svc]), \
+                 patch.object(registry_mod, "SERVICE_MAP", svc_map), \
+                 patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}):
                 keys = health_mod.discover_api_keys()
             self.assertEqual(keys.get("jellyfin"), "jf-token-abc")
 

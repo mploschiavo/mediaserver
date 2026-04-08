@@ -11,7 +11,7 @@ plugin:
   aliases:
   - qbit
   - qb
-  adapter_class: media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter
+  adapter_class: media_stack.services.apps.qbittorrent.download_client_adapter:QbittorrentDownloadClientAdapter
   app_service_classes:
     qbittorrent_service: media_stack.services.apps.qbittorrent.service:QBittorrentService
     torrent_client_service: media_stack.services.apps.qbittorrent.service:QBittorrentService
@@ -24,7 +24,7 @@ plugin:
     ENSURE:
       setup_torrent_categories: media_stack.services.apps.qbittorrent.runtime_ops:setup_torrent_categories
   adapter_classes:
-    download_client: media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter
+    download_client: media_stack.services.apps.qbittorrent.download_client_adapter:QbittorrentDownloadClientAdapter
   preflight_handler:
     name: qbittorrent
     handler: media_stack.services.apps.qbittorrent.http_preflight:run_preflight

@@ -67,6 +67,18 @@ service:
   # password_api_path: /api/config    # Password change API endpoint
   # password_config: myapp/config.ini # Config file for password changes
 
+  # --- Content API Endpoints (optional — drives dashboard data) ---
+  # version_path: /api/v1/system/status # Version info endpoint
+  # version_json_key: version           # JSON key for version string (dot-notation)
+  # stats_path: /api/v1/items          # Library count endpoint (returns JSON array)
+  # stats_label: items                  # Label for the count (e.g. "series", "movies")
+  # history_path: /api/v1/history       # Download history endpoint
+  # quality_profile_path: /api/v1/qualityprofile  # Quality profiles endpoint
+  # import_list_path: /api/v1/importlist          # Import/discovery lists endpoint
+  # recent_path: /api/v1/items?sort=dateAdded     # Recently added items endpoint
+  # indexer_path: /api/v1/indexer       # Indexer list endpoint (Prowlarr-like)
+  # indexer_stats_path: /api/v1/indexerstats       # Indexer stats endpoint
+
   # --- Routing & Scaling Flags ---
   # web_ui: true                      # Has browser-accessible interface (default: true)
   # preserve_path_prefix: false       # API needs path prefix preserved (default: false)

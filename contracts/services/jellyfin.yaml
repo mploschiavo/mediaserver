@@ -51,7 +51,7 @@ plugin:
       ensure_jellyfin_auto_collections_config: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config
       ensure_jellyfin_prewarm: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm
   adapter_classes:
-    media_server: media_stack.services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter
+    media_server: media_stack.services.apps.jellyfin.media_server_adapter:JellyfinMediaServerAdapter
   aliases:
   - jf
   preflight_handler:

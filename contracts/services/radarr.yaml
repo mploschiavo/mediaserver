@@ -14,6 +14,12 @@ service:
   api_key_http_path: /initialize.js
   version_path: /api/v3/system/status
   version_json_key: version
+  stats_path: /api/v3/movie
+  stats_label: movies
+  history_path: /api/v3/history?pageSize=10&sortDirection=descending&sortKey=date
+  quality_profile_path: /api/v3/qualityprofile
+  import_list_path: /api/v3/importlist
+  recent_path: /api/v3/movie?sortKey=dateAdded&sortDirection=descending
   password_api_path: /api/v3/config/host
   preserve_path_prefix: true
 plugin:
