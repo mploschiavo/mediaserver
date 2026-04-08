@@ -30,6 +30,24 @@ static_resources:
                           return escaped
                         end
 
+                        local function media_stack_rewrite_base_href(html, prefix)
+                          -- Rewrite <base href="/"> to <base href="/app/<service>/">.
+                          -- SPAs like Bazarr emit <base href="/"> with ./ relative asset
+                          -- paths. With prefix stripping, the browser resolves ./assets/foo.js
+                          -- to /assets/foo.js (root), bypassing the app prefix route.
+                          -- Rewriting the <base> tag makes ALL relative URLs resolve through
+                          -- the prefix: ./assets/foo.js -> /app/bazarr/assets/foo.js.
+                          -- Dynamic import() also resolves correctly since the importing
+                          -- module URL is under the prefixed path.
+                          if prefix == nil or prefix == "" or prefix == "/" then
+                            return html
+                          end
+                          local new_base = prefix .. "/"
+                          html = string.gsub(html, '<base%s+href="/"', '<base href="' .. new_base .. '"')
+                          html = string.gsub(html, "<base%s+href='/'", "<base href='" .. new_base .. "'")
+                          return html
+                        end
+
                         local function media_stack_inject_prefix_patch(handle, prefix)
                           if prefix == nil or prefix == "" or prefix == "/" then
                             return
@@ -53,6 +71,9 @@ static_resources:
                           if string.find(html, "data-media-stack-prefix-patch=", 1, true) ~= nil then
                             return
                           end
+
+                          -- Rewrite <base href="/"> so relative assets route through the prefix
+                          html = media_stack_rewrite_base_href(html, prefix)
 
                           local escaped_prefix = media_stack_escape_js_string(prefix)
                           local script = "<script data-media-stack-prefix-patch='" .. escaped_prefix .. "'>(function(){var prefix='" .. escaped_prefix .. "';if(!prefix||prefix==='/'||typeof window==='undefined'){return;}var parts=prefix.split('/');var appRoot=parts.length>=2?'/'+parts[1]+'/':'';function normalize(url){if(typeof url!=='string'||url===''){return url;}if(url.indexOf('javascript:')===0||url.indexOf('mailto:')===0||url.indexOf('tel:')===0||url.indexOf('#')===0){return url;}try{var u=new URL(url,window.location.origin);if(u.origin!==window.location.origin){return url;}if(u.pathname===prefix||u.pathname.indexOf(prefix+'/')===0){return u.pathname+u.search+u.hash;}if(appRoot&&u.pathname.indexOf(appRoot)===0&&u.pathname!==prefix){return u.pathname+u.search+u.hash;}if(u.pathname.indexOf('/')===0){return prefix+u.pathname+u.search+u.hash;}return url;}catch(e){return url;}}function patchAnchor(a){if(!a){return;}var href=a.getAttribute('href');var next=normalize(href);if(next&&href!==next){a.setAttribute('href',next);}}function patchAll(){var anchors=document.querySelectorAll('a[href^=\"/\"]');for(var i=0;i<anchors.length;i++){patchAnchor(anchors[i]);}}var push=history.pushState;history.pushState=function(state,title,url){return push.call(this,state,title,normalize(url));};var replace=history.replaceState;history.replaceState=function(state,title,url){return replace.call(this,state,title,normalize(url));};var current=normalize(window.location.pathname+window.location.search+window.location.hash);if(current&&current!==(window.location.pathname+window.location.search+window.location.hash)){replace.call(history,history.state,document.title,current);}document.addEventListener('click',function(ev){var el=ev.target;while(el&&el.tagName!=='A'){el=el.parentElement;}if(el){patchAnchor(el);}},true);if(document.documentElement&&typeof MutationObserver!=='undefined'){(new MutationObserver(function(){patchAll();})).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href']});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',patchAll,{once:true});}else{patchAll();}})();</script>"
