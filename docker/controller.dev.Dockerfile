@@ -40,8 +40,8 @@ COPY dist /opt/media-stack/dist
 COPY docker /opt/media-stack/docker
 COPY k8s /opt/media-stack/k8s
 
-# Dev tools
-RUN pip install --no-cache-dir pytest playwright
+# Dev tools (playwright requires glibc, skip on Alpine — run browser tests on host)
+RUN pip install --no-cache-dir pytest
 
 EXPOSE 9100
 
