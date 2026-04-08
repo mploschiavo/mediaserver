@@ -602,6 +602,23 @@ class EnvoyDynamicConfigService:
             },
         }
 
+    @staticmethod
+    def _get_asset_prefixes(service_name: str) -> list[str]:
+        """Get declared asset prefixes from per-service YAML.
+
+        Services with preserve_path_prefix=false that use root-relative
+        asset paths (e.g., /assets/, /_next/) declare them in the
+        service YAML so Envoy can route them without cookies/referer.
+        """
+        try:
+            from media_stack.api.services.registry import get_service
+            svc = get_service(service_name)
+            if svc and svc.asset_prefixes:
+                return list(svc.asset_prefixes)
+        except Exception:
+            pass
+        return []
+
     def render(self, services: dict[str, dict[str, Any]]) -> EnvoyDynamicConfigRender:
         route_graph = self.route_graph_service.render(services)
         http_cfg = dict(route_graph.payload.get("http") or {})
@@ -750,6 +767,26 @@ class EnvoyDynamicConfigService:
                         routes_by_host.setdefault(host_token, []).append(
                             (cookie_fallback_rank, cookie_fallback_route)
                         )
+
+                    # For services with prefix stripping: add direct asset
+                    # routes so ES module dynamic import() works without
+                    # cookies (crossorigin anonymous mode doesn't send cookies).
+                    if needs_strip:
+                        for asset_dir in self._get_asset_prefixes(service_name):
+                            asset_route = {
+                                "match": {"prefix": asset_dir},
+                                "route": {
+                                    "cluster": cluster_name,
+                                    "timeout": "0s",
+                                },
+                            }
+                            asset_route.update(
+                                self._route_headers(path_prefix, host_token, include_session_cookie=False)
+                            )
+                            # Low priority — only matches if no other route does
+                            routes_by_host.setdefault(host_token, []).append(
+                                (50, asset_route)
+                            )
 
         for host, default_path_prefix in default_html_redirect_by_host.items():
             host_token = str(host or "").strip().lower()
