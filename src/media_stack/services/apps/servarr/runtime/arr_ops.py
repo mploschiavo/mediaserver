@@ -19,22 +19,46 @@ from .factory import (
 )
 
 
-def detect_arr_api_base(app_name, app_url, api_key):
-    for version in ("v3", "v1"):
-        status, parsed, body = http_request(
-            app_url, f"/api/{version}/system/status", api_key=api_key
-        )
-        if status == 200 and isinstance(parsed, dict):
-            api_base = f"/api/{version}"
-            log(f"[OK] {app_name}: detected API base {api_base}")
-            return api_base
-        if status == 200 and not isinstance(parsed, dict):
-            log(
-                f"[WARN] {app_name}: /api/{version}/system/status returned HTTP 200 "
-                "but the response body is not JSON — possible auth redirect."
-            )
+def detect_arr_api_base(app_name, app_url, api_key, max_retries=3, retry_delay=5):
+    """Detect the API base path for an Arr service with automatic retry.
 
-    raise RuntimeError(f"{app_name}: unable to detect API base (tried /api/v3 and /api/v1)")
+    Retries with exponential backoff when the service is temporarily
+    unreachable (connection refused, timeout, 502/503/504). This handles
+    the common case where a service is still starting up during bootstrap
+    or reconcile.
+    """
+    import time
+    last_error = ""
+    for attempt in range(max(1, max_retries)):
+        for version in ("v3", "v1"):
+            try:
+                status, parsed, body = http_request(
+                    app_url, f"/api/{version}/system/status", api_key=api_key
+                )
+            except Exception as exc:
+                last_error = f"{app_name}: /api/{version}/system/status connection error: {exc}"
+                continue
+            if status == 200 and isinstance(parsed, dict):
+                api_base = f"/api/{version}"
+                log(f"[OK] {app_name}: detected API base {api_base}")
+                return api_base
+            if status == 200 and not isinstance(parsed, dict):
+                log(
+                    f"[WARN] {app_name}: /api/{version}/system/status returned HTTP 200 "
+                    "but the response body is not JSON — possible auth redirect."
+                )
+            last_error = f"{app_name}: /api/{version}/system/status returned HTTP {status}"
+
+        if attempt < max_retries - 1:
+            delay = retry_delay * (2 ** attempt)
+            log(f"[WAIT] {app_name}: API base detection failed, retrying in {delay}s "
+                f"(attempt {attempt + 1}/{max_retries}, last_error={last_error})")
+            time.sleep(delay)
+
+    raise RuntimeError(
+        f"{app_name}: unable to detect API base after {max_retries} attempts "
+        f"(tried /api/v3 and /api/v1, last_error={last_error})"
+    )
 
 
 def pick_first_profile_id(app_name, app_url, api_base, api_key, endpoint, field_label):

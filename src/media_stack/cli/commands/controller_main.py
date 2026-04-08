@@ -422,6 +422,27 @@ def _apply_overrides(overrides: dict) -> None:
             os.environ[env_var] = "1" if overrides[key] else "0"
 
 
+_SERVICE_ERROR_PATTERNS = [
+    # (regex_pattern, service_id_group_index)
+    (r"(\w+): unable to detect API base", 1),
+    (r"Unable to read API key for (\w+)", 1),
+    (r"(\w+): failed (?:reading|creating|updating)", 1),
+    (r"(\w+): API key unavailable", 1),
+    (r"(\w+): (?:connection refused|timeout|unreachable)", 1),
+]
+
+
+def _track_failed_service(state, error_msg: str) -> None:
+    """Parse error message to identify failed services and mark them in state."""
+    import re
+    for pattern, group_idx in _SERVICE_ERROR_PATTERNS:
+        for match in re.finditer(pattern, error_msg, re.IGNORECASE):
+            svc_id = match.group(group_idx).lower()
+            if svc_id and len(svc_id) > 2:
+                state.mark_service_failed(svc_id, error_msg)
+                runtime_platform.log(f"[HEAL] Marked {svc_id} as failed for auto-heal")
+
+
 def _dispatch_action(
     action_name: str,
     overrides: dict,
@@ -760,6 +781,9 @@ def _run_serve(args: argparse.Namespace) -> None:
                     _time.sleep(delay)
                     continue
 
+                # Track failed services for auto-heal.
+                _track_failed_service(state, str(exc))
+
                 # Fire webhooks on final failure.
                 _fire_webhooks(state, "action_error", {
                     "action": action_name,
@@ -767,6 +791,17 @@ def _run_serve(args: argparse.Namespace) -> None:
                     "error": str(exc),
                     "elapsed_seconds": action_record.elapsed_seconds,
                 })
+
+                # Auto-queue reconcile if services failed (heal after delay).
+                if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
+                    heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
+                    runtime_platform.log(
+                        f"[HEAL] {len(state.get_failed_services())} services need healing. "
+                        f"Auto-queuing reconcile in {heal_delay}s."
+                    )
+                    import threading as _threading
+                    _threading.Timer(heal_delay, lambda: action_trigger("reconcile", {})).start()
+
                 break  # Exhausted retries.
 
 
