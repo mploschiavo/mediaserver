@@ -133,7 +133,7 @@ kubectl delete pv -l app.kubernetes.io/part-of=media-stack
 # If you deployed with kustomize, reverse it:
 kubectl delete -k k8s/all/
 # Or for a specific overlay:
-kubectl delete -k deploy/overlays/production/
+kubectl delete -k k8s/all/
 ```
 
 ### MicroK8s Specific

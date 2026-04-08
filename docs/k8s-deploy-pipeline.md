@@ -60,7 +60,7 @@ deploy-stack.sh
 | `unpackerr.yaml` | Deployment (replicas: 0) |
 | `scale-policy.yaml` | 9 PodDisruptionBudgets |
 
-**Note:** `bootstrap.yaml` (Deployment + Service + RBAC) IS in the standard kustomization.
+**Note:** `controller.yaml` (Deployment + Service + RBAC) IS in the standard kustomization.
 The controller service starts idle and is triggered via HTTP after ConfigMaps are created.
 The separate `prowlarr-auto-indexers-job.yaml` has been replaced by `POST /actions/auto-indexers`.
 
@@ -87,7 +87,7 @@ State file: `.state/bootstrap-all-<namespace>-<platform>.json`
 
 This prevents compose and K8s runs from sharing checkpoint state.
 
-### Phase Plan (from `contracts/media-stack.config.json`)
+### Phase Plan (from `contracts/adapter-hooks.k8s.yaml`)
 
 ```
 controller_main.py
@@ -152,7 +152,7 @@ run_bootstrap_job_main.py
   │
   ├─ Step 8: Recreate bootstrap Job
   │    └─ kubectl delete job media-stack-controller --ignore-not-found
-  │    └─ kubectl apply -f k8s/bootstrap-job.yaml (with overrides)
+  │    └─ kubectl apply -f k8s/controller.yaml (with overrides)
   │
   ├─ Step 9: Wait for bootstrap Job completion
   │    └─ Poll: kubectl get job -o json (every 3s, heartbeat every 15s)
@@ -166,16 +166,16 @@ run_bootstrap_job_main.py
   └─ Step 12: Print bootstrap Job logs
 ```
 
-### What the Bootstrap Job Pod Does
+### What the Controller Deployment Does
 
-**Manifest:** `k8s/bootstrap-job.yaml`
+**Manifest:** `k8s/controller.yaml`
 **Entrypoint:** `controller_main.py --serve --auto-run`
 **Port:** 9100 (HTTP API)
 
-The Job pod starts an HTTP server and auto-triggers the bootstrap:
+The controller pod starts an HTTP server and auto-triggers the bootstrap:
 
 ```
-controller_main.py (inside K8s Job pod)
+controller_main.py (inside K8s controller pod)
   │
   ├─ Start HTTP API server on :9100
   │    └─ GET  /healthz  — liveness
@@ -216,8 +216,8 @@ prowlarr_auto_indexers_runtime.py
   ├─ Step 2: Create ConfigMap: media-stack-controller-config-auto
   │    └─ Minimal JSON with: technology_bindings, prowlarr_url, arr_apps, exclusions
   │
-  ├─ Step 3: Delete + apply prowlarr-auto-indexers Job
-  │    └─ Manifest: k8s/prowlarr-auto-indexers-job.yaml
+  ├─ Step 3: Trigger auto-indexers via controller API
+  │    └─ Triggered via: POST /actions/auto-indexers via controller API
   │    └─ Image: controller
   │    └─ Command: --auto-prowlarr-indexers
   │    └─ Volume: ConfigMap media-stack-controller-config-auto + prowlarr PVC
@@ -240,7 +240,7 @@ prowlarr_auto_indexers_runtime.py
 
 **Critical ordering:** The envoy-config-init Job and bootstrap Job reference ConfigMaps as volumes.
 - `envoy.yaml` marks ConfigMap volumes as `optional: true` → Job starts even if ConfigMap missing
-- `bootstrap-job.yaml` is NOT in kustomization → only applied after ConfigMaps exist (Step 8 above)
+- `controller.yaml` is NOT in kustomization → only applied after ConfigMaps exist (Step 8 above)
 
 ---
 
@@ -272,7 +272,7 @@ because both use namespace `media-dev`. Resume mode (default) skips completed ph
 | `src/media_stack/cli/commands/bootstrap_manifest_service.py` | ConfigMap + Job creation |
 | `src/media_stack/cli/commands/bootstrap_job_wait_service.py` | Job status polling |
 | `src/media_stack/cli/commands/controller_main.py` | Controller HTTP API (runs inside Job pod) |
-| `contracts/media-stack.config.json` | Phase plan config |
+| `contracts/adapter-hooks.k8s.yaml` | Phase plan config |
 
 ### K8s Platform
 | File | Purpose |
@@ -286,7 +286,7 @@ because both use namespace `media-dev`. Resume mode (default) skips completed ph
 | File | Purpose |
 |------|---------|
 | `src/media_stack/services/apps/prowlarr/cli/prowlarr_auto_indexers_runtime.py` | Auto-indexer orchestrator |
-| `k8s/prowlarr-auto-indexers-job.yaml` | Auto-indexer Job manifest |
+| `POST /actions/auto-indexers` | Triggered via controller API (replaces former Job manifest) |
 
 ### Manifests
 | File | Included in kustomization? |
@@ -301,5 +301,5 @@ because both use namespace `media-dev`. Resume mode (default) skips completed ph
 | `k8s/ingress-traefik.yaml` | Yes |
 | `k8s/unpackerr.yaml` | Yes (replicas: 0) |
 | `k8s/scale-policy.yaml` | Yes (9 PDBs) |
-| `k8s/bootstrap-job.yaml` | **No** — applied by bootstrap Phase 4, Step 8 |
-| `k8s/prowlarr-auto-indexers-job.yaml` | **No** — applied by bootstrap Phase 6, Step 3 |
+| `k8s/controller.yaml` | **No** — applied by bootstrap Phase 4, Step 8 |
+| Auto-indexers | **No** — triggered via controller API `POST /actions/auto-indexers` |

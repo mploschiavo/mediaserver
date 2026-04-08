@@ -2,7 +2,7 @@
 
 Reserved for shared default configuration domains.
 
-Current primary defaults live in `contracts/media-stack.config.json`.
+Current primary defaults live in `contracts/defaults/*.yaml` and per-service contracts in `contracts/services/*.yaml`.
 
 ---
 

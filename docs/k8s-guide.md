@@ -97,7 +97,7 @@ kubectl apply -k k8s
 kubectl create namespace media-dev
 kubectl apply -k k8s/profiles/standard
 kubectl -n media-dev create configmap media-stack-controller-config \
-  --from-file=config.json=contracts/media-stack.config.json --dry-run=client -o yaml | kubectl apply -f -
+  --from-file=adapter-hooks.yaml=contracts/adapter-hooks.k8s.yaml --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n media-dev create configmap media-stack-controller-profile \
   --from-file=profile.yaml=examples/bootstrap-profiles/media-k8s-standard.yaml --dry-run=client -o yaml | kubectl apply -f -
 # Wait for pods to start, then trigger bootstrap:
@@ -188,7 +188,7 @@ Still manual:
 - Private indexer credentials/CAPTCHA providers
 
 Declarative config and job files:
-- `contracts/media-stack.config.json`
+- `contracts/defaults/*.yaml`, `contracts/services/*.yaml`, `contracts/adapter-hooks.k8s.yaml`
 - `contracts/prowlarr-indexers.example.json`
 - `bin/controller.py`
 - `k8s/controller.yaml`

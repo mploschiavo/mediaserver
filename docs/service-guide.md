@@ -60,7 +60,7 @@ In other words, no single Arr app is the full groomer. Use the layered approach 
 
 This stack ships:
 - downloader-side cleanup defaults (CDH + qB seeding/cleanup policy)
-- disk-usage guardrails (`disk_guardrails` in `contracts/media-stack.config.json`, default max 65% used on `/srv-stack/media`)
+- disk-usage guardrails (`disk_guardrails` in `contracts/defaults/operations.yaml`, default max 65% used on `/srv-stack/media`)
 - scheduled media hygiene (`media_hygiene`) for failed queue cleanup + temp/orphan cleanup
 - Jellyfin prewarm schedule (`jellyfin_prewarm`) for recurring metadata/artwork + guide/channel refresh
 - Maintainerr app route (`maintainerr.<domain>`) with persistent config (`/opt/data`)

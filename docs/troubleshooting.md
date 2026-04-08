@@ -157,7 +157,7 @@ bash bin/verify-flow.sh <NAMESPACE>
 This usually means tuner playlist data exists but guide data is missing or not mapped yet.
 
 Checklist:
-- ensure `jellyfin_livetv.guides` is configured in `contracts/media-stack.config.json`
+- ensure `jellyfin_livetv.guides` is configured in `contracts/services/jellyfin.yaml`
 - keep `jellyfin_livetv.refresh_on_bootstrap=true` so Guide/Now refresh runs each bootstrap
 - keep `jellyfin_livetv.cleanup_duplicates=true` and `jellyfin_livetv.recreate_managed_guides=true`
   so stale/duplicate Live TV bindings are auto-repaired
@@ -214,7 +214,7 @@ kubectl -n <NAMESPACE> logs job/media-stack-controller --tail=300 | grep -E "Dis
 ```
 
 Tune policy:
-- `contracts/media-stack.config.json` -> `disk_guardrails`
+- `contracts/defaults/operations.yaml` -> `disk_guardrails`
 - adjust `max_used_percent`, `target_used_percent`, and `qbit_cleanup` criteria
 
 ## 11) Jellyfin Collection Click Starts Playback Instead of Opening

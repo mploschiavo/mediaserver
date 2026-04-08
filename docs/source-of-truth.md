@@ -11,10 +11,10 @@ This platform follows a strict desired-state hierarchy.
   - `k8s/profiles/*`
   - `docker/docker-compose.yml`
   - `docker/.env.example`
-  - `contracts/media-stack.config.json`
+  - `contracts/defaults/*.yaml`
+  - `contracts/services/*.yaml`
   - `contracts/media-stack.profile.yaml`
   - `contracts/media-stack.profile.schema.json`
-  - `src/media_stack/contracts/plugins/*/manifest.json`
   - `src/media_stack/contracts/runner_operation_plans.json`
   - `src/media_stack/contracts/media_server_operation_plans.json`
   - scripts under `bin/`
@@ -31,7 +31,7 @@ Runtime state is not authoritative if it conflicts with declarative config.
 ## Binding and Registration Contracts
 
 - Active component choice is declared only in `technology_bindings`.
-- Technology registration is declared only in plugin manifests.
+- Technology registration is declared only in per-service YAML contracts.
 - Runtime config can override behavior plans and handlers, but not class registration maps.
 - Shared lifecycle events are concrete (`RunnerEvent`) and handlers are technology-local
   (`event_handlers.<EVENT>.<handler_key>`), so base orchestration remains technology-neutral.

@@ -76,7 +76,7 @@ bash bin/render-architecture-diagrams.sh
 ## Source-of-Truth Philosophy
 
 Priority order:
-1. Git-managed manifests, plugin manifests, and bootstrap config
+1. Git-managed manifests, per-service YAML contracts, and bootstrap config
 2. Generated/managed Kubernetes Secrets
 3. Controller HTTP API service and reconcile CronJobs
 4. Runtime app state
@@ -142,7 +142,7 @@ Wrapper phase orchestration is declarative:
 - Phase order is read from `adapter_hooks.bootstrap_all.phase_plan` and `adapter_hooks.bootstrap_job.phase_plan`.
 - `bootstrap_all` uses a single operation (`operation: "run"`) with `params.action` (`component_script`, `script`, `enable_components`).
 - `bootstrap_job` config resolver operations are declared at `adapter_hooks.bootstrap_job.config_resolver.operations`.
-- Resolver handlers are plugin-driven (`<technology>/manifest.json` -> `config_resolver_handlers`) with optional config overrides at `adapter_hooks.bootstrap_job.config_resolver.handler_specs`.
+- Resolver handlers are plugin-driven (`contracts/services/<technology>.yaml` -> `config_resolver_handlers`) with optional config overrides at `adapter_hooks.bootstrap_job.config_resolver.handler_specs`.
 - Phase checks/conditions are read from each phase entry `when` expression.
 - CLI skip flags are derived from phase-plan `skip_flag` keys (with legacy aliases retained).
 
@@ -285,7 +285,7 @@ Profile key: `chaos` (default disabled).
 - Provider selection precedence:
   - `--edge-router-provider` / `EDGE_ROUTER_PROVIDER`
   - `routing.provider` in `contracts/media-stack.profile.yaml`
-  - `adapter_hooks.edge.router_provider` in `contracts/media-stack.config.json`
+  - `adapter_hooks.edge.router_provider` in adapter-hooks YAML or profile YAML
 
 ### Google IdP Manual Setup (Compose)
 
@@ -347,7 +347,7 @@ Use this list if you want to modify/refactor/test the project.
 - Docker Engine (for controller image builds/pushes):
   - https://docs.docker.com/engine/install/ubuntu/
 - Optional local image registry (if you push custom controller images):
-  - project default example: `192.168.1.60:30002/library/...`
+  - project default example: `harbor.iomio.io/library/...`
 
 Recommended developer validation:
 
@@ -434,7 +434,7 @@ bash bin/build-controller-image.sh
 
 Override image for one run:
 ```bash
-BOOTSTRAP_RUNNER_IMAGE=192.168.1.60:30002/library/media-stack-controller:latest \
+BOOTSTRAP_RUNNER_IMAGE=harbor.iomio.io/library/media-stack-controller:latest \
   bash bin/bootstrap-all.sh
 ```
 
@@ -573,7 +573,7 @@ TV/mobile onboarding guidance:
 If books/music/live TV rows appear flat or artwork is missing, focus on these areas:
 - Ensure real content is imported (images do not populate without indexed/imported media)
 - Keep naming hygiene for media files and folders
-- Keep Jellyfin metadata/artwork tuning enabled in `contracts/media-stack.config.json`
+- Keep Jellyfin metadata/artwork tuning enabled in `contracts/services/jellyfin.yaml`
 - Keep Jellyfin plugin and home-rails reconciliation enabled
 - Run bootstrap reconcile after metadata/provider changes
 - Curated rails now include Movies + TV + Music + Books defaults
