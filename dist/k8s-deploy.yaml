@@ -104,6 +104,32 @@ metadata:
   name: media-stack-envoy-base-template
   namespace: media-stack
 ---
+# Controller config — created with defaults here; deploy-k8s.sh overlays
+# the real config.json and profile. CronJobs and the controller Deployment
+# reference this ConfigMap, so it MUST exist for pods to schedule.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: media-stack-controller-config
+  namespace: media-stack
+data:
+  config.json: "{}"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: media-stack-controller-profile
+  namespace: media-stack
+data:
+  profile.yaml: |
+    install_profile: standard
+    routing:
+      gateway_host: k8s.my
+      base_domain: my
+      stack_subdomain: k8s
+      gateway_port: 80
+      app_path_prefix: /app
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -711,8 +737,11 @@ spec:
           if [ ! -f /etc/envoy/envoy.yaml ]; then
             echo "Seeding base envoy config from template..."
             cp /base-template/envoy.runtime.base.yaml /etc/envoy/envoy.yaml
+          elif grep -q 'port_value: 80$' /etc/envoy/envoy.yaml 2>/dev/null; then
+            echo "Stale config detected (port 80). Reseeding from template..."
+            cp /base-template/envoy.runtime.base.yaml /etc/envoy/envoy.yaml
           else
-            echo "envoy.yaml already exists, skipping seed."
+            echo "envoy.yaml already exists and looks valid, skipping seed."
           fi
         image: busybox:1.36
         name: seed-base-config
@@ -2197,6 +2226,7 @@ spec:
           volumes:
           - configMap:
               name: media-stack-controller-config
+              optional: true
             name: bootstrap-config
           - name: cfg-jellyfin
             persistentVolumeClaim:
@@ -2311,6 +2341,7 @@ spec:
           volumes:
           - configMap:
               name: media-stack-controller-config
+              optional: true
             name: bootstrap-config
           - name: cfg-jellyfin
             persistentVolumeClaim:
@@ -2436,6 +2467,7 @@ spec:
           volumes:
           - configMap:
               name: media-stack-controller-config
+              optional: true
             name: bootstrap-config
           - name: cfg-jellyfin
             persistentVolumeClaim:
