@@ -228,15 +228,21 @@ def _discover_jellyfin_admin_user_id(base_url: str, api_key: str, preferred_name
 # API key rotation — registry-driven
 # ---------------------------------------------------------------------------
 
-def rotate_keys() -> dict[str, Any]:
-    """Regenerate API keys for all services that have them."""
+def rotate_keys(target_services: list[str] | None = None) -> dict[str, Any]:
+    """Regenerate API keys for services that have them.
+
+    If *target_services* is provided, only rotate keys for those service IDs.
+    """
     config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
     rotated: dict[str, str] = {}
     errors: list[str] = []
     file_based_services: list[str] = []
+    _filter = set(target_services) if target_services else None
 
     for svc in get_services_with_api_keys():
         if not svc.api_key_config or not svc.api_key_format:
+            continue
+        if _filter is not None and svc.id not in _filter:
             continue
 
         # Jellyfin: rotate via API, not file

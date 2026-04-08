@@ -1141,12 +1141,23 @@ async function probeMatrix(){
 function copyDns(){navigator.clipboard.writeText(document.getElementById('dns-entries').textContent).then(()=>toast('Copied!')).catch(()=>toast('Copy failed',true));}
 
 /* Rotate API Keys */
+/* Toggle all checkboxes in a modal */
+function _toggleAll(cls,checked){document.querySelectorAll('.'+cls).forEach(cb=>{cb.checked=checked;});}
+
+/* Rotate API Keys */
+const _KEY_SERVICES=['jellyfin','sonarr','radarr','prowlarr','lidarr','readarr','bazarr','sabnzbd','tautulli','jellyseerr'];
 function confirmRotateKeys(){
-  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Rotate All API Keys</h3><p>This regenerates API keys for all Arr apps and SABnzbd. Existing integrations using old keys will break until reconfigured. Run <b>Reconcile</b> after to re-wire connections.</p><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-danger" onclick="rotateKeys();this.closest(\'.confirm-overlay\').remove()">Rotate Keys</button></div></div></div>';
+  let cbHtml=_KEY_SERVICES.map(id=>{
+    const s=SVC_MAP[id];const name=s?s.name:id;
+    return '<label style="display:flex;align-items:center;gap:4px;font-size:.88em;color:var(--fg2)"><input type="checkbox" class="rk-svc-cb" value="'+id+'" checked> '+name+'</label>';
+  }).join('');
+  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Rotate API Keys</h3><p style="font-size:.85em;color:var(--fg2)">Regenerates API keys for selected services. Existing integrations using old keys will break. Run <b>Reconcile</b> after to re-wire.</p><div style="display:flex;gap:6px;margin:6px 0"><button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="_toggleAll(\'rk-svc-cb\',true)">Select All</button><button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="_toggleAll(\'rk-svc-cb\',false)">Unselect All</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:4px 0">'+cbHtml+'</div><div class="actions" style="margin-top:10px"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-danger" onclick="rotateKeys();this.closest(\'.confirm-overlay\').remove()">Rotate Keys</button></div></div></div>';
 }
 async function rotateKeys(){
-  toast('Rotating API keys...');showLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
-  try{const r=await fetch('/api/rotate-keys',{method:'POST'});const d=await r.json();
+  const selected=[...document.querySelectorAll('.rk-svc-cb:checked')].map(cb=>cb.value);
+  if(!selected.length){toast('Select at least one service',true);return;}
+  toast('Rotating API keys for '+selected.length+' services...');showLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
+  try{const r=await fetch('/api/rotate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:selected})});const d=await r.json();
     if(d.status==='rotated'){
       let msg='Rotated '+d.keys.length+' keys';
       if(d.restarted&&d.restarted.length)msg+=', restarted: '+d.restarted.join(', ');
@@ -1163,7 +1174,7 @@ function promptResetPassword(){
     const s=SVC_MAP[id];const name=s?s.name:id;
     return '<label style="display:flex;align-items:center;gap:4px;font-size:.88em;color:var(--fg2)"><input type="checkbox" class="pw-svc-cb" value="'+id+'" checked> '+name+'</label>';
   }).join('');
-  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Reset Admin Password</h3><p style="font-size:.88em;color:var(--fg2)">Select which services to reset:</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 0">'+cbHtml+'</div><div style="margin:8px 0"><input type="password" id="new-pass-input" placeholder="New password" style="width:100%;padding:8px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.9em"></div><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-primary" onclick="resetPassword();this.closest(\'.confirm-overlay\').remove()">Reset Password</button></div></div></div>';
+  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Reset Admin Password</h3><p style="font-size:.88em;color:var(--fg2)">Select which services to reset:</p><div style="display:flex;gap:6px;margin:6px 0"><button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="_toggleAll(\'pw-svc-cb\',true)">Select All</button><button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="_toggleAll(\'pw-svc-cb\',false)">Unselect All</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:4px 0">'+cbHtml+'</div><div style="margin:8px 0"><input type="password" id="new-pass-input" placeholder="New password" style="width:100%;padding:8px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.9em"></div><div class="actions"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-primary" onclick="resetPassword();this.closest(\'.confirm-overlay\').remove()">Reset Password</button></div></div></div>';
 }
 async function resetPassword(){
   const pw=document.getElementById('new-pass-input')?.value||'';

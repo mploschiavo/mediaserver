@@ -35,6 +35,7 @@ class ServiceDef:
     api_key_env: str = ""
     api_key_config: str = ""
     api_key_format: str = ""
+    api_key_http_path: str = ""
     version_path: str = ""
     version_json_key: str = ""
     password_api_path: str = ""
@@ -100,6 +101,7 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         api_key_env=str(entry.get("api_key_env", "")),
         api_key_config=str(entry.get("api_key_config", "")),
         api_key_format=str(entry.get("api_key_format", "")),
+        api_key_http_path=str(entry.get("api_key_http_path", "")),
         version_path=str(entry.get("version_path", "")),
         version_json_key=str(entry.get("version_json_key", "")),
         password_api_path=str(entry.get("password_api_path", "")),
@@ -229,3 +231,102 @@ def reload_registry() -> None:
         ids = [s.id for s in SERVICES if s.category == cat]
         if ids:
             CATEGORIES.append({"label": cat.capitalize(), "ids": ids})
+
+
+# ---------------------------------------------------------------------------
+# Registry-driven API key readers — format-agnostic.
+#
+# Key formats are declared in each service's YAML contract (api_key_format).
+# To support a new format, add a reader here and the format name in your
+# service YAML — no other code changes needed.
+# ---------------------------------------------------------------------------
+
+import re as _re
+import json as _json
+from pathlib import Path as _Path
+
+def _read_key_xml(path: _Path) -> str:
+    m = _re.search(r"<ApiKey>([^<]+)</ApiKey>", path.read_text(encoding="utf-8"))
+    return m.group(1).strip() if m else ""
+
+def _read_key_ini(path: _Path) -> str:
+    m = _re.search(r"^\s*api_key\s*=\s*(\S+)", path.read_text(encoding="utf-8"), _re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+def _read_key_yaml(path: _Path) -> str:
+    m = _re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", path.read_text(encoding="utf-8"), _re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+def _read_key_json(path: _Path) -> str:
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        return str((data.get("main") or {}).get("apiKey", "")).strip()
+    except Exception:
+        return ""
+
+def _read_key_sqlite(path: _Path) -> str:
+    import sqlite3
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        cur = conn.cursor()
+        cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
+        row = cur.fetchone()
+        conn.close()
+        return str(row[0]).strip() if row and row[0] else ""
+    except Exception:
+        return ""
+
+#: Mapping from api_key_format → file reader. Extend this dict for new formats.
+KEY_READERS: dict[str, Any] = {
+    "xml": _read_key_xml,
+    "ini": _read_key_ini,
+    "yaml": _read_key_yaml,
+    "json": _read_key_json,
+    "sqlite": _read_key_sqlite,
+}
+
+
+def read_api_key_from_file(service_id: str, config_root: str) -> str:
+    """Read an API key from a service's config file using its declared format.
+
+    Returns the key string, or empty string if not found or unsupported.
+    This is the single entry point for all file-based key discovery — driven
+    entirely by the service's contract YAML fields (api_key_config, api_key_format).
+    """
+    svc = SERVICE_MAP.get(service_id)
+    if not svc or not svc.api_key_config or not svc.api_key_format:
+        return ""
+    reader = KEY_READERS.get(svc.api_key_format)
+    if not reader:
+        return ""
+    cfg_path = _Path(config_root) / svc.api_key_config
+    if not cfg_path.is_file():
+        return ""
+    try:
+        return reader(cfg_path)
+    except Exception:
+        return ""
+
+
+def read_api_key_via_http(service_id: str) -> str:
+    """Try to fetch an API key from a running service over HTTP.
+
+    Uses the api_key_http_path declared in the contract, or falls back to
+    /initialize.js (common for Arr apps). Returns empty string on failure.
+    """
+    import urllib.request
+    svc = SERVICE_MAP.get(service_id)
+    if not svc or not svc.host or not svc.port:
+        return ""
+    http_path = svc.api_key_http_path or "/initialize.js"
+    try:
+        url = f"http://{svc.host}:{svc.port}{http_path}"
+        req = urllib.request.Request(url, headers={"Accept": "*/*"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+        m = _re.search(r"apiKey['\"]?\s*[:=]\s*['\"]([a-f0-9A-F]+)['\"]", body)
+        if m and m.group(1).strip():
+            return m.group(1).strip()
+    except Exception:
+        pass
+    return ""
