@@ -98,6 +98,40 @@ except Exception:
     _OPENAPI_YAML = ""
 
 
+def _build_openapi_servers() -> list[dict]:
+    """Build the OpenAPI servers list from the live routing config.
+
+    This ensures /api/docs always shows the correct URLs for the
+    current deployment — no hardcoded hosts that break across envs.
+    """
+    servers = [{"url": "/", "description": "Current host (auto-detected)"}]
+    try:
+        routing = config_svc.get_routing()
+        gw_host = routing.get("gateway_host", "")
+        gw_port = int(routing.get("gateway_port", 80))
+        prefix = routing.get("app_path_prefix", "/app")
+        port_str = "" if gw_port == 80 else f":{gw_port}"
+        if gw_host:
+            servers.append({
+                "url": f"http://{gw_host}{port_str}",
+                "description": f"Gateway ({gw_host})",
+            })
+    except Exception:
+        pass
+    ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9100"))
+    servers.append({
+        "url": f"http://localhost:{ctrl_port}",
+        "description": "Localhost direct",
+    })
+    runtime = os.environ.get("MEDIA_STACK_RUNTIME", "compose")
+    if runtime == "kubernetes":
+        servers.append({
+            "url": f"http://media-stack-controller.media-stack.svc:{ctrl_port}",
+            "description": "Kubernetes in-cluster",
+        })
+    return servers
+
+
 # ---------------------------------------------------------------------------
 # Auth + known actions
 # ---------------------------------------------------------------------------
@@ -596,7 +630,14 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         elif path == "/api/openapi.json":
             self._json_response(200, self._get_openapi_spec())
         elif path == "/api/openapi.yaml":
-            self._raw_response(200, "text/yaml; charset=utf-8", _OPENAPI_YAML.encode("utf-8"))
+            import yaml as _yaml
+            try:
+                spec = _yaml.safe_load(_OPENAPI_YAML) or {}
+                spec["servers"] = _build_openapi_servers()
+                rendered = _yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            except Exception:
+                rendered = _OPENAPI_YAML
+            self._raw_response(200, "text/yaml; charset=utf-8", rendered.encode("utf-8"))
 
         # --- Static assets (Swagger UI) ---
         elif path.startswith("/api/static/"):

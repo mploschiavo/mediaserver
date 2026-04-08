@@ -130,21 +130,11 @@ info:
   license:
     name: MIT
 
+# servers: injected dynamically at runtime from routing config.
+# See _build_openapi_servers() in server.py.
 servers:
   - url: /
-    description: Current host (auto-detected from browser URL)
-  - url: http://localhost:9100
-    description: Localhost direct
-  - url: http://{host}:{port}
-    description: Custom gateway (edit host and port to match your deployment)
-    variables:
-      host:
-        default: comp.my
-        description: Gateway hostname — e.g. comp.my, k8s.my, apps.media-stack.local
-      port:
-        default: "9100"
-        description: Controller port
-        enum: ["80", "443", "8080", "9100", "30180"]
+    description: Placeholder — replaced at runtime with environment-specific URLs
 
 tags:
   - name: Health
