@@ -763,6 +763,95 @@ class EnvoyVirtualHostRoutingPatternTests(unittest.TestCase):
         self.assertEqual(len(catchall), 1, "Exactly one catchall vhost")
         self.assertEqual(vhosts[-1]["name"], "vhost_catchall")
 
+    def test_no_duplicate_domains_across_vhosts(self):
+        """Envoy rejects configs with duplicate domains across vhosts.
+
+        When multiple services derive the same domain alias (e.g. authelia.my
+        from both authelia.local and authelia.media-stack.local), only the
+        first vhost should claim it.
+        """
+        from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts import (
+            build_virtual_hosts,
+        )
+        # Two vhosts that would both derive "svc.my" as an alias
+        routes_by_host = {
+            "svc.local": [
+                (100, {"match": {"prefix": "/"}, "route": {"cluster": "c1"}}),
+            ],
+            "svc.media-stack.local": [
+                (100, {"match": {"prefix": "/"}, "route": {"cluster": "c1"}}),
+            ],
+            "gateway.local": [
+                (100, {"match": {"prefix": "/app/svc"}, "route": {"cluster": "c1"}}),
+            ],
+        }
+        vhosts, _ = build_virtual_hosts(routes_by_host)
+        all_domains: list[str] = []
+        for vh in vhosts:
+            all_domains.extend(vh.get("domains", []))
+        # Wildcard "*" is allowed once
+        non_wildcard = [d for d in all_domains if d != "*"]
+        self.assertEqual(
+            len(non_wildcard),
+            len(set(non_wildcard)),
+            f"Duplicate domains found: {[d for d in non_wildcard if non_wildcard.count(d) > 1]}",
+        )
+
+    @mock.patch("media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts._extra_domain_aliases")
+    def test_direct_host_with_runtime_domain_alias(self, mock_aliases):
+        """curl http://controller.media-stack.my/api/keys
+
+        When the profile uses .local but runtime routing uses .my, the
+        direct-host vhost must include the .my alias so requests to
+        controller.media-stack.my reach the controller.
+        """
+        from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts import (
+            build_virtual_hosts,
+        )
+
+        # Simulate: _extra_domain_aliases adds .my aliases based on runtime config
+        def fake_aliases(host):
+            parts = host.split(".")
+            slug = parts[0]
+            if host.endswith(".local") and len(parts) == 2:
+                return [f"{slug}.my", f"{slug}.my:*"]
+            if host.endswith(".media-stack.local"):
+                return [f"{slug}.media-stack.my", f"{slug}.media-stack.my:*"]
+            return []
+
+        mock_aliases.side_effect = fake_aliases
+
+        routes_by_host = {
+            "apps.media-stack.local": [
+                (100, {"match": {"prefix": "/app/media-stack-controller"},
+                       "route": {"cluster": "service_media_stack_controller"}}),
+            ],
+            "media-stack-controller.media-stack.local": [
+                (100, {"match": {"prefix": "/"},
+                       "route": {"cluster": "service_media_stack_controller"}}),
+            ],
+        }
+        vhosts, _ = build_virtual_hosts(routes_by_host)
+
+        # Find the direct-host vhost for the controller
+        ctrl_vh = None
+        for vh in vhosts:
+            if "media-stack-controller.media-stack.my" in vh.get("domains", []):
+                ctrl_vh = vh
+                break
+
+        self.assertIsNotNone(
+            ctrl_vh,
+            "controller.media-stack.my must be a domain alias on the "
+            "direct-host vhost when runtime routing uses .my domain. "
+            f"Vhosts: {[(vh['name'], vh['domains']) for vh in vhosts]}"
+        )
+        # The vhost must have a root "/" route to the controller
+        self.assertTrue(
+            any(r.get("match", {}).get("prefix") == "/" for r in ctrl_vh.get("routes", [])),
+            "Direct-host vhost must have a / route to controller",
+        )
+
     def test_direct_port_bypasses_envoy(self):
         """curl http://comp.my:9876/api/keys — direct port, no Envoy.
 
