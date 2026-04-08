@@ -303,6 +303,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <div class="action-group-title">Security</div>
       <div class="actions">
         <button class="btn-secondary" onclick="showExportKeys()">Export Keys</button>
+        <button class="btn-secondary" onclick="showHardReset()">Hard Reset Service</button>
         <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
         <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
       </div>
@@ -819,7 +820,7 @@ function renderServices(pf){
   let allSvcs=[];
   for(const cat of CATS)for(const sid of cat.ids){const s=SVC_MAP[sid];if(s)allSvcs.push({...s,cat:cat.label});}
   if(search)allSvcs=allSvcs.filter(s=>s.name.toLowerCase().includes(search)||s.id.includes(search)||s.desc.toLowerCase().includes(search));
-  if(hideDisabled)allSvcs=allSvcs.filter(s=>SVC_HEALTH[s.id]!=='disabled');
+  if(hideDisabled)allSvcs=allSvcs.filter(s=>SVC_HEALTH[s.id]!=='disabled' && s.port>0);
 
   let html='',okCount=0,errCount=0,pendCount=0;
 
@@ -1197,6 +1198,31 @@ async function rotateKeys(){
       toast(msg);}
     else{toast(d.error||'Rotation failed',true);}}catch(e){toast('Error: '+e.message,true);}
   finally{hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
+}
+
+/* Hard Reset Service */
+function showHardReset(){
+  let cbHtml=_KEY_SERVICES.map(id=>{
+    const s=SVC_MAP[id];const name=s?s.name:id;
+    return '<label style="display:flex;align-items:center;gap:4px;font-size:.88em;color:var(--fg2)"><input type="checkbox" class="hr-svc-cb" value="'+id+'"> '+name+'</label>';
+  }).join('');
+  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box"><h3>Hard Reset Services</h3><p style="font-size:.85em;color:var(--fg2)">Restart selected services, re-discover API keys, and re-run health checks.</p><div style="display:flex;gap:6px;margin:6px 0"><button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="_toggleAll(\'hr-svc-cb\',true)">Select All</button><button class="btn-secondary" style="padding:2px 8px;font-size:.75em" onclick="_toggleAll(\'hr-svc-cb\',false)">Unselect All</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:4px 0">'+cbHtml+'</div><div class="actions" style="margin-top:10px"><button class="btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">Cancel</button><button class="btn-primary" onclick="doHardReset();this.closest(\'.confirm-overlay\').remove()">Reset Selected</button></div></div></div>';
+}
+async function doHardReset(){
+  const selected=[...document.querySelectorAll('.hr-svc-cb:checked')].map(cb=>cb.value);
+  if(!selected.length){toast('Select at least one service',true);return;}
+  toast('Hard resetting '+selected.length+' service(s)...');showLoading();
+  let okCount=0,errCount=0;
+  for(const id of selected){
+    try{
+      const r=await fetch('/api/services/'+id+'/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+      const d=await r.json();
+      if(d.status==='reset'){toast(d.service+': reset'+(d.key_discovered?' (key found)':''));okCount++;}
+      else{toast(d.service+': '+(d.error||'failed'),true);errCount++;}
+    }catch(e){toast(id+': '+e.message,true);errCount++;}
+  }
+  hideLoading();
+  if(okCount>0)toast('Hard reset complete: '+okCount+' ok'+(errCount?' / '+errCount+' errors':''));
 }
 
 /* Reset Password */

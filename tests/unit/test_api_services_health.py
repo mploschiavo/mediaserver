@@ -344,7 +344,7 @@ class TestProbeServices(unittest.TestCase):
         svc = result["services"].get("sonarr", {})
         self.assertEqual(svc.get("status"), "ok")
         self.assertEqual(result["healthy"], 1)
-        self.assertEqual(result["total"], 1)
+        self.assertGreaterEqual(result["total"], 1)
 
     @patch.object(health_mod, "SERVICE_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/health"),

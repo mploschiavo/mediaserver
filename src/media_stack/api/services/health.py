@@ -151,6 +151,12 @@ def probe_services(cache: Any) -> dict[str, Any]:
             except Exception:
                 pass
 
+    # Mark services that have no HTTP endpoint (port=0) as disabled so
+    # the dashboard doesn't show them as "pending".
+    for svc in SERVICES:
+        if svc.id not in results:
+            results[svc.id] = {"status": "disabled", "auth": "n/a", "ms": 0}
+
     healthy = sum(1 for v in results.values() if v.get("status") == "ok")
     total = len(results)
     response = {"services": results, "healthy": healthy, "total": total}
