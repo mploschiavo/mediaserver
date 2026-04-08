@@ -158,7 +158,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  GIT[Git Config + Plugin Manifests] --> INSTALL[Install and Rebuild Scripts]
+  GIT[Git Config + Service Contracts] --> INSTALL[Install and Rebuild Scripts]
   INSTALL --> K8S[Kubernetes Resources]
   INSTALL --> BOOT[Controller Service API]
   BOOT --> ACTIONS[On-Demand Actions via HTTP]

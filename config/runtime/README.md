@@ -4,7 +4,7 @@ Runtime config now supports layered loading:
 
 1. `config/runtime/base.json`
 2. `config/runtime/overlays/<env>.json`
-3. the explicit config file (for example `contracts/media-stack.config.json`)
+3. per-service YAML contracts (`contracts/services/*.yaml`) and YAML defaults (`contracts/defaults/*.yaml`)
 
 Set environment via:
 

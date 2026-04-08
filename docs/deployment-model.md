@@ -102,7 +102,7 @@ Both platforms use the same persistent controller HTTP API:
 
 Platform-specific:
 - Kubernetes:
-  - Bootstrap config supplied via ConfigMap from `contracts/media-stack.config.json`.
+  - Bootstrap config supplied via ConfigMap from adapter-hooks YAML and profile YAML.
   - Optional reconcile CronJobs for periodic re-apply.
   - Auth providers available as optional manifests (`k8s/auth-authelia.yaml`, `k8s/auth-authentik.yaml`).
   - All linuxserver.io images have PUID/PGID=1000; Jellyfin has securityContext.

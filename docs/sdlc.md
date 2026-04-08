@@ -95,7 +95,7 @@ docker push registry.example.com/media-stack-controller:latest
 cd docker && docker compose up -d media-stack-controller
 
 # Kubernetes
-kubectl apply -k deploy/overlays/production/
+kubectl apply -k k8s/all/
 ```
 
 ### Verify

@@ -102,7 +102,7 @@ These cover:
 
 ## Config Controls
 
-Configure in `contracts/media-stack.config.json`:
+Configure in `contracts/services/maintainerr.yaml` (under `defaults`):
 
 ```json
 "maintainerr": {

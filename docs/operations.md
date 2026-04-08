@@ -116,13 +116,13 @@ Default scheduled jobs in `full` profile:
 - `media-stack-media-hygiene`: failed queue cleanup + filesystem hygiene pass + qB IP filter reconcile
 
 qB IP filter defaults are config-as-code under `media_hygiene.qbit_ipfilter` in
-`contracts/media-stack.config.json`:
+`contracts/defaults/operations.yaml`:
 - Source URL: `https://github.com/DavidMoore/ipfilter/releases/download/lists/ipfilter.dat`
 - Refresh cadence: minimum once per 24h (even though hygiene job runs more often)
 - Storage targets: primary PVC path plus host-path mirror for mixed storage-mode compatibility
 - Failure behavior: if source is unavailable, keep and re-apply cached filter file instead of failing
 
-Disk guardrails defaults are configured in `contracts/media-stack.config.json` under `disk_guardrails` (default max 65% used, target 58%, qB cleanup policy when over threshold, monitor path `/srv-stack/media`).
+Disk guardrails defaults are configured in `contracts/defaults/operations.yaml` under `disk_guardrails` (default max 65% used, target 58%, qB cleanup policy when over threshold, monitor path `/srv-stack/media`).
 Maintainerr is deployed as an optional app (`maintainerr.<domain>`) with persistent config at `/opt/data`.
 Maintainerr policy-as-code is also rendered to `/srv-config/maintainerr/policy.json` from the `contracts/services/maintainerr.yaml` defaults section.
 Rule definitions are managed as one-file-per-rule JSON/YAML under `src/media_stack/contracts/maintainerr_rules/{json,yaml}/`

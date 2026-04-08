@@ -188,7 +188,7 @@ Skip flags are auto-generated from phase plan keys (e.g., `skip_torrent_client_e
 }
 ```
 
-2. Keep `src/media_stack/contracts/plugins/plex/manifest.json` present.
+2. Keep `contracts/services/plex.yaml` present.
 3. Add/update `adapter_hooks.media_server_event_plans.plex` (or legacy `media_server_operation_plans`) only if you want Plex-specific runtime operations.
 4. Reconcile; Jellyfin-specific operations are not executed when `media_server=plex`.
 
@@ -213,8 +213,8 @@ Expected result:
 
 ## Add a New Technology
 
-1. Create manifest:
-   - `src/media_stack/contracts/plugins/<your-tech>/manifest.json`
+1. Create per-service YAML contract:
+   - `contracts/services/<your-tech>.yaml`
 2. Add adapter/service module:
    - download client: `src/media_stack/services/download_client_adapters/<your-tech>.py`
    - media server: `src/media_stack/services/media_server_adapters/<your-tech>.py`

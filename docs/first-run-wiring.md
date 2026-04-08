@@ -107,7 +107,7 @@ Downloader note:
 - qBittorrent and SABnzbd are transport clients. They do not render media directly in Jellyfin.
 - Media appears in Jellyfin after Arr import into library folders.
 - Bootstrap enforces CDH for Arr apps and wires Jellyfin libraries for Movies/TV/Music/Books.
-- Jellyfin Auto Collections is deployed OTB with a safe default config; add your own list sources in `contracts/media-stack.config.json` (`jellyfin_auto_collections.plugins`) if you want curated auto-generated collections.
+- Jellyfin Auto Collections is deployed OTB with a safe default config; add your own list sources in `contracts/services/jellyfin.yaml` (`jellyfin_auto_collections.plugins`) if you want curated auto-generated collections.
 - Curated Jellyfin home rails can be enabled as an advanced option via
   `jellyfin_home_rails.enabled=true`; default behavior favors native home UX.
 
