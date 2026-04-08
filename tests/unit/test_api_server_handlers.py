@@ -649,7 +649,7 @@ class TestApiDocsEndpoints(unittest.TestCase):
         h.do_GET()
         self.assertEqual(_get_response_code(h), 200)
         body = h.wfile.getvalue()
-        self.assertIn(b"redoc", body.lower())
+        self.assertIn(b"swagger", body.lower())
 
     def test_openapi_yaml_returns_200(self):
         h = make_handler("GET", "/api/openapi.yaml")
@@ -657,6 +657,100 @@ class TestApiDocsEndpoints(unittest.TestCase):
         self.assertEqual(_get_response_code(h), 200)
         body = h.wfile.getvalue()
         self.assertIn(b"openapi", body.lower())
+
+
+class TestOpenApiServersFromRouting(unittest.TestCase):
+    """OpenAPI servers list is built from the live routing config."""
+
+    def test_servers_include_current_host(self):
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertIn("/", urls, "Must include '/' for auto-detection")
+
+    def test_servers_include_localhost(self):
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertTrue(
+            any("localhost" in u for u in urls),
+            "Must include localhost direct URL",
+        )
+
+    @mock.patch("media_stack.api.services.config.get_routing")
+    def test_servers_include_gateway_from_routing(self, mock_routing):
+        mock_routing.return_value = {
+            "gateway_host": "comp.my",
+            "gateway_port": 9100,
+            "app_path_prefix": "/app",
+        }
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertIn("http://comp.my:9100", urls)
+
+    @mock.patch("media_stack.api.services.config.get_routing")
+    def test_gateway_port_80_omits_port(self, mock_routing):
+        mock_routing.return_value = {
+            "gateway_host": "k8s.my",
+            "gateway_port": 80,
+            "app_path_prefix": "/app",
+        }
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertIn("http://k8s.my", urls)
+        self.assertFalse(any(":80" in u for u in urls if "k8s.my" in u))
+
+    @mock.patch("media_stack.api.services.config.get_routing")
+    def test_different_gateway_host_reflected(self, mock_routing):
+        mock_routing.return_value = {
+            "gateway_host": "apps.media-stack.local",
+            "gateway_port": 80,
+            "app_path_prefix": "/app",
+        }
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertIn("http://apps.media-stack.local", urls)
+
+    @mock.patch.dict(os.environ, {"MEDIA_STACK_RUNTIME": "kubernetes"})
+    @mock.patch("media_stack.api.services.config.get_routing")
+    def test_k8s_runtime_adds_cluster_url(self, mock_routing):
+        mock_routing.return_value = {
+            "gateway_host": "k8s.my",
+            "gateway_port": 80,
+        }
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertTrue(
+            any("media-stack-controller.media-stack.svc" in u for u in urls),
+            "K8s runtime must include in-cluster service URL",
+        )
+
+    @mock.patch.dict(os.environ, {"MEDIA_STACK_RUNTIME": "compose"})
+    @mock.patch("media_stack.api.services.config.get_routing")
+    def test_compose_runtime_no_cluster_url(self, mock_routing):
+        mock_routing.return_value = {
+            "gateway_host": "comp.my",
+            "gateway_port": 9100,
+        }
+        from media_stack.api.server import _build_openapi_servers
+        servers = _build_openapi_servers()
+        urls = [s["url"] for s in servers]
+        self.assertFalse(
+            any("media-stack-controller.media-stack.svc" in u for u in urls),
+            "Compose runtime should not include K8s cluster URL",
+        )
+
+    def test_openapi_yaml_response_contains_gateway(self):
+        """The served YAML must have real servers, not the static placeholder."""
+        h = make_handler("GET", "/api/openapi.yaml")
+        h.do_GET()
+        body = h.wfile.getvalue().decode("utf-8", errors="replace")
+        self.assertIn("url: /", body)
+        self.assertIn("localhost", body)
 
 
 if __name__ == "__main__":
