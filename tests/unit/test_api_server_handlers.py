@@ -641,5 +641,23 @@ class TestQueryStringHandling(unittest.TestCase):
             self.assertTrue(result)
 
 
+class TestApiDocsEndpoints(unittest.TestCase):
+    """GET /api/docs and /api/openapi.yaml serve documentation."""
+
+    def test_api_docs_returns_html(self):
+        h = make_handler("GET", "/api/docs")
+        h.do_GET()
+        self.assertEqual(_get_response_code(h), 200)
+        body = h.wfile.getvalue()
+        self.assertIn(b"redoc", body.lower())
+
+    def test_openapi_yaml_returns_200(self):
+        h = make_handler("GET", "/api/openapi.yaml")
+        h.do_GET()
+        self.assertEqual(_get_response_code(h), 200)
+        body = h.wfile.getvalue()
+        self.assertIn(b"openapi", body.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
