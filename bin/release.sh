@@ -151,15 +151,15 @@ PINNED_IMAGE="${REGISTRY}/${PROJECT}/${IMAGE_NAME}:v${VERSION}"
 
 # Update docker-compose dist
 if [[ -f dist/docker-compose.yml ]]; then
-  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ ]*|${PINNED_IMAGE}|g" dist/docker-compose.yml
-  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ ]*|${PINNED_IMAGE}|g" dist/docker-compose.yml
+  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/docker-compose.yml
+  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/docker-compose.yml
   echo "  Updated dist/docker-compose.yml"
 fi
 
 # Update k8s dist
 if [[ -f dist/k8s-deploy.yaml ]]; then
-  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ ]*|${PINNED_IMAGE}|g" dist/k8s-deploy.yaml
-  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ ]*|${PINNED_IMAGE}|g" dist/k8s-deploy.yaml
+  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/k8s-deploy.yaml
+  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/k8s-deploy.yaml
   echo "  Updated dist/k8s-deploy.yaml"
 fi
 
