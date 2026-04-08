@@ -400,6 +400,15 @@ class TestGetImportLists(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestGetJellyfinLibraries(unittest.TestCase):
+    @staticmethod
+    def _jellyfin_service():
+        from media_stack.api.services.registry import ServiceDef
+        return ServiceDef(
+            id="jellyfin", name="Jellyfin", category="media-server",
+            host="jellyfin", port=8096, auth_mode="X-Emby-Token",
+            api_key_env="JELLYFIN_API_KEY",
+        )
+
     @patch(PATCH_URLOPEN)
     @patch.dict(os.environ, {"JELLYFIN_API_KEY": "jf-test-key"})
     def test_returns_libraries(self, mock_urlopen):
@@ -410,7 +419,8 @@ class TestGetJellyfinLibraries(unittest.TestCase):
              "Locations": ["/media/tv"], "ItemCount": 200},
         ]
         mock_urlopen.return_value = _make_response(lib_data)
-        result = content_mod.get_jellyfin_libraries()
+        with patch.object(content_mod, "SERVICES", [self._jellyfin_service()]):
+            result = content_mod.get_jellyfin_libraries()
         self.assertEqual(len(result["libraries"]), 2)
         self.assertEqual(result["libraries"][0]["name"], "Movies")
         self.assertEqual(result["libraries"][0]["type"], "movies")

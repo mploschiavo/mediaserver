@@ -37,7 +37,7 @@ from media_stack.services.runtime_platform import (
     resolve_env_placeholder,
     to_int,
 )
-from media_stack.services.servarr_adapters import AdapterDependencies
+from media_stack.services.apps.servarr.servarr_adapters import AdapterDependencies
 
 
 def _discovery_service() -> DiscoveryListsService:

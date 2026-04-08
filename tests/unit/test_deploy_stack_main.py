@@ -147,7 +147,7 @@ class TestDeployStackMain(unittest.TestCase):
 
     # 7
     @patch(
-        "media_stack.cli.commands.deploy_stack_main.compose_service_names_by_provider",
+        "media_stack.cli.commands.deploy_stack_runner_services.compose_service_names_by_provider",
         return_value={"authelia": ("authelia",)},
     )
     def test_selected_apps_injects_auth_provider_services(self, _mock):
@@ -422,7 +422,7 @@ class TestDeployStackMain(unittest.TestCase):
                 runner._run_kubectl(["get", "pods"])
 
     # 36
-    @patch("media_stack.cli.commands.deploy_stack_main.resolve_platform_plugin", return_value=None)
+    @patch("media_stack.cli.commands.deploy_stack_runner_services.resolve_platform_plugin", return_value=None)
     def test_platform_plugin_raises_when_not_found(self, _mock):
         with tempfile.TemporaryDirectory() as tmp:
             runner = _runner(_make_config(Path(tmp)))
@@ -430,7 +430,7 @@ class TestDeployStackMain(unittest.TestCase):
                 runner._platform_plugin()
 
     # 37
-    @patch("media_stack.cli.commands.deploy_stack_main.resolve_platform_plugin")
+    @patch("media_stack.cli.commands.deploy_stack_runner_services.resolve_platform_plugin")
     def test_platform_plugin_caches(self, mock_resolve):
         mock_resolve.return_value = MagicMock()
         with tempfile.TemporaryDirectory() as tmp:

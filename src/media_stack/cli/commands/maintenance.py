@@ -12,6 +12,20 @@ import time
 from pathlib import Path
 from typing import Any
 
+from media_stack.api.services.registry import SERVICES
+
+
+def _snapshot_config_paths() -> list[tuple[str, str]]:
+    """Build (app_id, relative_config_path) pairs from the service registry.
+
+    Only includes text-based config files (not binary formats like sqlite).
+    """
+    return [
+        (s.id, s.api_key_config.split("/", 1)[1])
+        for s in SERVICES
+        if s.api_key_config and s.api_key_format != "sqlite"
+    ]
+
 
 def take_config_snapshot(args: argparse.Namespace) -> None:
     """Save a timestamped snapshot of all service config files."""
@@ -22,13 +36,7 @@ def take_config_snapshot(args: argparse.Namespace) -> None:
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 
     snapshot: dict[str, str] = {}
-    patterns = [
-        ("sonarr", "config.xml"), ("radarr", "config.xml"), ("lidarr", "config.xml"),
-        ("readarr", "config.xml"), ("prowlarr", "config.xml"),
-        ("bazarr", "config/config.yaml"), ("sabnzbd", "sabnzbd.ini"),
-        ("jellyseerr", "settings.json"), ("homepage", "services.yaml"),
-        ("tautulli", "config.ini"),
-    ]
+    patterns = _snapshot_config_paths()
     for app, rel in patterns:
         path = config_root / app / rel
         if path.is_file():
@@ -55,12 +63,16 @@ def prune_stale_files(args: argparse.Namespace, log: Any) -> None:
     config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
     pruned = 0
 
-    for xmltv_dir in [
+    # Media server XMLTV guide directories — derived from registry (category=media).
+    media_server_ids = [s.id for s in SERVICES if s.category == "media" and s.host]
+    xmltv_dirs = [
         config_root.parent / "data" / "transcode" / "xmltv",
-        config_root / "jellyfin" / "data" / "xmltv",
         Path("/srv-stack/data/transcode/xmltv"),
         Path("/cache/xmltv"),
-    ]:
+    ]
+    for ms_id in media_server_ids:
+        xmltv_dirs.append(config_root / ms_id / "data" / "xmltv")
+    for xmltv_dir in xmltv_dirs:
         if xmltv_dir.is_dir():
             xmls = sorted(xmltv_dir.glob("*.xml"), key=lambda f: f.stat().st_mtime, reverse=True)
             for old in xmls[2:]:
@@ -72,17 +84,21 @@ def prune_stale_files(args: argparse.Namespace, log: Any) -> None:
                 except Exception:
                     pass
 
-    jf_log_dir = config_root / "jellyfin" / "log"
-    if jf_log_dir.is_dir():
-        logs = sorted(jf_log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
-        for old in logs[5:]:
-            try:
-                old.unlink()
-                pruned += 1
-            except Exception:
-                pass
+    # Media server log directories.
+    for ms_id in media_server_ids:
+        ms_log_dir = config_root / ms_id / "log"
+        if ms_log_dir.is_dir():
+            logs = sorted(ms_log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
+            for old in logs[5:]:
+                try:
+                    old.unlink()
+                    pruned += 1
+                except Exception:
+                    pass
 
-    for app in ("prowlarr", "sonarr", "radarr", "lidarr", "readarr"):
+    # Arr services (XML config format) store logs in <id>/logs/.
+    arr_ids = tuple(s.id for s in SERVICES if s.api_key_format == "xml")
+    for app in arr_ids:
         log_dir = config_root / app / "logs"
         if log_dir.is_dir():
             app_logs = sorted(log_dir.glob("*.txt"), key=lambda f: f.stat().st_mtime, reverse=True)

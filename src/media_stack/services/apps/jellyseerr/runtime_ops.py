@@ -22,10 +22,14 @@ from media_stack.services.runtime_platform import (
     normalize_url,
     parse_service_url,
     resolve_app_service_class,
+    resolve_path,
     to_int,
     wait_for_service,
 )
-from media_stack.services.runtime_secrets import api_keys_service, read_json_file
+from media_stack.services.apps.jellyfin.api_key_db import (
+    resolve_jellyfin_api_key as _resolve_jellyfin_api_key,
+)
+from media_stack.services.runtime_secrets import read_api_key, read_json_file
 
 from .service import JellyseerrService
 
@@ -33,11 +37,18 @@ detect_arr_api_base = _servarr_arr_ops.detect_arr_api_base
 
 
 def read_jellyseerr_api_key(config_root, timeout_seconds=120):
-    return api_keys_service().read_jellyseerr_api_key(config_root, timeout_seconds=timeout_seconds)
+    return read_api_key(config_root, "jellyseerr")
 
 
 def resolve_jellyfin_api_key(jellyfin_cfg, config_root):
-    return api_keys_service().resolve_jellyfin_api_key(jellyfin_cfg, config_root)
+    return _resolve_jellyfin_api_key(
+        jellyfin_cfg,
+        config_root,
+        log=log,
+        bool_cfg=bool_cfg,
+        coerce_list=coerce_list,
+        resolve_path=resolve_path,
+    )
 
 
 def _get_arr_root_folder_path(

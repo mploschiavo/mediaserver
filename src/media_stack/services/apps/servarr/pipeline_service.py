@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ...servarr_adapters import AdapterDependencies, AdapterRegistry
+from .servarr_adapters import AdapterDependencies, AdapterRegistry
 from .config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
@@ -60,8 +60,8 @@ class ServarrPipelineInputs:
     cfg: dict[str, Any]
     arr_apps: list[ArrAppLike]
     app_keys: dict[str, str]
-    prowlarr_url: str
-    prowlarr_key: str
+    indexer_manager_url: str
+    indexer_manager_key: str
     app_auth_cfg: dict[str, Any]
     arr_media_management_cfg: ArrMediaManagementPolicy
     arr_download_handling_cfg: ArrDownloadHandlingPolicy
@@ -188,8 +188,8 @@ class ServarrPipelineService:
                 sab_cfg=inputs.sab_cfg,
                 sab_auth=inputs.sab_auth,
                 sab_remote_path_mappings=inputs.sab_remote_path_mappings,
-                prowlarr_url=inputs.prowlarr_url,
-                prowlarr_key=inputs.prowlarr_key,
+                indexer_manager_url=inputs.indexer_manager_url,
+                indexer_manager_key=inputs.indexer_manager_key,
                 run_cfg=inputs.run_cfg,
             ),
             before_common_hook=adapter_registry.before_common_steps_for(impl),

@@ -14,7 +14,7 @@ from .import_lists import (
     resolve_import_list_definitions,
 )
 from .kickoff import trigger_arr_discovery_kickoff
-from .sonarr_seed import (
+from media_stack.services.apps.sonarr.sonarr_seed import (
     ensure_sonarr_seed_series,
     resolve_series_language_profile_id,
     resolve_series_quality_profile_id,

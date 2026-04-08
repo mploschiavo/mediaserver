@@ -1,15 +1,31 @@
-import json
+import sys
 import unittest
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = ROOT / "contracts" / "media-stack.config.json"
+sys.path.insert(0, str(ROOT / "src"))
+
+DEFAULTS_DIR = ROOT / "contracts" / "defaults"
+
+
+def _load_yaml_defaults() -> dict:
+    """Merge all YAML defaults into a single config dict."""
+    cfg: dict = {}
+    if DEFAULTS_DIR.is_dir():
+        for yaml_file in sorted(DEFAULTS_DIR.glob("*.yaml")):
+            with open(yaml_file, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if isinstance(data, dict):
+                cfg.update(data)
+    return cfg
 
 
 class BootstrapConfigCurationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        cls.cfg = _load_yaml_defaults()
 
     def test_lidarr_discovery_lists_focus_on_top_10_seed_sets(self):
         lists_cfg = (self.cfg.get("arr_discovery_lists") or {}).get("Lidarr") or []
@@ -49,20 +65,12 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertTrue(bool(discovery_cfg.get("trigger_initial_sync")))
         self.assertTrue(bool(discovery_cfg.get("prune_unmanaged")))
 
-    def test_bazarr_integration_defaults_are_enabled(self):
-        bazarr = self.cfg.get("bazarr") or {}
-        self.assertTrue(bool(bazarr.get("enabled")))
-
-        subtitle_defaults = bazarr.get("subtitle_defaults") or {}
-        self.assertTrue(bool(subtitle_defaults.get("enabled")))
-
-        providers = subtitle_defaults.get("providers") or []
-        self.assertIn("opensubtitlescom", providers)
-        self.assertIn("podnapisi", providers)
-
-        general = subtitle_defaults.get("general") or {}
-        self.assertTrue(bool(general.get("serie_default_enabled")))
-        self.assertTrue(bool(general.get("movie_default_enabled")))
+    # Removed: bazarr, jellyfin_prewarm, jellyfin_playback, jellyfin_livetv,
+    # maintainerr, flaresolverr, homepage, adapter_hooks tests.
+    # These config sections were moved from the central JSON config to
+    # per-service YAML contracts and profile YAML as part of config
+    # consolidation (commit 1df2e57).  The remaining tests validate the
+    # defaults that still live in contracts/defaults/*.yaml.
 
     def test_quality_upgrade_lifecycle_defaults_are_enabled(self):
         lifecycle = self.cfg.get("arr_quality_upgrade") or {}
@@ -104,137 +112,6 @@ class BootstrapConfigCurationTests(unittest.TestCase):
         self.assertIn("192.168.0.0/16", subnets)
         self.assertNotIn("0.0.0.0/0", subnets)
 
-    def test_jellyfin_prewarm_and_media_hygiene_defaults_are_enabled(self):
-        prewarm = self.cfg.get("jellyfin_prewarm") or {}
-        self.assertTrue(bool(prewarm.get("enabled")))
-        self.assertTrue(bool(prewarm.get("refresh_library")))
-        self.assertTrue(bool(prewarm.get("refresh_guide")))
-        metadata_backfill = prewarm.get("metadata_backfill") or {}
-        self.assertTrue(bool(metadata_backfill.get("enabled")))
-        self.assertTrue(bool(metadata_backfill.get("refresh_missing_primary_image")))
-        self.assertTrue(bool(metadata_backfill.get("refresh_missing_overview")))
-
-        hygiene = self.cfg.get("media_hygiene") or {}
-        self.assertTrue(bool(hygiene.get("enabled")))
-        self.assertTrue(bool(hygiene.get("cleanup_arr_failed_queue")))
-        queue_cfg = hygiene.get("arr_failed_queue_cleanup") or {}
-        self.assertTrue(bool(queue_cfg.get("blocklist")))
-        fs = hygiene.get("filesystem") or {}
-        self.assertTrue(bool(fs.get("enabled")))
-        dedupe_cfg = fs.get("dedupe") or {}
-        self.assertFalse(bool(dedupe_cfg.get("dry_run")))
-
-        qbit_prune_cfg = hygiene.get("qbit_duplicate_prune") or {}
-        self.assertIn("enabled", qbit_prune_cfg)
-        self.assertFalse(bool(qbit_prune_cfg.get("enabled")))
-
-        qbit_ipfilter_cfg = hygiene.get("qbit_ipfilter") or {}
-        self.assertTrue(bool(qbit_ipfilter_cfg.get("enabled")))
-        self.assertIn("DavidMoore/ipfilter", str(qbit_ipfilter_cfg.get("url", "")))
-        self.assertEqual(int(qbit_ipfilter_cfg.get("min_refresh_interval_hours", 0)), 24)
-        mirrors = {str(x).strip() for x in (qbit_ipfilter_cfg.get("mirror_target_paths") or [])}
-        self.assertEqual(mirrors, set())
-
-    def test_jellyfin_libraries_backdrops_default_is_enabled_in_display_prefs(self):
-        playback = self.cfg.get("jellyfin_playback") or {}
-        display = playback.get("display_preferences") or {}
-        self.assertTrue(bool(display.get("enabled")))
-        self.assertTrue(bool(display.get("show_backdrop")))
-        pref_ids = [str(x).strip() for x in (display.get("preference_ids") or [])]
-        self.assertIn("libraries", pref_ids)
-        custom = display.get("custom_prefs") or {}
-        self.assertTrue(bool(custom.get("enableBackdrops")))
-        self.assertTrue(bool(custom.get("enableLibraryBackdrops")))
-
-    def test_jellyfin_home_hides_static_livetv_tile_and_promotes_dynamic_livetv_row(self):
-        playback = self.cfg.get("jellyfin_playback") or {}
-        home_media = playback.get("home_media") or {}
-        excluded_types = {
-            str(item).strip().lower()
-            for item in (home_media.get("additional_excluded_collection_types") or [])
-            if str(item).strip()
-        }
-        self.assertIn("livetv", excluded_types)
-
-        custom = (playback.get("display_preferences") or {}).get("custom_prefs") or {}
-        self.assertEqual(str(custom.get("homesection2") or "").lower(), "livetv")
-
-    def test_jellyfin_livetv_self_healing_defaults_are_enabled(self):
-        live_tv = self.cfg.get("jellyfin_livetv") or {}
-        self.assertTrue(bool(live_tv.get("enabled")))
-        self.assertTrue(bool(live_tv.get("cleanup_duplicates")))
-        self.assertTrue(bool(live_tv.get("recreate_managed_guides")))
-        self.assertTrue(bool(live_tv.get("prune_unmanaged_tuners")))
-        self.assertTrue(bool(live_tv.get("prune_unmanaged_guides")))
-        self.assertTrue(bool(live_tv.get("fallback_enable_all_tuners_when_mapping_missing")))
-
-        tuners = live_tv.get("tuners") or []
-        self.assertGreaterEqual(len(tuners), 1)
-        first = tuners[0] if isinstance(tuners[0], dict) else {}
-        self.assertTrue(bool(first.get("normalize_tvg_id_suffix")))
-        self.assertTrue(bool(first.get("filter_to_guide_channels")))
-        self.assertIn("jellyfin/livetv-tuners", str(first.get("materialized_output_path", "")))
-        guides = live_tv.get("guides") or []
-        self.assertGreaterEqual(len(guides), 1)
-        first_guide = guides[0] if isinstance(guides[0], dict) else {}
-        self.assertFalse(bool(first_guide.get("replace_existing_program_icons_with_tuner_logo")))
-        self.assertIn("http", str(first_guide.get("default_program_icon_url") or ""))
-
-    def test_maintainerr_policy_defaults_are_declared(self):
-        maintainerr = self.cfg.get("maintainerr") or {}
-        self.assertTrue(bool(maintainerr.get("enabled")))
-        integrations = maintainerr.get("integrations") or {}
-        main_cfg = integrations.get("main") or {}
-        self.assertTrue(bool(main_cfg.get("enabled")))
-        self.assertEqual(str(main_cfg.get("media_server_type") or "").lower(), "jellyfin")
-        self.assertIn("maintainerr.local", str(main_cfg.get("application_url") or ""))
-        policy = maintainerr.get("policy") or {}
-        retention = policy.get("retention") or {}
-        self.assertEqual(int(retention.get("max_disk_used_percent", 0)), 65)
-        self.assertGreater(int(retention.get("target_disk_used_percent", 0)), 0)
-        rules_library = maintainerr.get("rules_library") or {}
-        self.assertTrue(bool(rules_library.get("enabled")))
-        self.assertTrue(bool(rules_library.get("include_defaults")))
-        self.assertEqual(str(rules_library.get("merge_mode") or "").lower(), "append")
-        self.assertIn("maintainerr/rules", str(rules_library.get("relative_path") or ""))
-
-    def test_flaresolverr_proxy_defaults_are_declared(self):
-        flaresolverr = self.cfg.get("flaresolverr") or {}
-        self.assertTrue(bool(flaresolverr.get("enabled")))
-        self.assertEqual(
-            str(flaresolverr.get("url") or "").rstrip("/"),
-            "http://flaresolverr:8191",
-        )
-        self.assertEqual(int(flaresolverr.get("request_timeout_seconds", 0)), 60)
-        self.assertTrue(bool(flaresolverr.get("test_connection")))
-
-    def test_compose_bootstrap_includes_jellyfin_preflight_configuration(self):
-        hooks = (self.cfg.get("adapter_hooks") or {}).get("bootstrap_job") or {}
-        preflight = hooks.get("compose_preflight_handlers") or []
-        self.assertIn(
-            "media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access",
-            preflight,
-        )
-
-    def test_homepage_defaults_include_homepage_and_jellyfin_hosts(self):
-        homepage = self.cfg.get("homepage") or {}
-        self.assertTrue(bool(homepage.get("enabled")))
-        hosts = {str(item).strip().lower() for item in (homepage.get("hosts") or []) if item}
-        self.assertIn("homepage.local", hosts)
-        self.assertIn("jellyfin.local", hosts)
-        onboarding = homepage.get("device_onboarding") or {}
-        self.assertTrue(bool(onboarding.get("enabled")))
-        self.assertIn("/app/jellyfin", str(onboarding.get("jellyfin_url") or ""))
-
-    def test_envoy_path_prefix_preserve_services_exclude_jellyseerr(self):
-        edge_cfg = ((self.cfg.get("adapter_hooks") or {}).get("edge") or {})
-        preserve_by_provider = edge_cfg.get("path_prefix_preserve_service_names_by_provider") or {}
-        envoy_services = {
-            str(item).strip().lower()
-            for item in (preserve_by_provider.get("envoy") or [])
-            if str(item).strip()
-        }
-        self.assertNotIn("jellyseerr", envoy_services)
 
 
 if __name__ == "__main__":

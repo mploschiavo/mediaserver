@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 SPEC = importlib.util.spec_from_file_location(
     "run_bootstrap_job",
-    ROOT / "src" / "media_stack" / "cli" / "commands" / "run_bootstrap_job_main.py",
+    ROOT / "src" / "media_stack" / "cli" / "commands" / "run_controller_job_main.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
@@ -53,7 +53,76 @@ class _RecordingKube:
 
 
 class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
+    _MINIMAL_CONFIG = {
+        "config_version": 2,
+        "technology_bindings": {
+            "media_server": "jellyfin",
+            "torrent_client": "qbittorrent",
+            "usenet_client": "sabnzbd",
+            "indexer_manager": "prowlarr",
+        },
+        "download_clients": {
+            "qbittorrent": {"url": "http://qbittorrent:8080"},
+            "sabnzbd": {"url": "http://sabnzbd:8080"},
+        },
+        "prowlarr_url": "http://prowlarr:9696",
+        "arr_apps": [],
+        "adapter_hooks": {
+            "scale_policy": {
+                "apps": ["jellyfin", "sonarr", "radarr", "prowlarr"],
+            },
+            "bootstrap_job": {
+                "runtime_config_policy_handler": (
+                    "media_stack.services.apps.stack.controller_config_policy:"
+                    "apply_bootstrap_runtime_policy"
+                ),
+                "secret_priming_targets": {
+                    "request_manager": {
+                        "env_key": "JELLYSEERR_API_KEY",
+                        "env_var": "JELLYSEERR_API_KEY",
+                        "deployment": "jellyseerr",
+                        "extract_command": "echo test",
+                    },
+                    "analytics": {
+                        "env_key": "TAUTULLI_API_KEY",
+                        "env_var": "TAUTULLI_API_KEY",
+                        "deployment": "tautulli",
+                        "extract_command": "echo test",
+                    },
+                },
+                "phase_plan": [
+                    {
+                        "operation": "call_handler",
+                        "phase_name": "Prepare bootstrap job config",
+                        "params": {"handler": "prepare_bootstrap_job_config"},
+                    },
+                ],
+            },
+        },
+        "arr_discovery_lists": {
+            "trigger_initial_sync": False,
+            "Radarr": [{"enable_auto": False, "search_on_add": False}],
+            "Lidarr": [{"enable_automatic_add": False, "should_search": False}],
+        },
+        "sonarr_seed_series": {"enabled": False, "search_for_missing_episodes": False},
+        "jellyseerr": {
+            "radarr": {"prevent_search": True},
+            "sonarr": {"prevent_search": True},
+        },
+    }
+
+    def _write_temp_config(self, overrides: dict | None = None) -> Path:
+        cfg = json.loads(json.dumps(self._MINIMAL_CONFIG))
+        if overrides:
+            cfg.update(overrides)
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        path = Path(tmpdir.name) / "media-stack.config.json"
+        path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        return path
+
     def test_timeout_seconds_parsing(self):
+        config_file = self._write_temp_config()
         self.assertEqual(
             MODULE.RunBootstrapJobConfig(
                 namespace="media-stack",
@@ -65,7 +134,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 ingress_name="media-stack-ingress",
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
-                config_file=ROOT / "contracts" / "media-stack.config.json",
+                config_file=config_file,
             ).timeout_seconds,
             600,
         )
@@ -80,7 +149,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 ingress_name="media-stack-ingress",
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
-                config_file=ROOT / "contracts" / "media-stack.config.json",
+                config_file=config_file,
             ).timeout_seconds,
             90,
         )
@@ -95,12 +164,13 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
                 ingress_name="media-stack-ingress",
                 bootstrap_runner_image="registry.example/bootstrap:latest",
                 root_dir=ROOT,
-                config_file=ROOT / "contracts" / "media-stack.config.json",
+                config_file=config_file,
             ).timeout_seconds,
             7200,
         )
 
     def test_manifest_overrides_replaces_namespace_image_and_host_root(self):
+        config_file = self._write_temp_config()
         cfg = MODULE.RunBootstrapJobConfig(
             namespace="media-stack-dev",
             timeout_raw="10m",
@@ -111,7 +181,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/custom/bootstrap:dev",
             root_dir=ROOT,
-            config_file=ROOT / "contracts" / "media-stack.config.json",
+            config_file=config_file,
         )
         runner = MODULE.RunBootstrapJobRunner(
             cfg=cfg,
@@ -131,6 +201,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
         self.assertIn("/mnt/media-dev", rendered)
 
     def test_prime_jellyseerr_and_tautulli_keys_into_secret(self):
+        config_file = self._write_temp_config()
         cfg = MODULE.RunBootstrapJobConfig(
             namespace="media-stack",
             timeout_raw="10m",
@@ -141,7 +212,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "contracts" / "media-stack.config.json",
+            config_file=config_file,
         )
         kube = _RecordingKube()
         runner = MODULE.RunBootstrapJobRunner(
@@ -162,6 +233,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
         self.assertIn({"stringData": {"TAUTULLI_API_KEY": "tautulli-key"}}, patch_payloads)
 
     def test_prepare_bootstrap_job_config_writes_validated_json(self):
+        config_file = self._write_temp_config()
         cfg = MODULE.RunBootstrapJobConfig(
             namespace="media-stack",
             timeout_raw="10m",
@@ -172,7 +244,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "contracts" / "media-stack.config.json",
+            config_file=config_file,
         )
         runner = MODULE.RunBootstrapJobRunner(
             cfg=cfg,
@@ -187,6 +259,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
         self.assertIsInstance(written.get("adapter_hooks"), dict)
 
     def test_prepare_bootstrap_job_config_disables_auto_download_for_manual_mode(self):
+        config_file = self._write_temp_config()
         cfg = MODULE.RunBootstrapJobConfig(
             namespace="media-stack",
             timeout_raw="10m",
@@ -197,7 +270,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "contracts" / "media-stack.config.json",
+            config_file=config_file,
             auto_download_content=False,
         )
         runner = MODULE.RunBootstrapJobRunner(
@@ -229,6 +302,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
         self.assertTrue(bool(dict(jellyseerr.get("sonarr") or {}).get("prevent_search")))
 
     def test_prepare_bootstrap_job_config_enables_auto_download_for_full_mode(self):
+        config_file = self._write_temp_config()
         cfg = MODULE.RunBootstrapJobConfig(
             namespace="media-stack",
             timeout_raw="10m",
@@ -239,7 +313,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
             ingress_name="media-stack-ingress",
             bootstrap_runner_image="registry.example/bootstrap:latest",
             root_dir=ROOT,
-            config_file=ROOT / "contracts" / "media-stack.config.json",
+            config_file=config_file,
             auto_download_content=True,
         )
         runner = MODULE.RunBootstrapJobRunner(

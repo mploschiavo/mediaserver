@@ -8,6 +8,7 @@ service:
   health_path: /
   web_ui: false
   scale_to_zero: true
+  top_level_config_key: true
 plugin:
   technology: flaresolverr
 defaults:

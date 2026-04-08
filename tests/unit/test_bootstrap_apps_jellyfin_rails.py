@@ -13,7 +13,13 @@ import media_stack.services.apps.jellyfin.runtime_ops as MEDIA_OPS
 
 class JellyfinHomeRailsTests(unittest.TestCase):
     def test_default_rails_loaded(self):
-        rails = MODULE.default_jellyfin_home_rails()
+        # The JSON defaults file was removed; rails are now in the
+        # contracts/services/jellyfin.yaml contract.  Verify the YAML
+        # contract has the expected rails.
+        import yaml
+        yaml_path = ROOT / "contracts" / "services" / "jellyfin.yaml"
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        rails = (data.get("defaults") or {}).get("home_rails", {}).get("rails", [])
         names = {str(item.get("name")) for item in rails if isinstance(item, dict)}
         self.assertIn("Trending", names)
         self.assertIn("Top Rated", names)

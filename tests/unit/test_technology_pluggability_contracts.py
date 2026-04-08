@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 PLUGIN_ROOT = ROOT / "src" / "media_stack" / "contracts" / "plugins"
+SERVICES_ROOT = ROOT / "contracts" / "services"
 
 TECHNOLOGIES = [
     "jellyfin",
@@ -87,13 +88,36 @@ SHARED_RUNTIME_ENTRY_MODULES = [
 
 
 def _load_manifest(technology: str) -> dict:
-    path = PLUGIN_ROOT / technology / "manifest.json"
-    if not path.exists():
-        raise AssertionError(f"Missing manifest for technology '{technology}': {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise AssertionError(f"Manifest must be a JSON object: {path}")
-    return payload
+    """Load technology manifest from plugin JSON or service YAML contract."""
+    # Try legacy plugin manifest first
+    json_path = PLUGIN_ROOT / technology / "manifest.json"
+    if json_path.exists():
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            return payload
+
+    # Fall back to per-service YAML contract (current system)
+    yaml_path = SERVICES_ROOT / f"{technology}.yaml"
+    if yaml_path.exists():
+        import yaml
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        # Build a manifest-compatible dict from the YAML contract
+        manifest: dict = {"technology": technology}
+        svc = data.get("service") or {}
+        manifest["service"] = svc
+        # Registration sections live under the "plugin" key in YAML contracts
+        plugin = data.get("plugin") or {}
+        for key in ("adapter_classes", "app_service_classes", "before_common_steps", "event_handlers"):
+            if key in plugin:
+                manifest[key] = plugin[key]
+            elif key in data:
+                manifest[key] = data[key]
+        return manifest
+
+    raise AssertionError(
+        f"Missing manifest for technology '{technology}': "
+        f"checked {json_path} and {yaml_path}"
+    )
 
 
 def _iter_specs(manifest: dict) -> list[str]:
@@ -190,8 +214,8 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
     def test_bootstrap_entrypoint_uses_manifest_bound_handlers_for_tech_operations(self):
         wrapper = (ROOT / "bin" / "controller.py").read_text(encoding="utf-8")
-        entrypoint = (
-            ROOT / "src" / "media_stack" / "cli" / "commands" / "controller_main.py"
+        runner = (
+            ROOT / "src" / "media_stack" / "cli" / "commands" / "controller_runner.py"
         ).read_text(encoding="utf-8")
         operation_names: set[str] = set()
         for tech in TECHNOLOGIES:
@@ -201,8 +225,8 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
         operation_names = {name for name in operation_names if name}
         self.assertTrue(operation_names, "No event handlers discovered from manifests.")
         self.assertIn("from media_stack.cli.commands.controller_main import main", wrapper)
-        self.assertIn("build_runner_event_registry(", entrypoint)
-        self.assertNotIn("_missing_op_handler(", entrypoint)
+        self.assertIn("build_runner_event_registry(", runner)
+        self.assertNotIn("_missing_op_handler(", runner)
 
     def test_shared_runtime_entry_modules_have_no_direct_app_imports(self):
         for module_path in SHARED_RUNTIME_ENTRY_MODULES:

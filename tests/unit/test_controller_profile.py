@@ -649,7 +649,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
     """Tests that use from_dict with mocked external dependencies."""
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_minimal_valid_profile(self, _mock_edge):
@@ -668,7 +668,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertTrue(profile.preconfigure_api_keys)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_exposure_defaults(self, _mock_edge):
@@ -684,7 +684,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.exposure.auth_provider, "none")
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_chaos_defaults(self, _mock_edge):
@@ -697,7 +697,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.chaos.interval_seconds, 60)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_chaos_override(self, _mock_edge):
@@ -714,7 +714,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.chaos.actions, ("restart_container",))
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_app_override(self, _mock_edge):
@@ -723,7 +723,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertFalse(profile.install_apps["jellyfin"])
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_unknown_app_override_raises(self, _mock_edge):
@@ -754,7 +754,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
             )
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_small_disk_raises(self, _mock_edge):
@@ -768,7 +768,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
             ControllerProfileConfig.from_dict("not a dict", catalog=CATALOG)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_enabled_apps_property(self, _mock_edge):
@@ -782,7 +782,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertNotIn("sonarr", enabled)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_selected_apps_csv_property(self, _mock_edge):
@@ -795,7 +795,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertIn(",", csv)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_live_tv_defaults_from_catalog(self, _mock_edge):
@@ -808,7 +808,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.live_tv_default_program_icon_url, "https://example.com/icon.png")
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_live_tv_override(self, _mock_edge):
@@ -823,7 +823,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.live_tv_default_program_icon_url, "https://custom.com/icon.png")
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_routing_with_explicit_subdomain(self, _mock_edge):
@@ -837,7 +837,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.exposure.ingress_domain, "ms.my.lan")
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_routing_empty_subdomain_allowed(self, _mock_edge):
@@ -850,7 +850,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertEqual(profile.exposure.ingress_domain, "example.com")
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_full_profile_auto_download_true(self, _mock_edge):
@@ -859,7 +859,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
         self.assertTrue(profile.auto_download_content)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_non_full_profile_auto_download_false(self, _mock_edge):
@@ -873,7 +873,7 @@ class TestControllerProfileConfigFromDict(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestControllerProfileConfigFromYaml(unittest.TestCase):
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_load_valid_yaml(self, _mock_edge):
@@ -921,7 +921,7 @@ class TestControllerProfileConfigFromYaml(unittest.TestCase):
                 ControllerProfileConfig.from_yaml_file(p, catalog=CATALOG)
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_load_empty_yaml_treated_as_empty_dict(self, _mock_edge):
@@ -945,7 +945,7 @@ class TestMaybeLoadBootstrapProfile(unittest.TestCase):
             maybe_load_bootstrap_profile(Path("/tmp/does_not_exist_xyz.yaml"))
 
     @mock.patch(
-        "media_stack.core.controller_profile.load_builtin_edge_router_provider_specs",
+        "media_stack.core.controller_profile.parser.load_builtin_edge_router_provider_specs",
         return_value=(),
     )
     def test_valid_file_returns_config(self, _mock_edge):

@@ -11,6 +11,7 @@ service:
   api_key_env: JELLYSEERR_API_KEY
   api_key_config: jellyseerr/settings.json
   api_key_format: json
+  top_level_config_key: true
 plugin:
   technology: jellyseerr
   aliases:

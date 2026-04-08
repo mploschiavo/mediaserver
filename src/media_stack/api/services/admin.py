@@ -108,6 +108,15 @@ def _discover_jellyfin_api_key(config_root: str) -> str:
     return _read_key_sqlite(db_path)
 
 
+# Legacy endpoint paths for media-server reset (backward compat).
+_MEDIA_SERVER_RESET_PATHS = {"/api/jellyfin/reset"}
+
+
+def is_media_server_reset_path(path: str) -> bool:
+    """Return True if the request path is a legacy media-server reset endpoint."""
+    return path in _MEDIA_SERVER_RESET_PATHS
+
+
 def jellyfin_hard_reset(username: str, password: str) -> dict[str, Any]:
     """Hard-reset Jellyfin user credentials via direct DB access.
 

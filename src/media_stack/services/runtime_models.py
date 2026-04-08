@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from .apps.download_clients.runtime_compat import (
+    LEGACY_KWARG_MAP as _DL_CLIENT_COMPAT,
+    DownloadClientRuntimeCompatMixin,
+)
+from .apps.prowlarr.runtime_compat import (
+    LEGACY_KWARG_MAP as _PROWLARR_COMPAT,
+    ProwlarrRuntimeCompatMixin,
+)
 from .apps.servarr.config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,
@@ -13,13 +21,28 @@ from .apps.servarr.config_models import (
 from .enums import BootstrapMode
 
 
-class ControllerRuntime:
+class ControllerRuntime(
+    ProwlarrRuntimeCompatMixin,
+    DownloadClientRuntimeCompatMixin,
+):
     """Runtime state bag for bootstrap orchestration.
 
     Core runtime identity and wiring fields are explicit.
+    Service-specific URLs, keys, configs, credentials, and data are stored
+    in generic dicts so that adding new services does not require editing
+    this model's constructor signature.
+
     App/feature-specific toggles and optional runtime values are accepted
     dynamically so feature growth does not require editing this model.
     """
+
+    # Maps old named-param keywords to the (dict_attr, key) pairs they
+    # populate, used by _accept_legacy_kwargs for backward compatibility.
+    # Each app-layer compat module contributes its own entries.
+    _LEGACY_KWARG_MAP: dict[str, tuple[str, str, str]] = {
+        **_PROWLARR_COMPAT,
+        **_DL_CLIENT_COMPAT,
+    }
 
     def __init__(
         self,
@@ -31,10 +54,6 @@ class ControllerRuntime:
         arr_apps_raw: list[dict[str, Any]],
         arr_apps: list[ServarrAppConfig],
         app_keys: dict[str, str],
-        prowlarr_url: str,
-        prowlarr_key: str,
-        qbit_cfg: dict[str, Any],
-        sab_cfg: dict[str, Any],
         torrent_client_key: str,
         usenet_client_key: str,
         arr_media_management_cfg: ArrMediaManagementPolicy,
@@ -42,17 +61,16 @@ class ControllerRuntime:
         arr_quality_upgrade_cfg: ArrQualityUpgradePolicy,
         app_auth_cfg: dict[str, Any],
         adapter_hooks_cfg: dict[str, Any],
-        prowlarr_indexers: list[dict[str, Any]],
-        sab_remote_path_mappings: list[dict[str, Any]],
-        qb_user: str,
-        qb_pass: str,
-        sab_username: str,
-        sab_password: str,
         auto_indexers: bool,
         trigger_sync: bool,
         fully_preconfigured: bool,
-        media_server_backend: str = "jellyfin",
-        request_manager_backend: str = "jellyseerr",
+        service_urls: dict[str, str] | None = None,
+        service_keys: dict[str, str] | None = None,
+        service_configs: dict[str, dict] | None = None,
+        service_credentials: dict[str, dict] | None = None,
+        service_data: dict[str, Any] | None = None,
+        media_server_backend: str = "",
+        request_manager_backend: str = "",
         feature_flags: dict[str, bool] | None = None,
         runtime_values: dict[str, Any] | None = None,
         **dynamic_values: Any,
@@ -64,10 +82,6 @@ class ControllerRuntime:
         self.arr_apps_raw = arr_apps_raw
         self.arr_apps = arr_apps
         self.app_keys = app_keys
-        self.prowlarr_url = prowlarr_url
-        self.prowlarr_key = prowlarr_key
-        self.qbit_cfg = qbit_cfg
-        self.sab_cfg = sab_cfg
         self.torrent_client_key = torrent_client_key
         self.usenet_client_key = usenet_client_key
         self.arr_media_management_cfg = arr_media_management_cfg
@@ -75,24 +89,31 @@ class ControllerRuntime:
         self.arr_quality_upgrade_cfg = arr_quality_upgrade_cfg
         self.app_auth_cfg = app_auth_cfg
         self.adapter_hooks_cfg = adapter_hooks_cfg
-        self.prowlarr_indexers = prowlarr_indexers
-        self.sab_remote_path_mappings = sab_remote_path_mappings
-        self.qb_user = qb_user
-        self.qb_pass = qb_pass
-        self.sab_username = sab_username
-        self.sab_password = sab_password
         self.auto_indexers = bool(auto_indexers)
         self.trigger_sync = bool(trigger_sync)
         self.fully_preconfigured = bool(fully_preconfigured)
-        self.media_server_backend = str(media_server_backend or "jellyfin").strip() or "jellyfin"
-        self.request_manager_backend = (
-            str(request_manager_backend or "jellyseerr").strip() or "jellyseerr"
-        )
+        self.media_server_backend = str(media_server_backend or "").strip()
+        self.request_manager_backend = str(request_manager_backend or "").strip()
+
+        # Generic service dicts
+        self.service_urls: dict[str, str] = dict(service_urls or {})
+        self.service_keys: dict[str, str] = dict(service_keys or {})
+        self.service_configs: dict[str, dict] = {
+            k: dict(v) for k, v in (service_configs or {}).items()
+        }
+        self.service_credentials: dict[str, dict] = {
+            k: dict(v) for k, v in (service_credentials or {}).items()
+        }
+        self.service_data: dict[str, Any] = dict(service_data or {})
 
         self.feature_flags: dict[str, bool] = {
             str(key): bool(value) for key, value in (feature_flags or {}).items()
         }
         self.runtime_values: dict[str, Any] = dict(runtime_values or {})
+
+        # Accept legacy named kwargs for backward compatibility and route
+        # them into the generic dicts before processing dynamic_values.
+        self._accept_legacy_kwargs(dynamic_values)
 
         for key, value in dynamic_values.items():
             token = str(key or "").strip()
@@ -103,25 +124,39 @@ class ControllerRuntime:
             else:
                 self.runtime_values[token] = value
 
+    def _accept_legacy_kwargs(self, dynamic_values: dict[str, Any]) -> None:
+        """Move legacy named-param kwargs from dynamic_values into generic dicts."""
+        for kwarg, (dest_attr, dict_key, _) in self._LEGACY_KWARG_MAP.items():
+            if kwarg not in dynamic_values:
+                continue
+            value = dynamic_values.pop(kwarg)
+            dest = getattr(self, dest_attr)
+            if "." in dict_key:
+                # Nested credential: "qbittorrent.user" -> service_credentials["qbittorrent"]["user"]
+                outer, inner = dict_key.split(".", 1)
+                dest.setdefault(outer, {})[inner] = value
+            else:
+                dest[dict_key] = value
+
     def __getattr__(self, name: str) -> Any:
+        # Avoid infinite recursion during init before dicts are set
+        for attr in ("feature_flags", "runtime_values"):
+            if attr not in self.__dict__:
+                raise AttributeError(name)
+
         if name in self.feature_flags:
             return self.feature_flags[name]
         if name in self.runtime_values:
             return self.runtime_values[name]
         raise AttributeError(name)
 
-    # Generic torrent-client aliases retained for neutral shared-runtime naming.
-    @property
-    def torrent_client_cfg(self) -> dict[str, Any]:
-        return self.qbit_cfg
-
-    @property
-    def torrent_client_username(self) -> str:
-        return self.qb_user
-
-    @property
-    def torrent_client_password(self) -> str:
-        return self.qb_pass
+    # ------------------------------------------------------------------
+    # Backward-compatible property accessors are provided by mixins:
+    #   - ProwlarrRuntimeCompatMixin (prowlarr_url, prowlarr_key, prowlarr_indexers)
+    #   - DownloadClientRuntimeCompatMixin (qbit_cfg, sab_cfg, qb_user, etc.)
+    # Generic torrent-client aliases (torrent_client_cfg, etc.) are also
+    # in DownloadClientRuntimeCompatMixin.
+    # ------------------------------------------------------------------
 
     @property
     def configure_torrent_arr_clients(self) -> bool:

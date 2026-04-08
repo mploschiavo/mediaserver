@@ -188,8 +188,9 @@ class EnvoyDynamicConfigServiceTests(unittest.TestCase):
             .get("route_config", {})
             .get("virtual_hosts", [])
         )
-        self.assertEqual(len(virtual_hosts), 1)
+        self.assertEqual(len(virtual_hosts), 2)
         self.assertEqual((virtual_hosts[0].get("domains") or [None])[0], "apps.media-dev.local")
+        self.assertEqual(virtual_hosts[1].get("name"), "vhost_localhost")
         routes = virtual_hosts[0].get("routes") or []
         self.assertGreaterEqual(len(routes), 3)
         html_primary_route = next(

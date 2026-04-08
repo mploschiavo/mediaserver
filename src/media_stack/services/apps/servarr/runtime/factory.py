@@ -11,8 +11,8 @@ from media_stack.services.apps.servarr.runtime.common import (
     resolve_arr_quality_preferences,
 )
 from media_stack.services.apps.prowlarr.indexer_sync_service import ArrIndexerSyncService
-from media_stack.services.arr_queue_cleanup_service import ArrQueueCleanupService
-from media_stack.services.arr_service import ArrService
+from media_stack.services.apps.servarr.arr_queue_cleanup_service import ArrQueueCleanupService
+from media_stack.services.apps.servarr.arr_service import ArrService
 from media_stack.services.auth_service import AuthService
 from media_stack.services.health_service import HealthService
 from media_stack.services.runtime_platform import (

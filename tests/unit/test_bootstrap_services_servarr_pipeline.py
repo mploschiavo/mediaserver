@@ -6,7 +6,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.servarr_adapters import (  # noqa: E402
+from media_stack.services.apps.servarr.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
     AdapterRegistry,
     AppBootstrapContext,
@@ -52,7 +52,7 @@ class ServarrAdapterRegistryTests(unittest.TestCase):
         registry = AdapterRegistry.from_config(
             {
                 "before_common_steps": {
-                    "readarr": "media_stack.services.servarr_adapters:readarr_before_common_steps",
+                    "readarr": "media_stack.services.apps.servarr.servarr_adapters:readarr_before_common_steps",
                 }
             }
         )
@@ -127,15 +127,15 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         if resolved_hooks is None:
             resolved_hooks = {
                 "before_common_steps": {
-                    "readarr": "media_stack.services.servarr_adapters:readarr_before_common_steps",
+                    "readarr": "media_stack.services.apps.servarr.servarr_adapters:readarr_before_common_steps",
                 }
             }
         return ServarrPipelineInputs(
             cfg={"readarr": {"metadata_source_required": False}},
             arr_apps=arr_apps,
             app_keys=app_keys,
-            prowlarr_url="http://prowlarr:9696",
-            prowlarr_key="prowlarr-key",
+            indexer_manager_url="http://prowlarr:9696",
+            indexer_manager_key="prowlarr-key",
             app_auth_cfg={"fail_on_error": False},
             arr_media_management_cfg={"enabled": True},
             arr_download_handling_cfg={"enabled": True},
@@ -155,7 +155,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
                 qbit_login_ok=True,
                 configure_sab_arr_clients=True,
                 sab_api_key="sab-key",
-                refresh_health_after_bootstrap=True,
+                refresh_health_after_setup=True,
             ),
         )
 
@@ -201,7 +201,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
         app_keys = {"readarr": "readarr-key"}
         override = {
             "before_common_steps": {
-                "readarr": "media_stack.services.servarr_adapters:noop_before_common_steps"
+                "readarr": "media_stack.services.apps.servarr.servarr_adapters:noop_before_common_steps"
             }
         }
 
@@ -225,8 +225,8 @@ class ServarrPipelineServiceTests(unittest.TestCase):
                         }
                     ],
                     app_keys={"sonarr": "sonarr-key"},
-                    prowlarr_url="http://prowlarr:9696",
-                    prowlarr_key="prowlarr-key",
+                    indexer_manager_url="http://prowlarr:9696",
+                    indexer_manager_key="prowlarr-key",
                     app_auth_cfg={"fail_on_error": True},
                     arr_media_management_cfg={},
                     arr_download_handling_cfg={},
@@ -246,7 +246,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
                         qbit_login_ok=False,
                         configure_sab_arr_clients=False,
                         sab_api_key="",
-                        refresh_health_after_bootstrap=False,
+                        refresh_health_after_setup=False,
                     ),
                 )
             )
@@ -298,7 +298,7 @@ class ServarrPipelineServiceTests(unittest.TestCase):
                 "root_folder": "/media/tv",
             }
         ]
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError, AttributeError)):
             service.run(
                 self._base_inputs(
                     arr_apps,

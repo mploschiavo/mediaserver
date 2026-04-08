@@ -494,7 +494,7 @@ class TestRunHandlerSpecs(unittest.TestCase):
             call_order.append("normal")
             return {}
 
-        with patch("media_stack.cli.commands.controller_main._resolve_handler") as mr:
+        with patch("media_stack.cli.commands.controller_handlers._resolve_handler") as mr:
             mr.side_effect = lambda s: fake_env if "env" in s else fake_normal
             specs = [
                 {"name": "n1", "handler": "normal.m:f", "export_env": False},
@@ -509,7 +509,7 @@ class TestRunHandlerSpecs(unittest.TestCase):
         def boom(**kw):
             raise RuntimeError("fail")
 
-        with patch("media_stack.cli.commands.controller_main._resolve_handler", return_value=boom):
+        with patch("media_stack.cli.commands.controller_handlers._resolve_handler", return_value=boom):
             state = MagicMock()
             _run_handler_specs(
                 [{"name": "f", "handler": "m:f", "optional": True}],

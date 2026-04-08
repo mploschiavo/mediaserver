@@ -200,16 +200,25 @@ class TestApplyProfileEnv(unittest.TestCase):
         profile_path = self._write_profile(
             "routing:\n  strategy: subdomain\n"
         )
-        saved = os.environ.get("ROUTE_STRATEGY")
+        # _apply_profile_env sets all keys in its env_map, not just routing.
+        # Save/restore everything it might touch.
+        keys = [
+            "FULLY_PRECONFIGURED", "PRECONFIGURE_API_KEYS",
+            "APPLY_INITIAL_PREFERENCES", "AUTO_DOWNLOAD_CONTENT",
+            "MEDIA_STACK_ENV", "APP_GATEWAY_HOST", "APP_GATEWAY_PORT",
+            "APP_PATH_PREFIX", "ROUTE_STRATEGY",
+        ]
+        saved = {k: os.environ.pop(k, None) for k in keys}
         try:
             os.environ["ROUTE_STRATEGY"] = "already-set"
             _apply_profile_env(profile_path)
             self.assertEqual(os.environ["ROUTE_STRATEGY"], "already-set")
         finally:
-            if saved is None:
-                os.environ.pop("ROUTE_STRATEGY", None)
-            else:
-                os.environ["ROUTE_STRATEGY"] = saved
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
             os.unlink(profile_path)
 
     def test_none_profile_is_noop(self):

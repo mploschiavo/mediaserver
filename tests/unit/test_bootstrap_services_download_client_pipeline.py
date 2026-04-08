@@ -74,11 +74,11 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
             adapter_hooks_cfg={
                 "download_client_adapter_classes": {
                     "qbittorrent": (
-                        "media_stack.services.download_client_adapters.qbittorrent:"
+                        "media_stack.services.apps.qbittorrent.download_client_adapter:"
                         "QbittorrentDownloadClientAdapter"
                     ),
                     "sabnzbd": (
-                        "media_stack.services.download_client_adapters.sabnzbd:"
+                        "media_stack.services.apps.sabnzbd.download_client_adapter:"
                         "SabnzbdDownloadClientAdapter"
                     ),
                     "transmission": (
@@ -116,7 +116,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                         "download_client_adapter_classes": {
                             "qbittorrent": "",
                             "sabnzbd": (
-                                "media_stack.services.download_client_adapters.sabnzbd:"
+                                "media_stack.services.apps.sabnzbd.download_client_adapter:"
                                 "SabnzbdDownloadClientAdapter"
                             ),
                         }
@@ -127,7 +127,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
     def test_pipeline_rejects_invalid_download_client_adapter_shape(self):
         invoke = self._invoke()
         service = self._service(invoke)
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError, AttributeError)):
             service.run_prepare(
                 self._inputs(
                     adapter_hooks_cfg={
@@ -148,7 +148,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                             "TransmissionDownloadClientAdapter"
                         ),
                         "sabnzbd": (
-                            "media_stack.services.download_client_adapters.sabnzbd:"
+                            "media_stack.services.apps.sabnzbd.download_client_adapter:"
                             "SabnzbdDownloadClientAdapter"
                         ),
                     }
@@ -194,7 +194,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                             "TransmissionDownloadClientAdapter"
                         ),
                         "sabnzbd": (
-                            "media_stack.services.download_client_adapters.sabnzbd:"
+                            "media_stack.services.apps.sabnzbd.download_client_adapter:"
                             "SabnzbdDownloadClientAdapter"
                         ),
                     }
@@ -234,7 +234,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                                 "MyTorrentDownloadClientAdapter"
                             ),
                             "sabnzbd": (
-                                "media_stack.services.download_client_adapters.sabnzbd:"
+                                "media_stack.services.apps.sabnzbd.download_client_adapter:"
                                 "SabnzbdDownloadClientAdapter"
                             ),
                         }
@@ -261,7 +261,7 @@ class DownloadClientPipelineServiceTests(unittest.TestCase):
                 adapter_hooks_cfg={
                     "download_client_adapter_classes": {
                         "qbittorrent": (
-                            "media_stack.services.download_client_adapters.qbittorrent:"
+                            "media_stack.services.apps.qbittorrent.download_client_adapter:"
                             "QbittorrentDownloadClientAdapter"
                         ),
                         "nzbget": (

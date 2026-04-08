@@ -6,9 +6,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_deployment_ops_service import (  # noqa: E402
-    BootstrapDeploymentOpsConfig,
-    BootstrapDeploymentOpsService,
+from media_stack.cli.workflows.controller_deployment_ops_service import (  # noqa: E402
+    ControllerDeploymentOpsConfig,
+    ControllerDeploymentOpsService,
 )
 
 
@@ -38,12 +38,12 @@ class _Kube:
         return _Result(1, "", "unexpected command")
 
 
-class BootstrapDeploymentOpsServiceTests(unittest.TestCase):
+class ControllerDeploymentOpsServiceTests(unittest.TestCase):
     def test_restart_if_exists_skips_when_missing(self):
         kube = _Kube(exists=False)
         info = mock.Mock()
-        svc = BootstrapDeploymentOpsService(
-            cfg=BootstrapDeploymentOpsConfig(namespace="media-stack"),
+        svc = ControllerDeploymentOpsService(
+            cfg=ControllerDeploymentOpsConfig(namespace="media-stack"),
             kube=kube,
             info=info,
         )
@@ -52,8 +52,8 @@ class BootstrapDeploymentOpsServiceTests(unittest.TestCase):
 
     def test_restart_deployment_runs_rollout(self):
         kube = _Kube(exists=True)
-        svc = BootstrapDeploymentOpsService(
-            cfg=BootstrapDeploymentOpsConfig(namespace="media-stack"),
+        svc = ControllerDeploymentOpsService(
+            cfg=ControllerDeploymentOpsConfig(namespace="media-stack"),
             kube=kube,
             info=mock.Mock(),
         )

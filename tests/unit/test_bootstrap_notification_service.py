@@ -6,22 +6,22 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_notification_service import (  # noqa: E402
-    BootstrapNotificationConfig,
-    BootstrapNotificationService,
+from media_stack.cli.workflows.controller_notification_service import (  # noqa: E402
+    ControllerNotificationConfig,
+    ControllerNotificationService,
 )
 
 
-class BootstrapNotificationServiceTests(unittest.TestCase):
+class ControllerNotificationServiceTests(unittest.TestCase):
     def test_notify_noop_without_webhook(self):
-        svc = BootstrapNotificationService(cfg=BootstrapNotificationConfig(alert_webhook_url=""))
+        svc = ControllerNotificationService(cfg=ControllerNotificationConfig(alert_webhook_url=""))
         with mock.patch("urllib.request.urlopen") as mocked:
             svc.notify("info", "message")
         mocked.assert_not_called()
 
     def test_notify_posts_with_webhook(self):
-        svc = BootstrapNotificationService(
-            cfg=BootstrapNotificationConfig(alert_webhook_url="http://example.com/hook")
+        svc = ControllerNotificationService(
+            cfg=ControllerNotificationConfig(alert_webhook_url="http://example.com/hook")
         )
         fake_ctx = mock.MagicMock()
         fake_ctx.__enter__.return_value = object()

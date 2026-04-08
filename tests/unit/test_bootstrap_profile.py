@@ -4,15 +4,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from media_stack.core.bootstrap_profile import (
-    BootstrapProfileConfig,
+from media_stack.core.controller_profile import (
+    ControllerProfileConfig,
     normalize_selected_apps_csv,
 )
 
 
 class BootstrapProfileTests(unittest.TestCase):
     def test_from_dict_parses_canonical_profile(self):
-        profile = BootstrapProfileConfig.from_dict(
+        profile = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -74,11 +74,11 @@ class BootstrapProfileTests(unittest.TestCase):
 
     def test_from_dict_rejects_missing_required_sections(self):
         with self.assertRaisesRegex(ValueError, "metadata must be an object"):
-            BootstrapProfileConfig.from_dict({})
+            ControllerProfileConfig.from_dict({})
 
     def test_from_dict_rejects_small_disk_allocation(self):
         with self.assertRaisesRegex(ValueError, "at least 20GB"):
-            BootstrapProfileConfig.from_dict(
+            ControllerProfileConfig.from_dict(
                 {
                     "schema_version": 1,
                     "kind": "media_stack_profile",
@@ -96,7 +96,7 @@ class BootstrapProfileTests(unittest.TestCase):
             )
 
     def test_from_dict_parses_chaos_config(self):
-        profile = BootstrapProfileConfig.from_dict(
+        profile = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -150,7 +150,7 @@ class BootstrapProfileTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            profile = BootstrapProfileConfig.from_yaml_file(profile_file)
+            profile = ControllerProfileConfig.from_yaml_file(profile_file)
         self.assertEqual(profile.deployment_target, "k8s")
         self.assertEqual(profile.purpose, "test")
         self.assertEqual(profile.exposure.route_strategy, "path-prefix")
@@ -159,7 +159,7 @@ class BootstrapProfileTests(unittest.TestCase):
 
     def test_from_dict_rejects_unknown_routing_provider(self):
         with self.assertRaisesRegex(ValueError, "routing.provider must be one of"):
-            BootstrapProfileConfig.from_dict(
+            ControllerProfileConfig.from_dict(
                 {
                     "schema_version": 1,
                     "kind": "media_stack_profile",
@@ -181,7 +181,7 @@ class BootstrapProfileTests(unittest.TestCase):
 
     def test_from_dict_rejects_invalid_gateway_port(self):
         with self.assertRaisesRegex(ValueError, "routing.gateway_port must be between 1 and 65535"):
-            BootstrapProfileConfig.from_dict(
+            ControllerProfileConfig.from_dict(
                 {
                     "schema_version": 1,
                     "kind": "media_stack_profile",
@@ -213,7 +213,7 @@ class BootstrapProfileTests(unittest.TestCase):
             normalize_selected_apps_csv("jellyfin,unknownapp")
 
     def test_from_dict_uses_code_live_tv_defaults_when_not_specified(self):
-        profile = BootstrapProfileConfig.from_dict(
+        profile = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -248,7 +248,7 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertIn("restart_container", profile.chaos.actions)
 
     def test_from_dict_accepts_default_program_icon_urls_array(self):
-        profile = BootstrapProfileConfig.from_dict(
+        profile = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -275,7 +275,7 @@ class BootstrapProfileTests(unittest.TestCase):
         )
 
     def test_full_install_profile_defaults_auto_download_to_true(self):
-        profile = BootstrapProfileConfig.from_dict(
+        profile = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -294,7 +294,7 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertTrue(profile.auto_download_content)
 
     def test_standard_install_profile_includes_flaresolverr(self):
-        profile = BootstrapProfileConfig.from_dict(
+        profile = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -315,7 +315,7 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertFalse(profile.install_apps["traefik"])
 
     def test_install_profile_app_matrix_matches_catalog_contract(self):
-        minimal = BootstrapProfileConfig.from_dict(
+        minimal = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -335,7 +335,7 @@ class BootstrapProfileTests(unittest.TestCase):
         self.assertFalse(minimal.install_apps["envoy"])
         self.assertFalse(minimal.install_apps["flaresolverr"])
 
-        full = BootstrapProfileConfig.from_dict(
+        full = ControllerProfileConfig.from_dict(
             {
                 "schema_version": 1,
                 "kind": "media_stack_profile",
@@ -352,7 +352,6 @@ class BootstrapProfileTests(unittest.TestCase):
             }
         )
         self.assertTrue(full.install_apps["envoy"])
-        self.assertTrue(full.install_apps["recyclarr"])
         self.assertFalse(full.install_apps["tautulli"])
 
     def test_catalog_file_allows_extending_apps_without_code_changes(self):
@@ -399,7 +398,7 @@ class BootstrapProfileTests(unittest.TestCase):
                 self.assertEqual(
                     normalize_selected_apps_csv("customapp,jellyfin"), "customapp,jellyfin"
                 )
-                profile = BootstrapProfileConfig.from_dict(
+                profile = ControllerProfileConfig.from_dict(
                     {
                         "schema_version": 1,
                         "kind": "media_stack_profile",

@@ -6,6 +6,8 @@ import time
 from collections import defaultdict
 from typing import Any
 
+from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
+
 
 def run_qbit_duplicate_prune(
     ops,
@@ -31,7 +33,7 @@ def run_qbit_duplicate_prune(
             "qB duplicate prune requires qB credentials (STACK_ADMIN_USERNAME/STACK_ADMIN_PASSWORD)."
         )
 
-    qbit_url = ops.normalize_url((qbit_cfg or {}).get("url", "http://qbittorrent:8080"))
+    qbit_url = ops.normalize_url((qbit_cfg or {}).get("url", default_torrent_client_url()))
     dry_run = bool(summary["dry_run"])
     delete_files = ops.bool_cfg(prune_cfg, "delete_files", False)
     max_delete_per_run = ops.to_int(prune_cfg.get("max_delete_per_run"), 30)

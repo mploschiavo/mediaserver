@@ -12,7 +12,7 @@ from media_stack.services.plugin_manifest_loader import (  # noqa: E402
     build_adapter_hook_defaults,
     load_plugin_manifests,
 )
-from media_stack.services.servarr_adapters import (  # noqa: E402
+from media_stack.services.apps.servarr.servarr_adapters import (  # noqa: E402
     AdapterDependencies,
     noop_before_common_steps,
 )
@@ -78,8 +78,8 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
             sab_cfg={},
             sab_auth=ClientAuth(),
             sab_remote_path_mappings=[],
-            prowlarr_url="http://prowlarr:9696",
-            prowlarr_key="prowlarr-key",
+            indexer_manager_url="http://prowlarr:9696",
+            indexer_manager_key="prowlarr-key",
             run_cfg=ServarrRunConfig(
                 configure_arr_media_management=False,
                 configure_arr_download_handling=False,
@@ -89,7 +89,7 @@ class ServarrTechnologyAdaptersTests(unittest.TestCase):
                 qbit_login_ok=False,
                 configure_sab_arr_clients=False,
                 sab_api_key="",
-                refresh_health_after_bootstrap=False,
+                refresh_health_after_setup=False,
             ),
         )
 

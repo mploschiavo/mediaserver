@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from urllib import parse
 
-from .common import normalize_title, pick_series_lookup_candidate
+from media_stack.services.discovery_lists.common import normalize_title, pick_series_lookup_candidate
 
 
 def resolve_series_quality_profile_id(

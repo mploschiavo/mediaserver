@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ....servarr_adapters import AdapterDependencies, AppBootstrapContext, HookFn
+from ..servarr_adapters import AdapterDependencies, AppBootstrapContext, HookFn
 from ..config_models import (
     AppCapabilities,
     ArrDownloadHandlingPolicy,
@@ -83,8 +83,8 @@ class ServarrAdapterContext:
     sab_cfg: dict[str, Any]
     sab_auth: ClientAuth
     sab_remote_path_mappings: list[dict[str, Any]]
-    prowlarr_url: str
-    prowlarr_key: str
+    indexer_manager_url: str
+    indexer_manager_key: str
     run_cfg: ServarrRunConfig
     app_url: str = ""
     api_base: str = ""
@@ -259,11 +259,11 @@ class ServarrAdapterBase:
 
     def _register_prowlarr_application(self) -> None:
         """Register this app with Prowlarr, retrying with path-aware URL on HTTP 307."""
-        effective_prowlarr_url = self.context.prowlarr_url
+        effective_prowlarr_url = self.context.indexer_manager_url
         try:
             self.deps.ensure_prowlarr_application(
                 effective_prowlarr_url,
-                self.context.prowlarr_key,
+                self.context.indexer_manager_key,
                 self.context.app_name,
                 self.context.app_impl,
                 self.context.app_url,
@@ -273,14 +273,14 @@ class ServarrAdapterBase:
             if "http 307" not in str(exc).lower():
                 raise
             path_aware_prowlarr_url = self._join_url_base(
-                self.context.prowlarr_url,
+                self.context.indexer_manager_url,
                 self._configured_url_base_for_keys(["prowlarr"]),
             )
             if not path_aware_prowlarr_url or path_aware_prowlarr_url == effective_prowlarr_url:
                 raise
             self.deps.ensure_prowlarr_application(
                 path_aware_prowlarr_url,
-                self.context.prowlarr_key,
+                self.context.indexer_manager_key,
                 self.context.app_name,
                 self.context.app_impl,
                 self.context.app_url,

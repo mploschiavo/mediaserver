@@ -13,6 +13,7 @@ service:
   api_key_format: sqlite
   version_path: /System/Info/Public
   version_json_key: Version
+  top_level_config_key: true
 plugin:
   technology: jellyfin
   adapter_class: media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins

@@ -67,27 +67,15 @@ def _load_profile(profile_file: str | None) -> dict:
 
 
 # Known services with their default ports — used when compose file is unavailable (K8s).
-_DEFAULT_SERVICE_PORTS: dict[str, int] = {
-    "envoy": 9901,
-    "homepage": 3000,
-    "jellyfin": 8096,
-    "jellyseerr": 5055,
-    "sonarr": 8989,
-    "radarr": 7878,
-    "lidarr": 8686,
-    "readarr": 8787,
-    "prowlarr": 9696,
-    "qbittorrent": 8080,
-    "sabnzbd": 8080,
-    "bazarr": 6767,
-    "maintainerr": 6246,
-    "flaresolverr": 8191,
-    "tautulli": 8181,
-    "plex": 32400,
-    "unpackerr": 5656,
-    "recyclarr": 80,
-    "media-stack-controller": 9100,
-}
+# Built from the service registry; non-registry services listed below as overrides.
+def _build_default_service_ports() -> dict[str, int]:
+    from media_stack.api.services.registry import SERVICES
+    ports = {s.id: s.port for s in SERVICES if s.port > 0}
+    # Non-registry services that still need Envoy routing entries.
+    ports.setdefault("media-stack-controller", 9100)
+    return ports
+
+_DEFAULT_SERVICE_PORTS: dict[str, int] = _build_default_service_ports()
 
 
 def _build_synthetic_services(
@@ -156,7 +144,11 @@ def main() -> None:
     internet_exposed = bool(routing.get("internet_exposed")) or os.environ.get("INTERNET_EXPOSED", "0") == "1"
     media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", "")) or os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
     if not media_server_direct_host and stack_subdomain and base_domain:
-        parts = [p for p in ["jellyfin", stack_subdomain, base_domain] if p]
+        # Derive subdomain from the first media-category service in the registry.
+        from media_stack.api.services.registry import SERVICES as _reg_services
+        _ms_ids = [s.id for s in _reg_services if s.category == "media" and s.host]
+        _ms_slug = _ms_ids[0] if _ms_ids else "media"
+        parts = [p for p in [_ms_slug, stack_subdomain, base_domain] if p]
         media_server_direct_host = ".".join(parts).lower()
     auth_cfg = profile.get("auth") or {}
     auth_provider = str(auth_cfg.get("provider", "")) or os.environ.get("AUTH_PROVIDER", "")

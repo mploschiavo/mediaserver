@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
+from .apps.prowlarr.runtime_compat import LEGACY_ARG_TOKEN_ALIASES as _PROWLARR_TOKEN_ALIASES
 from .enums import RunnerEvent
 
 RunOptionalStepFn = Callable[..., None]
@@ -24,11 +25,13 @@ DEFAULT_ARG_TOKEN_ATTRS: dict[str, str] = {
     "app_auth_cfg": "app_auth_cfg",
     "qb_user": "qb_user",
     "qb_pass": "qb_pass",
-    "prowlarr_url": "prowlarr_url",
-    "prowlarr_key": "prowlarr_key",
-    "prowlarr_indexers": "prowlarr_indexers",
+    "indexer_manager_url": "prowlarr_url",
+    "indexer_manager_key": "prowlarr_key",
+    "indexer_manager_indexers": "prowlarr_indexers",
     "auto_indexers": "auto_indexers",
     "trigger_sync": "trigger_sync",
+    # Legacy arg-token aliases from app-layer compat modules.
+    **_PROWLARR_TOKEN_ALIASES,
 }
 
 

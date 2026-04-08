@@ -172,7 +172,7 @@ class MediaServerAdaptersTests(unittest.TestCase):
         ctx, _calls = self._context()
         adapter = MediaServerAdapterFactory(
             adapter_class_specs={
-                "my-media": "media_stack.services.media_server_adapters.jellyfin:JellyfinMediaServerAdapter"
+                "my-media": "media_stack.services.apps.jellyfin.media_server_adapter:JellyfinMediaServerAdapter"
             }
         ).create("my-media", ctx)
         self.assertIsInstance(adapter, JellyfinMediaServerAdapter)

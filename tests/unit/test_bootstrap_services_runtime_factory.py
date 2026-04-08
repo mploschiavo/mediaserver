@@ -15,9 +15,9 @@ from media_stack.services.apps.servarr.config_models import (  # noqa: E402
 )
 from media_stack.services.enums import BootstrapMode  # noqa: E402
 from media_stack.services.runtime_factory import (  # noqa: E402
-    BootstrapCliArgs,
-    BootstrapRuntimeFactoryDependencies,
-    BootstrapRuntimeFactoryService,
+    ControllerCliArgs,
+    ControllerRuntimeFactoryDependencies,
+    ControllerRuntimeFactoryService,
 )
 
 
@@ -33,7 +33,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         )
 
     def _factory(self, read_api_key=None):
-        deps = BootstrapRuntimeFactoryDependencies(
+        deps = ControllerRuntimeFactoryDependencies(
             load_bootstrap_default_json=lambda filename, fallback: fallback,
             deep_merge_objects=lambda base, override: {**dict(base or {}), **dict(override or {})},
             bool_cfg=lambda cfg, key, default=False: bool((cfg or {}).get(key, default)),
@@ -53,10 +53,10 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
                 }
             ],
         )
-        return BootstrapRuntimeFactoryService(deps=deps)
+        return ControllerRuntimeFactoryService(deps=deps)
 
     def _args(self, mode=BootstrapMode.FULL):
-        return BootstrapCliArgs(
+        return ControllerCliArgs(
             mode=mode,
             config_path="contracts/media-stack.config.json",
             config_root="/srv-config",
@@ -243,7 +243,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
 
         self.assertEqual(result.runtime.torrent_client_key, "transmission")
         self.assertEqual(result.runtime.usenet_client_key, "sabnzbd")
-        self.assertEqual(result.runtime.qbit_cfg.get("name"), "Transmission")
+        self.assertEqual(result.runtime.torrent_client_cfg.get("name"), "Transmission")
         self.assertEqual(result.runtime.media_server_backend, "emby")
 
     def test_runtime_factory_allows_missing_optional_usenet_binding(self):
@@ -353,7 +353,7 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
             },
             "adapter_hooks": {
                 "download_client_adapter_classes": {
-                    "qbittorrent": "media_stack.services.download_client_adapters.qbittorrent:QbittorrentDownloadClientAdapter"
+                    "qbittorrent": "media_stack.services.apps.qbittorrent.download_client_adapter:QbittorrentDownloadClientAdapter"
                 }
             },
         }

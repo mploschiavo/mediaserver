@@ -73,7 +73,7 @@ class ApiKeyReadTests(unittest.TestCase):
 
         self.assertEqual(key, "alt-root-key")
 
-    def test_read_jellyseerr_api_key_falls_back_to_alt_config_root(self):
+    def test_read_api_key_jellyseerr_falls_back_to_alt_config_root(self):
         with tempfile.TemporaryDirectory() as primary_tmp, tempfile.TemporaryDirectory() as alt_tmp:
             alt_config_dir = Path(alt_tmp) / "jellyseerr"
             alt_config_dir.mkdir(parents=True, exist_ok=True)
@@ -86,8 +86,8 @@ class ApiKeyReadTests(unittest.TestCase):
                 {"BOOTSTRAP_ALT_CONFIG_ROOT": alt_tmp},
                 clear=False,
             ):
-                key = MODULE.api_keys_service().read_jellyseerr_api_key(
-                    primary_tmp, timeout_seconds=1
+                key = MODULE.api_keys_service().read_api_key(
+                    primary_tmp, "jellyseerr"
                 )
 
         self.assertEqual(key, "jellyseerr-alt-key")

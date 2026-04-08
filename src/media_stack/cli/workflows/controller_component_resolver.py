@@ -468,7 +468,7 @@ def resolve_pipeline_components(
             resolved[binding_key] = technology
 
     # Overlay explicit components from config (for non-binding mappings like
-    # indexer_manager: {technology: prowlarr})
+    # indexer_manager: {technology: <service>})
     components = section.get("components") if isinstance(section, dict) else None
     if isinstance(components, dict):
         for key, value in components.items():

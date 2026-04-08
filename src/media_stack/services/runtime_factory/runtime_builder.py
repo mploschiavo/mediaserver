@@ -8,26 +8,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..apps.download_clients.config_models import (
-    DiskGuardrailsConfig,
     DownloadClientsConfig,
     TechnologyBindingsConfig,
 )
-from ..apps.integrations.config_models import (
-    AppAuthConfig,
-    BazarrConfig,
-    HomepageConfig,
-    JellyfinAutoCollectionsConfig,
-    JellyfinHomeRailsConfig,
-    JellyseerrConfig,
-    MaintainerrConfig,
-    MediaHygieneConfig,
-)
-from ..apps.jellyfin.config_models import (
-    JellyfinLibrariesConfig,
-    JellyfinLiveTvConfig,
-    JellyfinPlaybackConfig,
-    JellyfinPluginsConfig,
-    JellyfinPrewarmConfig,
+from ..apps.download_clients.config_resolver import resolve_download_client_configs
+from ..apps.integrations.config_models import AppAuthConfig
+from ..apps.integrations.config_resolver import resolve_integration_configs
+from ..apps.jellyfin.config_resolver import resolve_jellyfin_configs
+from ..apps.prowlarr.api_key_reader import (
+    populate_prowlarr_service_dicts,
+    read_prowlarr_api_key,
+    resolve_prowlarr_wiring,
 )
 from ..apps.servarr.config_models import (
     ArrDiscoveryListsConfig,
@@ -158,7 +149,9 @@ class ControllerRuntimeBuilder:
                 raise ValueError("adapter_hooks.operation_handlers must be an object/map.")
             event_overrides = allowed_runtime_overrides.setdefault("event_handlers", {})
             if not isinstance(event_overrides, dict):
-                raise ValueError("adapter_hooks.event_handlers must be an object/map.")
+                raise ValueError(
+                    "adapter_hooks.event_handlers.RUN must be an object/map when provided."
+                )
             run_event = event_overrides.setdefault("RUN", {})
             if not isinstance(run_event, dict):
                 raise ValueError(
@@ -183,7 +176,7 @@ class ControllerRuntimeBuilder:
 
     def build(self, args: ControllerCliArgs, cfg: dict[str, Any]) -> ControllerRuntimeBuildResult:
         cfg = TopLevelBootstrapConfig.from_dict(cfg).to_dict()
-        prowlarr_url = str(cfg.get("prowlarr_url") or "").strip().rstrip("/")
+        prowlarr_wiring = resolve_prowlarr_wiring(cfg=cfg)
         arr_apps_raw = cfg.get("arr_apps", [])
 
         manifests = load_plugin_manifests()
@@ -222,12 +215,12 @@ class ControllerRuntimeBuilder:
         )
         torrent_client_key = binding_resolution.torrent_client_key
         usenet_client_key = binding_resolution.usenet_client_key
-        qbit_cfg = dict(binding_resolution.torrent_client_cfg)
-        sab_cfg = dict(binding_resolution.usenet_client_cfg)
+        torrent_client_cfg = dict(binding_resolution.torrent_client_cfg)
+        usenet_client_cfg = dict(binding_resolution.usenet_client_cfg)
         if torrent_client_key:
-            qbit_cfg.setdefault("_technology_key", torrent_client_key)
+            torrent_client_cfg.setdefault("_technology_key", torrent_client_key)
         if usenet_client_key:
-            sab_cfg.setdefault("_technology_key", usenet_client_key)
+            usenet_client_cfg.setdefault("_technology_key", usenet_client_key)
 
         arr_download_handling_cfg = ArrDownloadHandlingPolicy.from_dict(
             cfg.get("arr_download_handling") or {},
@@ -245,37 +238,18 @@ class ControllerRuntimeBuilder:
             cfg.get("arr_discovery_lists") or {}
         )
 
-        jellyseerr_model = JellyseerrConfig.from_dict(cfg.get("jellyseerr") or {})
-        homepage_model = HomepageConfig.from_dict(cfg.get("homepage") or {})
-        bazarr_model = BazarrConfig.from_dict(cfg.get("bazarr") or {})
-        # Jellyfin settings: support both new pattern (cfg["jellyfin"]["libraries"])
-        # and legacy pattern (cfg["jellyfin_libraries"]) for backward compatibility
-        jf = cfg.get("jellyfin") or {}
-        jf_cfg = jf if isinstance(jf, dict) else {}
-        jellyfin_libraries_model = JellyfinLibrariesConfig.from_dict(
-            jf_cfg.get("libraries") or cfg.get("jellyfin_libraries") or {}
-        )
-        jellyfin_livetv_model = JellyfinLiveTvConfig.from_dict(
-            jf_cfg.get("livetv") or cfg.get("jellyfin_livetv") or {}
-        )
-        jellyfin_plugins_model = JellyfinPluginsConfig.from_dict(
-            jf_cfg.get("plugins") or cfg.get("jellyfin_plugins") or {}
-        )
-        jellyfin_playback_model = JellyfinPlaybackConfig.from_dict(
-            jf_cfg.get("playback") or cfg.get("jellyfin_playback") or {}
-        )
-        jellyfin_home_rails_model = JellyfinHomeRailsConfig.from_dict(
-            jf_cfg.get("home_rails") or cfg.get("jellyfin_home_rails") or {}
-        )
-        jellyfin_auto_collections_model = JellyfinAutoCollectionsConfig.from_dict(
-            jf_cfg.get("auto_collections") or cfg.get("jellyfin_auto_collections") or {}
-        )
-        jellyfin_prewarm_model = JellyfinPrewarmConfig.from_dict(
-            jf_cfg.get("prewarm") or cfg.get("jellyfin_prewarm") or {}
-        )
-        disk_guardrails_model = DiskGuardrailsConfig.from_dict(cfg.get("disk_guardrails") or {})
-        media_hygiene_model = MediaHygieneConfig.from_dict(cfg.get("media_hygiene") or {})
-        maintainerr_model = MaintainerrConfig.from_dict(cfg.get("maintainerr") or {})
+        # ── Data-driven config resolution ────────────────────────────
+        # Each app package provides a config resolver that reads its
+        # config sections and returns models + feature flags.
+        integration_result = resolve_integration_configs(cfg)
+        jellyfin_result = resolve_jellyfin_configs(cfg)
+        download_client_result = resolve_download_client_configs(cfg)
+
+        # Merge all feature flags from data-driven resolvers
+        service_feature_flags: dict[str, bool] = {}
+        service_feature_flags.update(integration_result.feature_flags)
+        service_feature_flags.update(jellyfin_result.feature_flags)
+        service_feature_flags.update(download_client_result.feature_flags)
 
         media_server_backend = binding_resolution.media_server_backend
         request_manager_backend = binding_resolution.request_manager_key
@@ -288,8 +262,10 @@ class ControllerRuntimeBuilder:
         if fully_preconfigured and not app_auth_cfg:
             include_apps = [str(app.name or app.implementation).strip() for app in arr_apps]
             include_apps = [name for name in include_apps if name]
-            if prowlarr_url and "Prowlarr" not in include_apps:
-                include_apps.append("Prowlarr")
+            if prowlarr_wiring.include_in_app_auth:
+                indexer_mgr_name = prowlarr_wiring.display_name
+                if indexer_mgr_name not in include_apps:
+                    include_apps.append(indexer_mgr_name)
             app_auth_cfg = {
                 "enabled": True,
                 "method": "Forms",
@@ -300,71 +276,41 @@ class ControllerRuntimeBuilder:
             }
         app_auth_model = AppAuthConfig.from_dict(app_auth_cfg)
 
-        prowlarr_indexers = cfg.get("prowlarr_indexers", [])
         auto_indexers = bool(
             cfg.get("prowlarr_auto_add_tested_indexers", False) or args.auto_prowlarr_indexers
         )
 
-        configure_qbit_arr_clients = bool(
-            torrent_client_key and qbit_cfg.get("configure_arr_clients", False)
+        configure_torrent_arr_clients = bool(
+            torrent_client_key and torrent_client_cfg.get("configure_arr_clients", False)
         )
-        configure_sab_arr_clients = bool(
-            usenet_client_key and sab_cfg.get("configure_arr_clients", False)
+        configure_usenet_arr_clients = bool(
+            usenet_client_key and usenet_client_cfg.get("configure_arr_clients", False)
         )
         sab_remote_path_mappings = (
-            self.deps.build_sab_remote_path_mappings(sab_cfg) if configure_sab_arr_clients else []
+            self.deps.build_sab_remote_path_mappings(usenet_client_cfg)
+            if configure_usenet_arr_clients
+            else []
         )
 
         configure_arr_media_management = arr_media_management_cfg.enabled
         configure_arr_quality_upgrade = arr_quality_upgrade_cfg.enabled
         configure_arr_download_handling = arr_download_handling_cfg.enabled
         configure_arr_discovery_lists = arr_discovery_lists_cfg.enabled
-        set_qbit_categories = bool(
+        set_torrent_categories = bool(
             torrent_client_key
-            and qbit_cfg.get("set_categories", qbit_cfg.get("set_categories_in_qbit", False))
+            and torrent_client_cfg.get(
+                "set_categories", torrent_client_cfg.get("set_categories_in_qbit", False)
+            )
         )
-        qbit_login_required = bool(
-            torrent_client_key and qbit_cfg.get("login_required", fully_preconfigured)
+        torrent_login_required = bool(
+            torrent_client_key and torrent_client_cfg.get("login_required", fully_preconfigured)
         )
         refresh_health_after_setup = bool(cfg.get("refresh_health_after_setup", True))
-
-        configure_jellyseerr_services = jellyseerr_model.enabled
-        jellyseerr_required = jellyseerr_model.required
-        configure_homepage_services = homepage_model.enabled or bool(homepage_model.hosts)
-        homepage_required = homepage_model.required
-        configure_bazarr_integration = bazarr_model.enabled
-        bazarr_required = bazarr_model.required
-        configure_jellyfin_libraries = jellyfin_libraries_model.enabled
-        jellyfin_libraries_required = jellyfin_libraries_model.required
-        configure_jellyfin_livetv = jellyfin_livetv_model.enabled
-        jellyfin_livetv_required = jellyfin_livetv_model.required
-        configure_jellyfin_plugins = jellyfin_plugins_model.enabled
-        jellyfin_plugins_required = jellyfin_plugins_model.required
-        configure_jellyfin_playback = jellyfin_playback_model.enabled
-        jellyfin_playback_required = jellyfin_playback_model.required
-        configure_jellyfin_home_rails = (
-            jellyfin_home_rails_model.enabled
-            or jellyfin_home_rails_model.cleanup_collections_when_disabled
-        )
-        jellyfin_home_rails_required = jellyfin_home_rails_model.required
-        configure_auto_collections = jellyfin_auto_collections_model.enabled
-        auto_collections_required = jellyfin_auto_collections_model.required
-        configure_disk_guardrails = disk_guardrails_model.enabled
-        disk_guardrails_required = disk_guardrails_model.required
-        configure_jellyfin_prewarm = jellyfin_prewarm_model.enabled
-        jellyfin_prewarm_required = jellyfin_prewarm_model.required
-        configure_media_hygiene = media_hygiene_model.enabled
-        media_hygiene_required = media_hygiene_model.required
-        configure_maintainerr_policy = maintainerr_model.enabled
-        maintainerr_required = maintainerr_model.required
-        configure_maintainerr_integrations = maintainerr_model.integrations.enabled
-        maintainerr_integrations_required = maintainerr_model.integrations.required
 
         trigger_sync = bool(cfg.get("trigger_indexer_sync", True))
 
         app_keys: dict[str, str] = {}
         skipped_apps: list[str] = []
-        prowlarr_key = ""
         if args.mode in (BootstrapMode.FULL, BootstrapMode.MEDIA_HYGIENE):
             for app in arr_apps:
                 app_dir = app.implementation.lower()
@@ -380,16 +326,12 @@ class ControllerRuntimeBuilder:
                     )
                     skipped_apps.append(app_dir)
 
-        if args.mode == BootstrapMode.FULL and prowlarr_url:
-            try:
-                prowlarr_key = self.deps.read_api_key(args.config_root, "prowlarr")
-            except RuntimeError as exc:
-                print(
-                    f"[WARN] prowlarr: API key unavailable, skipping indexer sync ({exc}). "
-                    "Run Reconcile after Prowlarr generates its config.",
-                    file=sys.stderr,
-                )
-                skipped_apps.append("prowlarr")
+        if args.mode == BootstrapMode.FULL and prowlarr_wiring.url:
+            prowlarr_wiring.key, prowlarr_skipped = read_prowlarr_api_key(
+                config_root=args.config_root,
+                read_api_key=self.deps.read_api_key,
+            )
+            skipped_apps.extend(prowlarr_skipped)
 
         if skipped_apps:
             print(
@@ -398,76 +340,80 @@ class ControllerRuntimeBuilder:
                 file=sys.stderr,
             )
 
-        qb_user = self._resolve_optional_env_value(qbit_cfg, "username_env")
-        qb_pass = self._resolve_optional_env_value(qbit_cfg, "password_env")
-        if torrent_client_key and qbit_login_required and (not qb_user or not qb_pass):
+        torrent_user = self._resolve_optional_env_value(torrent_client_cfg, "username_env")
+        torrent_pass = self._resolve_optional_env_value(torrent_client_cfg, "password_env")
+        if torrent_client_key and torrent_login_required and (not torrent_user or not torrent_pass):
             missing = []
-            if not qb_user:
+            if not torrent_user:
                 missing.append("username_env")
-            if not qb_pass:
+            if not torrent_pass:
                 missing.append("password_env")
             raise ValueError(
                 "Missing required torrent client credential binding(s): "
                 f"{', '.join(missing)} for technology '{torrent_client_key}'."
             )
 
-        sab_username = self._resolve_optional_env_value(sab_cfg, "username_env")
-        sab_password = self._resolve_optional_env_value(sab_cfg, "password_env")
-        sab_login_required = bool(usenet_client_key and sab_cfg.get("login_required", False))
-        if usenet_client_key and sab_login_required and (not sab_username or not sab_password):
+        usenet_username = self._resolve_optional_env_value(usenet_client_cfg, "username_env")
+        usenet_password = self._resolve_optional_env_value(usenet_client_cfg, "password_env")
+        usenet_login_required = bool(
+            usenet_client_key and usenet_client_cfg.get("login_required", False)
+        )
+        if usenet_client_key and usenet_login_required and (
+            not usenet_username or not usenet_password
+        ):
             missing = []
-            if not sab_username:
+            if not usenet_username:
                 missing.append("username_env")
-            if not sab_password:
+            if not usenet_password:
                 missing.append("password_env")
             raise ValueError(
                 "Missing required usenet client credential binding(s): "
                 f"{', '.join(missing)} for technology '{usenet_client_key}'."
             )
 
-        # Build service-specific feature toggles and required flags as a dict
-        # so that adding new services doesn't require editing this constructor call.
-        # ControllerRuntime.__init__ routes bool values to feature_flags and
-        # non-bool values to runtime_values via **dynamic_values.
-        service_feature_flags: dict[str, bool] = {
-            "configure_qbit_arr_clients": configure_qbit_arr_clients,
-            "configure_sab_arr_clients": configure_sab_arr_clients,
+        # ── Build service dicts dynamically ──────────────────────────
+        # Populate from binding resolution rather than hardcoding service names.
+        service_urls: dict[str, str] = {}
+        service_keys: dict[str, str] = {**app_keys}
+        service_configs: dict[str, dict[str, Any]] = {}
+        service_credentials: dict[str, dict[str, str]] = {}
+        service_data: dict[str, Any] = {
+            "sab_remote_path_mappings": sab_remote_path_mappings,
+        }
+
+        # Prowlarr wiring is handled by the app layer
+        populate_prowlarr_service_dicts(
+            prowlarr_wiring,
+            service_urls=service_urls,
+            service_keys=service_keys,
+            service_data=service_data,
+        )
+
+        if torrent_client_key:
+            service_configs[torrent_client_key] = torrent_client_cfg
+            service_credentials[torrent_client_key] = {
+                "user": torrent_user,
+                "pass": torrent_pass,
+            }
+        if usenet_client_key:
+            service_configs[usenet_client_key] = usenet_client_cfg
+            service_credentials[usenet_client_key] = {
+                "user": usenet_username,
+                "pass": usenet_password,
+            }
+
+        # ── Merge non-data-driven feature flags ──────────────────────
+        service_feature_flags.update({
+            "configure_qbit_arr_clients": configure_torrent_arr_clients,
+            "configure_sab_arr_clients": configure_usenet_arr_clients,
             "configure_arr_media_management": configure_arr_media_management,
             "configure_arr_download_handling": configure_arr_download_handling,
             "configure_arr_quality_upgrade": configure_arr_quality_upgrade,
             "configure_arr_discovery_lists": configure_arr_discovery_lists,
-            "set_qbit_categories": set_qbit_categories,
-            "qbit_login_required": qbit_login_required,
+            "set_qbit_categories": set_torrent_categories,
+            "qbit_login_required": torrent_login_required,
             "refresh_health_after_setup": refresh_health_after_setup,
-            "configure_maintainerr_policy": configure_maintainerr_policy,
-            "maintainerr_required": maintainerr_required,
-            "configure_maintainerr_integrations": configure_maintainerr_integrations,
-            "maintainerr_integrations_required": maintainerr_integrations_required,
-            "configure_homepage_services": configure_homepage_services,
-            "homepage_required": homepage_required,
-            "configure_bazarr_integration": configure_bazarr_integration,
-            "bazarr_required": bazarr_required,
-            "configure_jellyseerr_services": configure_jellyseerr_services,
-            "jellyseerr_required": jellyseerr_required,
-            "configure_jellyfin_livetv": configure_jellyfin_livetv,
-            "jellyfin_livetv_required": jellyfin_livetv_required,
-            "configure_jellyfin_libraries": configure_jellyfin_libraries,
-            "jellyfin_libraries_required": jellyfin_libraries_required,
-            "configure_jellyfin_plugins": configure_jellyfin_plugins,
-            "jellyfin_plugins_required": jellyfin_plugins_required,
-            "configure_jellyfin_playback": configure_jellyfin_playback,
-            "jellyfin_playback_required": jellyfin_playback_required,
-            "configure_jellyfin_home_rails": configure_jellyfin_home_rails,
-            "jellyfin_home_rails_required": jellyfin_home_rails_required,
-            "configure_auto_collections": configure_auto_collections,
-            "auto_collections_required": auto_collections_required,
-            "configure_disk_guardrails": configure_disk_guardrails,
-            "disk_guardrails_required": disk_guardrails_required,
-            "configure_media_hygiene": configure_media_hygiene,
-            "media_hygiene_required": media_hygiene_required,
-            "configure_jellyfin_prewarm": configure_jellyfin_prewarm,
-            "jellyfin_prewarm_required": jellyfin_prewarm_required,
-        }
+        })
 
         runtime = ControllerRuntime(
             mode=args.mode,
@@ -477,10 +423,6 @@ class ControllerRuntimeBuilder:
             arr_apps_raw=arr_apps_raw,
             arr_apps=arr_apps,
             app_keys=app_keys,
-            prowlarr_url=prowlarr_url,
-            prowlarr_key=prowlarr_key,
-            qbit_cfg=qbit_cfg,
-            sab_cfg=sab_cfg,
             torrent_client_key=torrent_client_key,
             usenet_client_key=usenet_client_key,
             arr_media_management_cfg=arr_media_management_cfg,
@@ -488,15 +430,14 @@ class ControllerRuntimeBuilder:
             arr_quality_upgrade_cfg=arr_quality_upgrade_cfg,
             app_auth_cfg=app_auth_cfg,
             adapter_hooks_cfg=adapter_hooks_cfg,
-            prowlarr_indexers=prowlarr_indexers,
-            sab_remote_path_mappings=sab_remote_path_mappings,
-            qb_user=qb_user,
-            qb_pass=qb_pass,
-            sab_username=sab_username,
-            sab_password=sab_password,
             auto_indexers=auto_indexers,
             trigger_sync=trigger_sync,
             fully_preconfigured=fully_preconfigured,
+            service_urls=service_urls,
+            service_keys=service_keys,
+            service_configs=service_configs,
+            service_credentials=service_credentials,
+            service_data=service_data,
             media_server_backend=media_server_backend,
             request_manager_backend=request_manager_backend,
             **service_feature_flags,

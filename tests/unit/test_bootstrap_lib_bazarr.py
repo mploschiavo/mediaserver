@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.adapters.bazarr import apply_scalar_updates  # noqa: E402
+from media_stack.services.apps.bazarr.adapters import apply_scalar_updates  # noqa: E402
 
 SAMPLE = """---
 general:

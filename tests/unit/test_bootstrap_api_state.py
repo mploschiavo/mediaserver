@@ -3,7 +3,7 @@
 import time
 import unittest
 
-from media_stack.api.state import BootstrapState
+from media_stack.api.state import ControllerState as BootstrapState
 
 
 class TestBootstrapState(unittest.TestCase):

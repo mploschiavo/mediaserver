@@ -6,9 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_manifest_service import (  # noqa: E402
-    BootstrapManifestConfig,
-    BootstrapManifestService,
+from media_stack.cli.workflows.controller_manifest_service import (  # noqa: E402
+    ControllerManifestConfig,
+    ControllerManifestService,
 )
 from media_stack.core.exceptions import ConfigError  # noqa: E402
 
@@ -39,11 +39,11 @@ class _Kube:
         return _Result(1, "", "unexpected command")
 
 
-class BootstrapManifestServiceTests(unittest.TestCase):
+class ControllerManifestServiceTests(unittest.TestCase):
     @staticmethod
-    def _service(root_dir: Path, kube: _Kube) -> BootstrapManifestService:
-        return BootstrapManifestService(
-            cfg=BootstrapManifestConfig(
+    def _service(root_dir: Path, kube: _Kube) -> ControllerManifestService:
+        return ControllerManifestService(
+            cfg=ControllerManifestConfig(
                 namespace="media-stack",
                 root_dir=root_dir,
                 prepare_host_root="/srv/media-stack",
@@ -77,7 +77,7 @@ metadata:
   name: media-stack-media
 spec: {}
 """
-        names = BootstrapManifestService._extract_pvc_names_from_manifest(manifest)
+        names = ControllerManifestService._extract_pvc_names_from_manifest(manifest)
         self.assertEqual(names, ["media-stack-config-radarr", "media-stack-media"])
 
     def test_ensure_bootstrap_pvc_prereqs_uses_discovered_manifest_pvcs(self):

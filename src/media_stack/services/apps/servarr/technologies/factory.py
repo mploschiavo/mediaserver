@@ -7,7 +7,7 @@ from typing import Any
 
 from ....adapter_factory import build_adapter_registry, get_adapter_class
 from ....plugin_manifest_loader import build_adapter_hook_defaults, load_plugin_manifests
-from ....servarr_adapters import AdapterDependencies, HookFn
+from ..servarr_adapters import AdapterDependencies, HookFn
 from .base import ServarrAdapterBase, ServarrAdapterContext, ServarrAdapterDependencies
 
 AdapterClass = type[ServarrAdapterBase]

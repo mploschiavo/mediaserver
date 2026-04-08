@@ -1,19 +1,64 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.apps.stack.bootstrap_config_policy import (  # noqa: E402
+from media_stack.services.apps.stack.controller_config_policy import (  # noqa: E402
     apply_content_download_policy,
     apply_edge_url_policy,
     apply_selected_apps_policy,
 )
 
+# Stub the policy catalog to avoid filesystem/registry dependency
+_STUB_POLICY = {
+    "selected_apps_policy": {
+        "app_toggle_sections": {
+            "jellyfin": "jellyfin",
+            "jellyseerr": "jellyseerr",
+            "maintainerr": "maintainerr",
+            "flaresolverr": "flaresolverr",
+            "tautulli": "tautulli",
+            "bazarr": "bazarr",
+        },
+        "arr_app_keys": ["sonarr", "radarr", "lidarr", "readarr", "prowlarr"],
+        "selected_app_expansions": {
+            "unpackerr": ["sonarr", "radarr"],
+        },
+        "arr_disable_sections_when_unselected": [
+            "arr_media_management",
+            "arr_download_handling",
+            "arr_quality_upgrade",
+            "arr_discovery_lists",
+            "disk_guardrails",
+            "media_hygiene",
+        ],
+        "arr_discovery_reserved_keys": [
+            "enabled",
+            "required",
+            "trigger_initial_sync",
+            "prune_unmanaged",
+        ],
+        "homepage_host_reserved_tokens": [],
+        "jellyfin_disable_sections_when_unselected": ["jellyfin_home_rails"],
+        "maintainerr_integrations_section": "maintainerr.integrations",
+        "jellyfin_home_rails_cleanup_path": "jellyfin_home_rails.cleanup_collections_when_disabled",
+    }
+}
+
+
+def _patch_policy():
+    return patch(
+        "media_stack.services.apps.stack.controller_config_policy._load_policy_catalog",
+        return_value=_STUB_POLICY,
+    )
+
 
 class BootstrapConfigPolicyTests(unittest.TestCase):
-    def test_selected_apps_policy_clears_prowlarr_runtime_inputs_when_unselected(self):
+    @_patch_policy()
+    def test_selected_apps_policy_clears_prowlarr_runtime_inputs_when_unselected(self, _mock):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "prowlarr_indexers": [{"name": "Indexer A"}],
@@ -51,7 +96,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             bool(((cfg.get("maintainerr") or {}).get("integrations") or {}).get("enabled"))
         )
 
-    def test_selected_apps_policy_keeps_prowlarr_runtime_inputs_when_selected(self):
+    @_patch_policy()
+    def test_selected_apps_policy_keeps_prowlarr_runtime_inputs_when_selected(self, _mock):
         cfg = {
             "prowlarr_url": "http://prowlarr:9696",
             "prowlarr_indexers": [{"name": "Indexer A"}],
@@ -68,7 +114,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertTrue(bool(cfg.get("prowlarr_auto_add_tested_indexers")))
         self.assertTrue(bool((cfg.get("flaresolverr") or {}).get("enabled")))
 
-    def test_selected_apps_policy_expands_unpackerr_to_seed_primary_arr_apps_only(self):
+    @_patch_policy()
+    def test_selected_apps_policy_expands_unpackerr_to_seed_primary_arr_apps_only(self, _mock):
         cfg = {
             "arr_apps": [
                 {"implementation": "sonarr", "name": "Sonarr"},
@@ -97,7 +144,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             {"sonarr", "radarr", "prowlarr"},
         )
 
-    def test_selected_apps_policy_prunes_homepage_hosts_to_selected_apps(self):
+    @_patch_policy()
+    def test_selected_apps_policy_prunes_homepage_hosts_to_selected_apps(self, _mock):
         cfg = {
             "homepage": {
                 "enabled": True,
@@ -118,7 +166,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             ["homepage.local", "sonarr.local", "radarr.local"],
         )
 
-    def test_content_download_policy_disables_auto_indexers_when_downloads_disabled(self):
+    @_patch_policy()
+    def test_content_download_policy_disables_auto_indexers_when_downloads_disabled(self, _mock):
         cfg = {
             "prowlarr_auto_add_tested_indexers": True,
             "arr_discovery_lists": {"trigger_initial_sync": True},
@@ -127,7 +176,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertFalse(bool(cfg.get("prowlarr_auto_add_tested_indexers")))
         self.assertFalse(bool((cfg.get("arr_discovery_lists") or {}).get("trigger_initial_sync")))
 
-    def test_content_download_policy_enables_auto_indexers_when_downloads_enabled(self):
+    @_patch_policy()
+    def test_content_download_policy_enables_auto_indexers_when_downloads_enabled(self, _mock):
         cfg = {
             "prowlarr_auto_add_tested_indexers": False,
             "arr_discovery_lists": {"trigger_initial_sync": False},
@@ -136,7 +186,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertTrue(bool(cfg.get("prowlarr_auto_add_tested_indexers")))
         self.assertTrue(bool((cfg.get("arr_discovery_lists") or {}).get("trigger_initial_sync")))
 
-    def test_edge_url_policy_rewrites_local_hybrid_homepage_and_onboarding_hosts(self):
+    @_patch_policy()
+    def test_edge_url_policy_rewrites_local_hybrid_homepage_and_onboarding_hosts(self, _mock):
         cfg = {
             "jellyseerr": {"jellyfin": {}},
             "homepage": {
@@ -179,7 +230,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             "http://jellyfin.media-dev.local",
         )
 
-    def test_edge_url_policy_uses_https_when_internet_exposed(self):
+    @_patch_policy()
+    def test_edge_url_policy_uses_https_when_internet_exposed(self, _mock):
         cfg = {
             "jellyseerr": {"jellyfin": {}},
             "homepage": {
@@ -208,7 +260,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             "https://apps.media-dev.example.com/app/jellyseerr",
         )
 
-    def test_edge_url_policy_rewrites_compose_hosts_with_explicit_gateway_port(self):
+    @_patch_policy()
+    def test_edge_url_policy_rewrites_compose_hosts_with_explicit_gateway_port(self, _mock):
         cfg = {
             "jellyseerr": {"jellyfin": {}},
             "homepage": {
@@ -252,7 +305,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             "http://jellyfin.media-dev.local:18080",
         )
 
-    def test_edge_url_policy_path_prefix_uses_single_gateway_for_browser_apps(self):
+    @_patch_policy()
+    def test_edge_url_policy_path_prefix_uses_single_gateway_for_browser_apps(self, _mock):
         cfg = {
             "homepage": {
                 "hosts": ["homepage.local", "jellyfin.local", "bazarr.local", "jellyseerr.local"],
@@ -294,7 +348,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
             },
         )
 
-    def test_edge_url_policy_adds_jellyseerr_path_base_when_enabled(self):
+    @_patch_policy()
+    def test_edge_url_policy_adds_jellyseerr_path_base_when_enabled(self, _mock):
         cfg = {
             "app_auth": {
                 "include": ["Sonarr"],
@@ -319,7 +374,8 @@ class BootstrapConfigPolicyTests(unittest.TestCase):
         self.assertEqual(path_map.get("sonarr"), "/app/sonarr")
         self.assertEqual(path_map.get("jellyseerr"), "/app/jellyseerr")
 
-    def test_edge_url_policy_adds_maintainerr_path_base_when_enabled(self):
+    @_patch_policy()
+    def test_edge_url_policy_adds_maintainerr_path_base_when_enabled(self, _mock):
         cfg = {
             "app_auth": {
                 "include": ["Sonarr"],

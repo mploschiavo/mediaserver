@@ -6,9 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.bootstrap_secret_reader_service import (  # noqa: E402
-    BootstrapSecretReaderConfig,
-    BootstrapSecretReaderService,
+from media_stack.cli.workflows.controller_secret_reader_service import (  # noqa: E402
+    ControllerSecretReaderConfig,
+    ControllerSecretReaderService,
 )
 
 
@@ -30,18 +30,18 @@ class _Kube:
         return _Result(self.returncode, self.encoded)
 
 
-class BootstrapSecretReaderServiceTests(unittest.TestCase):
+class ControllerSecretReaderServiceTests(unittest.TestCase):
     def test_read_secret_key_decodes_base64(self):
         encoded = base64.b64encode(b"abc123").decode("utf-8")
-        svc = BootstrapSecretReaderService(
-            cfg=BootstrapSecretReaderConfig(namespace="media-stack"),
+        svc = ControllerSecretReaderService(
+            cfg=ControllerSecretReaderConfig(namespace="media-stack"),
             kube=_Kube(encoded),
         )
         self.assertEqual(svc.read_secret_key("media-stack-secrets", "TOKEN"), "abc123")
 
     def test_read_secret_key_returns_empty_on_failure(self):
-        svc = BootstrapSecretReaderService(
-            cfg=BootstrapSecretReaderConfig(namespace="media-stack"),
+        svc = ControllerSecretReaderService(
+            cfg=ControllerSecretReaderConfig(namespace="media-stack"),
             kube=_Kube("", returncode=1),
         )
         self.assertEqual(svc.read_secret_key("media-stack-secrets", "TOKEN"), "")

@@ -68,6 +68,14 @@ class BootstrapComponentResolverTests(unittest.TestCase):
             "media_server": "jf",
             "request_manager": "seerr",
         }
+        cfg["download_clients"] = {
+            "qbittorrent": {
+                "configure_arr_clients": True,
+                "username_env": "STACK_ADMIN_USERNAME",
+                "password_env": "STACK_ADMIN_PASSWORD",
+            },
+            "sabnzbd": {"configure_arr_clients": False},
+        }
 
         plan = resolve_bootstrap_component_plan(self._write_config(cfg))
 

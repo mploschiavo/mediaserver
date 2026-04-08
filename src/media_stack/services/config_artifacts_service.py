@@ -1,15 +1,12 @@
 """Writers for bootstrap-generated config artifacts.
 
-Thin coordinator that delegates service-specific logic to app-scoped modules:
-  - Jellyfin auto-collections -> services.apps.jellyfin.auto_collections
-  - Maintainerr policy        -> services.apps.maintainerr.policy_service
-  - Homepage services          -> services.apps.homepage.service
+Thin coordinator that delegates service-specific logic to app-scoped modules
+under services.apps/.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -115,7 +112,6 @@ class ConfigArtifactsService:
 
         return JellyfinAutoCollectionsService(
             bool_cfg=self.bool_cfg,
-            coerce_list=self.coerce_list,
             resolve_path=self.resolve_path,
             normalize_url=self.normalize_url,
             wait_for_service=self.wait_for_service,

@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.arr_service import ArrService  # noqa: E402
+from media_stack.services.apps.servarr.arr_service import ArrService  # noqa: E402
 
 
 def _service() -> ArrService:

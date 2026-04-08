@@ -15,6 +15,7 @@ service:
   version_json_key: data.bazarr_version
   password_config: bazarr/config/config.yaml
   preserve_path_prefix: false
+  top_level_config_key: true
 plugin:
   technology: bazarr
   aliases:

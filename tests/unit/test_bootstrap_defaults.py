@@ -11,11 +11,11 @@ from media_stack.adapters.defaults import load_json_default
 
 
 class BootstrapDefaultsTests(unittest.TestCase):
-    def test_load_json_default_raises_when_missing(self):
+    def test_load_json_default_returns_fallback_when_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             defaults_dir = Path(tmp)
-            with self.assertRaises(FileNotFoundError):
-                load_json_default(defaults_dir, "missing.json", {"enabled": True})
+            result = load_json_default(defaults_dir, "missing.json", {"enabled": True})
+            self.assertEqual(result, {"enabled": True})
 
     def test_load_json_default_reads_json_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -26,12 +26,14 @@ class BootstrapDefaultsTests(unittest.TestCase):
             self.assertEqual(loaded, {"name": "demo", "count": 3})
 
     def test_repo_maintainerr_default_is_valid(self):
+        import yaml
         repo_root = Path(__file__).resolve().parents[2]
-        defaults_dir = repo_root / "src" / "media_stack" / "contracts"
-        loaded = load_json_default(defaults_dir, "maintainerr_policy.json", {})
-        self.assertIsInstance(loaded, dict)
-        self.assertEqual(loaded.get("version"), 1)
-        self.assertIsInstance(loaded.get("rules"), list)
+        yaml_path = repo_root / "contracts" / "services" / "maintainerr.yaml"
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        default_policy = (data.get("defaults") or {}).get("default_policy") or {}
+        self.assertIsInstance(default_policy, dict)
+        self.assertEqual(default_policy.get("version"), 1)
+        self.assertIsInstance(default_policy.get("rules"), list)
 
     def test_repo_maintainerr_rule_library_defaults_are_valid(self):
         repo_root = Path(__file__).resolve().parents[2]
