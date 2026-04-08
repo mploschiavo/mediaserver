@@ -36,6 +36,95 @@ info:
     `/status` to track progress, or subscribe to `/logs/stream` for live
     output. Actions execute in priority order via an internal queue.
 
+    ## Rate Limits
+
+    The controller does not enforce rate limits. However, actions are
+    serialized through a priority queue, so submitting many actions rapidly
+    will queue them rather than execute in parallel.
+
+    ## Error Reference
+
+    All error responses use a consistent JSON envelope:
+    ```json
+    { "error": "human-readable message" }
+    ```
+
+    | HTTP Code | Name | When It Occurs | How to Handle |
+    |-----------|------|----------------|---------------|
+    | **400** | Bad Request | Missing or invalid fields in the request body (e.g., `password` too short, missing `services` array, malformed JSON). | Check the `error` field for the specific validation failure. Fix the request body and retry. |
+    | **401** | Unauthorized | Request requires authentication but no credentials were provided, or the credentials are invalid. Only returned when `CONTROLLER_AUTH` is `write` (for mutations) or `all`. | Send an `Authorization: Basic <base64>` header with valid credentials. |
+    | **404** | Not Found | The requested resource does not exist (e.g., unknown action name, unknown app, unknown service ID, missing snapshot file). | Check the `error` field for details. For actions, the response includes a `known` array listing valid action names. |
+    | **500** | Internal Server Error | Unexpected server-side failure (unhandled exception, container runtime unavailable, filesystem error). | Retry after a brief delay. If persistent, check controller logs via `GET /api/logs/controller` or `GET /logs/stream`. |
+
+    **Example error responses:**
+
+    *400 Bad Request* -- password too short:
+    ```json
+    { "error": "password field required (min 4 chars)" }
+    ```
+
+    *401 Unauthorized* -- missing credentials:
+    ```
+    HTTP/1.1 401 Unauthorized
+    WWW-Authenticate: Basic realm="Media Stack Controller"
+    ```
+
+    *404 Not Found* -- unknown action:
+    ```json
+    { "error": "unknown action 'foo'", "known": ["auto-indexers", "bootstrap", "envoy-config", "finalize", "reconcile", "restart-apps", "sync-indexers"] }
+    ```
+
+    *500 Internal Server Error*:
+    ```json
+    { "error": "Docker socket not available" }
+    ```
+
+    ## Webhook Events
+
+    When a webhook URL is registered (via `POST /webhooks`), the controller
+    sends a POST request to each URL when actions complete, fail, or are
+    cancelled. The payload format:
+
+    ```json
+    {
+      "event": "action_complete",
+      "action": "bootstrap",
+      "action_id": "bootstrap-3",
+      "status": "complete",
+      "elapsed_seconds": 45.2,
+      "started_at": 1712505600.0,
+      "completed_at": 1712505645.2,
+      "error": null,
+      "triggered_by": "admin",
+      "controller_phase": "complete"
+    }
+    ```
+
+    Event types: `action_complete`, `action_error`, `action_cancelled`, `test`.
+
+    ## Changelog
+
+    ### v1.1.0 (2026-04-08)
+    - Added per-service password reset (`services` field in POST /api/reset-password)
+    - Added per-service API key rotation (`services` field in POST /api/rotate-keys)
+    - Added GET/POST /api/services/{id}/api-key for manual key management
+    - Added priority queue for actions (bootstrap=10, envoy-config=30, auto-indexers=70)
+    - Added POST /cancel endpoint
+    - Added POST /api/jellyfin/reset for hard credential reset
+    - Added GET /api/health-history for SLA metrics
+    - Added GET /api/cleanup-preview for guardrail dry-run
+    - Added GET /api/image-updates for container staleness tracking
+    - Added x-codeSamples and enhanced examples across the spec
+
+    ### v1.0.0 (2026-04-01)
+    - Initial release with 53 operations
+    - Bootstrap orchestration with priority queue
+    - Service health monitoring with Prometheus metrics
+    - Envoy gateway routing configuration
+    - API key rotation and password reset
+    - Config backup/restore and snapshot management
+    - SSE log streaming and webhook notifications
+
   contact:
     name: Media Stack Controller
   license:
@@ -46,6 +135,8 @@ servers:
     description: Default controller port (Docker Compose)
   - url: http://controller:9100
     description: Internal service name (container-to-container)
+  - url: http://media-stack-controller.media-stack.svc:9100
+    description: Kubernetes in-cluster (ClusterIP service)
 
 tags:
   - name: Health
@@ -402,6 +493,69 @@ components:
         note:
           type: string
 
+    WebhookEvent:
+      type: object
+      description: |
+        Payload sent to registered webhook URLs when an action completes,
+        fails, or is cancelled. Also used for test events.
+      properties:
+        event:
+          type: string
+          enum: [action_complete, action_error, action_cancelled, test]
+          description: The event type that triggered this webhook
+        action:
+          type: string
+          description: Name of the action (e.g., bootstrap, envoy-config)
+          example: bootstrap
+        action_id:
+          type: string
+          description: Unique action identifier
+          example: bootstrap-3
+        status:
+          type: string
+          enum: [complete, error, cancelled, ok]
+          description: Final status of the action
+        elapsed_seconds:
+          type: number
+          nullable: true
+          description: Wall-clock duration of the action
+          example: 45.2
+        started_at:
+          type: number
+          nullable: true
+          description: Unix timestamp when the action started
+          example: 1712505600.0
+        completed_at:
+          type: number
+          nullable: true
+          description: Unix timestamp when the action finished
+          example: 1712505645.2
+        error:
+          type: string
+          nullable: true
+          description: Error message if the action failed
+        triggered_by:
+          type: string
+          description: Username or source that triggered the action
+          example: admin
+        controller_phase:
+          type: string
+          enum: [idle, running, complete, error]
+          description: Current controller phase after this event
+          example: complete
+      required: [event]
+      example:
+        event: action_complete
+        action: bootstrap
+        action_id: bootstrap-3
+        status: complete
+        elapsed_seconds: 45.2
+        started_at: 1712505600.0
+        completed_at: 1712505645.2
+        error: null
+        triggered_by: admin
+        controller_phase: complete
+
   responses:
     NotFound:
       description: Resource not found
@@ -443,6 +597,22 @@ paths:
         Kubernetes/Docker liveness probe. Always returns 200 if the controller
         process is running. Use this for container orchestrator health checks.
         This endpoint never requires authentication.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/healthz
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/healthz")
+            print(r.json())  # {"status": "ok"}
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/healthz");
+            console.log(await r.json()); // { status: "ok" }
       responses:
         "200":
           description: Controller is alive
@@ -499,6 +669,29 @@ paths:
 
         Use this to build a service status dashboard or trigger alerts when
         services go down.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/health | jq .
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/health")
+            health = r.json()
+            for svc, info in health["services"].items():
+                status = "UP" if info["status"] == "ok" else "DOWN"
+                print(f"  {svc}: {status} ({info['ms']}ms)")
+            print(f"Healthy: {health['healthy']}/{health['total']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/health");
+            const health = await r.json();
+            Object.entries(health.services).forEach(([svc, info]) => {
+              console.log(`${svc}: ${info.status} (${info.ms}ms)`);
+            });
       responses:
         "200":
           description: Health probe results for all services
@@ -518,12 +711,68 @@ paths:
                     code: 200
                     ms: 8
                     auth: ok
+                  lidarr:
+                    status: ok
+                    code: 200
+                    ms: 11
+                    auth: ok
+                  readarr:
+                    status: ok
+                    code: 200
+                    ms: 14
+                    auth: ok
+                  prowlarr:
+                    status: ok
+                    code: 200
+                    ms: 9
+                    auth: ok
                   jellyfin:
                     status: ok
                     code: 200
                     ms: 15
                     auth: n/a
-                healthy: 12
+                  bazarr:
+                    status: ok
+                    code: 200
+                    ms: 22
+                    auth: ok
+                  qbittorrent:
+                    status: ok
+                    code: 200
+                    ms: 5
+                    auth: n/a
+                  sabnzbd:
+                    status: ok
+                    code: 200
+                    ms: 7
+                    auth: ok
+                  jellyseerr:
+                    status: ok
+                    code: 200
+                    ms: 18
+                    auth: n/a
+                  tautulli:
+                    status: ok
+                    code: 200
+                    ms: 10
+                    auth: ok
+                  envoy:
+                    status: ok
+                    code: 200
+                    ms: 2
+                    auth: n/a
+                  homepage:
+                    status: error
+                    code: 0
+                    ms: 0
+                    auth: n/a
+                    error: "connection refused"
+                  controller:
+                    status: ok
+                    code: 200
+                    ms: 1
+                    auth: n/a
+                healthy: 13
                 total: 14
 
   /api/health-history:
@@ -535,6 +784,18 @@ paths:
         Returns up to 24 hours of health probe history (sampled at ~1 minute
         intervals, max 1440 entries). Includes per-service uptime percentage
         for SLA calculations.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/health-history | jq .sla
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/health-history")
+            for svc, sla in r.json()["sla"].items():
+                print(f"  {svc}: {sla['uptime_pct']:.2f}% uptime")
       responses:
         "200":
           description: Health history with SLA data
@@ -568,6 +829,30 @@ paths:
                     total: 1440
                     ok: 1440
                     uptime_pct: 100.0
+                  lidarr:
+                    total: 1440
+                    ok: 1440
+                    uptime_pct: 100.0
+                  prowlarr:
+                    total: 1440
+                    ok: 1435
+                    uptime_pct: 99.65
+                  jellyfin:
+                    total: 1440
+                    ok: 1440
+                    uptime_pct: 100.0
+                  bazarr:
+                    total: 1440
+                    ok: 1439
+                    uptime_pct: 99.93
+                  qbittorrent:
+                    total: 1440
+                    ok: 1440
+                    uptime_pct: 100.0
+                  envoy:
+                    total: 1440
+                    ok: 1440
+                    uptime_pct: 100.0
                 period_hours: 24.0
                 entries: 1440
 
@@ -585,6 +870,26 @@ paths:
         pending queue, app status, preflight results, runtime config, and
         webhook URLs. This is the primary endpoint for monitoring the
         controller's lifecycle.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/status | jq .phase
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/status")
+            state = r.json()
+            print(f"Phase: {state['phase']}")
+            print(f"Actions completed: {len(state.get('action_history', []))}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/status");
+            const state = await r.json();
+            console.log(`Phase: ${state.phase}`);
+            console.log(`Queue: ${state.pending_actions?.length ?? 0} pending`);
       responses:
         "200":
           description: Complete controller state
@@ -592,6 +897,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ControllerState'
+              example:
+                phase: complete
+                started_at: 1712505600.0
+                completed_at: 1712505660.5
+                elapsed_seconds: 60.5
+                error: null
+                phases_completed:
+                  - preflight
+                  - containers
+                  - post-setup
+                  - envoy
+                preflight_results:
+                  docker: ok
+                  config_root: ok
+                  media_root: ok
+                app_status:
+                  sonarr:
+                    status: configured
+                  radarr:
+                    status: configured
+                  jellyfin:
+                    status: configured
+                  prowlarr:
+                    status: configured
+                run_overrides: {}
+                initial_bootstrap_done: true
+                runtime_config:
+                  skip_envoy: false
+                  dry_run: false
+                webhook_urls:
+                  - "https://hooks.example.com/media-stack"
+                current_action: null
+                action_history:
+                  - id: bootstrap-1
+                    name: bootstrap
+                    status: complete
+                    started_at: 1712505600.0
+                    completed_at: 1712505660.5
+                    elapsed_seconds: 60.5
+                    error: null
+                    overrides: {}
+                    timeout_seconds: 600
+                    triggered_by: admin
+                pending_actions: []
 
   /apps:
     get:
@@ -750,6 +1099,38 @@ paths:
         (e.g., `{"skip_envoy": true}`).
 
         Monitor progress via `GET /status` or `GET /logs/stream` (SSE).
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -X POST http://localhost:9100/actions/bootstrap \
+              -H "Content-Type: application/json" \
+              -u admin:password \
+              -d '{"skip_envoy": false}'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+
+            r = requests.post(
+                "http://localhost:9100/actions/bootstrap",
+                json={"skip_envoy": False},
+                auth=("admin", "password"),
+            )
+            print(r.json())
+            # {"status": "accepted", "action": "bootstrap", "priority": 10, ...}
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/actions/bootstrap", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Basic " + btoa("admin:password"),
+              },
+              body: JSON.stringify({ skip_envoy: false }),
+            });
+            console.log(await r.json());
       security:
         - basicAuth: []
       parameters:
@@ -811,6 +1192,28 @@ paths:
         Request cancellation of the currently running action. If an action
         is running, it will be signalled to stop at the next checkpoint.
         Also accessible as `POST /actions/cancel`.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -X POST http://localhost:9100/cancel \
+              -u admin:password
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.post("http://localhost:9100/cancel",
+                              auth=("admin", "password"))
+            print(r.json())
+            # {"status": "cancel_requested", "current_action": {...}}
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/cancel", {
+              method: "POST",
+              headers: { Authorization: "Basic " + btoa("admin:password") },
+            });
+            console.log(await r.json());
       security:
         - basicAuth: []
       responses:
@@ -867,6 +1270,24 @@ paths:
         as a virtual entry. Each entry includes the service ID, display name,
         description, category, hostname, and port. Use this to discover which
         services are available in the stack.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/services | jq '.[].id'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/services")
+            for svc in r.json():
+                print(f"{svc['id']:15s} {svc['name']:25s} :{svc['port']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/services");
+            const services = await r.json();
+            services.forEach(s => console.log(`${s.id}: ${s.name} (${s.host}:${s.port})`));
       responses:
         "200":
           description: Array of service entries
@@ -889,6 +1310,72 @@ paths:
                   category: management
                   host: radarr
                   port: 7878
+                - id: lidarr
+                  name: Lidarr
+                  desc: Music management and automation
+                  category: management
+                  host: lidarr
+                  port: 8686
+                - id: readarr
+                  name: Readarr
+                  desc: Book management and automation
+                  category: management
+                  host: readarr
+                  port: 8787
+                - id: prowlarr
+                  name: Prowlarr
+                  desc: Indexer manager and proxy
+                  category: downloads
+                  host: prowlarr
+                  port: 9696
+                - id: jellyfin
+                  name: Jellyfin
+                  desc: Media server with hardware transcoding
+                  category: media
+                  host: jellyfin
+                  port: 8096
+                - id: bazarr
+                  name: Bazarr
+                  desc: Subtitle management and download
+                  category: media
+                  host: bazarr
+                  port: 6767
+                - id: qbittorrent
+                  name: qBittorrent
+                  desc: Torrent download client
+                  category: downloads
+                  host: qbittorrent
+                  port: 8080
+                - id: sabnzbd
+                  name: SABnzbd
+                  desc: Usenet download client
+                  category: downloads
+                  host: sabnzbd
+                  port: 8085
+                - id: jellyseerr
+                  name: Jellyseerr
+                  desc: Media request management
+                  category: media
+                  host: jellyseerr
+                  port: 5055
+                - id: tautulli
+                  name: Tautulli
+                  desc: Media server monitoring and analytics
+                  category: media
+                  host: tautulli
+                  port: 8181
+                - id: envoy
+                  name: Envoy
+                  desc: Gateway proxy and reverse proxy
+                  category: infrastructure
+                  host: envoy
+                  port: 80
+                - id: homepage
+                  name: Homepage
+                  desc: Application dashboard
+                  category: infrastructure
+                  host: homepage
+                  port: 3000
                 - id: controller
                   name: Media Stack Controller
                   desc: Orchestration API and dashboard
@@ -932,6 +1419,24 @@ paths:
       description: |
         Check whether an API key is configured for a service, and get a
         masked preview. Does not return the full key for security.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/services/sonarr/api-key | jq .
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/services/sonarr/api-key")
+            info = r.json()
+            print(f"Has key: {info['has_key']}, Preview: {info['key_preview']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/services/sonarr/api-key");
+            const info = await r.json();
+            console.log(`${info.service}: ${info.has_key ? info.key_preview : "no key"}`);
       parameters:
         - name: serviceId
           in: path
@@ -982,6 +1487,45 @@ paths:
         to HTTP-based discovery (e.g., reading `/initialize.js`).
 
         The discovered/set key is persisted to the environment and K8s secret.
+      x-codeSamples:
+        - lang: curl
+          label: "cURL (auto-discover)"
+          source: |
+            # Auto-discover key from service config file
+            curl -X POST http://localhost:9100/api/services/sonarr/api-key \
+              -u admin:password
+        - lang: curl
+          label: "cURL (manual set)"
+          source: |
+            # Manually set a known key
+            curl -X POST http://localhost:9100/api/services/sonarr/api-key \
+              -H "Content-Type: application/json" \
+              -u admin:password \
+              -d '{"api_key": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"}'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            # Auto-discover
+            r = requests.post(
+                "http://localhost:9100/api/services/sonarr/api-key",
+                auth=("admin", "password"),
+            )
+            print(r.json())
+            # {"status": "discovered", "service": "sonarr", "source": "config_file"}
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            // Manual set
+            const r = await fetch("http://localhost:9100/api/services/sonarr/api-key", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Basic " + btoa("admin:password"),
+              },
+              body: JSON.stringify({ api_key: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" }),
+            });
+            console.log(await r.json());
       security:
         - basicAuth: []
       parameters:
@@ -1083,6 +1627,29 @@ paths:
         Returns active downloads from qBittorrent (torrents) and SABnzbd
         (usenet). Includes download name, progress percentage, speed, and
         state. Limited to 10 items per client.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/downloads | jq .
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/downloads")
+            dl = r.json()
+            for item in dl.get("qbittorrent", {}).get("items", []):
+                pct = item["progress"]
+                speed_mb = item["dlspeed"] / 1_000_000
+                print(f"  {item['name']}: {pct:.1f}% @ {speed_mb:.1f} MB/s")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/downloads");
+            const dl = await r.json();
+            dl.qbittorrent?.items?.forEach(i =>
+              console.log(`${i.name}: ${i.progress}%`)
+            );
       responses:
         "200":
           description: Active downloads from all clients
@@ -1135,16 +1702,26 @@ paths:
                 qbittorrent:
                   active: 3
                   items:
-                    - name: "Ubuntu.22.04.ISO"
+                    - name: "The.Last.of.Us.S02E01.1080p.WEB-DL"
                       progress: 67.3
                       state: downloading
                       size: 4200000000
                       dlspeed: 12500000
+                    - name: "Oppenheimer.2023.2160p.BluRay.REMUX"
+                      progress: 23.1
+                      state: downloading
+                      size: 78500000000
+                      dlspeed: 8750000
+                    - name: "Dune.Part.Two.2024.1080p.BluRay"
+                      progress: 100.0
+                      state: seeding
+                      size: 15600000000
+                      dlspeed: 0
                 sabnzbd:
                   active: 1
                   speed: "15000 KB/s"
                   items:
-                    - name: "Another.File.nzb"
+                    - name: "Shogun.S01.Complete.1080p.NZB"
                       progress: 45.2
 
   /api/stats:
@@ -1155,6 +1732,26 @@ paths:
       description: |
         Returns the number of items (series, movies, artists, books) in
         each arr app library. Cached for 60 seconds.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/stats | jq .stats
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/stats")
+            for svc, info in r.json()["stats"].items():
+                print(f"  {svc}: {info['count']} {info['label']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/stats");
+            const { stats } = await r.json();
+            Object.entries(stats).forEach(([svc, info]) =>
+              console.log(`${svc}: ${info.count} ${info.label}`)
+            );
       responses:
         "200":
           description: Per-service library counts
@@ -1471,6 +2068,29 @@ paths:
         along with the current guardrail configuration (automatic cleanup
         thresholds). Detects filesystem type and warns about RAM-backed
         filesystems.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/disk | jq '.disk.media.percent_used'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/disk")
+            disk = r.json()
+            for name, info in disk["disk"].items():
+                free_gb = info["free_bytes"] / (1024**3)
+                print(f"  {name}: {info['percent_used']:.1f}% used ({free_gb:.0f} GB free)")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/disk");
+            const { disk, guardrails } = await r.json();
+            Object.entries(disk).forEach(([name, info]) =>
+              console.log(`${name}: ${info.percent_used}% used`)
+            );
+            console.log(`Guardrails: ${guardrails.enabled ? "ON" : "OFF"}`);
       responses:
         "200":
           description: Disk usage and guardrail config
@@ -1647,6 +2267,25 @@ paths:
         Returns the current Envoy gateway routing configuration. Values come
         from the bootstrap profile YAML, overlaid with any persisted runtime
         overrides from previous POST requests.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/routing | jq .
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/api/routing")
+            routing = r.json()
+            print(f"Gateway: {routing['gateway_host']}:{routing['gateway_port']}")
+            print(f"Strategy: {routing['strategy']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/routing");
+            const routing = await r.json();
+            console.log(`${routing.strategy} routing on ${routing.gateway_host}`);
       responses:
         "200":
           description: Current routing configuration
@@ -1677,6 +2316,38 @@ paths:
 
         Allowed keys: `base_domain`, `stack_subdomain`, `gateway_host`,
         `gateway_port`, `app_path_prefix`, `strategy`, `internet_exposed`.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -X POST http://localhost:9100/api/routing \
+              -H "Content-Type: application/json" \
+              -u admin:password \
+              -d '{"base_domain": "home.lan", "strategy": "path"}'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.post(
+                "http://localhost:9100/api/routing",
+                json={"base_domain": "home.lan", "strategy": "path"},
+                auth=("admin", "password"),
+            )
+            result = r.json()
+            print(f"Changed: {result['changed']}")
+            print(f"New gateway: {result['routing']['gateway_host']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/routing", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Basic " + btoa("admin:password"),
+              },
+              body: JSON.stringify({ base_domain: "home.lan", strategy: "path" }),
+            });
+            console.log(await r.json());
       security:
         - basicAuth: []
       requestBody:
@@ -1758,6 +2429,46 @@ paths:
 
         Keys are persisted to the K8s secret (if running in Kubernetes) and
         to environment variables.
+      x-codeSamples:
+        - lang: curl
+          label: "cURL (all services)"
+          source: |
+            curl -X POST http://localhost:9100/api/rotate-keys \
+              -u admin:password
+        - lang: curl
+          label: "cURL (targeted)"
+          source: |
+            curl -X POST http://localhost:9100/api/rotate-keys \
+              -H "Content-Type: application/json" \
+              -u admin:password \
+              -d '{"services": ["sonarr", "radarr"]}'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            # Rotate only Sonarr and Radarr keys
+            r = requests.post(
+                "http://localhost:9100/api/rotate-keys",
+                json={"services": ["sonarr", "radarr"]},
+                auth=("admin", "password"),
+            )
+            result = r.json()
+            print(f"Rotated: {result['keys']}")
+            print(f"Restarted: {result['restarted']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/rotate-keys", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Basic " + btoa("admin:password"),
+              },
+              body: JSON.stringify({ services: ["sonarr", "radarr"] }),
+            });
+            const result = await r.json();
+            console.log("Rotated:", result.keys);
+            console.log("Restarted:", result.restarted);
       security:
         - basicAuth: []
       requestBody:
@@ -1825,6 +2536,46 @@ paths:
 
         Also updates the `STACK_ADMIN_PASSWORD` environment variable and
         K8s secret.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -X POST http://localhost:9100/api/reset-password \
+              -H "Content-Type: application/json" \
+              -u admin:oldpassword \
+              -d '{"password": "my-new-secure-password"}'
+        - lang: curl
+          label: "cURL (targeted)"
+          source: |
+            curl -X POST http://localhost:9100/api/reset-password \
+              -H "Content-Type: application/json" \
+              -u admin:oldpassword \
+              -d '{"password": "new-pass", "services": ["sonarr", "jellyfin"]}'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.post(
+                "http://localhost:9100/api/reset-password",
+                json={"password": "my-new-secure-password"},
+                auth=("admin", "oldpassword"),
+            )
+            result = r.json()
+            print(f"Updated: {result['services']}")
+            if result["errors"]:
+                print(f"Errors: {result['errors']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/api/reset-password", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Basic " + btoa("admin:oldpassword"),
+              },
+              body: JSON.stringify({ password: "my-new-secure-password" }),
+            });
+            console.log(await r.json());
       security:
         - basicAuth: []
       requestBody:
@@ -2810,6 +3561,22 @@ paths:
         browser download.
 
         Use this backup with `POST /api/restore` to restore configuration.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            # Save backup to a file
+            curl -s http://localhost:9100/api/backup \
+              -o media-stack-backup-$(date +%Y%m%d).json
+        - lang: Python
+          label: Python
+          source: |
+            import requests, json
+            r = requests.get("http://localhost:9100/api/backup")
+            backup = r.json()
+            with open("media-stack-backup.json", "w") as f:
+                json.dump(backup, f, indent=2)
+            print(f"Backed up {len(backup.get('service_configs', {}))} configs")
       responses:
         "200":
           description: Backup JSON file
@@ -2927,6 +3694,27 @@ paths:
         - `media_stack_total_services` (gauge, total monitored count)
 
         Configure your Prometheus instance to scrape this endpoint.
+
+        **Prometheus scrape config:**
+        ```yaml
+        scrape_configs:
+          - job_name: media-stack
+            static_configs:
+              - targets: ["localhost:9100"]
+        ```
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/metrics
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.get("http://localhost:9100/metrics")
+            for line in r.text.splitlines():
+                if not line.startswith("#"):
+                    print(line)
       responses:
         "200":
           description: Prometheus text format metrics
@@ -3081,6 +3869,34 @@ paths:
         Add a webhook URL to receive POST notifications on action events.
         Each event payload includes `event` (action_complete, action_error)
         and action details. Duplicate URLs are ignored (set semantics).
+
+        See the **Webhook Events** section in the API overview for the full
+        payload schema, or refer to the `WebhookEvent` schema.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -X POST http://localhost:9100/webhooks \
+              -H "Content-Type: application/json" \
+              -d '{"url": "https://hooks.example.com/media-stack"}'
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            r = requests.post(
+                "http://localhost:9100/webhooks",
+                json={"url": "https://hooks.example.com/media-stack"},
+            )
+            print(f"Registered webhooks: {r.json()['webhook_urls']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const r = await fetch("http://localhost:9100/webhooks", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: "https://hooks.example.com/media-stack" }),
+            });
+            console.log(await r.json());
       requestBody:
         required: true
         content:
@@ -3106,6 +3922,10 @@ paths:
                     type: array
                     items:
                       type: string
+              example:
+                webhook_urls:
+                  - "https://hooks.example.com/media-stack"
+                  - "https://discord.com/api/webhooks/1234567890/abcdef"
 
   /webhooks/test:
     post:
@@ -3175,6 +3995,33 @@ paths:
           console.log(`[${data.ts}] ${data.msg}`);
         };
         ```
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            # Stream logs in real-time (Ctrl+C to stop)
+            curl -N http://localhost:9100/logs/stream
+        - lang: Python
+          label: Python
+          source: |
+            import requests
+            import json
+
+            # Stream logs using requests with streaming
+            r = requests.get("http://localhost:9100/logs/stream", stream=True)
+            for line in r.iter_lines(decode_unicode=True):
+                if line.startswith("data: "):
+                    event = json.loads(line[6:])
+                    print(f"[{event['ts']}] {event['msg']}")
+        - lang: JavaScript
+          label: JavaScript
+          source: |
+            const es = new EventSource("http://localhost:9100/logs/stream");
+            es.onmessage = (e) => {
+              const data = JSON.parse(e.data);
+              console.log(`[${data.ts}] ${data.msg}`);
+            };
+            es.onerror = () => console.log("Connection lost, reconnecting...");
       parameters:
         - name: after_seq
           in: query
