@@ -19,12 +19,23 @@ That's it. No Python, no Git, no source code needed.
 
 ### Option A: Docker Compose
 
-Download the compose file and start:
+Create a directory and deploy (works on Linux, macOS, and Windows):
 
 ```bash
+# Linux / macOS
+mkdir -p ~/media-stack && cd ~/media-stack
 curl -fsSL https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 ```
+
+```powershell
+# Windows (PowerShell)
+mkdir $HOME\media-stack; cd $HOME\media-stack
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/mploschiavo/mediaserver/main/dist/docker-compose.yml -OutFile docker-compose.yml
+docker compose up -d
+```
+
+> **Important:** Run from a persistent directory (`~/media-stack`, not `/tmp`). Config, media, and download data are stored relative to the compose file. Using `/tmp` on Linux means data is lost on reboot.
 
 ### Option B: Kubernetes
 
