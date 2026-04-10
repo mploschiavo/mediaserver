@@ -635,7 +635,7 @@ services:
       SABNZBD_API_KEY: "${SABNZBD_API_KEY:-}"
       TAUTULLI_API_KEY: "${TAUTULLI_API_KEY:-}"
     volumes:
-      - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
+      - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:rw
       - ../contracts:/contracts:ro
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
       - /var/run/docker.sock:/var/run/docker.sock

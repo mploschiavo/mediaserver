@@ -135,13 +135,44 @@ def update_download_categories(categories: dict[str, str]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_metadata_settings() -> dict[str, Any]:
-    """Return metadata language and country settings."""
+    """Return metadata language and country settings + available presets."""
     data, _ = _load_profile_yaml()
     meta = data.get("metadata", {})
+    # Presets can be overridden in profile YAML
+    presets = data.get("metadata_presets")
+    if not isinstance(presets, list) or not presets:
+        presets = [
+            {"language": "en", "country": "US", "label": "English (US)"},
+            {"language": "en", "country": "GB", "label": "English (UK)"},
+            {"language": "en", "country": "AU", "label": "English (AU)"},
+            {"language": "de", "country": "DE", "label": "Deutsch"},
+            {"language": "fr", "country": "FR", "label": "Fran\u00e7ais"},
+            {"language": "es", "country": "ES", "label": "Espa\u00f1ol"},
+            {"language": "es", "country": "MX", "label": "Espa\u00f1ol (MX)"},
+            {"language": "pt", "country": "BR", "label": "Portugu\u00eas (BR)"},
+            {"language": "pt", "country": "PT", "label": "Portugu\u00eas (PT)"},
+            {"language": "it", "country": "IT", "label": "Italiano"},
+            {"language": "nl", "country": "NL", "label": "Nederlands"},
+            {"language": "sv", "country": "SE", "label": "Svenska"},
+            {"language": "no", "country": "NO", "label": "Norsk"},
+            {"language": "da", "country": "DK", "label": "Dansk"},
+            {"language": "fi", "country": "FI", "label": "Suomi"},
+            {"language": "pl", "country": "PL", "label": "Polski"},
+            {"language": "ru", "country": "RU", "label": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"},
+            {"language": "ja", "country": "JP", "label": "\u65e5\u672c\u8a9e"},
+            {"language": "ko", "country": "KR", "label": "\ud55c\uad6d\uc5b4"},
+            {"language": "zh", "country": "CN", "label": "\u4e2d\u6587 (CN)"},
+            {"language": "zh", "country": "TW", "label": "\u4e2d\u6587 (TW)"},
+            {"language": "ar", "country": "AE", "label": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629"},
+            {"language": "hi", "country": "IN", "label": "\u0939\u093f\u0928\u094d\u0926\u0940"},
+            {"language": "tr", "country": "TR", "label": "T\u00fcrk\u00e7e"},
+            {"language": "th", "country": "TH", "label": "\u0e44\u0e17\u0e22"},
+        ]
     return {
         "language": meta.get("language", "en"),
         "country": meta.get("country", "US"),
         "source": "profile" if meta else "defaults",
+        "presets": presets,
     }
 
 
