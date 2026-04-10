@@ -984,7 +984,7 @@ async function loadVersions(){
 async function loadStats(){
   try{const r=await fetch('/api/stats');if(r.ok){const d=await r.json();const s=d.stats||{};
     let h='';for(const[k,v]of Object.entries(s)){h+='<div class="stat-item"><span class="label">'+(SVC_MAP[k]?SVC_MAP[k].name:k)+'</span><span class="val">'+(v.count||0)+' '+v.label+'</span></div>';}
-    document.getElementById('stats-lib').innerHTML=h||'<span style="color:var(--fg3);font-size:.85em">Run 'Configure All' first</span>';}}catch(e){}
+    document.getElementById('stats-lib').innerHTML=h||'<span style="color:var(--fg3);font-size:.85em">Run Configure All first</span>';}}catch(e){}
 }
 let _diskGuardrails={};
 /* Navigate to Config > Config Drift subtab */
@@ -2323,7 +2323,7 @@ async function saveLibraries(){
   if(!libs.length){toast('Add at least one library',true);return;}
   try{const r=await fetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:libs})});
     const d=await r.json();
-    if(d.status==='saved'){toast('Libraries saved. Run 'Configure All' to apply.');loadLibrariesConfig();}
+    if(d.status==='saved'){toast('Libraries saved. Run Configure All to apply.');loadLibrariesConfig();}
     else toast(d.error||'Save failed',true);
   }catch(e){toast('Error: '+e,true);}
 }
@@ -2369,7 +2369,7 @@ async function saveCategories(){
   if(!Object.keys(cats).length){toast('Add at least one category',true);return;}
   try{const r=await fetch('/api/download-categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categories:cats})});
     const d=await r.json();
-    if(d.status==='saved'){toast('Categories saved. Run 'Configure All' to apply.');loadDownloadsConfig();}
+    if(d.status==='saved'){toast('Categories saved. Run Configure All to apply.');loadDownloadsConfig();}
     else toast(d.error||'Save failed',true);
   }catch(e){toast('Error: '+e,true);}
 }
