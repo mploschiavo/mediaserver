@@ -34,7 +34,7 @@ from .key_formats import READERS as _KEY_READERS, WRITERS as _KEY_WRITERS
 def _discover_jellyfin_api_key(config_root: str) -> str:
     """Discover Jellyfin API key from the SQLite DB."""
     db_path = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
-    return _read_key_sqlite(db_path)
+    return _KEY_READERS["sqlite"](db_path)
 
 
 # Legacy endpoint paths for media-server reset (backward compat).
