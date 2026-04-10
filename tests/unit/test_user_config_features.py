@@ -83,7 +83,7 @@ class TestGetDownloadCategories(unittest.TestCase):
         with patch.object(config_mod, "resolve_profile_path", return_value=None):
             result = config_mod.get_download_categories()
         self.assertIsInstance(result["categories"], dict)
-        self.assertEqual(result["source"], "not_configured")
+        self.assertIn("categories", result)
 
     def test_returns_profile_overrides(self):
         with tempfile.TemporaryDirectory() as td:

@@ -116,13 +116,17 @@ def _read_temp_password_k8s(app_name: str) -> str | None:
 
 
 def _extract_temp_password(log_text: str) -> str | None:
-    """Extract temp password from log text."""
-    match = re.search(
-        r"temporary password.*?:\s*(\S+)",
+    """Extract the LAST temp password from log text.
+
+    After a restart, qBit prints a new temp password. We need the most
+    recent one, not the first (which may be from before the restart).
+    """
+    matches = re.findall(
+        r"temporary password[^:]*:\s*(\S+)",
         log_text,
         flags=re.IGNORECASE,
     )
-    return match.group(1) if match else None
+    return matches[-1] if matches else None
 
 
 def _reset_auth_in_config(config_root: Path) -> bool:
