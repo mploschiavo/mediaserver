@@ -26,7 +26,7 @@ def generate(
     output_path: Path | None = None,
 ) -> dict[str, Any]:
     """Generate bootstrap config from contracts + profile."""
-    config: dict[str, Any] = {"config_version": 1}
+    config: dict[str, Any] = {"config_version": 2}
 
     # 1. Load profile for technology bindings and app auth
     profile: dict = {}
