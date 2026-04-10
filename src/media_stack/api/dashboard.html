@@ -2483,7 +2483,7 @@ async function saveLiveTv(){
   try{const r=await fetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({tuners:_ltvTuners,guides:_ltvGuides})});
     const d=await r.json();
-    if(d.status==='saved'){toast('Live TV sources saved ('+_ltvTuners.length+' tuners, '+_ltvGuides.length+' guides). Run bootstrap to apply.');loadLiveTvConfig();}
+    if(d.status==='saved'){toast('Live TV saved — configuring media server automatically...');loadLiveTvConfig();}
     else toast(d.error||'Save failed',true);
   }catch(e){toast('Error: '+e,true);}
 }

@@ -42,6 +42,7 @@ ACTION_PRIORITY: dict[str, int] = {
     "finalize":      20,
     "envoy-config":  30,
     "restart-apps":  40,
+    "configure-livetv": 45,
     "reconcile":     50,
     "sync-indexers": 60,
     "auto-indexers": 70,

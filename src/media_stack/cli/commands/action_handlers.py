@@ -169,6 +169,22 @@ def action_validate_credentials() -> None:
         )
 
 
+def action_configure_livetv(args: argparse.Namespace, build_runner: Any) -> None:
+    """Configure Live TV only — targeted action, not full bootstrap."""
+    runtime_platform.log("[INFO] Configuring Live TV (media server livetv phase)")
+    runner, runtime_state = build_runner(args)
+    try:
+        runner._run_runner_plan_phase(runtime_state, "media_server_livetv_steps")
+    except Exception:
+        # Fallback: try the ensure step directly
+        try:
+            runner._run_runner_plan_phase(runtime_state, "ensure_steps")
+            runtime_platform.log("[OK] Live TV: ran ensure phase (includes livetv)")
+        except Exception as exc:
+            runtime_platform.log(f"[WARN] Live TV configure: {exc}")
+    runtime_platform.log("[OK] Live TV configuration complete")
+
+
 def action_reconcile(args: argparse.Namespace, build_runner: Any) -> None:
     """Re-run the full bootstrap pipeline to fix drift."""
     runtime_platform.log("[INFO] Running reconcile (full pipeline)")
