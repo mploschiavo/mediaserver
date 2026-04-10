@@ -90,7 +90,22 @@ class ConfigArtifactsService:
     # ------------------------------------------------------------------
 
     def ensure_homepage_services_config(self, cfg: dict[str, Any], config_root: str) -> bool:
-        from media_stack.services.apps.homepage.service import HomepageService
+        import importlib
+        from media_stack.api.services.registry import SERVICES
+        # Find management services and try to load the one with a HomepageService
+        HomepageService = None
+        for svc in SERVICES:
+            if svc.category != "management":
+                continue
+            try:
+                mod = importlib.import_module(f"media_stack.services.apps.{svc.id}.service")
+                if hasattr(mod, "HomepageService"):
+                    HomepageService = mod.HomepageService
+                    break
+            except ImportError:
+                continue
+        if HomepageService is None:
+            return False
 
         return HomepageService(
             bool_cfg=self.bool_cfg,
@@ -106,9 +121,13 @@ class ConfigArtifactsService:
     # ------------------------------------------------------------------
 
     def _jellyfin_auto_collections_service(self):
-        from media_stack.services.apps.jellyfin.auto_collections import (
-            JellyfinAutoCollectionsService,
-        )
+        import importlib
+        from media_stack.api.services.registry import SERVICES
+        ms_id = next((s.id for s in SERVICES if s.category == "media"), "")
+        if not ms_id:
+            return None
+        _mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.auto_collections")
+        JellyfinAutoCollectionsService = _mod.JellyfinAutoCollectionsService
 
         return JellyfinAutoCollectionsService(
             bool_cfg=self.bool_cfg,
@@ -133,11 +152,13 @@ class ConfigArtifactsService:
 
     @staticmethod
     def default_auto_collections_plugins() -> dict[str, Any]:
-        from media_stack.services.apps.jellyfin.auto_collections import (
-            JellyfinAutoCollectionsService,
-        )
-
-        return JellyfinAutoCollectionsService.default_auto_collections_plugins()
+        import importlib
+        from media_stack.api.services.registry import SERVICES
+        ms_id = next((s.id for s in SERVICES if s.category == "media"), "")
+        if not ms_id:
+            return {}
+        _mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.auto_collections")
+        return _mod.JellyfinAutoCollectionsService.default_auto_collections_plugins()
 
     def ensure_jellyfin_auto_collections_config(
         self,
@@ -179,9 +200,15 @@ class ConfigArtifactsService:
         return Path(__file__).resolve().parents[1] / "contracts"
 
     def ensure_maintainerr_policy(self, cfg: dict[str, Any], config_root: str) -> None:
-        from media_stack.services.apps.maintainerr.policy_service import (
-            MaintainerrPolicyService,
-        )
+        import importlib
+        from media_stack.api.services.registry import SERVICES
+        # Find the media management/policy service by checking for maintainerr-like capabilities
+        policy_svc_id = next((s.id for s in SERVICES if s.category == "management" and s.port == 6246), "")
+        if not policy_svc_id:
+            return
+        MaintainerrPolicyService = importlib.import_module(
+            f"media_stack.services.apps.{policy_svc_id}.policy_service"
+        ).MaintainerrPolicyService
 
         MaintainerrPolicyService(
             bool_cfg=self.bool_cfg,

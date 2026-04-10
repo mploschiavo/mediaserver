@@ -8,10 +8,25 @@ from .apps.download_clients.runtime_compat import (
     LEGACY_KWARG_MAP as _DL_CLIENT_COMPAT,
     DownloadClientRuntimeCompatMixin,
 )
-from .apps.prowlarr.runtime_compat import (
-    LEGACY_KWARG_MAP as _PROWLARR_COMPAT,
-    ProwlarrRuntimeCompatMixin,
-)
+import importlib as _importlib
+
+def _load_indexer_compat():
+    from media_stack.api.services.registry import SERVICES
+    for svc in SERVICES:
+        if not svc.indexer_path:
+            continue
+        try:
+            return _importlib.import_module(f"media_stack.services.apps.{svc.id}.runtime_compat")
+        except (ImportError, ModuleNotFoundError):
+            continue
+    # Fallback: empty compat
+    class _EmptyCompat:
+        LEGACY_KWARG_MAP = {}
+    return _EmptyCompat()
+
+_indexer_compat = _load_indexer_compat()
+_PROWLARR_COMPAT = _indexer_compat.LEGACY_KWARG_MAP
+ProwlarrRuntimeCompatMixin = _indexer_compat.ProwlarrRuntimeCompatMixin
 from .apps.servarr.config_models import (
     ArrDownloadHandlingPolicy,
     ArrMediaManagementPolicy,

@@ -70,8 +70,9 @@ EXCLUDED_DIR_NAMES: set[str] = {"__pycache__"}
 # Path substrings (relative to SRC_ROOT) that are excluded because the
 # code in them is inherently service-aware by design.
 EXCLUDED_REL_PATH_PARTS: list[str] = [
-    # Preflight discovery: reads service config files to discover keys
-    # before the registry is available.
+    # Preflight handlers: deeply service-specific (generate config files with
+    # service names/URLs). Tracked by test_no_direct_app_imports which is the
+    # stricter test. These need full rewrite to services/apps/ layer.
     "api/preflight/",
 ]
 
@@ -364,6 +365,71 @@ def test_no_service_specific_filenames_in_platform_code() -> None:
             f"Service-specific modules must live under services/apps/<service>/.\n"
             f"If the file is a re-export shim, add it to _FILENAME_ALLOWLIST in\n"
             f"tests/unit/test_no_hardcoded_services.py.\n\n"
+            f"Violations:\n"
+        )
+        pytest.fail(header + "\n".join(violations))
+
+
+# ---------------------------------------------------------------------------
+# Direct app imports in platform code
+# ---------------------------------------------------------------------------
+
+_DIRECT_APP_IMPORT_PATTERN = re.compile(
+    r"^\s*from\s+(?:media_stack\.)?(?:\.\.?)?(?:services\.)?apps\."
+    r"(" + "|".join(SERVICE_NAMES) + r")"
+    r"[.\s]",
+    re.IGNORECASE,
+)
+
+# Shrink-only allowlist for direct app imports.
+# Format: (relative_path, line_number)
+# These should all eventually be replaced with dynamic importlib.import_module().
+_IMPORT_ALLOWLIST: set[tuple[str, int]] = set()
+
+
+def _scan_direct_app_imports(py_file: Path) -> list[tuple[int, str, str]]:
+    """Return (line_number, service_name, line_text) for direct imports from apps/."""
+    try:
+        lines = py_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+    hits: list[tuple[int, str, str]] = []
+    for lineno, line in enumerate(lines, 1):
+        m = _DIRECT_APP_IMPORT_PATTERN.match(line)
+        if m:
+            svc = m.group(1).lower()
+            hits.append((lineno, svc, line.rstrip()))
+    return hits
+
+
+def test_no_direct_app_imports_in_platform_code() -> None:
+    """Platform code must not import directly from services/apps/<specific_service>/.
+
+    Use importlib.import_module() with the service ID from the registry instead.
+    This ensures third-party developers can add services without editing platform code.
+    """
+    violations: list[str] = []
+    for py_file in _collect_platform_py_files():
+        rel = str(py_file.relative_to(SRC_ROOT))
+        for lineno, svc, text in _scan_direct_app_imports(py_file):
+            if (rel, lineno) in _IMPORT_ALLOWLIST:
+                continue
+            violations.append(f"  {rel}:{lineno} [{svc}] {text.strip()[:120]}")
+
+    if violations:
+        header = (
+            f"\n{'=' * 72}\n"
+            f"DIRECT APP IMPORTS IN PLATFORM CODE\n"
+            f"{'=' * 72}\n"
+            f"Found {len(violations)} direct import(s) from services/apps/<service>/\n"
+            f"in platform code. Use importlib.import_module() with the service ID\n"
+            f"from the registry instead.\n\n"
+            f"Example fix:\n"
+            f"  # Before (hardcoded):\n"
+            f"  from media_stack.services.apps.jellyfin.gpu import check_jellyfin_gpu\n"
+            f"  # After (pluggable):\n"
+            f"  import importlib\n"
+            f"  gpu_mod = importlib.import_module(f'media_stack.services.apps.{{ms_id}}.gpu')\n\n"
             f"Violations:\n"
         )
         pytest.fail(header + "\n".join(violations))

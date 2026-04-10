@@ -14,12 +14,46 @@ from ..apps.download_clients.config_models import (
 from ..apps.download_clients.config_resolver import resolve_download_client_configs
 from ..apps.integrations.config_models import AppAuthConfig
 from ..apps.integrations.config_resolver import resolve_integration_configs
-from ..apps.jellyfin.config_resolver import resolve_jellyfin_configs
-from ..apps.prowlarr.api_key_reader import (
-    populate_prowlarr_service_dicts,
-    read_prowlarr_api_key,
-    resolve_prowlarr_wiring,
-)
+import importlib as _importlib
+
+
+def _load_media_server_config_resolver():
+    """Dynamically load the media server config resolver from the active technology binding."""
+    from media_stack.api.services.registry import SERVICES
+    for svc in SERVICES:
+        if svc.category != "media":
+            continue
+        try:
+            return _importlib.import_module(f"media_stack.services.apps.{svc.id}.config_resolver")
+        except (ImportError, ModuleNotFoundError):
+            continue
+    return None
+
+
+def _load_indexer_manager_key_reader():
+    """Dynamically load the indexer manager API key reader from the active technology binding."""
+    from media_stack.api.services.registry import SERVICES
+    for svc in SERVICES:
+        if not svc.indexer_path:
+            continue
+        try:
+            return _importlib.import_module(f"media_stack.services.apps.{svc.id}.api_key_reader")
+        except (ImportError, ModuleNotFoundError):
+            continue
+    return None
+
+
+def resolve_jellyfin_configs(*args, **kwargs):
+    return _load_media_server_config_resolver().resolve_jellyfin_configs(*args, **kwargs)
+
+def populate_prowlarr_service_dicts(*args, **kwargs):
+    return _load_indexer_manager_key_reader().populate_prowlarr_service_dicts(*args, **kwargs)
+
+def read_prowlarr_api_key(*args, **kwargs):
+    return _load_indexer_manager_key_reader().read_prowlarr_api_key(*args, **kwargs)
+
+def resolve_prowlarr_wiring(*args, **kwargs):
+    return _load_indexer_manager_key_reader().resolve_prowlarr_wiring(*args, **kwargs)
 from ..apps.servarr.config_models import (
     ArrDiscoveryListsConfig,
     ArrDownloadHandlingPolicy,

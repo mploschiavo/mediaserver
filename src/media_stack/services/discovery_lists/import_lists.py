@@ -14,7 +14,19 @@ from ..apps.servarr.config_models_discovery import (
     TraktPopularImportOptions,
 )
 from .common import coerce_for_example
-from media_stack.services.apps.sonarr.sonarr_seed import ensure_sonarr_seed_series
+import importlib as _importlib
+
+def _find_tv_arr_id():
+    from media_stack.api.services.registry import SERVICES
+    return next((s.id for s in SERVICES if s.stats_label and "series" in s.stats_label.lower()), "")
+
+def ensure_sonarr_seed_series(*args, **kwargs):
+    """Lazy-loaded from the TV arr app layer."""
+    svc_id = _find_tv_arr_id()
+    if not svc_id:
+        return
+    _mod = _importlib.import_module(f"media_stack.services.apps.{svc_id}.{svc_id}_seed")
+    return _mod.ensure_sonarr_seed_series(*args, **kwargs)
 
 
 def resolve_import_list_definitions(

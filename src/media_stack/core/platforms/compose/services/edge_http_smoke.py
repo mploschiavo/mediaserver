@@ -10,8 +10,22 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib import parse
 
-from media_stack.api.services.registry import SERVICE_MAP
-from media_stack.services.apps.homepage.constants import DASHBOARD_SLUG, DASHBOARD_LABEL
+import importlib as _importlib
+from media_stack.api.services.registry import SERVICE_MAP, SERVICES
+
+# Load dashboard constants from the management service's app layer — registry-driven.
+DASHBOARD_SLUG = ""
+DASHBOARD_LABEL = ""
+for _svc in SERVICES:
+    if _svc.category != "management":
+        continue
+    try:
+        _constants_mod = _importlib.import_module(f"media_stack.services.apps.{_svc.id}.constants")
+        DASHBOARD_SLUG = getattr(_constants_mod, "DASHBOARD_SLUG", _svc.id)
+        DASHBOARD_LABEL = getattr(_constants_mod, "DASHBOARD_LABEL", _svc.name)
+        break
+    except (ImportError, AttributeError, ModuleNotFoundError):
+        continue
 from media_stack.core.platforms.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
 from media_stack.core.platforms.compose.services.labels import ComposeLabelService
 from media_stack.core.platforms.compose.services.spec import ComposeSpecResolver
