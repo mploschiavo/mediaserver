@@ -79,11 +79,10 @@ class TestUpdateLibraries(unittest.TestCase):
 
 class TestGetDownloadCategories(unittest.TestCase):
     def test_returns_empty_when_no_config(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None), \
-             patch.object(config_mod, "resolve_config_path", return_value=None):
+        with patch.object(config_mod, "resolve_profile_path", return_value=None):
             result = config_mod.get_download_categories()
         self.assertIsInstance(result["categories"], dict)
-        self.assertEqual(result["source"], "none")
+        self.assertEqual(result["source"], "not_configured")
 
     def test_returns_profile_overrides(self):
         with tempfile.TemporaryDirectory() as td:
