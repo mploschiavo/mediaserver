@@ -254,21 +254,32 @@ def _auto_generate_config_json(target_path: str) -> str | None:
         if key in profile:
             config[key] = profile[key]
 
-    # 4. Build adapter_hooks from plugin manifests
+    # 4. Build adapter_hooks from contract operation plan files
     try:
-        from media_stack.services.plugin_manifest_loader import load_plugin_manifests
-        manifests = load_plugin_manifests()
-        adapter_hooks: dict = {}
-        for manifest in manifests:
-            hooks = manifest.get("adapter_hooks", {})
-            if isinstance(hooks, dict):
-                for hook_key, hook_value in hooks.items():
-                    if hook_key not in adapter_hooks:
-                        adapter_hooks[hook_key] = hook_value
-                    elif isinstance(hook_value, dict) and isinstance(adapter_hooks[hook_key], dict):
-                        adapter_hooks[hook_key].update(hook_value)
-        if adapter_hooks:
-            config["adapter_hooks"] = adapter_hooks
+        contracts_dir = Path(os.environ.get("CONTRACTS_DIR", "")) or Path("/opt/media-stack/contracts")
+        # Also check the mounted contracts
+        for candidate in [contracts_dir, Path("/contracts")]:
+            for plan_file in sorted(candidate.glob("*_operation_plans.json")) if candidate.is_dir() else []:
+                try:
+                    plan_data = json.loads(plan_file.read_text(encoding="utf-8"))
+                    if isinstance(plan_data, dict):
+                        config.setdefault("adapter_hooks", {}).update(plan_data)
+                except Exception:
+                    pass
+        # Also load the defaults directory
+        defaults_dir = contracts_dir / "defaults"
+        if not defaults_dir.is_dir():
+            defaults_dir = Path("/opt/media-stack/config/defaults")
+        if defaults_dir.is_dir():
+            for json_file in sorted(defaults_dir.glob("*.json")):
+                try:
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                    if isinstance(data, dict):
+                        for k, v in data.items():
+                            if k not in config:
+                                config[k] = v
+                except Exception:
+                    pass
     except Exception:
         pass
 
