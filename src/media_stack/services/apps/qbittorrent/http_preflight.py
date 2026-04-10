@@ -130,6 +130,9 @@ def _reset_auth_in_config(config_root: Path) -> bool:
 
     This replaces the docker exec + sed approach. The bootstrap runner mounts
     CONFIG_ROOT at /srv-config, so the file is at /srv-config/qbittorrent/qBittorrent/qBittorrent.conf.
+
+    After removing old auth keys, sets MaxAuthenticationFailCount=0 to
+    disable the IP ban so subsequent login attempts aren't blocked.
     """
     conf_path = config_root / "qbittorrent" / "qBittorrent" / "qBittorrent.conf"
     if not conf_path.exists():
@@ -150,11 +153,52 @@ def _reset_auth_in_config(config_root: Path) -> bool:
         for line in lines
         if not any(re.match(rf"^\s*{key}\s*=", line) for key in keys_to_remove)
     ]
+    # Disable IP ban so bootstrap can retry without getting locked out.
+    # Find [Preferences] section and append there, or add at end.
+    ban_disable = "WebUI\\MaxAuthenticationFailCount=0"
+    pref_idx = None
+    for i, line in enumerate(filtered):
+        if line.strip() == "[Preferences]":
+            pref_idx = i
+        elif pref_idx is not None and line.strip().startswith("[") and i > pref_idx:
+            # Insert before the next section
+            filtered.insert(i, ban_disable)
+            break
+    else:
+        if pref_idx is not None:
+            filtered.append(ban_disable)
+        else:
+            filtered.extend(["[Preferences]", ban_disable])
+
     new_text = "\n".join(filtered) + "\n"
     if new_text != text:
         conf_path.write_text(new_text, encoding="utf-8")
         return True
     return False
+
+
+def _disable_login_ban(config_root: Path) -> None:
+    """Set MaxAuthenticationFailCount=0 in qBittorrent.conf to prevent IP bans.
+
+    Called before any login attempts so the preflight can safely try
+    multiple passwords without getting locked out. Only modifies the
+    file if the setting is absent or non-zero.
+    """
+    conf_path = config_root / "qbittorrent" / "qBittorrent" / "qBittorrent.conf"
+    if not conf_path.exists():
+        return
+    text = conf_path.read_text(encoding="utf-8", errors="replace")
+    # Already set to 0?
+    if re.search(r"WebUI\\MaxAuthenticationFailCount\s*=\s*0\s*$", text, re.MULTILINE):
+        return
+    # Remove any existing value
+    text = re.sub(r"^WebUI\\MaxAuthenticationFailCount\s*=.*\n?", "", text, flags=re.MULTILINE)
+    # Add to [Preferences] section
+    if "[Preferences]" in text:
+        text = text.replace("[Preferences]\n", "[Preferences]\nWebUI\\MaxAuthenticationFailCount=0\n", 1)
+    else:
+        text += "\n[Preferences]\nWebUI\\MaxAuthenticationFailCount=0\n"
+    conf_path.write_text(text, encoding="utf-8")
 
 
 def _restart_container(container_name: str = "qbittorrent") -> None:
@@ -211,6 +255,10 @@ def run_preflight(
         if log:
             log(msg)
 
+    # Pre-emptively disable IP ban in config before any login attempts.
+    # This prevents lockout when trying multiple passwords.
+    _disable_login_ban(Path(config_root))
+
     info(f"qBittorrent preflight: waiting for {qbit_url}")
     if not _wait_ready(qbit_url, timeout=wait_timeout):
         raise RuntimeError(f"qBittorrent not reachable at {qbit_url} within {wait_timeout}s")
@@ -231,16 +279,23 @@ def run_preflight(
             sid = _login(qbit_url, "admin", temp_pass)
 
     if sid is None:
-        # Last resort: reset auth config and restart.
+        # Last resort: reset auth config (disables IP ban) and restart.
         info("qBittorrent: resetting auth config and restarting")
         changed = _reset_auth_in_config(Path(config_root))
         if changed:
             _restart_container(container_name)
             if not _wait_ready(qbit_url, timeout=wait_timeout):
                 raise RuntimeError("qBittorrent not reachable after auth reset + restart")
-            # After reset, try default creds again.
-            temp_pass = _read_temp_password_from_logs(container_name)
+            # Wait for the new temp password to appear in fresh logs.
+            # qBit prints it during startup — may take a few seconds after HTTP is up.
+            temp_pass = None
+            for _attempt in range(5):
+                time.sleep(2)
+                temp_pass = _read_temp_password_from_logs(container_name)
+                if temp_pass:
+                    break
             if temp_pass:
+                info(f"qBittorrent: found new temp password after restart")
                 sid = _login(qbit_url, "admin", temp_pass)
             if sid is None:
                 sid = _login(qbit_url, "admin", "adminadmin")
