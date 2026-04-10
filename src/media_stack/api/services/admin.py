@@ -391,17 +391,40 @@ def reset_password(new_password: str, target_services: list[str] | None = None) 
     _filter = set(target_services) if target_services else None
 
     # 1. qBittorrent — special case (form-based auth, not in registry pattern)
-    #    Try configured password first, then common defaults for fresh installs.
+    #    Try configured password first, then common defaults, then the
+    #    random temporary password from container logs (linuxserver images).
     qbit = SERVICE_MAP.get("qbittorrent")
     if qbit and (_filter is None or "qbittorrent" in _filter):
         qbit_ok = False
-        for try_pw in [old_password, "adminadmin", ""]:
+        passwords_to_try = [old_password, "adminadmin", ""]
+        # Extract temp password from container logs (linuxserver/qbittorrent)
+        try:
+            import docker as _docker
+            _client = _docker.from_env()
+            _qbit_container = _client.containers.get("qbittorrent")
+            _logs = _qbit_container.logs(tail=50).decode("utf-8", errors="replace")
+            import re as _re
+            _match = _re.search(r"temporary password[^:]*:\s*(\S+)", _logs, _re.IGNORECASE)
+            if _match:
+                passwords_to_try.insert(1, _match.group(1))
+        except Exception:
+            pass
+        for try_pw in passwords_to_try:
             try:
                 cj = http.cookiejar.CookieJar()
                 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
                 login_data = f"username={username}&password={try_pw}".encode()
                 req = urllib.request.Request(f"http://{qbit.host}:{qbit.port}/api/v2/auth/login", data=login_data)
-                resp = opener.open(req, timeout=5)
+                try:
+                    resp = opener.open(req, timeout=5)
+                except urllib.error.HTTPError as http_err:
+                    if http_err.code == 403:
+                        # IP banned from too many attempts — wait and retry once
+                        import time as _time
+                        _time.sleep(2)
+                        resp = opener.open(req, timeout=5)
+                    else:
+                        raise
                 body = resp.read().decode("utf-8", errors="replace")
                 if "Fails" in body:
                     continue
