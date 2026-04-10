@@ -487,6 +487,64 @@ def get_all_import_lists() -> dict[str, Any]:
     return {"lists": all_lists, "total": sum(len(v) for v in all_lists.values())}
 
 
+def get_download_analytics() -> dict[str, Any]:
+    """Aggregate download history into analytics: counts by day, success rates, top indexers."""
+    api_keys = discover_api_keys()
+    apps = [(s.id, s.host, s.port, s.history_path) for s in SERVICES if s.history_path]
+    all_records: list[dict[str, Any]] = []
+    for svc_id, host, port, path in apps:
+        key = api_keys.get(svc_id, "")
+        if not key:
+            continue
+        try:
+            # Fetch last 100 history records
+            url = f"http://{host}:{port}{path}"
+            if "?" in path:
+                url += "&pageSize=100"
+            else:
+                url += "?pageSize=100"
+            req = urllib.request.Request(url, headers={"X-Api-Key": key})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            records = data.get("records", data) if isinstance(data, dict) else data
+            if isinstance(records, list):
+                for r in records:
+                    all_records.append({
+                        "service": svc_id,
+                        "title": str(r.get("sourceTitle", ""))[:60],
+                        "event": str(r.get("eventType", "")),
+                        "date": str(r.get("date", ""))[:10],
+                        "quality": str(r.get("quality", {}).get("quality", {}).get("name", "")) if isinstance(r.get("quality"), dict) else "",
+                        "indexer": str(r.get("data", {}).get("indexer", "")) if isinstance(r.get("data"), dict) else "",
+                    })
+        except Exception:
+            pass
+
+    # Aggregate by day
+    by_day: dict[str, int] = {}
+    by_service: dict[str, int] = {}
+    by_indexer: dict[str, int] = {}
+    for r in all_records:
+        day = r.get("date", "unknown")
+        by_day[day] = by_day.get(day, 0) + 1
+        svc = r.get("service", "?")
+        by_service[svc] = by_service.get(svc, 0) + 1
+        idx = r.get("indexer", "")
+        if idx:
+            by_indexer[idx] = by_indexer.get(idx, 0) + 1
+
+    # Sort by day descending
+    daily_trend = [{"date": d, "count": c} for d, c in sorted(by_day.items(), reverse=True)][:30]
+    top_indexers = sorted(by_indexer.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "total_records": len(all_records),
+        "daily_trend": daily_trend,
+        "by_service": by_service,
+        "top_indexers": [{"name": n, "count": c} for n, c in top_indexers],
+    }
+
+
 def delete_import_list(service_id: str, list_id: int) -> dict[str, Any]:
     """Delete an import list from a specific arr service."""
     api_keys = discover_api_keys()

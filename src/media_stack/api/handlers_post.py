@@ -248,6 +248,21 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, sched_svc_del.remove_schedule(sched_id))
         return
 
+    # POST /api/validate-migration
+    if handler.path == "/api/validate-migration":
+        body = handler._read_json_body()
+        handler._json_response(200, disk_svc.validate_migration_target(body.get("target_path", "")))
+        return
+
+    # POST /api/custom-service
+    if handler.path == "/api/custom-service":
+        body = handler._read_json_body()
+        if not body:
+            handler._json_response(400, {"error": "JSON body required"})
+            return
+        handler._json_response(200, config_svc.add_custom_service(body))
+        return
+
     # POST /api/profile
     if handler.path == "/api/profile":
         body = handler._read_json_body()
