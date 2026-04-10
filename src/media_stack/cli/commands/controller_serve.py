@@ -259,7 +259,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                     # guardrails), then envoy config, then indexer discovery.
                     # Each runs as a separate action so the dashboard shows
                     # progress and bootstrap is marked complete immediately.
-                    for queued in ["finalize", "envoy-config", "auto-indexers", "validate-credentials"]:
+                    for queued in ["configure-media-server", "finalize", "envoy-config", "auto-indexers", "validate-credentials"]:
                         runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
                         action_trigger(queued, {})
 

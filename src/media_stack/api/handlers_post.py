@@ -29,7 +29,8 @@ logger = logging.getLogger("controller_api")
 KNOWN_ACTIONS = frozenset({
     "bootstrap", "finalize", "auto-indexers", "restart-apps",
     "sync-indexers", "envoy-config", "reconcile", "validate-credentials",
-    "configure-livetv",
+    "configure-livetv", "configure-libraries", "configure-plugins",
+    "configure-playback", "configure-categories", "configure-media-server",
 })
 
 
