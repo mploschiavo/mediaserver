@@ -62,9 +62,10 @@ def generate(
             except Exception:
                 pass
 
-    # 3. Load operation plans (adapter_hooks)
+    # 3. Load operation plans AND event handlers as adapter_hooks
     adapter_hooks: dict[str, Any] = {}
     src_contracts = contracts_dir.parent / "src" / "media_stack" / "contracts"
+    # Operation plan files
     for plan_file in sorted(src_contracts.glob("*_operation_plans.json")) if src_contracts.is_dir() else []:
         try:
             plan_data = json.loads(plan_file.read_text())
@@ -72,6 +73,32 @@ def generate(
                 adapter_hooks.update(plan_data)
         except Exception:
             pass
+    # Event handlers + runner_phase_scripts from service contracts
+    runner_phase_scripts: dict[str, str] = {}
+    if svc_dir.is_dir():
+        for svc_yaml in sorted(svc_dir.glob("*.yaml")):
+            if svc_yaml.name.startswith("_"):
+                continue
+            try:
+                with open(svc_yaml) as f:
+                    svc_data = yaml.safe_load(f) or {}
+                plugin = svc_data.get("plugin", {})
+                if not isinstance(plugin, dict):
+                    continue
+                # Event handlers (ENSURE, RUN, POST, etc.)
+                event_handlers = plugin.get("event_handlers", {})
+                if isinstance(event_handlers, dict):
+                    for phase, handlers in event_handlers.items():
+                        if isinstance(handlers, dict):
+                            adapter_hooks.setdefault("event_handlers", {}).setdefault(phase, {}).update(handlers)
+                # Runner phase scripts
+                phase_scripts = plugin.get("phase_scripts", {})
+                if isinstance(phase_scripts, dict):
+                    runner_phase_scripts.update(phase_scripts)
+            except Exception:
+                pass
+    if runner_phase_scripts:
+        adapter_hooks["runner_phase_scripts"] = runner_phase_scripts
     if adapter_hooks:
         config["adapter_hooks"] = adapter_hooks
 
