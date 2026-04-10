@@ -32,7 +32,7 @@ class ControllerPlanSummary:
 
     Feature booleans live in ``features``, integer counters in ``counts``.
     Named property accessors are provided for backward compatibility so that
-    existing ``plan.configure_jellyfin_libraries`` style access keeps working.
+    existing ``plan.configure_media_server_libraries`` style access keeps working.
     """
 
     __slots__ = ("mode", "features", "counts")
@@ -59,22 +59,22 @@ class ControllerPlanSummary:
         torrent_client_login_required: bool | None = None,
         refresh_health_after_setup: bool | None = None,
         app_auth_enabled: bool | None = None,
-        configure_homepage: bool | None = None,
-        configure_bazarr: bool | None = None,
-        configure_jellyseerr: bool | None = None,
-        configure_jellyfin_libraries: bool | None = None,
-        configure_jellyfin_livetv: bool | None = None,
-        configure_jellyfin_plugins: bool | None = None,
-        configure_jellyfin_playback: bool | None = None,
-        configure_jellyfin_home_rails: bool | None = None,
+        configure_dashboard: bool | None = None,
+        configure_subtitles: bool | None = None,
+        configure_request_manager: bool | None = None,
+        configure_media_server_libraries: bool | None = None,
+        configure_media_server_livetv: bool | None = None,
+        configure_media_server_plugins: bool | None = None,
+        configure_media_server_playback: bool | None = None,
+        configure_media_server_home_rails: bool | None = None,
         configure_auto_collections: bool | None = None,
         configure_disk_guardrails: bool | None = None,
-        configure_jellyfin_prewarm: bool | None = None,
+        configure_media_server_prewarm: bool | None = None,
         configure_media_hygiene: bool | None = None,
-        configure_maintainerr_policy: bool | None = None,
-        configure_maintainerr_integrations: bool | None = None,
-        jellyfin_livetv_tuners: int | None = None,
-        jellyfin_livetv_guides: int | None = None,
+        configure_media_policy: bool | None = None,
+        configure_media_policy_integrations: bool | None = None,
+        media_server_livetv_tuners: int | None = None,
+        media_server_livetv_guides: int | None = None,
         fully_preconfigured: bool | None = None,
         trigger_sync: bool | None = None,
     ) -> None:
@@ -98,20 +98,20 @@ class ControllerPlanSummary:
             "torrent_client_login_required": torrent_client_login_required,
             "refresh_health_after_setup": refresh_health_after_setup,
             "app_auth_enabled": app_auth_enabled,
-            "configure_homepage": configure_homepage,
-            "configure_bazarr": configure_bazarr,
-            "configure_jellyseerr": configure_jellyseerr,
-            "configure_jellyfin_libraries": configure_jellyfin_libraries,
-            "configure_jellyfin_livetv": configure_jellyfin_livetv,
-            "configure_jellyfin_plugins": configure_jellyfin_plugins,
-            "configure_jellyfin_playback": configure_jellyfin_playback,
-            "configure_jellyfin_home_rails": configure_jellyfin_home_rails,
+            "configure_dashboard": configure_dashboard,
+            "configure_subtitles": configure_subtitles,
+            "configure_request_manager": configure_request_manager,
+            "configure_media_server_libraries": configure_media_server_libraries,
+            "configure_media_server_livetv": configure_media_server_livetv,
+            "configure_media_server_plugins": configure_media_server_plugins,
+            "configure_media_server_playback": configure_media_server_playback,
+            "configure_media_server_home_rails": configure_media_server_home_rails,
             "configure_auto_collections": configure_auto_collections,
             "configure_disk_guardrails": configure_disk_guardrails,
-            "configure_jellyfin_prewarm": configure_jellyfin_prewarm,
+            "configure_media_server_prewarm": configure_media_server_prewarm,
             "configure_media_hygiene": configure_media_hygiene,
-            "configure_maintainerr_policy": configure_maintainerr_policy,
-            "configure_maintainerr_integrations": configure_maintainerr_integrations,
+            "configure_media_policy": configure_media_policy,
+            "configure_media_policy_integrations": configure_media_policy_integrations,
             "fully_preconfigured": fully_preconfigured,
             "trigger_sync": trigger_sync,
         }
@@ -121,10 +121,10 @@ class ControllerPlanSummary:
 
         _legacy_counts: dict[str, int | None] = {
             "arr_apps": arr_apps,
-            "prowlarr_indexers": prowlarr_indexers,
+            "indexer_entries": prowlarr_indexers,
             "sab_remote_path_mappings": sab_remote_path_mappings,
-            "jellyfin_livetv_tuners": jellyfin_livetv_tuners,
-            "jellyfin_livetv_guides": jellyfin_livetv_guides,
+            "media_server_livetv_tuners": media_server_livetv_tuners,
+            "media_server_livetv_guides": media_server_livetv_guides,
         }
         for key, value in _legacy_counts.items():
             if value is not None and key not in _counts:
@@ -165,19 +165,19 @@ class ControllerPlanSummary:
 
     @property
     def prowlarr_indexers(self) -> int:
-        return self.counts.get("prowlarr_indexers", 0)
+        return self.counts.get("indexer_entries", 0)
 
     @property
     def sab_remote_path_mappings(self) -> int:
         return self.counts.get("sab_remote_path_mappings", 0)
 
     @property
-    def jellyfin_livetv_tuners(self) -> int:
-        return self.counts.get("jellyfin_livetv_tuners", 0)
+    def media_server_livetv_tuners(self) -> int:
+        return self.counts.get("media_server_livetv_tuners", 0)
 
     @property
-    def jellyfin_livetv_guides(self) -> int:
-        return self.counts.get("jellyfin_livetv_guides", 0)
+    def media_server_livetv_guides(self) -> int:
+        return self.counts.get("media_server_livetv_guides", 0)
 
     # Feature boolean properties
     @property
@@ -229,36 +229,36 @@ class ControllerPlanSummary:
         return self.features.get("app_auth_enabled", False)
 
     @property
-    def configure_homepage(self) -> bool:
-        return self.features.get("configure_homepage", False)
+    def configure_dashboard(self) -> bool:
+        return self.features.get("configure_dashboard", False)
 
     @property
-    def configure_bazarr(self) -> bool:
-        return self.features.get("configure_bazarr", False)
+    def configure_subtitles(self) -> bool:
+        return self.features.get("configure_subtitles", False)
 
     @property
-    def configure_jellyseerr(self) -> bool:
-        return self.features.get("configure_jellyseerr", False)
+    def configure_request_manager(self) -> bool:
+        return self.features.get("configure_request_manager", False)
 
     @property
-    def configure_jellyfin_libraries(self) -> bool:
-        return self.features.get("configure_jellyfin_libraries", False)
+    def configure_media_server_libraries(self) -> bool:
+        return self.features.get("configure_media_server_libraries", False)
 
     @property
-    def configure_jellyfin_livetv(self) -> bool:
-        return self.features.get("configure_jellyfin_livetv", False)
+    def configure_media_server_livetv(self) -> bool:
+        return self.features.get("configure_media_server_livetv", False)
 
     @property
-    def configure_jellyfin_plugins(self) -> bool:
-        return self.features.get("configure_jellyfin_plugins", False)
+    def configure_media_server_plugins(self) -> bool:
+        return self.features.get("configure_media_server_plugins", False)
 
     @property
-    def configure_jellyfin_playback(self) -> bool:
-        return self.features.get("configure_jellyfin_playback", False)
+    def configure_media_server_playback(self) -> bool:
+        return self.features.get("configure_media_server_playback", False)
 
     @property
-    def configure_jellyfin_home_rails(self) -> bool:
-        return self.features.get("configure_jellyfin_home_rails", False)
+    def configure_media_server_home_rails(self) -> bool:
+        return self.features.get("configure_media_server_home_rails", False)
 
     @property
     def configure_auto_collections(self) -> bool:
@@ -269,20 +269,20 @@ class ControllerPlanSummary:
         return self.features.get("configure_disk_guardrails", False)
 
     @property
-    def configure_jellyfin_prewarm(self) -> bool:
-        return self.features.get("configure_jellyfin_prewarm", False)
+    def configure_media_server_prewarm(self) -> bool:
+        return self.features.get("configure_media_server_prewarm", False)
 
     @property
     def configure_media_hygiene(self) -> bool:
         return self.features.get("configure_media_hygiene", False)
 
     @property
-    def configure_maintainerr_policy(self) -> bool:
-        return self.features.get("configure_maintainerr_policy", False)
+    def configure_media_policy(self) -> bool:
+        return self.features.get("configure_media_policy", False)
 
     @property
-    def configure_maintainerr_integrations(self) -> bool:
-        return self.features.get("configure_maintainerr_integrations", False)
+    def configure_media_policy_integrations(self) -> bool:
+        return self.features.get("configure_media_policy_integrations", False)
 
     @property
     def fully_preconfigured(self) -> bool:

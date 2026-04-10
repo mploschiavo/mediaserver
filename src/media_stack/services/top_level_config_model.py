@@ -173,11 +173,11 @@ class TopLevelBootstrapConfig:
         if not technology_bindings.media_server:
             raise ValueError("$.technology_bindings.media_server must be a non-empty string")
 
-        prowlarr_indexers_raw = src.get("prowlarr_indexers") or []
+        prowlarr_indexers_raw = src.get("indexer_entries") or []
         if not isinstance(prowlarr_indexers_raw, list):
-            raise ValueError("$.prowlarr_indexers must be an array")
+            raise ValueError("$.indexer_entries must be an array")
         if any(not isinstance(item, dict) for item in prowlarr_indexers_raw):
-            raise ValueError("$.prowlarr_indexers must contain only objects")
+            raise ValueError("$.indexer_entries must contain only objects")
 
         normalized = dict(src)
         exclude_tokens_raw = src.get("prowlarr_auto_indexer_exclude_name_tokens") or []

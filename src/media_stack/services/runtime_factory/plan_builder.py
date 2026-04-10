@@ -15,12 +15,12 @@ def build_plan_summary(runtime: ControllerRuntime) -> ControllerPlanSummary:
     """
     counts: dict[str, int] = {
         "arr_apps": len(runtime.arr_apps),
-        "prowlarr_indexers": len(runtime.prowlarr_indexers),
+        "indexer_entries": len(runtime.indexer_entries),
         "sab_remote_path_mappings": len(runtime.sab_remote_path_mappings),
-        "jellyfin_livetv_tuners": len(
+        "media_server_livetv_tuners": len(
             (runtime.cfg.get("jellyfin_livetv") or {}).get("tuners") or []
         ),
-        "jellyfin_livetv_guides": len(
+        "media_server_livetv_guides": len(
             (runtime.cfg.get("jellyfin_livetv") or {}).get("guides") or []
         ),
     }
@@ -40,20 +40,20 @@ def build_plan_summary(runtime: ControllerRuntime) -> ControllerPlanSummary:
         "torrent_client_login_required": runtime.torrent_client_login_required,
         "refresh_health_after_setup": runtime.refresh_health_after_setup,
         "app_auth_enabled": bool((runtime.app_auth_cfg or {}).get("enabled", False)),
-        "configure_homepage": runtime.configure_homepage_services,
-        "configure_bazarr": runtime.configure_bazarr_integration,
-        "configure_jellyseerr": runtime.configure_jellyseerr_services,
-        "configure_jellyfin_libraries": runtime.configure_jellyfin_libraries,
-        "configure_jellyfin_livetv": runtime.configure_jellyfin_livetv,
-        "configure_jellyfin_plugins": runtime.configure_jellyfin_plugins,
-        "configure_jellyfin_playback": runtime.configure_jellyfin_playback,
-        "configure_jellyfin_home_rails": runtime.configure_jellyfin_home_rails,
+        "configure_dashboard": runtime.configure_dashboard,
+        "configure_subtitles": runtime.configure_subtitles,
+        "configure_request_manager": runtime.configure_request_manager,
+        "configure_media_server_libraries": runtime.configure_media_server_libraries,
+        "configure_media_server_livetv": runtime.configure_media_server_livetv,
+        "configure_media_server_plugins": runtime.configure_media_server_plugins,
+        "configure_media_server_playback": runtime.configure_media_server_playback,
+        "configure_media_server_home_rails": runtime.configure_media_server_home_rails,
         "configure_auto_collections": runtime.configure_auto_collections,
         "configure_disk_guardrails": runtime.configure_disk_guardrails,
-        "configure_jellyfin_prewarm": runtime.configure_jellyfin_prewarm,
+        "configure_media_server_prewarm": runtime.configure_media_server_prewarm,
         "configure_media_hygiene": runtime.configure_media_hygiene,
-        "configure_maintainerr_policy": runtime.configure_maintainerr_policy,
-        "configure_maintainerr_integrations": runtime.configure_maintainerr_integrations,
+        "configure_media_policy": runtime.configure_media_policy,
+        "configure_media_policy_integrations": runtime.configure_media_policy_integrations,
         "fully_preconfigured": runtime.fully_preconfigured,
         "trigger_sync": runtime.trigger_sync,
     }

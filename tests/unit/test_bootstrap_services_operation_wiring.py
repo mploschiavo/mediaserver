@@ -26,7 +26,7 @@ class OperationWiringTests(unittest.TestCase):
             setup_torrent_categories=_noop,
             run_servarr_pipeline=_noop,
             ensure_bazarr_arr_integration=_noop,
-            configure_jellyseerr=_noop,
+            configure_request_manager=_noop,
             ensure_jellyfin_livetv=_noop,
             ensure_jellyfin_libraries=_noop,
             ensure_jellyfin_plugins=_noop,

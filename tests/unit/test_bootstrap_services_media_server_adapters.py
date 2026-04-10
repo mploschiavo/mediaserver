@@ -57,31 +57,31 @@ class MediaServerAdaptersTests(unittest.TestCase):
                                 {
                                     "operation": "ensure_jellyfin_livetv",
                                     "args": ["cfg", "config_root", "wait_timeout"],
-                                    "enabled_attr": "configure_jellyfin_livetv",
+                                    "enabled_attr": "configure_media_server_livetv",
                                     "required_attr": "jellyfin_livetv_required",
                                 },
                                 {
                                     "operation": "ensure_jellyfin_libraries",
                                     "args": ["cfg", "config_root", "wait_timeout"],
-                                    "enabled_attr": "configure_jellyfin_libraries",
+                                    "enabled_attr": "configure_media_server_libraries",
                                     "required_attr": "jellyfin_libraries_required",
                                 },
                                 {
                                     "operation": "ensure_jellyfin_plugins",
                                     "args": ["cfg", "config_root", "wait_timeout"],
-                                    "enabled_attr": "configure_jellyfin_plugins",
+                                    "enabled_attr": "configure_media_server_plugins",
                                     "required_attr": "jellyfin_plugins_required",
                                 },
                                 {
                                     "operation": "ensure_jellyfin_playback_defaults",
                                     "args": ["cfg", "config_root", "wait_timeout"],
-                                    "enabled_attr": "configure_jellyfin_playback",
+                                    "enabled_attr": "configure_media_server_playback",
                                     "required_attr": "jellyfin_playback_required",
                                 },
                                 {
                                     "operation": "ensure_jellyfin_home_rails",
                                     "args": ["cfg", "config_root", "wait_timeout"],
-                                    "enabled_attr": "configure_jellyfin_home_rails",
+                                    "enabled_attr": "configure_media_server_home_rails",
                                     "required_attr": "jellyfin_home_rails_required",
                                 },
                                 {
@@ -97,7 +97,7 @@ class MediaServerAdaptersTests(unittest.TestCase):
                                 {
                                     "operation": "ensure_jellyfin_prewarm",
                                     "args": ["cfg", "config_root", "wait_timeout"],
-                                    "enabled_attr": "configure_jellyfin_prewarm",
+                                    "enabled_attr": "configure_media_server_prewarm",
                                     "required_attr": "jellyfin_prewarm_required",
                                 }
                             ]
@@ -105,19 +105,19 @@ class MediaServerAdaptersTests(unittest.TestCase):
                     }
                 }
             },
-            configure_jellyfin_livetv=True,
+            configure_media_server_livetv=True,
             jellyfin_livetv_required=False,
-            configure_jellyfin_libraries=True,
+            configure_media_server_libraries=True,
             jellyfin_libraries_required=False,
-            configure_jellyfin_plugins=True,
+            configure_media_server_plugins=True,
             jellyfin_plugins_required=False,
-            configure_jellyfin_playback=True,
+            configure_media_server_playback=True,
             jellyfin_playback_required=False,
-            configure_jellyfin_home_rails=True,
+            configure_media_server_home_rails=True,
             jellyfin_home_rails_required=False,
             configure_auto_collections=True,
             auto_collections_required=False,
-            configure_jellyfin_prewarm=True,
+            configure_media_server_prewarm=True,
             jellyfin_prewarm_required=False,
         )
 

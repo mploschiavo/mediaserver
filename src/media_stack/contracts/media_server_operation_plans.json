@@ -39,7 +39,7 @@
             "config_root",
             "wait_timeout"
           ],
-          "enabled_attr": "configure_jellyfin_livetv",
+          "enabled_attr": "configure_media_server_livetv",
           "required_attr": "jellyfin_livetv_required",
           "warning_message": "[WARN] Jellyfin Live TV: automation skipped. Set jellyfin_livetv.required=true to fail the bootstrap instead."
         },
@@ -51,7 +51,7 @@
             "config_root",
             "wait_timeout"
           ],
-          "enabled_attr": "configure_jellyfin_libraries",
+          "enabled_attr": "configure_media_server_libraries",
           "required_attr": "jellyfin_libraries_required",
           "warning_message": "[WARN] Jellyfin libraries: automation skipped. Set jellyfin_libraries.required=true to fail the bootstrap instead."
         },
@@ -63,7 +63,7 @@
             "config_root",
             "wait_timeout"
           ],
-          "enabled_attr": "configure_jellyfin_plugins",
+          "enabled_attr": "configure_media_server_plugins",
           "required_attr": "jellyfin_plugins_required",
           "warning_message": "[WARN] Jellyfin plugins: automation skipped. Set jellyfin_plugins.required=true to fail the bootstrap instead."
         },
@@ -75,7 +75,7 @@
             "config_root",
             "wait_timeout"
           ],
-          "enabled_attr": "configure_jellyfin_playback",
+          "enabled_attr": "configure_media_server_playback",
           "required_attr": "jellyfin_playback_required",
           "warning_message": "[WARN] Jellyfin playback: automation skipped. Set jellyfin_playback.required=true to fail the bootstrap instead."
         },
@@ -87,7 +87,7 @@
             "config_root",
             "wait_timeout"
           ],
-          "enabled_attr": "configure_jellyfin_home_rails",
+          "enabled_attr": "configure_media_server_home_rails",
           "required_attr": "jellyfin_home_rails_required",
           "warning_message": "[WARN] Jellyfin home rails: automation skipped. Set jellyfin_home_rails.required=true to fail the bootstrap instead."
         },
@@ -115,7 +115,7 @@
             "config_root",
             "wait_timeout"
           ],
-          "enabled_attr": "configure_jellyfin_prewarm",
+          "enabled_attr": "configure_media_server_prewarm",
           "required_attr": "jellyfin_prewarm_required",
           "warning_message": "[WARN] Jellyfin prewarm: automation skipped. Set jellyfin_prewarm.required=true to fail the bootstrap instead."
         }
