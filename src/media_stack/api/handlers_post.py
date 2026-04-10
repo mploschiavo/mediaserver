@@ -29,6 +29,7 @@ logger = logging.getLogger("controller_api")
 KNOWN_ACTIONS = frozenset({
     "bootstrap", "finalize", "auto-indexers", "restart-apps",
     "sync-indexers", "envoy-config", "reconcile", "validate-credentials",
+    "configure-livetv",
 })
 
 
@@ -180,10 +181,15 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     # POST /api/livetv-sources
     if handler.path == "/api/livetv-sources":
         body = handler._read_json_body()
-        handler._json_response(200, config_svc.update_livetv_sources(
+        result = config_svc.update_livetv_sources(
             tuners=body.get("tuners"), guides=body.get("guides"),
             tuner_url=body.get("tuner_url", ""), guide_url=body.get("guide_url", ""),
-        ))
+        )
+        # Auto-trigger targeted Live TV reconfigure (not full bootstrap)
+        if "error" not in result and handler.action_trigger:
+            handler.action_trigger("configure-livetv", {})
+            result["action"] = "configure-livetv queued"
+        handler._json_response(200, result)
         return
 
     # POST /api/indexers/{id}/toggle
