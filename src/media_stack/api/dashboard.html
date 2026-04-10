@@ -253,6 +253,17 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     </p>
   </div>
 </div>
+<div class="card" id="setup-wizard" style="display:none">
+  <h2 onclick="toggleCard(this)">Setup Complete — Next Steps <span class="collapse-icon">&#9660;</span></h2>
+  <div class="card-body" style="font-size:.9em">
+    <div id="wizard-steps"></div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:.82em;color:var(--fg3);cursor:pointer">
+        <input type="checkbox" id="wizard-dismiss" onchange="dismissWizard()"> Don't show this again
+      </label>
+    </div>
+  </div>
+</div>
 
 
 
@@ -777,6 +788,11 @@ async function load(){
     document.getElementById('hbadge').className='badge '+cls;
     const showWelcome=p==='idle'&&!d.initial_bootstrap_done&&!d.current_action&&!(d.action_history||[]).length;
     document.getElementById('welcome-card').style.display=showWelcome?'block':'none';
+    // Post-bootstrap wizard: show after first setup complete, unless dismissed
+    const wizardDismissed=localStorage.getItem('wizardDismissed')==='true';
+    const showWizard=d.initial_bootstrap_done&&!showWelcome&&!wizardDismissed&&p!=='running';
+    document.getElementById('setup-wizard').style.display=showWizard?'block':'none';
+    if(showWizard)renderWizardSteps();
 
     let h='<div class="phase '+cls+'">'+p.charAt(0).toUpperCase()+p.slice(1)+'</div>';
     if(d.current_action){const a=d.current_action,el=a.elapsed_seconds||0,to=a.timeout_seconds||600,pct=Math.min(100,Math.round(el/to*100));
@@ -2138,6 +2154,78 @@ async function loadEnvVars(){
   }catch(e){}
 }
 
+/* Post-bootstrap setup wizard */
+function dismissWizard(){
+  localStorage.setItem('wizardDismissed',document.getElementById('wizard-dismiss')?.checked?'true':'false');
+  if(document.getElementById('wizard-dismiss')?.checked)document.getElementById('setup-wizard').style.display='none';
+}
+function renderWizardSteps(){
+  const el=document.getElementById('wizard-steps');if(!el)return;
+  // Build routing info from the API
+  const routing=_wizardRouting||{};
+  const gwHost=routing.gateway_host||location.hostname;
+  const gwPort=routing.gateway_port||80;
+  const prefix=routing.app_path_prefix||'/app';
+  const portStr=(gwPort===80||gwPort===443)?'':':'+gwPort;
+  const baseUrl='http://'+gwHost+portStr;
+  const directMedia=routing.direct_hosts?.media_server?'http://'+routing.direct_hosts.media_server+portStr:'';
+
+  let h='<div style="margin-bottom:12px;color:var(--ok);font-weight:600">Your media stack is configured and running.</div>';
+
+  // Step 1: Access your services
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">1. Access Your Services</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0">';
+  for(const s of SVCS){
+    if(!s.port)continue;
+    const url=baseUrl+prefix+'/'+s.id;
+    h+='<a href="'+_escHtml(url)+'" target="_blank" class="btn-secondary" style="padding:4px 10px;font-size:.82em;text-decoration:none">'+_escHtml(s.name)+'</a>';
+  }
+  h+='</div>';
+  if(directMedia)h+='<div style="font-size:.82em;color:var(--fg3)">Media server direct: <a href="'+_escHtml(directMedia)+'" target="_blank" style="color:var(--blue)">'+_escHtml(directMedia)+'</a></div>';
+  h+='</div>';
+
+  // Step 2: DNS / Host file setup
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">2. Set Up DNS (Optional)</div>';
+  h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">To access services by name, add this to your hosts file or local DNS:</p>';
+  h+='<pre class="profile-pre" style="font-size:.82em">';
+  h+=_escHtml(location.hostname)+' '+_escHtml(gwHost)+'\n';
+  if(directMedia){const host=new URL(directMedia).hostname;h+=_escHtml(location.hostname)+' '+_escHtml(host)+'\n';}
+  h+='</pre>';
+  h+='<div style="font-size:.78em;color:var(--fg3)">On Windows: <code>C:\\Windows\\System32\\drivers\\etc\\hosts</code> · On Mac/Linux: <code>/etc/hosts</code></div>';
+  h+='</div>';
+
+  // Step 3: Start watching
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">3. Start Watching</div>';
+  h+='<ol style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
+  h+='<li>Open <b>Jellyseerr</b> (or your request manager) to search and request movies/shows</li>';
+  h+='<li>Downloads start automatically via your torrent/usenet clients</li>';
+  h+='<li>Open your <b>media server</b> to watch — it picks up new media automatically</li>';
+  h+='<li>Install the media server app on your TV, phone, or streaming device</li>';
+  h+='</ol></div>';
+
+  // Step 4: Connect your TV
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">4. Connect Your TV / Devices</div>';
+  h+='<ol style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
+  h+='<li>Install the media server app (available on Smart TVs, Roku, Fire TV, Apple TV, iOS, Android)</li>';
+  h+='<li>Enter the server address: <code>'+_escHtml(directMedia||baseUrl+prefix+'/jellyfin')+'</code></li>';
+  h+='<li>Sign in with username <code>admin</code> and your stack password</li>';
+  h+='</ol></div>';
+
+  // Step 5: Troubleshooting
+  h+='<div class="action-group"><div class="action-group-title">5. Not Working?</div>';
+  h+='<ul style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
+  h+='<li><b>Services show "pending"</b> — wait 2-3 minutes for bootstrap to finish, then refresh</li>';
+  h+='<li><b>Can\'t access by hostname</b> — check DNS/hosts file setup in step 2 above</li>';
+  h+='<li><b>Downloads not starting</b> — go to Content > Indexers and click "Discover Indexers"</li>';
+  h+='<li><b>Login fails</b> — click "Validate Credentials" in the Actions panel to auto-sync passwords</li>';
+  h+='<li><b>Media not appearing</b> — go to Config > Libraries to verify your media folder paths</li>';
+  h+='</ul></div>';
+
+  el.innerHTML=h;
+}
+let _wizardRouting=null;
+fetch('/api/routing').then(r=>r.json()).then(d=>{_wizardRouting=d;}).catch(()=>{});
+
 /* Libraries config */
 async function loadLibrariesConfig(){
   const el=document.getElementById('libraries-config');
@@ -2317,27 +2405,85 @@ async function deleteServerSchedule(id){
   }catch(e){toast('Error: '+e,true);}
 }
 
-/* Live TV / IPTV sources config */
+/* Live TV / IPTV sources config — multi-country support */
+let _iptvCountries=[];
+let _ltvTuners=[];let _ltvGuides=[];
+// Load country list from API (not hardcoded)
+fetch('/api/iptv-countries').then(r=>r.json()).then(d=>{_iptvCountries=d.countries||[];}).catch(()=>{});
 async function loadLiveTvConfig(){
   const el=document.getElementById('livetv-config');
   try{const r=await fetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
-    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Live TV tuner (M3U playlist) and guide (EPG/XMLTV) sources for Jellyfin.</p>';
-    h+='<div style="margin-bottom:8px"><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Tuner URL (M3U)</label>';
-    h+='<input id="ltv-tuner" value="'+_escHtml(d.tuner_url)+'" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" placeholder="https://iptv-org.github.io/iptv/countries/us.m3u"></div>';
-    h+='<div style="margin-bottom:8px"><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Guide URL (XMLTV)</label>';
-    h+='<input id="ltv-guide" value="'+_escHtml(d.guide_url)+'" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" placeholder="https://iptv-epg.org/files/epg-us.xml"></div>';
-    h+='<button class="btn-primary" onclick="saveLiveTv()">Save</button>';
-    h+='<div style="font-size:.78em;color:var(--fg3);margin-top:6px">Browse sources: <a href="https://github.com/iptv-org/iptv" target="_blank" style="color:var(--blue)">iptv-org/iptv</a> — country playlists available for 250+ countries</div>';
-    el.innerHTML=h;
+    _ltvTuners=d.tuners||[];_ltvGuides=d.guides||[];
+    renderLiveTvConfig();
   }catch(e){el.innerHTML='Error: '+e;}
 }
+function renderLiveTvConfig(){
+  const el=document.getElementById('livetv-config');
+  let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Add Live TV sources by country. Multiple countries supported — all channels show up in your media server.</p>';
+  // Quick-add by country
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Quick Add by Country</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
+  for(const c of _iptvCountries){
+    const alreadyAdded=_ltvTuners.some(t=>t.url&&t.url.includes('/'+c.code+'.m3u'));
+    h+='<button class="btn-secondary'+(alreadyAdded?' active':'')+'" style="padding:3px 8px;font-size:.78em" onclick="addCountryLiveTv(\''+c.code+'\',\''+_escHtml(c.name)+'\')">'+_escHtml(c.name)+(alreadyAdded?' ✓':'')+'</button>';
+  }
+  h+='</div></div>';
+  // Current tuners
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Tuner Sources ('+_ltvTuners.length+')</div>';
+  h+='<div id="ltv-tuner-list">';
+  for(let i=0;i<_ltvTuners.length;i++){const t=_ltvTuners[i];
+    h+='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:6px;font-size:.85em">';
+    h+='<span style="font-weight:600;min-width:80px">'+_escHtml(t.name||'Tuner '+(i+1))+'</span>';
+    h+='<span style="flex:1;color:var(--fg3);word-break:break-all;font-size:.78em">'+_escHtml(t.url||'')+'</span>';
+    h+='<button class="btn-danger" style="padding:2px 6px;font-size:.72em" onclick="removeLiveTvTuner('+i+')">Remove</button>';
+    h+='</div>';}
+  if(!_ltvTuners.length)h+='<div style="color:var(--fg3);font-size:.85em">No tuners configured. Click a country above to add.</div>';
+  h+='</div></div>';
+  // Current guides
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Guide Sources ('+_ltvGuides.length+')</div>';
+  h+='<div id="ltv-guide-list">';
+  for(let i=0;i<_ltvGuides.length;i++){const g=_ltvGuides[i];
+    h+='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:6px;font-size:.85em">';
+    h+='<span style="font-weight:600;min-width:80px">'+_escHtml(g.name||'Guide '+(i+1))+'</span>';
+    h+='<span style="flex:1;color:var(--fg3);word-break:break-all;font-size:.78em">'+_escHtml(g.url||'')+'</span>';
+    h+='<button class="btn-danger" style="padding:2px 6px;font-size:.72em" onclick="removeLiveTvGuide('+i+')">Remove</button>';
+    h+='</div>';}
+  if(!_ltvGuides.length)h+='<div style="color:var(--fg3);font-size:.85em">Guides are added automatically with countries.</div>';
+  h+='</div></div>';
+  // Manual add + save
+  h+='<div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap;margin-bottom:8px">';
+  h+='<div><label style="font-size:.78em;color:var(--fg3)">Custom Tuner URL</label><input id="ltv-custom-tuner" style="width:300px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.82em" placeholder="M3U URL"></div>';
+  h+='<div><label style="font-size:.78em;color:var(--fg3)">Custom Guide URL</label><input id="ltv-custom-guide" style="width:300px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.82em" placeholder="XMLTV URL"></div>';
+  h+='<button class="btn-secondary" onclick="addCustomLiveTv()">Add Custom</button></div>';
+  h+='<button class="btn-primary" onclick="saveLiveTv()">Save & Apply</button>';
+  el.innerHTML=h;
+}
+function addCountryLiveTv(code,name){
+  // URL templates come from the country list API, not hardcoded
+  const country=_iptvCountries.find(c=>c.code===code);
+  const tunerUrl=(country&&country.tuner_url)||('/iptv/countries/'+code+'.m3u');
+  const guideUrl=(country&&country.guide_url)||('/epg/'+code+'.xml');
+  if(!_ltvTuners.some(t=>t.url===tunerUrl)){
+    _ltvTuners.push({url:tunerUrl,name:name+' IPTV'});
+    _ltvGuides.push({url:guideUrl,name:name+' EPG'});
+    renderLiveTvConfig();toast('Added '+name);
+  }else{toast(name+' already added');}
+}
+function addCustomLiveTv(){
+  const tuner=document.getElementById('ltv-custom-tuner')?.value.trim();
+  const guide=document.getElementById('ltv-custom-guide')?.value.trim();
+  if(tuner){_ltvTuners.push({url:tuner,name:'Custom'});}
+  if(guide){_ltvGuides.push({url:guide,name:'Custom'});}
+  if(tuner||guide){renderLiveTvConfig();toast('Added custom source');}
+  else toast('Enter a tuner or guide URL',true);
+}
+function removeLiveTvTuner(i){_ltvTuners.splice(i,1);renderLiveTvConfig();}
+function removeLiveTvGuide(i){_ltvGuides.splice(i,1);renderLiveTvConfig();}
 async function saveLiveTv(){
-  const tuner=document.getElementById('ltv-tuner')?.value.trim()||'';
-  const guide=document.getElementById('ltv-guide')?.value.trim()||'';
-  if(!tuner){toast('Tuner URL required',true);return;}
-  try{const r=await fetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tuner_url:tuner,guide_url:guide})});
+  try{const r=await fetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tuners:_ltvTuners,guides:_ltvGuides})});
     const d=await r.json();
-    if(d.status==='saved')toast('Live TV sources saved. Run bootstrap to apply.');
+    if(d.status==='saved'){toast('Live TV sources saved ('+_ltvTuners.length+' tuners, '+_ltvGuides.length+' guides). Run bootstrap to apply.');loadLiveTvConfig();}
     else toast(d.error||'Save failed',true);
   }catch(e){toast('Error: '+e,true);}
 }

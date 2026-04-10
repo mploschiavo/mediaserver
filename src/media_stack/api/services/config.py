@@ -161,14 +161,21 @@ def update_metadata_settings(language: str, country: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_livetv_sources() -> dict[str, Any]:
-    """Return configured Live TV tuner and guide URLs from the profile."""
+    """Return configured Live TV tuner and guide sources. Supports multiple countries."""
     data, _ = _load_profile_yaml()
     ltv = data.get("live_tv_defaults", {})
+    tuners = ltv.get("tuners", [])
+    guides = ltv.get("guides", [])
+    if not tuners and ltv.get("tuner_url"):
+        tuners = [{"url": ltv["tuner_url"], "name": "Default"}]
+    if not guides and ltv.get("guide_url"):
+        guides = [{"url": ltv["guide_url"], "name": "Default"}]
     return {
-        "tuner_url": ltv.get("tuner_url", ""),
-        "guide_url": ltv.get("guide_url", ""),
-        "source": "profile" if ltv.get("tuner_url") else "not_configured",
-        "note": "Configure in Config > Live TV" if not ltv.get("tuner_url") else "",
+        "tuners": tuners,
+        "guides": guides,
+        "tuner_url": tuners[0]["url"] if tuners else "",
+        "guide_url": guides[0]["url"] if guides else "",
+        "source": "profile" if tuners else "not_configured",
     }
 
 
@@ -190,18 +197,74 @@ def update_discovery_lists(lists: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def update_livetv_sources(tuner_url: str, guide_url: str) -> dict[str, Any]:
-    """Update IPTV tuner and guide URLs in the profile."""
-    if not tuner_url:
-        return {"error": "tuner_url is required"}
-    updates = {"tuner_url": tuner_url}
-    if guide_url:
-        updates["guide_url"] = guide_url
-    result = update_profile_section("live_tv_defaults", updates)
+def update_livetv_sources(
+    tuners: list[dict[str, str]] | None = None,
+    guides: list[dict[str, str]] | None = None,
+    tuner_url: str = "", guide_url: str = "",
+) -> dict[str, Any]:
+    """Update IPTV sources. Supports multiple tuners/guides for multi-country setups."""
+    data, path = _load_profile_yaml()
+    if path is None:
+        return {"error": "Profile file not found"}
+    ltv = data.get("live_tv_defaults", {})
+    if tuners is not None:
+        ltv["tuners"] = tuners
+    elif tuner_url:
+        ltv["tuners"] = [{"url": tuner_url, "name": "Default"}]
+    if guides is not None:
+        ltv["guides"] = guides
+    elif guide_url:
+        ltv["guides"] = [{"url": guide_url, "name": "Default"}]
+    if ltv.get("tuners"):
+        ltv["tuner_url"] = ltv["tuners"][0].get("url", "")
+    elif tuners is not None:
+        ltv["tuner_url"] = ""
+    if ltv.get("guides"):
+        ltv["guide_url"] = ltv["guides"][0].get("url", "")
+    elif guides is not None:
+        ltv["guide_url"] = ""
+    data["live_tv_defaults"] = ltv
+    result = _save_profile_yaml(data, path)
     if "error" not in result:
-        result["live_tv"] = updates
-        result["note"] = "Run bootstrap to apply Live TV changes to the media server"
+        result["tuners"] = ltv.get("tuners", [])
+        result["guides"] = ltv.get("guides", [])
+        result["note"] = "Run bootstrap to apply Live TV changes"
     return result
+
+
+def get_iptv_countries() -> dict[str, Any]:
+    """Return available IPTV country sources.
+
+    The country list is read from the profile YAML if available,
+    otherwise falls back to a well-known set from iptv-org.
+    """
+    data, _ = _load_profile_yaml()
+    custom = data.get("iptv_countries")
+    if isinstance(custom, list) and custom:
+        return {"countries": custom, "source": "profile"}
+    # Default set — URLs are iptv-org templates. Users can override in profile YAML.
+    ltv_defaults = data.get("live_tv_defaults", {})
+    tuner_tpl = ltv_defaults.get("tuner_url_template", "")
+    guide_tpl = ltv_defaults.get("guide_url_template", "")
+    countries = [
+        {"code": c, "name": n,
+         "tuner_url": tuner_tpl.replace("{code}", c),
+         "guide_url": guide_tpl.replace("{code}", c)}
+        for c, n in [
+            ("us", "United States"), ("gb", "United Kingdom"), ("ca", "Canada"),
+            ("au", "Australia"), ("de", "Germany"), ("fr", "France"),
+            ("es", "Spain"), ("it", "Italy"), ("br", "Brazil"), ("mx", "Mexico"),
+            ("jp", "Japan"), ("kr", "South Korea"), ("in", "India"),
+            ("nl", "Netherlands"), ("se", "Sweden"), ("no", "Norway"),
+            ("dk", "Denmark"), ("fi", "Finland"), ("pl", "Poland"),
+            ("pt", "Portugal"), ("ru", "Russia"), ("za", "South Africa"),
+            ("ar", "Argentina"), ("co", "Colombia"), ("cl", "Chile"),
+            ("tr", "Turkey"), ("il", "Israel"), ("ae", "UAE"),
+            ("cn", "China"), ("tw", "Taiwan"), ("ph", "Philippines"),
+            ("th", "Thailand"), ("id", "Indonesia"),
+        ]
+    ]
+    return {"countries": countries, "source": "defaults"}
 
 
 def get_profile() -> dict[str, Any]:
