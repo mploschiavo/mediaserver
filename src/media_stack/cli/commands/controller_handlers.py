@@ -256,9 +256,10 @@ def _auto_generate_config_json(target_path: str) -> str | None:
 
     # 4. Build adapter_hooks from contract operation plan files
     try:
+        # Search multiple locations for operation plan files
+        src_contracts = Path(__file__).resolve().parents[2] / "contracts"
         contracts_dir = Path(os.environ.get("CONTRACTS_DIR", "")) or Path("/opt/media-stack/contracts")
-        # Also check the mounted contracts
-        for candidate in [contracts_dir, Path("/contracts")]:
+        for candidate in [src_contracts, contracts_dir, Path("/contracts")]:
             for plan_file in sorted(candidate.glob("*_operation_plans.json")) if candidate.is_dir() else []:
                 try:
                     plan_data = json.loads(plan_file.read_text(encoding="utf-8"))
