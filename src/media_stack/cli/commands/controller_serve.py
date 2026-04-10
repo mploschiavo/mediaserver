@@ -82,6 +82,18 @@ def _run_serve(args: argparse.Namespace) -> None:
             f"[INFO] Config resolved: {args.config} → {resolved}"
         )
         args.config = resolved
+    elif not resolved:
+        # Config JSON not found — generate from contracts + profile
+        # This eliminates the need for a pre-built config JSON in compose mode
+        runtime_platform.log("[INFO] Bootstrap config JSON not found — generating from contracts + profile")
+        try:
+            from media_stack.cli.commands.controller_handlers import _auto_generate_config_json
+            generated = _auto_generate_config_json(args.config)
+            if generated:
+                args.config = generated
+                runtime_platform.log(f"[OK] Generated config from contracts: {generated}")
+        except Exception as exc:
+            runtime_platform.log(f"[WARN] Config generation failed: {exc}. Bootstrap may skip some steps.")
 
     # Load profile if available (ConfigMap may not be mounted yet on first start).
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")

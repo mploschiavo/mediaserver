@@ -198,3 +198,75 @@ def _run_preflights(state: object, args: argparse.Namespace) -> None:
 def _run_post_bootstrap(state: object, args: argparse.Namespace) -> None:
     specs = _load_handler_specs("container_post_setup_handlers")
     _run_handler_specs(specs, state, args, phase_label="POST-BOOTSTRAP")
+
+
+def _auto_generate_config_json(target_path: str) -> str | None:
+    """Auto-generate bootstrap config JSON from service contracts + profile.
+
+    Called when the config JSON doesn't exist (fresh compose installs).
+    Builds a minimal but functional config that includes library definitions,
+    Live TV sources, download client settings, and adapter hooks.
+    """
+    import yaml
+    from pathlib import Path
+
+    config: dict = {}
+    profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+
+    # 1. Load profile YAML for user settings
+    profile: dict = {}
+    if profile_file:
+        try:
+            with open(profile_file) as f:
+                profile = yaml.safe_load(f) or {}
+        except Exception:
+            pass
+
+    # 2. Load service contract defaults (libraries, livetv, etc.)
+    from media_stack.api.services.registry import SERVICES, _find_services_dir
+    svc_dir = _find_services_dir()
+    if svc_dir:
+        for svc in SERVICES:
+            svc_yaml_path = svc_dir / f"{svc.id}.yaml"
+            if svc_yaml_path.is_file():
+                try:
+                    with open(svc_yaml_path) as f:
+                        svc_data = yaml.safe_load(f) or {}
+                    defaults = svc_data.get("defaults", {})
+                    if defaults:
+                        # Merge service defaults into config under the service ID
+                        config[svc.id] = defaults
+                except Exception:
+                    pass
+
+    # 3. Copy profile sections into config
+    for key in ("routing", "technology_bindings", "bootstrap", "app_auth",
+                "live_tv_defaults", "download_categories", "metadata"):
+        if key in profile:
+            config[key] = profile[key]
+
+    # 4. Build adapter_hooks from plugin manifests
+    try:
+        from media_stack.services.plugin_manifest_loader import load_plugin_manifests
+        manifests = load_plugin_manifests()
+        adapter_hooks: dict = {}
+        for manifest in manifests:
+            hooks = manifest.get("adapter_hooks", {})
+            if isinstance(hooks, dict):
+                for hook_key, hook_value in hooks.items():
+                    if hook_key not in adapter_hooks:
+                        adapter_hooks[hook_key] = hook_value
+                    elif isinstance(hook_value, dict) and isinstance(adapter_hooks[hook_key], dict):
+                        adapter_hooks[hook_key].update(hook_value)
+        if adapter_hooks:
+            config["adapter_hooks"] = adapter_hooks
+    except Exception:
+        pass
+
+    # 5. Write the config JSON
+    if not config:
+        return None
+    out_path = Path(target_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
+    return str(out_path)
