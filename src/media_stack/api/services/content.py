@@ -404,3 +404,104 @@ def get_recent() -> dict[str, Any]:
             except Exception:
                 pass
     return {"recent": recent}
+
+
+# ---------------------------------------------------------------------------
+# Indexer management — enable/disable, manual add (via Prowlarr API)
+# ---------------------------------------------------------------------------
+
+def toggle_indexer(indexer_id: int, enable: bool) -> dict[str, Any]:
+    """Enable or disable a specific indexer by ID."""
+    api_keys = discover_api_keys()
+    svc = next((s for s in SERVICES if s.indexer_path), None)
+    if not svc:
+        return {"error": "No indexer manager service configured"}
+    key = api_keys.get(svc.id, "")
+    if not key:
+        return {"error": f"No API key for {svc.id}"}
+    try:
+        # GET current indexer config
+        req = urllib.request.Request(
+            f"http://{svc.host}:{svc.port}{svc.indexer_path}/{indexer_id}",
+            headers={"X-Api-Key": key},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            indexer = json.loads(resp.read())
+        indexer["enable"] = enable
+        # PUT updated config
+        put_req = urllib.request.Request(
+            f"http://{svc.host}:{svc.port}{svc.indexer_path}/{indexer_id}",
+            data=json.dumps(indexer).encode(), method="PUT",
+            headers={"X-Api-Key": key, "Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(put_req, timeout=5)
+        return {"status": "ok", "indexer_id": indexer_id, "enable": enable}
+    except Exception as exc:
+        return {"error": str(exc)[:120]}
+
+
+def delete_indexer(indexer_id: int) -> dict[str, Any]:
+    """Delete an indexer by ID."""
+    api_keys = discover_api_keys()
+    svc = next((s for s in SERVICES if s.indexer_path), None)
+    if not svc:
+        return {"error": "No indexer manager service configured"}
+    key = api_keys.get(svc.id, "")
+    if not key:
+        return {"error": f"No API key for {svc.id}"}
+    try:
+        req = urllib.request.Request(
+            f"http://{svc.host}:{svc.port}{svc.indexer_path}/{indexer_id}",
+            method="DELETE", headers={"X-Api-Key": key},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return {"status": "deleted", "indexer_id": indexer_id}
+    except Exception as exc:
+        return {"error": str(exc)[:120]}
+
+
+# ---------------------------------------------------------------------------
+# Import list management — add/remove Trakt/IMDb/RSS lists (via Arr APIs)
+# ---------------------------------------------------------------------------
+
+def get_all_import_lists() -> dict[str, Any]:
+    """Fetch import lists from all arr services that support them."""
+    api_keys = discover_api_keys()
+    apps = [(s.id, s.host, s.port, s.import_list_path) for s in SERVICES if s.import_list_path]
+    all_lists: dict[str, list] = {}
+    for svc_id, host, port, path in apps:
+        key = api_keys.get(svc_id, "")
+        if not key:
+            continue
+        try:
+            req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            all_lists[svc_id] = [
+                {"id": l.get("id"), "name": l.get("name", ""), "listType": l.get("listType", ""),
+                 "enabled": l.get("enableAuto", True)}
+                for l in (data if isinstance(data, list) else [])
+            ]
+        except Exception:
+            all_lists[svc_id] = []
+    return {"lists": all_lists, "total": sum(len(v) for v in all_lists.values())}
+
+
+def delete_import_list(service_id: str, list_id: int) -> dict[str, Any]:
+    """Delete an import list from a specific arr service."""
+    api_keys = discover_api_keys()
+    svc = SERVICE_MAP.get(service_id)
+    if not svc or not svc.import_list_path:
+        return {"error": f"Service '{service_id}' not found or has no import list support"}
+    key = api_keys.get(service_id, "")
+    if not key:
+        return {"error": f"No API key for {service_id}"}
+    try:
+        req = urllib.request.Request(
+            f"http://{svc.host}:{svc.port}{svc.import_list_path}/{list_id}",
+            method="DELETE", headers={"X-Api-Key": key},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return {"status": "deleted", "service": service_id, "list_id": list_id}
+    except Exception as exc:
+        return {"error": str(exc)[:120]}

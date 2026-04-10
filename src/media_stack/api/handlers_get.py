@@ -190,6 +190,21 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, config_svc.get_envvars())
     elif path == "/api/config-drift":
         handler._json_response(200, config_svc.get_config_drift())
+    elif path == "/api/libraries":
+        handler._json_response(200, config_svc.get_libraries())
+    elif path == "/api/download-categories":
+        handler._json_response(200, config_svc.get_download_categories())
+    elif path == "/api/metadata-settings":
+        handler._json_response(200, config_svc.get_metadata_settings())
+    elif path == "/api/livetv-sources":
+        handler._json_response(200, config_svc.get_livetv_sources())
+    elif path == "/api/storage-breakdown":
+        handler._json_response(200, disk_svc.get_storage_breakdown())
+    elif path == "/api/import-lists-all":
+        handler._json_response(200, content_svc.get_all_import_lists())
+    elif path == "/api/schedules":
+        from .services import scheduler as sched_svc
+        handler._json_response(200, sched_svc.get_schedules())
     elif path == "/api/backup":
         payload = config_svc.get_backup(handler.state)
         handler._raw_response(200, "application/json", payload, {

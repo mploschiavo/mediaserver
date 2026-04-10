@@ -1,4 +1,4 @@
-"""Configuration services: profile, routing, backup, env vars, manifests."""
+"""Configuration services: profile, routing, backup, env vars, manifests, user settings."""
 
 from __future__ import annotations
 
@@ -8,7 +8,189 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+import yaml
+
 from ._resolve import resolve_config_path, resolve_profile_path
+
+
+# ---------------------------------------------------------------------------
+# Profile section helpers — read/write specific YAML sections
+# ---------------------------------------------------------------------------
+
+def _load_profile_yaml() -> tuple[dict[str, Any], Path | None]:
+    """Load the profile YAML. Returns (data, path) or ({}, None)."""
+    resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+    if not resolved:
+        return {}, None
+    path = Path(resolved)
+    try:
+        with open(path) as f:
+            return yaml.safe_load(f) or {}, path
+    except Exception:
+        return {}, path
+
+
+def _save_profile_yaml(data: dict[str, Any], path: Path) -> dict[str, Any]:
+    """Write profile YAML back to disk."""
+    try:
+        with open(path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        return {"status": "saved", "file": str(path)}
+    except Exception as exc:
+        return {"error": str(exc)[:120]}
+
+
+def update_profile_section(section: str, value: Any) -> dict[str, Any]:
+    """Update a top-level section in the profile YAML."""
+    data, path = _load_profile_yaml()
+    if path is None:
+        return {"error": "Profile file not found"}
+    data[section] = value
+    return _save_profile_yaml(data, path)
+
+
+# ---------------------------------------------------------------------------
+# Jellyfin library management
+# ---------------------------------------------------------------------------
+
+def _media_server_id() -> str:
+    """Resolve the configured media server ID from the profile technology bindings."""
+    data, _ = _load_profile_yaml()
+    bindings = data.get("technology_bindings", {})
+    return str(bindings.get("media_server", "")).strip()
+
+
+def get_libraries() -> dict[str, Any]:
+    """Return the configured media server libraries from the profile/defaults."""
+    ms_id = _media_server_id()
+    data, _ = _load_profile_yaml()
+    # Check profile overrides under the media server key
+    ms_overrides = data.get(ms_id, {}) if ms_id else {}
+    if isinstance(ms_overrides, dict) and "libraries" in ms_overrides:
+        return {"libraries": ms_overrides["libraries"], "source": "profile", "media_server": ms_id}
+    # Fall back to service contract defaults
+    try:
+        from .registry import SERVICES
+        ms_svc = next((s for s in SERVICES if s.id == ms_id), None) if ms_id else None
+        if ms_svc:
+            svc_dir = Path(os.environ.get("SERVICES_REGISTRY_DIR", "")) or Path(__file__).resolve().parents[4] / "contracts" / "services"
+            svc_yaml = svc_dir / f"{ms_id}.yaml"
+            if svc_yaml.is_file():
+                with open(svc_yaml) as f:
+                    svc_cfg = yaml.safe_load(f) or {}
+                libs = (svc_cfg.get("defaults", {}).get("libraries", {}).get("libraries", []))
+                return {"libraries": libs, "source": "defaults", "media_server": ms_id}
+    except Exception:
+        pass
+    return {"libraries": [], "source": "none", "media_server": ms_id}
+
+
+def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Update media server library configuration in the profile."""
+    for lib in libraries:
+        if not lib.get("name") or not lib.get("collection_type") or not lib.get("paths"):
+            return {"error": f"Each library needs name, collection_type, and paths. Invalid: {lib.get('name', '?')}"}
+    ms_id = _media_server_id()
+    data, path = _load_profile_yaml()
+    if path is None:
+        return {"error": "Profile file not found"}
+    if ms_id:
+        data.setdefault(ms_id, {})["libraries"] = libraries
+    else:
+        data["libraries"] = libraries
+    result = _save_profile_yaml(data, path)
+    if "error" not in result:
+        result["libraries"] = libraries
+        result["note"] = "Run bootstrap to apply library changes to the media server"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Download category management
+# ---------------------------------------------------------------------------
+
+def get_download_categories() -> dict[str, Any]:
+    """Return configured download categories."""
+    data, _ = _load_profile_yaml()
+    cats = data.get("download_categories")
+    if cats:
+        return {"categories": cats, "source": "profile"}
+    # Defaults
+    return {
+        "categories": {
+            "tv": "/data/torrents/completed/tv",
+            "movies": "/data/torrents/completed/movies",
+            "music": "/data/torrents/completed/music",
+            "books": "/data/torrents/completed/books",
+        },
+        "source": "defaults",
+    }
+
+
+def update_download_categories(categories: dict[str, str]) -> dict[str, Any]:
+    """Update download categories in the profile."""
+    if not categories:
+        return {"error": "At least one category is required"}
+    result = update_profile_section("download_categories", categories)
+    if "error" not in result:
+        result["categories"] = categories
+        result["note"] = "Run bootstrap to apply category changes to download clients"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Metadata language
+# ---------------------------------------------------------------------------
+
+def get_metadata_settings() -> dict[str, Any]:
+    """Return metadata language and country settings."""
+    data, _ = _load_profile_yaml()
+    meta = data.get("metadata", {})
+    return {
+        "language": meta.get("language", "en"),
+        "country": meta.get("country", "US"),
+        "source": "profile" if meta else "defaults",
+    }
+
+
+def update_metadata_settings(language: str, country: str) -> dict[str, Any]:
+    """Update metadata language/country in the profile."""
+    if not language or not country:
+        return {"error": "language and country are required"}
+    result = update_profile_section("metadata", {"language": language, "country": country})
+    if "error" not in result:
+        result["metadata"] = {"language": language, "country": country}
+        result["note"] = "Run bootstrap to apply metadata settings to media server and Arr apps"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# IPTV / Live TV sources
+# ---------------------------------------------------------------------------
+
+def get_livetv_sources() -> dict[str, Any]:
+    """Return configured Live TV tuner and guide URLs."""
+    data, _ = _load_profile_yaml()
+    ltv = data.get("live_tv_defaults", {})
+    return {
+        "tuner_url": ltv.get("tuner_url", "https://iptv-org.github.io/iptv/countries/us.m3u"),
+        "guide_url": ltv.get("guide_url", "https://iptv-epg.org/files/epg-us.xml"),
+        "source": "profile" if ltv else "defaults",
+    }
+
+
+def update_livetv_sources(tuner_url: str, guide_url: str) -> dict[str, Any]:
+    """Update IPTV tuner and guide URLs in the profile."""
+    if not tuner_url:
+        return {"error": "tuner_url is required"}
+    updates = {"tuner_url": tuner_url}
+    if guide_url:
+        updates["guide_url"] = guide_url
+    result = update_profile_section("live_tv_defaults", updates)
+    if "error" not in result:
+        result["live_tv"] = updates
+        result["note"] = "Run bootstrap to apply Live TV changes to the media server"
+    return result
 
 
 def get_profile() -> dict[str, Any]:
