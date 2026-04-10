@@ -204,99 +204,34 @@ def _run_post_bootstrap(state: object, args: argparse.Namespace) -> None:
 def _auto_generate_config_json(target_path: str) -> str | None:
     """Auto-generate bootstrap config JSON from service contracts + profile.
 
-    Called when the config JSON doesn't exist (fresh compose installs).
-    Builds a minimal but functional config that includes library definitions,
-    Live TV sources, download client settings, and adapter hooks.
+    Uses the generate_bootstrap_config module which properly handles
+    the config schema, operation plans, and service defaults.
     """
-    import yaml
     from pathlib import Path
+    from media_stack.cli.commands.generate_bootstrap_config import generate
 
-    config: dict = {}
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+    profile_path = Path(profile_file) if profile_file else None
 
-    # 1. Load profile YAML for user settings
-    profile: dict = {}
-    if profile_file:
-        try:
-            with open(profile_file) as f:
-                profile = yaml.safe_load(f) or {}
-        except Exception:
-            pass
-
-    # 2. Load service contract defaults (libraries, livetv, etc.)
-    # Only include services whose ID is in the config schema's allowed keys
-    try:
-        from media_stack.services.top_level_config_model import _load_top_level_schema
-        allowed_keys, _ = _load_top_level_schema()
-    except Exception:
-        allowed_keys = set()
-    from media_stack.api.services.registry import SERVICES, _find_services_dir
-    svc_dir = _find_services_dir()
-    if svc_dir:
-        for svc in SERVICES:
-            if svc.id not in allowed_keys:
-                continue
-            svc_yaml_path = svc_dir / f"{svc.id}.yaml"
-            if svc_yaml_path.is_file():
-                try:
-                    with open(svc_yaml_path) as f:
-                        svc_data = yaml.safe_load(f) or {}
-                    defaults = svc_data.get("defaults", {})
-                    if defaults:
-                        config[svc.id] = defaults
-                except Exception:
-                    pass
-
-    # 3. Copy only config-schema-compatible sections from profile
-    # (routing, bootstrap, download_categories etc. are profile-only,
-    #  not valid in the bootstrap config JSON schema)
-    for key in ("app_auth", "technology_bindings"):
-        if key in profile:
-            config[key] = profile[key]
-
-    # 4. Build adapter_hooks from contract operation plan files
-    try:
-        # Search multiple locations for operation plan files
-        src_contracts = Path(__file__).resolve().parents[2] / "contracts"
-        contracts_dir = Path(os.environ.get("CONTRACTS_DIR", "")) or Path("/opt/media-stack/contracts")
-        for candidate in [src_contracts, contracts_dir, Path("/contracts")]:
-            for plan_file in sorted(candidate.glob("*_operation_plans.json")) if candidate.is_dir() else []:
-                try:
-                    plan_data = json.loads(plan_file.read_text(encoding="utf-8"))
-                    if isinstance(plan_data, dict):
-                        config.setdefault("adapter_hooks", {}).update(plan_data)
-                except Exception:
-                    pass
-        # Also load the defaults directory
-        defaults_dir = contracts_dir / "defaults"
-        if not defaults_dir.is_dir():
-            defaults_dir = Path("/opt/media-stack/config/defaults")
-        if defaults_dir.is_dir():
-            for json_file in sorted(defaults_dir.glob("*.json")):
-                try:
-                    data = json.loads(json_file.read_text(encoding="utf-8"))
-                    if isinstance(data, dict):
-                        for k, v in data.items():
-                            if k not in config:
-                                config[k] = v
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    # 5. Write the config JSON to a writable location
-    if not config:
+    # Find contracts directory
+    candidates = [
+        Path(__file__).resolve().parents[4] / "contracts",
+        Path("/opt/media-stack/contracts"),
+        Path("/contracts"),
+    ]
+    contracts_dir = next((p for p in candidates if p.is_dir()), None)
+    if not contracts_dir:
         return None
-    # Try the target path first, fall back to config root (which is always writable)
+
+    # Write to writable location
     out_path = Path(target_path)
     try:
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
+        generate(contracts_dir, profile_path, out_path)
         return str(out_path)
     except OSError:
-        # Target is read-only — write to config root instead
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
         fallback = config_root / ".controller" / "generated-config.json"
         fallback.parent.mkdir(parents=True, exist_ok=True)
-        fallback.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
+        generate(contracts_dir, profile_path, fallback)
         return str(fallback)

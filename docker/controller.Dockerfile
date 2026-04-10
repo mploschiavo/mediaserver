@@ -27,6 +27,14 @@ COPY src /opt/media-stack/src
 COPY config/defaults /opt/media-stack/config/defaults
 COPY contracts /opt/media-stack/contracts
 
+# Generate bootstrap config JSON from contracts at build time
+RUN PYTHONPATH=/opt/media-stack/src python3 \
+    /opt/media-stack/src/media_stack/cli/commands/generate_bootstrap_config.py \
+    /opt/media-stack/contracts \
+    /opt/media-stack/contracts/media-stack.config.json \
+    /opt/media-stack/contracts/media-stack.profile.yaml \
+    || echo "WARN: Config generation failed (will auto-generate at runtime)"
+
 EXPOSE 9100
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
