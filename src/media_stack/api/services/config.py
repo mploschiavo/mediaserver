@@ -30,9 +30,30 @@ def _load_profile_yaml() -> tuple[dict[str, Any], Path | None]:
         return {}, path
 
 
+def _validate_profile_data(data: dict[str, Any]) -> str | None:
+    """Validate profile data before saving. Returns error string or None."""
+    if not isinstance(data, dict):
+        return "Profile must be a YAML mapping"
+    meta = data.get("metadata")
+    if not isinstance(meta, dict) or not meta.get("name"):
+        return "Profile metadata.name is required — save would corrupt the profile"
+    return None
+
+
 def _save_profile_yaml(data: dict[str, Any], path: Path) -> dict[str, Any]:
-    """Write profile YAML back to disk."""
+    """Write profile YAML back to disk after validation.
+
+    Creates a backup before overwriting so corruption can be recovered.
+    """
+    # Validate before writing to prevent corruption
+    err = _validate_profile_data(data)
+    if err:
+        return {"error": err}
     try:
+        # Backup before overwriting
+        backup = path.with_suffix(".yaml.bak")
+        if path.is_file():
+            backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
         with open(path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         return {"status": "saved", "file": str(path)}
@@ -177,10 +198,19 @@ def get_metadata_settings() -> dict[str, Any]:
 
 
 def update_metadata_settings(language: str, country: str) -> dict[str, Any]:
-    """Update metadata language/country in the profile."""
+    """Update metadata language/country in the profile (merges, doesn't replace)."""
     if not language or not country:
         return {"error": "language and country are required"}
-    result = update_profile_section("metadata", {"language": language, "country": country})
+    data, path = _load_profile_yaml()
+    if path is None:
+        return {"error": "Profile file not found"}
+    meta = data.get("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+    meta["language"] = language
+    meta["country"] = country
+    data["metadata"] = meta
+    result = _save_profile_yaml(data, path)
     if "error" not in result:
         result["metadata"] = {"language": language, "country": country}
         result["note"] = "Run bootstrap to apply metadata settings to media server and Arr apps"

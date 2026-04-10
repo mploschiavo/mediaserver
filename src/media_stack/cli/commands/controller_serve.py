@@ -90,7 +90,13 @@ def _run_serve(args: argparse.Namespace) -> None:
         if profile_path.is_file():
             from media_stack.api.preflight.profile_validation import validate_profile
 
-            validate_profile(profile_file, log=runtime_platform.log)
+            try:
+                validate_profile(profile_file, log=runtime_platform.log)
+            except Exception as exc:
+                runtime_platform.log(
+                    f"[WARN] Profile validation failed: {exc}. "
+                    "The controller will still start — fix the profile and restart."
+                )
             _apply_profile_env(profile_file)
         else:
             runtime_platform.log(
