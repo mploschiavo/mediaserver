@@ -262,53 +262,14 @@ def reload_registry() -> None:
 # Registry-driven API key readers — format-agnostic.
 #
 # Key formats are declared in each service's YAML contract (api_key_format).
-# To support a new format, add a reader here and the format name in your
-# service YAML — no other code changes needed.
+# To support a new format, add a reader to key_formats.py and the format
+# name in your service YAML — no other code changes needed.
 # ---------------------------------------------------------------------------
 
 import re as _re
-import json as _json
 from pathlib import Path as _Path
 
-def _read_key_xml(path: _Path) -> str:
-    m = _re.search(r"<ApiKey>([^<]+)</ApiKey>", path.read_text(encoding="utf-8"))
-    return m.group(1).strip() if m else ""
-
-def _read_key_ini(path: _Path) -> str:
-    m = _re.search(r"^\s*api_key\s*=\s*(\S+)", path.read_text(encoding="utf-8"), _re.MULTILINE)
-    return m.group(1).strip() if m else ""
-
-def _read_key_yaml(path: _Path) -> str:
-    m = _re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", path.read_text(encoding="utf-8"), _re.MULTILINE)
-    return m.group(1).strip() if m else ""
-
-def _read_key_json(path: _Path) -> str:
-    try:
-        data = _json.loads(path.read_text(encoding="utf-8"))
-        return str((data.get("main") or {}).get("apiKey", "")).strip()
-    except Exception:
-        return ""
-
-def _read_key_sqlite(path: _Path) -> str:
-    import sqlite3
-    try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        cur = conn.cursor()
-        cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
-        row = cur.fetchone()
-        conn.close()
-        return str(row[0]).strip() if row and row[0] else ""
-    except Exception:
-        return ""
-
-#: Mapping from api_key_format → file reader. Extend this dict for new formats.
-KEY_READERS: dict[str, Any] = {
-    "xml": _read_key_xml,
-    "ini": _read_key_ini,
-    "yaml": _read_key_yaml,
-    "json": _read_key_json,
-    "sqlite": _read_key_sqlite,
-}
+from .key_formats import READERS as KEY_READERS
 
 
 def read_api_key_from_file(service_id: str, config_root: str) -> str:

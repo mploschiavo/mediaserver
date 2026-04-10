@@ -395,196 +395,22 @@ class ControllerAllRunner:
                 )
             return env
 
-        def _run_component_script_step(step: ControllerPhasePlanStep) -> None:
-            params = dict(step.params or {})
-            component_key, component_technology = _resolve_component_technology(step)
-            enabled = _phase_enabled(step)
-            if enabled and not component_key:
-                raise ConfigError(
-                    "bootstrap_all run action 'component_script' requires "
-                    "params.component, params.binding, or params.technology."
-                )
-            if enabled and not component_technology:
-                raise ConfigError(
-                    "bootstrap_all run action 'component_script' could not resolve technology "
-                    f"for component '{component_key}'. Check adapter_hooks.bootstrap_all.components "
-                    "and technology_bindings."
-                )
-            script_phase = str(params.get("script_phase") or "").strip()
-            if not script_phase:
-                raise ConfigError(
-                    "bootstrap_all run action 'component_script' requires params.script_phase."
-                )
-            script_name = self._phase_script(script_phase, component_technology)
-            if enabled and not script_name:
-                raise ConfigError(
-                    "bootstrap_all run action 'component_script' could not resolve script "
-                    f"for component '{component_key or component_technology}' "
-                    f"(technology='{component_technology or 'unbound'}', "
-                    f"script_phase='{script_phase}'). "
-                    "Declare adapter_hooks.runner_phase_scripts.<script_phase> mapping "
-                    "for the bound technology."
-                )
-
-            args = _resolve_rendered_args(
-                raw_args=params.get("args"),
-                component_key=component_key,
-                component_technology=component_technology,
-            )
-            env = _resolve_rendered_env(
-                raw_env=params.get("env"),
-                component_key=component_key,
-                component_technology=component_technology,
-            )
-
-            phase_name = self._format_phase_name(
-                _phase_name("", step),
-                component_key=component_key,
-                component_technology=component_technology,
-            )
-            if not phase_name:
-                raise ConfigError(
-                    "bootstrap_all run action 'component_script' requires non-empty phase_name."
-                )
-            self._run_phase(
-                phase_name,
-                lambda script=script_name, script_args=tuple(args), script_env=dict(
-                    env
-                ): self._run_script(
-                    script,
-                    *script_args,
-                    env=script_env,
-                ),
-                enabled=enabled,
-            )
-
-        def _run_script_step(step: ControllerPhasePlanStep) -> None:
-            params = dict(step.params or {})
-            script_name = self._render_template_value(params.get("script", ""))
-            if not script_name:
-                raise ConfigError("bootstrap_all run action 'script' requires params.script.")
-            enabled = _phase_enabled(step)
-            args = _resolve_rendered_args(raw_args=params.get("args"))
-            env = _resolve_rendered_env(raw_env=params.get("env"))
-            phase_name = self._format_phase_name(
-                _phase_name("", step),
-            )
-            if not phase_name:
-                raise ConfigError(
-                    "bootstrap_all run action 'script' requires non-empty phase_name."
-                )
-            self._run_phase(
-                phase_name,
-                lambda script=script_name, script_args=tuple(args), script_env=dict(
-                    env
-                ): self._run_script(
-                    script,
-                    *script_args,
-                    env=script_env,
-                ),
-                enabled=enabled,
-            )
-
-        def _run_enable_components_step(step: ControllerPhasePlanStep) -> None:
-            if not _phase_enabled(step):
-                return
-            components_to_enable = resolve_bootstrap_enable_components(
-                plan.config,
-                aliases=plan.aliases,
-            )
-            if not components_to_enable:
-                raise ConfigError(
-                    "bootstrap_all run action 'enable_components' requires a non-empty "
-                    "adapter_hooks.bootstrap_all.enable_components list."
-                )
-            for component in components_to_enable:
-                component_key_sync_script = self._phase_script(
-                    "component_key_sync",
-                    component,
-                )
-                if not component_key_sync_script:
-                    raise ConfigError(
-                        "bootstrap_all run action 'enable_components' could not resolve "
-                        f"runner_phase_scripts.component_key_sync for component '{component}'."
-                    )
-                self._run_phase(
-                    f"Sync component integration keys ({component})",
-                    lambda script=component_key_sync_script: self._run_script(
-                        script,
-                        env={"NAMESPACE": self.cfg.namespace},
-                    ),
-                    enabled=True,
-                )
-                self._run_phase(
-                    f"Enable component deployment ({component})",
-                    lambda app=component: self._enable_component_deployment(app),
-                    enabled=True,
-                )
-
-        def _run_http_action_step(step: ControllerPhasePlanStep) -> None:
-            """Trigger an action on the bootstrap service via HTTP and poll for completion."""
-            if not _phase_enabled(step):
-                return
-            params = step.params or {}
-            action_name = str(params.get("action_name", "")).strip()
-            svc_port = int(params.get("service_port", 9100))
-            namespace = self._render_template_value(
-                str(params.get("namespace_var", "$namespace")),
-                component_key="",
-            )
-            if not action_name:
-                raise ConfigError("http_action requires params.action_name")
-
-            from media_stack.cli.workflows.controller_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
-
-            wait_svc = ControllerJobWaitService(
-                cfg=ControllerJobWaitConfig(
-                    namespace=namespace,
-                    timeout_seconds=600,
-                    timeout_raw="10m",
-                    heartbeat_interval=15,
-                    service_port=svc_port,
-                ),
-                kube=self.kube,
-                info=info,
-                warn=warn,
-            )
-
-            # Find the bootstrap pod.
-            pod_name = wait_svc._find_bootstrap_pod()
-            if not pod_name:
-                raise ConfigError("Bootstrap service pod not found for http_action")
-
-            # Trigger the action via HTTP POST.
-            info(f"Triggering action '{action_name}' on bootstrap service")
-            trigger_result = self.kube.run(
-                [
-                    "-n", namespace, "exec", pod_name, "--",
-                    "python3", "-c",
-                    "import urllib.request,json; "
-                    f"req=urllib.request.Request('http://127.0.0.1:{svc_port}/actions/{action_name}',"
-                    "data=b'{}',headers={'Content-Type':'application/json'}); "
-                    "r=urllib.request.urlopen(req); "
-                    "print(r.read().decode())",
-                ],
-                check=False,
-            )
-            if trigger_result.returncode != 0:
-                raise ConfigError(
-                    f"Failed to trigger action '{action_name}': {trigger_result.stderr or trigger_result.stdout}"
-                )
-            info(f"Action '{action_name}' accepted, waiting for completion...")
-
-            # Poll for completion.
-            wait_svc.wait_for_bootstrap_service(
-                wait_for_action=action_name,
-            )
-
+        # Step execution — dispatch table
         action_handlers: dict[str, Callable[[ControllerPhasePlanStep], None]] = {
-            "component_script": _run_component_script_step,
-            "script": _run_script_step,
-            "enable_components": _run_enable_components_step,
-            "http_action": _run_http_action_step,
+            "component_script": lambda step: _execute_component_script(
+                self, step, plan, components, _phase_enabled, _resolve_component_technology,
+                _resolve_rendered_args, _resolve_rendered_env, _phase_name,
+            ),
+            "script": lambda step: _execute_script(
+                self, step, _phase_enabled, _resolve_rendered_args,
+                _resolve_rendered_env, _phase_name,
+            ),
+            "enable_components": lambda step: _execute_enable_components(
+                self, step, plan, _phase_enabled,
+            ),
+            "http_action": lambda step: _execute_http_action(
+                self, step, _phase_enabled,
+            ),
         }
 
         for step in phase_plan:
@@ -601,6 +427,121 @@ class ControllerAllRunner:
         self.tracker.summary()
         return 0
 
+
+# ---------------------------------------------------------------------------
+# Step executors — extracted from ControllerAllRunner.run() closures
+# ---------------------------------------------------------------------------
+
+def _execute_component_script(
+    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
+    plan: ControllerComponentPlan, components: dict,
+    phase_enabled: Callable, resolve_tech: Callable,
+    resolve_args: Callable, resolve_env: Callable, phase_name_fn: Callable,
+) -> None:
+    params = dict(step.params or {})
+    component_key, component_technology = resolve_tech(step)
+    enabled = phase_enabled(step)
+    if enabled and not component_key:
+        raise ConfigError("bootstrap_all run action 'component_script' requires params.component, params.binding, or params.technology.")
+    if enabled and not component_technology:
+        raise ConfigError(f"bootstrap_all run action 'component_script' could not resolve technology for component '{component_key}'.")
+    script_phase = str(params.get("script_phase") or "").strip()
+    if not script_phase:
+        raise ConfigError("bootstrap_all run action 'component_script' requires params.script_phase.")
+    script_name = runner._phase_script(script_phase, component_technology)
+    if enabled and not script_name:
+        raise ConfigError(f"bootstrap_all run action 'component_script' could not resolve script for component '{component_key or component_technology}'.")
+    args = resolve_args(raw_args=params.get("args"), component_key=component_key, component_technology=component_technology)
+    env = resolve_env(raw_env=params.get("env"), component_key=component_key, component_technology=component_technology)
+    name = runner._format_phase_name(phase_name_fn("", step), component_key=component_key, component_technology=component_technology)
+    if not name:
+        raise ConfigError("bootstrap_all run action 'component_script' requires non-empty phase_name.")
+    runner._run_phase(name, lambda s=script_name, a=tuple(args), e=dict(env): runner._run_script(s, *a, env=e), enabled=enabled)
+
+
+def _execute_script(
+    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
+    phase_enabled: Callable, resolve_args: Callable,
+    resolve_env: Callable, phase_name_fn: Callable,
+) -> None:
+    params = dict(step.params or {})
+    script_name = runner._render_template_value(params.get("script", ""))
+    if not script_name:
+        raise ConfigError("bootstrap_all run action 'script' requires params.script.")
+    enabled = phase_enabled(step)
+    args = resolve_args(raw_args=params.get("args"))
+    env = resolve_env(raw_env=params.get("env"))
+    name = runner._format_phase_name(phase_name_fn("", step))
+    if not name:
+        raise ConfigError("bootstrap_all run action 'script' requires non-empty phase_name.")
+    runner._run_phase(name, lambda s=script_name, a=tuple(args), e=dict(env): runner._run_script(s, *a, env=e), enabled=enabled)
+
+
+def _execute_enable_components(
+    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
+    plan: ControllerComponentPlan, phase_enabled: Callable,
+) -> None:
+    if not phase_enabled(step):
+        return
+    components_to_enable = resolve_bootstrap_enable_components(plan.config, aliases=plan.aliases)
+    if not components_to_enable:
+        raise ConfigError("bootstrap_all run action 'enable_components' requires a non-empty enable_components list.")
+    for component in components_to_enable:
+        sync_script = runner._phase_script("component_key_sync", component)
+        if not sync_script:
+            raise ConfigError(f"Could not resolve runner_phase_scripts.component_key_sync for component '{component}'.")
+        runner._run_phase(
+            f"Sync component integration keys ({component})",
+            lambda s=sync_script: runner._run_script(s, env={"NAMESPACE": runner.cfg.namespace}),
+            enabled=True,
+        )
+        runner._run_phase(
+            f"Enable component deployment ({component})",
+            lambda app=component: runner._enable_component_deployment(app),
+            enabled=True,
+        )
+
+
+def _execute_http_action(
+    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
+    phase_enabled: Callable,
+) -> None:
+    """Trigger an action on the bootstrap service via HTTP and poll for completion."""
+    if not phase_enabled(step):
+        return
+    params = step.params or {}
+    action_name = str(params.get("action_name", "")).strip()
+    svc_port = int(params.get("service_port", 9100))
+    namespace = runner._render_template_value(str(params.get("namespace_var", "$namespace")), component_key="")
+    if not action_name:
+        raise ConfigError("http_action requires params.action_name")
+
+    from media_stack.cli.workflows.controller_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
+    wait_svc = ControllerJobWaitService(
+        cfg=ControllerJobWaitConfig(namespace=namespace, timeout_seconds=600, timeout_raw="10m", heartbeat_interval=15, service_port=svc_port),
+        kube=runner.kube, info=info, warn=warn,
+    )
+    pod_name = wait_svc._find_bootstrap_pod()
+    if not pod_name:
+        raise ConfigError("Bootstrap service pod not found for http_action")
+    info(f"Triggering action '{action_name}' on bootstrap service")
+    trigger_result = runner.kube.run(
+        ["-n", namespace, "exec", pod_name, "--", "python3", "-c",
+         "import urllib.request,json; "
+         f"req=urllib.request.Request('http://127.0.0.1:{svc_port}/actions/{action_name}',"
+         "data=b'{}',headers={'Content-Type':'application/json'}); "
+         "r=urllib.request.urlopen(req); print(r.read().decode())"],
+        check=False,
+    )
+    if trigger_result.returncode != 0:
+        raise ConfigError(f"Failed to trigger action '{action_name}': {trigger_result.stderr or trigger_result.stdout}")
+    info(f"Action '{action_name}' accepted, waiting for completion...")
+    wait_svc.wait_for_bootstrap_service(wait_for_action=action_name)
+
+
+# ---------------------------------------------------------------------------
+# CLI helpers
+# ---------------------------------------------------------------------------
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)

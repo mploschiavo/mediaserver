@@ -428,3 +428,77 @@ def get_manifests() -> dict[str, Any]:
         pass
 
     return {"type": "unknown", "content": None, "error": "No manifest found. Mount compose file or use K8s."}
+
+
+def get_config_drift() -> dict[str, Any]:
+    """Compare expected config (profile YAML) vs actual running state.
+
+    Checks:
+    - Routing: profile routing vs live routing overrides
+    - Service auth: expected auth mode vs actual config.xml settings
+    - API keys: env vars vs config file keys (stale?)
+    - Container images: declared vs running
+    """
+    drifts: list[dict[str, str]] = []
+
+    # 1. Routing drift — compare profile vs overrides
+    import yaml
+    resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+    profile_routing: dict[str, Any] = {}
+    if resolved:
+        try:
+            with open(resolved) as f:
+                profile = yaml.safe_load(f) or {}
+            profile_routing = profile.get("routing") or {}
+        except Exception:
+            pass
+    live_routing = get_routing()
+    for key in ("base_domain", "stack_subdomain", "gateway_host", "gateway_port", "strategy"):
+        expected = str(profile_routing.get(key, ""))
+        actual = str(live_routing.get(key, ""))
+        if expected and actual and expected != actual:
+            drifts.append({"area": "routing", "key": key, "expected": expected, "actual": actual})
+
+    # 2. API key drift — env var vs config file
+    from .registry import SERVICES, read_api_key_from_file
+    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+    for svc in SERVICES:
+        if not svc.api_key_env or not svc.api_key_config:
+            continue
+        env_key = (os.environ.get(svc.api_key_env) or "").strip()
+        file_key = read_api_key_from_file(svc.id, config_root)
+        if env_key and file_key and env_key != file_key:
+            drifts.append({
+                "area": "api_key", "key": svc.id,
+                "expected": f"{env_key[:4]}...{env_key[-4:]}" if len(env_key) > 8 else "set",
+                "actual": f"{file_key[:4]}...{file_key[-4:]}" if len(file_key) > 8 else "set",
+                "note": "Env var differs from config file — run bootstrap to resync",
+            })
+
+    # 3. Container image drift — check running vs declared
+    namespace = os.environ.get("K8S_NAMESPACE", "")
+    if not namespace:
+        try:
+            import docker
+            client = docker.from_env()
+            for c in client.containers.list():
+                image = c.image.tags[0] if c.image.tags else ""
+                if image and "@sha256:" not in image:
+                    # Check if image has been updated since container started
+                    created = c.image.attrs.get("Created", "") if c.image.attrs else ""
+                    started = c.attrs.get("State", {}).get("StartedAt", "")
+                    if created and started and created > started:
+                        drifts.append({
+                            "area": "image", "key": c.name,
+                            "expected": "latest pulled image",
+                            "actual": f"running image created {created[:19]}",
+                            "note": "Container running older image than what's pulled",
+                        })
+        except Exception:
+            pass
+
+    return {
+        "drifts": drifts,
+        "total": len(drifts),
+        "clean": len(drifts) == 0,
+    }

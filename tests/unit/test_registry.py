@@ -15,8 +15,11 @@ from media_stack.api.services.registry import (  # noqa: E402
     SERVICES, SERVICE_MAP, ServiceDef, _parse_service_entry,
     get_service, get_services_with_api_keys, get_services_with_password_api,
     get_active_service_ids, get_web_ui_services, KEY_READERS,
-    read_api_key_from_file, _read_key_xml, _read_key_ini, _read_key_yaml,
-    _read_key_json,
+    read_api_key_from_file,
+)
+from media_stack.api.services.key_formats import (  # noqa: E402
+    read_xml as _read_key_xml, read_ini as _read_key_ini,
+    read_yaml as _read_key_yaml, read_json as _read_key_json,
 )
 
 

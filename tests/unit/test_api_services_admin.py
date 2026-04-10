@@ -11,15 +11,17 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+from media_stack.api.services.key_formats import (  # noqa: E402
+    read_xml as _read_key_xml,
+    write_xml as _write_key_xml,
+    read_ini as _read_key_ini,
+    write_ini as _write_key_ini,
+    read_yaml as _read_key_yaml,
+    write_yaml as _write_key_yaml,
+    read_json as _read_key_json,
+    write_json as _write_key_json,
+)
 from media_stack.api.services.admin import (  # noqa: E402
-    _read_key_xml,
-    _write_key_xml,
-    _read_key_ini,
-    _write_key_ini,
-    _read_key_yaml,
-    _write_key_yaml,
-    _read_key_json,
-    _write_key_json,
     _read_key,
 )
 
