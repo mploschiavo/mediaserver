@@ -63,6 +63,50 @@ def get_disk() -> dict[str, Any]:
     return {"disk": results, "guardrails": guardrails}
 
 
+def get_storage_breakdown() -> dict[str, Any]:
+    """Calculate disk usage per media type (movies, tv, music, books, etc.)."""
+    media_root = os.environ.get("MEDIA_ROOT", "")
+    candidates = [media_root, "/srv-stack/media", "/media", "/data/media"]
+    base_path = None
+    for p in candidates:
+        if p and Path(p).is_dir():
+            base_path = Path(p)
+            break
+    if not base_path:
+        return {"breakdown": [], "error": "Media root not found", "total_bytes": 0}
+
+    breakdown: list[dict[str, Any]] = []
+    total = 0
+    try:
+        for entry in sorted(base_path.iterdir()):
+            if not entry.is_dir():
+                continue
+            size = 0
+            try:
+                for f in entry.rglob("*"):
+                    if f.is_file():
+                        size += f.stat().st_size
+            except PermissionError:
+                pass
+            breakdown.append({
+                "name": entry.name,
+                "path": str(entry),
+                "bytes": size,
+                "display": f"{size / 1073741824:.1f} GB" if size > 1073741824 else f"{size / 1048576:.0f} MB",
+            })
+            total += size
+    except Exception as exc:
+        return {"breakdown": [], "error": str(exc)[:80], "total_bytes": 0}
+
+    breakdown.sort(key=lambda x: x["bytes"], reverse=True)
+    return {
+        "breakdown": breakdown,
+        "total_bytes": total,
+        "total_display": f"{total / 1073741824:.1f} GB" if total > 1073741824 else f"{total / 1048576:.0f} MB",
+        "media_root": str(base_path),
+    }
+
+
 def _load_guardrail_config() -> dict[str, Any]:
     """Load disk guardrail thresholds from bootstrap config."""
     guardrails: dict[str, Any] = {"enabled": False}

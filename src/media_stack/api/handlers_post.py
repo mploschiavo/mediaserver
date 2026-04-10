@@ -149,6 +149,105 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, disk_svc.update_guardrails(body))
         return
 
+    # POST /api/libraries
+    if handler.path == "/api/libraries":
+        body = handler._read_json_body()
+        libraries = body.get("libraries", [])
+        if not isinstance(libraries, list):
+            handler._json_response(400, {"error": "libraries must be an array"})
+            return
+        handler._json_response(200, config_svc.update_libraries(libraries))
+        return
+
+    # POST /api/download-categories
+    if handler.path == "/api/download-categories":
+        body = handler._read_json_body()
+        categories = body.get("categories", {})
+        if not isinstance(categories, dict):
+            handler._json_response(400, {"error": "categories must be an object {name: path}"})
+            return
+        handler._json_response(200, config_svc.update_download_categories(categories))
+        return
+
+    # POST /api/metadata-settings
+    if handler.path == "/api/metadata-settings":
+        body = handler._read_json_body()
+        handler._json_response(200, config_svc.update_metadata_settings(
+            body.get("language", ""), body.get("country", ""),
+        ))
+        return
+
+    # POST /api/livetv-sources
+    if handler.path == "/api/livetv-sources":
+        body = handler._read_json_body()
+        handler._json_response(200, config_svc.update_livetv_sources(
+            body.get("tuner_url", ""), body.get("guide_url", ""),
+        ))
+        return
+
+    # POST /api/indexers/{id}/toggle
+    if handler.path.startswith("/api/indexers/") and handler.path.endswith("/toggle"):
+        parts = handler.path.split("/")
+        try:
+            indexer_id = int(parts[3])
+        except (IndexError, ValueError):
+            handler._json_response(400, {"error": "Invalid indexer ID"})
+            return
+        body = handler._read_json_body()
+        from .services import content as content_svc_toggle
+        handler._json_response(200, content_svc_toggle.toggle_indexer(indexer_id, bool(body.get("enable", True))))
+        return
+
+    # DELETE /api/indexers/{id}
+    if handler.path.startswith("/api/indexers/") and handler.path.count("/") == 3:
+        parts = handler.path.split("/")
+        try:
+            indexer_id = int(parts[3])
+        except (IndexError, ValueError):
+            handler._json_response(400, {"error": "Invalid indexer ID"})
+            return
+        body = handler._read_json_body()
+        if body.get("_method") == "DELETE":
+            from .services import content as content_svc_del
+            handler._json_response(200, content_svc_del.delete_indexer(indexer_id))
+            return
+
+    # POST /api/import-lists/{service}/{id}/delete
+    if handler.path.startswith("/api/import-lists/") and handler.path.endswith("/delete"):
+        parts = handler.path.split("/")
+        if len(parts) >= 5:
+            svc_id = parts[3]
+            try:
+                list_id = int(parts[4])
+            except ValueError:
+                handler._json_response(400, {"error": "Invalid list ID"})
+                return
+            from .services import content as content_svc_list
+            handler._json_response(200, content_svc_list.delete_import_list(svc_id, list_id))
+            return
+
+    # POST /api/schedules
+    if handler.path == "/api/schedules":
+        body = handler._read_json_body()
+        from .services import scheduler as sched_svc
+        handler._json_response(200, sched_svc.add_schedule(
+            body.get("action", ""), int(body.get("interval_seconds", 0)),
+            body.get("label", ""),
+        ))
+        return
+
+    # POST /api/schedules/{id}/delete
+    if handler.path.startswith("/api/schedules/") and handler.path.endswith("/delete"):
+        parts = handler.path.split("/")
+        try:
+            sched_id = int(parts[3])
+        except (IndexError, ValueError):
+            handler._json_response(400, {"error": "Invalid schedule ID"})
+            return
+        from .services import scheduler as sched_svc_del
+        handler._json_response(200, sched_svc_del.remove_schedule(sched_id))
+        return
+
     # POST /api/profile
     if handler.path == "/api/profile":
         body = handler._read_json_body()

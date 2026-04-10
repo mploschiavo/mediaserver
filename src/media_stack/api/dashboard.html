@@ -435,6 +435,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-gpu',this)">GPU</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-snapshots',this)">Snapshots</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-mounts',this)">Mounts</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('ops-storage-breakdown',this)">Media Usage</button>
     </div>
     <div id="ops-sla" class="subtab active" style="min-height:120px"><div id="sla-view"><span style="color:var(--fg3);font-size:.85em">Loading health SLA data...</span></div></div>
     <div id="ops-traffic" class="subtab" style="display:none;min-height:120px"><div id="traffic-view"><span style="color:var(--fg3);font-size:.85em">Loading traffic data...</span></div></div>
@@ -473,7 +474,19 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <canvas id="bw-canvas" style="width:100%;height:120px;border-radius:6px;background:var(--bg4)"></canvas>
     </div>
     <div id="ops-schedule" class="subtab" style="display:none">
-      <p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Schedule recurring actions (runs in-browser while dashboard is open)</p>
+      <div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Server-Side Schedules (persistent)</div>
+      <p style="color:var(--fg3);font-size:.82em;margin:0 0 6px">These run on the server even when the dashboard is closed. Stored in config.</p>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <select id="serverSchedAction" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
+          <option value="reconcile">Reconcile</option><option value="auto-indexers">Discover Indexers</option><option value="sync-indexers">Sync Indexers</option><option value="validate-credentials">Validate Credentials</option>
+        </select>
+        <select id="serverSchedMins" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
+          <option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="360">6 hours</option><option value="720">12 hours</option><option value="1440">24 hours</option>
+        </select>
+        <button class="btn-primary" style="padding:5px 12px;font-size:.82em" onclick="addServerSchedule()">Add</button>
+      </div>
+      <div id="server-schedules">Loading...</div></div>
+      <div class="action-group"><div class="action-group-title">Browser Schedules (while dashboard is open)</div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
         <select id="schedAction" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
           <option value="reconcile">Reconcile</option><option value="auto-indexers">Discover Indexers</option><option value="sync-indexers">Sync Indexers</option>
@@ -483,7 +496,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
         </select>
         <button class="btn-primary" style="padding:5px 12px;font-size:.82em" onclick="addSchedule()">Schedule</button>
       </div>
-      <div id="schedule-list"></div>
+      <div id="schedule-list"></div></div>
     </div>
     <div id="ops-gpu" class="subtab" style="display:none">
       <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">GPU hardware detection for Jellyfin hardware transcoding.</p>
@@ -500,6 +513,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Detected filesystem mounts relevant to media storage.</p>
       <div id="mount-info">Loading...</div>
     </div>
+    <div id="ops-storage-breakdown" class="subtab" style="display:none">
+      <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Disk usage per media type folder.</p>
+      <div id="storage-breakdown">Loading...</div>
+    </div>
   </div>
 
   <!-- Config tab -->
@@ -510,6 +527,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-deps',this)">Topology</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-manifest',this)">Manifests</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-envvars',this)">Env Vars</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-libraries',this)">Libraries</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-downloads',this)">Downloads</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-metadata',this)">Metadata</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-livetv',this)">Live TV</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
     </div>
     <div id="cfg-profile" class="subtab active"><div id="profile-view">Loading...</div></div>
@@ -517,6 +538,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="cfg-deps" class="subtab" style="display:none"></div>
     <div id="cfg-manifest" class="subtab" style="display:none">Loading...</div>
     <div id="cfg-envvars" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-libraries" class="subtab" style="display:none"><div id="libraries-config">Loading...</div></div>
+    <div id="cfg-downloads" class="subtab" style="display:none"><div id="downloads-config">Loading...</div></div>
+    <div id="cfg-metadata" class="subtab" style="display:none"><div id="metadata-config">Loading...</div></div>
+    <div id="cfg-livetv" class="subtab" style="display:none"><div id="livetv-config">Loading...</div></div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -1482,11 +1507,13 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   else if(id==='ops-traffic')_load(loadTraffic);else if(id==='ops-sla'){renderSLA();}
   else if(id==='ops-timeline'){renderTimeline();}else if(id==='ops-ns')_load(loadNamespaces);
   else if(id==='ops-images')_load(loadImageUpdates);else if(id==='ops-heatmap'){renderCalendarHeatmap();}
-  else if(id==='ops-bw'){renderBandwidthChart();}else if(id==='ops-guardrails')_load(loadDisk);
+  else if(id==='ops-bw'){renderBandwidthChart();}else if(id==='ops-schedule'){loadServerSchedules();}else if(id==='ops-guardrails')_load(loadDisk);
   else if(id==='ops-gpu')_load(loadGpuInfo);else if(id==='ops-snapshots')_load(loadSnapshots);
-  else if(id==='ops-mounts')_load(loadMountInfo);
+  else if(id==='ops-mounts')_load(loadMountInfo);else if(id==='ops-storage-breakdown')_load(loadStorageBreakdown);
   else if(id==='cfg-drift'){renderDrift();}else if(id==='cfg-deps'){renderTopologySVG();}
   else if(id==='cfg-manifest')_load(loadManifests);else if(id==='cfg-envvars')_load(loadEnvVars);
+  else if(id==='cfg-libraries')_load(loadLibrariesConfig);else if(id==='cfg-downloads')_load(loadDownloadsConfig);
+  else if(id==='cfg-metadata')_load(loadMetadataConfig);else if(id==='cfg-livetv')_load(loadLiveTvConfig);
   else if(id==='lib-indexers')_load(loadIndexers);
 }
 
@@ -2109,6 +2136,210 @@ async function loadEnvVars(){
     h+='</tbody></table>';
     const el=document.getElementById('cfg-envvars');if(el)el.innerHTML=h;
   }catch(e){}
+}
+
+/* Libraries config */
+async function loadLibrariesConfig(){
+  const el=document.getElementById('libraries-config');
+  try{const r=await fetch('/api/libraries');if(!r.ok)return;const d=await r.json();
+    let libs=d.libraries||[];
+    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Manage Jellyfin media libraries. Changes apply on next bootstrap.</p>';
+    h+='<div id="lib-list">';
+    for(let i=0;i<libs.length;i++){const l=libs[i];
+      h+='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:8px">';
+      h+='<input value="'+_escHtml(l.name)+'" style="width:120px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-lib-name="'+i+'">';
+      h+='<select data-lib-type="'+i+'" style="padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">';
+      for(const t of['movies','tvshows','music','books','homevideos','photos','mixed']){h+='<option value="'+t+'"'+(l.collection_type===t?' selected':'')+'>'+t+'</option>';}
+      h+='</select>';
+      h+='<input value="'+_escHtml((l.paths||[]).join(', '))+'" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-lib-paths="'+i+'" placeholder="/media/movies">';
+      h+='<button class="btn-danger" style="padding:2px 8px;font-size:.75em;min-height:28px" onclick="removeLibrary('+i+')">Remove</button>';
+      h+='</div>';}
+    h+='</div>';
+    h+='<div style="display:flex;gap:6px;margin-top:8px">';
+    h+='<button class="btn-secondary" onclick="addLibraryRow()">Add Library</button>';
+    h+='<button class="btn-primary" onclick="saveLibraries()">Save Libraries</button></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+function addLibraryRow(){
+  const el=document.getElementById('lib-list');if(!el)return;
+  const i=el.querySelectorAll('[data-lib-name]').length;
+  let h='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:8px">';
+  h+='<input value="" style="width:120px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-lib-name="'+i+'" placeholder="Anime">';
+  h+='<select data-lib-type="'+i+'" style="padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">';
+  for(const t of['movies','tvshows','music','books','homevideos','photos','mixed'])h+='<option value="'+t+'">'+t+'</option>';
+  h+='</select>';
+  h+='<input value="" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-lib-paths="'+i+'" placeholder="/media/anime">';
+  h+='<button class="btn-danger" style="padding:2px 8px;font-size:.75em;min-height:28px" onclick="this.closest(\'.svc-row\').remove()">Remove</button>';
+  h+='</div>';
+  el.insertAdjacentHTML('beforeend',h);
+}
+function removeLibrary(idx){document.querySelector('[data-lib-name="'+idx+'"]')?.closest('.svc-row')?.remove();}
+async function saveLibraries(){
+  const rows=document.querySelectorAll('#lib-list [data-lib-name]');
+  const libs=[];
+  rows.forEach(el=>{const row=el.closest('.svc-row');if(!row)return;
+    const i=el.dataset.libName;
+    const name=el.value.trim();
+    const type=row.querySelector('[data-lib-type="'+i+'"]')?.value||'movies';
+    const paths=(row.querySelector('[data-lib-paths="'+i+'"]')?.value||'').split(',').map(p=>p.trim()).filter(Boolean);
+    if(name&&paths.length)libs.push({name,collection_type:type,paths});
+  });
+  if(!libs.length){toast('Add at least one library',true);return;}
+  try{const r=await fetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:libs})});
+    const d=await r.json();
+    if(d.status==='saved'){toast('Libraries saved. Run bootstrap to apply.');loadLibrariesConfig();}
+    else toast(d.error||'Save failed',true);
+  }catch(e){toast('Error: '+e,true);}
+}
+
+/* Download categories config */
+async function loadDownloadsConfig(){
+  const el=document.getElementById('downloads-config');
+  try{const r=await fetch('/api/download-categories');if(!r.ok)return;const d=await r.json();
+    const cats=d.categories||{};
+    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Download categories for torrent and usenet clients. Changes apply on next bootstrap.</p>';
+    h+='<div id="cat-list">';
+    let i=0;for(const[name,path]of Object.entries(cats)){
+      h+='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:8px">';
+      h+='<input value="'+_escHtml(name)+'" style="width:120px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-cat-name="'+i+'">';
+      h+='<input value="'+_escHtml(path)+'" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-cat-path="'+i+'" placeholder="/data/torrents/completed/anime">';
+      h+='<button class="btn-danger" style="padding:2px 8px;font-size:.75em;min-height:28px" onclick="this.closest(\'.svc-row\').remove()">Remove</button>';
+      h+='</div>';i++;}
+    h+='</div>';
+    h+='<div style="display:flex;gap:6px;margin-top:8px">';
+    h+='<button class="btn-secondary" onclick="addCategoryRow()">Add Category</button>';
+    h+='<button class="btn-primary" onclick="saveCategories()">Save Categories</button></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+function addCategoryRow(){
+  const el=document.getElementById('cat-list');if(!el)return;
+  const i=el.querySelectorAll('[data-cat-name]').length;
+  let h='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:8px">';
+  h+='<input value="" style="width:120px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-cat-name="'+i+'" placeholder="anime">';
+  h+='<input value="" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" data-cat-path="'+i+'" placeholder="/data/torrents/completed/anime">';
+  h+='<button class="btn-danger" style="padding:2px 8px;font-size:.75em;min-height:28px" onclick="this.closest(\'.svc-row\').remove()">Remove</button>';
+  h+='</div>';
+  el.insertAdjacentHTML('beforeend',h);
+}
+async function saveCategories(){
+  const names=document.querySelectorAll('#cat-list [data-cat-name]');
+  const cats={};
+  names.forEach(el=>{const row=el.closest('.svc-row');if(!row)return;
+    const i=el.dataset.catName;const name=el.value.trim();
+    const path=row.querySelector('[data-cat-path="'+i+'"]')?.value.trim()||'';
+    if(name)cats[name]=path||'/data/torrents/completed/'+name;
+  });
+  if(!Object.keys(cats).length){toast('Add at least one category',true);return;}
+  try{const r=await fetch('/api/download-categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categories:cats})});
+    const d=await r.json();
+    if(d.status==='saved'){toast('Categories saved. Run bootstrap to apply.');loadDownloadsConfig();}
+    else toast(d.error||'Save failed',true);
+  }catch(e){toast('Error: '+e,true);}
+}
+
+/* Metadata settings config */
+async function loadMetadataConfig(){
+  const el=document.getElementById('metadata-config');
+  try{const r=await fetch('/api/metadata-settings');if(!r.ok)return;const d=await r.json();
+    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Preferred metadata language and country for media lookups (TMDb, TheTVDB, etc.)</p>';
+    h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">';
+    h+='<div><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Language (ISO 639-1)</label>';
+    h+='<input id="meta-lang" value="'+_escHtml(d.language)+'" style="width:80px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em" placeholder="en"></div>';
+    h+='<div><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Country (ISO 3166-1)</label>';
+    h+='<input id="meta-country" value="'+_escHtml(d.country)+'" style="width:80px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em" placeholder="US"></div>';
+    h+='<button class="btn-primary" onclick="saveMetadata()">Save</button></div>';
+    h+='<div style="font-size:.78em;color:var(--fg3);margin-top:6px">Common: en/US, de/DE, fr/FR, es/ES, pt/BR, ja/JP, ko/KR, zh/CN</div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+async function saveMetadata(){
+  const lang=document.getElementById('meta-lang')?.value.trim()||'';
+  const country=document.getElementById('meta-country')?.value.trim()||'';
+  if(!lang||!country){toast('Language and country required',true);return;}
+  try{const r=await fetch('/api/metadata-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:lang,country})});
+    const d=await r.json();
+    if(d.status==='saved')toast('Metadata settings saved. Run bootstrap to apply.');
+    else toast(d.error||'Save failed',true);
+  }catch(e){toast('Error: '+e,true);}
+}
+
+/* Storage breakdown by media type */
+async function loadStorageBreakdown(){
+  const el=document.getElementById('storage-breakdown');
+  try{const r=await fetch('/api/storage-breakdown');if(!r.ok)return;const d=await r.json();
+    if(d.error){el.innerHTML='<span class="error">'+_escHtml(d.error)+'</span>';return;}
+    const items=d.breakdown||[];
+    if(!items.length){el.innerHTML='<span style="color:var(--fg3)">No media folders found at '+_escHtml(d.media_root||'?')+'</span>';return;}
+    let h='<div style="font-size:.85em;color:var(--fg3);margin-bottom:6px">Total: <b>'+_escHtml(d.total_display)+'</b> in '+_escHtml(d.media_root)+'</div>';
+    h+='<table class="idx-table"><thead><tr><th>Folder</th><th>Size</th><th style="width:200px">Usage</th></tr></thead><tbody>';
+    for(const it of items){
+      const pct=d.total_bytes>0?Math.round(it.bytes/d.total_bytes*100):0;
+      h+='<tr><td style="font-weight:600">'+_escHtml(it.name)+'</td><td>'+_escHtml(it.display)+'</td>';
+      h+='<td><div class="disk-bar" style="height:12px;margin:0"><div class="disk-fill" style="width:'+pct+'%"></div></div><span style="font-size:.75em;color:var(--fg3)">'+pct+'%</span></td></tr>';}
+    h+='</tbody></table>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+
+/* Server-side persistent scheduler */
+async function loadServerSchedules(){
+  try{const r=await fetch('/api/schedules');if(!r.ok)return;const d=await r.json();
+    const el=document.getElementById('server-schedules');if(!el)return;
+    const scheds=d.schedules||[];
+    if(!scheds.length){el.innerHTML='<div style="color:var(--fg3);font-size:.85em">No server-side schedules.</div>';return;}
+    let h='<table class="idx-table" style="font-size:.85em"><thead><tr><th>Action</th><th>Interval</th><th>Last Run</th><th></th></tr></thead><tbody>';
+    for(const s of scheds){const ago=s.last_run?relTime((Date.now()/1000-s.last_run))+' ago':'never';
+      h+='<tr><td style="font-weight:600">'+_escHtml(s.action)+'</td><td>'+relTime(s.interval_seconds)+'</td>';
+      h+='<td style="color:var(--fg3)">'+ago+'</td>';
+      h+='<td><button class="btn-danger" style="padding:2px 8px;font-size:.75em" onclick="deleteServerSchedule('+s.id+')">Remove</button></td></tr>';}
+    h+='</tbody></table>';
+    el.innerHTML=h;
+  }catch(e){}
+}
+async function addServerSchedule(){
+  const action=document.getElementById('serverSchedAction')?.value||'';
+  const mins=parseInt(document.getElementById('serverSchedMins')?.value||'60');
+  if(!action){toast('Select an action',true);return;}
+  try{const r=await fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action,interval_seconds:mins*60})});
+    const d=await r.json();
+    if(d.status==='created'){toast('Schedule created');loadServerSchedules();}
+    else toast(d.error||'Failed',true);
+  }catch(e){toast('Error: '+e,true);}
+}
+async function deleteServerSchedule(id){
+  try{const r=await fetch('/api/schedules/'+id+'/delete',{method:'POST'});
+    const d=await r.json();
+    if(d.status==='removed'){toast('Schedule removed');loadServerSchedules();}
+    else toast(d.error||'Failed',true);
+  }catch(e){toast('Error: '+e,true);}
+}
+
+/* Live TV / IPTV sources config */
+async function loadLiveTvConfig(){
+  const el=document.getElementById('livetv-config');
+  try{const r=await fetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
+    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Live TV tuner (M3U playlist) and guide (EPG/XMLTV) sources for Jellyfin.</p>';
+    h+='<div style="margin-bottom:8px"><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Tuner URL (M3U)</label>';
+    h+='<input id="ltv-tuner" value="'+_escHtml(d.tuner_url)+'" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" placeholder="https://iptv-org.github.io/iptv/countries/us.m3u"></div>';
+    h+='<div style="margin-bottom:8px"><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Guide URL (XMLTV)</label>';
+    h+='<input id="ltv-guide" value="'+_escHtml(d.guide_url)+'" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em" placeholder="https://iptv-epg.org/files/epg-us.xml"></div>';
+    h+='<button class="btn-primary" onclick="saveLiveTv()">Save</button>';
+    h+='<div style="font-size:.78em;color:var(--fg3);margin-top:6px">Browse sources: <a href="https://github.com/iptv-org/iptv" target="_blank" style="color:var(--blue)">iptv-org/iptv</a> — country playlists available for 250+ countries</div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+async function saveLiveTv(){
+  const tuner=document.getElementById('ltv-tuner')?.value.trim()||'';
+  const guide=document.getElementById('ltv-guide')?.value.trim()||'';
+  if(!tuner){toast('Tuner URL required',true);return;}
+  try{const r=await fetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tuner_url:tuner,guide_url:guide})});
+    const d=await r.json();
+    if(d.status==='saved')toast('Live TV sources saved. Run bootstrap to apply.');
+    else toast(d.error||'Save failed',true);
+  }catch(e){toast('Error: '+e,true);}
 }
 
 /* #15 CPU/memory sparklines per service */
