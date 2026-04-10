@@ -326,6 +326,7 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/health"),
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {})
     @patch.object(health_mod, "discover_api_keys", return_value={})
     @patch.object(health_mod, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
@@ -350,6 +351,7 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/health"),
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {})
     @patch.object(health_mod, "discover_api_keys", return_value={})
     @patch.object(health_mod, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen", side_effect=Exception("connection refused"))
@@ -366,6 +368,7 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "AUTH_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
     })
+    @patch.object(health_mod, "LOGIN_PROBES", {})
     @patch.object(health_mod, "discover_api_keys", return_value={"sonarr": "my-key"})
     @patch.object(health_mod, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
@@ -387,6 +390,7 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "AUTH_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
     })
+    @patch.object(health_mod, "LOGIN_PROBES", {})
     @patch.object(health_mod, "discover_api_keys", return_value={})
     @patch.object(health_mod, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
@@ -406,6 +410,7 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/health"),
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {})
     @patch.object(health_mod, "discover_api_keys", return_value={})
     @patch.object(health_mod, "_get_running_containers", return_value={"radarr"})
     @patch("urllib.request.urlopen")
@@ -416,6 +421,81 @@ class TestProbeServices(unittest.TestCase):
         svc = result["services"].get("sonarr", {})
         self.assertEqual(svc.get("status"), "disabled")
         self.assertEqual(svc.get("auth"), "n/a")
+
+    @patch.object(health_mod, "SERVICE_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/health"),
+    })
+    @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
+    })
+    @patch.object(health_mod, "discover_api_keys", return_value={})
+    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test123"})
+    @patch("urllib.request.urlopen")
+    def test_probe_login_ok(self, mock_urlopen, mock_containers, mock_keys):
+        """Login probe should return 'ok' when basic auth succeeds."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"version":"4.0"}'
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        cache = self._make_cache(None)
+        result = health_mod.probe_services(cache)
+        svc = result["services"].get("sonarr", {})
+        self.assertEqual(svc.get("login"), "ok")
+
+    @patch.object(health_mod, "SERVICE_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/health"),
+    })
+    @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
+    })
+    @patch.object(health_mod, "discover_api_keys", return_value={})
+    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "wrong"})
+    @patch("urllib.request.urlopen")
+    def test_probe_login_fail(self, mock_urlopen, mock_containers, mock_keys):
+        """Login probe should return 'fail' when credentials are rejected."""
+        # Health probe succeeds, login probe raises 401
+        def side_effect(req, timeout=None):
+            if "Authorization" in (req.headers if hasattr(req, 'headers') else {}):
+                raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+        mock_urlopen.side_effect = side_effect
+
+        cache = self._make_cache(None)
+        result = health_mod.probe_services(cache)
+        svc = result["services"].get("sonarr", {})
+        self.assertEqual(svc.get("login"), "fail")
+
+    @patch.object(health_mod, "SERVICE_PROBES", {
+        "app1": ("app1", 8080, "/"),
+    })
+    @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {})
+    @patch.object(health_mod, "discover_api_keys", return_value={})
+    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch("urllib.request.urlopen")
+    def test_probe_login_na(self, mock_urlopen, mock_containers, mock_keys):
+        """Services without login_mode should get login='n/a'."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        cache = self._make_cache(None)
+        result = health_mod.probe_services(cache)
+        svc = result["services"].get("app1", {})
+        self.assertEqual(svc.get("login"), "n/a")
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +595,144 @@ class TestHealthHistory(unittest.TestCase):
         # First entry is 2 hours ago
         self.assertGreaterEqual(result["period_hours"], 1.9)
         self.assertLessEqual(result["period_hours"], 2.1)
+
+
+# ---------------------------------------------------------------------------
+# _probe_login
+# ---------------------------------------------------------------------------
+
+
+class TestProbeLogin(unittest.TestCase):
+    """_probe_login tests for each login_mode."""
+
+    @patch("urllib.request.urlopen")
+    def test_jellyfin_login_ok(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = json.dumps({"AccessToken": "tok123"}).encode()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = health_mod._probe_login("jf", 8096, "/Users/AuthenticateByName", "json_credentials", "admin", "pass")
+        self.assertEqual(result, "ok")
+
+    @patch("urllib.request.urlopen")
+    def test_jellyfin_login_fail(self, mock_urlopen):
+        mock_urlopen.side_effect = urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)
+        result = health_mod._probe_login("jf", 8096, "/Users/AuthenticateByName", "json_credentials", "admin", "wrong")
+        self.assertEqual(result, "fail")
+
+    @patch("urllib.request.urlopen")
+    def test_arr_basic_ok(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = health_mod._probe_login("sonarr", 8989, "/api/v3/system/status", "basic", "admin", "pass")
+        self.assertEqual(result, "ok")
+
+    @patch("urllib.request.urlopen")
+    def test_arr_basic_fail(self, mock_urlopen):
+        mock_urlopen.side_effect = urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)
+        result = health_mod._probe_login("sonarr", 8989, "/api/v3/system/status", "basic", "admin", "wrong")
+        self.assertEqual(result, "fail")
+
+    @patch("urllib.request.urlopen")
+    def test_form_login_ok(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b"Ok."
+        mock_resp.url = "http://qbit:8080/api/v2/auth/login"
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = health_mod._probe_login("qbit", 8080, "/api/v2/auth/login", "form", "admin", "pass")
+        self.assertEqual(result, "ok")
+
+    @patch("urllib.request.urlopen")
+    def test_form_login_fails_body(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b"Fails."
+        mock_resp.url = "http://qbit:8080/api/v2/auth/login"
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = health_mod._probe_login("qbit", 8080, "/api/v2/auth/login", "form", "admin", "wrong")
+        self.assertEqual(result, "fail")
+
+    @patch("urllib.request.urlopen")
+    def test_form_login_fails_redirect(self, mock_urlopen):
+        """Arr apps redirect to /login?loginFailed=true on bad creds."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b"<html>Login form</html>"
+        mock_resp.url = "http://sonarr:8989/login?returnUrl=&loginFailed=true"
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = health_mod._probe_login("sonarr", 8989, "/login", "form", "admin", "wrong")
+        self.assertEqual(result, "fail")
+
+    @patch("urllib.request.urlopen", side_effect=Exception("connection refused"))
+    def test_connection_error(self, mock_urlopen):
+        result = health_mod._probe_login("sonarr", 8989, "/api/v3/system/status", "basic", "admin", "pass")
+        self.assertEqual(result, "error")
+
+    def test_unknown_mode(self):
+        result = health_mod._probe_login("x", 80, "/", "unknown_mode", "u", "p")
+        self.assertEqual(result, "n/a")
+
+
+# ---------------------------------------------------------------------------
+# probe_credentials
+# ---------------------------------------------------------------------------
+
+
+class TestProbeCredentials(unittest.TestCase):
+    """probe_credentials should test login for all or specified services."""
+
+    @patch.object(health_mod, "LOGIN_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
+        "jf": ("jf", 8096, "/Users/AuthenticateByName", "json_credentials"),
+    })
+    @patch.object(health_mod, "_probe_login", return_value="ok")
+    @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test"})
+    def test_probe_all(self, mock_login):
+        result = health_mod.probe_credentials()
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["ok"], 2)
+        self.assertIn("sonarr", result["credentials"])
+        self.assertIn("jf", result["credentials"])
+
+    @patch.object(health_mod, "LOGIN_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
+        "jf": ("jf", 8096, "/Users/AuthenticateByName", "json_credentials"),
+    })
+    @patch.object(health_mod, "_probe_login", return_value="ok")
+    @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test"})
+    def test_probe_specific_services(self, mock_login):
+        result = health_mod.probe_credentials(services=["sonarr"])
+        self.assertEqual(result["total"], 1)
+        self.assertIn("sonarr", result["credentials"])
+        self.assertNotIn("jf", result["credentials"])
+
+    @patch.object(health_mod, "LOGIN_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
+    })
+    @patch.object(health_mod, "_probe_login", return_value="fail")
+    @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "wrong"})
+    def test_probe_with_failures(self, mock_login):
+        result = health_mod.probe_credentials()
+        self.assertEqual(result["ok"], 0)
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["credentials"]["sonarr"], "fail")
 
 
 if __name__ == "__main__":

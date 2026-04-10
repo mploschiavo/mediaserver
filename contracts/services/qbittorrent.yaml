@@ -6,6 +6,8 @@ service:
   host: qbittorrent
   port: 8080
   health_path: /
+  login_mode: form
+  login_path: /api/v2/auth/login
 plugin:
   technology: qbittorrent
   aliases:

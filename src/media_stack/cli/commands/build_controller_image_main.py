@@ -13,6 +13,7 @@ from pathlib import Path
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
 from media_stack.cli.workflows.cli_common import repo_root_from_script_file, run_command
+from media_stack.core.defaults import default_controller_image
 
 
 @dataclass(frozen=True)
@@ -52,10 +53,7 @@ def parse_config(argv: list[str] | None = None) -> BuildControllerImageConfig:
     )
     parser.add_argument(
         "--image",
-        default=os.environ.get(
-            "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-controller:latest",
-        ),
+        default=default_controller_image(),
     )
     push_default = _truthy(os.environ.get("PUSH_IMAGE"), True)
     parser.add_argument("--push", dest="push_image", action="store_true", default=push_default)

@@ -11,6 +11,7 @@ SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
 if str(SCRIPTS_ROOT) not in sys.path:  # pragma: no cover - import compatibility shim.
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from media_stack.core.defaults import default_controller_image  # noqa: E402
 from media_stack.core.exceptions import ConfigError  # noqa: E402
 
 from media_stack.cli.workflows.controller_component_resolver import (  # noqa: E402
@@ -141,10 +142,7 @@ def build_parser(
     )
     parser.add_argument(
         "--bootstrap-runner-image",
-        default=os.environ.get(
-            "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-controller:latest",
-        ),
+        default=default_controller_image(),
         help="Bootstrap runner container image.",
     )
     parser.add_argument(
@@ -200,7 +198,7 @@ def parse_run_bootstrap_job_config(
         prepare_host_root=str(args.prepare_host_root).strip() or "/srv/media-stack",
         ingress_name=str(args.ingress_name).strip() or "media-stack-ingress",
         bootstrap_runner_image=str(args.bootstrap_runner_image).strip()
-        or "192.168.1.60:30002/library/media-stack-controller:latest",
+        or default_controller_image(),
         root_dir=root_dir,
         config_file=Path(str(args.config_file)),
         selected_apps=str(os.environ.get("SELECTED_APPS", "")).strip(),

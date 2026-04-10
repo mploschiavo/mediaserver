@@ -106,6 +106,36 @@ class JellyfinBootstrapAuthService:
         if status not in (200, 201, 202, 204):
             raise RuntimeError(f"Jellyfin password update failed (HTTP {status}): {body}")
 
+    def rename_user(
+        self,
+        base_url: str,
+        session_token: str,
+        user_id: str,
+        new_name: str,
+    ) -> bool:
+        """Rename a Jellyfin user. Returns True on success."""
+        headers = {"X-Emby-Token": session_token}
+        status, _, body = self.http_request(
+            base_url,
+            f"/Users/{parse.quote(user_id, safe='')}",
+            method="POST",
+            payload={
+                "Name": new_name,
+                "Id": user_id,
+                "Policy": {
+                    "IsAdministrator": True,
+                    "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+                    "PasswordResetProviderId": "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider",
+                },
+            },
+            headers=headers,
+        )
+        if status in (200, 201, 202, 204):
+            self.info(f"Jellyfin: renamed user {user_id} to '{new_name}'")
+            return True
+        self.warn(f"Jellyfin: failed to rename user to '{new_name}' (HTTP {status}): {body}")
+        return False
+
     def startup_wizard_if_needed(self, base_url: str, username: str, password: str) -> None:
         info_public = self.wait_for_jellyfin(base_url)
         if bool(info_public.get("StartupWizardCompleted", False)):

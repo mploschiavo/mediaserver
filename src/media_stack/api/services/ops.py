@@ -167,8 +167,25 @@ def check_image_updates() -> dict[str, Any]:
                 })
         except Exception as exc:
             return {"error": str(exc)[:80]}
+    # Calculate staleness from image_created or last_updated
+    now = time.time()
+    stale_count = 0
+    for r in results:
+        age_source = r.get("image_created") or r.get("last_updated") or ""
+        days_old = -1
+        if age_source:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(age_source.strip()[:19], "%Y-%m-%d %H:%M:%S")
+                days_old = int((now - dt.timestamp()) / 86400)
+            except (ValueError, OSError):
+                pass
+        r["days_old"] = days_old
+        r["stale"] = days_old > 30
+        if r["stale"]:
+            stale_count += 1
     pinned = sum(1 for r in results if r["tag"] not in ("latest",))
-    return {"images": results, "total": len(results), "pinned": pinned}
+    return {"images": results, "total": len(results), "pinned": pinned, "stale": stale_count}
 
 
 def get_gpu_info() -> dict[str, Any]:

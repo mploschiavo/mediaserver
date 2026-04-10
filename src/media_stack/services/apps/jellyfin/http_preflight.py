@@ -120,6 +120,7 @@ def run_preflight(
     access_token = str(auth_result.get("token", ""))
     user_id = str(auth_result.get("user_id", ""))
     password_used = str(auth_result.get("password_used", admin_password))
+    authenticated_username = str(auth_result.get("username", admin_username))
 
     # Ensure wizard is marked complete — if /Startup/User returned 500,
     # the wizard never reached /Startup/Complete even though we can auth.
@@ -143,7 +144,13 @@ def run_preflight(
                     break
                 time.sleep(2)
 
-    # Step 3: Rotate password if authenticated with empty/different password.
+    # Step 3: Rename user if authenticated as a different username (e.g.
+    # Jellyfin auto-created "MyJellyfinUser" when /Startup/User failed).
+    if authenticated_username != admin_username:
+        info(f"Jellyfin: renaming user '{authenticated_username}' to '{admin_username}'")
+        auth_service.rename_user(jellyfin_url, access_token, user_id, admin_username)
+
+    # Step 4: Rotate password if authenticated with empty/different password.
     if password_used != admin_password:
         info("Jellyfin: rotating password to stack admin credentials")
         try:
@@ -152,7 +159,7 @@ def run_preflight(
             )
         except RuntimeError as exc:
             info(f"Jellyfin: password rotation returned error ({exc}), verifying auth")
-        # Re-authenticate with the target password regardless of rotation result.
+        # Re-authenticate with the target credentials.
         auth_result, _, _ = auth_service.authenticate_with_credentials(
             jellyfin_url, admin_username, admin_password,
         )

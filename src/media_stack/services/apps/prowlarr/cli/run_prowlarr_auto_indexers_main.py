@@ -8,6 +8,7 @@ import os
 import sys
 
 from media_stack.cli.workflows.cli_common import repo_root_from_script_file
+from media_stack.core.defaults import default_controller_image
 from media_stack.core.exceptions import ConfigError, KubernetesError, MediaStackError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
@@ -33,10 +34,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prepare-host-root", default="/srv/media-stack")
     parser.add_argument(
         "--bootstrap-runner-image",
-        default=os.getenv(
-            "BOOTSTRAP_RUNNER_IMAGE",
-            "192.168.1.60:30002/library/media-stack-controller:latest",
-        ),
+        default=default_controller_image(),
     )
     parser.add_argument(
         "--exclude-name-token",

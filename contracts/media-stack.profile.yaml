@@ -11,6 +11,11 @@ resources:
   disk_space_gb: 500
   network_cidr: 192.168.1.0/24
 
+controller:
+  registry: harbor.iomio.io
+  image_name: library/media-stack-controller
+  image_tag: latest
+
 install_profile: standard
 
 # Optional app-level overrides on top of install_profile preset.

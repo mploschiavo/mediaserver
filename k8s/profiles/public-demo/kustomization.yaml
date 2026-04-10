@@ -9,5 +9,9 @@ resources:
   - ../../optional.yaml
   - ../../ingress-traefik.yaml
   - ../../scale-policy.yaml
+images:
+  - name: harbor.iomio.io/library/media-stack-controller
+    newName: harbor.iomio.io/library/media-stack-controller
+    newTag: v1.0.1
 patches:
   - path: demo-scale-patch.yaml
