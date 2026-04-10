@@ -19,6 +19,7 @@ import media_stack.api.services.config as config_mod  # noqa: E402
 
 
 def _make_profile(data, td):
+    data.setdefault("metadata", {}).setdefault("name", "test-stack")
     import yaml
     p = Path(td) / "profile.yaml"
     with open(p, "w") as f:
