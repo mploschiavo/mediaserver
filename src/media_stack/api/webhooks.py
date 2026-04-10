@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import urllib.request
 from typing import Any
 
 from .state import ControllerState
+
+logger = logging.getLogger("controller_api")
 
 
 def _fire_webhooks(state: ControllerState, event: str, payload: dict[str, Any]) -> None:
@@ -22,5 +25,5 @@ def _fire_webhooks(state: ControllerState, event: str, payload: dict[str, Any]) 
                 headers={"Content-Type": "application/json"},
             )
             urllib.request.urlopen(req, timeout=5)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Webhook delivery failed for %s: %s", url, exc)

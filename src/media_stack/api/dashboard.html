@@ -172,8 +172,6 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 @keyframes loadSlide{0%{margin-left:-30%}100%{margin-left:100%}}
 .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:14px;margin:6px 0}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.api-footer{background:var(--bg4);padding:6px 16px;border-radius:6px;font-size:.72em;color:var(--fg3);font-family:'Fira Code',monospace;margin-top:12px;display:flex;gap:12px;flex-wrap:wrap}
-.api-footer span{white-space:nowrap}
 .mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:8px 16px;z-index:45;gap:6px;justify-content:center;flex-wrap:wrap}
 /* Tablet */
 @media(max-width:900px){
@@ -192,36 +190,38 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   header{padding:8px 10px}
   header h1{font-size:1em}
   header .links{gap:3px}
-  header .links a,header .links button{padding:2px 5px;font-size:.72em}
+  header .links a,header .links button{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;font-size:.78em}
   .tab-bar{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;gap:0}
-  .tab-bar button{white-space:nowrap;font-size:.75em;padding:5px 8px}
+  .tab-bar button{white-space:nowrap;font-size:.78em;padding:8px 12px;min-height:44px}
   .card{padding:8px;margin-bottom:6px}
   .card h2{font-size:.9em}
   .action-group{padding:8px}
-  .action-group button{font-size:.75em;padding:5px 8px}
-  .svc-row{padding:5px 6px;font-size:.82em}
-  .svc-row .sver,.svc-row .smeta{display:none}
-  .quick-links{padding:4px 10px!important;gap:3px}
-  .quick-links a{font-size:.68em;padding:2px 6px}
-  .idx-table{font-size:.72em}
-  .filter-bar{font-size:.72em;gap:3px}
-  .filter-bar button{padding:2px 6px}
-  #logs{max-height:180px;font-size:.68em}
-  .log-line{grid-template-columns:50px 50px 1fr;font-size:.72em}
+  .action-group button{font-size:.78em;padding:8px 12px;min-height:44px}
+  .svc-row{padding:8px 6px;font-size:.85em;min-height:44px}
+  .svc-row .sver{display:none}
+  .quick-links{padding:4px 10px;gap:4px}
+  .quick-links a{font-size:.72em;padding:4px 8px;min-height:36px;display:inline-flex;align-items:center}
+  .idx-table{font-size:.75em}
+  .idx-table td,.idx-table th{padding:6px 4px}
+  .filter-bar{font-size:.75em;gap:4px}
+  .filter-bar button{padding:4px 8px;min-height:36px}
+  #logs{max-height:200px;font-size:.72em}
+  .log-line{grid-template-columns:50px 50px 1fr;font-size:.75em}
   .log-line .lvl{display:none}
   .settings-panel{max-width:98%;padding:12px}
   .svc-sort{flex-wrap:wrap;gap:2px}
-  .env-banner{padding:3px 10px;font-size:.68em}
+  .env-banner{padding:4px 10px;font-size:.72em}
   .stat-card{padding:10px}
-  .stat-card h3{font-size:.78em;margin-bottom:4px}
+  .stat-card h3{font-size:.82em;margin-bottom:4px}
   .subtab{min-height:80px!important}
-  .btn-secondary.active{font-size:.72em}
+  .btn-secondary.active{font-size:.75em}
+  .btn-primary,.btn-danger,.btn-secondary{min-height:44px;padding:8px 14px}
 }
 /* Small phone */
 @media(max-width:400px){
   header h1{font-size:.9em}
-  header .links a,header .links button{font-size:.65em}
-  .tab-bar button{font-size:.68em;padding:4px 6px}
+  header .links a,header .links button{font-size:.68em;min-width:36px;min-height:36px;padding:4px 6px}
+  .tab-bar button{font-size:.72em;padding:6px 8px;min-height:36px}
   .action-group-desc{display:none}
   .log-line{grid-template-columns:40px 1fr}
   .log-line .src{display:none}
@@ -556,7 +556,6 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div class="card-body" id="hist"></div>
 </div>
 
-<div class="api-footer" id="api-footer"></div>
 </div>
 <div id="settings-root"></div>
 
@@ -630,8 +629,12 @@ function showTab(id,btn){
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className=err?'err':'';t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
 function playSound(){if(!document.getElementById('soundToggle').checked)return;try{const ac=new(window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator();const g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=800;g.gain.value=0.15;o.start();o.stop(ac.currentTime+0.15);setTimeout(()=>{o.frequency.value=1200;const o2=ac.createOscillator();const g2=ac.createGain();o2.connect(g2);g2.connect(ac.destination);o2.frequency.value=1200;g2.gain.value=0.15;o2.start();o2.stop(ac.currentTime+0.15);},180);}catch(e){}}
 
+function _escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function confirmAction(name,title,desc){
-  document.getElementById('confirm-root').innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)closeConfirm()"><div class="confirm-box"><h3>'+title+'</h3><p>'+desc+'</p><div class="actions"><button class="btn-secondary" onclick="closeConfirm()">Cancel</button> <button class="btn-primary" onclick="closeConfirm();doAction(\''+name+'\')">Run</button></div></div></div>';
+  const safe=_escHtml(name);
+  const root=document.getElementById('confirm-root');
+  root.innerHTML='<div class="confirm-overlay" onclick="if(event.target===this)closeConfirm()"><div class="confirm-box"><h3>'+_escHtml(title)+'</h3><p>'+_escHtml(desc)+'</p><div class="actions"><button class="btn-secondary" onclick="closeConfirm()">Cancel</button> <button class="btn-primary" id="confirm-run-btn">Run</button></div></div></div>';
+  document.getElementById('confirm-run-btn').addEventListener('click',()=>{closeConfirm();doAction(name);});
 }
 function closeConfirm(){document.getElementById('confirm-root').innerHTML='';}
 let _actionPending=false;
@@ -1761,23 +1764,21 @@ async function loadNamespaces(){
         const img=(s.image||'').split('/').pop().split('@')[0];
         h+='<tr><td style="font-weight:600">'+s.name+'</td><td><span class="'+cls+'">'+s.ready+'/'+s.replicas+'</span></td><td style="font-size:.78em;color:var(--fg3)">'+img+'</td><td style="font-size:.78em">'+(s.cpu_request||'-')+'</td><td style="font-size:.78em">'+(s.mem_request||'-')+'</td></tr>';}
       h+='</tbody></table>';}
-    // Pod metrics
+    // Pod metrics with aggregate totals from server
     const metrics=d.pod_metrics||[];
+    const totals=d.totals||{};
     if(metrics.length){
-      let totalCpuM=0,totalMemMi=0;
-      for(const m of metrics){
-        const cpuStr=m.cpu||'';const memStr=m.memory||'';
-        if(cpuStr.endsWith('m'))totalCpuM+=parseInt(cpuStr)||0;
-        else if(cpuStr.endsWith('n'))totalCpuM+=(parseInt(cpuStr)||0)/1e6;
-        if(memStr.endsWith('Mi'))totalMemMi+=parseInt(memStr)||0;
-        else if(memStr.endsWith('Ki'))totalMemMi+=(parseInt(memStr)||0)/1024;
-        else if(memStr.endsWith('Gi'))totalMemMi+=(parseInt(memStr)||0)*1024;
-      }
+      const cpuDisp=totals.cpu_display||metrics.length+'pods';
+      const memDisp=totals.memory_display||'?';
+      const cntDisp=totals.container_count||metrics.length;
       h+='<div class="cat-label">Live Resource Usage</div>';
-      h+='<div style="display:flex;gap:16px;margin:6px 0;font-size:.88em"><span>Total CPU: <b>'+totalCpuM.toFixed(0)+'m</b> ('+(totalCpuM/1000).toFixed(2)+' cores)</span><span>Total Memory: <b>'+totalMemMi.toFixed(0)+'Mi</b> ('+(totalMemMi/1024).toFixed(1)+' Gi)</span><span>Pods: <b>'+metrics.length+'</b></span></div>';
+      h+='<div style="display:flex;gap:16px;margin:6px 0;font-size:.88em;flex-wrap:wrap">';
+      h+='<span style="background:var(--bg4);padding:4px 10px;border-radius:6px">CPU: <b>'+_escHtml(cpuDisp)+'</b></span>';
+      h+='<span style="background:var(--bg4);padding:4px 10px;border-radius:6px">Memory: <b>'+_escHtml(memDisp)+'</b></span>';
+      h+='<span style="background:var(--bg4);padding:4px 10px;border-radius:6px">Containers: <b>'+cntDisp+'</b></span></div>';
       h+='<table class="idx-table"><thead><tr><th>Pod</th><th>CPU</th><th>Memory</th></tr></thead><tbody>';
       for(const m of metrics){const podShort=m.pod.replace(/-[a-z0-9]{8,10}-[a-z0-9]{5}$/,'');
-        h+='<tr><td style="font-size:.82em">'+podShort+'</td><td style="font-family:monospace;font-size:.82em">'+m.cpu+'</td><td style="font-family:monospace;font-size:.82em">'+m.memory+'</td></tr>';}
+        h+='<tr><td style="font-size:.82em">'+_escHtml(podShort)+'</td><td style="font-family:monospace;font-size:.82em">'+_escHtml(m.cpu)+'</td><td style="font-family:monospace;font-size:.82em">'+_escHtml(m.memory)+'</td></tr>';}
       h+='</tbody></table>';}
     document.getElementById('ns-view').innerHTML=h;
   }catch(e){document.getElementById('ns-view').innerHTML='Error loading: '+e;}
@@ -2216,16 +2217,6 @@ function renderSvcMgmtTips(){
   }
 }
 
-function renderTimingFooter(){
-  const el=document.getElementById('api-footer');if(!el)return;
-  let h='';for(const[url,ms]of Object.entries(apiTimings)){
-    const name=url.replace('/api/','').replace('/','');
-    const cls=ms>3000?'error':ms>1000?'running':'';
-    h+='<span class="'+cls+'">'+name+': '+ms+'ms</span>';
-  }
-  if(!h){el.style.display='none';return;}
-  el.style.display='flex';el.innerHTML='<span style="color:var(--fg3)">API:</span> '+h;
-}
 
 /* Lazy-load tab data with loading feedback */
 const tabLoaded={};
@@ -2282,30 +2273,30 @@ document.addEventListener('keydown',function(e){
   if(e.key==='?'){showShortcuts();return;}
 });
 
-/* API timing tracker */
-const apiTimings={};
-async function timedFetch(url){const t0=performance.now();const r=await fetch(url);const ms=Math.round(performance.now()-t0);apiTimings[url]=ms;return r;}
+/* Interval management — track IDs for cleanup */
+const _intervals=[];
 
 /* Init */
 loadServicesFromAPI().then(()=>{
-load();setInterval(load,dashSettings.refreshInterval);startSSE();loadRoutingConfig();buildQuickLinks();
+load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE();loadRoutingConfig();buildQuickLinks();
 // Populate service log picker
 (function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;
   sel.innerHTML+='<option value="media-stack-controller">Controller (container)</option>';
   for(const s of SVCS){sel.innerHTML+='<option value="'+s.id+'">'+s.name+'</option>';}
 })();
 setTimeout(probeServices,2000);
-setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();renderTimingFooter();});},dashSettings.healthInterval);
+_intervals.push(setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();});},dashSettings.healthInterval));
 setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();loadImageUpdates();},3000);
 // Lazy: indexers, libraries, etc. load when their tab is opened
-setInterval(()=>{loadStats();loadDisk();loadDownloads();
+_intervals.push(setInterval(()=>{loadStats();loadDisk();loadDownloads();
   // Bandwidth tracking
   fetch('/api/envoy/stats').then(r=>r.json()).then(d=>{recordBandwidth(d);}).catch(()=>{});
-  renderTimingFooter();
-},dashSettings.statsInterval);
-setInterval(loadVersions,300000);
+},dashSettings.statsInterval));
+_intervals.push(setInterval(loadVersions,300000));
 // Load namespace metrics for resource sparklines
-setInterval(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},30000);
+_intervals.push(setInterval(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},30000));
 setTimeout(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},5000);
+// Cleanup intervals on page unload
+window.addEventListener('beforeunload',()=>{_intervals.forEach(id=>clearInterval(id));});
 });
 </script></body></html>

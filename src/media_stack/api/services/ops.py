@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("controller_api")
 
 from ._resolve import resolve_config_path
 
@@ -72,10 +75,11 @@ def _get_k8s_namespaces(namespace: str) -> dict[str, Any]:
                         "cpu": container.get("usage", {}).get("cpu", "0"),
                         "memory": container.get("usage", {}).get("memory", "0"),
                     })
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Pod metrics unavailable: %s", exc)
 
-        return {"namespaces": ns_info, "services": services, "pod_metrics": pod_metrics}
+        totals = _aggregate_metrics(pod_metrics)
+        return {"namespaces": ns_info, "services": services, "pod_metrics": pod_metrics, "totals": totals}
     except Exception as exc:
         return {"error": str(exc)[:120]}
 
@@ -112,9 +116,40 @@ def _get_compose_containers() -> dict[str, Any]:
                 if result:
                     pod_metrics.append(result)
 
-        return {"namespaces": ns_info, "services": services, "pod_metrics": pod_metrics}
+        totals = _aggregate_metrics(pod_metrics)
+        return {"namespaces": ns_info, "services": services, "pod_metrics": pod_metrics, "totals": totals}
     except Exception as exc:
         return {"error": str(exc)[:120]}
+
+
+def _aggregate_metrics(pod_metrics: list[dict[str, str]]) -> dict[str, Any]:
+    """Sum CPU (millicores) and memory (MiB) across all containers."""
+    total_cpu_m = 0
+    total_mem_mi = 0
+    for m in pod_metrics:
+        cpu_str = m.get("cpu", "0")
+        if cpu_str.endswith("m"):
+            total_cpu_m += int(cpu_str[:-1])
+        elif cpu_str.endswith("n"):
+            total_cpu_m += int(cpu_str[:-1]) // 1_000_000
+        elif cpu_str.replace(".", "", 1).isdigit():
+            total_cpu_m += int(float(cpu_str) * 1000)
+        mem_str = m.get("memory", "0")
+        if mem_str.endswith("Mi"):
+            total_mem_mi += int(mem_str[:-2])
+        elif mem_str.endswith("Ki"):
+            total_mem_mi += int(mem_str[:-2]) // 1024
+        elif mem_str.endswith("Gi"):
+            total_mem_mi += int(mem_str[:-2]) * 1024
+        elif mem_str.replace(".", "", 1).isdigit():
+            total_mem_mi += int(int(mem_str) / 1048576)
+    return {
+        "cpu_millicores": total_cpu_m,
+        "cpu_display": f"{total_cpu_m}m" if total_cpu_m < 1000 else f"{total_cpu_m / 1000:.1f} cores",
+        "memory_mi": total_mem_mi,
+        "memory_display": f"{total_mem_mi}Mi" if total_mem_mi < 1024 else f"{total_mem_mi / 1024:.1f}Gi",
+        "container_count": len(pod_metrics),
+    }
 
 
 def check_image_updates() -> dict[str, Any]:
@@ -367,6 +402,8 @@ def get_config_snapshots() -> dict[str, Any]:
 def get_snapshot_detail(filename: str) -> dict[str, Any]:
     """Read a specific snapshot file."""
     import json as _json
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return {"error": "Invalid snapshot filename"}
     snapshot_dir = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / ".snapshots"
     path = snapshot_dir / filename
     if not path.is_file() or not filename.startswith("snapshot-"):
@@ -380,6 +417,9 @@ def get_snapshot_detail(filename: str) -> dict[str, Any]:
 def diff_snapshots(file_a: str, file_b: str) -> dict[str, Any]:
     """Compare two snapshots and return differences."""
     import json as _json
+    for f in (file_a, file_b):
+        if ".." in f or "/" in f or "\\" in f:
+            return {"error": f"Invalid snapshot filename: {f}"}
     snapshot_dir = Path(os.environ.get("CONFIG_ROOT", "/srv-config")) / ".snapshots"
     try:
         a = _json.loads((snapshot_dir / file_a).read_text(encoding="utf-8"))

@@ -46,9 +46,16 @@ SERVICE_NAMES: list[str] = [
     "unpackerr",
 ]
 
+# Matches service names at word boundaries (catches natural usage)
 SERVICE_PATTERN = re.compile(
     r"\b(" + "|".join(SERVICE_NAMES) + r")\b",
     re.IGNORECASE,
+)
+
+# Also catches "SERVICE_" env-var-style prefixes where \b misses because _ is a
+# word character.  E.g. "SONARR_API_KEY" has no \b between SONARR and _.
+_ENV_PREFIX_PATTERN = re.compile(
+    r"\b(" + "|".join(n.upper() for n in SERVICE_NAMES) + r")_",
 )
 
 # Directories / path segments that are completely excluded from scanning.
@@ -197,6 +204,10 @@ def _scan_file(py_file: Path) -> list[tuple[int, str, str]]:
         for m in SERVICE_PATTERN.finditer(line):
             svc = m.group(1).lower()
             hits.append((lineno, svc, line.rstrip()))
+        for m in _ENV_PREFIX_PATTERN.finditer(line):
+            svc = m.group(1).lower()
+            if (lineno, svc) not in {(h[0], h[1]) for h in hits}:
+                hits.append((lineno, svc, line.rstrip()))
     return hits
 
 

@@ -166,7 +166,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             return {}
         try:
             return json.loads(self.rfile.read(length))
-        except Exception:
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning("Malformed JSON body on %s %s: %s", self.command, self.path, exc)
             return {}
 
     # --- SSE ---

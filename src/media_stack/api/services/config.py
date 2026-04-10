@@ -354,12 +354,13 @@ def restore_backup(backup: dict[str, Any], state: Any = None) -> dict[str, Any]:
 
 
 def get_envvars() -> dict[str, str]:
-    """Return relevant environment variables."""
-    relevant_prefixes = (
-        "BOOTSTRAP_", "STACK_", "K8S_", "SONARR_", "RADARR_", "LIDARR_",
-        "READARR_", "PROWLARR_", "BAZARR_", "SABNZBD_", "JELLYFIN_",
-        "JELLYSEERR_", "TAUTULLI_", "PUID", "PGID", "TZ",
-    )
+    """Return relevant environment variables — prefixes derived from registry."""
+    from .registry import SERVICES as _env_svcs
+    # Platform prefixes that are always relevant
+    _platform = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
+    # Service-derived prefixes from api_key_env (e.g. SONARR_API_KEY → SONARR_)
+    _svc = {e.api_key_env.split("_")[0] + "_" for e in _env_svcs if e.api_key_env}
+    relevant_prefixes = set(_platform) | _svc
     return {
         k: v for k, v in sorted(os.environ.items())
         if any(k.startswith(p) for p in relevant_prefixes)

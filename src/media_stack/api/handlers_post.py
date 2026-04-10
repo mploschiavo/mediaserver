@@ -47,6 +47,10 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     # POST /api/restart/{service}
     if handler.path.startswith("/api/restart/"):
         svc = handler.path[len("/api/restart/"):]
+        from .services.registry import SERVICE_MAP
+        if svc not in SERVICE_MAP and svc != "controller":
+            handler._json_response(400, {"error": f"Unknown service '{svc}'", "known": sorted(SERVICE_MAP.keys())})
+            return
         handler._json_response(200, admin_svc.restart_service(svc))
         return
 
@@ -163,6 +167,14 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         if not key:
             handler._json_response(400, {"error": "key field required"})
             return
+        # Platform prefixes + service-derived prefixes from the registry
+        _PLATFORM_PREFIXES = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
+        from .services.registry import SERVICES as _env_svcs
+        _svc_prefixes = {s.api_key_env.split("_")[0] + "_" for s in _env_svcs if s.api_key_env}
+        _allowed = set(_PLATFORM_PREFIXES) | _svc_prefixes
+        if not any(key.startswith(p) for p in _allowed):
+            handler._json_response(400, {"error": f"env var must start with a known prefix (BOOTSTRAP_, STACK_, K8S_, CONTROLLER_, or a registered service prefix)"})
+            return
         handler._json_response(200, config_svc.set_envvar(key, value))
         return
 
@@ -205,6 +217,11 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         body = handler._read_json_body()
         url = body.get("url", "").strip()
         if url:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                handler._json_response(400, {"error": "Invalid webhook URL — must be http:// or https://"})
+                return
             handler.state.webhook_urls.add(url)
         handler._json_response(200, {"webhook_urls": list(handler.state.webhook_urls)})
         return
