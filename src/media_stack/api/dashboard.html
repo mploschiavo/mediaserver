@@ -275,6 +275,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <div class="stat-card"><h3>Library</h3><div id="stats-lib">Loading...</div></div>
       <div class="stat-card"><h3>Storage</h3><div id="stats-disk">Loading...</div></div>
       <div class="stat-card"><h3>Downloads</h3><div id="stats-dl">Loading...</div></div>
+      <div class="stat-card" id="drift-indicator"><h3>Config Drift</h3><div id="drift-summary">Checking...</div></div>
     </div>
   </div>
 </div>
@@ -986,6 +987,20 @@ async function loadStats(){
     document.getElementById('stats-lib').innerHTML=h||'<span style="color:var(--fg3);font-size:.85em">Run bootstrap first</span>';}}catch(e){}
 }
 let _diskGuardrails={};
+/* Config drift indicator — top-level summary */
+async function loadDriftIndicator(){
+  try{const r=await fetch('/api/config-drift');if(!r.ok)return;const d=await r.json();
+    const el=document.getElementById('drift-summary');if(!el)return;
+    if(d.clean){
+      el.innerHTML='<span class="ok" style="font-size:.85em">No drift</span>';
+      document.getElementById('drift-indicator').style.borderLeft='3px solid var(--ok)';
+    }else{
+      el.innerHTML='<span class="error" style="font-size:.85em;cursor:pointer" onclick="showTab(\'tab-profile\',document.querySelector(\'#main-tabs button:nth-child(5)\'));setTimeout(()=>document.querySelector(\'[onclick*=cfg-drift]\')?.click(),100)">'+d.total+' issue'+(d.total>1?'s':'')+'</span>';
+      document.getElementById('drift-indicator').style.borderLeft='3px solid var(--warn)';
+    }
+  }catch(e){}
+}
+
 async function loadDisk(){
   try{const r=await fetch('/api/disk');if(r.ok){const d=await r.json();const disks=d.disk||{};
     _diskGuardrails=d.guardrails||{};
@@ -1802,11 +1817,27 @@ async function renderDrift(){
   let h='<div style="font-size:.85em">';
   // Drift results from backend
   if(driftData&&driftData.drifts&&driftData.drifts.length>0){
-    h+='<div class="cat-label" style="color:var(--warn)">Config Drift Detected ('+driftData.total+')</div>';
-    h+='<table class="idx-table"><thead><tr><th>Area</th><th>Key</th><th>Expected</th><th>Actual</th><th>Note</th></tr></thead><tbody>';
-    for(const d of driftData.drifts){h+='<tr><td>'+_escHtml(d.area)+'</td><td style="font-weight:600">'+_escHtml(d.key)+'</td><td style="color:var(--ok)">'+_escHtml(d.expected)+'</td><td style="color:var(--err)">'+_escHtml(d.actual)+'</td><td style="font-size:.82em;color:var(--fg3)">'+(d.note?_escHtml(d.note):'')+'</td></tr>';}
-    h+='</tbody></table>';
-  }else{h+='<div class="cat-label" style="color:var(--ok)">No Config Drift</div><div style="color:var(--fg3);padding:6px">All configuration matches expected state.</div>';}
+    h+='<div class="cat-label" style="color:var(--warn)">'+driftData.total+' Configuration Issue'+(driftData.total>1?'s':'')+'</div>';
+    // Group by area
+    const byArea={};for(const d of driftData.drifts){if(!byArea[d.area])byArea[d.area]=[];byArea[d.area].push(d);}
+    const areaLabels={routing:'Routing',api_key:'API Keys',image:'Container Images',credentials:'Credentials',live_tv:'Live TV',libraries:'Libraries',metadata:'Metadata'};
+    const areaIcons={routing:'&#9881;',api_key:'&#128273;',image:'&#128230;',credentials:'&#128274;',live_tv:'&#128250;',libraries:'&#128218;',metadata:'&#127760;'};
+    for(const[area,items]of Object.entries(byArea)){
+      const label=areaLabels[area]||area;
+      const icon=areaIcons[area]||'&#9888;';
+      const cls=area==='credentials'?'error':area==='metadata'?'idle':'warn';
+      h+='<div class="action-group" style="margin-bottom:8px;border-left:3px solid var(--'+cls+')">';
+      h+='<div class="action-group-title" style="display:flex;gap:6px;align-items:center"><span>'+icon+'</span> '+_escHtml(label)+' ('+items.length+')</div>';
+      h+='<table class="idx-table" style="font-size:.85em"><thead><tr><th>Setting</th><th>Expected</th><th>Actual</th><th>Action</th></tr></thead><tbody>';
+      for(const d of items){
+        h+='<tr><td style="font-weight:600">'+_escHtml(d.key)+'</td>';
+        h+='<td style="color:var(--ok)">'+_escHtml(d.expected)+'</td>';
+        h+='<td style="color:var(--err)">'+_escHtml(d.actual)+'</td>';
+        h+='<td style="font-size:.82em;color:var(--blue)">'+(d.note?_escHtml(d.note):'')+'</td></tr>';
+      }
+      h+='</tbody></table></div>';
+    }
+  }else{h+='<div style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg4);border-radius:6px;border-left:3px solid var(--ok)"><span style="font-size:1.2em">&#9989;</span><div><b style="color:var(--ok)">No Configuration Drift</b><div style="font-size:.82em;color:var(--fg3)">All settings match expected state. Last checked just now.</div></div></div>';}
   // Runtime config overrides
   const cfg=(statusData||{}).runtime_config||{};
   h+='<div class="cat-label">Runtime Config Overrides</div>';
@@ -2463,11 +2494,18 @@ function addCountryLiveTv(code,name){
   const country=_iptvCountries.find(c=>c.code===code);
   const tunerUrl=(country&&country.tuner_url)||('/iptv/countries/'+code+'.m3u');
   const guideUrl=(country&&country.guide_url)||('/epg/'+code+'.xml');
-  if(!_ltvTuners.some(t=>t.url===tunerUrl)){
+  // Toggle: remove if already added, add if not
+  const tunerIdx=_ltvTuners.findIndex(t=>t.url===tunerUrl);
+  if(tunerIdx>=0){
+    _ltvTuners.splice(tunerIdx,1);
+    const guideIdx=_ltvGuides.findIndex(g=>g.url===guideUrl);
+    if(guideIdx>=0)_ltvGuides.splice(guideIdx,1);
+    renderLiveTvConfig();toast('Removed '+name);
+  }else{
     _ltvTuners.push({url:tunerUrl,name:name+' IPTV'});
     _ltvGuides.push({url:guideUrl,name:name+' EPG'});
     renderLiveTvConfig();toast('Added '+name);
-  }else{toast(name+' already added');}
+  }
 }
 function addCustomLiveTv(){
   const tuner=document.getElementById('ltv-custom-tuner')?.value.trim();
@@ -2723,7 +2761,7 @@ load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE(
 })();
 setTimeout(probeServices,2000);
 _intervals.push(setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();});},dashSettings.healthInterval));
-setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();loadImageUpdates();},3000);
+setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();loadImageUpdates();loadDriftIndicator();},3000);
 // Lazy: indexers, libraries, etc. load when their tab is opened
 _intervals.push(setInterval(()=>{loadStats();loadDisk();loadDownloads();
   // Bandwidth tracking
