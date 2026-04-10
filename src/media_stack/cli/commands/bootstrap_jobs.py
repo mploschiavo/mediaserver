@@ -138,72 +138,43 @@ def _ensure_media_server_api_key(ctx: JobContext) -> None:
             runtime_platform.log(f"[OK] {ms_id}: API key auto-discovered for job")
 
 
-def _configure_libraries(ctx: JobContext) -> dict[str, Any]:
-    """Create media server libraries (Movies, TV Shows, Music, Books)."""
+def _run_media_server_handler(ctx: JobContext, handler_suffix: str, label: str) -> dict[str, Any]:
+    """Generic runner for media server handlers. Ensures API key is set first."""
     ms_id = ctx.media_server_id()
     if not ms_id:
         return {"skipped": "no media server configured"}
     _ensure_media_server_api_key(ctx)
+    if not ctx.media_server_api_key():
+        return {"skipped": f"no API key for {ms_id} — run bootstrap first"}
     try:
         mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
-        fn = getattr(mod, f"ensure_{ms_id}_libraries", None)
+        fn = getattr(mod, f"ensure_{ms_id}_{handler_suffix}", None)
         if fn:
             fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
             return {"service": ms_id}
-        return {"skipped": f"no library handler for {ms_id}"}
+        return {"skipped": f"no {label} handler for {ms_id}"}
     except Exception as exc:
-        raise RuntimeError(f"Library configuration failed: {exc}") from exc
+        raise RuntimeError(f"{label} configuration failed: {exc}") from exc
+
+
+def _configure_libraries(ctx: JobContext) -> dict[str, Any]:
+    """Create media server libraries (Movies, TV Shows, Music, Books)."""
+    return _run_media_server_handler(ctx, "libraries", "Library")
 
 
 def _configure_livetv(ctx: JobContext) -> dict[str, Any]:
     """Configure Live TV tuners and guide sources."""
-    ms_id = ctx.media_server_id()
-    if not ms_id:
-        return {"skipped": "no media server configured"}
-    _ensure_media_server_api_key(ctx)
-    try:
-        mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
-        fn = getattr(mod, f"ensure_{ms_id}_livetv", None)
-        if fn:
-            fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
-            return {"service": ms_id}
-        return {"skipped": f"no livetv handler for {ms_id}"}
-    except Exception as exc:
-        raise RuntimeError(f"Live TV configuration failed: {exc}") from exc
+    return _run_media_server_handler(ctx, "livetv", "Live TV")
 
 
 def _configure_plugins(ctx: JobContext) -> dict[str, Any]:
     """Install media server plugins."""
-    ms_id = ctx.media_server_id()
-    if not ms_id:
-        return {"skipped": "no media server configured"}
-    _ensure_media_server_api_key(ctx)
-    try:
-        mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
-        fn = getattr(mod, f"ensure_{ms_id}_plugins", None)
-        if fn:
-            fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
-            return {"service": ms_id}
-        return {"skipped": f"no plugins handler for {ms_id}"}
-    except Exception as exc:
-        raise RuntimeError(f"Plugin configuration failed: {exc}") from exc
+    return _run_media_server_handler(ctx, "plugins", "Plugin")
 
 
 def _configure_playback(ctx: JobContext) -> dict[str, Any]:
     """Set media server playback defaults."""
-    ms_id = ctx.media_server_id()
-    if not ms_id:
-        return {"skipped": "no media server configured"}
-    _ensure_media_server_api_key(ctx)
-    try:
-        mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
-        fn = getattr(mod, f"ensure_{ms_id}_playback_defaults", None)
-        if fn:
-            fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
-            return {"service": ms_id}
-        return {"skipped": f"no playback handler for {ms_id}"}
-    except Exception as exc:
-        raise RuntimeError(f"Playback configuration failed: {exc}") from exc
+    return _run_media_server_handler(ctx, "playback_defaults", "Playback")
 
 
 def _configure_categories(ctx: JobContext) -> dict[str, Any]:
