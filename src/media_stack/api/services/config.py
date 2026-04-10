@@ -89,21 +89,28 @@ def get_libraries() -> dict[str, Any]:
     ms_overrides = data.get(ms_id, {}) if ms_id else {}
     if isinstance(ms_overrides, dict) and "libraries" in ms_overrides:
         return {"libraries": ms_overrides["libraries"], "source": "profile", "media_server": ms_id}
-    # Fall back to service contract defaults
+    # Fall back to service contract defaults and auto-populate the profile
+    libs = []
     try:
-        from .registry import SERVICES
+        from .registry import SERVICES, _find_services_dir
         ms_svc = next((s for s in SERVICES if s.id == ms_id), None) if ms_id else None
         if ms_svc:
-            svc_dir = Path(os.environ.get("SERVICES_REGISTRY_DIR", "")) or Path(__file__).resolve().parents[4] / "contracts" / "services"
-            svc_yaml = svc_dir / f"{ms_id}.yaml"
-            if svc_yaml.is_file():
+            svc_dir = _find_services_dir()
+            svc_yaml = (svc_dir / f"{ms_id}.yaml") if svc_dir else None
+            if svc_yaml and svc_yaml.is_file():
                 with open(svc_yaml) as f:
                     svc_cfg = yaml.safe_load(f) or {}
                 libs = (svc_cfg.get("defaults", {}).get("libraries", {}).get("libraries", []))
-                return {"libraries": libs, "source": "defaults", "media_server": ms_id}
     except Exception:
         pass
-    return {"libraries": [], "source": "none", "media_server": ms_id}
+    if not libs:
+        return {"libraries": [], "source": "not_configured", "media_server": ms_id}
+    # Auto-populate into profile so the dashboard shows them
+    data, path = _load_profile_yaml()
+    if path and ms_id:
+        data.setdefault(ms_id, {})["libraries"] = libs
+        _save_profile_yaml(data, path)
+    return {"libraries": libs, "source": "defaults (auto-populated)", "media_server": ms_id}
 
 
 def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -131,13 +138,13 @@ def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_download_categories() -> dict[str, Any]:
-    """Return configured download categories from the profile YAML."""
+    """Return configured download categories from profile."""
     data, _ = _load_profile_yaml()
     cats = data.get("download_categories")
     if isinstance(cats, dict) and cats:
         return {"categories": cats, "source": "profile"}
     return {"categories": {}, "source": "not_configured",
-            "note": "Configure in Config > Downloads or edit download_categories in profile YAML"}
+            "note": "Add categories in Config > Downloads"}
 
 
 def update_download_categories(categories: dict[str, str]) -> dict[str, Any]:

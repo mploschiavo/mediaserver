@@ -5,6 +5,8 @@ metadata:
   platform: compose
   purpose: standard
   description: Standard local stack profile
+  language: en
+  country: US
 resources:
   disk_space_gb: 50
   network_cidr: 192.168.1.0/24
@@ -58,6 +60,13 @@ live_tv_defaults:
     name: Canada EPG
   - url: /epg/au.xml
     name: Australia EPG
+# Download categories: name → completed path
+download_categories:
+  tv: /data/torrents/completed/tv
+  movies: /data/torrents/completed/movies
+  music: /data/torrents/completed/music
+  books: /data/torrents/completed/books
+
 technology_bindings:
   torrent_client: qbittorrent
   usenet_client: sabnzbd
