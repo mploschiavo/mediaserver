@@ -117,7 +117,7 @@ def action_envoy_config(args: argparse.Namespace) -> None:
 
 
 def action_validate_credentials() -> None:
-    """Probe admin credentials against all login-capable services and log results."""
+    """Probe admin credentials and auto-sync passwords for services that fail."""
     from media_stack.api.services.health import probe_credentials
 
     runtime_platform.log("[INFO] Validating admin credentials against running services")
@@ -126,17 +126,40 @@ def action_validate_credentials() -> None:
     ok_count = result.get("ok", 0)
     total = result.get("total", 0)
 
+    failed_svcs = []
     for svc, status in sorted(creds.items()):
         if status == "ok":
             runtime_platform.log(f"[CRED] {svc}: passed")
+        elif status == "disabled":
+            runtime_platform.log(f"[CRED] {svc}: auth disabled — syncing password to enable")
+            failed_svcs.append(svc)
         elif status == "error":
             runtime_platform.log(f"[WARN] {svc}: unreachable (service may still be starting)")
         else:
-            runtime_platform.log(f"[WARN] {svc}: credential check failed ({status})")
+            runtime_platform.log(f"[WARN] {svc}: credential check failed ({status}) — will attempt password sync")
+            failed_svcs.append(svc)
+
+    # Auto-sync: push stack admin password to services that failed or have auth disabled
+    if failed_svcs:
+        import os
+        from media_stack.api.services.admin import reset_password
+        stack_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+        runtime_platform.log(f"[INFO] Syncing credentials to {len(failed_svcs)} service(s): {', '.join(failed_svcs)}")
+        sync_result = reset_password(stack_pass, target_services=failed_svcs)
+        for svc_id in sync_result.get("services", []):
+            runtime_platform.log(f"[OK] {svc_id}: password synced")
+        for err in sync_result.get("errors", []):
+            runtime_platform.log(f"[WARN] {err}")
+        # Re-validate after sync
+        recheck = probe_credentials(services=failed_svcs)
+        ok_after = sum(1 for v in recheck.get("credentials", {}).values() if v == "ok")
+        if ok_after > 0:
+            runtime_platform.log(f"[OK] {ok_after} service(s) now passing after credential sync")
+        ok_count += ok_after
 
     if total == 0:
         runtime_platform.log("[INFO] No services with login_mode configured — nothing to validate")
-    elif ok_count == total:
+    elif ok_count >= total:
         runtime_platform.log(f"[OK] All {total} credential checks passed")
     else:
         failed = total - ok_count

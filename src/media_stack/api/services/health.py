@@ -37,6 +37,10 @@ LOGIN_PROBES: dict[str, tuple[str, int, str, str]] = {
 
 _HEALTH_HISTORY_PATH = Path(os.environ.get("HEALTH_HISTORY_PATH", "/tmp/media-stack-health-history.json"))
 _HEALTH_HISTORY_LOCK = threading.Lock()
+_HEALTH_HISTORY_BUFFER: list[dict[str, Any]] = []
+_HEALTH_HISTORY_LAST_FLUSH: float = 0.0
+_HEALTH_HISTORY_FLUSH_INTERVAL: float = 30.0  # seconds between disk writes
+_HEALTH_HISTORY_FLUSH_SIZE: int = 5  # entries before forced flush
 
 
 def _probe_login(
@@ -316,7 +320,13 @@ def probe_services(cache: Any) -> dict[str, Any]:
 
 
 def append_health_history(services: dict[str, Any]) -> None:
-    """Append a health probe result to persistent history for SLA."""
+    """Append a health probe result to an in-memory buffer.
+
+    Flushes to disk when the buffer reaches *_FLUSH_SIZE* entries or
+    *_FLUSH_INTERVAL* seconds have elapsed — avoids a full JSON
+    read/write on every health check (was the single largest I/O cost).
+    """
+    global _HEALTH_HISTORY_LAST_FLUSH
     entry = {
         "ts": time.time(),
         "services": {
@@ -325,18 +335,34 @@ def append_health_history(services: dict[str, Any]) -> None:
         },
     }
     with _HEALTH_HISTORY_LOCK:
-        history: list[dict[str, Any]] = []
-        if _HEALTH_HISTORY_PATH.exists():
-            try:
-                history = json.loads(_HEALTH_HISTORY_PATH.read_text())
-            except Exception:
-                pass
-        history.append(entry)
-        history = history[-1440:]  # Keep ~24h at 1-min intervals
+        _HEALTH_HISTORY_BUFFER.append(entry)
+        now = time.time()
+        should_flush = (
+            len(_HEALTH_HISTORY_BUFFER) >= _HEALTH_HISTORY_FLUSH_SIZE
+            or (now - _HEALTH_HISTORY_LAST_FLUSH) >= _HEALTH_HISTORY_FLUSH_INTERVAL
+        )
+        if should_flush:
+            _flush_health_history()
+            _HEALTH_HISTORY_LAST_FLUSH = now
+
+
+def _flush_health_history() -> None:
+    """Write buffered entries to disk. Must be called under _HEALTH_HISTORY_LOCK."""
+    if not _HEALTH_HISTORY_BUFFER:
+        return
+    history: list[dict[str, Any]] = []
+    if _HEALTH_HISTORY_PATH.exists():
         try:
-            _HEALTH_HISTORY_PATH.write_text(json.dumps(history))
+            history = json.loads(_HEALTH_HISTORY_PATH.read_text())
         except Exception:
             pass
+    history.extend(_HEALTH_HISTORY_BUFFER)
+    _HEALTH_HISTORY_BUFFER.clear()
+    history = history[-1440:]  # Keep ~24h at 1-min intervals
+    try:
+        _HEALTH_HISTORY_PATH.write_text(json.dumps(history))
+    except Exception:
+        pass
 
 
 def get_health_history() -> dict[str, Any]:

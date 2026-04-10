@@ -391,24 +391,34 @@ def reset_password(new_password: str, target_services: list[str] | None = None) 
     _filter = set(target_services) if target_services else None
 
     # 1. qBittorrent — special case (form-based auth, not in registry pattern)
+    #    Try configured password first, then common defaults for fresh installs.
     qbit = SERVICE_MAP.get("qbittorrent")
     if qbit and (_filter is None or "qbittorrent" in _filter):
-        try:
-            cj = http.cookiejar.CookieJar()
-            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-            login_data = f"username={username}&password={old_password}".encode()
-            req = urllib.request.Request(f"http://{qbit.host}:{qbit.port}/api/v2/auth/login", data=login_data)
-            opener.open(req, timeout=5)
-            prefs = json.dumps({"web_ui_password": new_password})
-            req2 = urllib.request.Request(
-                f"http://{qbit.host}:{qbit.port}/api/v2/app/setPreferences",
-                data=("json=" + urllib.parse.quote(prefs)).encode(),
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-            opener.open(req2, timeout=5)
-            updated.append("qbittorrent")
-        except Exception as exc:
-            errors.append(f"qbittorrent: {exc}")
+        qbit_ok = False
+        for try_pw in [old_password, "adminadmin", ""]:
+            try:
+                cj = http.cookiejar.CookieJar()
+                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+                login_data = f"username={username}&password={try_pw}".encode()
+                req = urllib.request.Request(f"http://{qbit.host}:{qbit.port}/api/v2/auth/login", data=login_data)
+                resp = opener.open(req, timeout=5)
+                body = resp.read().decode("utf-8", errors="replace")
+                if "Fails" in body:
+                    continue
+                prefs = json.dumps({"web_ui_password": new_password})
+                req2 = urllib.request.Request(
+                    f"http://{qbit.host}:{qbit.port}/api/v2/app/setPreferences",
+                    data=("json=" + urllib.parse.quote(prefs)).encode(),
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                opener.open(req2, timeout=5)
+                updated.append("qbittorrent")
+                qbit_ok = True
+                break
+            except Exception:
+                continue
+        if not qbit_ok:
+            errors.append("qbittorrent: login failed with all known passwords")
 
     # 2. Jellyfin — special case (user password API)
     jf = SERVICE_MAP.get("jellyfin")
@@ -490,6 +500,9 @@ def reset_password(new_password: str, target_services: list[str] | None = None) 
             cfg["username"] = username
             cfg["password"] = new_password
             cfg["passwordConfirmation"] = new_password
+            # Enable Forms auth if currently disabled — prevents "disabled" login status
+            if str(cfg.get("authenticationMethod", "")).lower() in ("none", ""):
+                cfg["authenticationMethod"] = "forms"
             put_req = urllib.request.Request(
                 f"http://{svc.host}:{svc.port}{svc.password_api_path}",
                 data=json.dumps(cfg).encode(), method="PUT",
