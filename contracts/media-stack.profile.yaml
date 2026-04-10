@@ -78,9 +78,38 @@ chaos:
     - pause_container
     - network_disconnect
 
-# Canonical Live TV defaults currently used by bootstrap config logic.
+# --- User-configurable defaults ---
+# These are read by the controller API and dashboard. Change them here
+# or via the dashboard UI (Config > Libraries, Metadata, Live TV, Downloads).
+
+# Metadata language for media lookups (TMDb, TheTVDB, etc.)
+# ISO 639-1 language code + ISO 3166-1 country code
+metadata:
+  language: en
+  country: US
+
+# Download categories: name → completed path inside the container.
+# Add custom categories (anime, audiobooks, etc.) here or via the dashboard.
+download_categories:
+  tv: /data/torrents/completed/tv
+  movies: /data/torrents/completed/movies
+  music: /data/torrents/completed/music
+  books: /data/torrents/completed/books
+
+# Live TV: IPTV tuner (M3U) and EPG guide (XMLTV) sources.
+# Browse https://github.com/iptv-org/iptv for country-specific playlists.
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
   default_program_icon_urls:
     - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+
+# Discovery lists: auto-add popular content from Trakt, IMDb, etc.
+# These are applied to Sonarr/Radarr during bootstrap.
+discovery_lists:
+  - name: Trakt Popular
+    type: trakt_popular
+    apps: [sonarr, radarr]
+    enabled: true
+    monitor: firstSeason
+    search_on_add: true

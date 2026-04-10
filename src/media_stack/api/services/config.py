@@ -110,25 +110,13 @@ def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_download_categories() -> dict[str, Any]:
-    """Return configured download categories from profile or contract defaults."""
+    """Return configured download categories from the profile YAML."""
     data, _ = _load_profile_yaml()
     cats = data.get("download_categories")
-    if cats:
+    if isinstance(cats, dict) and cats:
         return {"categories": cats, "source": "profile"}
-    # Read defaults from the bootstrap config if available
-    resolved_cfg = resolve_config_path()
-    if resolved_cfg:
-        try:
-            cfg = json.loads(Path(resolved_cfg).read_text(encoding="utf-8"))
-            tc = cfg.get("torrent_client", {})
-            cats_from_cfg = tc.get("categories") if isinstance(tc, dict) else None
-            if cats_from_cfg:
-                return {"categories": cats_from_cfg, "source": "config"}
-        except Exception:
-            pass
-    # Fallback: derive from profile live_tv_defaults or return empty so
-    # the user configures them explicitly via the UI.
-    return {"categories": {}, "source": "none"}
+    return {"categories": {}, "source": "not_configured",
+            "note": "Configure in Config > Downloads or edit download_categories in profile YAML"}
 
 
 def update_download_categories(categories: dict[str, str]) -> dict[str, Any]:
@@ -182,6 +170,24 @@ def get_livetv_sources() -> dict[str, Any]:
         "source": "profile" if ltv.get("tuner_url") else "not_configured",
         "note": "Configure in Config > Live TV" if not ltv.get("tuner_url") else "",
     }
+
+
+def get_discovery_lists() -> dict[str, Any]:
+    """Return configured discovery lists (Trakt, IMDb, etc.) from the profile."""
+    data, _ = _load_profile_yaml()
+    lists = data.get("discovery_lists", [])
+    if not isinstance(lists, list):
+        lists = []
+    return {"lists": lists, "count": len(lists)}
+
+
+def update_discovery_lists(lists: list[dict[str, Any]]) -> dict[str, Any]:
+    """Update discovery list configuration in the profile."""
+    result = update_profile_section("discovery_lists", lists)
+    if "error" not in result:
+        result["lists"] = lists
+        result["note"] = "Run bootstrap to apply discovery list changes"
+    return result
 
 
 def update_livetv_sources(tuner_url: str, guide_url: str) -> dict[str, Any]:
