@@ -264,10 +264,19 @@ def _auto_generate_config_json(target_path: str) -> str | None:
     except Exception:
         pass
 
-    # 5. Write the config JSON
+    # 5. Write the config JSON to a writable location
     if not config:
         return None
+    # Try the target path first, fall back to config root (which is always writable)
     out_path = Path(target_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
-    return str(out_path)
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
+        return str(out_path)
+    except OSError:
+        # Target is read-only — write to config root instead
+        config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+        fallback = config_root / ".controller" / "generated-config.json"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        fallback.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
+        return str(fallback)
