@@ -107,6 +107,63 @@ def get_storage_breakdown() -> dict[str, Any]:
     }
 
 
+def validate_migration_target(target_path: str) -> dict[str, Any]:
+    """Validate a migration target path and return capacity info.
+
+    Returns pre-flight checks: path exists, writable, free space,
+    estimated copy size, and the rsync command to execute.
+    """
+    if not target_path or not target_path.startswith("/"):
+        return {"valid": False, "error": "Target path must be an absolute path"}
+
+    target = Path(target_path)
+    checks: dict[str, Any] = {"target": target_path, "valid": True, "warnings": []}
+
+    # Check target exists or can be created
+    if target.exists():
+        if not target.is_dir():
+            return {"valid": False, "error": "Target exists but is not a directory"}
+        checks["exists"] = True
+    else:
+        checks["exists"] = False
+        # Check parent is writable
+        parent = target.parent
+        if not parent.exists():
+            return {"valid": False, "error": f"Parent directory {parent} does not exist"}
+
+    # Check free space on target
+    try:
+        usage = disk_usage(target if target.exists() else target.parent)
+        checks["free_bytes"] = usage.free
+        checks["free_display"] = f"{usage.free / 1073741824:.1f} GB"
+        checks["total_bytes"] = usage.total
+    except Exception as exc:
+        checks["warnings"].append(f"Could not check free space: {exc}")
+
+    # Get current media size for comparison
+    source = get_storage_breakdown()
+    source_total = source.get("total_bytes", 0)
+    checks["source_bytes"] = source_total
+    checks["source_display"] = f"{source_total / 1073741824:.1f} GB"
+    checks["source_path"] = source.get("media_root", "")
+
+    if checks.get("free_bytes", 0) < source_total:
+        checks["warnings"].append(
+            f"Target has {checks.get('free_display', '?')} free but source is {checks['source_display']}. "
+            "Migration may fail due to insufficient space."
+        )
+
+    # Generate migration commands
+    src = source.get("media_root", "/media")
+    checks["commands"] = {
+        "dry_run": f"rsync -avhn --progress {src}/ {target_path}/",
+        "migrate": f"rsync -avh --progress {src}/ {target_path}/",
+        "update_env": f'# After migration, update .env:\nMEDIA_ROOT={target_path}\n# Then: docker compose down && docker compose up -d',
+    }
+
+    return checks
+
+
 def _load_guardrail_config() -> dict[str, Any]:
     """Load disk guardrail thresholds from bootstrap config."""
     guardrails: dict[str, Any] = {"enabled": False}

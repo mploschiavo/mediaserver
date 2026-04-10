@@ -612,6 +612,134 @@ def get_manifests() -> dict[str, Any]:
     return {"type": "unknown", "content": None, "error": "No manifest found. Mount compose file or use K8s."}
 
 
+def get_onboarding_status() -> dict[str, Any]:
+    """Return onboarding checklist — what's configured vs what needs attention."""
+    from .registry import SERVICES
+    from .health import discover_api_keys, probe_services
+    from ..cache import api_cache
+
+    steps: list[dict[str, Any]] = []
+
+    # 1. Services running?
+    health = probe_services(api_cache)
+    healthy = health.get("healthy", 0)
+    total = health.get("total", 0)
+    steps.append({
+        "id": "services_running",
+        "label": "Services running",
+        "status": "ok" if healthy >= total * 0.8 else "warn" if healthy > 0 else "error",
+        "detail": f"{healthy}/{total} healthy",
+    })
+
+    # 2. API keys discovered?
+    keys = discover_api_keys()
+    key_count = len(keys)
+    expected = len([s for s in SERVICES if s.api_key_env])
+    steps.append({
+        "id": "api_keys",
+        "label": "API keys discovered",
+        "status": "ok" if key_count >= expected else "warn",
+        "detail": f"{key_count}/{expected} keys",
+    })
+
+    # 3. Media libraries configured?
+    libs = get_libraries()
+    lib_count = len(libs.get("libraries", []))
+    steps.append({
+        "id": "libraries",
+        "label": "Media libraries configured",
+        "status": "ok" if lib_count > 0 else "pending",
+        "detail": f"{lib_count} libraries" if lib_count else "No libraries — go to Config > Libraries",
+    })
+
+    # 4. Routing configured?
+    routing = get_routing()
+    has_routing = routing.get("gateway_host", "") != ""
+    steps.append({
+        "id": "routing",
+        "label": "Network routing configured",
+        "status": "ok" if has_routing else "pending",
+        "detail": routing.get("gateway_host", "not set"),
+    })
+
+    # 5. Download clients working?
+    data, _ = _load_profile_yaml()
+    bindings = data.get("technology_bindings", {})
+    has_torrent = bool(bindings.get("torrent_client"))
+    has_usenet = bool(bindings.get("usenet_client"))
+    steps.append({
+        "id": "download_clients",
+        "label": "Download clients configured",
+        "status": "ok" if (has_torrent or has_usenet) else "pending",
+        "detail": ", ".join(filter(None, [
+            bindings.get("torrent_client"), bindings.get("usenet_client"),
+        ])) or "none configured",
+    })
+
+    # 6. Bootstrap completed?
+    steps.append({
+        "id": "bootstrap",
+        "label": "Initial bootstrap completed",
+        "status": "ok" if health.get("healthy", 0) > 0 else "pending",
+        "detail": "Run 'Configure All' to bootstrap the stack",
+    })
+
+    completed = sum(1 for s in steps if s["status"] == "ok")
+    return {
+        "steps": steps,
+        "completed": completed,
+        "total": len(steps),
+        "progress_pct": round(completed / len(steps) * 100) if steps else 0,
+        "is_first_run": completed < len(steps) * 0.5,
+    }
+
+
+def add_custom_service(service_def: dict[str, Any]) -> dict[str, Any]:
+    """Add a custom service by writing a new YAML file to contracts/services/.
+
+    Requires at minimum: id, name, host, port. Creates a minimal service
+    YAML that the registry will pick up on reload.
+    """
+    svc_id = str(service_def.get("id", "")).strip().lower()
+    if not svc_id or not service_def.get("name") or not service_def.get("port"):
+        return {"error": "id, name, and port are required"}
+    if not svc_id.replace("-", "").replace("_", "").isalnum():
+        return {"error": "id must be alphanumeric (hyphens and underscores allowed)"}
+
+    # Find the services directory
+    svc_dir = Path(os.environ.get("SERVICES_REGISTRY_DIR", ""))
+    if not svc_dir.is_dir():
+        svc_dir = Path(__file__).resolve().parents[4] / "contracts" / "services"
+    if not svc_dir.is_dir():
+        return {"error": "Services directory not found"}
+
+    target = svc_dir / f"{svc_id}.yaml"
+    if target.exists():
+        return {"error": f"Service '{svc_id}' already exists"}
+
+    svc_yaml = {
+        "service": {
+            "id": svc_id,
+            "name": str(service_def.get("name", svc_id)),
+            "desc": str(service_def.get("desc", "")),
+            "category": str(service_def.get("category", "custom")),
+            "host": str(service_def.get("host", svc_id)),
+            "port": int(service_def.get("port", 0)),
+            "health_path": str(service_def.get("health_path", "/")),
+            "web_ui": bool(service_def.get("web_ui", True)),
+        }
+    }
+    try:
+        with open(target, "w") as f:
+            yaml.dump(svc_yaml, f, default_flow_style=False, sort_keys=False)
+        # Reload registry to pick up the new service
+        from .registry import reload_registry
+        reload_registry()
+        return {"status": "created", "file": str(target), "service_id": svc_id}
+    except Exception as exc:
+        return {"error": str(exc)[:120]}
+
+
 def get_config_drift() -> dict[str, Any]:
     """Compare expected config (profile YAML) vs actual running state.
 

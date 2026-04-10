@@ -205,6 +205,10 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     elif path == "/api/schedules":
         from .services import scheduler as sched_svc
         handler._json_response(200, sched_svc.get_schedules())
+    elif path == "/api/onboarding":
+        handler._json_response(200, config_svc.get_onboarding_status())
+    elif path == "/api/download-analytics":
+        handler._json_response(200, content_svc.get_download_analytics())
     elif path == "/api/backup":
         payload = config_svc.get_backup(handler.state)
         handler._raw_response(200, "application/json", payload, {
