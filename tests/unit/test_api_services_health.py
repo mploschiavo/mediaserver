@@ -550,12 +550,21 @@ class TestHealthHistory(unittest.TestCase):
         self._tmpfile = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         self._tmpfile.close()
         self._orig_path = health_mod._HEALTH_HISTORY_PATH
+        self._orig_flush_ts = health_mod._HEALTH_HISTORY_LAST_FLUSH
         health_mod._HEALTH_HISTORY_PATH = Path(self._tmpfile.name)
+        health_mod._HEALTH_HISTORY_BUFFER.clear()
+        # Force flush on every append for test predictability
+        self._orig_flush_size = health_mod._HEALTH_HISTORY_FLUSH_SIZE
+        health_mod._HEALTH_HISTORY_FLUSH_SIZE = 1
+        health_mod._HEALTH_HISTORY_LAST_FLUSH = 0
         # Start with no file
         os.unlink(self._tmpfile.name)
 
     def tearDown(self):
         health_mod._HEALTH_HISTORY_PATH = self._orig_path
+        health_mod._HEALTH_HISTORY_LAST_FLUSH = self._orig_flush_ts
+        health_mod._HEALTH_HISTORY_FLUSH_SIZE = self._orig_flush_size
+        health_mod._HEALTH_HISTORY_BUFFER.clear()
         try:
             os.unlink(self._tmpfile.name)
         except FileNotFoundError:

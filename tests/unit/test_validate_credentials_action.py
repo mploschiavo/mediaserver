@@ -26,16 +26,20 @@ class TestActionValidateCredentials(unittest.TestCase):
         logs = [call.args[0] for call in mock_rp.log.call_args_list]
         self.assertTrue(any("[OK] All 2" in m for m in logs))
 
+    @patch("media_stack.api.services.admin.reset_password",
+           return_value={"status": "updated", "services": ["radarr"], "errors": [], "restarted": []})
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.cli.commands.action_handlers.runtime_platform")
-    def test_some_fail(self, mock_rp, mock_probe):
-        mock_probe.return_value = {
-            "credentials": {"sonarr": "ok", "radarr": "fail"},
-            "ok": 1, "total": 2,
-        }
+    def test_some_fail(self, mock_rp, mock_probe, mock_reset):
+        mock_probe.side_effect = [
+            {"credentials": {"sonarr": "ok", "radarr": "fail"}, "ok": 1, "total": 2},
+            {"credentials": {"radarr": "ok"}, "ok": 1, "total": 1},
+        ]
         action_validate_credentials()
         logs = [call.args[0] for call in mock_rp.log.call_args_list]
-        self.assertTrue(any("[WARN] 1/2" in m for m in logs))
+        # radarr failed initially, then auto-synced
+        self.assertTrue(any("radarr" in m and "password sync" in m for m in logs))
+        mock_reset.assert_called_once()
 
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.cli.commands.action_handlers.runtime_platform")
@@ -67,16 +71,18 @@ class TestActionValidateCredentials(unittest.TestCase):
         logs = [call.args[0] for call in mock_rp.log.call_args_list]
         self.assertTrue(any("[CRED] sonarr: passed" in m for m in logs))
 
+    @patch("media_stack.api.services.admin.reset_password",
+           return_value={"status": "updated", "services": [], "errors": ["radarr: fail"], "restarted": []})
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.cli.commands.action_handlers.runtime_platform")
-    def test_logs_per_service_fail(self, mock_rp, mock_probe):
-        mock_probe.return_value = {
-            "credentials": {"radarr": "fail"},
-            "ok": 0, "total": 1,
-        }
+    def test_logs_per_service_fail(self, mock_rp, mock_probe, mock_reset):
+        mock_probe.side_effect = [
+            {"credentials": {"radarr": "fail"}, "ok": 0, "total": 1},
+            {"credentials": {"radarr": "fail"}, "ok": 0, "total": 1},
+        ]
         action_validate_credentials()
         logs = [call.args[0] for call in mock_rp.log.call_args_list]
-        self.assertTrue(any("[WARN] radarr: credential check failed" in m for m in logs))
+        self.assertTrue(any("radarr" in m and "password sync" in m for m in logs))
 
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.cli.commands.action_handlers.runtime_platform")
@@ -85,19 +91,20 @@ class TestActionValidateCredentials(unittest.TestCase):
         with self.assertRaises(Exception):
             action_validate_credentials()
 
+    @patch("media_stack.api.services.admin.reset_password",
+           return_value={"status": "updated", "services": [], "errors": ["radarr: no API key"], "restarted": []})
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.cli.commands.action_handlers.runtime_platform")
-    def test_mixed_statuses(self, mock_rp, mock_probe):
-        mock_probe.return_value = {
-            "credentials": {"sonarr": "ok", "radarr": "fail", "lidarr": "error"},
-            "ok": 1, "total": 3,
-        }
+    def test_mixed_statuses(self, mock_rp, mock_probe, mock_reset):
+        mock_probe.side_effect = [
+            {"credentials": {"sonarr": "ok", "radarr": "fail", "lidarr": "error"}, "ok": 1, "total": 3},
+            {"credentials": {"radarr": "fail"}, "ok": 0, "total": 1},
+        ]
         action_validate_credentials()
         logs = [call.args[0] for call in mock_rp.log.call_args_list]
         self.assertTrue(any("sonarr: passed" in m for m in logs))
-        self.assertTrue(any("radarr: credential check failed" in m for m in logs))
+        self.assertTrue(any("radarr" in m and "password sync" in m for m in logs))
         self.assertTrue(any("lidarr: unreachable" in m for m in logs))
-        self.assertTrue(any("[WARN] 2/3" in m for m in logs))
 
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.cli.commands.action_handlers.runtime_platform")
