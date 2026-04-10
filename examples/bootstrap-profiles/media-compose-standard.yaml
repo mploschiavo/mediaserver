@@ -1,9 +1,8 @@
 schema_version: 1
 kind: media_stack_profile
 metadata:
-  name: media-stack
-  platform: compose
-  purpose: dev
+  language: en
+  country: US
 resources:
   disk_space_gb: 50
   network_cidr: 192.168.1.0/24
@@ -43,6 +42,20 @@ live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
   default_program_icon_url: https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+  tuners:
+  - url: https://iptv-org.github.io/iptv/countries/us.m3u
+    name: Default
+  - url: /iptv/countries/ca.m3u
+    name: Canada IPTV
+  - url: /iptv/countries/au.m3u
+    name: Australia IPTV
+  guides:
+  - url: https://iptv-epg.org/files/epg-us.xml
+    name: Default
+  - url: /epg/ca.xml
+    name: Canada EPG
+  - url: /epg/au.xml
+    name: Australia EPG
 technology_bindings:
   torrent_client: qbittorrent
   usenet_client: sabnzbd
