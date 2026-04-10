@@ -55,6 +55,10 @@ live_tv_defaults:
     name: Canada IPTV
   - url: /iptv/countries/au.m3u
     name: Australia IPTV
+  - url: https://iptv-org.github.io/iptv/countries/gb.m3u
+    name: United Kingdom IPTV
+  - url: https://iptv-org.github.io/iptv/countries/au.m3u
+    name: Australia IPTV
   guides:
   - url: https://iptv-epg.org/files/epg-us.xml
     name: Default
@@ -62,13 +66,15 @@ live_tv_defaults:
     name: Canada EPG
   - url: /epg/au.xml
     name: Australia EPG
-# Download categories: name → completed path
+  - url: https://iptv-epg.org/files/epg-gb.xml
+    name: United Kingdom EPG
+  - url: https://iptv-epg.org/files/epg-au.xml
+    name: Australia EPG
 download_categories:
   tv: /data/torrents/completed/tv
   movies: /data/torrents/completed/movies
   music: /data/torrents/completed/music
   books: /data/torrents/completed/books
-
 technology_bindings:
   torrent_client: qbittorrent
   usenet_client: sabnzbd
@@ -82,3 +88,21 @@ app_auth:
   fail_on_error: false
   username_env: STACK_ADMIN_USERNAME
   password_env: STACK_ADMIN_PASSWORD
+jellyfin:
+  libraries:
+  - name: Movies
+    collection_type: movies
+    paths:
+    - /media/movies
+  - name: TV Shows
+    collection_type: tvshows
+    paths:
+    - /media/tv
+  - name: Music
+    collection_type: music
+    paths:
+    - /media/music
+  - name: Books
+    collection_type: books
+    paths:
+    - /media/books
