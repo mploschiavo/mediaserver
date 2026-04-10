@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -24,8 +26,99 @@ AUTH_PROBES: dict[str, tuple[str, int, str, str]] = {
     for s in SERVICES if s.auth_path
 }
 
+# Login probes — test admin username/password per service
+LOGIN_PROBES: dict[str, tuple[str, int, str, str]] = {
+    s.id: (s.host, s.port, s.login_path, s.login_mode)
+    for s in SERVICES if s.login_mode and s.login_path
+}
+
 _HEALTH_HISTORY_PATH = Path(os.environ.get("HEALTH_HISTORY_PATH", "/tmp/media-stack-health-history.json"))
 _HEALTH_HISTORY_LOCK = threading.Lock()
+
+
+def _probe_login(
+    host: str, port: int, path: str, mode: str, username: str, password: str,
+) -> str:
+    """Test admin credential login for a single service. Returns status string."""
+    try:
+        if mode == "json_credentials":
+            url = f"http://{host}:{port}{path}"
+            payload = json.dumps({"Username": username, "Pw": password}).encode()
+            headers = {
+                "Content-Type": "application/json",
+                "X-Emby-Authorization": (
+                    'MediaBrowser Client="media-stack-controller", '
+                    'Device="health-probe", DeviceId="health-probe", Version="1.0"'
+                ),
+            }
+            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                body = json.loads(resp.read().decode("utf-8", errors="replace"))
+                if body.get("AccessToken"):
+                    return "ok"
+            return "fail"
+
+        elif mode == "basic":
+            url = f"http://{host}:{port}{path}"
+            cred = base64.b64encode(f"{username}:{password}".encode()).decode()
+            req = urllib.request.Request(url, headers={"Authorization": f"Basic {cred}"}, method="GET")
+            with urllib.request.urlopen(req, timeout=5):
+                return "ok"
+
+        elif mode == "form":
+            url = f"http://{host}:{port}{path}"
+            data = urllib.parse.urlencode({"username": username, "password": password}).encode()
+            req = urllib.request.Request(url, data=data, method="POST")
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+                final_url = resp.url if hasattr(resp, "url") else ""
+                # qBittorrent: "Ok." on success, "Fails." on bad creds
+                if "Fails" in body:
+                    return "fail"
+                # Arr apps: redirect to /login?loginFailed=true on failure
+                if "loginFailed=true" in final_url:
+                    return "fail"
+                return "ok"
+
+        return "n/a"
+    except urllib.error.HTTPError as exc:
+        return "fail" if exc.code in (400, 401, 403) else "error"
+    except Exception:
+        return "error"
+
+
+def probe_credentials(
+    services: list[str] | None = None,
+) -> dict[str, Any]:
+    """Probe admin credentials for specified services (or all login-capable services).
+
+    Used by the ad-hoc revalidation API endpoint.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+    targets = LOGIN_PROBES
+    if services:
+        targets = {k: v for k, v in LOGIN_PROBES.items() if k in services}
+
+    def _check(name: str) -> tuple[str, str]:
+        host, port, path, mode = targets[name]
+        return name, _probe_login(host, port, path, mode, admin_user, admin_pass)
+
+    results: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(_check, name): name for name in targets}
+        for future in as_completed(futures):
+            try:
+                name, status = future.result()
+                results[name] = status
+            except Exception:
+                results[futures[future]] = "error"
+
+    ok_count = sum(1 for v in results.values() if v == "ok")
+    return {"credentials": results, "ok": ok_count, "total": len(results)}
 
 
 def discover_api_keys() -> dict[str, str]:
@@ -90,6 +183,8 @@ def probe_services(cache: Any) -> dict[str, Any]:
 
     api_keys = discover_api_keys()
     running = _get_running_containers()
+    admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
 
     def probe(name: str) -> tuple[str, dict[str, Any]]:
         # Skip services that aren't running (behind inactive profiles)
@@ -138,6 +233,13 @@ def probe_services(cache: Any) -> dict[str, Any]:
             result["auth"] = "no_key"
         else:
             result["auth"] = "n/a"
+
+        # Login (credential) probe — test admin username/password
+        if name in LOGIN_PROBES:
+            l_host, l_port, l_path, l_mode = LOGIN_PROBES[name]
+            result["login"] = _probe_login(l_host, l_port, l_path, l_mode, admin_user, admin_pass)
+        else:
+            result["login"] = "n/a"
 
         return name, result
 

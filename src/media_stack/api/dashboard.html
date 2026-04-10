@@ -322,6 +322,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <label style="display:flex;align-items:center;gap:4px;font-size:.75em;color:var(--fg3);white-space:nowrap;cursor:pointer"><input type="checkbox" id="hideDisabledCb" checked onchange="hideDisabled=this.checked;renderServices(statusData?statusData.preflight_results:{})"> Hide Disabled</label>
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="selectAllSvcs()">Select All</button>
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="batchRestart()">Restart Selected</button>
+    <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="revalidateCredentials()">Check All Logins</button>
   </div>
   <div id="services-list"></div>
   <!-- Service management tips — runtime-aware -->
@@ -599,7 +600,7 @@ async function loadServicesFromAPI(){
   ];
   SVC_MAP=Object.fromEntries(SVCS.map(s=>[s.id,s]));
 }
-const SVC_HEALTH={},SVC_AUTH={},SVC_MS={};
+const SVC_HEALTH={},SVC_AUTH={},SVC_LOGIN={},SVC_MS={},SVC_AGE={};
 let expanded=null;
 const matrixState={};
 
@@ -825,7 +826,7 @@ function renderServices(pf){
   let html='',okCount=0,errCount=0,pendCount=0;
 
   html+='<table class="idx-table" id="svc-table"><thead><tr>';
-  html+='<th style="width:30px"></th><th>Service</th><th>Status</th><th>Auth</th><th>Latency</th><th>Version</th><th>Category</th><th style="width:60px">Actions</th>';
+  html+='<th style="width:30px"></th><th>Service</th><th>Status</th><th>Auth</th><th>Login</th><th>Latency</th><th>Version</th><th>Age</th><th>Category</th><th style="width:60px">Actions</th>';
   html+='</tr></thead><tbody>';
 
   for(const s of allSvcs){
@@ -846,13 +847,27 @@ function renderServices(pf){
       else if(auth==='n/a'){authText='N/A';}
     }
 
+    const login=SVC_LOGIN[s.id];
+    let loginText='—',loginCls='';
+    if(hlth!=='disabled'){
+      if(login==='ok'){loginText='OK';loginCls='ok';}
+      else if(login==='fail'){loginText='Fail';loginCls='warn';}
+      else if(login==='error'){loginText='Error';loginCls='error';}
+      else if(login==='n/a'){loginText='N/A';}
+    }
+
     html+='<tr style="cursor:pointer" onclick="toggleSvc(\''+s.id+'\')">';
     html+='<td><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"></td>';
     html+='<td style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+sparkHtml(s.id)+'</td>';
     html+='<td class="'+dotCls+'">'+statusText+'</td>';
     html+='<td class="'+authCls+'">'+authText+'</td>';
+    html+='<td class="'+loginCls+'">'+loginText+'</td>';
     html+='<td style="font-family:monospace;font-size:.82em">'+(ms?ms+'ms':'—')+'</td>';
     html+='<td style="font-size:.78em;color:var(--fg3)">'+(ver||'—')+'</td>';
+    const age=SVC_AGE[s.id];
+    let ageText='—',ageCls='';
+    if(typeof age==='number'&&age>=0){ageText=age+'d';ageCls=age>30?'error':age>14?'warn':'ok';}
+    html+='<td class="'+ageCls+'" style="font-size:.78em;font-family:monospace">'+ageText+'</td>';
     html+='<td style="font-size:.78em;color:var(--fg3)">'+s.cat+'</td>';
     html+='<td><button class="btn-secondary" style="padding:2px 6px;font-size:.68em" onclick="event.stopPropagation();viewSvcLogs(\''+s.id+'\')">Logs</button></td>';
     html+='</tr>';
@@ -860,11 +875,14 @@ function renderServices(pf){
     // Expandable detail row
     const isExp=expanded===s.id;
     html+='<tr class="svc-detail" id="detail-'+s.id+'" style="display:'+(isExp?'table-row':'none')+'">';
-    html+='<td></td><td colspan="7" style="padding:6px 10px;font-size:.85em;color:var(--fg2)">';
+    html+='<td></td><td colspan="9" style="padding:6px 10px;font-size:.85em;color:var(--fg2)">';
     html+=s.desc+' · Port '+s.port;
     const sUrl=getSvcUrl(s.id);
     html+=' · <a href="'+sUrl+'" target="_blank" style="color:var(--blue)">Open</a>';
     html+=' · <button class="btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="event.stopPropagation();restartService(\''+s.id+'\')">Restart</button>';
+    if(SVC_LOGIN[s.id] && SVC_LOGIN[s.id]!=='n/a'){
+      html+=' · <button class="btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="event.stopPropagation();revalidateCredentials(\''+s.id+'\')">Check Login</button>';
+    }
     html+='</td></tr>';
   }
   html+='</tbody></table>';
@@ -887,10 +905,26 @@ async function restartService(name){
   try{const r=await fetch('/api/restart/'+name,{method:'POST'});const d=await r.json();toast(d.status==='restarted'?name+' restarted':'Restart failed: '+(d.error||''),d.status!=='restarted');}catch(e){toast(e.toString(),true);}
 }
 
+/* Credential revalidation */
+async function revalidateCredentials(svcId){
+  const services=svcId?[svcId]:null;
+  const label=svcId||'all services';
+  toast('Checking credentials for '+label+'...');
+  try{
+    const r=await fetch('/api/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(services?{services}:{})});
+    if(r.ok){const d=await r.json();
+      for(const[k,v]of Object.entries(d.credentials||{})){SVC_LOGIN[k]=v;}
+      const ok=d.ok||0,total=d.total||0;
+      toast(ok+'/'+total+' credential checks passed',ok<total);
+      if(statusData)renderServices(statusData.preflight_results||{});
+    }else{toast('Credential check failed (HTTP '+r.status+')',true);}
+  }catch(e){toast(e.toString(),true);}
+}
+
 /* Health probes + sparkline history */
 async function probeServices(){
   try{const r=await fetch('/api/health');if(r.ok){const d=await r.json();for(const[k,v]of Object.entries(d.services||{})){
-    SVC_HEALTH[k]=v.status;if(v.ms!==undefined)SVC_MS[k]=v.ms;if(v.auth)SVC_AUTH[k]=v.auth;
+    SVC_HEALTH[k]=v.status;if(v.ms!==undefined)SVC_MS[k]=v.ms;if(v.auth)SVC_AUTH[k]=v.auth;if(v.login)SVC_LOGIN[k]=v.login;
     if(!healthHistory[k])healthHistory[k]=[];healthHistory[k].push(v.status);if(healthHistory[k].length>12)healthHistory[k].shift();
   }}}catch(e){}
   if(statusData)renderServices(statusData.preflight_results||{});
@@ -1779,6 +1813,8 @@ function checkRemediation(){
 async function loadImageUpdates(){
   try{const r=await fetch('/api/image-updates');if(!r.ok)return;const d=await r.json();
     if(d.error)return;
+    for(const img of(d.images||[])){if(typeof img.days_old==='number')SVC_AGE[img.name]=img.days_old;}
+    if(statusData)renderServices(statusData.preflight_results||{});
     let staleCount=0;
     let h='<table class="idx-table"><thead><tr><th>Service</th><th>Image</th><th>Tag</th><th>Digest</th><th>Last Changed</th><th>Age</th></tr></thead><tbody>';
     for(const img of(d.images||[])){const cls=img.tag==='latest'?'warn':img.tag.includes('digest')?'ok':'';
@@ -2260,7 +2296,7 @@ load();setInterval(load,dashSettings.refreshInterval);startSSE();loadRoutingConf
 })();
 setTimeout(probeServices,2000);
 setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();renderTimingFooter();});},dashSettings.healthInterval);
-setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();},3000);
+setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();loadImageUpdates();},3000);
 // Lazy: indexers, libraries, etc. load when their tab is opened
 setInterval(()=>{loadStats();loadDisk();loadDownloads();
   // Bandwidth tracking

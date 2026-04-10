@@ -16,6 +16,8 @@ service:
   version_json_key: version
   indexer_path: /api/v1/indexer
   indexer_stats_path: /api/v1/indexerstats
+  login_mode: form
+  login_path: /login
   password_api_path: /api/v1/config/host
   preserve_path_prefix: true
 plugin:

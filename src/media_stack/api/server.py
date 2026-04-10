@@ -45,6 +45,7 @@ ACTION_PRIORITY: dict[str, int] = {
     "reconcile":     50,
     "sync-indexers": 60,
     "auto-indexers": 70,
+    "validate-credentials": 80,
 }
 DEFAULT_ACTION_PRIORITY = 50
 

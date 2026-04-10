@@ -20,6 +20,8 @@ service:
   quality_profile_path: /api/v3/qualityprofile
   import_list_path: /api/v3/importlist
   recent_path: /api/v3/series?sortKey=dateAdded&sortDirection=descending
+  login_mode: form
+  login_path: /login
   password_api_path: /api/v3/config/host
   preserve_path_prefix: true
 plugin:

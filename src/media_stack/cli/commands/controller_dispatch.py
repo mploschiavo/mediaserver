@@ -65,7 +65,7 @@ def _dispatch_action(
     from media_stack.cli.commands.action_handlers import (
         action_bootstrap, action_finalize, action_auto_indexers,
         action_restart_apps, action_sync_indexers, action_envoy_config,
-        action_reconcile,
+        action_reconcile, action_validate_credentials,
     )
     from media_stack.cli.commands.controller_handlers import (
         _load_handler_specs,
@@ -95,6 +95,8 @@ def _dispatch_action(
         action_sync_indexers(args, _build_runner)
     elif action_name == "envoy-config":
         action_envoy_config(args)
+    elif action_name == "validate-credentials":
+        action_validate_credentials()
     elif action_name == "reconcile":
         action_reconcile(args, _build_runner)
     else:

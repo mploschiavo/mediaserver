@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from .services import admin as admin_svc
 from .services import config as config_svc
 from .services import disk as disk_svc
+from .services import health as health_svc
 from .services import ops as ops_svc
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ logger = logging.getLogger("controller_api")
 
 KNOWN_ACTIONS = frozenset({
     "bootstrap", "finalize", "auto-indexers", "restart-apps",
-    "sync-indexers", "envoy-config", "reconcile",
+    "sync-indexers", "envoy-config", "reconcile", "validate-credentials",
 })
 
 
@@ -77,6 +78,13 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, admin_svc.reset_password(new_password, target))
         return
 
+    # POST /api/credentials -- ad-hoc credential revalidation
+    if handler.path == "/api/credentials":
+        body = handler._read_json_body() or {}
+        target = body.get("services")  # optional list of service IDs
+        handler._json_response(200, health_svc.probe_credentials(target))
+        return
+
     # POST /api/services/{id}/api-key -- manually set or discover a service API key
     if handler.path.startswith("/api/services/") and handler.path.endswith("/api-key"):
         _handle_service_api_key_post(handler)
@@ -104,7 +112,7 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         if not body or "service_configs" not in body:
             handler._json_response(400, {"error": "backup JSON with service_configs required"})
             return
-        handler._json_response(200, config_svc.restore_backup(body))
+        handler._json_response(200, config_svc.restore_backup(body, handler.state))
         return
 
     # POST /api/media-server/reset -- hard-reset media server credentials via DB

@@ -12,6 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from media_stack.core.defaults import default_controller_image
 from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
@@ -140,7 +141,7 @@ class ProwlarrAutoIndexerRunner:
         text = re.sub(r"namespace:\s*media-stack", f"namespace: {self.cfg.namespace}", text)
         text = text.replace("/srv/media-stack", self.cfg.prepare_host_root)
         text = text.replace(
-            "192.168.1.60:30002/library/media-stack-controller:latest",
+            default_controller_image(),
             self.cfg.bootstrap_runner_image,
         )
         return text

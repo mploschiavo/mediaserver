@@ -8,3 +8,9 @@ resources:
   - core.yaml
   - ingress-traefik.yaml
   - scale-policy.yaml
+
+# Controller image — change registry/tag here; kustomize patches all manifests.
+images:
+  - name: harbor.iomio.io/library/media-stack-controller
+    newName: harbor.iomio.io/library/media-stack-controller
+    newTag: latest

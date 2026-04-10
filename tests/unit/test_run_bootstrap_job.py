@@ -192,7 +192,7 @@ class RunBootstrapJobRunnerUnitTests(unittest.TestCase):
         rendered = runner.manifest_overrides(
             "namespace: media-stack\n"
             "name: media-stack\n"
-            "image: 192.168.1.60:30002/library/media-stack-controller:latest\n"
+            "image: harbor.iomio.io/library/media-stack-controller:latest\n"
             "path: /srv/media-stack\n"
         )
         self.assertIn("namespace: media-stack-dev", rendered)

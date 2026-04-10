@@ -48,6 +48,8 @@ class ServiceDef:
     indexer_stats_path: str = ""
     password_api_path: str = ""
     password_config: str = ""
+    login_mode: str = ""  # "json_credentials", "basic", "form", or "" (none)
+    login_path: str = ""  # endpoint to test username/password login
     profiles: list[str] = field(default_factory=list)
     web_ui: bool = True
     preserve_path_prefix: bool = False
@@ -123,6 +125,8 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         indexer_stats_path=str(entry.get("indexer_stats_path", "")),
         password_api_path=str(entry.get("password_api_path", "")),
         password_config=str(entry.get("password_config", "")),
+        login_mode=str(entry.get("login_mode", "")),
+        login_path=str(entry.get("login_path", "")),
         profiles=[str(p) for p in profiles],
         web_ui=bool(entry.get("web_ui", True)),
         preserve_path_prefix=bool(entry.get("preserve_path_prefix", False)),

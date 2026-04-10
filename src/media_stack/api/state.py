@@ -295,10 +295,19 @@ class ControllerState:
             self._log_event.set()
             self._log_event.clear()
 
-    def get_logs_since(self, after_seq: int = 0) -> list[tuple[int, float, str, str]]:
-        """Return log entries with sequence > after_seq. Each entry: (seq, ts, msg, action)."""
+    def get_logs_since(self, after_seq: int = 0, action: str = "") -> list[tuple[int, float, str, str]]:
+        """Return log entries with sequence > after_seq. Each entry: (seq, ts, msg, action).
+
+        If *action* is non-empty, only entries whose action name matches are returned.
+        """
         with self._lock:
-            return [(seq, ts, msg, action) for seq, ts, msg, action, *_ in self._log_buffer if seq > after_seq]
+            if action:
+                return [
+                    (seq, ts, msg, act)
+                    for seq, ts, msg, act, *_ in self._log_buffer
+                    if seq > after_seq and act == action
+                ]
+            return [(seq, ts, msg, act) for seq, ts, msg, act, *_ in self._log_buffer if seq > after_seq]
 
     @property
     def log_seq(self) -> int:

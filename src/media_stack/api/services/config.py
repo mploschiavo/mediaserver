@@ -239,31 +239,75 @@ def get_backup(state: Any) -> bytes:
     if service_configs:
         backup["service_configs"] = service_configs
 
-    # API keys (env vars only, not file-discovered secrets)
+    # API keys — full values for restore, masked preview for display
     api_keys: dict[str, str] = {}
+    api_keys_masked: dict[str, str] = {}
     for key, value in sorted(os.environ.items()):
         if key.endswith("_API_KEY") and value:
-            api_keys[key] = value[:8] + "..." if len(value) > 8 else value
+            api_keys[key] = value
+            api_keys_masked[key] = value[:8] + "..." if len(value) > 8 else value
     if api_keys:
-        backup["api_keys_masked"] = api_keys
+        backup["api_keys"] = api_keys
+        backup["api_keys_masked"] = api_keys_masked
+
+    # Known config paths from registry (for restore validation)
+    valid_paths: list[str] = []
+    for svc in _backup_svcs:
+        if svc.api_key_config:
+            valid_paths.append(svc.api_key_config)
+        if svc.password_config:
+            valid_paths.append(svc.password_config)
+    backup["valid_config_paths"] = sorted(set(valid_paths))
 
     return json.dumps(backup, indent=2, default=str).encode("utf-8")
 
 
-def restore_backup(backup: dict[str, Any]) -> dict[str, Any]:
-    """Restore service configs from a backup JSON payload."""
+def restore_backup(backup: dict[str, Any], state: Any = None) -> dict[str, Any]:
+    """Restore service configs from a backup JSON payload.
+
+    Creates a pre-restore backup, validates paths against the service
+    registry, restores API keys to env vars, and rolls back on failure.
+    """
+    # Validate backup version
+    version = str(backup.get("version", ""))
+    if version not in ("1", "2"):
+        return {"status": "error", "error": f"unsupported backup version: {version!r}"}
+
     config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
     restored: list[str] = []
+    skipped: list[str] = []
     errors: list[str] = []
 
+    # Build set of valid config paths from the registry
+    from .registry import SERVICES as _restore_svcs
+    valid_paths: set[str] = set()
+    for svc in _restore_svcs:
+        if svc.api_key_config:
+            valid_paths.add(svc.api_key_config)
+        if svc.password_config:
+            valid_paths.add(svc.password_config)
+
+    # Pre-restore backup — save current state before overwriting
+    pre_restore: dict[str, str] = {}
     service_configs = backup.get("service_configs", {})
     if not isinstance(service_configs, dict):
         return {"status": "error", "error": "service_configs must be an object"}
 
+    for rel_path in service_configs:
+        existing = config_root / rel_path
+        if existing.is_file():
+            try:
+                pre_restore[rel_path] = existing.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+    # Restore service configs
     for rel_path, content in service_configs.items():
-        # Safety: only allow known config paths, no traversal
         if ".." in rel_path or rel_path.startswith("/"):
             errors.append(f"skipped unsafe path: {rel_path}")
+            continue
+        if valid_paths and rel_path not in valid_paths:
+            skipped.append(rel_path)
             continue
         target = config_root / rel_path
         try:
@@ -273,10 +317,38 @@ def restore_backup(backup: dict[str, Any]) -> dict[str, Any]:
         except Exception as exc:
             errors.append(f"{rel_path}: {exc}")
 
+    # Rollback on critical failure (>50% errors)
+    if errors and len(errors) > len(restored):
+        rollback_ok = 0
+        for rel_path, content in pre_restore.items():
+            try:
+                (config_root / rel_path).write_text(content, encoding="utf-8")
+                rollback_ok += 1
+            except Exception:
+                pass
+        return {
+            "status": "rolled_back",
+            "errors": errors,
+            "rollback_count": rollback_ok,
+            "note": "More errors than successes — rolled back to pre-restore state",
+        }
+
+    # Restore API keys to environment
+    api_keys = backup.get("api_keys", {})
+    keys_restored: list[str] = []
+    if isinstance(api_keys, dict):
+        for key, value in api_keys.items():
+            if key.endswith("_API_KEY") and isinstance(value, str) and value and "..." not in value:
+                os.environ[key] = value
+                keys_restored.append(key)
+
     return {
         "status": "ok" if not errors else "partial",
         "restored": restored,
+        "skipped": skipped,
+        "keys_restored": keys_restored,
         "errors": errors,
+        "pre_restore_count": len(pre_restore),
         "note": "Restart services to apply restored configs",
     }
 

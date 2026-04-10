@@ -8,6 +8,8 @@ service:
   health_path: /System/Info/Public
   auth_path: /System/Info
   auth_mode: X-Emby-Token
+  login_mode: json_credentials
+  login_path: /Users/AuthenticateByName
   api_key_env: JELLYFIN_API_KEY
   api_key_config: jellyfin/data/jellyfin.db
   api_key_format: sqlite

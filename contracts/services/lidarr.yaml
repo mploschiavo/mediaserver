@@ -16,6 +16,8 @@ service:
   version_json_key: version
   stats_path: /api/v1/artist
   stats_label: artists
+  login_mode: form
+  login_path: /login
   password_api_path: /api/v1/config/host
   preserve_path_prefix: true
 plugin:

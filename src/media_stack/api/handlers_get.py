@@ -142,6 +142,8 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, result)
     elif path == "/api/health-history":
         handler._json_response(200, health_svc.get_health_history())
+    elif path == "/api/credentials":
+        handler._json_response(200, health_svc.probe_credentials())
 
     # --- Content ---
     elif path == "/api/versions":
@@ -208,6 +210,8 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         _handle_snapshot_diff(handler)
     elif path == "/api/mounts":
         handler._json_response(200, ops_svc.get_mount_info())
+    elif path == "/api/logs" or path.startswith("/api/logs?"):
+        _handle_logs(handler)
     elif path.startswith("/api/logs/") and path.count("/") == 3:
         _handle_service_logs(handler, path)
 
@@ -314,6 +318,30 @@ def _handle_snapshot_diff(handler: ControllerAPIHandler) -> None:
                 k, v = part.split("=", 1)
                 params[k] = v
     handler._json_response(200, ops_svc.diff_snapshots(params.get("a", ""), params.get("b", "")))
+
+
+def _handle_logs(handler: ControllerAPIHandler) -> None:
+    """Return log entries from the ring buffer, optionally filtered by action."""
+    params: dict[str, str] = {}
+    if "?" in handler.path:
+        for part in handler.path.split("?", 1)[1].split("&"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                params[k] = v
+    after_seq = 0
+    try:
+        after_seq = int(params.get("after_seq", "0"))
+    except ValueError:
+        pass
+    action = params.get("action", "")
+    entries = handler.state.get_logs_since(after_seq, action=action)
+    handler._json_response(200, {
+        "logs": [
+            {"seq": seq, "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts)), "msg": msg, "action": act}
+            for seq, ts, msg, act in entries
+        ],
+        "count": len(entries),
+    })
 
 
 def _handle_service_logs(handler: ControllerAPIHandler, path: str) -> None:

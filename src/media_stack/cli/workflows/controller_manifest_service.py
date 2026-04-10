@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable
 
+from media_stack.core.defaults import default_controller_image
 from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
@@ -45,7 +46,7 @@ class ControllerManifestService:
             flags=re.MULTILINE,
         )
         out = re.sub(
-            r"image:\s*192\.168\.1\.60:30002/library/media-stack-controller:latest",
+            r"image:\s*" + re.escape(default_controller_image()),
             f"image: {self.cfg.bootstrap_runner_image}",
             out,
         )

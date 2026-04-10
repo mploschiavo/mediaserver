@@ -14,6 +14,7 @@ try:  # pragma: no cover - import path depends on entrypoint context
     )
     from media_stack.core.platform_cli_defaults_registry import resolve_platform_cli_defaults
     from media_stack.core.platform_plugin_registry import normalize_platform_target
+    from media_stack.core.defaults import default_controller_image
     from media_stack.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 except ModuleNotFoundError:  # pragma: no cover
     from media_stack.core.controller_profile import (
@@ -24,6 +25,7 @@ except ModuleNotFoundError:  # pragma: no cover
     )
     from media_stack.core.platform_cli_defaults_registry import resolve_platform_cli_defaults
     from media_stack.core.platform_plugin_registry import normalize_platform_target
+    from media_stack.core.defaults import default_controller_image
     from media_stack.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 
 
@@ -59,7 +61,11 @@ class DeployStackConfig:
     compose_env_file: Path = Path("docker/.env")
     compose_project_name: str = ""
     compose_profiles: str = ""
-    bootstrap_runner_image: str = "192.168.1.60:30002/library/media-stack-controller:latest"
+    bootstrap_runner_image: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.bootstrap_runner_image:
+            self.bootstrap_runner_image = default_controller_image()
     selected_apps: str = ""
     purpose: str = "dev"
     disk_allocation_gb: int = 500
@@ -305,7 +311,7 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         compose_profiles=_pick(_env_value("COMPOSE_PROFILES"), default=""),
         bootstrap_runner_image=_pick(
             _env_value("BOOTSTRAP_RUNNER_IMAGE"),
-            default="192.168.1.60:30002/library/media-stack-controller:latest",
+            default=default_controller_image(),
         ),
         selected_apps=selected_apps,
         purpose=_pick(

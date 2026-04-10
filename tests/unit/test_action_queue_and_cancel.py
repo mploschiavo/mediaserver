@@ -388,13 +388,12 @@ class TestActionPriorityConstants(unittest.TestCase):
                 f"'{name}' (P{prio}) has higher priority than bootstrap (P{bootstrap_prio})"
             )
 
-    def test_auto_indexers_is_lowest_priority(self):
-        indexer_prio = ACTION_PRIORITY["auto-indexers"]
-        for name, prio in ACTION_PRIORITY.items():
-            self.assertLessEqual(
-                prio, indexer_prio,
-                f"'{name}' (P{prio}) has lower priority than auto-indexers (P{indexer_prio})"
-            )
+    def test_validate_credentials_is_lowest_priority(self):
+        max_prio = max(ACTION_PRIORITY.values())
+        self.assertEqual(
+            ACTION_PRIORITY["validate-credentials"], max_prio,
+            "validate-credentials should run last (highest priority number)",
+        )
 
     def test_envoy_config_before_auto_indexers(self):
         self.assertLess(

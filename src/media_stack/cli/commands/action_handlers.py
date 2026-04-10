@@ -116,6 +116,36 @@ def action_envoy_config(args: argparse.Namespace) -> None:
         runtime_platform.log(f"[WARN] Envoy restart skipped: {exc}")
 
 
+def action_validate_credentials() -> None:
+    """Probe admin credentials against all login-capable services and log results."""
+    from media_stack.api.services.health import probe_credentials
+
+    runtime_platform.log("[INFO] Validating admin credentials against running services")
+    result = probe_credentials()
+    creds = result.get("credentials", {})
+    ok_count = result.get("ok", 0)
+    total = result.get("total", 0)
+
+    for svc, status in sorted(creds.items()):
+        if status == "ok":
+            runtime_platform.log(f"[CRED] {svc}: passed")
+        elif status == "error":
+            runtime_platform.log(f"[WARN] {svc}: unreachable (service may still be starting)")
+        else:
+            runtime_platform.log(f"[WARN] {svc}: credential check failed ({status})")
+
+    if total == 0:
+        runtime_platform.log("[INFO] No services with login_mode configured — nothing to validate")
+    elif ok_count == total:
+        runtime_platform.log(f"[OK] All {total} credential checks passed")
+    else:
+        failed = total - ok_count
+        runtime_platform.log(
+            f"[WARN] {failed}/{total} credential checks did not pass — "
+            "review STACK_ADMIN_USERNAME / STACK_ADMIN_PASSWORD or service setup"
+        )
+
+
 def action_reconcile(args: argparse.Namespace, build_runner: Any) -> None:
     """Re-run the full bootstrap pipeline to fix drift."""
     runtime_platform.log("[INFO] Running reconcile (full pipeline)")
