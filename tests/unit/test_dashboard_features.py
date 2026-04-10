@@ -58,6 +58,32 @@ class TestDashboardHTMLContent(unittest.TestCase):
     def test_mobile_touch_targets(self):
         self.assertIn("min-height:44px", DASHBOARD_HTML)
 
+    def test_no_unmatched_quotes_in_js_strings(self):
+        """JS strings must not contain unescaped quotes that break syntax.
+
+        Catches the specific bug pattern: 'Run 'Configure All' first'
+        where inner single quotes break the outer string.
+        """
+        import re
+        in_script = False
+        for lineno, line in enumerate(DASHBOARD_HTML.splitlines(), 1):
+            if "<script" in line:
+                in_script = True
+            if "</script>" in line:
+                in_script = False
+            if not in_script:
+                continue
+            stripped = line.strip()
+            if stripped.startswith("//"):
+                continue
+            # Pattern: a string like 'text 'Word text' — space before inner quote
+            # This catches 'Run 'Configure All' first' but not 'ok','val'
+            if re.search(r"'[^']*\s'[A-Z]", line):
+                self.fail(
+                    f"Line {lineno}: unmatched single quote in JS string "
+                    f"(space before inner quote): {stripped[:100]}"
+                )
+
     def test_confirm_action_uses_addEventListener(self):
         self.assertIn("confirm-run-btn", DASHBOARD_HTML)
         self.assertIn("addEventListener", DASHBOARD_HTML)
