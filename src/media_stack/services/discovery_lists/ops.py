@@ -14,11 +14,26 @@ from .import_lists import (
     resolve_import_list_definitions,
 )
 from .kickoff import trigger_arr_discovery_kickoff
-from media_stack.services.apps.sonarr.sonarr_seed import (
-    ensure_sonarr_seed_series,
-    resolve_series_language_profile_id,
-    resolve_series_quality_profile_id,
-)
+import importlib as _importlib
+
+def _load_tv_seed_module():
+    from media_stack.api.services.registry import SERVICES
+    svc_id = next((s.id for s in SERVICES if s.stats_label and "series" in s.stats_label.lower()), "")
+    if not svc_id:
+        return None
+    return _importlib.import_module(f"media_stack.services.apps.{svc_id}.{svc_id}_seed")
+
+def ensure_sonarr_seed_series(*args, **kwargs):
+    mod = _load_tv_seed_module()
+    return mod.ensure_sonarr_seed_series(*args, **kwargs) if mod else None
+
+def resolve_series_language_profile_id(*args, **kwargs):
+    mod = _load_tv_seed_module()
+    return mod.resolve_series_language_profile_id(*args, **kwargs) if mod else None
+
+def resolve_series_quality_profile_id(*args, **kwargs):
+    mod = _load_tv_seed_module()
+    return mod.resolve_series_quality_profile_id(*args, **kwargs) if mod else None
 
 __all__ = [
     "coerce_for_example",

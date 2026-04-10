@@ -4,7 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..apps.prowlarr.runtime_compat import LEGACY_ARG_TOKEN_ALIASES as _PROWLARR_TOKEN_ALIASES
+import importlib as _importlib
+
+def _load_indexer_token_aliases():
+    from media_stack.api.services.registry import SERVICES
+    for svc in SERVICES:
+        if not svc.indexer_path:
+            continue
+        try:
+            mod = _importlib.import_module(f"media_stack.services.apps.{svc.id}.runtime_compat")
+            return getattr(mod, "LEGACY_ARG_TOKEN_ALIASES", {})
+        except (ImportError, ModuleNotFoundError):
+            continue
+    return {}
+
+_PROWLARR_TOKEN_ALIASES = _load_indexer_token_aliases()
 from ..runner_phase_plan_service import run_phase_plan as run_event_phase_plan
 from .base import MediaServerAdapterContext
 

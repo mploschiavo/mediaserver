@@ -14,17 +14,15 @@ from typing import Any
 import requests
 
 
-_APPS_TO_RESTART = [
-    ("jellyfin", 8096),
-    ("sonarr", 8989),
-    ("radarr", 7878),
-    ("lidarr", 8686),
-    ("readarr", 8787),
-    ("prowlarr", 9696),
-    ("bazarr", 6767),
-    ("jellyseerr", 5055),
-    ("homepage", 3000),
-]
+def _apps_to_restart() -> list[tuple[str, int]]:
+    """Build restart list from the service registry — no hardcoded service names."""
+    try:
+        from media_stack.api.services.registry import SERVICES
+        return [(s.id, s.port) for s in SERVICES if s.port > 0 and s.health_path]
+    except Exception:
+        return []
+
+_APPS_TO_RESTART = _apps_to_restart()
 
 
 def write_config_and_restart(

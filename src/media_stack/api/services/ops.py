@@ -306,12 +306,19 @@ def get_gpu_info() -> dict[str, Any]:
         else:
             result["note"] = "No containers have GPU devices mounted. To enable, update docker-compose.yml and redeploy."
 
-    # Check if Jellyfin container has GPU passthrough (delegated to app layer)
+    # Check if the media server container has GPU passthrough (delegated to app layer)
     try:
         import docker
+        import importlib
         client = docker.from_env()
-        from media_stack.services.apps.jellyfin.gpu import check_jellyfin_gpu
-        result.update(check_jellyfin_gpu(client))
+        # Dynamically load GPU module from the media server's app layer
+        from .registry import SERVICES
+        ms = next((s for s in SERVICES if s.category == "media"), None)
+        if ms:
+            gpu_mod = importlib.import_module(f"media_stack.services.apps.{ms.id}.gpu")
+            check_fn = getattr(gpu_mod, f"check_{ms.id}_gpu", None)
+            if check_fn:
+                result.update(check_fn(client))
     except Exception:
         pass
 
@@ -323,9 +330,13 @@ def get_gpu_info() -> dict[str, Any]:
         elif "nvidia" in gpu_type:
             result["hw_accel_type"] = "nvenc"
         if "hw_accel_type" in result:
-            from media_stack.services.apps.jellyfin.gpu import build_compose_snippet
-            result["compose_snippet"] = build_compose_snippet(result["hw_accel_type"])
-        result["can_auto_configure"] = result.get("jellyfin_has_gpu", False)
+            try:
+                snippet_fn = getattr(gpu_mod, "build_compose_snippet", None)
+                if snippet_fn:
+                    result["compose_snippet"] = snippet_fn(result["hw_accel_type"])
+            except Exception:
+                pass
+        result["can_auto_configure"] = result.get(f"{ms.id}_has_gpu" if ms else "has_gpu", False)
     return result
 
 
@@ -335,10 +346,17 @@ def enable_gpu_transcoding() -> dict[str, Any]:
     Delegates to the media-server app layer which owns the config parsing
     and container restart logic.
     """
-    from media_stack.services.apps.jellyfin.gpu import (
-        enable_gpu_transcoding as _enable,
-    )
-    return _enable()
+    import importlib
+    from .registry import SERVICES
+    ms = next((s for s in SERVICES if s.category == "media"), None)
+    if not ms:
+        return {"status": "error", "error": "No media server in registry"}
+    try:
+        gpu_mod = importlib.import_module(f"media_stack.services.apps.{ms.id}.gpu")
+        _enable = getattr(gpu_mod, "enable_gpu_transcoding")
+        return _enable()
+    except (ImportError, AttributeError) as exc:
+        return {"status": "error", "error": f"GPU module not available for {ms.id}: {exc}"}
 
 
 def take_snapshot() -> dict[str, Any]:
