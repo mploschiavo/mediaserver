@@ -146,14 +146,22 @@ class TestLiveTvSources(unittest.TestCase):
             profile = _make_profile({}, td)
             with patch.object(config_mod, "resolve_profile_path", return_value=profile):
                 result = config_mod.update_livetv_sources(
-                    "https://iptv-org.github.io/iptv/countries/de.m3u",
-                    "https://iptv-epg.org/files/epg-de.xml",
+                    tuners=[{"url": "https://example.com/de.m3u", "name": "DE"}],
+                    guides=[{"url": "https://example.com/epg-de.xml", "name": "DE EPG"}],
                 )
         self.assertEqual(result["status"], "saved")
+        self.assertEqual(len(result.get("tuners", [])), 1)
 
-    def test_rejects_empty_tuner(self):
-        result = config_mod.update_livetv_sources("", "")
-        self.assertIn("error", result)
+    def test_saves_with_single_url(self):
+        with tempfile.TemporaryDirectory() as td:
+            profile = _make_profile({}, td)
+            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+                result = config_mod.update_livetv_sources(
+                    tuner_url="https://example.com/us.m3u",
+                    guide_url="https://example.com/epg-us.xml",
+                )
+        self.assertEqual(result["status"], "saved")
+        self.assertEqual(len(result.get("tuners", [])), 1)
 
 
 # ---------------------------------------------------------------------------

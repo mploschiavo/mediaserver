@@ -181,7 +181,8 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     if handler.path == "/api/livetv-sources":
         body = handler._read_json_body()
         handler._json_response(200, config_svc.update_livetv_sources(
-            body.get("tuner_url", ""), body.get("guide_url", ""),
+            tuners=body.get("tuners"), guides=body.get("guides"),
+            tuner_url=body.get("tuner_url", ""), guide_url=body.get("guide_url", ""),
         ))
         return
 

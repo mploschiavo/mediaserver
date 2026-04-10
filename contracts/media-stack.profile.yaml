@@ -101,6 +101,9 @@ download_categories:
 live_tv_defaults:
   tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
   guide_url: https://iptv-epg.org/files/epg-us.xml
+  # URL templates for multi-country IPTV. {code} is replaced with country code.
+  tuner_url_template: https://iptv-org.github.io/iptv/countries/{code}.m3u
+  guide_url_template: https://iptv-epg.org/files/epg-{code}.xml
   default_program_icon_urls:
     - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
 
