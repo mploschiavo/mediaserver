@@ -70,9 +70,6 @@ EXCLUDED_DIR_NAMES: set[str] = {"__pycache__"}
 # Path substrings (relative to SRC_ROOT) that are excluded because the
 # code in them is inherently service-aware by design.
 EXCLUDED_REL_PATH_PARTS: list[str] = [
-    # Admin handlers: qBittorrent/Jellyfin password resets that cannot be
-    # registry-driven because each service uses a unique auth mechanism.
-    "api/services/admin.py",
     # Preflight discovery: reads service config files to discover keys
     # before the registry is available.
     "api/preflight/",
@@ -91,7 +88,7 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # from the failure message, and paste it here with a brief comment.
 
 ALLOWLIST: dict[str, set] = {
-    # Empty — all service-specific references have been moved to services/apps/.
+    # Empty — all service-specific logic has been moved to services/apps/.
 }
 
 

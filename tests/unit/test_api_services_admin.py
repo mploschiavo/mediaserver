@@ -361,6 +361,7 @@ class TestResetPassword(unittest.TestCase):
     @mock.patch("media_stack.api.services.admin.persist_keys_to_secret")
     @mock.patch("media_stack.api.services.admin.get_services_with_password_config")
     @mock.patch("media_stack.api.services.admin.get_services_with_password_api")
+    @mock.patch("media_stack.api.services.admin.SERVICES", [])
     @mock.patch("media_stack.api.services.admin.SERVICE_MAP", {})
     def test_returns_updated_with_no_services(self, mock_pw_api, mock_pw_config, mock_persist, mock_restart):
         mock_pw_api.return_value = []

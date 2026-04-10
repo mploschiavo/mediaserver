@@ -31,112 +31,40 @@ from .registry import (
 from .key_formats import READERS as _KEY_READERS, WRITERS as _KEY_WRITERS
 
 
-def _discover_jellyfin_api_key(config_root: str) -> str:
-    """Discover Jellyfin API key from the SQLite DB."""
-    db_path = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
-    return _KEY_READERS["sqlite"](db_path)
+# ---------------------------------------------------------------------------
+# App-specific admin operations — dispatched to services/apps/<id>/admin_ops.py
+# ---------------------------------------------------------------------------
 
+def _load_app_admin_ops(service_id: str) -> Any:
+    """Try to import services.apps.<service_id>.admin_ops module.
 
-# Legacy endpoint paths for media-server reset (backward compat).
-_MEDIA_SERVER_RESET_PATHS = {"/api/jellyfin/reset"}
+    Returns the module or None if it doesn't exist.
+    """
+    try:
+        import importlib
+        return importlib.import_module(f"media_stack.services.apps.{service_id}.admin_ops")
+    except (ImportError, ModuleNotFoundError):
+        return None
 
 
 def is_media_server_reset_path(path: str) -> bool:
     """Return True if the request path is a legacy media-server reset endpoint."""
-    return path in _MEDIA_SERVER_RESET_PATHS
+    # Dynamically build from registry — any media-category service gets /api/{id}/reset
+    return any(
+        path == f"/api/{s.id}/reset" for s in SERVICES if s.category == "media"
+    )
 
 
 def jellyfin_hard_reset(username: str, password: str) -> dict[str, Any]:
-    """Hard-reset Jellyfin user credentials via direct DB access.
-
-    This handles the Jellyfin 10.11+ race condition where the startup
-    wizard auto-completes before the controller can intercept it,
-    creating a user with an unknown name and password.
-
-    Steps: stop Jellyfin → clear password in DB → rename user → restart
-    → set new password via API.
-    """
-    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
-    db_path = Path(config_root) / "jellyfin" / "data" / "jellyfin.db"
-    if not db_path.is_file():
-        return {"status": "error", "error": "Jellyfin database not found. Start Jellyfin first."}
-
-    jf = SERVICE_MAP.get("jellyfin")
-    if not jf:
-        return {"status": "error", "error": "Jellyfin not in service registry"}
-
-    import sqlite3
-
-    # 1. Clear password and set username in DB
-    try:
-        conn = sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-        cur.execute("UPDATE Users SET Password='', Username=?, MustUpdatePassword=0", (username,))
-        affected = cur.rowcount
-        conn.commit()
-        conn.close()
-    except Exception as exc:
-        return {"status": "error", "error": f"DB update failed: {exc}"}
-
-    if affected == 0:
-        return {"status": "error", "error": "No users found in Jellyfin DB"}
-
-    # 2. Restart Jellyfin to pick up DB changes
-    restart_msg = ""
-    try:
-        import docker as docker_lib
-        client = docker_lib.from_env()
-        jf_container = client.containers.get("jellyfin")
-        jf_container.restart(timeout=30)
-        import time
-        for _ in range(15):
-            time.sleep(2)
-            try:
-                req = urllib.request.Request(f"http://{jf.host}:{jf.port}/System/Info/Public")
-                urllib.request.urlopen(req, timeout=5)
-                restart_msg = "Jellyfin restarted."
-                break
-            except Exception:
-                continue
-        else:
-            restart_msg = "Jellyfin restarting (health check pending)."
-    except Exception:
-        restart_msg = "Restart Jellyfin manually."
-
-    # 3. Set the new password via API (now with empty current password)
-    pw_set = False
-    try:
-        # Auth with empty password
-        auth_data = json.dumps({"Username": username, "Pw": ""}).encode()
-        auth_req = urllib.request.Request(
-            f"http://{jf.host}:{jf.port}/Users/AuthenticateByName",
-            data=auth_data, method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "X-Emby-Authorization": 'MediaBrowser Client="controller", Device="controller", DeviceId="controller", Version="1.0"',
-            },
-        )
-        with urllib.request.urlopen(auth_req, timeout=10) as resp:
-            auth_result = json.loads(resp.read())
-        token = auth_result.get("AccessToken", "")
-        user_id = auth_result.get("User", {}).get("Id", "")
-
-        if token and user_id:
-            pw_data = json.dumps({"CurrentPw": "", "NewPw": password}).encode()
-            pw_req = urllib.request.Request(
-                f"http://{jf.host}:{jf.port}/Users/{user_id}/Password",
-                data=pw_data, method="POST",
-                headers={"X-Emby-Token": token, "Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(pw_req, timeout=10)
-            pw_set = True
-            os.environ["JELLYFIN_USER_ID"] = user_id
-    except Exception as exc:
-        return {"status": "partial", "error": f"Password set failed: {exc}", "note": restart_msg}
-
-    if pw_set:
-        return {"status": "ok", "user": username, "note": restart_msg}
-    return {"status": "partial", "error": "Could not set password after DB reset", "note": restart_msg}
+    """Hard-reset media server credentials — delegates to the app layer."""
+    # Find the media server from the registry
+    ms = next((s for s in SERVICES if s.category == "media"), None)
+    if not ms:
+        return {"status": "error", "error": "No media server in service registry"}
+    ops = _load_app_admin_ops(ms.id)
+    if ops and hasattr(ops, "hard_reset"):
+        return ops.hard_reset(username, password)
+    return {"status": "error", "error": f"No hard_reset handler for {ms.id}"}
 
 
 def hard_reset_service(service_id: str, options: dict) -> dict[str, Any]:
@@ -149,11 +77,12 @@ def hard_reset_service(service_id: str, options: dict) -> dict[str, Any]:
     if not svc:
         return {"status": "error", "error": f"Unknown service '{service_id}'"}
 
-    # Jellyfin / media-server: delegate to existing hard-reset
-    if service_id == "jellyfin" or svc.category == "media-server":
+    # Media server or any service with app-layer hard_reset: delegate
+    ops = _load_app_admin_ops(service_id)
+    if ops and hasattr(ops, "hard_reset"):
         username = options.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
-        password = options.get("password", os.environ.get("STACK_ADMIN_PASSWORD", "media-stack"))
-        return jellyfin_hard_reset(username, password)
+        password = options.get("password", os.environ.get("STACK_ADMIN_PASSWORD", ""))
+        return ops.hard_reset(username, password)
 
     restarted = False
     key_discovered = False
@@ -315,123 +244,24 @@ def reset_password(new_password: str, target_services: list[str] | None = None) 
 
     _filter = set(target_services) if target_services else None
 
-    # 1. qBittorrent — special case (form-based auth, not in registry pattern)
-    #    Try configured password first, then common defaults, then the
-    #    random temporary password from container logs (linuxserver images).
-    qbit = SERVICE_MAP.get("qbittorrent")
-    if qbit and (_filter is None or "qbittorrent" in _filter):
-        qbit_ok = False
-        passwords_to_try = [old_password, "adminadmin", ""]
-        # Extract temp password from container logs (linuxserver/qbittorrent)
-        try:
-            import docker as _docker
-            _client = _docker.from_env()
-            _qbit_container = _client.containers.get("qbittorrent")
-            _logs = _qbit_container.logs(tail=50).decode("utf-8", errors="replace")
-            import re as _re
-            _match = _re.search(r"temporary password[^:]*:\s*(\S+)", _logs, _re.IGNORECASE)
-            if _match:
-                passwords_to_try.insert(1, _match.group(1))
-        except Exception:
-            pass
-        for try_pw in passwords_to_try:
-            try:
-                cj = http.cookiejar.CookieJar()
-                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-                login_data = f"username={username}&password={try_pw}".encode()
-                req = urllib.request.Request(f"http://{qbit.host}:{qbit.port}/api/v2/auth/login", data=login_data)
-                try:
-                    resp = opener.open(req, timeout=5)
-                except urllib.error.HTTPError as http_err:
-                    if http_err.code == 403:
-                        # IP banned from too many attempts — wait and retry once
-                        import time as _time
-                        _time.sleep(2)
-                        resp = opener.open(req, timeout=5)
-                    else:
-                        raise
-                body = resp.read().decode("utf-8", errors="replace")
-                if "Fails" in body:
-                    continue
-                prefs = json.dumps({"web_ui_password": new_password})
-                req2 = urllib.request.Request(
-                    f"http://{qbit.host}:{qbit.port}/api/v2/app/setPreferences",
-                    data=("json=" + urllib.parse.quote(prefs)).encode(),
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                )
-                opener.open(req2, timeout=5)
-                updated.append("qbittorrent")
-                qbit_ok = True
-                break
-            except Exception:
-                continue
-        if not qbit_ok:
-            errors.append("qbittorrent: login failed with all known passwords")
+    # 1. Services with app-layer admin_ops.reset_password() — dynamic dispatch
+    handled_ids: set[str] = set()
+    for svc in SERVICES:
+        if _filter is not None and svc.id not in _filter:
+            continue
+        ops = _load_app_admin_ops(svc.id)
+        if ops and hasattr(ops, "reset_password"):
+            ok, err = ops.reset_password(svc, username, old_password, new_password, config_root)
+            if ok:
+                updated.append(svc.id)
+            elif err:
+                errors.append(f"{svc.id}: {err}")
+            handled_ids.add(svc.id)
 
-    # 2. Jellyfin — special case (user password API)
-    jf = SERVICE_MAP.get("jellyfin")
-    if jf and (_filter is None or "jellyfin" in _filter):
-        try:
-            jf_key = os.environ.get("JELLYFIN_API_KEY", "")
-            jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
-            jf_base = f"http://{jf.host}:{jf.port}"
-
-            # Auto-discover API key and user ID if not in env
-            if not jf_key:
-                jf_key = _discover_jellyfin_api_key(config_root)
-                if jf_key:
-                    os.environ["JELLYFIN_API_KEY"] = jf_key
-            if jf_key and not jf_uid:
-                jf_uid = _discover_jellyfin_admin_user_id(jf_base, jf_key, username)
-                if jf_uid:
-                    os.environ["JELLYFIN_USER_ID"] = jf_uid
-
-            if jf_key and jf_uid:
-                # Try with current password first, then empty password
-                pw_set = False
-                for current_pw in [old_password, ""]:
-                    try:
-                        payload = json.dumps({"CurrentPw": current_pw, "NewPw": new_password}).encode()
-                        req = urllib.request.Request(
-                            f"{jf_base}/Users/{jf_uid}/Password",
-                            data=payload, method="POST",
-                            headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
-                        )
-                        urllib.request.urlopen(req, timeout=10)
-                        pw_set = True
-                        break
-                    except Exception:
-                        continue
-                if pw_set:
-                    updated.append("jellyfin")
-                else:
-                    # Hard reset: use ResetPassword endpoint (Jellyfin 10.9+)
-                    try:
-                        req = urllib.request.Request(
-                            f"{jf_base}/Users/{jf_uid}/Password",
-                            data=json.dumps({"ResetPassword": True}).encode(),
-                            method="POST",
-                            headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
-                        )
-                        urllib.request.urlopen(req, timeout=10)
-                        # Now set the new password with empty current
-                        payload = json.dumps({"CurrentPw": "", "NewPw": new_password}).encode()
-                        req = urllib.request.Request(
-                            f"{jf_base}/Users/{jf_uid}/Password",
-                            data=payload, method="POST",
-                            headers={"X-Emby-Token": jf_key, "Content-Type": "application/json"},
-                        )
-                        urllib.request.urlopen(req, timeout=10)
-                        updated.append("jellyfin")
-                    except Exception as exc2:
-                        errors.append(f"jellyfin: hard reset failed: {exc2}")
-            else:
-                errors.append("jellyfin: no API key or user ID discoverable")
-        except Exception as exc:
-            errors.append(f"jellyfin: {exc}")
-
-    # 3. Arr apps — registry-driven via password_api_path
+    # 2. Arr apps — registry-driven via password_api_path
     for svc in get_services_with_password_api():
+        if svc.id in handled_ids:
+            continue
         if _filter is not None and svc.id not in _filter:
             continue
         try:
@@ -461,27 +291,13 @@ def reset_password(new_password: str, target_services: list[str] | None = None) 
         except Exception as exc:
             errors.append(f"{svc.id}: {exc}")
 
-    # 4. Bazarr — special case (must set password via API, not config file)
-    bazarr = SERVICE_MAP.get("bazarr")
-    if bazarr and bazarr.id not in updated and (_filter is None or "bazarr" in _filter):
-        try:
-            bz_key = os.environ.get(bazarr.api_key_env, "") or _read_key(bazarr, config_root)
-            if bz_key:
-                req = urllib.request.Request(
-                    f"http://{bazarr.host}:{bazarr.port}/api/system/settings",
-                    data=json.dumps({"auth": {"type": "basic", "username": username, "password": new_password}}).encode(),
-                    method="PATCH",
-                    headers={"X-API-KEY": bz_key, "Content-Type": "application/json"},
-                )
-                urllib.request.urlopen(req, timeout=10)
-                updated.append("bazarr")
-        except Exception as exc:
-            errors.append(f"bazarr: {exc}")
+    # (Bazarr and other services with custom password APIs are now handled
+    #  via app-layer admin_ops.py dispatch in step 1 above.)
 
     # 5. Config-file-based password services — registry-driven
     for svc in get_services_with_password_config():
-        if svc.id in updated:
-            continue  # Already handled via API
+        if svc.id in updated or svc.id in handled_ids:
+            continue  # Already handled
         if _filter is not None and svc.id not in _filter:
             continue
         cfg_path = Path(config_root) / svc.password_config
