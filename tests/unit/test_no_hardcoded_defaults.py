@@ -57,9 +57,7 @@ ALLOWLIST: set[tuple[str, int, str]] = {
     ("services/media_hygiene_ops/filesystem.py", 56, "download path"),
     ("services/media_hygiene_ops/filesystem.py", 57, "download path"),
     # dashboard: HTML placeholder text in input fields (overwritten by API data)
-    ("api/dashboard.html", 2242, "media path"),
-    ("api/dashboard.html", 2414, "IPTV URL"),
-    ("api/dashboard.html", 2416, "EPG URL"),
+    ("api/dashboard.html", 2273, "media path"),
     # docker-compose: init-permissions creates directory structure on first run
     ("docker/docker-compose.yml", 38, "media path"),
 }

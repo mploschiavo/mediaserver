@@ -881,6 +881,51 @@ def get_config_drift() -> dict[str, Any]:
         except Exception:
             pass
 
+    # 4. Credential drift — login validation status
+    try:
+        from .health import probe_credentials
+        cred_result = probe_credentials()
+        for svc_id, status in cred_result.get("credentials", {}).items():
+            if status == "fail":
+                drifts.append({
+                    "area": "credentials", "key": svc_id,
+                    "expected": "ok (valid login)",
+                    "actual": "fail (wrong password)",
+                    "note": "Run Validate Credentials to auto-sync",
+                })
+    except Exception:
+        pass
+
+    # 5. Live TV — configured but no tuners?
+    ltv = get_livetv_sources()
+    if ltv.get("source") == "not_configured":
+        drifts.append({
+            "area": "live_tv", "key": "tuners",
+            "expected": "at least 1 tuner configured",
+            "actual": "none",
+            "note": "Go to Config > Live TV to add IPTV sources",
+        })
+
+    # 6. Libraries — none configured?
+    libs = get_libraries()
+    if not libs.get("libraries"):
+        drifts.append({
+            "area": "libraries", "key": "media_libraries",
+            "expected": "at least 1 library configured",
+            "actual": "none",
+            "note": "Go to Config > Libraries to add media folders",
+        })
+
+    # 7. Metadata — still on defaults?
+    meta = get_metadata_settings()
+    if meta.get("source") == "defaults":
+        drifts.append({
+            "area": "metadata", "key": "language",
+            "expected": "configured",
+            "actual": f"{meta.get('language', '?')}/{meta.get('country', '?')} (default)",
+            "note": "Review in Config > Metadata if you need a different language",
+        })
+
     return {
         "drifts": drifts,
         "total": len(drifts),

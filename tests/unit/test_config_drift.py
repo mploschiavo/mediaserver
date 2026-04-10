@@ -79,14 +79,14 @@ class TestDashboardDrift(unittest.TestCase):
     def test_drift_calls_api(self):
         self.assertIn("/api/config-drift", DASHBOARD_HTML)
 
-    def test_drift_shows_table_on_issues(self):
-        self.assertIn("Config Drift Detected", DASHBOARD_HTML)
+    def test_drift_shows_grouped_issues(self):
+        self.assertIn("Configuration Issue", DASHBOARD_HTML)
 
     def test_drift_shows_clean_message(self):
-        self.assertIn("No Config Drift", DASHBOARD_HTML)
+        self.assertIn("No Configuration Drift", DASHBOARD_HTML)
 
     def test_drift_uses_eschtml(self):
-        self.assertIn("_escHtml(d.area)", DASHBOARD_HTML)
+        self.assertIn("_escHtml(d.key)", DASHBOARD_HTML)
 
     def test_drift_shows_expected_vs_actual(self):
         self.assertIn("Expected", DASHBOARD_HTML)
