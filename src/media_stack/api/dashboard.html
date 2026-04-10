@@ -1750,18 +1750,31 @@ schedules.forEach(s=>{schedTimers[s.id]=setInterval(()=>{_schedExec(s.action,s.i
 /* #14 Rolling update — show via versions comparison (informational) */
 
 /* #15 Config drift detector */
-function renderDrift(){
-  if(!statusData){document.getElementById('drift-view').innerHTML='<span style="color:var(--fg3)">No status data</span>';return;}
-  const pf=statusData.preflight_results||{};const cfg=statusData.runtime_config||{};
+async function renderDrift(){
+  const el=document.getElementById('drift-view');
+  el.innerHTML='<span style="color:var(--fg3)">Checking config drift...</span>';
+  // Fetch real drift data from backend
+  let driftData=null;
+  try{const r=await fetch('/api/config-drift');if(r.ok)driftData=await r.json();}catch(e){}
   let h='<div style="font-size:.85em">';
-  h+='<div class="cat-label">Runtime Config</div>';
+  // Drift results from backend
+  if(driftData&&driftData.drifts&&driftData.drifts.length>0){
+    h+='<div class="cat-label" style="color:var(--warn)">Config Drift Detected ('+driftData.total+')</div>';
+    h+='<table class="idx-table"><thead><tr><th>Area</th><th>Key</th><th>Expected</th><th>Actual</th><th>Note</th></tr></thead><tbody>';
+    for(const d of driftData.drifts){h+='<tr><td>'+_escHtml(d.area)+'</td><td style="font-weight:600">'+_escHtml(d.key)+'</td><td style="color:var(--ok)">'+_escHtml(d.expected)+'</td><td style="color:var(--err)">'+_escHtml(d.actual)+'</td><td style="font-size:.82em;color:var(--fg3)">'+(d.note?_escHtml(d.note):'')+'</td></tr>';}
+    h+='</tbody></table>';
+  }else{h+='<div class="cat-label" style="color:var(--ok)">No Config Drift</div><div style="color:var(--fg3);padding:6px">All configuration matches expected state.</div>';}
+  // Runtime config overrides
+  const cfg=(statusData||{}).runtime_config||{};
+  h+='<div class="cat-label">Runtime Config Overrides</div>';
   if(Object.keys(cfg).length===0)h+='<div class="svc-row" style="cursor:default"><span class="sname">No overrides</span><span class="smeta idle">Default config</span></div>';
-  else for(const[k,v]of Object.entries(cfg))h+='<div class="svc-row" style="cursor:default"><span class="sname">'+k+'</span><span class="smeta">'+JSON.stringify(v)+'</span></div>';
+  else for(const[k,v]of Object.entries(cfg))h+='<div class="svc-row" style="cursor:default"><span class="sname">'+_escHtml(k)+'</span><span class="smeta">'+_escHtml(JSON.stringify(v))+'</span></div>';
+  // Service auth status
   h+='<div class="cat-label">Service Auth Status</div>';
   for(const s of SVCS){const auth=SVC_AUTH[s.id]||'unknown';const cls=auth==='ok'?'ok':auth==='n/a'?'idle':auth==='no_key'?'idle':auth==='unauthorized'?'warn':'error';
     const label=auth==='unauthorized'?'auth required (run bootstrap)':auth==='no_key'?'key not discovered':auth;
-    h+='<div class="svc-row" style="cursor:default"><span class="dot '+cls+'"></span><span class="sname">'+s.name+'</span><span class="smeta">'+label+'</span></div>';}
-  h+='</div>';document.getElementById('drift-view').innerHTML=h;
+    h+='<div class="svc-row" style="cursor:default"><span class="dot '+cls+'"></span><span class="sname">'+_escHtml(s.name)+'</span><span class="smeta">'+_escHtml(label)+'</span></div>';}
+  h+='</div>';el.innerHTML=h;
 }
 
 /* #16 Backup */

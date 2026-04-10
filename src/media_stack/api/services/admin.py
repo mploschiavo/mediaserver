@@ -25,85 +25,10 @@ from .registry import (
 
 
 # ---------------------------------------------------------------------------
-# Key reading/writing helpers — keyed by api_key_format from registry
+# Key reading/writing — delegated to shared key_formats module.
 # ---------------------------------------------------------------------------
 
-def _read_key_xml(path: Path) -> str:
-    if not path.is_file():
-        return ""
-    m = re.search(r"<ApiKey>([^<]+)</ApiKey>", path.read_text(encoding="utf-8"))
-    return m.group(1).strip() if m else ""
-
-
-def _write_key_xml(path: Path, new_key: str) -> None:
-    content = path.read_text(encoding="utf-8")
-    content = re.sub(r"<ApiKey>[^<]*</ApiKey>", f"<ApiKey>{new_key}</ApiKey>", content)
-    path.write_text(content, encoding="utf-8")
-
-
-def _read_key_ini(path: Path) -> str:
-    if not path.is_file():
-        return ""
-    m = re.search(r"^\s*api_key\s*=\s*(\S+)", path.read_text(encoding="utf-8"), re.MULTILINE)
-    return m.group(1).strip() if m else ""
-
-
-def _write_key_ini(path: Path, new_key: str) -> None:
-    content = path.read_text(encoding="utf-8")
-    content = re.sub(r"^api_key\s*=\s*.*$", f"api_key = {new_key}", content, count=1, flags=re.MULTILINE)
-    path.write_text(content, encoding="utf-8")
-
-
-def _read_key_yaml(path: Path) -> str:
-    if not path.is_file():
-        return ""
-    m = re.search(r"^\s*apikey:\s*['\"]?(\S+?)['\"]?\s*$", path.read_text(encoding="utf-8"), re.MULTILINE)
-    return m.group(1).strip() if m else ""
-
-
-def _write_key_yaml(path: Path, new_key: str) -> None:
-    import yaml
-    with open(path) as f:
-        cfg = yaml.safe_load(f) or {}
-    cfg.setdefault("auth", {})["apikey"] = new_key
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False)
-
-
-def _read_key_json(path: Path) -> str:
-    if not path.is_file():
-        return ""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return str((data.get("main") or {}).get("apiKey", "")).strip()
-    except Exception:
-        return ""
-
-
-def _write_key_json(path: Path, new_key: str) -> None:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data.setdefault("main", {})["apiKey"] = new_key
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
-def _read_key_sqlite(path: Path) -> str:
-    if not path.is_file():
-        return ""
-    import sqlite3
-    try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        cur = conn.cursor()
-        cur.execute("SELECT AccessToken FROM ApiKeys ORDER BY Id DESC LIMIT 1")
-        row = cur.fetchone()
-        conn.close()
-        return str(row[0]).strip() if row and row[0] else ""
-    except Exception:
-        return ""
-
-
-_KEY_READERS = {"xml": _read_key_xml, "ini": _read_key_ini, "yaml": _read_key_yaml, "json": _read_key_json, "sqlite": _read_key_sqlite}
-_KEY_WRITERS = {"xml": _write_key_xml, "ini": _write_key_ini, "yaml": _write_key_yaml, "json": _write_key_json}
-# sqlite keys are rotated via API, not file — handled separately
+from .key_formats import READERS as _KEY_READERS, WRITERS as _KEY_WRITERS
 
 
 def _discover_jellyfin_api_key(config_root: str) -> str:

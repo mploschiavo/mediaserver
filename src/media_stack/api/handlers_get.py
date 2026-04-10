@@ -188,6 +188,8 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, config_svc.get_manifests())
     elif path == "/api/envvars":
         handler._json_response(200, config_svc.get_envvars())
+    elif path == "/api/config-drift":
+        handler._json_response(200, config_svc.get_config_drift())
     elif path == "/api/backup":
         payload = config_svc.get_backup(handler.state)
         handler._raw_response(200, "application/json", payload, {
