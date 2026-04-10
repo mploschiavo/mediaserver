@@ -2362,16 +2362,35 @@ async function saveCategories(){
 async function loadMetadataConfig(){
   const el=document.getElementById('metadata-config');
   try{const r=await fetch('/api/metadata-settings');if(!r.ok)return;const d=await r.json();
-    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Preferred metadata language and country for media lookups (TMDb, TheTVDB, etc.)</p>';
+    const presets=d.presets||[];
+    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Set the preferred language for media metadata (movie/show descriptions, artwork, etc.)</p>';
+    // Quick-pick presets
+    if(presets.length){
+      h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Quick Select Language</div>';
+      h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
+      for(const p of presets){
+        const isActive=(p.language===d.language&&p.country===d.country);
+        h+='<button class="btn-secondary'+(isActive?' active':'')+'" style="padding:4px 10px;font-size:.82em" onclick="pickMetadata(\''+_escHtml(p.language)+'\',\''+_escHtml(p.country)+'\')">'+_escHtml(p.label)+(isActive?' ✓':'')+'</button>';
+      }
+      h+='</div></div>';
+    }
+    // Current + manual override
+    h+='<div class="action-group"><div class="action-group-title">Current Setting</div>';
     h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">';
-    h+='<div><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Language (ISO 639-1)</label>';
-    h+='<input id="meta-lang" value="'+_escHtml(d.language)+'" style="width:80px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em" placeholder="en"></div>';
-    h+='<div><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Country (ISO 3166-1)</label>';
-    h+='<input id="meta-country" value="'+_escHtml(d.country)+'" style="width:80px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em" placeholder="US"></div>';
-    h+='<button class="btn-primary" onclick="saveMetadata()">Save</button></div>';
-    h+='<div style="font-size:.78em;color:var(--fg3);margin-top:6px">Common: en/US, de/DE, fr/FR, es/ES, pt/BR, ja/JP, ko/KR, zh/CN</div>';
+    h+='<div><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Language</label>';
+    h+='<input id="meta-lang" value="'+_escHtml(d.language)+'" style="width:80px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em"></div>';
+    h+='<div><label style="font-size:.82em;color:var(--fg2);display:block;margin-bottom:2px">Country</label>';
+    h+='<input id="meta-country" value="'+_escHtml(d.country)+'" style="width:80px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em"></div>';
+    h+='<button class="btn-primary" onclick="saveMetadata()">Save</button></div></div>';
     el.innerHTML=h;
   }catch(e){el.innerHTML='Error: '+e;}
+}
+function pickMetadata(lang,country){
+  const langEl=document.getElementById('meta-lang');
+  const countryEl=document.getElementById('meta-country');
+  if(langEl)langEl.value=lang;
+  if(countryEl)countryEl.value=country;
+  saveMetadata();
 }
 async function saveMetadata(){
   const lang=document.getElementById('meta-lang')?.value.trim()||'';
@@ -2379,7 +2398,7 @@ async function saveMetadata(){
   if(!lang||!country){toast('Language and country required',true);return;}
   try{const r=await fetch('/api/metadata-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:lang,country})});
     const d=await r.json();
-    if(d.status==='saved')toast('Metadata settings saved. Run bootstrap to apply.');
+    if(d.status==='saved'){toast('Metadata set to '+lang+'/'+country);loadMetadataConfig();}
     else toast(d.error||'Save failed',true);
   }catch(e){toast('Error: '+e,true);}
 }
