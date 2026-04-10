@@ -224,10 +224,18 @@ def _auto_generate_config_json(target_path: str) -> str | None:
             pass
 
     # 2. Load service contract defaults (libraries, livetv, etc.)
+    # Only include services whose ID is in the config schema's allowed keys
+    try:
+        from media_stack.services.top_level_config_model import _load_top_level_schema
+        allowed_keys, _ = _load_top_level_schema()
+    except Exception:
+        allowed_keys = set()
     from media_stack.api.services.registry import SERVICES, _find_services_dir
     svc_dir = _find_services_dir()
     if svc_dir:
         for svc in SERVICES:
+            if svc.id not in allowed_keys:
+                continue
             svc_yaml_path = svc_dir / f"{svc.id}.yaml"
             if svc_yaml_path.is_file():
                 try:
@@ -235,7 +243,6 @@ def _auto_generate_config_json(target_path: str) -> str | None:
                         svc_data = yaml.safe_load(f) or {}
                     defaults = svc_data.get("defaults", {})
                     if defaults:
-                        # Merge service defaults into config under the service ID
                         config[svc.id] = defaults
                 except Exception:
                     pass
