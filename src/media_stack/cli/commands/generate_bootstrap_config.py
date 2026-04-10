@@ -45,7 +45,7 @@ def generate(
     if schema_path.is_file():
         try:
             schema = json.loads(schema_path.read_text())
-            allowed_keys = set(schema.get("properties", {}).keys())
+            allowed_keys = set(schema.get("allowed_keys", schema.get("properties", {})).keys())
         except Exception:
             pass
     if svc_dir.is_dir():
