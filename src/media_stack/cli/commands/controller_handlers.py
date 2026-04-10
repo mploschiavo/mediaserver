@@ -240,9 +240,10 @@ def _auto_generate_config_json(target_path: str) -> str | None:
                 except Exception:
                     pass
 
-    # 3. Copy profile sections into config
-    for key in ("routing", "technology_bindings", "bootstrap", "app_auth",
-                "live_tv_defaults", "download_categories", "metadata"):
+    # 3. Copy only config-schema-compatible sections from profile
+    # (routing, bootstrap, download_categories etc. are profile-only,
+    #  not valid in the bootstrap config JSON schema)
+    for key in ("app_auth", "technology_bindings"):
         if key in profile:
             config[key] = profile[key]
 
