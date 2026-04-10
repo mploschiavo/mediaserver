@@ -56,42 +56,50 @@ class JellyfinConfigResolutionResult:
 
 def _libraries_flags(model: JellyfinLibrariesConfig) -> dict[str, bool]:
     return {
-        "configure_jellyfin_libraries": model.enabled,
+        "configure_media_server_libraries": model.enabled,
+        "configure_jellyfin_libraries": model.enabled,  # backward compat
         "jellyfin_libraries_required": model.required,
     }
 
 
 def _livetv_flags(model: JellyfinLiveTvConfig) -> dict[str, bool]:
     return {
-        "configure_jellyfin_livetv": model.enabled,
+        "configure_media_server_livetv": model.enabled,
+        "configure_jellyfin_livetv": model.enabled,  # backward compat
         "jellyfin_livetv_required": model.required,
     }
 
 
 def _plugins_flags(model: JellyfinPluginsConfig) -> dict[str, bool]:
     return {
-        "configure_jellyfin_plugins": model.enabled,
+        "configure_media_server_plugins": model.enabled,
+        "configure_jellyfin_plugins": model.enabled,  # backward compat
         "jellyfin_plugins_required": model.required,
     }
 
 
 def _playback_flags(model: JellyfinPlaybackConfig) -> dict[str, bool]:
     return {
-        "configure_jellyfin_playback": model.enabled,
+        "configure_media_server_playback": model.enabled,
+        "configure_jellyfin_playback": model.enabled,  # backward compat
         "jellyfin_playback_required": model.required,
     }
 
 
 def _prewarm_flags(model: JellyfinPrewarmConfig) -> dict[str, bool]:
     return {
-        "configure_jellyfin_prewarm": model.enabled,
+        "configure_media_server_prewarm": model.enabled,
+        "configure_jellyfin_prewarm": model.enabled,  # backward compat
         "jellyfin_prewarm_required": model.required,
     }
 
 
 def _home_rails_flags(model: JellyfinHomeRailsConfig) -> dict[str, bool]:
     return {
-        "configure_jellyfin_home_rails": (
+        "configure_media_server_home_rails": (
+            model.enabled or model.cleanup_collections_when_disabled
+        ),
+        "configure_jellyfin_home_rails": (  # backward compat
             model.enabled or model.cleanup_collections_when_disabled
         ),
         "jellyfin_home_rails_required": model.required,

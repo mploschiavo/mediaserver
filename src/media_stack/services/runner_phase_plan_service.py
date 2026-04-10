@@ -41,7 +41,7 @@ DEFAULT_ARG_TOKEN_ATTRS: dict[str, str] = {
     "qb_pass": "qb_pass",
     "indexer_manager_url": "prowlarr_url",
     "indexer_manager_key": "prowlarr_key",
-    "indexer_manager_indexers": "prowlarr_indexers",
+    "indexer_manager_indexers": "indexer_entries",
     "auto_indexers": "auto_indexers",
     "trigger_sync": "trigger_sync",
     # Legacy arg-token aliases from app-layer compat modules.

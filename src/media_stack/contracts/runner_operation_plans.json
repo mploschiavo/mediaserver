@@ -11,7 +11,7 @@
         "event": "ENSURE",
         "handler": "ensure_maintainerr_policy",
         "args": ["cfg", "config_root"],
-        "enabled_attr": "configure_maintainerr_policy",
+        "enabled_attr": "configure_media_policy",
         "required_attr": "maintainerr_required",
         "warning_message": "[WARN] Maintainerr policy: automation skipped. Set maintainerr.required=true to fail the bootstrap instead."
       }
@@ -24,15 +24,15 @@
         "event": "ENSURE",
         "handler": "ensure_bazarr_arr_integration",
         "args": ["cfg", "config_root", "arr_apps_raw", "app_keys", "wait_timeout"],
-        "enabled_attr": "configure_bazarr_integration",
+        "enabled_attr": "configure_subtitles_integration",
         "required_attr": "bazarr_required",
         "warning_message": "[WARN] Bazarr: integration bootstrap skipped. Set bazarr.required=true to fail the bootstrap instead."
       },
       {
         "event": "RUN",
-        "handler": "configure_jellyseerr",
+        "handler": "configure_request_manager",
         "args": ["cfg", "arr_apps_raw", "app_keys", "config_root", "wait_timeout"],
-        "enabled_attr": "configure_jellyseerr_services",
+        "enabled_attr": "configure_request_manager_services",
         "required_attr": "jellyseerr_required",
         "warning_message": "[WARN] Jellyseerr: automation skipped. Set jellyseerr.required=true to fail the bootstrap instead."
       },
@@ -40,7 +40,7 @@
         "event": "ENSURE",
         "handler": "ensure_maintainerr_integrations",
         "args": ["cfg", "config_root", "arr_apps_raw", "wait_timeout"],
-        "enabled_attr": "configure_maintainerr_integrations",
+        "enabled_attr": "configure_media_policy_integrations",
         "required_attr": "maintainerr_integrations_required",
         "warning_message": "[WARN] Maintainerr integrations: automation skipped. Set maintainerr.integrations.required=true to fail the bootstrap instead."
       }
@@ -83,7 +83,7 @@
         "event": "ENSURE",
         "handler": "ensure_homepage_services_config",
         "args": ["cfg", "config_root"],
-        "enabled_attr": "configure_homepage_services",
+        "enabled_attr": "configure_dashboard_services",
         "required_attr": "homepage_required",
         "warning_message": "[WARN] Homepage: config-as-code bootstrap skipped. Set homepage.required=true to fail the bootstrap instead."
       }

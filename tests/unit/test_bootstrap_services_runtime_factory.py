@@ -434,8 +434,8 @@ class RuntimeFactoryServiceTests(unittest.TestCase):
         with self._qbit_env():
             result = factory.build(self._args(mode=BootstrapMode.FULL), cfg)
 
-        self.assertTrue(result.runtime.configure_maintainerr_policy)
-        self.assertTrue(result.runtime.configure_maintainerr_integrations)
+        self.assertTrue(result.runtime.configure_media_policy)
+        self.assertTrue(result.runtime.configure_media_policy_integrations)
         self.assertFalse(result.runtime.maintainerr_integrations_required)
 
 

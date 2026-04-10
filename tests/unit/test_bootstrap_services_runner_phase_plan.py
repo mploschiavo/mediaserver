@@ -25,6 +25,9 @@ class RunnerPhasePlanServiceTests(unittest.TestCase):
             "prowlarr_url": "http://prowlarr:9696",
             "prowlarr_key": "key",
             "prowlarr_indexers": [],
+            "indexer_url": "http://prowlarr:9696",
+            "indexer_key": "key",
+            "indexer_entries": [],
             "auto_indexers": False,
             "trigger_sync": False,
         }

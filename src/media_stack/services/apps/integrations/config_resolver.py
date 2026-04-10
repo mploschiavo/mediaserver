@@ -68,30 +68,35 @@ def _bool_section_flags(
 
 def _jellyseerr_flags(model: JellyseerrConfig) -> dict[str, bool]:
     return {
-        "configure_jellyseerr_services": model.enabled,
+        "configure_request_manager": model.enabled,
+        "configure_jellyseerr_services": model.enabled,  # backward compat
         "jellyseerr_required": model.required,
     }
 
 
 def _homepage_flags(model: HomepageConfig) -> dict[str, bool]:
     return {
-        "configure_homepage_services": model.enabled or bool(model.hosts),
+        "configure_dashboard": model.enabled or bool(model.hosts),
+        "configure_homepage_services": model.enabled or bool(model.hosts),  # backward compat
         "homepage_required": model.required,
     }
 
 
 def _bazarr_flags(model: BazarrConfig) -> dict[str, bool]:
     return {
-        "configure_bazarr_integration": model.enabled,
+        "configure_subtitles": model.enabled,
+        "configure_bazarr_integration": model.enabled,  # backward compat
         "bazarr_required": model.required,
     }
 
 
 def _maintainerr_flags(model: MaintainerrConfig) -> dict[str, bool]:
     return {
-        "configure_maintainerr_policy": model.enabled,
+        "configure_media_policy": model.enabled,
+        "configure_maintainerr_policy": model.enabled,  # backward compat
         "maintainerr_required": model.required,
-        "configure_maintainerr_integrations": model.integrations.enabled,
+        "configure_media_policy_integrations": model.integrations.enabled,
+        "configure_maintainerr_integrations": model.integrations.enabled,  # backward compat
         "maintainerr_integrations_required": model.integrations.required,
     }
 

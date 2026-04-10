@@ -30,7 +30,7 @@ class OP:
     SETUP_QBIT_CATEGORIES = "setup_qbit_categories"
     RUN_SERVARR_PIPELINE = "run_servarr_pipeline"
     ENSURE_BAZARR_INTEGRATION = "ensure_bazarr_arr_integration"
-    CONFIGURE_JELLYSEERR = "configure_jellyseerr"
+    CONFIGURE_JELLYSEERR = "configure_request_manager"
     ENSURE_JELLYFIN_LIVETV = "ensure_jellyfin_livetv"
     ENSURE_JELLYFIN_LIBRARIES = "ensure_jellyfin_libraries"
     ENSURE_JELLYFIN_PLUGINS = "ensure_jellyfin_plugins"
@@ -148,13 +148,13 @@ class ControllerServiceTests(unittest.TestCase):
                         {
                             "operation": "ensure_maintainerr_policy",
                             "args": ["cfg", "config_root"],
-                            "enabled_attr": "configure_maintainerr_policy",
+                            "enabled_attr": "configure_media_policy",
                             "required_attr": "maintainerr_required",
                         },
                         {
                             "operation": "ensure_homepage_services_config",
                             "args": ["cfg", "config_root"],
-                            "enabled_attr": "configure_homepage_services",
+                            "enabled_attr": "configure_dashboard",
                             "required_attr": "homepage_required",
                         },
                     ]
@@ -170,11 +170,11 @@ class ControllerServiceTests(unittest.TestCase):
                                 "app_keys",
                                 "wait_timeout",
                             ],
-                            "enabled_attr": "configure_bazarr_integration",
+                            "enabled_attr": "configure_subtitles",
                             "required_attr": "bazarr_required",
                         },
                         {
-                            "operation": "configure_jellyseerr",
+                            "operation": "configure_request_manager",
                             "args": [
                                 "cfg",
                                 "arr_apps_raw",
@@ -182,13 +182,13 @@ class ControllerServiceTests(unittest.TestCase):
                                 "config_root",
                                 "wait_timeout",
                             ],
-                            "enabled_attr": "configure_jellyseerr_services",
+                            "enabled_attr": "configure_request_manager",
                             "required_attr": "jellyseerr_required",
                         },
                         {
                             "operation": "ensure_maintainerr_integrations",
                             "args": ["cfg", "config_root", "arr_apps_raw", "wait_timeout"],
-                            "enabled_attr": "configure_maintainerr_integrations",
+                            "enabled_attr": "configure_media_policy_integrations",
                             "required_attr": "maintainerr_integrations_required",
                         },
                     ]
@@ -282,25 +282,25 @@ class ControllerServiceTests(unittest.TestCase):
             set_qbit_categories=False,
             qbit_login_required=False,
             refresh_health_after_setup=False,
-            configure_maintainerr_policy=False,
+            configure_media_policy=False,
             maintainerr_required=False,
-            configure_maintainerr_integrations=False,
+            configure_media_policy_integrations=False,
             maintainerr_integrations_required=False,
-            configure_homepage_services=False,
+            configure_dashboard=False,
             homepage_required=False,
-            configure_bazarr_integration=False,
+            configure_subtitles=False,
             bazarr_required=False,
-            configure_jellyseerr_services=False,
+            configure_request_manager=False,
             jellyseerr_required=False,
-            configure_jellyfin_livetv=False,
+            configure_media_server_livetv=False,
             jellyfin_livetv_required=False,
-            configure_jellyfin_libraries=False,
+            configure_media_server_libraries=False,
             jellyfin_libraries_required=False,
-            configure_jellyfin_plugins=False,
+            configure_media_server_plugins=False,
             jellyfin_plugins_required=False,
-            configure_jellyfin_playback=False,
+            configure_media_server_playback=False,
             jellyfin_playback_required=False,
-            configure_jellyfin_home_rails=False,
+            configure_media_server_home_rails=False,
             jellyfin_home_rails_required=False,
             configure_auto_collections=False,
             auto_collections_required=False,
@@ -308,7 +308,7 @@ class ControllerServiceTests(unittest.TestCase):
             disk_guardrails_required=False,
             configure_media_hygiene=False,
             media_hygiene_required=False,
-            configure_jellyfin_prewarm=False,
+            configure_media_server_prewarm=False,
             jellyfin_prewarm_required=False,
         )
         defaults.update(overrides)
@@ -379,7 +379,7 @@ class ControllerServiceTests(unittest.TestCase):
         )
         runner = ControllerService(deps=deps)
         runtime = self._runtime(
-            configure_maintainerr_policy=True,
+            configure_media_policy=True,
             maintainerr_required=True,
         )
         with mock.patch.object(
@@ -392,7 +392,7 @@ class ControllerServiceTests(unittest.TestCase):
         deps = self._deps()
         runner = ControllerService(deps=deps)
         runtime = self._runtime(
-            configure_homepage_services=True,
+            configure_dashboard=True,
         )
 
         with mock.patch.object(
