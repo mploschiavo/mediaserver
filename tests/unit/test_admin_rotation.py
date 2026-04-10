@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.admin as admin_mod  # noqa: E402
+import media_stack.services.apps.jellyfin.admin_ops as jellyfin_admin_ops  # noqa: E402
 from media_stack.api.services.registry import ServiceDef  # noqa: E402
 
 
@@ -116,7 +117,7 @@ class TestPersistKeysToSecret(unittest.TestCase):
 
 class TestDiscoverJellyfinApiKey(unittest.TestCase):
     def test_missing_db_returns_empty(self):
-        result = admin_mod._discover_jellyfin_api_key("/nonexistent")
+        result = jellyfin_admin_ops.discover_api_key("/nonexistent")
         self.assertEqual(result, "")
 
     def test_valid_db(self):
@@ -130,7 +131,7 @@ class TestDiscoverJellyfinApiKey(unittest.TestCase):
             conn.execute("INSERT INTO ApiKeys (AccessToken) VALUES ('jfkey123')")
             conn.commit()
             conn.close()
-            result = admin_mod._discover_jellyfin_api_key(td)
+            result = jellyfin_admin_ops.discover_api_key(td)
         self.assertEqual(result, "jfkey123")
 
 
