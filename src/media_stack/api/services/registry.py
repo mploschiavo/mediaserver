@@ -11,12 +11,15 @@ this module.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger("controller_api")
 
 
 @dataclass(frozen=True)
@@ -154,8 +157,8 @@ def _load_registry() -> tuple[list[ServiceDef], list[str]]:
                 svc = _parse_service_entry(entry)
                 if svc:
                     services.append(svc)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to load service YAML %s: %s", yaml_file.name, exc)
 
     # Strategy 2: Legacy services.yaml (fallback — all services in one file)
     if not services:

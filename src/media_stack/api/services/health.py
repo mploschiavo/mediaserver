@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import threading
 import time
@@ -12,6 +13,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("controller_api")
 
 from .registry import SERVICES, read_api_key_from_file
 
@@ -38,8 +41,45 @@ _HEALTH_HISTORY_LOCK = threading.Lock()
 
 def _probe_login(
     host: str, port: int, path: str, mode: str, username: str, password: str,
+    api_key: str = "",
 ) -> str:
-    """Test admin credential login for a single service. Returns status string."""
+    """Test admin credential login for a single service. Returns status string.
+
+    Returns "disabled" if the service does not require authentication
+    (e.g. AuthenticationMethod=None in Arr apps, or DisabledForLocalAddresses
+    when the controller is on a local subnet).
+    """
+    # Pre-check: detect if the service has authentication disabled.
+    # Basic mode: unauthenticated GET returns 200 → disabled, 401/403 → required.
+    # Form mode (Arr apps): query /api/v{1,3}/system/status with API key for the
+    # "authentication" field — "none" means auth is off.
+    if mode == "basic":
+        try:
+            check_req = urllib.request.Request(f"http://{host}:{port}{path}", method="GET")
+            with urllib.request.urlopen(check_req, timeout=3) as resp:
+                if resp.status == 200:
+                    return "disabled"
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                pass  # Auth required — proceed
+        except Exception:
+            pass
+    elif mode == "form" and api_key:
+        # Arr apps expose authentication mode at /api/v{1,3}/system/status
+        for api_ver in ("v3", "v1"):
+            try:
+                status_url = f"http://{host}:{port}/api/{api_ver}/system/status"
+                req = urllib.request.Request(status_url, method="GET",
+                                            headers={"X-Api-Key": api_key})
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                    auth_mode = str(data.get("authentication", "")).lower()
+                    if auth_mode in ("none", ""):
+                        return "disabled"
+                    break  # Got a valid response — stop trying API versions
+            except Exception:
+                continue
+
     try:
         if mode == "json_credentials":
             url = f"http://{host}:{port}{path}"
@@ -84,7 +124,13 @@ def _probe_login(
         return "n/a"
     except urllib.error.HTTPError as exc:
         return "fail" if exc.code in (400, 401, 403) else "error"
-    except Exception:
+    except urllib.error.URLError:
+        return "error"
+    except (TimeoutError, OSError) as exc:
+        logger.debug("Login probe %s:%d failed: %s", host, port, exc)
+        return "error"
+    except Exception as exc:
+        logger.debug("Login probe %s:%d unexpected error: %s", host, port, exc)
         return "error"
 
 
@@ -99,13 +145,15 @@ def probe_credentials(
 
     admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
     admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+    all_keys = discover_api_keys()
     targets = LOGIN_PROBES
     if services:
         targets = {k: v for k, v in LOGIN_PROBES.items() if k in services}
 
     def _check(name: str) -> tuple[str, str]:
         host, port, path, mode = targets[name]
-        return name, _probe_login(host, port, path, mode, admin_user, admin_pass)
+        svc_key = all_keys.get(name, "")
+        return name, _probe_login(host, port, path, mode, admin_user, admin_pass, api_key=svc_key)
 
     results: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -237,7 +285,8 @@ def probe_services(cache: Any) -> dict[str, Any]:
         # Login (credential) probe — test admin username/password
         if name in LOGIN_PROBES:
             l_host, l_port, l_path, l_mode = LOGIN_PROBES[name]
-            result["login"] = _probe_login(l_host, l_port, l_path, l_mode, admin_user, admin_pass)
+            svc_key = api_keys.get(name, "")
+            result["login"] = _probe_login(l_host, l_port, l_path, l_mode, admin_user, admin_pass, api_key=svc_key)
         else:
             result["login"] = "n/a"
 

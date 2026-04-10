@@ -435,12 +435,21 @@ class TestProbeServices(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_probe_login_ok(self, mock_urlopen, mock_containers, mock_keys):
         """Login probe should return 'ok' when basic auth succeeds."""
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.read.return_value = b'{"version":"4.0"}'
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
+        # Pre-check GET → 401 (auth required), then auth GET with creds → 200
+        def side_effect(req, timeout=None):
+            headers = req.headers if hasattr(req, "headers") else {}
+            if "Authorization" not in headers:
+                # Pre-check or health probe without auth
+                url = req.full_url if hasattr(req, "full_url") else str(req)
+                if "system/status" in url:
+                    raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, None)
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_resp.read.return_value = b'{"version":"4.0"}'
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+        mock_urlopen.side_effect = side_effect
 
         cache = self._make_cache(None)
         result = health_mod.probe_services(cache)
@@ -459,11 +468,18 @@ class TestProbeServices(unittest.TestCase):
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "wrong"})
     @patch("urllib.request.urlopen")
     def test_probe_login_fail(self, mock_urlopen, mock_containers, mock_keys):
-        """Login probe should return 'fail' when credentials are rejected."""
-        # Health probe succeeds, login probe raises 401
+        """Login probe should return 'fail' when auth is required but credentials are wrong."""
+        # Pre-check GET to login path → 401 (auth is required)
+        # Auth probe with credentials → also 401 (bad creds)
+        # Health probe → 200
         def side_effect(req, timeout=None):
-            if "Authorization" in (req.headers if hasattr(req, 'headers') else {}):
-                raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            headers = req.headers if hasattr(req, "headers") else {}
+            # Pre-check GET or auth GET to login path → 401
+            if req.get_method() == "GET" and "system/status" in url:
+                raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, None)
+            if "Authorization" in headers:
+                raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, None)
             mock_resp = MagicMock()
             mock_resp.status = 200
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -475,6 +491,30 @@ class TestProbeServices(unittest.TestCase):
         result = health_mod.probe_services(cache)
         svc = result["services"].get("sonarr", {})
         self.assertEqual(svc.get("login"), "fail")
+
+    @patch.object(health_mod, "SERVICE_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/health"),
+    })
+    @patch.object(health_mod, "AUTH_PROBES", {})
+    @patch.object(health_mod, "LOGIN_PROBES", {
+        "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
+    })
+    @patch.object(health_mod, "discover_api_keys", return_value={})
+    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch("urllib.request.urlopen")
+    def test_probe_login_disabled(self, mock_urlopen, mock_containers, mock_keys):
+        """Login probe returns 'disabled' when basic-mode pre-check gets 200 (no auth)."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b""
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        cache = self._make_cache(None)
+        result = health_mod.probe_services(cache)
+        svc = result["services"].get("sonarr", {})
+        self.assertEqual(svc.get("login"), "disabled")
 
     @patch.object(health_mod, "SERVICE_PROBES", {
         "app1": ("app1", 8080, "/"),
@@ -625,11 +665,17 @@ class TestProbeLogin(unittest.TestCase):
 
     @patch("urllib.request.urlopen")
     def test_arr_basic_ok(self, mock_urlopen):
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
+        # Pre-check GET → 401 (auth required), then auth GET with creds → 200
+        def side_effect(req, timeout=None):
+            headers = req.headers if hasattr(req, "headers") else {}
+            if "Authorization" not in headers:
+                raise urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+        mock_urlopen.side_effect = side_effect
 
         result = health_mod._probe_login("sonarr", 8989, "/api/v3/system/status", "basic", "admin", "pass")
         self.assertEqual(result, "ok")
@@ -639,6 +685,19 @@ class TestProbeLogin(unittest.TestCase):
         mock_urlopen.side_effect = urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)
         result = health_mod._probe_login("sonarr", 8989, "/api/v3/system/status", "basic", "admin", "wrong")
         self.assertEqual(result, "fail")
+
+    @patch("urllib.request.urlopen")
+    def test_arr_basic_disabled(self, mock_urlopen):
+        """When pre-check GET returns 200 (no auth), login returns 'disabled'."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b""
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = health_mod._probe_login("sonarr", 8989, "/api/v3/system/status", "basic", "admin", "pass")
+        self.assertEqual(result, "disabled")
 
     @patch("urllib.request.urlopen")
     def test_form_login_ok(self, mock_urlopen):
