@@ -110,21 +110,25 @@ def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_download_categories() -> dict[str, Any]:
-    """Return configured download categories."""
+    """Return configured download categories from profile or contract defaults."""
     data, _ = _load_profile_yaml()
     cats = data.get("download_categories")
     if cats:
         return {"categories": cats, "source": "profile"}
-    # Defaults
-    return {
-        "categories": {
-            "tv": "/data/torrents/completed/tv",
-            "movies": "/data/torrents/completed/movies",
-            "music": "/data/torrents/completed/music",
-            "books": "/data/torrents/completed/books",
-        },
-        "source": "defaults",
-    }
+    # Read defaults from the bootstrap config if available
+    resolved_cfg = resolve_config_path()
+    if resolved_cfg:
+        try:
+            cfg = json.loads(Path(resolved_cfg).read_text(encoding="utf-8"))
+            tc = cfg.get("torrent_client", {})
+            cats_from_cfg = tc.get("categories") if isinstance(tc, dict) else None
+            if cats_from_cfg:
+                return {"categories": cats_from_cfg, "source": "config"}
+        except Exception:
+            pass
+    # Fallback: derive from profile live_tv_defaults or return empty so
+    # the user configures them explicitly via the UI.
+    return {"categories": {}, "source": "none"}
 
 
 def update_download_categories(categories: dict[str, str]) -> dict[str, Any]:
@@ -169,13 +173,14 @@ def update_metadata_settings(language: str, country: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_livetv_sources() -> dict[str, Any]:
-    """Return configured Live TV tuner and guide URLs."""
+    """Return configured Live TV tuner and guide URLs from the profile."""
     data, _ = _load_profile_yaml()
     ltv = data.get("live_tv_defaults", {})
     return {
-        "tuner_url": ltv.get("tuner_url", "https://iptv-org.github.io/iptv/countries/us.m3u"),
-        "guide_url": ltv.get("guide_url", "https://iptv-epg.org/files/epg-us.xml"),
-        "source": "profile" if ltv else "defaults",
+        "tuner_url": ltv.get("tuner_url", ""),
+        "guide_url": ltv.get("guide_url", ""),
+        "source": "profile" if ltv.get("tuner_url") else "not_configured",
+        "note": "Configure in Config > Live TV" if not ltv.get("tuner_url") else "",
     }
 
 
