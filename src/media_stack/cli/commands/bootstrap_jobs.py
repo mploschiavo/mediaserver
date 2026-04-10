@@ -120,11 +120,30 @@ class JobContext:
 # Job implementations — each directly calls the app-layer function
 # ---------------------------------------------------------------------------
 
+def _ensure_media_server_api_key(ctx: JobContext) -> None:
+    """Discover and set the media server API key if not already in env."""
+    ms_id = ctx.media_server_id()
+    if not ms_id:
+        return
+    key = ctx.media_server_api_key()
+    if key:
+        return
+    # Auto-discover from config file
+    from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file
+    svc = SERVICE_MAP.get(ms_id)
+    if svc and svc.api_key_env:
+        discovered = read_api_key_from_file(ms_id, ctx.config_root)
+        if discovered:
+            os.environ[svc.api_key_env] = discovered
+            runtime_platform.log(f"[OK] {ms_id}: API key auto-discovered for job")
+
+
 def _configure_libraries(ctx: JobContext) -> dict[str, Any]:
     """Create media server libraries (Movies, TV Shows, Music, Books)."""
     ms_id = ctx.media_server_id()
     if not ms_id:
         return {"skipped": "no media server configured"}
+    _ensure_media_server_api_key(ctx)
     try:
         mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
         fn = getattr(mod, f"ensure_{ms_id}_libraries", None)
@@ -141,6 +160,7 @@ def _configure_livetv(ctx: JobContext) -> dict[str, Any]:
     ms_id = ctx.media_server_id()
     if not ms_id:
         return {"skipped": "no media server configured"}
+    _ensure_media_server_api_key(ctx)
     try:
         mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
         fn = getattr(mod, f"ensure_{ms_id}_livetv", None)
@@ -157,6 +177,7 @@ def _configure_plugins(ctx: JobContext) -> dict[str, Any]:
     ms_id = ctx.media_server_id()
     if not ms_id:
         return {"skipped": "no media server configured"}
+    _ensure_media_server_api_key(ctx)
     try:
         mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
         fn = getattr(mod, f"ensure_{ms_id}_plugins", None)
@@ -173,6 +194,7 @@ def _configure_playback(ctx: JobContext) -> dict[str, Any]:
     ms_id = ctx.media_server_id()
     if not ms_id:
         return {"skipped": "no media server configured"}
+    _ensure_media_server_api_key(ctx)
     try:
         mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
         fn = getattr(mod, f"ensure_{ms_id}_playback_defaults", None)
