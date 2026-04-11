@@ -71,7 +71,7 @@ info:
 
     *404 Not Found* -- unknown action:
     ```json
-    { "error": "unknown action 'foo'", "known": ["auto-indexers", "bootstrap", "envoy-config", "finalize", "reconcile", "restart-apps", "sync-indexers"] }
+    { "error": "unknown action 'foo'", "known": ["discover-indexers", "bootstrap", "envoy-config", "post-setup", "reconcile", "restart-apps", "push-indexers"] }
     ```
 
     *500 Internal Server Error*:

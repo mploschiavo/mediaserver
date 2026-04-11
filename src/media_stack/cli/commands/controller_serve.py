@@ -364,7 +364,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                     runtime_platform.log(
                         "[WARN] Initial bootstrap had errors but service is marked ready"
                     )
-                    for queued in ["configure-media-server", "finalize", "envoy-config", "validate-credentials"]:
+                    for queued in ["configure-media-server", "post-setup", "envoy-config", "validate-credentials"]:
                         runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
                         action_trigger(queued, {})
 
@@ -414,7 +414,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                 if action_name == "bootstrap" and not state.initial_bootstrap_done:
                     state.initial_bootstrap_done = True
                     runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
-                    for queued in ["configure-media-server", "finalize", "envoy-config", "auto-indexers", "validate-credentials"]:
+                    for queued in ["configure-media-server", "post-setup", "envoy-config", "discover-indexers", "validate-credentials"]:
                         runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
                         action_trigger(queued, {})
 

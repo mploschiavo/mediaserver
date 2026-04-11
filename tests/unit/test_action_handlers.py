@@ -9,13 +9,13 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.cli.commands.action_handlers import (  # noqa: E402
-    action_auto_indexers,
+    action_discover_indexers,
     action_bootstrap,
     action_envoy_config,
-    action_finalize,
+    action_post_setup,
     action_reconcile,
     action_restart_apps,
-    action_sync_indexers,
+    action_push_indexers,
 )
 
 LOG_PATH = "media_stack.cli.commands.action_handlers.runtime_platform.log"
@@ -67,7 +67,7 @@ class ActionBootstrapTests(unittest.TestCase):
 
 
 class ActionFinalizeTests(unittest.TestCase):
-    """Tests for action_finalize."""
+    """Tests for action_post_setup."""
 
     @mock.patch(LOG_PATH)
     def test_finalize_success(self, mock_log):
@@ -78,7 +78,7 @@ class ActionFinalizeTests(unittest.TestCase):
         build_runner = MagicMock(return_value=(runner, runtime_state))
         run_post_bootstrap = MagicMock()
 
-        action_finalize(args, state, build_runner, run_post_bootstrap)
+        action_post_setup(args, state, build_runner, run_post_bootstrap)
 
         runner._run_post_servarr_steps.assert_called_once_with(runtime_state)
         run_post_bootstrap.assert_called_once_with(state, args)
@@ -94,7 +94,7 @@ class ActionFinalizeTests(unittest.TestCase):
         build_runner = MagicMock(return_value=(runner, runtime_state))
         run_post_bootstrap = MagicMock()
 
-        action_finalize(args, state, build_runner, run_post_bootstrap)
+        action_post_setup(args, state, build_runner, run_post_bootstrap)
 
         # Post-bootstrap still runs despite the exception.
         run_post_bootstrap.assert_called_once_with(state, args)
@@ -104,7 +104,7 @@ class ActionFinalizeTests(unittest.TestCase):
 
 
 class ActionAutoIndexersTests(unittest.TestCase):
-    """Tests for action_auto_indexers."""
+    """Tests for action_discover_indexers."""
 
     @mock.patch(LOG_PATH)
     def test_runs_indexer_steps_phase(self, mock_log):
@@ -113,7 +113,7 @@ class ActionAutoIndexersTests(unittest.TestCase):
         runtime_state = MagicMock()
         build_runner = MagicMock(return_value=(runner, runtime_state))
 
-        action_auto_indexers(args, build_runner)
+        action_discover_indexers(args, build_runner)
 
         build_runner.assert_called_once_with(args, auto_prowlarr_indexers=True)
         runner._run_runner_plan_phase.assert_called_once_with(runtime_state, "indexer_steps")
@@ -127,7 +127,7 @@ class ActionAutoIndexersTests(unittest.TestCase):
         runtime_state = MagicMock()
         build_runner = MagicMock(return_value=(runner, runtime_state))
 
-        action_auto_indexers(args, build_runner)
+        action_discover_indexers(args, build_runner)
 
         runner.run.assert_called_once_with(runtime_state)
         warn_calls = [c for c in mock_log.call_args_list if "full pipeline" in str(c)]
@@ -167,7 +167,7 @@ class ActionRestartAppsTests(unittest.TestCase):
 
 
 class ActionSyncIndexersTests(unittest.TestCase):
-    """Tests for action_sync_indexers."""
+    """Tests for action_push_indexers."""
 
     @mock.patch(LOG_PATH)
     def test_sync_indexers_success(self, mock_log):
@@ -176,7 +176,7 @@ class ActionSyncIndexersTests(unittest.TestCase):
         runtime_state = MagicMock()
         build_runner = MagicMock(return_value=(runner, runtime_state))
 
-        action_sync_indexers(args, build_runner)
+        action_push_indexers(args, build_runner)
 
         runner._run_runner_plan_phase.assert_called_once_with(runtime_state, "indexer_steps")
         mock_log.assert_called_with("[OK] Indexer sync complete")
@@ -189,7 +189,7 @@ class ActionSyncIndexersTests(unittest.TestCase):
         runtime_state = MagicMock()
         build_runner = MagicMock(return_value=(runner, runtime_state))
 
-        action_sync_indexers(args, build_runner)
+        action_push_indexers(args, build_runner)
 
         warn_calls = [c for c in mock_log.call_args_list if "[WARN]" in str(c)]
         self.assertTrue(len(warn_calls) >= 1)

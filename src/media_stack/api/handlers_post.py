@@ -28,8 +28,8 @@ logger = logging.getLogger("controller_api")
 
 # Core actions (not from contracts)
 _CORE_ACTIONS = {
-    "bootstrap", "finalize", "auto-indexers", "restart-apps",
-    "sync-indexers", "envoy-config", "reconcile", "validate-credentials",
+    "bootstrap", "post-setup", "discover-indexers", "restart-apps",
+    "push-indexers", "envoy-config", "reconcile", "validate-credentials",
     "configure-media-server",
 }
 

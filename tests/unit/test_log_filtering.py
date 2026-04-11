@@ -71,11 +71,11 @@ class TestLogFilteringByAction(unittest.TestCase):
 
     def test_multiple_actions_filter_each(self):
         s = ControllerState()
-        for action_name in ["bootstrap", "finalize", "auto-indexers"]:
+        for action_name in ["bootstrap", "post-setup", "discover-indexers"]:
             s.start_action(action_name)
             s.append_log(f"{action_name} log")
             s.finish_action()
-        for action_name in ["bootstrap", "finalize", "auto-indexers"]:
+        for action_name in ["bootstrap", "post-setup", "discover-indexers"]:
             logs = s.get_logs_since(0, action=action_name)
             self.assertEqual(len(logs), 1)
             self.assertEqual(logs[0][2], f"{action_name} log")

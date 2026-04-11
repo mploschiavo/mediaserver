@@ -69,17 +69,17 @@ plugin:
       phase: media_server
       priority: 40
       requires: [media_server_reachable, media_server_api_key]
-    configure-home-rails:
+    configure-home-screen:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_home_rails
       phase: media_server
       priority: 50
       requires: [media_server_reachable, media_server_api_key]
-    configure-auto-collections:
+    configure-collections:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config
       phase: media_server
       priority: 60
       requires: [media_server_reachable, media_server_api_key]
-    configure-prewarm:
+    refresh-media:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm
       phase: post
       priority: 90

@@ -43,10 +43,10 @@ _CORE_ACTION_PRIORITY: dict[str, int] = {
     "configure-media-server": 15,
     "envoy-config":  30,
     "restart-apps":  40,
-    "finalize":      45,
+    "post-setup":      45,
     "reconcile":     50,
-    "sync-indexers": 60,
-    "auto-indexers": 70,
+    "push-indexers": 60,
+    "discover-indexers": 70,
     "validate-credentials": 80,
 }
 

@@ -323,10 +323,10 @@ class TestPriorityQueueOrdering(unittest.TestCase):
         pq = queue.PriorityQueue()
         seq = 0
         items = [
-            (ACTION_PRIORITY["auto-indexers"], "auto-indexers"),
+            (ACTION_PRIORITY["discover-indexers"], "discover-indexers"),
             (ACTION_PRIORITY["envoy-config"], "envoy-config"),
             (ACTION_PRIORITY["bootstrap"], "bootstrap"),
-            (ACTION_PRIORITY["finalize"], "finalize"),
+            (ACTION_PRIORITY["post-setup"], "post-setup"),
         ]
         for prio, name in items:
             seq += 1
@@ -338,7 +338,7 @@ class TestPriorityQueueOrdering(unittest.TestCase):
             order.append(name)
 
         # bootstrap (10) < configure-media-server (15) < envoy-config (30) < finalize (45) < auto-indexers (70)
-        self.assertEqual(order, ["bootstrap", "envoy-config", "finalize", "auto-indexers"])
+        self.assertEqual(order, ["bootstrap", "envoy-config", "post-setup", "discover-indexers"])
 
     def test_same_priority_fifo(self):
         """Items with the same priority are processed in insertion order."""
@@ -358,14 +358,14 @@ class TestPriorityQueueOrdering(unittest.TestCase):
         """The specific scenario: envoy-config should preempt auto-indexers."""
         pq = queue.PriorityQueue()
         # auto-indexers queued first
-        pq.put((ACTION_PRIORITY["auto-indexers"], 1, "auto-indexers", {}))
+        pq.put((ACTION_PRIORITY["discover-indexers"], 1, "discover-indexers", {}))
         # envoy-config queued second
         pq.put((ACTION_PRIORITY["envoy-config"], 2, "envoy-config", {}))
 
         _, _, first, _ = pq.get()
         _, _, second, _ = pq.get()
         self.assertEqual(first, "envoy-config")
-        self.assertEqual(second, "auto-indexers")
+        self.assertEqual(second, "discover-indexers")
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +391,7 @@ class TestActionPriorityConstants(unittest.TestCase):
 
     def test_validate_credentials_runs_after_core_actions(self):
         vc_prio = ACTION_PRIORITY["validate-credentials"]
-        for action in ("bootstrap", "envoy-config", "finalize", "reconcile"):
+        for action in ("bootstrap", "envoy-config", "post-setup", "reconcile"):
             self.assertGreater(
                 vc_prio, ACTION_PRIORITY[action],
                 f"validate-credentials should run after {action}",
@@ -400,12 +400,12 @@ class TestActionPriorityConstants(unittest.TestCase):
     def test_envoy_config_before_auto_indexers(self):
         self.assertLess(
             ACTION_PRIORITY["envoy-config"],
-            ACTION_PRIORITY["auto-indexers"],
+            ACTION_PRIORITY["discover-indexers"],
         )
 
     def test_default_priority_is_reasonable(self):
         self.assertGreater(DEFAULT_ACTION_PRIORITY, ACTION_PRIORITY["bootstrap"])
-        self.assertLessEqual(DEFAULT_ACTION_PRIORITY, ACTION_PRIORITY["auto-indexers"])
+        self.assertLessEqual(DEFAULT_ACTION_PRIORITY, ACTION_PRIORITY["discover-indexers"])
 
     def test_priorities_are_positive_integers(self):
         for name, prio in ACTION_PRIORITY.items():

@@ -157,11 +157,11 @@ class TestActionProgressVisibility(unittest.TestCase):
     def test_running_action_has_elapsed(self):
         from media_stack.api.state import ControllerState
         state = ControllerState()
-        action = state.start_action("auto-indexers")
+        action = state.start_action("discover-indexers")
         self.assertIsNotNone(action.elapsed_seconds)
         self.assertGreaterEqual(action.elapsed_seconds, 0)
         d = state.to_dict()
-        self.assertEqual(d["current_action"]["name"], "auto-indexers")
+        self.assertEqual(d["current_action"]["name"], "discover-indexers")
         self.assertIn("elapsed_seconds", d["current_action"])
 
     def test_pending_actions_visible(self):

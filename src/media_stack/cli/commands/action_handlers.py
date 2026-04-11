@@ -26,7 +26,7 @@ def action_bootstrap(args: argparse.Namespace, state: object,
     runtime_platform.log("[OK] Bootstrap completed successfully")
 
 
-def action_finalize(args: argparse.Namespace, state: object,
+def action_post_setup(args: argparse.Namespace, state: object,
                     build_runner: Any, run_post_bootstrap: Any) -> None:
     """Deferred post-bootstrap: media-server tuning, disk guardrails, hygiene, app restarts."""
     runner, runtime_state = build_runner(args)
@@ -39,7 +39,7 @@ def action_finalize(args: argparse.Namespace, state: object,
     runtime_platform.log("[OK] Finalize completed")
 
 
-def action_auto_indexers(args: argparse.Namespace, build_runner: Any) -> None:
+def action_discover_indexers(args: argparse.Namespace, build_runner: Any) -> None:
     """Run auto-indexer discovery (indexer phase only)."""
     runtime_platform.log("[INFO] Auto-indexer: building runner with auto_prowlarr_indexers=True")
     runner, runtime_state = build_runner(args, auto_prowlarr_indexers=True)
@@ -62,7 +62,7 @@ def action_restart_apps(args: argparse.Namespace, state: object,
         runtime_platform.log("[WARN] No restart_apps handler found in config")
 
 
-def action_sync_indexers(args: argparse.Namespace, build_runner: Any) -> None:
+def action_push_indexers(args: argparse.Namespace, build_runner: Any) -> None:
     """Trigger indexer-manager ApplicationIndexerSync."""
     runner, runtime_state = build_runner(args)
     try:
