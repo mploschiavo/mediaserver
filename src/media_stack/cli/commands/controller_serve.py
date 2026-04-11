@@ -217,7 +217,7 @@ def _run_serve(args: argparse.Namespace) -> None:
             import media_stack.services.runtime_platform as _rp
             _rp.log = lambda msg: log_q.put(msg)
             try:
-                from media_stack.cli.commands.bootstrap_jobs import run_all_media_server_jobs
+                from media_stack.cli.commands.job_framework import run_all_media_server_jobs
                 log_q.put("[INFO] Starting media server configuration (background)")
                 result = run_all_media_server_jobs(max_wait=180)
                 status = result.get("status", "unknown")

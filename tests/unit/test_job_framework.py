@@ -9,8 +9,8 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands.bootstrap_jobs import (  # noqa: E402
-    Job, JobContext, build_bootstrap_jobs, get_job_registry, run_job,
+from media_stack.cli.commands.job_framework import (  # noqa: E402
+    Job, JobContext, build_job_framework, get_job_registry, run_job,
 )
 
 
@@ -114,16 +114,16 @@ class TestJobRegistry(unittest.TestCase):
 
 class TestBuildBootstrapJobs(unittest.TestCase):
     def test_root_job_is_bootstrap(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         self.assertEqual(root.name, "bootstrap")
 
     def test_has_media_server_sub_job(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         names = [j.name for j in root.sub_jobs]
         self.assertIn("configure-media-server", names)
 
     def test_media_server_has_all_sub_jobs(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         ms = next(j for j in root.sub_jobs if j.name == "configure-media-server")
         sub_names = [j.name for j in ms.sub_jobs]
         self.assertIn("configure-libraries", sub_names)
@@ -134,8 +134,8 @@ class TestBuildBootstrapJobs(unittest.TestCase):
         self.assertIn("configure-auto-collections", sub_names)
 
     def test_has_prewarm_in_tree(self):
-        root = build_bootstrap_jobs()
-        from media_stack.cli.commands.bootstrap_jobs import _find_job_in_tree
+        root = build_job_framework()
+        from media_stack.cli.commands.job_framework import _find_job_in_tree
         prewarm = _find_job_in_tree(root, "configure-prewarm")
         self.assertIsNotNone(prewarm, "configure-prewarm not found in tree")
 
@@ -147,7 +147,7 @@ class TestRunJob(unittest.TestCase):
         self.assertIn("known", result)
 
     def test_run_job_calls_handler(self):
-        from media_stack.cli.commands.bootstrap_jobs import PREREQS
+        from media_stack.cli.commands.job_framework import PREREQS
         with patch.dict(PREREQS, {
             "media_server_reachable": lambda ctx: True,
             "media_server_api_key": lambda ctx: True,
@@ -210,7 +210,7 @@ class TestCfgFromContracts(unittest.TestCase):
 class TestHandlerReceivesFlatKeys(unittest.TestCase):
     """Verify _run_media_server_handler passes flat config to handlers."""
 
-    @patch("media_stack.cli.commands.bootstrap_jobs._ensure_media_server_api_key")
+    @patch("media_stack.cli.commands.job_framework._ensure_media_server_api_key")
     def test_handler_receives_flat_keys(self, mock_ensure_key):
         captured_cfg = {}
         def fake_ensure(cfg, config_root, wait_timeout):
@@ -224,7 +224,7 @@ class TestHandlerReceivesFlatKeys(unittest.TestCase):
                 mock_mod = MagicMock()
                 mock_mod.ensure_jellyfin_libraries = fake_ensure
                 mock_import.return_value = mock_mod
-                from media_stack.cli.commands.bootstrap_jobs import _run_media_server_handler
+                from media_stack.cli.commands.job_framework import _run_media_server_handler
                 _run_media_server_handler(ctx, "libraries", "Library")
 
         self.assertIn("jellyfin_libraries", captured_cfg)
@@ -258,7 +258,7 @@ class TestMediaServerJobsNotSkipped(unittest.TestCase):
 
     def test_configure_libraries_not_skipped(self):
         """The configure-libraries job must NOT return 'skipped'."""
-        from media_stack.cli.commands.bootstrap_jobs import _configure_libraries
+        from media_stack.cli.commands.job_framework import _configure_libraries
         ctx = JobContext()
         ctx._profile_cache = {}
         with patch.dict(os.environ, {"JELLYFIN_API_KEY": "test-key"}):
@@ -288,7 +288,7 @@ class TestMediaServerJobsNotSkipped(unittest.TestCase):
         ms_id = ctx.media_server_id()
         if not ms_id:
             self.skipTest("no media server")
-        from media_stack.cli.commands.bootstrap_jobs import get_job_registry
+        from media_stack.cli.commands.job_framework import get_job_registry
         import importlib
         mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
         for job_name, handler in get_job_registry().items():

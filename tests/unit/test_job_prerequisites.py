@@ -19,9 +19,9 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands.bootstrap_jobs import (
+from media_stack.cli.commands.job_framework import (
     Job, JobContext, JobRunner, PREREQS, register_prereq,
-    build_bootstrap_jobs, get_job_registry,
+    build_job_framework, get_job_registry,
     run_job, run_all_media_server_jobs,
     _prereq_media_server_id, _prereq_media_server_api_key,
     _prereq_media_server_reachable,
@@ -93,7 +93,7 @@ class TestPrereqRegistry(unittest.TestCase):
 
     def test_every_job_prereq_exists_in_registry(self):
         """Every requires entry in the job tree must have a matching PREREQ."""
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         def _check(job):
             for req in job.requires:
                 self.assertIn(req, PREREQS,
@@ -180,27 +180,27 @@ class TestJobTreePrereqs(unittest.TestCase):
     """Test the full bootstrap job tree has correct prerequisites."""
 
     def test_media_server_jobs_require_api_key(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         ms_job = next(j for j in root.sub_jobs if j.name == "configure-media-server")
         self.assertIn("media_server_api_key", ms_job.requires)
         self.assertIn("media_server_reachable", ms_job.requires)
 
     def test_prewarm_requires_api_key(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         # Prewarm is under configure-post phase
-        from media_stack.cli.commands.bootstrap_jobs import _find_job_in_tree
+        from media_stack.cli.commands.job_framework import _find_job_in_tree
         prewarm = _find_job_in_tree(root, "configure-prewarm")
         self.assertIsNotNone(prewarm, "configure-prewarm not found in tree")
         self.assertIn("media_server_api_key", prewarm.requires)
 
     def test_download_clients_have_no_ms_prereqs(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         dl = next(j for j in root.sub_jobs if j.name == "configure-download-clients")
         self.assertNotIn("media_server_api_key", dl.requires)
         self.assertNotIn("media_server_reachable", dl.requires)
 
     def test_root_job_has_no_prereqs(self):
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         self.assertEqual(root.requires, [])
 
 
@@ -248,7 +248,7 @@ class TestRunAllWithRetry(unittest.TestCase):
             "media_server_api_key": lambda ctx: False,
         }):
             with patch(
-                "media_stack.cli.commands.bootstrap_jobs.JobRunner._try_satisfy_prereqs"
+                "media_stack.cli.commands.job_framework.JobRunner._try_satisfy_prereqs"
             ):
                 result = run_all_media_server_jobs(max_wait=1)
         # Jobs with unmet prereqs should be skipped
@@ -358,8 +358,8 @@ class TestJobFrameworkPluggable(unittest.TestCase):
 
     def test_find_job_in_tree(self):
         """run_job finds jobs deep in the tree with their prereqs."""
-        from media_stack.cli.commands.bootstrap_jobs import _find_job_in_tree
-        root = build_bootstrap_jobs()
+        from media_stack.cli.commands.job_framework import _find_job_in_tree
+        root = build_job_framework()
         lib_job = _find_job_in_tree(root, "configure-libraries")
         self.assertIsNotNone(lib_job)
         self.assertEqual(lib_job.name, "configure-libraries")

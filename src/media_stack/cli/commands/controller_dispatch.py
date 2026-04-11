@@ -101,13 +101,13 @@ def _dispatch_action(
         action_reconcile(args, _build_runner)
     elif action_name == "configure-media-server":
         # Composite job: all media server sub-jobs
-        from media_stack.cli.commands.bootstrap_jobs import run_all_media_server_jobs
+        from media_stack.cli.commands.job_framework import run_all_media_server_jobs
         result = run_all_media_server_jobs()
         if result.get("status") == "error":
             raise RuntimeError(result.get("error", "Media server configuration failed"))
     elif action_name.startswith("configure-"):
         # Individual small jobs from the job registry
-        from media_stack.cli.commands.bootstrap_jobs import run_job
+        from media_stack.cli.commands.job_framework import run_job
         result = run_job(action_name)
         if result.get("error"):
             raise RuntimeError(result["error"])

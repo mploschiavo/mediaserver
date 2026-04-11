@@ -4,7 +4,7 @@ Enriches tuner/guide entries from the profile with required handler
 fields (type, materialized_output_path, etc.), resolves EPG provider
 URLs, and applies the guide-first tuner filtering strategy.
 
-This logic was extracted from bootstrap_jobs.py to keep the job
+This logic was extracted from job_framework.py to keep the job
 framework thin and service-specific logic in service modules.
 """
 
