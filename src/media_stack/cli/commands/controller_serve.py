@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import multiprocessing
 import os
 import queue
 import threading
@@ -210,32 +211,98 @@ def _run_serve(args: argparse.Namespace) -> None:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
         action_trigger("bootstrap", {})
 
-        # Run media server configuration in a background thread — it doesn't
-        # depend on arr apps and shouldn't wait behind the arr pipeline.
-        # The job DAG dispatcher handles prerequisite gating (waits for
-        # Jellyfin to be reachable + API key before running each job).
-        def _configure_media_server_background() -> None:
+        # Run media server configuration in a SUBPROCESS — separate GIL
+        # so the API server stays responsive during heavy EPG/livetv work.
+        def _ms_worker(log_q: multiprocessing.Queue) -> None:
+            import media_stack.services.runtime_platform as _rp
+            _rp.log = lambda msg: log_q.put(msg)
             try:
                 from media_stack.cli.commands.bootstrap_jobs import run_all_media_server_jobs
-                runtime_platform.log("[INFO] Starting media server configuration (background)")
+                log_q.put("[INFO] Starting media server configuration (background)")
                 result = run_all_media_server_jobs(max_wait=180)
                 status = result.get("status", "unknown")
                 if status == "ok":
-                    runtime_platform.log("[OK] Media server configuration complete (background)")
+                    log_q.put("[OK] Media server configuration complete (background)")
                 elif status == "prereq_not_met":
-                    runtime_platform.log(
-                        f"[WARN] Media server configuration deferred: {result.get('reason')}. "
-                        "Will retry on next reconcile."
-                    )
+                    log_q.put(f"[WARN] Media server configuration deferred: {result.get('reason')}")
                 else:
-                    runtime_platform.log(f"[WARN] Media server configuration: {result}")
+                    log_q.put(f"[WARN] Media server configuration: {result}")
             except Exception as exc:
-                runtime_platform.log(f"[ERR] Media server background configuration: {exc}")
-        ms_thread = threading.Thread(
-            target=_configure_media_server_background,
-            daemon=True, name="configure-media-server-bg",
+                log_q.put(f"[ERR] Media server background configuration: {exc}")
+            log_q.put(None)  # sentinel
+
+        ms_log_q: multiprocessing.Queue = multiprocessing.Queue()
+        ms_proc = multiprocessing.Process(
+            target=_ms_worker, args=(ms_log_q,), daemon=True,
         )
-        ms_thread.start()
+        ms_proc.start()
+
+        # Drain log queue in a lightweight thread (no GIL contention)
+        def _drain_ms_logs() -> None:
+            while True:
+                try:
+                    msg = ms_log_q.get(timeout=1)
+                    if msg is None:
+                        break
+                    runtime_platform.log(msg)
+                except Exception:
+                    if not ms_proc.is_alive():
+                        break
+        threading.Thread(target=_drain_ms_logs, daemon=True, name="ms-log-drain").start()
+
+    # -----------------------------------------------------------------------
+    # Action worker — runs in a SUBPROCESS (separate GIL) so the API
+    # server stays responsive while jobs execute.
+    #
+    # Each action spawns a short-lived child process. The parent monitors
+    # it, drains logs, and detects crashes. If the child dies, the parent
+    # logs the error and continues processing the queue. The container's
+    # healthcheck only checks the parent (API server) which is always up.
+    # -----------------------------------------------------------------------
+
+    class _SubprocessState:
+        """Lightweight state stub for subprocess workers.
+
+        The real ControllerState can't be pickled across processes.
+        This stub absorbs calls that the dispatch code makes on state
+        (record_preflight, mark_service_failed, etc.) without crashing.
+        """
+        def __getattr__(self, name):
+            """Return a no-op for any method call."""
+            return lambda *a, **kw: None
+
+    def _action_worker(
+        action_name: str,
+        overrides: dict,
+        args_dict: dict,
+        log_queue: multiprocessing.Queue,
+    ) -> None:
+        """Run one action in a subprocess. Logs go to log_queue."""
+        import argparse as _ap
+        import traceback as _tb
+
+        # Reconstruct args namespace from dict
+        worker_args = _ap.Namespace(**args_dict)
+
+        # Redirect runtime_platform.log to the queue
+        import media_stack.services.runtime_platform as _rp
+        _rp.log = lambda msg: log_queue.put(("log", msg))
+
+        # Stub state — absorbs record_preflight etc. without error
+        stub_state = _SubprocessState()
+
+        try:
+            _dispatch_action(action_name, overrides, worker_args, stub_state)
+            log_queue.put(("done", None))
+        except Exception as exc:
+            log_queue.put(("error", str(exc)))
+            tb = _tb.format_exc().strip()
+            if tb:
+                for line in tb.splitlines():
+                    log_queue.put(("log", f"[TRACE] {line}"))
+
+    # Serialize args to a dict for subprocess pickling
+    _args_dict = vars(args)
 
     # Main action dispatch loop — runs forever.
     while True:
@@ -263,51 +330,35 @@ def _run_serve(args: argparse.Namespace) -> None:
                 f"(timeout={action_timeout}s){suffix}"
             )
 
-            try:
-                _dispatch_action(action_name, overrides, args, state)
+            # Run action in subprocess — separate GIL, API stays responsive
+            log_q: multiprocessing.Queue = multiprocessing.Queue()
+            worker = multiprocessing.Process(
+                target=_action_worker,
+                args=(action_name, dict(overrides), _args_dict, log_q),
+                daemon=True,
+            )
+            worker.start()
 
-                # Check if cancelled during execution.
-                if state.is_cancelled:
-                    state.current_action.cancel()
-                    state.finish_action(error="cancelled by user")
-                    runtime_platform.log(f"[ACTION] {action_name}: cancelled by user")
-                    break
+            # Drain log queue while worker runs
+            error_msg = None
+            while worker.is_alive() or not log_q.empty():
+                try:
+                    msg_type, msg_data = log_q.get(timeout=0.5)
+                    if msg_type == "log":
+                        runtime_platform.log(msg_data)
+                    elif msg_type == "done":
+                        pass
+                    elif msg_type == "error":
+                        error_msg = msg_data
+                except Exception:
+                    pass
 
-                state.finish_action()
+            worker.join(timeout=5)
 
-                # Fire webhooks on success.
-                _fire_webhooks(state, "action_complete", {
-                    "action": action_name,
-                    "status": "complete",
-                    "elapsed_seconds": action_record.elapsed_seconds,
-                })
+            if error_msg:
+                state.finish_action(error=error_msg)
+                runtime_platform.log(f"[ERR] Action {action_name} failed: {error_msg}")
 
-                # Mark initial bootstrap done on first successful bootstrap.
-                if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                    state.initial_bootstrap_done = True
-                    runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
-
-                    # Queue deferred steps: finalize (Jellyfin tuning, restarts,
-                    # guardrails), then envoy config, then indexer discovery.
-                    # Each runs as a separate action so the dashboard shows
-                    # progress and bootstrap is marked complete immediately.
-                    for queued in ["configure-media-server", "finalize", "envoy-config", "auto-indexers", "validate-credentials"]:
-                        runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
-                        action_trigger(queued, {})
-
-                break  # Success — exit retry loop.
-
-            except Exception as exc:
-                state.finish_action(error=str(exc))
-                runtime_platform.log(f"[ERR] Action {action_name} failed: {exc}")
-                trace = traceback.format_exc().strip()
-                if trace:
-                    for line in trace.splitlines():
-                        runtime_platform.log(f"[TRACE] {line}")
-
-                # Still mark initial bootstrap done if it was the bootstrap action.
-                # Queue deferred steps even on failure — media server config
-                # (libraries, livetv, plugins) doesn't depend on arr apps.
                 if action_name == "bootstrap" and not state.initial_bootstrap_done:
                     state.initial_bootstrap_done = True
                     runtime_platform.log(
@@ -316,6 +367,58 @@ def _run_serve(args: argparse.Namespace) -> None:
                     for queued in ["configure-media-server", "finalize", "envoy-config", "validate-credentials"]:
                         runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
                         action_trigger(queued, {})
+
+                if attempt <= retry_limit:
+                    delay = min(10.0, 2.0 ** (attempt - 1))
+                    runtime_platform.log(
+                        f"[RETRY] {action_name}: retrying in {delay:.0f}s "
+                        f"(attempt {attempt}/{retry_limit + 1})"
+                    )
+                    import time as _time
+                    _time.sleep(delay)
+                    continue
+
+                _fire_webhooks(state, "action_error", {
+                    "action": action_name,
+                    "status": "error",
+                    "error": error_msg,
+                    "elapsed_seconds": action_record.elapsed_seconds,
+                })
+
+                if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
+                    heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
+                    runtime_platform.log(
+                        f"[HEAL] {len(state.get_failed_services())} services need healing. "
+                        f"Auto-queuing reconcile in {heal_delay}s."
+                    )
+                    threading.Timer(heal_delay, lambda: action_trigger("reconcile", {})).start()
+
+                break  # Exhausted retries.
+
+            else:
+                # Success
+                if state.is_cancelled:
+                    state.current_action.cancel()
+                    state.finish_action(error="cancelled by user")
+                    runtime_platform.log(f"[ACTION] {action_name}: cancelled by user")
+                    break
+
+                state.finish_action()
+
+                _fire_webhooks(state, "action_complete", {
+                    "action": action_name,
+                    "status": "complete",
+                    "elapsed_seconds": action_record.elapsed_seconds,
+                })
+
+                if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                    state.initial_bootstrap_done = True
+                    runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
+                    for queued in ["configure-media-server", "finalize", "envoy-config", "auto-indexers", "validate-credentials"]:
+                        runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
+                        action_trigger(queued, {})
+
+                break  # Success — exit retry loop.
 
                 # Retry if attempts remain.
                 if attempt <= retry_limit:

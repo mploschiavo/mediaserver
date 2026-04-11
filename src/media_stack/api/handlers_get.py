@@ -189,7 +189,9 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     elif path == "/api/envvars":
         handler._json_response(200, config_svc.get_envvars())
     elif path == "/api/config-drift":
-        handler._json_response(200, config_svc.get_config_drift())
+        handler._json_response(200, api_cache.get_or_compute(
+            "config_drift", config_svc.get_config_drift, ttl=60,
+        ))
     elif path == "/api/libraries":
         handler._json_response(200, config_svc.get_libraries())
     elif path == "/api/download-categories":
