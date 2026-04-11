@@ -264,11 +264,78 @@ def _from_compact(arr: list[Any]) -> dict[str, Any]:
     return result
 
 
-def _push_one(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
-    """Push a single payload. Uses compact array + gzip for efficiency."""
+# ---------------------------------------------------------------------------
+# Transport: UDP with reliability probe + TCP fallback
+# ---------------------------------------------------------------------------
+
+_udp_ok: bool | None = None  # None = not tested, True = UDP works, False = use TCP
+_udp_last_probe: float = 0
+_UDP_PROBE_INTERVAL = 3600  # Re-probe every hour
+
+
+def _parse_host_port(endpoint: str) -> tuple[str, int]:
+    """Extract host and port from endpoint URL."""
+    from urllib.parse import urlparse
+    parsed = urlparse(endpoint)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 8200
+    return host, port
+
+
+def _probe_udp(endpoint: str, api_key: str) -> bool:
+    """Test if UDP works to the server. Sends a ping, waits for pong.
+
+    Protocol:
+      Client sends: PING:<api_key_hash>:<cluster_id>
+      Server replies: PONG
+      If PONG received within 2s → UDP is reliable for this path.
+    """
+    import hashlib
+    import socket as _socket
+    host, port = _parse_host_port(endpoint)
+    udp_port = port + 1  # UDP on port+1 by convention
+    cid = _cluster_id()[:8]
+    key_hash = hashlib.md5((api_key or "").encode()).hexdigest()[:8]
+    ping = f"PING:{key_hash}:{cid}".encode()
+    try:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        sock.sendto(ping, (host, udp_port))
+        data, _ = sock.recvfrom(64)
+        sock.close()
+        return data.strip().startswith(b"PONG")
+    except Exception:
+        return False
+
+
+def _send_udp(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
+    """Send payload via UDP. Returns True if sent (fire-and-forget after probe)."""
+    import gzip
+    import hashlib
+    import socket as _socket
+    host, port = _parse_host_port(endpoint)
+    udp_port = port + 1
+    try:
+        compact = [_SCHEMA_VERSION] + _to_compact(payload)
+        raw = json.dumps(compact, separators=(",", ":")).encode()
+        compressed = gzip.compress(raw)
+        # Prefix with auth hash (8 bytes) for server-side validation
+        key_hash = hashlib.md5((api_key or "").encode()).hexdigest()[:8].encode()
+        datagram = key_hash + b":" + compressed
+        if len(datagram) > 1400:  # Stay under MTU
+            return False
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        sock.sendto(datagram, (host, udp_port))
+        sock.close()
+        return True
+    except Exception:
+        return False
+
+
+def _send_tcp(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
+    """Send payload via TCP/HTTP POST with compact gzip."""
     import gzip
     try:
-        # Send compact array with schema version header
         compact = [_SCHEMA_VERSION] + _to_compact(payload)
         raw = json.dumps(compact, separators=(",", ":")).encode("utf-8")
         compressed = gzip.compress(raw)
@@ -287,21 +354,28 @@ def _push_one(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status in (200, 201, 202, 204)
     except Exception:
-        # Fallback to full JSON if compact fails
-        try:
-            data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-            req = urllib.request.Request(
-                endpoint, data=data, method="POST",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
-                    "User-Agent": "media-stack-telemetry/1.0",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return resp.status in (200, 201, 202, 204)
-        except Exception:
-            return False
+        return False
+
+
+def _push_one(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
+    """Push a single payload. Tries UDP first (if reliable), falls back to TCP."""
+    global _udp_ok, _udp_last_probe
+
+    # Probe UDP reliability periodically
+    now = time.time()
+    if _udp_ok is None or (now - _udp_last_probe > _UDP_PROBE_INTERVAL):
+        _udp_ok = _probe_udp(endpoint, api_key)
+        _udp_last_probe = now
+
+    # Try UDP if it tested OK
+    if _udp_ok:
+        if _send_udp(endpoint, api_key, payload):
+            return True
+        # UDP failed after probe said it was OK — mark unreliable, fall through to TCP
+        _udp_ok = False
+
+    # TCP fallback (always works)
+    return _send_tcp(endpoint, api_key, payload)
 
 
 def push_telemetry(log: Any = None) -> dict[str, Any]:
