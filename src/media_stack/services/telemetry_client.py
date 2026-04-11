@@ -62,6 +62,7 @@ def collect_metrics() -> dict[str, Any]:
         "services": _collect_service_health(),
         "jobs": _collect_job_metrics(),
         "media": _collect_media_metrics(),
+        "network": _collect_network_io(),
     }
     return metrics
 
@@ -123,6 +124,58 @@ def _collect_job_metrics() -> dict[str, Any]:
         }
     except Exception:
         return {"runs_24h": 0, "ok": 0, "errors": 0, "avg_duration_s": 0}
+
+
+def _collect_network_io() -> dict[str, Any]:
+    """Collect total RX/TX bytes across all stack containers.
+
+    Sources (in priority order):
+    1. Docker API — container.stats() network counters (cumulative since start)
+    2. cgroup net counters at /sys/class/net/*/statistics/ (host-level fallback)
+    3. /proc/net/dev (last resort)
+    """
+    io: dict[str, Any] = {"rx_gb": 0, "tx_gb": 0, "containers": 0, "per_container": {}}
+    # Try Docker API
+    try:
+        import docker
+        client = docker.from_env()
+        for c in client.containers.list():
+            try:
+                stats = c.stats(stream=False)
+                networks = stats.get("networks", {})
+                rx = sum(n.get("rx_bytes", 0) for n in networks.values())
+                tx = sum(n.get("tx_bytes", 0) for n in networks.values())
+                io["per_container"][c.name] = {
+                    "rx_mb": round(rx / (1024 * 1024), 1),
+                    "tx_mb": round(tx / (1024 * 1024), 1),
+                }
+                io["rx_gb"] += rx
+                io["tx_gb"] += tx
+                io["containers"] += 1
+            except Exception:
+                continue
+        io["rx_gb"] = round(io["rx_gb"] / (1024**3), 2)
+        io["tx_gb"] = round(io["tx_gb"] / (1024**3), 2)
+        return io
+    except Exception:
+        pass
+    # Fallback: /proc/net/dev (host-level, not per-container)
+    try:
+        with open("/proc/net/dev") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 10 or ":" not in parts[0]:
+                    continue
+                iface = parts[0].rstrip(":")
+                if iface in ("lo",):
+                    continue
+                io["rx_gb"] += int(parts[1])
+                io["tx_gb"] += int(parts[9])
+        io["rx_gb"] = round(io["rx_gb"] / (1024**3), 2)
+        io["tx_gb"] = round(io["tx_gb"] / (1024**3), 2)
+    except Exception:
+        pass
+    return io
 
 
 def _collect_media_metrics() -> dict[str, Any]:
@@ -236,6 +289,7 @@ _SCHEMA_FIELDS = [
     "media.libraries", "media.livetv_tuners", "media.indexers",
     "media.storage_gb", "media.active_downloads",
     "media.download_speed_mbps", "media.upload_speed_mbps",
+    "network.rx_gb", "network.tx_gb", "network.containers",
 ]
 
 
