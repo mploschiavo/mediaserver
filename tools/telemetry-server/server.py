@@ -401,21 +401,101 @@ class TelemetryHandler(BaseHTTPRequestHandler):
 # Main
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# UDP Listener — high-throughput stateless ingest
+# ---------------------------------------------------------------------------
+
+class UDPListener:
+    """Receives telemetry via UDP datagrams.
+
+    Protocol:
+      PING:<key_hash>:<cluster_id> → replies PONG (reliability probe)
+      <key_hash>:<gzipped_compact_json> → ingests payload (fire-and-forget)
+
+    Runs on HTTP port + 1.
+    """
+
+    def __init__(self, store: TelemetryStore, port: int, api_key: str = ""):
+        import hashlib
+        import socket
+        self.store = store
+        self.port = port
+        self.api_key_hash = hashlib.md5((api_key or "").encode()).hexdigest()[:8]
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(("0.0.0.0", port))
+        self._count = 0
+
+    def run(self) -> None:
+        import gzip
+        while True:
+            try:
+                data, addr = self.sock.recvfrom(2048)
+                if not data:
+                    continue
+
+                # PING probe — reply PONG
+                if data.startswith(b"PING:"):
+                    parts = data.decode(errors="replace").split(":")
+                    if len(parts) >= 2 and (not self.api_key_hash or parts[1] == self.api_key_hash):
+                        self.sock.sendto(b"PONG", addr)
+                    continue
+
+                # Telemetry datagram: <key_hash>:<gzipped_payload>
+                sep = data.find(b":")
+                if sep < 1:
+                    continue
+                key_hash = data[:sep].decode(errors="replace")
+                if self.api_key_hash and key_hash != self.api_key_hash:
+                    continue  # Auth failed — drop silently
+
+                compressed = data[sep + 1:]
+                try:
+                    raw = gzip.decompress(compressed)
+                    body = json.loads(raw)
+                except Exception:
+                    continue
+
+                # Handle compact array
+                if isinstance(body, list) and body and body[0] == 1:
+                    body = TelemetryHandler._from_compact(body[1:])
+
+                if body.get("cluster_id"):
+                    self.store.ingest(body)
+                    self._count += 1
+
+            except Exception:
+                continue
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
     parser = argparse.ArgumentParser(description="Fleet telemetry server")
     parser.add_argument("--port", type=int, default=8200)
     parser.add_argument("--data-dir", default="./telemetry-data")
     parser.add_argument("--api-key", default=os.environ.get("TELEMETRY_API_KEY", ""))
+    parser.add_argument("--no-udp", action="store_true", help="Disable UDP listener")
     args = parser.parse_args()
 
     store = TelemetryStore(args.data_dir)
     TelemetryHandler.store = store
     TelemetryHandler.api_key = args.api_key
 
+    # Start UDP listener on port+1
+    if not args.no_udp:
+        udp = UDPListener(store, args.port + 1, args.api_key)
+        udp_thread = threading.Thread(target=udp.run, daemon=True, name="udp-listener")
+        udp_thread.start()
+        print(f"  UDP ingest: :{args.port + 1}")
+    else:
+        print(f"  UDP: disabled")
+
     server = ThreadingHTTPServer(("0.0.0.0", args.port), TelemetryHandler)
     print(f"Fleet telemetry server on :{args.port}")
     print(f"  Dashboard: http://127.0.0.1:{args.port}/")
-    print(f"  Ingest: POST /api/v1/telemetry")
+    print(f"  TCP ingest: POST /api/v1/telemetry")
     print(f"  Data: {args.data_dir}/")
     print(f"  Auth: {'Bearer token' if args.api_key else 'none'}")
     try:
