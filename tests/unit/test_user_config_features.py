@@ -20,6 +20,7 @@ import media_stack.api.services.content as content_mod  # noqa: E402
 
 def _make_profile(data, td):
     data.setdefault("metadata", {}).setdefault("name", "test-stack")
+    data.setdefault("technology_bindings", {"media_server": "jellyfin"})
     import yaml
     p = Path(td) / "profile.yaml"
     with open(p, "w") as f:
@@ -32,6 +33,12 @@ def _make_profile(data, td):
 # ---------------------------------------------------------------------------
 
 class TestGetLibraries(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_returns_defaults_when_no_profile(self):
         with patch.object(config_mod, "resolve_profile_path", return_value=None):
             result = config_mod.get_libraries()
@@ -43,17 +50,29 @@ class TestGetLibraries(unittest.TestCase):
                 "technology_bindings": {"media_server": "jellyfin"},
                 "jellyfin": {"libraries": [{"name": "Anime", "collection_type": "tvshows", "paths": ["/media/anime"]}]},
             }, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.get_libraries()
         self.assertEqual(result["source"], "profile")
         self.assertEqual(result["libraries"][0]["name"], "Anime")
 
 
 class TestUpdateLibraries(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_saves_libraries(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({"technology_bindings": {"media_server": "jellyfin"}}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_libraries([
                     {"name": "Movies", "collection_type": "movies", "paths": ["/media/movies"]},
                     {"name": "Anime", "collection_type": "tvshows", "paths": ["/media/anime"]},
@@ -79,8 +98,17 @@ class TestUpdateLibraries(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestGetDownloadCategories(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_returns_empty_when_no_config(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with (
+            patch.object(config_mod, "resolve_profile_path", return_value=None),
+            patch.dict(os.environ, {"CONFIG_ROOT": "/tmp/nonexistent-cfg-root"}),
+        ):
             result = config_mod.get_download_categories()
         self.assertIsInstance(result["categories"], dict)
         self.assertIn("categories", result)
@@ -88,17 +116,29 @@ class TestGetDownloadCategories(unittest.TestCase):
     def test_returns_profile_overrides(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({"download_categories": {"anime": "/data/anime", "audiobooks": "/data/audiobooks"}}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.get_download_categories()
         self.assertIn("anime", result["categories"])
         self.assertEqual(result["source"], "profile")
 
 
 class TestUpdateDownloadCategories(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_saves_categories(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_download_categories({"anime": "/data/anime"})
         self.assertEqual(result["status"], "saved")
 
@@ -112,6 +152,12 @@ class TestUpdateDownloadCategories(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestMetadataSettings(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_defaults(self):
         with patch.object(config_mod, "resolve_profile_path", return_value=None):
             result = config_mod.get_metadata_settings()
@@ -136,8 +182,17 @@ class TestMetadataSettings(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestLiveTvSources(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_empty_when_not_configured(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with (
+            patch.object(config_mod, "resolve_profile_path", return_value=None),
+            patch.dict(os.environ, {"CONFIG_ROOT": "/tmp/nonexistent-cfg-root"}),
+        ):
             result = config_mod.get_livetv_sources()
         self.assertEqual(result["tuner_url"], "")
         self.assertEqual(result["source"], "not_configured")
@@ -145,7 +200,10 @@ class TestLiveTvSources(unittest.TestCase):
     def test_update_saves(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_livetv_sources(
                     tuners=[{"url": "https://example.com/de.m3u", "name": "DE"}],
                     guides=[{"url": "https://example.com/epg-de.xml", "name": "DE EPG"}],
@@ -156,7 +214,10 @@ class TestLiveTvSources(unittest.TestCase):
     def test_saves_with_single_url(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_livetv_sources(
                     tuner_url="https://example.com/us.m3u",
                     guide_url="https://example.com/epg-us.xml",

@@ -102,7 +102,9 @@ class TestJobRegistry(unittest.TestCase):
     def test_registry_has_expected_jobs(self):
         registry = get_job_registry()
         expected = {"configure-libraries", "configure-livetv", "configure-plugins",
-                    "configure-playback", "configure-categories"}
+                    "configure-playback", "configure-home-rails",
+                    "configure-auto-collections", "configure-prewarm",
+                    "configure-categories"}
         self.assertEqual(set(registry.keys()), expected)
 
     def test_all_handlers_callable(self):
@@ -120,12 +122,22 @@ class TestBuildBootstrapJobs(unittest.TestCase):
         names = [j.name for j in root.sub_jobs]
         self.assertIn("configure-media-server", names)
 
-    def test_media_server_has_library_sub_job(self):
+    def test_media_server_has_all_sub_jobs(self):
         root = build_bootstrap_jobs()
         ms = next(j for j in root.sub_jobs if j.name == "configure-media-server")
         sub_names = [j.name for j in ms.sub_jobs]
         self.assertIn("configure-libraries", sub_names)
         self.assertIn("configure-livetv", sub_names)
+        self.assertIn("configure-plugins", sub_names)
+        self.assertIn("configure-playback", sub_names)
+        self.assertIn("configure-home-rails", sub_names)
+        self.assertIn("configure-auto-collections", sub_names)
+
+    def test_has_prewarm_in_tree(self):
+        root = build_bootstrap_jobs()
+        from media_stack.cli.commands.bootstrap_jobs import _find_job_in_tree
+        prewarm = _find_job_in_tree(root, "configure-prewarm")
+        self.assertIsNotNone(prewarm, "configure-prewarm not found in tree")
 
 
 class TestRunJob(unittest.TestCase):
@@ -134,11 +146,164 @@ class TestRunJob(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("known", result)
 
-    @patch("media_stack.cli.commands.bootstrap_jobs._configure_libraries")
-    def test_run_job_calls_handler(self, mock_handler):
-        mock_handler.return_value = {"service": "jellyfin"}
-        result = run_job("configure-libraries")
+    def test_run_job_calls_handler(self):
+        from media_stack.cli.commands.bootstrap_jobs import PREREQS
+        with patch.dict(PREREQS, {
+            "media_server_reachable": lambda ctx: True,
+            "media_server_api_key": lambda ctx: True,
+        }):
+            with patch(
+                "media_stack.services.apps.jellyfin.runtime_ops.ensure_jellyfin_libraries"
+            ) as mock_handler:
+                result = run_job("configure-libraries")
         mock_handler.assert_called_once()
+
+
+class TestCfgFromContracts(unittest.TestCase):
+    """Verify JobContext.cfg loads from service YAML contracts with flat keys."""
+
+    def test_cfg_has_jellyfin_flat_keys(self):
+        """Jellyfin service YAML defaults produce flat keys (jellyfin_libraries, etc.)."""
+        ctx = JobContext()
+        cfg = ctx.cfg
+        expected = [
+            "jellyfin_libraries", "jellyfin_livetv", "jellyfin_plugins",
+            "jellyfin_playback", "jellyfin_prewarm", "jellyfin_home_rails",
+            "jellyfin_auto_collections",
+        ]
+        for key in expected:
+            self.assertIn(key, cfg, f"cfg missing {key} — handler will silently skip")
+
+    def test_cfg_jellyfin_libraries_has_library_list(self):
+        ctx = JobContext()
+        libs = ctx.cfg.get("jellyfin_libraries", {})
+        self.assertIn("libraries", libs, "jellyfin_libraries must have 'libraries' list")
+        self.assertIsInstance(libs["libraries"], list)
+        self.assertGreater(len(libs["libraries"]), 0)
+
+    def test_cfg_bazarr_is_not_flattened(self):
+        """Services with scalar defaults keep their service-id form."""
+        ctx = JobContext()
+        cfg = ctx.cfg
+        self.assertIn("bazarr", cfg)
+        self.assertNotIn("bazarr_enabled", cfg)
+        self.assertNotIn("bazarr_url", cfg)
+
+    def test_cfg_jellyfin_nested_key_not_present(self):
+        """No nested 'jellyfin' key — only flat jellyfin_* keys."""
+        ctx = JobContext()
+        cfg = ctx.cfg
+        # Should NOT have a single "jellyfin" dict with sub-sections
+        if "jellyfin" in cfg:
+            # If present, it should not have the sub-section keys
+            self.assertNotIn("libraries", cfg["jellyfin"])
+
+    def test_cfg_with_profile_bindings(self):
+        ctx = JobContext()
+        ctx._profile_cache = {"technology_bindings": {"media_server": "jellyfin"}}
+        ctx._cfg_cache = None  # force reload
+        cfg = ctx.cfg
+        self.assertIn("technology_bindings", cfg)
+        self.assertEqual(cfg["technology_bindings"]["media_server"], "jellyfin")
+
+
+class TestHandlerReceivesFlatKeys(unittest.TestCase):
+    """Verify _run_media_server_handler passes flat config to handlers."""
+
+    @patch("media_stack.cli.commands.bootstrap_jobs._ensure_media_server_api_key")
+    def test_handler_receives_flat_keys(self, mock_ensure_key):
+        captured_cfg = {}
+        def fake_ensure(cfg, config_root, wait_timeout):
+            captured_cfg.update(cfg)
+
+        ctx = JobContext()
+        ctx._profile_cache = {"technology_bindings": {"media_server": "jellyfin"}}
+
+        with patch.dict(os.environ, {"JELLYFIN_API_KEY": "test-key"}):
+            with patch("importlib.import_module") as mock_import:
+                mock_mod = MagicMock()
+                mock_mod.ensure_jellyfin_libraries = fake_ensure
+                mock_import.return_value = mock_mod
+                from media_stack.cli.commands.bootstrap_jobs import _run_media_server_handler
+                _run_media_server_handler(ctx, "libraries", "Library")
+
+        self.assertIn("jellyfin_libraries", captured_cfg)
+        self.assertIsInstance(captured_cfg["jellyfin_libraries"], dict)
+
+
+class TestMediaServerJobsNotSkipped(unittest.TestCase):
+    """Verify that media server jobs actually run — not silently skipped.
+
+    This catches the exact bug where Jellyfin shows 'no libraries created'
+    after a fresh install because media_server_id() returned empty.
+    """
+
+    def test_media_server_id_never_empty(self):
+        """media_server_id() must return a service ID even without profile env."""
+        ctx = JobContext()
+        ms_id = ctx.media_server_id()
+        self.assertTrue(
+            ms_id,
+            "media_server_id() returned empty — ALL media server jobs will silently skip. "
+            "technology_bindings must be derivable from service YAML capabilities."
+        )
+
+    def test_technology_bindings_derived_from_capabilities(self):
+        """technology_bindings must be in cfg even without BOOTSTRAP_PROFILE_FILE."""
+        ctx = JobContext()
+        bindings = ctx.cfg.get("technology_bindings", {})
+        self.assertIn("media_server", bindings,
+                       "No media_server binding — derived from jellyfin.yaml capabilities")
+        self.assertEqual(bindings["media_server"], "jellyfin")
+
+    def test_configure_libraries_not_skipped(self):
+        """The configure-libraries job must NOT return 'skipped'."""
+        from media_stack.cli.commands.bootstrap_jobs import _configure_libraries
+        ctx = JobContext()
+        ctx._profile_cache = {}
+        with patch.dict(os.environ, {"JELLYFIN_API_KEY": "test-key"}):
+            with patch("importlib.import_module") as mock_import:
+                mock_mod = MagicMock()
+                mock_mod.ensure_jellyfin_libraries = MagicMock()
+                mock_import.return_value = mock_mod
+                result = _configure_libraries(ctx)
+        self.assertNotIn("skipped", result,
+                         f"configure-libraries was SKIPPED: {result}. "
+                         "Libraries will NOT be created on fresh install.")
+
+    def test_cfg_has_libraries_with_entries(self):
+        """jellyfin_libraries must have at least one library defined."""
+        ctx = JobContext()
+        libs_cfg = ctx.cfg.get("jellyfin_libraries", {})
+        self.assertTrue(libs_cfg.get("enabled"), "jellyfin_libraries.enabled must be True")
+        libs = libs_cfg.get("libraries", [])
+        self.assertGreater(len(libs), 0, "No libraries defined — nothing will be created")
+        names = [lib.get("name") for lib in libs]
+        self.assertIn("Movies", names)
+        self.assertIn("TV Shows", names)
+
+    def test_all_media_server_jobs_have_handler(self):
+        """Every media server job must have a matching ensure_* function."""
+        ctx = JobContext()
+        ms_id = ctx.media_server_id()
+        if not ms_id:
+            self.skipTest("no media server")
+        from media_stack.cli.commands.bootstrap_jobs import get_job_registry
+        import importlib
+        mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
+        for job_name, handler in get_job_registry().items():
+            if job_name == "configure-categories":
+                continue  # not a media server job
+            # Derive handler suffix from the handler function
+            suffix = job_name.replace("configure-", "").replace("-", "_")
+            fn_name = f"ensure_{ms_id}_{suffix}"
+            # Some have different names
+            alt_names = [fn_name, f"ensure_{ms_id}_{suffix}_defaults",
+                         f"ensure_{ms_id}_{suffix}_config"]
+            found = any(hasattr(mod, n) for n in alt_names)
+            self.assertTrue(found,
+                            f"Job '{job_name}' has no handler in {ms_id}/runtime_ops.py. "
+                            f"Tried: {alt_names}")
 
 
 class TestKnownActionsIncludeJobs(unittest.TestCase):

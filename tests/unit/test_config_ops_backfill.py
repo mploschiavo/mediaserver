@@ -17,6 +17,12 @@ import media_stack.api.services.ops as ops_mod  # noqa: E402
 
 
 class TestGetProfile(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
     def test_not_found(self, _):
         result = config_mod.get_profile()

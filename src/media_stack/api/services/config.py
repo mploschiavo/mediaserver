@@ -256,18 +256,22 @@ def get_livetv_sources() -> dict[str, Any]:
     falls back to profile live_tv_defaults for migration.
     """
     from media_stack.services.app_config_service import load_app_config
-    app_cfg = load_app_config("jellyfin")
+    ms_id = _media_server_id()
+    app_cfg = load_app_config(ms_id) if ms_id else {}
+    from_app_config = "livetv" in app_cfg
     ltv = app_cfg.get("livetv", {})
-    # Migration: fall back to profile if per-app config is empty
-    if not ltv:
+    # Migration: fall back to profile only if per-app config has no livetv key at all
+    if not from_app_config:
         data, _ = _load_profile_yaml()
         ltv = data.get("live_tv_defaults", {})
     tuners = ltv.get("tuners", [])
     guides = ltv.get("guides", [])
-    if not tuners and ltv.get("tuner_url"):
-        tuners = [{"url": ltv["tuner_url"], "name": "Default"}]
-    if not guides and ltv.get("guide_url"):
-        guides = [{"url": ltv["guide_url"], "name": "Default"}]
+    # Single-URL compat only for profile migration, not per-app config
+    if not from_app_config:
+        if not tuners and ltv.get("tuner_url"):
+            tuners = [{"url": ltv["tuner_url"], "name": "Default"}]
+        if not guides and ltv.get("guide_url"):
+            guides = [{"url": ltv["guide_url"], "name": "Default"}]
     return {
         "tuners": tuners,
         "guides": guides,
@@ -302,9 +306,12 @@ def update_livetv_sources(
     tuner_url: str = "", guide_url: str = "",
     load_all_tuners: bool | None = None,
 ) -> dict[str, Any]:
-    """Update IPTV sources. Saves to per-app config (jellyfin/controller.yaml)."""
+    """Update IPTV sources. Saves to per-app config for the media server."""
     from media_stack.services.app_config_service import load_app_config, save_app_config
-    app_cfg = load_app_config("jellyfin")
+    ms_id = _media_server_id()
+    if not ms_id:
+        return {"error": "No media server configured"}
+    app_cfg = load_app_config(ms_id)
     ltv = app_cfg.get("livetv", {})
     if load_all_tuners is not None:
         ltv["load_all_tuners"] = bool(load_all_tuners)
@@ -321,7 +328,7 @@ def update_livetv_sources(
     if ltv.get("guides"):
         ltv["guide_url"] = ltv["guides"][0].get("url", "")
     app_cfg["livetv"] = ltv
-    result = save_app_config("jellyfin", app_cfg)
+    result = save_app_config(ms_id, app_cfg)
     if "error" not in result:
         result["tuners"] = ltv.get("tuners", [])
         result["guides"] = ltv.get("guides", [])
@@ -377,15 +384,22 @@ def get_iptv_countries() -> dict[str, Any]:
     return {"countries": countries, "source": "defaults"}
 
 
-_APP_CONFIG_SECTIONS = {"live_tv_defaults", "download_categories", "jellyfin"}
+_APP_CONFIG_SECTIONS = {"live_tv_defaults", "download_categories"}
+# Sections that have dedicated API endpoints — stripped from the profile response
+# to keep the profile payload slim.  The profile YAML on disk is NOT modified.
+_DEDICATED_ENDPOINT_SECTIONS = {"routing", "auth", "bootstrap", "chaos", "app_auth"}
+_STRIPPED_FROM_PROFILE = _APP_CONFIG_SECTIONS | _DEDICATED_ENDPOINT_SECTIONS
 
 def get_profile() -> dict[str, Any]:
     """Read and return the bootstrap profile YAML (slim — app config stripped)."""
     profile, path = _load_profile_yaml()
     if path is None:
         return {"profile": None, "error": "Profile not found"}
-    moved = [k for k in _APP_CONFIG_SECTIONS if k in profile]
-    slim = {k: v for k, v in profile.items() if k not in _APP_CONFIG_SECTIONS}
+    # Also strip the media server profile key (e.g., "jellyfin") if present
+    ms_id = _media_server_id()
+    strip_keys = _STRIPPED_FROM_PROFILE | ({ms_id} if ms_id else set())
+    moved = [k for k in (_APP_CONFIG_SECTIONS | ({ms_id} if ms_id else set())) if k in profile]
+    slim = {k: v for k, v in profile.items() if k not in strip_keys}
     result: dict[str, Any] = {"profile": slim, "file": str(path)}
     if moved:
         result["moved_to_app_config"] = moved
