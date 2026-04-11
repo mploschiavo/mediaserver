@@ -213,6 +213,12 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     elif path == "/api/epg-health":
         from media_stack.services.epg_provider_service import run_health_check
         handler._json_response(200, run_health_check())
+    elif path == "/api/telemetry":
+        from media_stack.services.telemetry_client import collect_metrics, push_telemetry
+        if "push" in (handler.path.split("?")[1] if "?" in handler.path else ""):
+            handler._json_response(200, push_telemetry())
+        else:
+            handler._json_response(200, collect_metrics())
     elif path == "/api/jobs":
         from media_stack.cli.commands.job_framework import discover_jobs_from_contracts, build_job_framework, get_job_history
         jobs = discover_jobs_from_contracts()
