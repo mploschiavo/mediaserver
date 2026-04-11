@@ -125,29 +125,29 @@ class TestProviderService(unittest.TestCase):
 
 class TestExtractCountryCode(unittest.TestCase):
     def test_from_name(self):
-        from media_stack.cli.commands.bootstrap_jobs import _extract_country_code
+        from media_stack.cli.commands.job_framework import _extract_country_code
         self.assertEqual(_extract_country_code("Germany EPG", ""), "de")
         self.assertEqual(_extract_country_code("China IPTV", ""), "cn")
         self.assertEqual(_extract_country_code("United Kingdom EPG", ""), "gb")
 
     def test_from_url(self):
-        from media_stack.cli.commands.bootstrap_jobs import _extract_country_code
+        from media_stack.cli.commands.job_framework import _extract_country_code
         self.assertEqual(_extract_country_code("", "https://example.com/epg-us.xml"), "us")
         self.assertEqual(_extract_country_code("", "https://example.com/epg_DE.xml.gz"), "de")
 
     def test_unknown(self):
-        from media_stack.cli.commands.bootstrap_jobs import _extract_country_code
+        from media_stack.cli.commands.job_framework import _extract_country_code
         self.assertEqual(_extract_country_code("Unknown", ""), "")
 
 
 class TestUrlLooksValid(unittest.TestCase):
     def test_valid(self):
-        from media_stack.cli.commands.bootstrap_jobs import _url_looks_valid
+        from media_stack.cli.commands.job_framework import _url_looks_valid
         self.assertTrue(_url_looks_valid("https://example.com/file.xml"))
         self.assertTrue(_url_looks_valid("http://example.com/file.xml"))
 
     def test_invalid(self):
-        from media_stack.cli.commands.bootstrap_jobs import _url_looks_valid
+        from media_stack.cli.commands.job_framework import _url_looks_valid
         self.assertFalse(_url_looks_valid("/epg/ca.xml"))
         self.assertFalse(_url_looks_valid(""))
         self.assertFalse(_url_looks_valid("relative/path.xml"))

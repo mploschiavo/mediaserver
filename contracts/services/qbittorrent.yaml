@@ -22,7 +22,7 @@ plugin:
     torrent_client_service: qbittorrent
   jobs:
     configure-categories:
-      handler: media_stack.cli.commands.bootstrap_jobs:_configure_categories
+      handler: media_stack.cli.commands.job_framework:_configure_categories
       phase: download_clients
       priority: 10
   event_handlers:

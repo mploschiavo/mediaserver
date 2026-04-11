@@ -14,3 +14,4 @@ package-lock.json
 docker/config/
 docker/data/
 docker/media/
+.gitignore

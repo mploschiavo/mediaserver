@@ -214,10 +214,10 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         from media_stack.services.epg_provider_service import run_health_check
         handler._json_response(200, run_health_check())
     elif path == "/api/jobs":
-        from media_stack.cli.commands.bootstrap_jobs import discover_jobs_from_contracts, build_bootstrap_jobs
+        from media_stack.cli.commands.job_framework import discover_jobs_from_contracts, build_job_framework
         jobs = discover_jobs_from_contracts()
         # Build tree structure for UI
-        root = build_bootstrap_jobs()
+        root = build_job_framework()
         def _tree(job):
             return {
                 "name": job.name,

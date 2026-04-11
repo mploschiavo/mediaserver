@@ -37,7 +37,7 @@ def _build_known_actions() -> frozenset[str]:
     """Build KNOWN_ACTIONS from core actions + contract-discovered jobs."""
     actions = set(_CORE_ACTIONS)
     try:
-        from media_stack.cli.commands.bootstrap_jobs import discover_jobs_from_contracts
+        from media_stack.cli.commands.job_framework import discover_jobs_from_contracts
         for job in discover_jobs_from_contracts():
             actions.add(job["name"])
     except Exception:

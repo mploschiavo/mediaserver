@@ -632,7 +632,7 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
     return _DISCOVERED_JOBS_CACHE
 
 
-def build_bootstrap_jobs() -> Job:
+def build_job_framework() -> Job:
     """Build the bootstrap job tree by scanning service contracts.
 
     No hardcoded job list. Each service declares its own jobs in its
@@ -705,7 +705,7 @@ def build_bootstrap_jobs() -> Job:
 
 def get_job_registry() -> dict[str, Callable[[JobContext], dict[str, Any]]]:
     """Return flat map of job-name → handler, discovered from contracts."""
-    root = build_bootstrap_jobs()
+    root = build_job_framework()
     registry: dict[str, Callable] = {}
     def _collect(job: Job) -> None:
         if job.handler is not _noop:
@@ -719,7 +719,7 @@ def get_job_registry() -> dict[str, Callable[[JobContext], dict[str, Any]]]:
 def run_job(job_name: str, max_wait: int = 30) -> dict[str, Any]:
     """Run a single job by name. Uses JobRunner for prereq waiting."""
     # Look up the job from the bootstrap tree to get its prereqs
-    root = build_bootstrap_jobs()
+    root = build_job_framework()
     job = _find_job_in_tree(root, job_name)
     if not job:
         # Fall back to registry (no prereqs)
@@ -739,7 +739,7 @@ def run_all_media_server_jobs(max_wait: int = 180) -> dict[str, Any]:
     before executing the tree.
     """
     ctx = JobContext()
-    root = build_bootstrap_jobs()
+    root = build_job_framework()
     return JobRunner(root, ctx, max_wait=max_wait).run()
 
 
