@@ -55,7 +55,7 @@ plugin:
       priority: 10
       requires: [media_server_reachable, media_server_api_key]
     configure-livetv:
-      handler: media_stack.cli.commands.bootstrap_jobs:_configure_livetv
+      handler: media_stack.services.apps.jellyfin.configure_livetv_job:configure_livetv
       phase: media_server
       priority: 20
       requires: [media_server_reachable, media_server_api_key]
