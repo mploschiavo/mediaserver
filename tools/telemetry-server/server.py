@@ -177,6 +177,7 @@ class TelemetryStore:
                 "services": payload.get("services", {}),
                 "jobs": payload.get("jobs", {}),
                 "media": payload.get("media", {}),
+                "network": payload.get("network", {}),
             })
             self._ingest_count += 1
 
@@ -200,7 +201,10 @@ class TelemetryStore:
             "clusters_active": len(active),
             "clusters_stale": len(clusters) - len(active),
             "services_healthy": sum(c.get("services", {}).get("healthy", 0) for c in clusters),
-            "services_unhealthy": sum(c.get("services", {}).get("unhealthy", 0) for c in clusters),
+            "services_unhealthy": sum(
+                c.get("services", {}).get("total", 0) - c.get("services", {}).get("healthy", 0)
+                for c in clusters
+            ),
             "total_storage_gb": round(sum(c.get("media", {}).get("storage_gb", 0) for c in clusters), 1),
             "total_libraries": sum(c.get("media", {}).get("libraries", 0) for c in clusters),
             "total_indexers": sum(c.get("media", {}).get("indexers", 0) for c in clusters),
@@ -250,17 +254,20 @@ async function load(){
     card('Network RX',fleet.total_rx_gb+' GB')+
     card('Network TX',fleet.total_tx_gb+' GB')+
     card('Ingested',fleet.ingest_total+' payloads');
-  let h='<table><tr><th>Cluster</th><th>Platform</th><th>Version</th><th>Services</th><th>Jobs (24h)</th><th>Storage</th><th>Last Seen</th></tr>';
+  let h='<table><tr><th>Cluster</th><th>Platform</th><th>Version</th><th>Services</th><th>Jobs (24h)</th><th>Storage</th><th>Network I/O</th><th>Last Seen</th></tr>';
   for(const c of clusters){
     const stale=c.age_hours>24?' class="stale"':'';
     const svc=c.services||{};const jobs=c.jobs||{};const media=c.media||{};
-    const svcBadge=svc.unhealthy>0?'<span class="badge badge-err">'+svc.unhealthy+' down</span>':'<span class="badge badge-ok">all ok</span>';
+    const unhealthy=(svc.total||0)-(svc.healthy||0);
+    const svcBadge=unhealthy>0?'<span class="badge badge-err">'+unhealthy+' down</span>':'<span class="badge badge-ok">all ok</span>';
     h+='<tr'+stale+'><td><b>'+esc(c.cluster_name||c.cluster_id.substring(0,8))+'</b></td>';
     h+='<td>'+(c.controller?.platform||'?')+'</td>';
     h+='<td>'+(c.controller?.version||'?')+'</td>';
     h+='<td>'+svcBadge+' '+(svc.healthy||0)+'/'+(svc.total||0)+'</td>';
     h+='<td>'+(jobs.runs_24h||0)+' runs, '+(jobs.errors||0)+' err</td>';
     h+='<td>'+(media.storage_gb||0)+' GB</td>';
+    const net=c.network||{};
+    h+='<td>&#8595;'+(net.rx_gb||0)+'G &#8593;'+(net.tx_gb||0)+'G</td>';
     h+='<td>'+(c.age_hours<1?'just now':c.age_hours<24?Math.round(c.age_hours)+'h ago':Math.round(c.age_hours/24)+'d ago')+'</td></tr>';
   }
   h+='</table>';
