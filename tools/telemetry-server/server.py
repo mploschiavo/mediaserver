@@ -337,7 +337,7 @@ class TelemetryHandler(BaseHTTPRequestHandler):
         "jobs.runs_24h", "jobs.ok", "jobs.errors", "jobs.avg_duration_s",
         "media.libraries", "media.livetv_tuners", "media.indexers",
         "media.storage_gb", "media.active_downloads",
-        "media.download_speed_mbps", "media.upload_speed_mbps",
+        "media.torrent_rx_gb", "media.torrent_tx_gb",
         "network.rx_gb", "network.tx_gb", "network.containers",
     ]
 
