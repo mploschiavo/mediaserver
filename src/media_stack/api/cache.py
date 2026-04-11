@@ -52,6 +52,15 @@ class TTLCache:
             del self._store[k]
         return len(expired)
 
+    def get_or_compute(self, key: str, compute_fn: Any, ttl: float = 60.0) -> Any:
+        """Return cached value or compute and cache it."""
+        cached = self.get(key, ttl)
+        if cached is not None:
+            return cached
+        value = compute_fn()
+        self.set(key, value)
+        return value
+
     @property
     def size(self) -> int:
         with self._lock:
