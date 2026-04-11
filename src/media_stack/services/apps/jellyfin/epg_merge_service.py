@@ -4,20 +4,22 @@ Downloads all EPG XMLs for configured countries, remaps channel IDs
 to match M3U tvg-ids, deduplicates channels, and outputs a single
 merged XMLTV file that Jellyfin loads as one guide provider.
 
-This gives near-100% guide coverage because:
-1. Channel IDs are rewritten to match M3U tvg-ids exactly
-2. Multiple EPG sources per country are tried (provider fallback)
-3. Duplicate channels across countries are merged (not duplicated)
-4. One guide file = one refresh = fast and reliable
+Performance:
+- Parallel downloads (ThreadPoolExecutor, 6 workers)
+- Disk cache with 6-hour TTL (avoids re-downloading on restart)
+- Stream-parse XML (line-by-line regex, not full DOM load)
 """
 
 from __future__ import annotations
 
 import gzip
 import hashlib
+import json
+import os
 import re
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 from xml.sax.saxutils import escape as xml_escape
@@ -25,8 +27,26 @@ from xml.sax.saxutils import escape as xml_escape
 
 LogFn = Callable[[str], None]
 
+_CACHE_TTL_SECONDS = int(os.environ.get("EPG_CACHE_TTL_SECONDS", "21600"))  # 6 hours
+_DOWNLOAD_WORKERS = int(os.environ.get("EPG_DOWNLOAD_WORKERS", "6"))
+_DOWNLOAD_TIMEOUT = int(os.environ.get("EPG_DOWNLOAD_TIMEOUT", "120"))
 
-def _download_xml(url: str, timeout: int = 120) -> str:
+
+# ---------------------------------------------------------------------------
+# Download + cache
+# ---------------------------------------------------------------------------
+
+def _cache_dir(config_root: str) -> Path:
+    p = Path(config_root) / ".controller" / "epg-cache"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _cache_key(url: str) -> str:
+    return hashlib.md5(url.encode()).hexdigest()
+
+
+def _download_xml(url: str, timeout: int = _DOWNLOAD_TIMEOUT) -> str:
     """Download XMLTV, auto-decompress gzip."""
     req = urllib.request.Request(url, headers={
         "User-Agent": "media-stack-controller/1.0",
@@ -43,12 +63,72 @@ def _download_xml(url: str, timeout: int = 120) -> str:
     return payload.decode("utf-8", errors="replace")
 
 
+def _get_cached_or_download(url: str, config_root: str, log: LogFn | None = None) -> str:
+    """Return cached XML if fresh, otherwise download and cache."""
+    cache = _cache_dir(config_root)
+    key = _cache_key(url)
+    cache_file = cache / f"{key}.xml"
+    meta_file = cache / f"{key}.meta"
+
+    # Check cache freshness
+    if cache_file.is_file() and meta_file.is_file():
+        try:
+            meta = json.loads(meta_file.read_text())
+            if time.time() - meta.get("ts", 0) < _CACHE_TTL_SECONDS:
+                return cache_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+    # Download
+    xml_text = _download_xml(url)
+
+    # Write to cache
+    try:
+        cache_file.write_text(xml_text, encoding="utf-8")
+        meta_file.write_text(json.dumps({"ts": time.time(), "url": url, "size": len(xml_text)}))
+    except Exception:
+        pass
+
+    return xml_text
+
+
+def _download_all_parallel(
+    sources: list[dict[str, str]],
+    config_root: str,
+    log: LogFn | None = None,
+) -> list[tuple[dict[str, str], str | None, str | None]]:
+    """Download all EPG sources in parallel. Returns [(source, xml_text, error)]."""
+    results: list[tuple[dict[str, str], str | None, str | None]] = []
+
+    def _fetch(src: dict[str, str]) -> tuple[dict[str, str], str | None, str | None]:
+        url = src.get("url", "")
+        name = src.get("name", url[:40])
+        if not url:
+            return src, None, "no URL"
+        try:
+            if log:
+                log(f"[INFO] EPG merge: downloading {name}...")
+            xml_text = _get_cached_or_download(url, config_root, log)
+            return src, xml_text, None
+        except Exception as exc:
+            return src, None, str(exc)[:80]
+
+    with ThreadPoolExecutor(max_workers=_DOWNLOAD_WORKERS) as pool:
+        futures = {pool.submit(_fetch, src): src for src in sources}
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# M3U / XMLTV parsing
+# ---------------------------------------------------------------------------
+
 def _extract_m3u_tvg_ids(m3u_text: str) -> dict[str, str]:
     """Extract tvg-id → display name mapping from M3U text."""
     ids: dict[str, str] = {}
-    for match in re.finditer(
-        r'tvg-id="([^"]*)"[^,]*,(.+)', m3u_text
-    ):
+    for match in re.finditer(r'tvg-id="([^"]*)"[^,]*,(.+)', m3u_text):
         tvg_id = match.group(1).strip()
         name = match.group(2).strip()
         if tvg_id:
@@ -56,8 +136,8 @@ def _extract_m3u_tvg_ids(m3u_text: str) -> dict[str, str]:
     return ids
 
 
-def _extract_xmltv_channels(xml_text: str) -> dict[str, list[str]]:
-    """Extract channel ID → list of display names from XMLTV."""
+def _stream_extract_channels(xml_text: str) -> dict[str, list[str]]:
+    """Extract channel ID → display names via regex (no DOM parse)."""
     channels: dict[str, list[str]] = {}
     for match in re.finditer(
         r'<channel\s+id="([^"]+)"[^>]*>(.*?)</channel>',
@@ -69,10 +149,31 @@ def _extract_xmltv_channels(xml_text: str) -> dict[str, list[str]]:
     return channels
 
 
+def _stream_extract_programmes_for_ids(
+    xml_text: str, target_ids: set[str]
+) -> dict[str, list[str]]:
+    """Extract <programme> blocks for specific channel IDs via regex.
+
+    Stream-style: scans once, collects only matching programmes.
+    Much faster than per-channel regex when many channels match.
+    """
+    progs: dict[str, list[str]] = {}
+    for match in re.finditer(
+        r'(<programme\s[^>]*channel="([^"]+)"[^>]*>.*?</programme>)',
+        xml_text, re.DOTALL,
+    ):
+        ch_id = match.group(2)
+        if ch_id in target_ids:
+            progs.setdefault(ch_id, []).append(match.group(1))
+    return progs
+
+
+# ---------------------------------------------------------------------------
+# ID mapping (fuzzy matching)
+# ---------------------------------------------------------------------------
+
 def _normalize_for_match(name: str) -> str:
-    """Normalize a channel name for fuzzy matching."""
     s = name.lower()
-    # Remove resolution markers, country codes, common suffixes
     s = re.sub(r'\s*\([^)]*\)\s*', ' ', s)
     s = re.sub(r'\s*\[[^\]]*\]\s*', ' ', s)
     s = re.sub(r'\b(hd|sd|fhd|uhd|4k|720p|1080p|480p|576p|540p|2160p)\b', '', s, flags=re.IGNORECASE)
@@ -81,12 +182,10 @@ def _normalize_for_match(name: str) -> str:
 
 
 def _tokenize(s: str) -> set[str]:
-    """Split into lowercase alpha-numeric tokens for fuzzy matching."""
     return {t for t in re.split(r'[^a-z0-9]+', s.lower()) if len(t) > 1}
 
 
 def _token_similarity(a: str, b: str) -> float:
-    """Jaccard similarity between token sets. 0.0 = no overlap, 1.0 = identical."""
     ta, tb = _tokenize(a), _tokenize(b)
     if not ta or not tb:
         return 0.0
@@ -97,23 +196,13 @@ def _build_id_mapping(
     m3u_ids: dict[str, str],
     epg_channels: dict[str, list[str]],
 ) -> dict[str, str]:
-    """Map EPG channel IDs → M3U tvg-ids.
-
-    Strategy (in priority order):
-    1. Exact ID match
-    2. Case-insensitive ID match
-    3. Normalized ID match (strip .us, .de, resolution markers)
-    4. Exact normalized display name match
-    5. Substring containment (EPG ID in M3U ID or vice versa)
-    6. Token similarity on display names (Jaccard >= 0.6)
-    """
+    """Map EPG channel IDs → M3U tvg-ids (6-level fuzzy matching)."""
     mapping: dict[str, str] = {}
 
-    # Build indices
     m3u_by_norm: dict[str, str] = {}
     m3u_by_id_lower: dict[str, str] = {}
     m3u_by_id_normalized: dict[str, str] = {}
-    m3u_names_list: list[tuple[str, str, str]] = []  # (tvg_id, name, norm_name)
+    m3u_names_list: list[tuple[str, str, str]] = []
     for tvg_id, name in m3u_ids.items():
         norm = _normalize_for_match(name)
         m3u_by_norm[norm] = tvg_id
@@ -122,71 +211,49 @@ def _build_id_mapping(
         m3u_names_list.append((tvg_id, name, norm))
 
     for epg_id, names in epg_channels.items():
-        # 1. Exact ID match
+        # 1-4: Exact, case-insensitive, normalized, display name match
         if epg_id in m3u_ids:
-            mapping[epg_id] = epg_id
-            continue
-
-        # 2. Case-insensitive ID match
+            mapping[epg_id] = epg_id; continue
         matched = m3u_by_id_lower.get(epg_id.lower())
         if matched:
-            mapping[epg_id] = matched
-            continue
-
-        # 3. Normalized ID match (strip .us, .de suffixes)
-        epg_norm_id = _normalize_for_match(epg_id)
-        matched = m3u_by_id_normalized.get(epg_norm_id)
+            mapping[epg_id] = matched; continue
+        matched = m3u_by_id_normalized.get(_normalize_for_match(epg_id))
         if matched:
-            mapping[epg_id] = matched
-            continue
-
-        # 4. Exact normalized display name match
+            mapping[epg_id] = matched; continue
         found = False
         for name in names:
-            norm = _normalize_for_match(name)
-            matched = m3u_by_norm.get(norm)
+            matched = m3u_by_norm.get(_normalize_for_match(name))
             if matched:
-                mapping[epg_id] = matched
-                found = True
-                break
+                mapping[epg_id] = matched; found = True; break
         if found:
             continue
 
-        # 5. Substring containment on normalized IDs
+        # 5. Substring containment
         epg_lower = epg_id.lower().replace(".", "").replace("-", "")
         for m3u_lower, m3u_orig in m3u_by_id_lower.items():
             m3u_clean = m3u_lower.replace(".", "").replace("-", "")
             if len(epg_lower) > 3 and len(m3u_clean) > 3:
                 if epg_lower in m3u_clean or m3u_clean in epg_lower:
-                    mapping[epg_id] = m3u_orig
-                    found = True
-                    break
+                    mapping[epg_id] = m3u_orig; found = True; break
         if found:
             continue
 
-        # 6. Token similarity on display names (fuzzy)
-        best_score = 0.0
-        best_match = ""
+        # 6. Token similarity >= 0.6
+        best_score, best_match = 0.0, ""
         for name in names:
             for m3u_tvg, m3u_name, _ in m3u_names_list:
                 score = _token_similarity(name, m3u_name)
                 if score > best_score:
-                    best_score = score
-                    best_match = m3u_tvg
+                    best_score, best_match = score, m3u_tvg
         if best_score >= 0.6 and best_match:
             mapping[epg_id] = best_match
 
     return mapping
 
 
-def _extract_programmes(xml_text: str, channel_id: str) -> list[str]:
-    """Extract raw <programme> XML blocks for a channel ID."""
-    pattern = re.compile(
-        r'(<programme\s[^>]*channel="' + re.escape(channel_id) + r'"[^>]*>.*?</programme>)',
-        re.DOTALL,
-    )
-    return pattern.findall(xml_text)
-
+# ---------------------------------------------------------------------------
+# Main merge
+# ---------------------------------------------------------------------------
 
 def merge_epgs(
     m3u_paths: list[str],
@@ -197,15 +264,9 @@ def merge_epgs(
 ) -> dict[str, Any]:
     """Merge multiple EPG sources into one XMLTV file.
 
-    Args:
-        m3u_paths: Paths to M3U files (local filesystem)
-        epg_sources: List of {url, name, country_code} dicts
-        output_path: Where to write the merged XMLTV
-        config_root: Controller config root
-        log: Optional log function
-
-    Returns:
-        Summary dict with counts
+    - Downloads in parallel (6 workers)
+    - Caches to disk (6h TTL)
+    - Stream-parses XML (single-pass regex, not DOM)
     """
     def _log(msg: str) -> None:
         if log:
@@ -219,7 +280,6 @@ def merge_epgs(
         try:
             p = Path(m3u_path)
             if not p.is_file():
-                # Try under config_root
                 p = Path(config_root) / m3u_path.lstrip("/")
             if not p.is_file():
                 continue
@@ -234,22 +294,27 @@ def merge_epgs(
     if not all_tvg_ids:
         return {"error": "No tvg-ids found in M3U files", "channels": 0, "programmes": 0}
 
-    # Step 2: Download EPG XMLs and build merged output
-    merged_channels: dict[str, str] = {}  # tvg-id → <channel> XML block
-    merged_programmes: dict[str, list[str]] = {}  # tvg-id → [<programme> blocks]
+    # Step 2: Download all EPGs in parallel with caching
+    downloads = _download_all_parallel(epg_sources, config_root, log)
+
+    # Step 3: Process each downloaded EPG — stream-parse and merge
+    merged_channels: dict[str, str] = {}
+    merged_programmes: dict[str, list[str]] = {}
     sources_used = 0
     sources_failed = 0
 
-    for src in epg_sources:
-        url = src.get("url", "")
-        name = src.get("name", url[:40])
-        if not url:
+    for src, xml_text, error in downloads:
+        name = src.get("name", src.get("url", "")[:40])
+        if error:
+            sources_failed += 1
+            _log(f"[WARN] EPG merge: failed {name}: {error}")
+            continue
+        if not xml_text:
             continue
 
         try:
-            _log(f"[INFO] EPG merge: downloading {name}...")
-            xml_text = _download_xml(url)
-            epg_channels = _extract_xmltv_channels(xml_text)
+            # Stream-extract channels
+            epg_channels = _stream_extract_channels(xml_text)
             id_map = _build_id_mapping(all_tvg_ids, epg_channels)
             matched = len(id_map)
             _log(f"[INFO] EPG merge: {name}: {len(epg_channels)} EPG channels, {matched} matched to M3U")
@@ -259,12 +324,14 @@ def merge_epgs(
 
             sources_used += 1
 
-            # Extract programmes for matched channels, remap IDs
+            # Only extract programmes for matched EPG IDs (single-pass)
+            target_epg_ids = set(id_map.keys())
+            all_progs = _stream_extract_programmes_for_ids(xml_text, target_epg_ids)
+
             for epg_id, tvg_id in id_map.items():
                 if tvg_id in merged_channels:
-                    continue  # Already have this channel from a higher-priority source
+                    continue
 
-                # Build <channel> block with M3U tvg-id
                 display_name = all_tvg_ids.get(tvg_id, tvg_id)
                 merged_channels[tvg_id] = (
                     f'  <channel id="{xml_escape(tvg_id)}">'
@@ -272,22 +339,19 @@ def merge_epgs(
                     f'</channel>'
                 )
 
-                # Extract and remap programmes
-                progs = _extract_programmes(xml_text, epg_id)
+                progs = all_progs.get(epg_id, [])
                 if progs:
-                    # Rewrite channel= attribute to use tvg-id
-                    remapped = []
-                    for prog in progs:
-                        remapped.append(
-                            prog.replace(f'channel="{epg_id}"', f'channel="{xml_escape(tvg_id)}"', 1)
-                        )
+                    remapped = [
+                        p.replace(f'channel="{epg_id}"', f'channel="{xml_escape(tvg_id)}"', 1)
+                        for p in progs
+                    ]
                     merged_programmes.setdefault(tvg_id, []).extend(remapped)
 
         except Exception as exc:
             sources_failed += 1
-            _log(f"[WARN] EPG merge: failed downloading {name}: {exc}")
+            _log(f"[WARN] EPG merge: failed processing {name}: {exc}")
 
-    # Step 3: Write merged XMLTV
+    # Step 4: Write merged XMLTV
     total_progs = sum(len(p) for p in merged_programmes.values())
     channels_with_progs = sum(1 for tvg_id in merged_channels if tvg_id in merged_programmes)
 
