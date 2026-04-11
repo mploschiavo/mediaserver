@@ -186,7 +186,8 @@ class TestAdminOpsSwap(_RegistryTestBase):
         registry_mod.SERVICES = []
         registry_mod.SERVICE_MAP = {}
         from media_stack.api.services.admin import reset_password
-        with patch("media_stack.api.services.admin.get_services_with_password_api", return_value=[]), \
+        with patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": "old"}, clear=False), \
+             patch("media_stack.api.services.admin.get_services_with_password_api", return_value=[]), \
              patch("media_stack.api.services.admin.get_services_with_password_config", return_value=[]), \
              patch("media_stack.api.services.admin.persist_keys_to_secret"):
             result = reset_password("test_pass")
