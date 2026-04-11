@@ -6,6 +6,7 @@ resources:
   - secrets.example.yaml
   - storage-pvc.yaml
   - core.yaml
+  - controller.yaml
   - ingress-traefik.yaml
   - scale-policy.yaml
 

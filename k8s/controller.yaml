@@ -57,10 +57,12 @@ spec:
         app: media-stack-controller
     spec:
       serviceAccountName: media-stack-controller
+      imagePullSecrets:
+      - name: harbor-pull
       containers:
         - name: controller
           image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: SABNZBD_API_KEY
               valueFrom:
