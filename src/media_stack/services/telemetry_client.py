@@ -208,18 +208,23 @@ def _collect_media_metrics() -> dict[str, Any]:
         media["storage_gb"] = round(disk.get("used_bytes", 0) / (1024**3), 1)
     except Exception:
         media["storage_gb"] = 0
-    # Download stats (from qBittorrent)
+    # Download stats — cumulative totals from torrent client, not point-in-time speed
+    try:
+        import docker
+        client = docker.from_env()
+        for c in client.containers.list():
+            if "qbittorrent" in c.name.lower():
+                stats = c.stats(stream=False)
+                nets = stats.get("networks", {})
+                media["torrent_rx_gb"] = round(sum(n.get("rx_bytes", 0) for n in nets.values()) / (1024**3), 2)
+                media["torrent_tx_gb"] = round(sum(n.get("tx_bytes", 0) for n in nets.values()) / (1024**3), 2)
+                break
+    except Exception:
+        pass
     try:
         from media_stack.api.services.content import get_downloads
         dl = get_downloads()
-        active = dl.get("downloads", [])
-        media["active_downloads"] = len(active)
-        media["download_speed_mbps"] = round(
-            sum(d.get("dlspeed", 0) for d in active) / (1024 * 1024), 1
-        )
-        media["upload_speed_mbps"] = round(
-            sum(d.get("upspeed", 0) for d in active) / (1024 * 1024), 1
-        )
+        media["active_downloads"] = len(dl.get("downloads", []))
     except Exception:
         media["active_downloads"] = 0
     return media
@@ -288,7 +293,7 @@ _SCHEMA_FIELDS = [
     "jobs.runs_24h", "jobs.ok", "jobs.errors", "jobs.avg_duration_s",
     "media.libraries", "media.livetv_tuners", "media.indexers",
     "media.storage_gb", "media.active_downloads",
-    "media.download_speed_mbps", "media.upload_speed_mbps",
+    "media.torrent_rx_gb", "media.torrent_tx_gb",
     "network.rx_gb", "network.tx_gb", "network.containers",
 ]
 
