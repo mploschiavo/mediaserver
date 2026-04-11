@@ -26,12 +26,25 @@ logger = logging.getLogger("controller_api")
 # Known actions
 # ---------------------------------------------------------------------------
 
-KNOWN_ACTIONS = frozenset({
+# Core actions (not from contracts)
+_CORE_ACTIONS = {
     "bootstrap", "finalize", "auto-indexers", "restart-apps",
     "sync-indexers", "envoy-config", "reconcile", "validate-credentials",
-    "configure-livetv", "configure-libraries", "configure-plugins",
-    "configure-playback", "configure-categories", "configure-media-server",
-})
+    "configure-media-server",
+}
+
+def _build_known_actions() -> frozenset[str]:
+    """Build KNOWN_ACTIONS from core actions + contract-discovered jobs."""
+    actions = set(_CORE_ACTIONS)
+    try:
+        from media_stack.cli.commands.bootstrap_jobs import discover_jobs_from_contracts
+        for job in discover_jobs_from_contracts():
+            actions.add(job["name"])
+    except Exception:
+        pass
+    return frozenset(actions)
+
+KNOWN_ACTIONS = _build_known_actions()
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +198,7 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         result = config_svc.update_livetv_sources(
             tuners=body.get("tuners"), guides=body.get("guides"),
             tuner_url=body.get("tuner_url", ""), guide_url=body.get("guide_url", ""),
+            load_all_tuners=body.get("load_all_tuners"),
         )
         # Auto-trigger targeted Live TV reconfigure (not full bootstrap)
         if "error" not in result and handler.action_trigger:

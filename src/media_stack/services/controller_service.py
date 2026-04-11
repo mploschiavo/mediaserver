@@ -277,9 +277,17 @@ class ControllerService:
 
     def _run_post_servarr_steps(self, rt: ControllerRuntime) -> None:
         self._run_runner_plan_phase(rt, "post_servarr_pre_media_steps")
-        self._media_server_adapter(rt).run_post_servarr_pre_hygiene_steps()
+        # Media server ops (libraries, livetv, plugins, playback, prewarm)
+        # are handled by the new bootstrap job framework (configure-media-server).
+        # Running them here via the old adapter too would conflict — the old
+        # adapter reads from config.json (1 tuner) and prunes everything the
+        # job framework adds (30 tuners from the profile).
+        import os
+        if os.environ.get("SKIP_MEDIA_SERVER_ADAPTER_IN_FINALIZE") != "1":
+            self._media_server_adapter(rt).run_post_servarr_pre_hygiene_steps()
         self._run_runner_plan_phase(rt, "post_servarr_post_media_steps")
-        self._media_server_adapter(rt).run_post_servarr_post_hygiene_steps()
+        if os.environ.get("SKIP_MEDIA_SERVER_ADAPTER_IN_FINALIZE") != "1":
+            self._media_server_adapter(rt).run_post_servarr_post_hygiene_steps()
 
     def _run_indexers(self, rt: ControllerRuntime) -> None:
         self._run_runner_plan_phase(rt, "indexer_steps")

@@ -59,6 +59,66 @@ live_tv_defaults:
     name: United Kingdom IPTV
   - url: https://iptv-org.github.io/iptv/countries/au.m3u
     name: Australia IPTV
+  - url: https://iptv-org.github.io/iptv/countries/fr.m3u
+    name: France IPTV
+  - url: https://iptv-org.github.io/iptv/countries/de.m3u
+    name: Germany IPTV
+  - url: https://iptv-org.github.io/iptv/countries/it.m3u
+    name: Italy IPTV
+  - url: https://iptv-org.github.io/iptv/countries/es.m3u
+    name: Spain IPTV
+  - url: https://iptv-org.github.io/iptv/countries/id.m3u
+    name: Indonesia IPTV
+  - url: https://iptv-org.github.io/iptv/countries/th.m3u
+    name: Thailand IPTV
+  - url: https://iptv-org.github.io/iptv/countries/ph.m3u
+    name: Philippines IPTV
+  - url: https://iptv-org.github.io/iptv/countries/tw.m3u
+    name: Taiwan IPTV
+  - url: https://iptv-org.github.io/iptv/countries/cn.m3u
+    name: China IPTV
+  - url: https://iptv-org.github.io/iptv/countries/ae.m3u
+    name: UAE IPTV
+  - url: https://iptv-org.github.io/iptv/countries/tr.m3u
+    name: Turkey IPTV
+  - url: https://iptv-org.github.io/iptv/countries/il.m3u
+    name: Israel IPTV
+  - url: https://iptv-org.github.io/iptv/countries/cl.m3u
+    name: Chile IPTV
+  - url: https://iptv-org.github.io/iptv/countries/kr.m3u
+    name: South Korea IPTV
+  - url: https://iptv-org.github.io/iptv/countries/in.m3u
+    name: India IPTV
+  - url: https://iptv-org.github.io/iptv/countries/nl.m3u
+    name: Netherlands IPTV
+  - url: https://iptv-org.github.io/iptv/countries/se.m3u
+    name: Sweden IPTV
+  - url: https://iptv-org.github.io/iptv/countries/no.m3u
+    name: Norway IPTV
+  - url: https://iptv-org.github.io/iptv/countries/dk.m3u
+    name: Denmark IPTV
+  - url: https://iptv-org.github.io/iptv/countries/fi.m3u
+    name: Finland IPTV
+  - url: https://iptv-org.github.io/iptv/countries/pl.m3u
+    name: Poland IPTV
+  - url: https://iptv-org.github.io/iptv/countries/pt.m3u
+    name: Portugal IPTV
+  - url: https://iptv-org.github.io/iptv/countries/br.m3u
+    name: Brazil IPTV
+  - url: https://iptv-org.github.io/iptv/countries/mx.m3u
+    name: Mexico IPTV
+  - url: https://iptv-org.github.io/iptv/countries/ru.m3u
+    name: Russia IPTV
+  - url: https://iptv-org.github.io/iptv/countries/hk.m3u
+    name: Hong Kong IPTV
+  - url: https://iptv-org.github.io/iptv/countries/za.m3u
+    name: South Africa IPTV
+  - url: https://iptv-org.github.io/iptv/countries/jp.m3u
+    name: Japan IPTV
+  - url: https://iptv-org.github.io/iptv/countries/co.m3u
+    name: Colombia IPTV
+  - url: https://iptv-org.github.io/iptv/countries/ar.m3u
+    name: Argentina IPTV
   guides:
   - url: https://iptv-epg.org/files/epg-us.xml
     name: Default
@@ -70,6 +130,66 @@ live_tv_defaults:
     name: United Kingdom EPG
   - url: https://iptv-epg.org/files/epg-au.xml
     name: Australia EPG
+  - url: https://iptv-epg.org/files/epg-fr.xml
+    name: France EPG
+  - url: https://iptv-epg.org/files/epg-de.xml
+    name: Germany EPG
+  - url: https://iptv-epg.org/files/epg-it.xml
+    name: Italy EPG
+  - url: https://iptv-epg.org/files/epg-es.xml
+    name: Spain EPG
+  - url: https://iptv-epg.org/files/epg-id.xml
+    name: Indonesia EPG
+  - url: https://iptv-epg.org/files/epg-th.xml
+    name: Thailand EPG
+  - url: https://iptv-epg.org/files/epg-ph.xml
+    name: Philippines EPG
+  - url: https://iptv-epg.org/files/epg-tw.xml
+    name: Taiwan EPG
+  - url: https://iptv-epg.org/files/epg-cn.xml
+    name: China EPG
+  - url: https://iptv-epg.org/files/epg-ae.xml
+    name: UAE EPG
+  - url: https://iptv-epg.org/files/epg-tr.xml
+    name: Turkey EPG
+  - url: https://iptv-epg.org/files/epg-il.xml
+    name: Israel EPG
+  - url: https://iptv-epg.org/files/epg-cl.xml
+    name: Chile EPG
+  - url: https://iptv-epg.org/files/epg-kr.xml
+    name: South Korea EPG
+  - url: https://iptv-epg.org/files/epg-in.xml
+    name: India EPG
+  - url: https://iptv-epg.org/files/epg-nl.xml
+    name: Netherlands EPG
+  - url: https://iptv-epg.org/files/epg-se.xml
+    name: Sweden EPG
+  - url: https://iptv-epg.org/files/epg-no.xml
+    name: Norway EPG
+  - url: https://iptv-epg.org/files/epg-dk.xml
+    name: Denmark EPG
+  - url: https://iptv-epg.org/files/epg-fi.xml
+    name: Finland EPG
+  - url: https://iptv-epg.org/files/epg-pl.xml
+    name: Poland EPG
+  - url: https://iptv-epg.org/files/epg-pt.xml
+    name: Portugal EPG
+  - url: https://iptv-epg.org/files/epg-br.xml
+    name: Brazil EPG
+  - url: https://iptv-epg.org/files/epg-mx.xml
+    name: Mexico EPG
+  - url: https://iptv-epg.org/files/epg-ru.xml
+    name: Russia EPG
+  - url: https://iptv-epg.org/files/epg-hk.xml
+    name: Hong Kong EPG
+  - url: https://iptv-epg.org/files/epg-za.xml
+    name: South Africa EPG
+  - url: https://iptv-epg.org/files/epg-jp.xml
+    name: Japan EPG
+  - url: https://iptv-epg.org/files/epg-co.xml
+    name: Colombia EPG
+  - url: https://iptv-epg.org/files/epg-ar.xml
+    name: Argentina EPG
 download_categories:
   tv: /data/torrents/completed/tv
   movies: /data/torrents/completed/movies

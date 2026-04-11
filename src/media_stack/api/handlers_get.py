@@ -202,6 +202,15 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, config_svc.get_discovery_lists())
     elif path == "/api/iptv-countries":
         handler._json_response(200, config_svc.get_iptv_countries())
+    elif path == "/api/epg-providers":
+        from media_stack.services.epg_provider_service import get_guide_providers, _load_health_cache
+        handler._json_response(200, {
+            "providers": get_guide_providers(),
+            "health": _load_health_cache(),
+        })
+    elif path == "/api/epg-health":
+        from media_stack.services.epg_provider_service import run_health_check
+        handler._json_response(200, run_health_check())
     elif path == "/api/storage-breakdown":
         handler._json_response(200, disk_svc.get_storage_breakdown())
     elif path == "/api/import-lists-all":

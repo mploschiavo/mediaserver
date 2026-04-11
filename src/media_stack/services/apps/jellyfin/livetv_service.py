@@ -340,9 +340,13 @@ class JellyfinService:
                     payload=payload,
                 )
                 if status not in (200, 201, 202):
-                    raise RuntimeError(
-                        f"Jellyfin Live TV: failed creating tuner {tuner_url} (HTTP {status}): {body}"
+                    d.log(
+                        f"[WARN] Jellyfin Live TV: failed adding tuner {tuner_url} "
+                        f"(HTTP {status}): {body[:100]}. Continuing with remaining tuners."
                     )
+                    import time as _time
+                    _time.sleep(5)  # Back off before next attempt
+                    continue
 
                 created_id = (
                     str((data or {}).get("Id") or "").strip() if isinstance(data, dict) else ""
@@ -352,6 +356,8 @@ class JellyfinService:
                     state["tuner_ids_by_key"][key] = created_id
                 added_tuners += 1
                 d.log(f"[OK] Jellyfin Live TV: added tuner ({tuner_type} {tuner_url})")
+                import time as _time
+                _time.sleep(2)  # Give Jellyfin time between tuner additions
 
             state = d.load_state(config_root, live_cfg)
 
@@ -425,9 +431,11 @@ class JellyfinService:
                     payload=payload,
                 )
                 if status not in (200, 201, 202):
-                    raise RuntimeError(
-                        f"Jellyfin Live TV: failed creating guide {guide_path} (HTTP {status}): {body}"
+                    d.log(
+                        f"[WARN] Jellyfin Live TV: failed adding guide {guide_path} "
+                        f"(HTTP {status}): {body[:100]}. Continuing with remaining guides."
                     )
+                    continue
 
                 state["guide_keys"].add(guide_key)
                 added_guides += 1
@@ -439,12 +447,18 @@ class JellyfinService:
             )
 
         if added_tuners > 0 or added_guides > 0 or refresh_on_bootstrap:
+            # Trigger channel refresh first (fast), then guide refresh (slow).
+            # Wait for both to complete so the UI shows guide data immediately.
             refresh_ops = [
                 ("/LiveTv/RefreshChannels", "channel refresh"),
                 ("/LiveTv/RefreshGuide", "guide refresh"),
             ]
             for path, label in refresh_ops:
-                ok, detail = d.trigger_refresh(jellyfin_url, jellyfin_api_key, path, label)
+                wait = added_tuners > 0 or added_guides > 0
+                ok, detail = d.trigger_refresh(
+                    jellyfin_url, jellyfin_api_key, path, label,
+                    wait=wait, wait_timeout=120,
+                )
                 if ok:
                     d.log(f"[OK] Jellyfin Live TV: {detail}")
                 else:

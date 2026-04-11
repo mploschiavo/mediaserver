@@ -66,7 +66,6 @@ def _dispatch_action(
         action_bootstrap, action_finalize, action_auto_indexers,
         action_restart_apps, action_sync_indexers, action_envoy_config,
         action_reconcile, action_validate_credentials,
-        action_configure_livetv,
     )
     from media_stack.cli.commands.controller_handlers import (
         _load_handler_specs,
@@ -100,8 +99,6 @@ def _dispatch_action(
         action_validate_credentials()
     elif action_name == "reconcile":
         action_reconcile(args, _build_runner)
-    elif action_name == "configure-livetv":
-        action_configure_livetv(args, _build_runner)
     elif action_name == "configure-media-server":
         # Composite job: all media server sub-jobs
         from media_stack.cli.commands.bootstrap_jobs import run_all_media_server_jobs

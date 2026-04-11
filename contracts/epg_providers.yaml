@@ -1,0 +1,90 @@
+# EPG Provider Registry
+#
+# Each provider defines URL templates for tuner playlists (M3U) and
+# programme guides (XMLTV). The controller tries providers in priority
+# order until one succeeds for each country.
+#
+# Template variables:
+#   {code}  - lowercase country code (us, gb, de)
+#   {CODE}  - uppercase country code (US, GB, DE)
+#   {name}  - lowercase country name (unitedstates, unitedkingdom)
+#
+# Formats: xml, xml.gz (auto-decompressed)
+
+schema_version: 1
+
+# Tuner (M3U playlist) providers — usually just one is needed
+tuner_providers:
+  - id: iptv-org
+    name: IPTV-ORG
+    url_template: https://iptv-org.github.io/iptv/countries/{code}.m3u
+    format: m3u
+    priority: 1
+    enabled: true
+
+# EPG guide (XMLTV) providers — tried in priority order per country
+guide_providers:
+  - id: iptv-epg
+    name: IPTV-EPG.org
+    url_template: https://iptv-epg.org/files/epg-{code}.xml
+    format: xml
+    priority: 1
+    enabled: true
+    notes: Best for US, EU. ~30 countries. 7-day guide data.
+
+  - id: epg-pw
+    name: EPG.pw
+    url_template: https://epg.pw/xmltv/epg_{CODE}.xml.gz
+    format: xml.gz
+    priority: 2
+    enabled: true
+    notes: 20 countries. Good Asia-Pacific coverage (CN, HK, JP, SG, MY, VN). Daily updates.
+
+  - id: epgshare01
+    name: EPGShare01
+    url_template: https://epgshare01.online/epgshare01/epg_ripper_{CODE}1.xml.gz
+    format: xml.gz
+    priority: 3
+    enabled: true
+    notes: 102 files, 50+ countries. Broad coverage. Gzipped.
+
+  - id: epgtalk
+    name: EPGTalk
+    format: xml
+    priority: 4
+    enabled: true
+    notes: US/UK/Mexico only. High channel count. Updated daily.
+    # EPGTalk uses region names not country codes — mapped below
+    country_urls:
+      us: https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/us.xml
+      gb: https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/uk.xml
+      mx: https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/latino.xml
+
+  - id: freeview-epg
+    name: Freeview EPG
+    format: xml
+    priority: 5
+    enabled: true
+    notes: UK Freeview + radio. Updated every 12 hours.
+    country_urls:
+      gb: https://raw.githubusercontent.com/dp247/Freeview-EPG/master/epg.xml
+
+  - id: open-epg
+    name: Open-EPG
+    format: xml
+    priority: 6
+    enabled: false
+    notes: 80+ countries but mixed freshness. 20 downloads/day limit. 2-day data only.
+    # Disabled by default — inconsistent file numbering and rate limits.
+    # Enable manually and set country_urls for specific countries needed.
+    country_urls: {}
+
+# Health check settings
+health_check:
+  enabled: true
+  interval_hours: 24
+  timeout_seconds: 10
+  # HEAD request to check if URL returns 200 (no full download)
+  method: head
+  # Cache results to avoid re-checking within interval
+  cache_file: epg-provider-health.json

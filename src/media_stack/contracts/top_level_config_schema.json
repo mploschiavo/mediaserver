@@ -17,6 +17,7 @@
     "homepage": "object",
     "jellyfin_auto_collections": "object",
     "jellyfin_home_rails": "object",
+    "jellyfin_home_rails_presets": "array",
     "jellyfin_libraries": "object",
     "jellyfin_livetv": "object",
     "jellyfin_playback": "object",

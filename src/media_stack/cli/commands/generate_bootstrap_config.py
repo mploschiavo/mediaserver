@@ -57,7 +57,25 @@ def generate(
                     svc_data = yaml.safe_load(f) or {}
                 svc_id = svc_data.get("service", {}).get("id", "")
                 defaults = svc_data.get("defaults", {})
-                if svc_id and defaults and (not allowed_keys or svc_id in allowed_keys):
+                if not svc_id or not defaults:
+                    continue
+                if allowed_keys and svc_id not in allowed_keys:
+                    continue
+                # Services with independent sub-features (e.g., jellyfin has
+                # libraries, livetv, plugins, playback as separate dicts)
+                # must be flattened to top-level keys like jellyfin_libraries.
+                # Runtime handlers read cfg.get("jellyfin_libraries"), not
+                # cfg["jellyfin"]["libraries"].
+                # Detect: if ALL values are dicts/lists (no scalars), flatten.
+                # Services with mixed types (bazarr has enabled, url as scalars)
+                # keep their single-key form: cfg.get("bazarr").
+                all_complex = defaults and all(
+                    isinstance(v, (dict, list)) for v in defaults.values()
+                )
+                if all_complex:
+                    for sub_key, sub_val in defaults.items():
+                        config[f"{svc_id}_{sub_key}"] = sub_val
+                else:
                     config[svc_id] = defaults
             except Exception:
                 pass

@@ -2473,19 +2473,24 @@ async function deleteServerSchedule(id){
 
 /* Live TV / IPTV sources config — multi-country support */
 let _iptvCountries=[];
-let _ltvTuners=[];let _ltvGuides=[];
+let _ltvTuners=[];let _ltvGuides=[];let _ltvLoadAll=false;
 // Load country list from API (not hardcoded)
 fetch('/api/iptv-countries').then(r=>r.json()).then(d=>{_iptvCountries=d.countries||[];}).catch(()=>{});
 async function loadLiveTvConfig(){
   const el=document.getElementById('livetv-config');
   try{const r=await fetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
-    _ltvTuners=d.tuners||[];_ltvGuides=d.guides||[];
+    _ltvTuners=d.tuners||[];_ltvGuides=d.guides||[];_ltvLoadAll=!!d.load_all_tuners;
     renderLiveTvConfig();
   }catch(e){el.innerHTML='Error: '+e;}
 }
 function renderLiveTvConfig(){
   const el=document.getElementById('livetv-config');
-  let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Add Live TV sources by country. Multiple countries supported — all channels show up in your media server.</p>';
+  let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Add Live TV sources by country. Only countries with a working guide (EPG) are loaded by default — every channel will have programme data.</p>';
+  // Load all tuners toggle
+  h+='<div style="margin:0 0 10px;display:flex;align-items:center;gap:8px">';
+  h+='<label style="font-size:.85em;display:flex;align-items:center;gap:6px;cursor:pointer">';
+  h+='<input type="checkbox" id="ltv-load-all" '+(_ltvLoadAll?'checked':'')+' onchange="_ltvLoadAll=this.checked">';
+  h+='<span>Load all tuners (including countries without guide data)</span></label></div>';
   // Quick-add by country
   h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Quick Add by Country</div>';
   h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
@@ -2554,7 +2559,7 @@ function removeLiveTvTuner(i){_ltvTuners.splice(i,1);renderLiveTvConfig();}
 function removeLiveTvGuide(i){_ltvGuides.splice(i,1);renderLiveTvConfig();}
 async function saveLiveTv(){
   try{const r=await fetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({tuners:_ltvTuners,guides:_ltvGuides})});
+    body:JSON.stringify({tuners:_ltvTuners,guides:_ltvGuides,load_all_tuners:_ltvLoadAll})});
     const d=await r.json();
     if(d.status==='saved'){toast('Live TV saved — configuring media server automatically...');loadLiveTvConfig();}
     else toast(d.error||'Save failed',true);

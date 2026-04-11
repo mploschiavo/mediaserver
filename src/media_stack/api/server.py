@@ -37,22 +37,33 @@ ActionTriggerFn = Callable[[str, dict[str, Any]], None]
 KNOWN_ACTIONS = handlers_post.KNOWN_ACTIONS
 
 # Lower number = higher priority. Used by PriorityQueue in the dispatch loop.
-ACTION_PRIORITY: dict[str, int] = {
+# Core action priorities (configure-* jobs get priority from their contract).
+_CORE_ACTION_PRIORITY: dict[str, int] = {
     "bootstrap":     10,
-    "finalize":      20,
+    "configure-media-server": 15,
     "envoy-config":  30,
     "restart-apps":  40,
-    "configure-media-server": 42,
-    "configure-libraries": 43,
-    "configure-livetv": 44,
-    "configure-plugins": 45,
-    "configure-playback": 46,
-    "configure-categories": 47,
+    "finalize":      45,
     "reconcile":     50,
     "sync-indexers": 60,
     "auto-indexers": 70,
     "validate-credentials": 80,
 }
+
+def _build_action_priority() -> dict[str, int]:
+    """Build ACTION_PRIORITY from core + contract-discovered jobs."""
+    priorities = dict(_CORE_ACTION_PRIORITY)
+    try:
+        from media_stack.cli.commands.bootstrap_jobs import discover_jobs_from_contracts
+        _PHASE_BASE = {"media_server": 40, "download_clients": 50, "default": 55, "post": 75}
+        for job in discover_jobs_from_contracts():
+            base = _PHASE_BASE.get(job["phase"], 55)
+            priorities.setdefault(job["name"], base + job.get("priority", 50) // 10)
+    except Exception:
+        pass
+    return priorities
+
+ACTION_PRIORITY: dict[str, int] = _build_action_priority()
 DEFAULT_ACTION_PRIORITY = 50
 
 

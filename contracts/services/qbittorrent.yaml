@@ -20,6 +20,11 @@ plugin:
   service_technology_map:
     qbittorrent_service: qbittorrent
     torrent_client_service: qbittorrent
+  jobs:
+    configure-categories:
+      handler: media_stack.cli.commands.bootstrap_jobs:_configure_categories
+      phase: download_clients
+      priority: 10
   event_handlers:
     ACQUIRE:
       torrent_client_login: media_stack.services.apps.qbittorrent.runtime_ops:torrent_client_login
