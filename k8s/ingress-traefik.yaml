@@ -11,7 +11,13 @@ metadata:
     media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
 spec:
   ingressClassName: public
+  tls:
+    - hosts:
+        - jf.iomio.io
+      secretName: iomio-tls
   rules:
+    - host: jf.iomio.io
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: jellyfin, port: {number: 8096}}}}]}
     - host: homepage.local
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: homepage, port: {number: 3000}}}}]}
     - host: jellyfin.local
