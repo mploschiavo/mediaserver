@@ -26,6 +26,8 @@ header .links a:hover,header .links button:hover{color:var(--accent);border-colo
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .phase{font-size:1.3em;font-weight:bold;margin-bottom:4px}
 .ok{color:var(--ok)}.error{color:var(--err)}.running{color:var(--warn)}.idle{color:var(--fg3)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--fg3);border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
 .quick-links{display:flex;gap:4px;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
 .quick-links a{padding:3px 8px;font-size:.75em;border-radius:4px;background:transparent;color:var(--fg2);text-decoration:none;border:1px solid var(--border);transition:all .15s;white-space:nowrap;flex-shrink:0}
 .quick-links a:hover{color:var(--accent);border-color:var(--accent)}
@@ -555,7 +557,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="cfg-downloads" class="subtab" style="display:none"><div id="downloads-config">Loading...</div></div>
     <div id="cfg-metadata" class="subtab" style="display:none"><div id="metadata-config">Loading...</div></div>
     <div id="cfg-livetv" class="subtab" style="display:none"><div id="livetv-config">Loading...</div></div>
-    <div id="cfg-jobs" class="subtab" style="display:none"><div id="jobs-tree">Loading...</div></div>
+    <div id="cfg-jobs" class="subtab" style="display:none"><div id="jobs-tree"><span class="spinner"></span> Loading jobs...</div></div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -1136,14 +1138,76 @@ async function loadRecent(){
 }
 
 /* Indexers */
+let _indexers=[];
 async function loadIndexers(){
-  try{const r=await fetch('/api/indexers');if(r.ok){const d=await r.json();
-    if(d.error){document.getElementById('indexer-list').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
-    const idx=d.indexers||[];if(!idx.length){document.getElementById('indexer-list').innerHTML='<span style="color:var(--fg3)">No indexers configured</span>';return;}
-    let h='<table class="idx-table"><thead><tr><th>Name</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead><tbody>';
-    for(const i of idx){h+='<tr><td style="font-weight:600">'+i.name+'</td><td style="color:var(--fg3)">'+i.implementation+'</td><td>'+i.priority+'</td><td>'+(i.enabled?'<span class="ok">Enabled</span>':'<span style="color:var(--fg3)">Disabled</span>')+'</td></tr>';}
-    h+='</tbody></table><div style="margin-top:8px;font-size:.82em;color:var(--fg3)">'+d.enabled+'/'+d.total+' enabled</div>';
-    document.getElementById('indexer-list').innerHTML=h;}}catch(e){document.getElementById('indexer-list').innerHTML='Error loading indexers';}
+  const el=document.getElementById('indexer-list');
+  el.innerHTML='<span class="spinner"></span> Loading indexers...';
+  try{const r=await fetch('/api/indexers');if(!r.ok){el.innerHTML='Failed';return;}
+    const d=await r.json();
+    if(d.error){el.innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
+    _indexers=d.indexers||[];renderIndexers();
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+function renderIndexers(){
+  const idx=_indexers;const el=document.getElementById('indexer-list');
+  if(!idx.length){el.innerHTML='<span style="color:var(--fg3)">No indexers. Run Auto-Indexers to discover.</span>';return;}
+  const enabled=idx.filter(i=>i.enabled).length;
+  let h='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">';
+  h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(true)">Enable All</button>';
+  h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(false)">Disable All</button>';
+  h+='<button class="btn-danger" style="padding:3px 8px;font-size:.75em" onclick="deleteDisabledIndexers()">Delete Disabled</button>';
+  h+='<span style="color:var(--fg3);font-size:.82em;margin-left:auto">'+enabled+'/'+idx.length+' enabled</span></div>';
+  h+='<div style="max-height:400px;overflow-y:auto">';
+  h+='<table class="idx-table"><thead><tr><th style="width:30px"><input type="checkbox" id="idx-select-all" onchange="selectAllIndexers(this.checked)"></th><th>Name</th><th>Type</th><th>Pri</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  for(const i of idx){
+    const statusCls=i.enabled?'ok':'';
+    const statusTxt=i.enabled?'Enabled':'Disabled';
+    h+='<tr data-idx-id="'+i.id+'">';
+    h+='<td><input type="checkbox" class="idx-cb" value="'+i.id+'"></td>';
+    h+='<td style="font-weight:600;font-size:.85em">'+_escHtml(i.name)+'</td>';
+    h+='<td style="color:var(--fg3);font-size:.8em">'+_escHtml(i.implementation||'')+'</td>';
+    h+='<td style="font-size:.8em">'+i.priority+'</td>';
+    h+='<td><span class="'+statusCls+'" style="font-size:.8em">'+statusTxt+'</span></td>';
+    h+='<td style="white-space:nowrap">';
+    h+='<button class="btn-secondary" style="padding:1px 6px;font-size:.7em" onclick="toggleIndexer('+i.id+','+(!i.enabled)+')">'+(i.enabled?'Disable':'Enable')+'</button> ';
+    h+='<button class="btn-danger" style="padding:1px 6px;font-size:.7em" onclick="deleteIndexer('+i.id+',\''+_escHtml(i.name)+'\')">Del</button>';
+    h+='</td></tr>';
+  }
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+async function toggleIndexer(id,enable){
+  try{await fetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});
+    toast((enable?'Enabled':'Disabled')+' indexer');loadIndexers();
+  }catch(e){toast('Error: '+e,true);}
+}
+async function deleteIndexer(id,name){
+  if(!confirm('Delete indexer "'+name+'"?'))return;
+  try{await fetch('/api/indexers/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});
+    toast('Deleted '+name);loadIndexers();
+  }catch(e){toast('Error: '+e,true);}
+}
+async function toggleAllIndexers(enable){
+  const ids=_indexers.filter(i=>i.enabled!==enable).map(i=>i.id);
+  if(!ids.length){toast('Nothing to change');return;}
+  toast((enable?'Enabling':'Disabling')+' '+ids.length+' indexers...');
+  for(const id of ids){
+    try{await fetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});}catch(e){}
+  }
+  loadIndexers();
+}
+async function deleteDisabledIndexers(){
+  const disabled=_indexers.filter(i=>!i.enabled);
+  if(!disabled.length){toast('No disabled indexers');return;}
+  if(!confirm('Delete '+disabled.length+' disabled indexers?'))return;
+  toast('Deleting '+disabled.length+' indexers...');
+  for(const i of disabled){
+    try{await fetch('/api/indexers/'+i.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});}catch(e){}
+  }
+  loadIndexers();
+}
+function selectAllIndexers(checked){
+  document.querySelectorAll('.idx-cb').forEach(cb=>cb.checked=checked);
 }
 
 /* Profile */
@@ -1768,25 +1832,60 @@ async function loadIndexerStats(){
   }catch(e){}
 }
 
-/* #11 Quality profiles */
+/* #11 Quality profiles — read-only view grouped by service */
 async function loadQualityProfiles(){
+  const el=document.getElementById('lib-profiles');
+  el.innerHTML='<span class="spinner"></span> Loading quality profiles...';
   try{const r=await fetch('/api/quality-profiles');if(!r.ok)return;const d=await r.json();
-    let h='';for(const[app,profiles]of Object.entries(d.profiles||{})){if(!profiles.length)continue;
-      h+='<div class="cat-label">'+(SVC_MAP[app]?SVC_MAP[app].name:app)+'</div>';
-      for(const p of profiles)h+='<div class="svc-row" style="cursor:default;font-size:.85em"><span class="sname">'+p.name+'</span><span class="smeta">ID: '+p.id+'</span></div>';}
-    document.getElementById('lib-profiles').innerHTML=h||'<span style="color:var(--fg3)">No profiles found</span>';
-  }catch(e){}
+    let h='<p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Quality profiles are managed per-service. Click a service name to open its settings.</p>';
+    for(const[app,profiles]of Object.entries(d.profiles||{})){if(!profiles.length)continue;
+      const svc=SVC_MAP[app];const name=svc?svc.name:app;
+      h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">'+_escHtml(name)+' ('+profiles.length+' profiles)</div>';
+      for(const p of profiles){
+        h+='<div class="svc-row" style="cursor:default;font-size:.85em">';
+        h+='<span class="sname">'+_escHtml(p.name)+'</span>';
+        h+='<span class="smeta" style="min-width:60px">ID: '+p.id+'</span>';
+        if(p.upgradeAllowed!==undefined)h+='<span class="smeta">'+(p.upgradeAllowed?'&#8593; Upgrades':'No upgrades')+'</span>';
+        h+='</div>';
+      }
+      h+='</div>';
+    }
+    el.innerHTML=h||'<span style="color:var(--fg3)">No profiles found</span>';
+  }catch(e){el.innerHTML='Error: '+e;}
 }
 
-/* #12 Import lists */
+/* #12 Import / discovery lists — with enable/disable and delete */
 async function loadImportLists(){
+  const el=document.getElementById('lib-imports');
+  el.innerHTML='<span class="spinner"></span> Loading discovery lists...';
   try{const r=await fetch('/api/import-lists');if(!r.ok)return;const d=await r.json();
-    let h='';for(const[app,lists]of Object.entries(d.import_lists||{})){if(!lists.length)continue;
-      h+='<div class="cat-label">'+(SVC_MAP[app]?SVC_MAP[app].name:app)+'</div>';
-      for(const il of lists){const dotCls=il.enabled?'ok':'idle';
-        h+='<div class="svc-row" style="cursor:default;font-size:.85em"><span class="dot '+dotCls+'"></span><span class="sname">'+il.name+'</span><span class="smeta">'+il.type+'</span></div>';}}
-    document.getElementById('lib-imports').innerHTML=h||'<span style="color:var(--fg3)">No import lists</span>';
-  }catch(e){}
+    let h='<p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Discovery lists auto-add content to your library. Toggle or delete below.</p>';
+    let total=0;
+    for(const[app,lists]of Object.entries(d.import_lists||{})){if(!lists.length)continue;
+      const svc=SVC_MAP[app];const name=svc?svc.name:app;
+      h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">'+_escHtml(name)+' ('+lists.length+' lists)</div>';
+      for(const il of lists){total++;
+        const dotCls=il.enabled?'ok':'idle';
+        const statusTxt=il.enabled?'Enabled':'Disabled';
+        h+='<div class="svc-row" style="cursor:default;font-size:.85em;display:flex;align-items:center;gap:6px">';
+        h+='<span class="dot '+dotCls+'"></span>';
+        h+='<span class="sname">'+_escHtml(il.name)+'</span>';
+        h+='<span class="smeta" style="flex:1">'+_escHtml(il.type||'')+'</span>';
+        h+='<span class="smeta" style="font-size:.75em">'+statusTxt+'</span>';
+        h+='<button class="btn-danger" style="padding:1px 6px;font-size:.7em" onclick="deleteImportList(\''+_escHtml(app)+'\','+il.id+',\''+_escHtml(il.name)+'\')">Del</button>';
+        h+='</div>';
+      }
+      h+='</div>';
+    }
+    if(!total)h+='<span style="color:var(--fg3)">No discovery lists. Run bootstrap to auto-create from profile.</span>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+async function deleteImportList(svcId,listId,name){
+  if(!confirm('Delete list "'+name+'" from '+svcId+'?'))return;
+  try{const r=await fetch('/api/import-lists/'+svcId+'/'+listId+'/delete',{method:'POST'});
+    const d=await r.json();toast(d.status==='deleted'?'Deleted '+name:(d.error||'Failed'));loadImportLists();
+  }catch(e){toast('Error: '+e,true);}
 }
 
 /* #13 Scheduled actions with execution history */
@@ -1828,8 +1927,8 @@ schedules.forEach(s=>{schedTimers[s.id]=setInterval(()=>{_schedExec(s.action,s.i
 /* #15 Config drift detector */
 async function renderDrift(){
   const el=document.getElementById('drift-view');
-  el.innerHTML='<span style="color:var(--fg3)">Checking config drift...</span>';
-  // Fetch real drift data from backend
+  el.innerHTML='<span class="spinner"></span> <span style="color:var(--fg3)">Checking config drift (may take a few seconds on first load)...</span>';
+  // Fetch real drift data from backend (cached 60s on server side)
   let driftData=null;
   try{const r=await fetch('/api/config-drift');if(r.ok)driftData=await r.json();}catch(e){}
   let h='<div style="font-size:.85em">';
