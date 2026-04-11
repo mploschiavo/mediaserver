@@ -184,6 +184,10 @@ def _run_serve(args: argparse.Namespace) -> None:
     runtime_platform.log(f"[INFO] Actions: POST /actions/{{name}} | GET /status")
     runtime_platform.log(f"[INFO] SSE log stream: GET /logs/stream")
 
+    # Start telemetry push (if configured)
+    from media_stack.services.telemetry_client import start_telemetry_timer
+    start_telemetry_timer(log=runtime_platform.log)
+
     # Start config snapshot background timer
     snapshot_interval = int(os.environ.get("CONFIG_SNAPSHOT_INTERVAL_SECONDS", "3600"))  # 1h default
     if snapshot_interval > 0:
