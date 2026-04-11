@@ -448,7 +448,7 @@ spec:
           containers:
             - name: bootstrap-reconcile
               image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-              imagePullPolicy: Always
+              imagePullPolicy: IfNotPresent
               env:
                 - name: SABNZBD_API_KEY
                   valueFrom:
@@ -604,7 +604,7 @@ spec:
           containers:
             - name: jellyfin-prewarm
               image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-              imagePullPolicy: Always
+              imagePullPolicy: IfNotPresent
               env:
                 - name: JELLYFIN_API_KEY
                   valueFrom:
@@ -681,7 +681,7 @@ spec:
           containers:
             - name: media-hygiene
               image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-              imagePullPolicy: Always
+              imagePullPolicy: IfNotPresent
               env:
                 - name: STACK_ADMIN_USERNAME
                   valueFrom:
