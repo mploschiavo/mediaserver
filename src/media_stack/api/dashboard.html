@@ -400,13 +400,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="lib-history" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
     <div id="lib-profiles" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
     <div id="lib-imports" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
-    <div id="lib-indexers" class="subtab" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="color:var(--fg2);font-size:.9em">Prowlarr Indexers</span>
-        <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showLoading();loadIndexers().finally(hideLoading)">Refresh</button>
-      </div>
-      <div id="indexer-list">Loading...</div>
-    </div>
+    <div id="lib-indexers" class="subtab" style="display:none">Loading...</div>
   </div>
 
   <!-- Routing tab (was DNS) -->
@@ -1150,9 +1144,16 @@ async function loadIndexers(){
 }
 function renderIndexers(){
   const idx=_indexers;const el=document.getElementById('lib-indexers');
-  if(!idx.length){el.innerHTML='<span style="color:var(--fg3)">No indexers. Run Auto-Indexers to discover.</span>';return;}
+  if(!idx.length){
+    el.innerHTML='<p style="color:var(--fg3)">No indexers configured.</p>'+
+      '<button class="btn-primary" onclick="triggerJob(\'discover-indexers\');setTimeout(loadIndexers,5000)">Discover Indexers</button>';
+    return;
+  }
   const enabled=idx.filter(i=>i.enable).length;
   let h='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">';
+  h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="loadIndexers()">Refresh</button>';
+  h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="triggerJob(\'discover-indexers\')">Discover More</button>';
+  h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="triggerJob(\'push-indexers\')">Push to Arr Apps</button>';
   h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(true)">Enable All</button>';
   h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(false)">Disable All</button>';
   h+='<button class="btn-danger" style="padding:3px 8px;font-size:.75em" onclick="deleteDisabledIndexers()">Delete Disabled</button>';
@@ -2681,9 +2682,26 @@ async function loadJobTree(){
   const el=document.getElementById('cfg-jobs');
   if(!el)return;
   try{
-    const r=await fetch('/api/jobs');if(!r.ok){el.innerHTML='Failed';return;}
-    const d=await r.json();
+    const [jobsResp, statusResp] = await Promise.all([fetch('/api/jobs'), fetch('/status')]);
+    if(!jobsResp.ok){el.innerHTML='Failed';return;}
+    const d=await jobsResp.json();
+    const st=statusResp.ok?await statusResp.json():{};
     let h='';
+    // Live status
+    const cur=st.current_action;
+    if(cur&&cur.name){
+      h+='<div class="action-group" style="margin-bottom:12px;border-left:3px solid var(--warn)">';
+      h+='<div class="action-group-title"><span class="spinner"></span> Running: '+_escHtml(cur.name)+'</div>';
+      h+='<div style="font-size:.82em;color:var(--fg3);padding:2px 0">Started: '+new Date(cur.started_at).toLocaleTimeString();
+      if(cur.elapsed_seconds)h+=' ('+Math.round(cur.elapsed_seconds)+'s elapsed)';
+      h+='</div></div>';
+    }
+    const pending=st.pending_actions||[];
+    if(pending.length){
+      h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">Queued ('+pending.length+')</div>';
+      for(const p of pending){h+='<div style="font-size:.82em;color:var(--fg3);padding:1px 0">&#9203; '+_escHtml(p.action||'?')+'</div>';}
+      h+='</div>';
+    }
     // Job tree
     h+='<div class="action-group" style="margin-bottom:12px"><div class="action-group-title">Job Tree ('+d.count+' jobs from contracts)</div>';
     h+='<div style="font-family:monospace;font-size:.85em;line-height:1.8;padding:4px 0">';
@@ -2719,6 +2737,8 @@ async function loadJobTree(){
     }
     h+='</div>';
     el.innerHTML=h;
+    // Auto-refresh while action is running
+    if(cur&&cur.name){setTimeout(()=>{const tab=document.getElementById('cfg-jobs');if(tab&&tab.style.display!=='none')loadJobTree();},5000);}
   }catch(e){el.innerHTML='Error: '+e;}
 }
 function renderJobNode(node,depth){

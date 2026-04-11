@@ -303,6 +303,8 @@ def merge_epgs(
     sources_used = 0
     sources_failed = 0
 
+    all_tvg_id_set = set(all_tvg_ids.keys())
+
     for src, xml_text, error in downloads:
         name = src.get("name", src.get("url", "")[:40])
         if error:
@@ -310,6 +312,11 @@ def merge_epgs(
             _log(f"[WARN] EPG merge: failed {name}: {error}")
             continue
         if not xml_text:
+            continue
+
+        # Early termination: all M3U tvg-ids already have EPG data
+        if merged_channels.keys() >= all_tvg_id_set:
+            _log(f"[INFO] EPG merge: all {len(all_tvg_id_set)} tvg-ids matched, skipping {name}")
             continue
 
         try:
@@ -322,11 +329,21 @@ def merge_epgs(
             if matched == 0:
                 continue
 
+            # Filter out EPG IDs whose tvg_id is already merged —
+            # avoids the expensive programme extraction for those channels
+            new_target_ids = {
+                epg_id for epg_id, tvg_id in id_map.items()
+                if tvg_id not in merged_channels
+            }
+
+            if not new_target_ids:
+                _log(f"[INFO] EPG merge: {name}: all {matched} matched channels already merged, skipping programme extraction")
+                continue
+
             sources_used += 1
 
-            # Only extract programmes for matched EPG IDs (single-pass)
-            target_epg_ids = set(id_map.keys())
-            all_progs = _stream_extract_programmes_for_ids(xml_text, target_epg_ids)
+            # Only extract programmes for NEW matched EPG IDs (single-pass)
+            all_progs = _stream_extract_programmes_for_ids(xml_text, new_target_ids)
 
             for epg_id, tvg_id in id_map.items():
                 if tvg_id in merged_channels:
