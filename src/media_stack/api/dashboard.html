@@ -2676,27 +2676,58 @@ function recordResMetrics(metrics){
     resHistory[name].push(memMi);if(resHistory[name].length>12)resHistory[name].shift();
   }
 }
-/* Job tree view — discovered from service contracts */
+/* Job tree + execution history with per-job timing */
 async function loadJobTree(){
   const el=document.getElementById('jobs-tree');
+  el.innerHTML='<span class="spinner"></span> Loading jobs...';
   try{
-    const r=await fetch('/api/jobs');if(!r.ok){el.innerHTML='Failed to load jobs';return;}
+    const r=await fetch('/api/jobs');if(!r.ok){el.innerHTML='Failed';return;}
     const d=await r.json();
-    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Jobs discovered from service contracts. Click to run individually.</p>';
-    h+='<div style="font-family:monospace;font-size:.85em;line-height:1.8">';
+    let h='';
+    // Job tree
+    h+='<div class="action-group" style="margin-bottom:12px"><div class="action-group-title">Job Tree ('+d.count+' jobs from contracts)</div>';
+    h+='<div style="font-family:monospace;font-size:.85em;line-height:1.8;padding:4px 0">';
     h+=renderJobNode(d.tree,0);
+    h+='</div></div>';
+    // Execution history
+    const hist=d.history||[];
+    h+='<div class="action-group"><div class="action-group-title">Execution History'+(hist.length?' ('+hist.length+')':'')+'</div>';
+    if(hist.length){
+      for(const run of hist){
+        const ts=new Date(run.ts*1000).toLocaleString();
+        const jobs=run.jobs||{};
+        h+='<details style="margin-bottom:6px"><summary style="font-size:.85em;cursor:pointer">';
+        h+='<span style="color:var(--fg2)">'+ts+'</span> — ';
+        h+='<span class="ok">'+run.ok+' ok</span>';
+        if(run.skipped)h+=', <span style="color:var(--fg3)">'+run.skipped+' skipped</span>';
+        if(run.errors)h+=', <span class="error">'+run.errors+' errors</span>';
+        h+=' <span style="color:var(--fg3)">('+run.elapsed+'s total)</span></summary>';
+        h+='<div style="padding:6px 0 6px 12px;font-size:.82em">';
+        for(const[name,jr]of Object.entries(jobs)){
+          const icon=jr.status==='ok'?'<span class="ok">&#10003;</span>':jr.status==='prereq_not_met'?'<span style="color:var(--fg3)">&#9203;</span>':jr.status==='skipped'?'<span style="color:var(--warn)">&#9888;</span>':'<span class="error">&#10007;</span>';
+          h+='<div style="display:flex;gap:8px;align-items:center;padding:2px 0">';
+          h+=icon;
+          h+='<span style="min-width:200px">'+_escHtml(name)+'</span>';
+          h+='<span style="color:var(--fg3);font-family:monospace;min-width:50px;text-align:right">'+jr.elapsed+'s</span>';
+          h+='<span style="color:var(--fg3);font-size:.85em">'+jr.status+'</span>';
+          h+='</div>';
+        }
+        h+='</div></details>';
+      }
+    }else{
+      h+='<div style="color:var(--fg3);font-size:.85em;padding:4px 0">No execution history yet. Jobs run automatically after bootstrap.</div>';
+    }
     h+='</div>';
-    h+='<div style="margin-top:12px"><p style="color:var(--fg3);font-size:.78em">'+d.count+' jobs from service contracts. Prerequisites checked before each job runs.</p></div>';
     el.innerHTML=h;
   }catch(e){el.innerHTML='Error: '+e;}
 }
 function renderJobNode(node,depth){
   const indent='&nbsp;'.repeat(depth*4);
-  const prefix=depth>0?(depth>1?'├── ':'├── '):'';
+  const prefix=depth>0?'├── ':'';
   const reqBadges=(node.requires||[]).map(r=>'<span style="background:var(--bg4);color:var(--fg3);padding:1px 5px;border-radius:3px;font-size:.72em;margin-left:4px">'+_escHtml(r)+'</span>').join('');
   const hasSubs=node.sub_jobs&&node.sub_jobs.length>0;
   const icon=hasSubs?'&#128194;':'&#9881;';
-  const runBtn=!hasSubs?'<button class="btn-secondary" style="padding:1px 6px;font-size:.7em;margin-left:6px" onclick="triggerJob(\''+_escHtml(node.name)+'\')">Run</button>':'<button class="btn-secondary" style="padding:1px 6px;font-size:.7em;margin-left:6px" onclick="triggerJob(\''+_escHtml(node.name)+'\')">Run All</button>';
+  const runBtn='<button class="btn-secondary" style="padding:1px 6px;font-size:.7em;margin-left:6px" onclick="triggerJob(\''+_escHtml(node.name)+'\')">'+(hasSubs?'Run All':'Run')+'</button>';
   let h=indent+prefix+icon+' <strong>'+_escHtml(node.name)+'</strong>'+reqBadges+runBtn+'<br>';
   for(const sub of(node.sub_jobs||[])){h+=renderJobNode(sub,depth+1);}
   return h;
