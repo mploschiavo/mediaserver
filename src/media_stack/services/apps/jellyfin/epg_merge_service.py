@@ -80,27 +80,46 @@ def _normalize_for_match(name: str) -> str:
     return s.strip()
 
 
+def _tokenize(s: str) -> set[str]:
+    """Split into lowercase alpha-numeric tokens for fuzzy matching."""
+    return {t for t in re.split(r'[^a-z0-9]+', s.lower()) if len(t) > 1}
+
+
+def _token_similarity(a: str, b: str) -> float:
+    """Jaccard similarity between token sets. 0.0 = no overlap, 1.0 = identical."""
+    ta, tb = _tokenize(a), _tokenize(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
 def _build_id_mapping(
     m3u_ids: dict[str, str],
     epg_channels: dict[str, list[str]],
 ) -> dict[str, str]:
     """Map EPG channel IDs → M3U tvg-ids.
 
-    Strategy:
-    1. Exact match on ID
-    2. Exact match on normalized display name
-    3. EPG ID contained in M3U ID (or vice versa)
+    Strategy (in priority order):
+    1. Exact ID match
+    2. Case-insensitive ID match
+    3. Normalized ID match (strip .us, .de, resolution markers)
+    4. Exact normalized display name match
+    5. Substring containment (EPG ID in M3U ID or vice versa)
+    6. Token similarity on display names (Jaccard >= 0.6)
     """
     mapping: dict[str, str] = {}
 
-    # Index M3U IDs by normalized name
+    # Build indices
     m3u_by_norm: dict[str, str] = {}
     m3u_by_id_lower: dict[str, str] = {}
     m3u_by_id_normalized: dict[str, str] = {}
+    m3u_names_list: list[tuple[str, str, str]] = []  # (tvg_id, name, norm_name)
     for tvg_id, name in m3u_ids.items():
-        m3u_by_norm[_normalize_for_match(name)] = tvg_id
+        norm = _normalize_for_match(name)
+        m3u_by_norm[norm] = tvg_id
         m3u_by_id_lower[tvg_id.lower()] = tvg_id
         m3u_by_id_normalized[_normalize_for_match(tvg_id)] = tvg_id
+        m3u_names_list.append((tvg_id, name, norm))
 
     for epg_id, names in epg_channels.items():
         # 1. Exact ID match
@@ -121,13 +140,41 @@ def _build_id_mapping(
             mapping[epg_id] = matched
             continue
 
-        # 4. Display name match
+        # 4. Exact normalized display name match
+        found = False
         for name in names:
             norm = _normalize_for_match(name)
             matched = m3u_by_norm.get(norm)
             if matched:
                 mapping[epg_id] = matched
+                found = True
                 break
+        if found:
+            continue
+
+        # 5. Substring containment on normalized IDs
+        epg_lower = epg_id.lower().replace(".", "").replace("-", "")
+        for m3u_lower, m3u_orig in m3u_by_id_lower.items():
+            m3u_clean = m3u_lower.replace(".", "").replace("-", "")
+            if len(epg_lower) > 3 and len(m3u_clean) > 3:
+                if epg_lower in m3u_clean or m3u_clean in epg_lower:
+                    mapping[epg_id] = m3u_orig
+                    found = True
+                    break
+        if found:
+            continue
+
+        # 6. Token similarity on display names (fuzzy)
+        best_score = 0.0
+        best_match = ""
+        for name in names:
+            for m3u_tvg, m3u_name, _ in m3u_names_list:
+                score = _token_similarity(name, m3u_name)
+                if score > best_score:
+                    best_score = score
+                    best_match = m3u_tvg
+        if best_score >= 0.6 and best_match:
+            mapping[epg_id] = best_match
 
     return mapping
 
