@@ -211,6 +211,22 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
     elif path == "/api/epg-health":
         from media_stack.services.epg_provider_service import run_health_check
         handler._json_response(200, run_health_check())
+    elif path == "/api/jobs":
+        from media_stack.cli.commands.bootstrap_jobs import discover_jobs_from_contracts, build_bootstrap_jobs
+        jobs = discover_jobs_from_contracts()
+        # Build tree structure for UI
+        root = build_bootstrap_jobs()
+        def _tree(job):
+            return {
+                "name": job.name,
+                "requires": job.requires,
+                "sub_jobs": [_tree(s) for s in job.sub_jobs],
+            }
+        handler._json_response(200, {
+            "jobs": jobs,
+            "tree": _tree(root),
+            "count": len(jobs),
+        })
     elif path == "/api/storage-breakdown":
         handler._json_response(200, disk_svc.get_storage_breakdown())
     elif path == "/api/import-lists-all":

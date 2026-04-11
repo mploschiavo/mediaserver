@@ -120,34 +120,32 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
         for role, svc_id in derived_bindings.items():
             cfg["technology_bindings"].setdefault(role, svc_id)
 
-    # Apply profile overrides — user config always wins over service defaults
-    if profile:
-        for prof_key, flat_key, sub_key in _PROFILE_OVERRIDES:
-            prof_val = profile.get(prof_key)
-            if not prof_val or not isinstance(prof_val, dict):
-                continue
-            if flat_key not in cfg:
-                continue
-            target = cfg[flat_key]
-            if not isinstance(target, dict):
-                continue
-            if sub_key:
-                # Override a specific sub-key (e.g., libraries list)
-                override_val = prof_val.get(sub_key)
-                if override_val is not None:
-                    target[sub_key] = override_val
-            else:
-                # Merge all keys from profile section into the config
-                # (e.g., live_tv_defaults.tuners → jellyfin_livetv.tuners)
-                for k, v in prof_val.items():
-                    if v is not None:
-                        target[k] = v
+    # Apply per-app config overrides (from {service}/controller.yaml),
+    # then fall back to profile overrides. Per-app config wins over profile.
+    from media_stack.services.app_config_service import load_app_config
 
-        # Enrich profile tuners/guides with required handler fields.
-        # The profile stores simple {url, name} dicts from the dashboard.
-        # The livetv handler needs {type, url, materialized_output_path, ...}
-        # for tuners and {type, path, materialized_output_path, ...} for guides.
-        _enrich_livetv_entries(cfg, profile)
+    # Jellyfin livetv: per-app config → profile fallback
+    jf_app = load_app_config("jellyfin")
+    livetv_override = jf_app.get("livetv", {})
+    if not livetv_override and profile:
+        livetv_override = profile.get("live_tv_defaults", {})
+    if livetv_override and "jellyfin_livetv" in cfg:
+        target = cfg["jellyfin_livetv"]
+        for k, v in livetv_override.items():
+            if v is not None:
+                target[k] = v
+
+    # Jellyfin libraries: per-app config → profile fallback
+    lib_override = jf_app.get("libraries")
+    if not lib_override and profile:
+        jf_prof = profile.get("jellyfin", {})
+        if isinstance(jf_prof, dict):
+            lib_override = jf_prof.get("libraries")
+    if lib_override and "jellyfin_libraries" in cfg:
+        cfg["jellyfin_libraries"]["libraries"] = lib_override
+
+    # Enrich tuners/guides with required handler fields
+    _enrich_livetv_entries(cfg, profile or {})
 
     return cfg
 
