@@ -1151,7 +1151,7 @@ async function loadIndexers(){
 function renderIndexers(){
   const idx=_indexers;const el=document.getElementById('indexer-list');
   if(!idx.length){el.innerHTML='<span style="color:var(--fg3)">No indexers. Run Auto-Indexers to discover.</span>';return;}
-  const enabled=idx.filter(i=>i.enabled).length;
+  const enabled=idx.filter(i=>i.enable).length;
   let h='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">';
   h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(true)">Enable All</button>';
   h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(false)">Disable All</button>';
@@ -1160,8 +1160,8 @@ function renderIndexers(){
   h+='<div style="max-height:400px;overflow-y:auto">';
   h+='<table class="idx-table"><thead><tr><th style="width:30px"><input type="checkbox" id="idx-select-all" onchange="selectAllIndexers(this.checked)"></th><th>Name</th><th>Type</th><th>Pri</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
   for(const i of idx){
-    const statusCls=i.enabled?'ok':'';
-    const statusTxt=i.enabled?'Enabled':'Disabled';
+    const statusCls=i.enable?'ok':'';
+    const statusTxt=i.enable?'Enabled':'Disabled';
     h+='<tr data-idx-id="'+i.id+'">';
     h+='<td><input type="checkbox" class="idx-cb" value="'+i.id+'"></td>';
     h+='<td style="font-weight:600;font-size:.85em">'+_escHtml(i.name)+'</td>';
@@ -1169,7 +1169,7 @@ function renderIndexers(){
     h+='<td style="font-size:.8em">'+i.priority+'</td>';
     h+='<td><span class="'+statusCls+'" style="font-size:.8em">'+statusTxt+'</span></td>';
     h+='<td style="white-space:nowrap">';
-    h+='<button class="btn-secondary" style="padding:1px 6px;font-size:.7em" onclick="toggleIndexer('+i.id+','+(!i.enabled)+')">'+(i.enabled?'Disable':'Enable')+'</button> ';
+    h+='<button class="btn-secondary" style="padding:1px 6px;font-size:.7em" onclick="toggleIndexer('+i.id+','+(!i.enable)+')">'+(i.enable?'Disable':'Enable')+'</button> ';
     h+='<button class="btn-danger" style="padding:1px 6px;font-size:.7em" onclick="deleteIndexer('+i.id+',\''+_escHtml(i.name)+'\')">Del</button>';
     h+='</td></tr>';
   }
@@ -1188,7 +1188,7 @@ async function deleteIndexer(id,name){
   }catch(e){toast('Error: '+e,true);}
 }
 async function toggleAllIndexers(enable){
-  const ids=_indexers.filter(i=>i.enabled!==enable).map(i=>i.id);
+  const ids=_indexers.filter(i=>i.enable!==enable).map(i=>i.id);
   if(!ids.length){toast('Nothing to change');return;}
   toast((enable?'Enabling':'Disabling')+' '+ids.length+' indexers...');
   for(const id of ids){
@@ -1197,7 +1197,7 @@ async function toggleAllIndexers(enable){
   loadIndexers();
 }
 async function deleteDisabledIndexers(){
-  const disabled=_indexers.filter(i=>!i.enabled);
+  const disabled=_indexers.filter(i=>!i.enable);
   if(!disabled.length){toast('No disabled indexers');return;}
   if(!confirm('Delete '+disabled.length+' disabled indexers?'))return;
   toast('Deleting '+disabled.length+' indexers...');
