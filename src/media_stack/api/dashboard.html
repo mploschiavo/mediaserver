@@ -553,11 +553,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="cfg-deps" class="subtab" style="display:none"></div>
     <div id="cfg-manifest" class="subtab" style="display:none">Loading...</div>
     <div id="cfg-envvars" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-libraries" class="subtab" style="display:none"><div id="libraries-config">Loading...</div></div>
-    <div id="cfg-downloads" class="subtab" style="display:none"><div id="downloads-config">Loading...</div></div>
-    <div id="cfg-metadata" class="subtab" style="display:none"><div id="metadata-config">Loading...</div></div>
-    <div id="cfg-livetv" class="subtab" style="display:none"><div id="livetv-config">Loading...</div></div>
-    <div id="cfg-jobs" class="subtab" style="display:none"><div id="jobs-tree"><span class="spinner"></span> Loading jobs...</div></div>
+    <div id="cfg-libraries" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-downloads" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-metadata" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-livetv" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-jobs" class="subtab" style="display:none">Loading...</div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -1003,7 +1003,7 @@ function goToDriftTab(){
   // 2. Show the drift subtab
   showSubTab('cfg-drift');
   // 3. Scroll to it
-  const driftView=document.getElementById('drift-view');
+  const driftView=document.getElementById('cfg-drift');
   if(driftView)driftView.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -1043,7 +1043,7 @@ async function loadDisk(){
         h+='<div style="font-size:.72em;color:var(--fg3);margin-bottom:4px">'+statusText+' ('+pct.toFixed(1)+'% used, target '+gTarget+'%, max '+gMax+'%)';
         if(overMax)h+=' — <a href="#" onclick="event.preventDefault();showTab(\'tab-ops\',document.querySelector(\'#main-tabs button:nth-child(4)\'));setTimeout(()=>document.querySelector(\'[onclick*=ops-guardrails]\')?.click(),100)" style="color:var(--blue);font-size:1em">view cleanup details</a>';
         h+='</div>';}}
-    document.getElementById('stats-disk').innerHTML=h||'No volumes found';
+    document.getElementById('ops-guardrails').innerHTML=h||'No volumes found';
     renderGuardrailConfig();}}catch(e){}
 }
 function renderGuardrailConfig(){
@@ -1140,7 +1140,7 @@ async function loadRecent(){
 /* Indexers */
 let _indexers=[];
 async function loadIndexers(){
-  const el=document.getElementById('indexer-list');
+  const el=document.getElementById('lib-indexers');
   el.innerHTML='<span class="spinner"></span> Loading indexers...';
   try{const r=await fetch('/api/indexers');if(!r.ok){el.innerHTML='Failed';return;}
     const d=await r.json();
@@ -1149,7 +1149,7 @@ async function loadIndexers(){
   }catch(e){el.innerHTML='Error: '+e;}
 }
 function renderIndexers(){
-  const idx=_indexers;const el=document.getElementById('indexer-list');
+  const idx=_indexers;const el=document.getElementById('lib-indexers');
   if(!idx.length){el.innerHTML='<span style="color:var(--fg3)">No indexers. Run Auto-Indexers to discover.</span>';return;}
   const enabled=idx.filter(i=>i.enable).length;
   let h='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">';
@@ -1633,13 +1633,13 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
 /* #1 Bandwidth + #2 Error rates */
 async function loadTraffic(){
   try{const r=await fetch('/api/envoy/stats');if(!r.ok)return;const d=await r.json();
-    if(d.error){document.getElementById('traffic-view').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
+    if(d.error){document.getElementById('ops-traffic').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     const cl=d.clusters||{};let h='<table class="idx-table"><thead><tr><th>Service</th><th>Requests</th><th>2xx</th><th>4xx</th><th>5xx</th><th>Active</th></tr></thead><tbody>';
     for(const[k,v]of Object.entries(cl)){
       h+='<tr><td style="font-weight:600">'+k+'</td><td>'+(v.upstream_rq_total||0)+'</td><td class="ok">'+(v.upstream_rq_2xx||0)+'</td><td class="running">'+(v.upstream_rq_4xx||0)+'</td><td class="error">'+(v.upstream_rq_5xx||0)+'</td><td>'+(v.upstream_cx_active||0)+'</td></tr>';}
     h+='</tbody></table>';
-    document.getElementById('traffic-view').innerHTML=h||'<span style="color:var(--fg3)">No traffic data</span>';
-  }catch(e){document.getElementById('traffic-view').innerHTML='Error loading traffic';}
+    document.getElementById('ops-traffic').innerHTML=h||'<span style="color:var(--fg3)">No traffic data</span>';
+  }catch(e){document.getElementById('ops-traffic').innerHTML='Error loading traffic';}
 }
 
 /* #3 Action timeline */
@@ -1657,11 +1657,11 @@ function ganttPan(dir){
 function renderTimeline(){
   if(!statusData)return;
   const hist=(statusData.action_history||[]);
-  if(!hist.length){document.getElementById('timeline-view').innerHTML='<span style="color:var(--fg3)">No actions yet</span>';return;}
+  if(!hist.length){document.getElementById('ops-timeline').innerHTML='<span style="color:var(--fg3)">No actions yet</span>';return;}
 
   const starts=hist.map(a=>a.started_at||0).filter(t=>t>0);
   const ends=hist.map(a=>a.completed_at||a.started_at||0).filter(t=>t>0);
-  if(!starts.length){document.getElementById('timeline-view').innerHTML='<span style="color:var(--fg3)">No timing data</span>';return;}
+  if(!starts.length){document.getElementById('ops-timeline').innerHTML='<span style="color:var(--fg3)">No timing data</span>';return;}
   const allMinT=Math.min(...starts);
   const allMaxT=Math.max(...ends,allMinT+1);
 
@@ -1735,7 +1735,7 @@ function renderTimeline(){
   });
 
   h+='</div>';
-  document.getElementById('timeline-view').innerHTML=h;
+  document.getElementById('ops-timeline').innerHTML=h;
 }
 
 /* #4 Health SLA */
@@ -1746,7 +1746,7 @@ function renderSLA(){
     const pct=Math.round(hist.reduce((a,b)=>a+b,0)/hist.length*100);
     const cls=pct>=99?'var(--ok)':pct>=95?'var(--warn)':'var(--err)';
     h+='<div class="sla-row"><span style="min-width:90px;font-weight:600">'+s.name+'</span><div class="sla-bar"><div class="sla-fill" style="width:'+pct+'%;background:'+cls+'"></div></div><span style="min-width:40px;text-align:right;font-weight:600;color:'+cls+'">'+pct+'%</span></div>';}
-  document.getElementById('sla-view').innerHTML=h||'<span style="color:var(--fg3)">Collecting data... (updates every 30s)</span>';
+  document.getElementById('ops-sla').innerHTML=h||'<span style="color:var(--fg3)">Collecting data... (updates every 30s)</span>';
 }
 
 /* #5 Regex log search — handled in applyLogFilter */
@@ -1823,7 +1823,7 @@ async function loadDownloadHistory(){
 async function loadIndexerStats(){
   try{const r=await fetch('/api/indexer-stats');if(!r.ok)return;const d=await r.json();
     if(d.error||!d.indexers)return;
-    const existing=document.getElementById('indexer-list');
+    const existing=document.getElementById('lib-indexers');
     let h=existing.innerHTML;h+='<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px"><b style="color:var(--fg2);font-size:.9em">Performance</b></div>';
     h+='<table class="idx-table"><thead><tr><th>Indexer</th><th>Queries</th><th>Grabs</th><th>Fails</th><th>Avg ms</th></tr></thead><tbody>';
     for(const i of d.indexers.sort((a,b)=>b.queries-a.queries)){
@@ -1926,7 +1926,7 @@ schedules.forEach(s=>{schedTimers[s.id]=setInterval(()=>{_schedExec(s.action,s.i
 
 /* #15 Config drift detector */
 async function renderDrift(){
-  const el=document.getElementById('drift-view');
+  const el=document.getElementById('cfg-drift');
   el.innerHTML='<span class="spinner"></span> <span style="color:var(--fg3)">Checking config drift (may take a few seconds on first load)...</span>';
   // Fetch real drift data from backend (cached 60s on server side)
   let driftData=null;
@@ -1974,7 +1974,7 @@ function loadBackup(){window.open('/api/backup','_blank');toast('Downloading bac
 /* #17 Multi-namespace + replicas + resources */
 async function loadNamespaces(){
   try{const r=await fetch('/api/namespaces');if(!r.ok)return;const d=await r.json();
-    if(d.error){document.getElementById('ns-view').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
+    if(d.error){document.getElementById('ops-ns').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     let h='<div class="cat-label">Namespaces</div>';
     for(const ns of(d.namespaces||[])){const cls=ns.running===ns.pods?'ok':ns.running>0?'warn':'error';
       h+='<div class="svc-row" style="cursor:default"><span class="dot '+cls+'"></span><span class="sname">'+ns.namespace+(ns.current?' (current)':'')+'</span><span class="smeta">'+ns.running+'/'+ns.pods+' pods</span></div>';
@@ -2003,8 +2003,8 @@ async function loadNamespaces(){
       for(const m of metrics){const podShort=m.pod.replace(/-[a-z0-9]{8,10}-[a-z0-9]{5}$/,'');
         h+='<tr><td style="font-size:.82em">'+_escHtml(podShort)+'</td><td style="font-family:monospace;font-size:.82em">'+_escHtml(m.cpu)+'</td><td style="font-family:monospace;font-size:.82em">'+_escHtml(m.memory)+'</td></tr>';}
       h+='</tbody></table>';}
-    document.getElementById('ns-view').innerHTML=h;
-  }catch(e){document.getElementById('ns-view').innerHTML='Error loading: '+e;}
+    document.getElementById('ops-ns').innerHTML=h;
+  }catch(e){document.getElementById('ops-ns').innerHTML='Error loading: '+e;}
 }
 
 /* #5 Container log viewer */
@@ -2107,8 +2107,8 @@ async function loadGpuInfo(){
       h+='<pre class="profile-pre" style="margin-top:6px"># Linux\nls /dev/dri/ && lspci | grep -iE "VGA|Display|3D"\n\n# Windows (PowerShell)\nGet-WmiObject Win32_VideoController | Select Name\n\n# macOS\nsystem_profiler SPDisplaysDataType | grep Chipset</pre>';
     }
     h+='</div>';
-    document.getElementById('gpu-info').innerHTML=h;
-  }catch(e){document.getElementById('gpu-info').innerHTML='Error: '+e;}
+    document.getElementById('ops-gpu').innerHTML=h;
+  }catch(e){document.getElementById('ops-gpu').innerHTML='Error: '+e;}
 }
 
 /* GPU Enable */
@@ -2140,7 +2140,7 @@ async function takeSnapshot(){
 async function loadSnapshots(){
   try{const r=await fetch('/api/snapshots');if(!r.ok)return;const d=await r.json();
     const snaps=d.snapshots||[];
-    if(!snaps.length){document.getElementById('snapshot-list').innerHTML='<span style="color:var(--fg3)">No snapshots yet. First snapshot taken 1 minute after controller start.</span>';return;}
+    if(!snaps.length){document.getElementById('ops-snapshots').innerHTML='<span style="color:var(--fg3)">No snapshots yet. First snapshot taken 1 minute after controller start.</span>';return;}
     let h='';
     if(snaps.length>=2){h+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.85em"><span style="color:var(--fg2)">Compare:</span>';
       h+='<select id="snap-a" style="padding:3px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.88em">';
@@ -2152,8 +2152,8 @@ async function loadSnapshots(){
     for(const s of snaps){h+='<tr><td style="font-family:monospace;font-size:.82em">'+s.file+'</td><td style="font-size:.82em">'+fmtBytes(s.size)+'</td><td style="font-size:.82em;color:var(--fg3)">'+s.created+'</td><td><button class="btn-secondary" style="padding:2px 6px;font-size:.75em" onclick="viewSnapshot(\''+s.file+'\')">View</button></td></tr>';}
     h+='</tbody></table><div style="margin-top:6px;font-size:.82em;color:var(--fg3)">'+snaps.length+' snapshot(s)</div>';
     h+='<div id="snapshot-detail" style="margin-top:8px"></div>';
-    document.getElementById('snapshot-list').innerHTML=h;
-  }catch(e){document.getElementById('snapshot-list').innerHTML='Error: '+e;}
+    document.getElementById('ops-snapshots').innerHTML=h;
+  }catch(e){document.getElementById('ops-snapshots').innerHTML='Error: '+e;}
 }
 
 async function viewSnapshot(file){
@@ -2189,7 +2189,7 @@ async function diffSnapshots(){
 async function loadMountInfo(){
   try{const r=await fetch('/api/mounts');if(!r.ok)return;const d=await r.json();
     const mounts=d.mounts||[];
-    if(!mounts.length){document.getElementById('mount-info').innerHTML='<span style="color:var(--fg3)">No relevant mounts detected.</span>';return;}
+    if(!mounts.length){document.getElementById('ops-mounts').innerHTML='<span style="color:var(--fg3)">No relevant mounts detected.</span>';return;}
     let h='<table class="idx-table"><thead><tr><th>Device</th><th>Mount Point</th><th>Type</th></tr></thead><tbody>';
     for(const m of mounts){const isNet=m.fstype.startsWith('nfs')||m.fstype.startsWith('cifs');
       h+='<tr><td style="font-family:monospace;font-size:.82em">'+m.device+'</td><td style="font-size:.82em">'+m.mountpoint+'</td><td style="font-size:.82em">'+(isNet?'<span class="ok">'+m.fstype+'</span>':m.fstype)+'</td></tr>';}
@@ -2197,8 +2197,8 @@ async function loadMountInfo(){
     if(d.nfs_available)h+='<div style="margin-top:6px;font-size:.82em;color:var(--ok)">NFS mounts detected</div>';
     if(d.cifs_available)h+='<div style="margin-top:6px;font-size:.82em;color:var(--ok)">CIFS/SMB mounts detected</div>';
     if(!d.nfs_available&&!d.cifs_available)h+='<div style="margin-top:8px;font-size:.85em;color:var(--fg2)">To add network storage, mount NFS/CIFS on the host and map it into Docker volumes.</div>';
-    document.getElementById('mount-info').innerHTML=h;
-  }catch(e){document.getElementById('mount-info').innerHTML='Error: '+e;}
+    document.getElementById('ops-mounts').innerHTML=h;
+  }catch(e){document.getElementById('ops-mounts').innerHTML='Error: '+e;}
 }
 
 /* #8 Manifest viewer */
@@ -2376,7 +2376,7 @@ fetch('/api/routing').then(r=>r.json()).then(d=>{_wizardRouting=d;}).catch(()=>{
 
 /* Libraries config */
 async function loadLibrariesConfig(){
-  const el=document.getElementById('libraries-config');
+  const el=document.getElementById('cfg-libraries');
   try{const r=await fetch('/api/libraries');if(!r.ok)return;const d=await r.json();
     let libs=d.libraries||[];
     let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Manage Jellyfin media libraries. Changes apply on next bootstrap.</p>';
@@ -2431,7 +2431,7 @@ async function saveLibraries(){
 
 /* Download categories config */
 async function loadDownloadsConfig(){
-  const el=document.getElementById('downloads-config');
+  const el=document.getElementById('cfg-downloads');
   try{const r=await fetch('/api/download-categories');if(!r.ok)return;const d=await r.json();
     const cats=d.categories||{};
     let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Download categories for torrent and usenet clients. Changes apply on next bootstrap.</p>';
@@ -2477,7 +2477,7 @@ async function saveCategories(){
 
 /* Metadata settings config */
 async function loadMetadataConfig(){
-  const el=document.getElementById('metadata-config');
+  const el=document.getElementById('cfg-metadata');
   try{const r=await fetch('/api/metadata-settings');if(!r.ok)return;const d=await r.json();
     const presets=d.presets||[];
     let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Set the preferred language for media metadata (movie/show descriptions, artwork, etc.)</p>';
@@ -2522,7 +2522,7 @@ async function saveMetadata(){
 
 /* Storage breakdown by media type */
 async function loadStorageBreakdown(){
-  const el=document.getElementById('storage-breakdown');
+  const el=document.getElementById('ops-storage-breakdown');
   try{const r=await fetch('/api/storage-breakdown');if(!r.ok)return;const d=await r.json();
     if(d.error){el.innerHTML='<span class="error">'+_escHtml(d.error)+'</span>';return;}
     const items=d.breakdown||[];
@@ -2541,7 +2541,7 @@ async function loadStorageBreakdown(){
 /* Server-side persistent scheduler */
 async function loadServerSchedules(){
   try{const r=await fetch('/api/schedules');if(!r.ok)return;const d=await r.json();
-    const el=document.getElementById('server-schedules');if(!el)return;
+    const el=document.getElementById('ops-schedule');if(!el)return;
     const scheds=d.schedules||[];
     if(!scheds.length){el.innerHTML='<div style="color:var(--fg3);font-size:.85em">No server-side schedules.</div>';return;}
     let h='<table class="idx-table" style="font-size:.85em"><thead><tr><th>Action</th><th>Interval</th><th>Last Run</th><th></th></tr></thead><tbody>';
@@ -2578,14 +2578,14 @@ let _ltvTuners=[];let _ltvGuides=[];let _ltvLoadAll=false;
 // Load country list from API (not hardcoded)
 fetch('/api/iptv-countries').then(r=>r.json()).then(d=>{_iptvCountries=d.countries||[];}).catch(()=>{});
 async function loadLiveTvConfig(){
-  const el=document.getElementById('livetv-config');
+  const el=document.getElementById('cfg-livetv');
   try{const r=await fetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
     _ltvTuners=d.tuners||[];_ltvGuides=d.guides||[];_ltvLoadAll=!!d.load_all_tuners;
     renderLiveTvConfig();
   }catch(e){el.innerHTML='Error: '+e;}
 }
 function renderLiveTvConfig(){
-  const el=document.getElementById('livetv-config');
+  const el=document.getElementById('cfg-livetv');
   let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Add Live TV sources by country. Only countries with a working guide (EPG) are loaded by default — every channel will have programme data.</p>';
   // Load all tuners toggle
   h+='<div style="margin:0 0 10px;display:flex;align-items:center;gap:8px">';
@@ -2678,8 +2678,8 @@ function recordResMetrics(metrics){
 }
 /* Job tree + execution history with per-job timing */
 async function loadJobTree(){
-  const el=document.getElementById('jobs-tree');
-  el.innerHTML='<span class="spinner"></span> Loading jobs...';
+  const el=document.getElementById('cfg-jobs');
+  if(!el)return;
   try{
     const r=await fetch('/api/jobs');if(!r.ok){el.innerHTML='Failed';return;}
     const d=await r.json();
@@ -2761,7 +2761,7 @@ function recordBandwidth(data){
   bwHistory.push({ts:Date.now(),total});if(bwHistory.length>60)bwHistory.shift();
 }
 function renderBandwidthChart(){
-  const canvas=document.getElementById('bw-canvas');if(!canvas)return;
+  const canvas=document.getElementById('ops-bw');if(!canvas)return;
   if(bwHistory.length<2){
     const ctx=canvas.getContext('2d');canvas.width=canvas.offsetWidth;canvas.height=120;
     ctx.clearRect(0,0,canvas.width,120);
