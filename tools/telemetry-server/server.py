@@ -205,6 +205,8 @@ class TelemetryStore:
             "total_libraries": sum(c.get("media", {}).get("libraries", 0) for c in clusters),
             "total_indexers": sum(c.get("media", {}).get("indexers", 0) for c in clusters),
             "total_livetv_tuners": sum(c.get("media", {}).get("livetv_tuners", 0) for c in clusters),
+            "total_rx_gb": round(sum(c.get("network", {}).get("rx_gb", 0) for c in clusters), 1),
+            "total_tx_gb": round(sum(c.get("network", {}).get("tx_gb", 0) for c in clusters), 1),
             "ingest_total": self._ingest_count,
         }
 
@@ -245,6 +247,8 @@ async function load(){
     card('Libraries',fleet.total_libraries)+
     card('Indexers',fleet.total_indexers)+
     card('Live TV',fleet.total_livetv_tuners+' tuners')+
+    card('Network RX',fleet.total_rx_gb+' GB')+
+    card('Network TX',fleet.total_tx_gb+' GB')+
     card('Ingested',fleet.ingest_total+' payloads');
   let h='<table><tr><th>Cluster</th><th>Platform</th><th>Version</th><th>Services</th><th>Jobs (24h)</th><th>Storage</th><th>Last Seen</th></tr>';
   for(const c of clusters){
@@ -334,6 +338,7 @@ class TelemetryHandler(BaseHTTPRequestHandler):
         "media.libraries", "media.livetv_tuners", "media.indexers",
         "media.storage_gb", "media.active_downloads",
         "media.download_speed_mbps", "media.upload_speed_mbps",
+        "network.rx_gb", "network.tx_gb", "network.containers",
     ]
 
     @classmethod
