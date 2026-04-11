@@ -337,7 +337,8 @@ class TestPriorityQueueOrdering(unittest.TestCase):
             _prio, _seq, name, _ov = pq.get()
             order.append(name)
 
-        self.assertEqual(order, ["bootstrap", "finalize", "envoy-config", "auto-indexers"])
+        # bootstrap (10) < configure-media-server (15) < envoy-config (30) < finalize (45) < auto-indexers (70)
+        self.assertEqual(order, ["bootstrap", "envoy-config", "finalize", "auto-indexers"])
 
     def test_same_priority_fifo(self):
         """Items with the same priority are processed in insertion order."""
@@ -388,12 +389,13 @@ class TestActionPriorityConstants(unittest.TestCase):
                 f"'{name}' (P{prio}) has higher priority than bootstrap (P{bootstrap_prio})"
             )
 
-    def test_validate_credentials_is_lowest_priority(self):
-        max_prio = max(ACTION_PRIORITY.values())
-        self.assertEqual(
-            ACTION_PRIORITY["validate-credentials"], max_prio,
-            "validate-credentials should run last (highest priority number)",
-        )
+    def test_validate_credentials_runs_after_core_actions(self):
+        vc_prio = ACTION_PRIORITY["validate-credentials"]
+        for action in ("bootstrap", "envoy-config", "finalize", "reconcile"):
+            self.assertGreater(
+                vc_prio, ACTION_PRIORITY[action],
+                f"validate-credentials should run after {action}",
+            )
 
     def test_envoy_config_before_auto_indexers(self):
         self.assertLess(

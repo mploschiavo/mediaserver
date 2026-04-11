@@ -85,6 +85,12 @@ class TestSaveCreatesBackup(unittest.TestCase):
 class TestMetadataUpdateMerges(unittest.TestCase):
     """Verify update_metadata_settings merges into metadata, doesn't replace."""
 
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_preserves_metadata_name(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
@@ -120,6 +126,12 @@ class TestMetadataUpdateMerges(unittest.TestCase):
 class TestProfileSectionUpdate(unittest.TestCase):
     """Verify update_profile_section preserves other sections."""
 
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_preserves_routing(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
@@ -141,10 +153,21 @@ class TestProfileSectionUpdate(unittest.TestCase):
 
 
 class TestLiveTvSaveDoesNotCorrupt(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_livetv_save_preserves_metadata(self):
+        """update_livetv_sources now saves to per-app config, not profile.
+        Profile metadata must remain untouched."""
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_livetv_sources(
                     tuners=[{"url": "http://example.com/us.m3u", "name": "US"}],
                 )
@@ -153,9 +176,13 @@ class TestLiveTvSaveDoesNotCorrupt(unittest.TestCase):
             self.assertEqual(data["metadata"]["name"], "test-stack")
 
     def test_livetv_save_preserves_routing(self):
+        """update_livetv_sources saves to per-app config — profile routing is untouched."""
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_livetv_sources(
                     tuners=[{"url": "http://example.com/de.m3u", "name": "DE"}],
                 )
@@ -165,11 +192,21 @@ class TestLiveTvSaveDoesNotCorrupt(unittest.TestCase):
 
 
 class TestLibrarySaveDoesNotCorrupt(unittest.TestCase):
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_library_save_preserves_metadata(self):
+        """update_libraries saves to per-app config — profile metadata is untouched."""
         with tempfile.TemporaryDirectory() as td:
             data = {**VALID_PROFILE, "technology_bindings": {"media_server": "jellyfin"}}
             profile = _make_profile(data, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_libraries([
                     {"name": "Movies", "collection_type": "movies", "paths": ["/media/movies"]},
                 ])

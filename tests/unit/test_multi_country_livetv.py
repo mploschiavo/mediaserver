@@ -1,7 +1,7 @@
 """Tests for multi-country Live TV / IPTV support.
 
 Verifies that multiple tuner sources and guide sources can be configured
-simultaneously for different countries, persisted to the profile YAML,
+simultaneously for different countries, persisted to per-app config,
 and reconfigured without losing existing entries.
 """
 
@@ -20,6 +20,7 @@ import media_stack.api.services.config as config_mod  # noqa: E402
 
 def _make_profile(data, td):
     data.setdefault("metadata", {}).setdefault("name", "test-stack")
+    data.setdefault("technology_bindings", {"media_server": "jellyfin"})
     import yaml
     p = Path(td) / "profile.yaml"
     with open(p, "w") as f:
@@ -33,7 +34,10 @@ class TestMultiCountryTuners(unittest.TestCase):
     def test_three_countries(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_livetv_sources(tuners=[
                     {"url": "https://example.com/us.m3u", "name": "US IPTV"},
                     {"url": "https://example.com/gb.m3u", "name": "UK IPTV"},
@@ -45,7 +49,10 @@ class TestMultiCountryTuners(unittest.TestCase):
     def test_four_countries(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_livetv_sources(tuners=[
                     {"url": "https://example.com/us.m3u", "name": "US"},
                     {"url": "https://example.com/gb.m3u", "name": "UK"},
@@ -57,7 +64,10 @@ class TestMultiCountryTuners(unittest.TestCase):
     def test_five_countries_with_guides(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 result = config_mod.update_livetv_sources(
                     tuners=[
                         {"url": "https://example.com/us.m3u", "name": "US"},
@@ -85,14 +95,18 @@ class TestMultiCountryPersistence(unittest.TestCase):
         import yaml
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_livetv_sources(tuners=[
                     {"url": "https://example.com/us.m3u", "name": "US"},
                     {"url": "https://example.com/de.m3u", "name": "DE"},
                 ])
-            # Re-read the YAML
-            data = yaml.safe_load(Path(profile).read_text())
-            tuners = data.get("live_tv_defaults", {}).get("tuners", [])
+            # Data now lives in per-app config (jellyfin/controller.yaml)
+            app_cfg_path = Path(td) / "jellyfin" / "controller.yaml"
+            data = yaml.safe_load(app_cfg_path.read_text())
+            tuners = data.get("livetv", {}).get("tuners", [])
             self.assertEqual(len(tuners), 2)
             self.assertEqual(tuners[0]["name"], "US")
             self.assertEqual(tuners[1]["name"], "DE")
@@ -100,7 +114,11 @@ class TestMultiCountryPersistence(unittest.TestCase):
     def test_read_back_matches(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            config_mod._invalidate_profile_cache()
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_livetv_sources(tuners=[
                     {"url": "https://example.com/us.m3u", "name": "US"},
                     {"url": "https://example.com/gb.m3u", "name": "UK"},
@@ -111,6 +129,7 @@ class TestMultiCountryPersistence(unittest.TestCase):
                     {"url": "https://example.com/epg-au.xml", "name": "AU EPG"},
                 ])
                 result = config_mod.get_livetv_sources()
+            config_mod._invalidate_profile_cache()
             self.assertEqual(len(result["tuners"]), 3)
             self.assertEqual(len(result["guides"]), 3)
 
@@ -118,12 +137,17 @@ class TestMultiCountryPersistence(unittest.TestCase):
         """Single tuner_url still works for backward compatibility."""
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            config_mod._invalidate_profile_cache()
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_livetv_sources(
                     tuner_url="https://example.com/us.m3u",
                     guide_url="https://example.com/epg-us.xml",
                 )
                 result = config_mod.get_livetv_sources()
+            config_mod._invalidate_profile_cache()
             self.assertEqual(len(result["tuners"]), 1)
             self.assertEqual(result["tuner_url"], "https://example.com/us.m3u")
 
@@ -134,7 +158,11 @@ class TestReconfiguration(unittest.TestCase):
     def test_replace_all_tuners(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            config_mod._invalidate_profile_cache()
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 # First config: US + UK
                 config_mod.update_livetv_sources(tuners=[
                     {"url": "https://example.com/us.m3u", "name": "US"},
@@ -147,6 +175,7 @@ class TestReconfiguration(unittest.TestCase):
                     {"url": "https://example.com/es.m3u", "name": "ES"},
                 ])
                 result = config_mod.get_livetv_sources()
+            config_mod._invalidate_profile_cache()
             self.assertEqual(len(result["tuners"]), 3)
             names = [t["name"] for t in result["tuners"]]
             self.assertNotIn("US", names)
@@ -155,17 +184,28 @@ class TestReconfiguration(unittest.TestCase):
     def test_empty_tuners_clears(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            config_mod._invalidate_profile_cache()
+            with (
+                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch.dict(os.environ, {"CONFIG_ROOT": td}),
+            ):
                 config_mod.update_livetv_sources(tuners=[
                     {"url": "https://example.com/us.m3u", "name": "US"},
                 ])
                 config_mod.update_livetv_sources(tuners=[])
                 result = config_mod.get_livetv_sources()
+            config_mod._invalidate_profile_cache()
             self.assertEqual(len(result["tuners"]), 0)
 
 
 class TestIptvCountriesApi(unittest.TestCase):
     """Test the IPTV countries API endpoint."""
+
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
 
     def test_returns_countries(self):
         with patch.object(config_mod, "resolve_profile_path", return_value=None):
@@ -180,19 +220,14 @@ class TestIptvCountriesApi(unittest.TestCase):
             self.assertIn("code", c)
             self.assertIn("name", c)
 
-    def test_countries_have_urls_when_template_set(self):
-        with tempfile.TemporaryDirectory() as td:
-            profile = _make_profile({
-                "live_tv_defaults": {
-                    "tuner_url_template": "https://example.com/iptv/{code}.m3u",
-                    "guide_url_template": "https://example.com/epg/{code}.xml",
-                }
-            }, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
-                result = config_mod.get_iptv_countries()
+    def test_countries_have_guide_urls(self):
+        """Each country should have a guide URL from the EPG provider registry."""
+        config_mod._invalidate_profile_cache()
+        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+            result = config_mod.get_iptv_countries()
         us = next(c for c in result["countries"] if c["code"] == "us")
-        self.assertEqual(us["tuner_url"], "https://example.com/iptv/us.m3u")
-        self.assertEqual(us["guide_url"], "https://example.com/epg/us.xml")
+        # Guide URL comes from EPG provider registry
+        self.assertTrue(us["guide_url"], "US should have a guide URL")
 
     def test_profile_overrides_country_list(self):
         with tempfile.TemporaryDirectory() as td:
@@ -201,8 +236,10 @@ class TestIptvCountriesApi(unittest.TestCase):
                     {"code": "xx", "name": "Custom Country", "tuner_url": "https://custom/xx.m3u"},
                 ]
             }, td)
+            config_mod._invalidate_profile_cache()
             with patch.object(config_mod, "resolve_profile_path", return_value=profile):
                 result = config_mod.get_iptv_countries()
+            config_mod._invalidate_profile_cache()
         self.assertEqual(len(result["countries"]), 1)
         self.assertEqual(result["countries"][0]["code"], "xx")
         self.assertEqual(result["source"], "profile")

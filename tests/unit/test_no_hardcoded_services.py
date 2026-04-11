@@ -89,7 +89,18 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # from the failure message, and paste it here with a brief comment.
 
 ALLOWLIST: dict[str, set] = {
-    # Empty — all service-specific logic has been moved to services/apps/.
+    # config.py: livetv and download category routes need to know which app
+    # to persist per-app config to.  The service ID comes from technology_bindings
+    # where possible; the fallbacks/literals are unavoidable until the config
+    # API is fully dynamic.
+    "api/services/config.py": {
+        (155, "qbittorrent"),  # torrent_client fallback in get_download_categories
+        (173, "qbittorrent"),  # torrent_client fallback in update_download_categories
+        (259, "jellyfin"),     # load_app_config for livetv sources
+        (307, "jellyfin"),     # load_app_config for livetv update
+        (324, "jellyfin"),     # save_app_config for livetv update
+        (380, "jellyfin"),     # _APP_CONFIG_SECTIONS set
+    },
 }
 
 

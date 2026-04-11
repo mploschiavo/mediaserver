@@ -346,26 +346,47 @@ class ControllerRuntimeBuilder:
         app_keys: dict[str, str] = {}
         skipped_apps: list[str] = []
         if args.mode in (BootstrapMode.FULL, BootstrapMode.MEDIA_HYGIENE):
-            for app in arr_apps:
+            # Read all API keys in parallel — each may wait for the
+            # service to start, so sequential reads are 180s * N.
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            def _read_key(app):
                 app_dir = app.implementation.lower()
                 try:
-                    api_key = self.deps.read_api_key(args.config_root, app_dir)
-                    app_keys[app.implementation] = api_key
-                    app_keys[app.implementation.lower()] = api_key
+                    key = self.deps.read_api_key(args.config_root, app_dir)
+                    return app_dir, app.implementation, key, None
                 except RuntimeError as exc:
-                    print(
-                        f"[WARN] {app_dir}: API key unavailable, skipping "
-                        f"({exc}). Service will be configured on next reconcile.",
-                        file=sys.stderr,
-                    )
-                    skipped_apps.append(app_dir)
+                    return app_dir, app.implementation, None, exc
 
-        if args.mode == BootstrapMode.FULL and prowlarr_wiring.url:
-            prowlarr_wiring.key, prowlarr_skipped = read_prowlarr_api_key(
-                config_root=args.config_root,
-                read_api_key=self.deps.read_api_key,
-            )
-            skipped_apps.extend(prowlarr_skipped)
+            with ThreadPoolExecutor(max_workers=len(arr_apps) + 1) as pool:
+                futures = [pool.submit(_read_key, app) for app in arr_apps]
+                # Also read prowlarr key in parallel
+                if args.mode == BootstrapMode.FULL and prowlarr_wiring.url:
+                    def _read_prowlarr():
+                        return read_prowlarr_api_key(
+                            config_root=args.config_root,
+                            read_api_key=self.deps.read_api_key,
+                        )
+                    prowlarr_future = pool.submit(_read_prowlarr)
+                else:
+                    prowlarr_future = None
+
+                for future in as_completed(futures):
+                    app_dir, impl, key, err = future.result()
+                    if key:
+                        app_keys[impl] = key
+                        app_keys[impl.lower()] = key
+                    else:
+                        print(
+                            f"[WARN] {app_dir}: API key unavailable, skipping "
+                            f"({err}). Service will be configured on next reconcile.",
+                            file=sys.stderr,
+                        )
+                        skipped_apps.append(app_dir)
+
+                if prowlarr_future is not None:
+                    prowlarr_wiring.key, prowlarr_skipped = prowlarr_future.result()
+                    skipped_apps.extend(prowlarr_skipped)
 
         if skipped_apps:
             print(

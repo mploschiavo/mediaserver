@@ -62,15 +62,6 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
             if key in profile:
                 cfg[key] = profile[key]
 
-    # Profile override mappings: profile section → flat config key + sub-key
-    # The profile is the user's source of truth; service YAML defaults are
-    # just starting values. Profile overrides must win.
-    _PROFILE_OVERRIDES: list[tuple[str, str, str | None]] = [
-        # (profile_key, flat_cfg_key, sub_key_to_override_or_None_for_merge)
-        ("live_tv_defaults", "jellyfin_livetv", None),       # tuners, guides, etc.
-        ("jellyfin", "jellyfin_libraries", "libraries"),     # library list
-    ]
-
     svc_dir = _find_contracts_dir()
     if not svc_dir:
         return cfg
@@ -124,25 +115,29 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
     # then fall back to profile overrides. Per-app config wins over profile.
     from media_stack.services.app_config_service import load_app_config
 
-    # Jellyfin livetv: per-app config → profile fallback
-    jf_app = load_app_config("jellyfin")
-    livetv_override = jf_app.get("livetv", {})
-    if not livetv_override and profile:
-        livetv_override = profile.get("live_tv_defaults", {})
-    if livetv_override and "jellyfin_livetv" in cfg:
-        target = cfg["jellyfin_livetv"]
-        for k, v in livetv_override.items():
-            if v is not None:
-                target[k] = v
-
-    # Jellyfin libraries: per-app config → profile fallback
-    lib_override = jf_app.get("libraries")
-    if not lib_override and profile:
-        jf_prof = profile.get("jellyfin", {})
-        if isinstance(jf_prof, dict):
-            lib_override = jf_prof.get("libraries")
-    if lib_override and "jellyfin_libraries" in cfg:
-        cfg["jellyfin_libraries"]["libraries"] = lib_override
+    # Media server overrides: per-app config → profile fallback
+    ms_id = cfg.get("technology_bindings", {}).get("media_server", "")
+    if ms_id:
+        ms_app = load_app_config(ms_id)
+        # Livetv override
+        livetv_override = ms_app.get("livetv", {})
+        if not livetv_override and profile:
+            livetv_override = profile.get("live_tv_defaults", {})
+        livetv_key = f"{ms_id}_livetv"
+        if livetv_override and livetv_key in cfg:
+            target = cfg[livetv_key]
+            for k, v in livetv_override.items():
+                if v is not None:
+                    target[k] = v
+        # Libraries override
+        lib_override = ms_app.get("libraries")
+        if not lib_override and profile:
+            ms_prof = profile.get(ms_id, {})
+            if isinstance(ms_prof, dict):
+                lib_override = ms_prof.get("libraries")
+        lib_key = f"{ms_id}_libraries"
+        if lib_override and lib_key in cfg:
+            cfg[lib_key]["libraries"] = lib_override
 
     # Enrich tuners/guides with required handler fields
     _enrich_livetv_entries(cfg, profile or {})
@@ -191,13 +186,19 @@ def _enrich_livetv_entries(cfg: dict[str, Any], profile: dict[str, Any]) -> None
     """
     import hashlib
 
-    livetv = cfg.get("jellyfin_livetv")
+    ms_id = cfg.get("technology_bindings", {}).get("media_server", "")
+    livetv_key = f"{ms_id}_livetv" if ms_id else ""
+    livetv = cfg.get(livetv_key) if livetv_key else None
     if not isinstance(livetv, dict):
         return
 
     ltv_defaults = profile.get("live_tv_defaults", {})
-    tuner_tpl = ltv_defaults.get("tuner_url_template", "https://iptv-org.github.io/iptv/countries/{code}.m3u")
-    guide_tpl = ltv_defaults.get("guide_url_template", "https://iptv-epg.org/files/epg-{code}.xml")
+    # Templates from profile or EPG provider registry — no hardcoded URLs
+    from media_stack.services.epg_provider_service import get_tuner_providers, get_guide_providers
+    _tp = get_tuner_providers()
+    _gp = get_guide_providers()
+    tuner_tpl = ltv_defaults.get("tuner_url_template", _tp[0].get("url_template", "") if _tp else "")
+    guide_tpl = ltv_defaults.get("guide_url_template", _gp[0].get("url_template", "") if _gp else "")
     load_all = ltv_defaults.get("load_all_tuners", False)
 
     raw_tuners = livetv.get("tuners", [])
@@ -246,7 +247,7 @@ def _enrich_livetv_entries(cfg: dict[str, Any], profile: dict[str, Any]) -> None
         if "materialized_output_path" not in guide:
             slug = hashlib.md5(path.encode()).hexdigest()[:8]
             name_slug = (guide_name or "unknown").lower().replace(" ", "-").replace("/", "-")[:20]
-            guide["materialized_output_path"] = f"jellyfin/livetv-guides/{name_slug}-{slug}.xml"
+            guide["materialized_output_path"] = f"{ms_id}/livetv-guides/{name_slug}-{slug}.xml"
 
         resolved_guides.append(guide)
         if code:
@@ -283,7 +284,7 @@ def _enrich_livetv_entries(cfg: dict[str, Any], profile: dict[str, Any]) -> None
         if "materialized_output_path" not in tuner:
             slug = hashlib.md5(url.encode()).hexdigest()[:8]
             name_slug = (tuner_name or "unknown").lower().replace(" ", "-").replace("/", "-")[:20]
-            tuner["materialized_output_path"] = f"jellyfin/livetv-tuners/{name_slug}-{slug}.m3u"
+            tuner["materialized_output_path"] = f"{ms_id}/livetv-tuners/{name_slug}-{slug}.m3u"
 
         resolved_tuners.append(tuner)
 
@@ -490,7 +491,8 @@ class JobRunner:
         if not ms_id:
             return
         try:
-            from media_stack.services.apps.jellyfin.http_preflight import run_preflight
+            preflight_mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.http_preflight")
+            run_preflight = preflight_mod.run_preflight
             result = run_preflight(
                 config_root=self.ctx.config_root,
                 admin_username=self.ctx.admin_username,
@@ -637,7 +639,8 @@ def _configure_livetv(ctx: JobContext) -> dict[str, Any]:
     # Step 1: Pre-merge EPG guides into one file
     if guides:
         try:
-            from media_stack.services.apps.jellyfin.epg_merge_service import merge_epgs
+            epg_mod = importlib.import_module(f"media_stack.services.apps.{ctx.media_server_id()}.epg_merge_service")
+            merge_epgs = epg_mod.merge_epgs
 
             # Collect M3U paths (materialized files on disk)
             m3u_paths = []
@@ -655,7 +658,8 @@ def _configure_livetv(ctx: JobContext) -> dict[str, Any]:
                     epg_sources.append({"url": path, "name": name})
 
             if m3u_paths and epg_sources:
-                merged_path = str(Path(ctx.config_root) / "jellyfin" / "livetv-guides" / "merged-epg.xml")
+                ms_id = ctx.media_server_id()
+                merged_path = str(Path(ctx.config_root) / ms_id / "livetv-guides" / "merged-epg.xml")
                 result = merge_epgs(
                     m3u_paths=m3u_paths,
                     epg_sources=epg_sources,
@@ -665,12 +669,11 @@ def _configure_livetv(ctx: JobContext) -> dict[str, Any]:
                 )
 
                 if result.get("channels_with_programmes", 0) > 0:
-                    # Replace all guides with the single merged file
                     container_path = "/config/livetv-guides/merged-epg.xml"
                     livetv["guides"] = [{
                         "type": "xmltv",
                         "path": container_path,
-                        "materialized_output_path": "jellyfin/livetv-guides/merged-epg.xml",
+                        "materialized_output_path": f"{ms_id}/livetv-guides/merged-epg.xml",
                         "enable_all_tuners": True,
                         "enrich_program_icons_from_tuner_logo": False,
                         "enrich_program_categories_from_tuner_groups": False,

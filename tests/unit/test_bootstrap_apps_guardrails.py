@@ -569,6 +569,13 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
         calls = []
         created_payloads = []
 
+        _scheduled_tasks = [
+            {"Name": "Refresh Channels", "State": "Idle",
+             "LastExecutionResult": {"Status": "Completed"}},
+            {"Name": "Refresh Guide", "State": "Idle",
+             "LastExecutionResult": {"Status": "Completed"}},
+        ]
+
         def fake_jellyfin_request(base_url, path, api_key, method="GET", payload=None, timeout=30):
             calls.append((path, method, payload))
             if path == "/LiveTv/Info":
@@ -582,22 +589,34 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                 return 200, {"Id": "guide-new"}, ""
             if path in ("/LiveTv/RefreshChannels", "/LiveTv/RefreshGuide"):
                 return 204, {}, ""
+            if path == "/ScheduledTasks":
+                return 200, _scheduled_tasks, ""
+            if path == "/LiveTv/TunerHosts" and method == "POST":
+                return 200, {"Id": "tuner-new"}, ""
+            if path.startswith("/ScheduledTasks/Running/") and method == "POST":
+                return 204, {}, ""
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
 
-        with (
-            mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
-            mock.patch.object(
-                JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"
-            ),
-            mock.patch.object(
-                JELLYFIN_OPS,
-                "load_jellyfin_livetv_state",
-                side_effect=[existing_state, refreshed_state, refreshed_state],
-            ),
-            mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
-            mock.patch.object(JELLYFIN_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
-        ):
-            JELLYFIN_OPS.ensure_jellyfin_livetv(cfg, "/srv-config", 30)
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            # Pre-create materialized files so post-reconcile reads work
+            import pathlib
+            (pathlib.Path(td) / "jellyfin" / "livetv-tuners").mkdir(parents=True, exist_ok=True)
+            (pathlib.Path(td) / "jellyfin" / "livetv-tuners" / "iptv-org-us-epg.m3u").write_text("#EXTM3U\n")
+            with (
+                mock.patch.object(JELLYFIN_OPS, "wait_for_service"),
+                mock.patch.object(
+                    JELLYFIN_OPS, "resolve_jellyfin_api_key", return_value="jellyfin-key"
+                ),
+                mock.patch.object(
+                    JELLYFIN_OPS,
+                    "load_jellyfin_livetv_state",
+                    side_effect=[existing_state, refreshed_state, refreshed_state],
+                ),
+                mock.patch.object(JELLYFIN_OPS, "resolve_jellyfin_tuner_type_id", return_value="m3u"),
+                mock.patch.object(JELLYFIN_OPS, "jellyfin_request", side_effect=fake_jellyfin_request),
+            ):
+                JELLYFIN_OPS.ensure_jellyfin_livetv(cfg, td, 30)
 
         called_paths = [item[0] for item in calls]
         self.assertIn("/LiveTv/TunerHosts?id=tuner-dup", called_paths)
@@ -701,6 +720,13 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
         calls = []
         created_tuner_payloads = []
 
+        _scheduled_tasks = [
+            {"Name": "Refresh Channels", "State": "Idle",
+             "LastExecutionResult": {"Status": "Completed"}},
+            {"Name": "Refresh Guide", "State": "Idle",
+             "LastExecutionResult": {"Status": "Completed"}},
+        ]
+
         def fake_jellyfin_request(base_url, path, api_key, method="GET", payload=None, timeout=30):
             del base_url, api_key, timeout
             calls.append((path, method, payload))
@@ -714,6 +740,12 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
             if path == "/LiveTv/ListingProviders" and method == "POST":
                 return 200, {}, ""
             if path in ("/LiveTv/RefreshChannels", "/LiveTv/RefreshGuide"):
+                return 204, {}, ""
+            if path == "/ScheduledTasks":
+                return 200, _scheduled_tasks, ""
+            if path == "/LiveTv/TunerHosts" and method == "POST":
+                return 200, {"Id": "tuner-new"}, ""
+            if path.startswith("/ScheduledTasks/Running/") and method == "POST":
                 return 204, {}, ""
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
 

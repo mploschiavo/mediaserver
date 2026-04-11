@@ -77,20 +77,27 @@ class TestGetProfile(unittest.TestCase):
             f.flush()
             profile_path = f.name
         try:
+            MODULE._invalidate_profile_cache()
             with patch.dict(os.environ, {"BOOTSTRAP_PROFILE_FILE": profile_path}):
                 result = MODULE.get_profile()
-                self.assertEqual(result["profile"]["routing"]["base_domain"], "example.com")
+                # routing is stripped from profile (has dedicated /api/routing endpoint)
+                self.assertNotIn("routing", result["profile"])
+                # non-stripped sections are present
+                self.assertEqual(result["profile"]["apps"], ["sonarr"])
                 self.assertEqual(result["file"], profile_path)
                 self.assertNotIn("error", result)
         finally:
+            MODULE._invalidate_profile_cache()
             os.unlink(profile_path)
 
     def test_missing_file(self):
+        MODULE._invalidate_profile_cache()
         with patch.dict(os.environ, {"BOOTSTRAP_PROFILE_FILE": "/nonexistent.yaml"}):
             with mock.patch("media_stack.api.services._resolve._IMAGE_PROFILE", "/also/missing"):
                 result = MODULE.get_profile()
                 self.assertIsNone(result["profile"])
                 self.assertIn("error", result)
+        MODULE._invalidate_profile_cache()
 
     def test_invalid_yaml(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -98,12 +105,14 @@ class TestGetProfile(unittest.TestCase):
             f.flush()
             bad_path = f.name
         try:
+            MODULE._invalidate_profile_cache()
             with patch.dict(os.environ, {"BOOTSTRAP_PROFILE_FILE": bad_path}):
                 result = MODULE.get_profile()
                 # PyYAML may or may not error on this; the function catches exceptions
                 # If it parsed (YAML is lenient), profile is a dict; if error, we get error key
                 self.assertIn("profile", result)
         finally:
+            MODULE._invalidate_profile_cache()
             os.unlink(bad_path)
 
     def test_empty_yaml_returns_empty_dict(self):
@@ -112,10 +121,12 @@ class TestGetProfile(unittest.TestCase):
             f.flush()
             empty_path = f.name
         try:
+            MODULE._invalidate_profile_cache()
             with patch.dict(os.environ, {"BOOTSTRAP_PROFILE_FILE": empty_path}):
                 result = MODULE.get_profile()
                 self.assertEqual(result["profile"], {})
         finally:
+            MODULE._invalidate_profile_cache()
             os.unlink(empty_path)
 
 
