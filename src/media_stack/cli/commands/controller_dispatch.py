@@ -63,8 +63,8 @@ def _dispatch_action(
 ) -> None:
     """Route an action to the appropriate handler."""
     from media_stack.cli.commands.action_handlers import (
-        action_bootstrap, action_finalize, action_auto_indexers,
-        action_restart_apps, action_sync_indexers, action_envoy_config,
+        action_bootstrap, action_post_setup, action_discover_indexers,
+        action_restart_apps, action_push_indexers, action_envoy_config,
         action_reconcile, action_validate_credentials,
     )
     from media_stack.cli.commands.controller_handlers import (
@@ -85,14 +85,14 @@ def _dispatch_action(
 
     if action_name == "bootstrap":
         action_bootstrap(args, state, _run_preflights, _persist_preflight_keys_to_secret, _build_runner)
-    elif action_name == "finalize":
-        action_finalize(args, state, _build_runner, _run_post_bootstrap)
-    elif action_name == "auto-indexers":
-        action_auto_indexers(args, _build_runner)
+    elif action_name == "post-setup":
+        action_post_setup(args, state, _build_runner, _run_post_bootstrap)
+    elif action_name == "discover-indexers":
+        action_discover_indexers(args, _build_runner)
     elif action_name == "restart-apps":
         action_restart_apps(args, state, _load_handler_specs, _run_handler_specs)
-    elif action_name == "sync-indexers":
-        action_sync_indexers(args, _build_runner)
+    elif action_name == "push-indexers":
+        action_push_indexers(args, _build_runner)
     elif action_name == "envoy-config":
         action_envoy_config(args)
     elif action_name == "validate-credentials":

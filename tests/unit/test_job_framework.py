@@ -102,8 +102,8 @@ class TestJobRegistry(unittest.TestCase):
     def test_registry_has_expected_jobs(self):
         registry = get_job_registry()
         expected = {"configure-libraries", "configure-livetv", "configure-plugins",
-                    "configure-playback", "configure-home-rails",
-                    "configure-auto-collections", "configure-prewarm",
+                    "configure-playback", "configure-home-screen",
+                    "configure-collections", "refresh-media",
                     "configure-categories"}
         self.assertEqual(set(registry.keys()), expected)
 
@@ -130,14 +130,14 @@ class TestBuildBootstrapJobs(unittest.TestCase):
         self.assertIn("configure-livetv", sub_names)
         self.assertIn("configure-plugins", sub_names)
         self.assertIn("configure-playback", sub_names)
-        self.assertIn("configure-home-rails", sub_names)
-        self.assertIn("configure-auto-collections", sub_names)
+        self.assertIn("configure-home-screen", sub_names)
+        self.assertIn("configure-collections", sub_names)
 
     def test_has_prewarm_in_tree(self):
         root = build_job_framework()
         from media_stack.cli.commands.job_framework import _find_job_in_tree
-        prewarm = _find_job_in_tree(root, "configure-prewarm")
-        self.assertIsNotNone(prewarm, "configure-prewarm not found in tree")
+        prewarm = _find_job_in_tree(root, "refresh-media")
+        self.assertIsNotNone(prewarm, "refresh-media not found in tree")
 
 
 class TestRunJob(unittest.TestCase):
@@ -283,27 +283,24 @@ class TestMediaServerJobsNotSkipped(unittest.TestCase):
         self.assertIn("TV Shows", names)
 
     def test_all_media_server_jobs_have_handler(self):
-        """Every media server job must have a matching ensure_* function."""
-        ctx = JobContext()
-        ms_id = ctx.media_server_id()
-        if not ms_id:
-            self.skipTest("no media server")
-        from media_stack.cli.commands.job_framework import get_job_registry
+        """Every discovered job must have a resolvable handler."""
+        from media_stack.cli.commands.job_framework import discover_jobs_from_contracts
         import importlib
-        mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
-        for job_name, handler in get_job_registry().items():
-            if job_name == "configure-categories":
-                continue  # not a media server job
-            # Derive handler suffix from the handler function
-            suffix = job_name.replace("configure-", "").replace("-", "_")
-            fn_name = f"ensure_{ms_id}_{suffix}"
-            # Some have different names
-            alt_names = [fn_name, f"ensure_{ms_id}_{suffix}_defaults",
-                         f"ensure_{ms_id}_{suffix}_config"]
-            found = any(hasattr(mod, n) for n in alt_names)
-            self.assertTrue(found,
-                            f"Job '{job_name}' has no handler in {ms_id}/runtime_ops.py. "
-                            f"Tried: {alt_names}")
+        for job in discover_jobs_from_contracts():
+            handler_path = job.get("handler", "")
+            if not handler_path:
+                continue
+            if ":" in handler_path:
+                mod_path, fn_name = handler_path.rsplit(":", 1)
+            else:
+                mod_path, fn_name = handler_path.rsplit(".", 1)
+            try:
+                mod = importlib.import_module(mod_path)
+                fn = getattr(mod, fn_name, None)
+                self.assertIsNotNone(fn,
+                    f"Job '{job['name']}' handler {handler_path} — function not found")
+            except ImportError:
+                self.fail(f"Job '{job['name']}' handler {handler_path} — module not found")
 
 
 class TestKnownActionsIncludeJobs(unittest.TestCase):

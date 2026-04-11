@@ -299,8 +299,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div class="action-group">
       <div class="action-group-title">Indexers & Sync</div>
       <div class="actions">
-        <button class="btn-secondary" onclick="confirmAction('auto-indexers','Discover Indexers','Scans Prowlarr indexer presets and tests connectivity. Takes 1-2 minutes.')" title="(I)">Discover Indexers</button>
-        <button class="btn-secondary" onclick="confirmAction('sync-indexers','Sync Indexers','Push Prowlarr indexers to all Arr apps.')">Sync Indexers</button>
+        <button class="btn-secondary" onclick="confirmAction('discover-indexers','Discover Indexers','Scans Prowlarr indexer presets and tests connectivity. Takes 1-2 minutes.')" title="(I)">Discover Indexers</button>
+        <button class="btn-secondary" onclick="confirmAction('push-indexers','Sync Indexers','Push Prowlarr indexers to all Arr apps.')">Sync Indexers</button>
         <button class="btn-secondary" onclick="confirmAction('reconcile','Reconcile','Re-check all configs and fix drift.')">Reconcile</button>
       </div>
       <div class="action-group-desc">Find content sources, sync state, fix mismatches</div>
@@ -492,7 +492,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <p style="color:var(--fg3);font-size:.82em;margin:0 0 6px">These run on the server even when the dashboard is closed. Stored in config.</p>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
         <select id="serverSchedAction" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
-          <option value="reconcile">Reconcile</option><option value="auto-indexers">Discover Indexers</option><option value="sync-indexers">Sync Indexers</option><option value="validate-credentials">Validate Credentials</option>
+          <option value="reconcile">Reconcile</option><option value="discover-indexers">Discover Indexers</option><option value="push-indexers">Sync Indexers</option><option value="validate-credentials">Validate Credentials</option>
         </select>
         <select id="serverSchedMins" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
           <option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="360">6 hours</option><option value="720">12 hours</option><option value="1440">24 hours</option>
@@ -503,7 +503,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <div class="action-group"><div class="action-group-title">Browser Schedules (while dashboard is open)</div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
         <select id="schedAction" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
-          <option value="reconcile">Reconcile</option><option value="auto-indexers">Discover Indexers</option><option value="sync-indexers">Sync Indexers</option>
+          <option value="reconcile">Reconcile</option><option value="discover-indexers">Discover Indexers</option><option value="push-indexers">Sync Indexers</option>
         </select>
         <select id="schedInterval" style="padding:5px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em">
           <option value="1800">30 min</option><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="21600">6 hours</option>
@@ -603,7 +603,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <!-- Mobile bottom nav -->
 <div class="mobile-bar">
   <button class="btn-primary" style="padding:6px 12px;font-size:.8em" onclick="confirmAction('bootstrap','Configure All','Full setup pipeline. 3-5 min.')">Configure</button>
-  <button class="btn-secondary" style="padding:6px 12px;font-size:.8em" onclick="confirmAction('auto-indexers','Discover Indexers','Scan Prowlarr presets.')">Indexers</button>
+  <button class="btn-secondary" style="padding:6px 12px;font-size:.8em" onclick="confirmAction('discover-indexers','Discover Indexers','Scan Prowlarr presets.')">Indexers</button>
   <button class="btn-secondary" style="padding:6px 12px;font-size:.8em" onclick="load();probeServices();toast('Refreshed')">Refresh</button>
 </div>
 
@@ -2915,7 +2915,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){closeConfirm();const lg=document.getElementById('logs');if(lg.classList.contains('fullscreen'))lg.classList.remove('fullscreen');return;}
   if(e.key==='r'||e.key==='R'){load();probeServices();toast('Refreshed');return;}
   if(e.key==='b'||e.key==='B'){confirmAction('bootstrap','Configure All Apps','Runs the full setup pipeline. 3-5 min.');return;}
-  if(e.key==='i'||e.key==='I'){confirmAction('auto-indexers','Discover Indexers','Scans Prowlarr indexer presets.');return;}
+  if(e.key==='i'||e.key==='I'){confirmAction('discover-indexers','Discover Indexers','Scans Prowlarr indexer presets.');return;}
   if(e.key==='d'||e.key==='D'){const t=document.getElementById('autoToggle');t.checked=!t.checked;toggleAuto(t.checked);return;}
   if(e.key==='t'||e.key==='T'){toggleTheme();return;}
   if(e.key==='l'||e.key==='L'){downloadLogs();return;}

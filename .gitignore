@@ -15,3 +15,4 @@ docker/config/
 docker/data/
 docker/media/
 .gitignore
+.claude/worktrees/

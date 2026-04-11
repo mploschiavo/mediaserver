@@ -311,7 +311,7 @@ class ControllerService:
             # Core bootstrap complete -- apps are configured with download clients,
             # root folders, and quality profiles.  Post-servarr steps (media-server
             # plugins, Live TV, prewarm, disk guardrails, media hygiene) run as
-            # a separate queued "finalize" action so the dashboard shows complete
+            # a separate queued "post-setup" action so the dashboard shows complete
             # faster and downloads can start immediately.
             self.deps.log("[OK] Bootstrap complete.")
         finally:

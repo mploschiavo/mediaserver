@@ -114,9 +114,9 @@ class TestActionTrigger(unittest.TestCase):
         def action_trigger(action_name, overrides):
             nonlocal _queue_seq
             ACTION_PRIORITY = {
-                "bootstrap": 10, "finalize": 20, "envoy-config": 30,
-                "restart-apps": 40, "reconcile": 50, "sync-indexers": 60,
-                "auto-indexers": 70,
+                "bootstrap": 10, "post-setup": 20, "envoy-config": 30,
+                "restart-apps": 40, "reconcile": 50, "push-indexers": 60,
+                "discover-indexers": 70,
             }
             DEFAULT_ACTION_PRIORITY = 50
             prio = int(overrides.pop(
@@ -153,7 +153,7 @@ class TestActionTrigger(unittest.TestCase):
     def test_trigger_increments_sequence(self):
         trigger, q, _ = self._build_trigger()
         trigger("bootstrap", {})
-        trigger("finalize", {})
+        trigger("post-setup", {})
         _, seq1, _, _ = q.get()
         _, seq2, _, _ = q.get()
         self.assertEqual(seq1, 1)
@@ -175,7 +175,7 @@ class TestActionPriority(unittest.TestCase):
     def test_bootstrap_highest_and_auto_indexers_lowest(self):
         from media_stack.api.server import ACTION_PRIORITY
         self.assertEqual(ACTION_PRIORITY["bootstrap"], 10)
-        self.assertEqual(ACTION_PRIORITY["auto-indexers"], 70)
+        self.assertEqual(ACTION_PRIORITY["discover-indexers"], 70)
 
     def test_all_known_actions_have_priority(self):
         from media_stack.api.server import ACTION_PRIORITY, KNOWN_ACTIONS
@@ -221,10 +221,10 @@ class TestPostBootstrapAutoQueue(unittest.TestCase):
         action_name = "bootstrap"
         if action_name == "bootstrap" and not state.initial_bootstrap_done:
             state.initial_bootstrap_done = True
-            for queued in ["finalize", "envoy-config", "auto-indexers"]:
+            for queued in ["post-setup", "envoy-config", "discover-indexers"]:
                 triggered.append(queued)
 
-        self.assertEqual(triggered, ["finalize", "envoy-config", "auto-indexers"])
+        self.assertEqual(triggered, ["post-setup", "envoy-config", "discover-indexers"])
         self.assertTrue(state.initial_bootstrap_done)
 
     def test_no_auto_queue_on_second_bootstrap(self):
@@ -233,7 +233,7 @@ class TestPostBootstrapAutoQueue(unittest.TestCase):
         state.initial_bootstrap_done = True
 
         if "bootstrap" == "bootstrap" and not state.initial_bootstrap_done:
-            for queued in ["finalize", "envoy-config", "auto-indexers"]:
+            for queued in ["post-setup", "envoy-config", "discover-indexers"]:
                 triggered.append(queued)
 
         self.assertEqual(triggered, [])
@@ -268,7 +268,7 @@ class TestDispatchAction(unittest.TestCase):
     @patch("media_stack.services.runtime_platform.log")
     @patch("media_stack.cli.commands.action_handlers.action_finalize")
     def test_dispatch_finalize(self, mock_handler, mock_log, mock_apply):
-        _dispatch_action("finalize", {}, _make_args(), ControllerState())
+        _dispatch_action("post-setup", {}, _make_args(), ControllerState())
         mock_handler.assert_called_once()
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")

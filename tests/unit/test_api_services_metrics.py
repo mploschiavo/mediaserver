@@ -234,7 +234,7 @@ class TestGetRssFeedErrorActions(unittest.TestCase):
     """Actions with errors show 'error' status and include error detail."""
 
     def test_error_action_content(self):
-        history = [{"name": "sync-indexers", "elapsed_seconds": 1, "error": "connection lost"}]
+        history = [{"name": "push-indexers", "elapsed_seconds": 1, "error": "connection lost"}]
         state = _make_state(history)
         cache = _make_cache(None)
 

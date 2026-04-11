@@ -189,8 +189,8 @@ class TestJobTreePrereqs(unittest.TestCase):
         root = build_job_framework()
         # Prewarm is under configure-post phase
         from media_stack.cli.commands.job_framework import _find_job_in_tree
-        prewarm = _find_job_in_tree(root, "configure-prewarm")
-        self.assertIsNotNone(prewarm, "configure-prewarm not found in tree")
+        prewarm = _find_job_in_tree(root, "refresh-media")
+        self.assertIsNotNone(prewarm, "refresh-media not found in tree")
         self.assertIn("media_server_api_key", prewarm.requires)
 
     def test_download_clients_have_no_ms_prereqs(self):
