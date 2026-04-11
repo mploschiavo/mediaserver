@@ -208,17 +208,27 @@ def _collect_media_metrics() -> dict[str, Any]:
         media["storage_gb"] = round(disk.get("used_bytes", 0) / (1024**3), 1)
     except Exception:
         media["storage_gb"] = 0
-    # Download stats — cumulative totals from torrent client, not point-in-time speed
+    # Download stats — cumulative totals from torrent client container
     try:
         import docker
-        client = docker.from_env()
-        for c in client.containers.list():
-            if "qbittorrent" in c.name.lower():
-                stats = c.stats(stream=False)
-                nets = stats.get("networks", {})
-                media["torrent_rx_gb"] = round(sum(n.get("rx_bytes", 0) for n in nets.values()) / (1024**3), 2)
-                media["torrent_tx_gb"] = round(sum(n.get("tx_bytes", 0) for n in nets.values()) / (1024**3), 2)
-                break
+        from media_stack.api.services.registry import SERVICE_MAP
+        # Find torrent client from technology_bindings, not hardcoded
+        tc_id = ""
+        try:
+            from media_stack.api.services.config import _load_profile_yaml
+            data, _ = _load_profile_yaml()
+            tc_id = data.get("technology_bindings", {}).get("torrent_client", "")
+        except Exception:
+            pass
+        if tc_id:
+            client = docker.from_env()
+            for c in client.containers.list():
+                if tc_id in c.name.lower():
+                    stats = c.stats(stream=False)
+                    nets = stats.get("networks", {})
+                    media["torrent_rx_gb"] = round(sum(n.get("rx_bytes", 0) for n in nets.values()) / (1024**3), 2)
+                    media["torrent_tx_gb"] = round(sum(n.get("tx_bytes", 0) for n in nets.values()) / (1024**3), 2)
+                    break
     except Exception:
         pass
     try:
