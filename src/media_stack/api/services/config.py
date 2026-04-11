@@ -377,21 +377,19 @@ def get_iptv_countries() -> dict[str, Any]:
     return {"countries": countries, "source": "defaults"}
 
 
+_APP_CONFIG_SECTIONS = {"live_tv_defaults", "download_categories", "jellyfin"}
+
 def get_profile() -> dict[str, Any]:
-    """Read and return the bootstrap profile YAML."""
-    resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
-    if not resolved:
+    """Read and return the bootstrap profile YAML (slim — app config stripped)."""
+    profile, path = _load_profile_yaml()
+    if path is None:
         return {"profile": None, "error": "Profile not found"}
-    path = Path(resolved)
-    try:
-        import yaml
-        with open(path) as f:
-            profile = yaml.safe_load(f) or {}
-        return {"profile": profile, "file": str(path)}
-    except ImportError:
-        return {"profile_raw": path.read_text(encoding="utf-8"), "file": str(path)}
-    except Exception as exc:
-        return {"profile": None, "error": str(exc)[:120]}
+    moved = [k for k in _APP_CONFIG_SECTIONS if k in profile]
+    slim = {k: v for k, v in profile.items() if k not in _APP_CONFIG_SECTIONS}
+    result: dict[str, Any] = {"profile": slim, "file": str(path)}
+    if moved:
+        result["moved_to_app_config"] = moved
+    return result
 
 
 def save_profile(content: str, reload_config: Callable[[], None] | None = None) -> dict[str, Any]:
