@@ -97,54 +97,48 @@ def _media_server_id() -> str:
 
 
 def get_libraries() -> dict[str, Any]:
-    """Return the configured media server libraries from the profile/defaults."""
+    """Return the configured media server libraries.
+
+    Reads from per-app config (jellyfin/controller.yaml) first,
+    falls back to profile, then contract defaults.
+    """
+    from media_stack.services.app_config_service import load_app_config
     ms_id = _media_server_id()
+    app_cfg = load_app_config(ms_id) if ms_id else {}
+    if "libraries" in app_cfg:
+        return {"libraries": app_cfg["libraries"], "source": "app_config", "media_server": ms_id}
+    # Migration: check profile
     data, _ = _load_profile_yaml()
-    # Check profile overrides under the media server key
     ms_overrides = data.get(ms_id, {}) if ms_id else {}
     if isinstance(ms_overrides, dict) and "libraries" in ms_overrides:
         return {"libraries": ms_overrides["libraries"], "source": "profile", "media_server": ms_id}
-    # Fall back to service contract defaults and auto-populate the profile
+    # Fall back to service contract defaults
     libs = []
     try:
-        from .registry import SERVICES, _find_services_dir
-        ms_svc = next((s for s in SERVICES if s.id == ms_id), None) if ms_id else None
-        if ms_svc:
-            svc_dir = _find_services_dir()
-            svc_yaml = (svc_dir / f"{ms_id}.yaml") if svc_dir else None
-            if svc_yaml and svc_yaml.is_file():
-                with open(svc_yaml) as f:
-                    svc_cfg = yaml.safe_load(f) or {}
-                libs = (svc_cfg.get("defaults", {}).get("libraries", {}).get("libraries", []))
+        from .registry import _find_services_dir
+        svc_dir = _find_services_dir()
+        svc_yaml = (svc_dir / f"{ms_id}.yaml") if svc_dir and ms_id else None
+        if svc_yaml and svc_yaml.is_file():
+            svc_cfg = yaml.safe_load(svc_yaml.read_text()) or {}
+            libs = svc_cfg.get("defaults", {}).get("libraries", {}).get("libraries", [])
     except Exception:
         pass
-    if not libs:
-        return {"libraries": [], "source": "not_configured", "media_server": ms_id}
-    # Auto-populate into profile so the dashboard shows them
-    data, path = _load_profile_yaml()
-    if path and ms_id:
-        data.setdefault(ms_id, {})["libraries"] = libs
-        _save_profile_yaml(data, path)
-    return {"libraries": libs, "source": "defaults (auto-populated)", "media_server": ms_id}
+    return {"libraries": libs, "source": "defaults" if libs else "not_configured", "media_server": ms_id}
 
 
 def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
-    """Update media server library configuration in the profile."""
+    """Update media server library configuration in per-app config."""
     for lib in libraries:
         if not lib.get("name") or not lib.get("collection_type") or not lib.get("paths"):
             return {"error": f"Each library needs name, collection_type, and paths. Invalid: {lib.get('name', '?')}"}
     ms_id = _media_server_id()
-    data, path = _load_profile_yaml()
-    if path is None:
-        return {"error": "Profile file not found"}
-    if ms_id:
-        data.setdefault(ms_id, {})["libraries"] = libraries
-    else:
-        data["libraries"] = libraries
-    result = _save_profile_yaml(data, path)
+    if not ms_id:
+        return {"error": "No media server configured"}
+    from media_stack.services.app_config_service import update_app_config_section
+    result = update_app_config_section(ms_id, "libraries", libraries)
     if "error" not in result:
         result["libraries"] = libraries
-        result["note"] = "Run bootstrap to apply library changes to the media server"
+        result["note"] = "Run configure-libraries to apply changes"
     return result
 
 
@@ -153,8 +147,16 @@ def update_libraries(libraries: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_download_categories() -> dict[str, Any]:
-    """Return configured download categories from profile."""
+    """Return configured download categories from per-app config or profile."""
+    from media_stack.services.app_config_service import load_app_config
+    # Try torrent client first
     data, _ = _load_profile_yaml()
+    bindings = data.get("technology_bindings", {})
+    tc_id = bindings.get("torrent_client", "qbittorrent")
+    app_cfg = load_app_config(tc_id)
+    if "categories" in app_cfg:
+        return {"categories": app_cfg["categories"], "source": "app_config"}
+    # Migration: check profile
     cats = data.get("download_categories")
     if isinstance(cats, dict) and cats:
         return {"categories": cats, "source": "profile"}
@@ -163,13 +165,17 @@ def get_download_categories() -> dict[str, Any]:
 
 
 def update_download_categories(categories: dict[str, str]) -> dict[str, Any]:
-    """Update download categories in the profile."""
+    """Update download categories in per-app config."""
     if not categories:
         return {"error": "At least one category is required"}
-    result = update_profile_section("download_categories", categories)
+    data, _ = _load_profile_yaml()
+    bindings = data.get("technology_bindings", {})
+    tc_id = bindings.get("torrent_client", "qbittorrent")
+    from media_stack.services.app_config_service import update_app_config_section
+    result = update_app_config_section(tc_id, "categories", categories)
     if "error" not in result:
         result["categories"] = categories
-        result["note"] = "Run bootstrap to apply category changes to download clients"
+        result["note"] = "Run configure-categories to apply changes"
     return result
 
 
@@ -244,9 +250,18 @@ def update_metadata_settings(language: str, country: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_livetv_sources() -> dict[str, Any]:
-    """Return configured Live TV tuner and guide sources. Supports multiple countries."""
-    data, _ = _load_profile_yaml()
-    ltv = data.get("live_tv_defaults", {})
+    """Return configured Live TV tuner and guide sources.
+
+    Reads from per-app config (jellyfin/controller.yaml) first,
+    falls back to profile live_tv_defaults for migration.
+    """
+    from media_stack.services.app_config_service import load_app_config
+    app_cfg = load_app_config("jellyfin")
+    ltv = app_cfg.get("livetv", {})
+    # Migration: fall back to profile if per-app config is empty
+    if not ltv:
+        data, _ = _load_profile_yaml()
+        ltv = data.get("live_tv_defaults", {})
     tuners = ltv.get("tuners", [])
     guides = ltv.get("guides", [])
     if not tuners and ltv.get("tuner_url"):
@@ -259,7 +274,7 @@ def get_livetv_sources() -> dict[str, Any]:
         "tuner_url": tuners[0]["url"] if tuners else "",
         "guide_url": guides[0]["url"] if guides else "",
         "load_all_tuners": bool(ltv.get("load_all_tuners", False)),
-        "source": "profile" if tuners else "not_configured",
+        "source": "app_config" if app_cfg.get("livetv") else ("profile" if tuners else "not_configured"),
     }
 
 
@@ -287,11 +302,10 @@ def update_livetv_sources(
     tuner_url: str = "", guide_url: str = "",
     load_all_tuners: bool | None = None,
 ) -> dict[str, Any]:
-    """Update IPTV sources. Supports multiple tuners/guides for multi-country setups."""
-    data, path = _load_profile_yaml()
-    if path is None:
-        return {"error": "Profile file not found"}
-    ltv = data.get("live_tv_defaults", {})
+    """Update IPTV sources. Saves to per-app config (jellyfin/controller.yaml)."""
+    from media_stack.services.app_config_service import load_app_config, save_app_config
+    app_cfg = load_app_config("jellyfin")
+    ltv = app_cfg.get("livetv", {})
     if load_all_tuners is not None:
         ltv["load_all_tuners"] = bool(load_all_tuners)
     if tuners is not None:
@@ -304,18 +318,14 @@ def update_livetv_sources(
         ltv["guides"] = [{"url": guide_url, "name": "Default"}]
     if ltv.get("tuners"):
         ltv["tuner_url"] = ltv["tuners"][0].get("url", "")
-    elif tuners is not None:
-        ltv["tuner_url"] = ""
     if ltv.get("guides"):
         ltv["guide_url"] = ltv["guides"][0].get("url", "")
-    elif guides is not None:
-        ltv["guide_url"] = ""
-    data["live_tv_defaults"] = ltv
-    result = _save_profile_yaml(data, path)
+    app_cfg["livetv"] = ltv
+    result = save_app_config("jellyfin", app_cfg)
     if "error" not in result:
         result["tuners"] = ltv.get("tuners", [])
         result["guides"] = ltv.get("guides", [])
-        result["note"] = "Run bootstrap to apply Live TV changes"
+        result["note"] = "Run configure-livetv to apply Live TV changes"
     return result
 
 

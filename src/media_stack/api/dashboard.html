@@ -543,6 +543,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-downloads',this)">Downloads</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-metadata',this)">Metadata</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-livetv',this)">Live TV</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-jobs',this);loadJobTree()">Jobs</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
     </div>
     <div id="cfg-profile" class="subtab active"><div id="profile-view">Loading...</div></div>
@@ -554,6 +555,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="cfg-downloads" class="subtab" style="display:none"><div id="downloads-config">Loading...</div></div>
     <div id="cfg-metadata" class="subtab" style="display:none"><div id="metadata-config">Loading...</div></div>
     <div id="cfg-livetv" class="subtab" style="display:none"><div id="livetv-config">Loading...</div></div>
+    <div id="cfg-jobs" class="subtab" style="display:none"><div id="jobs-tree">Loading...</div></div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -2575,6 +2577,41 @@ function recordResMetrics(metrics){
     resHistory[name].push(memMi);if(resHistory[name].length>12)resHistory[name].shift();
   }
 }
+/* Job tree view — discovered from service contracts */
+async function loadJobTree(){
+  const el=document.getElementById('jobs-tree');
+  try{
+    const r=await fetch('/api/jobs');if(!r.ok){el.innerHTML='Failed to load jobs';return;}
+    const d=await r.json();
+    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Jobs discovered from service contracts. Click to run individually.</p>';
+    h+='<div style="font-family:monospace;font-size:.85em;line-height:1.8">';
+    h+=renderJobNode(d.tree,0);
+    h+='</div>';
+    h+='<div style="margin-top:12px"><p style="color:var(--fg3);font-size:.78em">'+d.count+' jobs from service contracts. Prerequisites checked before each job runs.</p></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+function renderJobNode(node,depth){
+  const indent='&nbsp;'.repeat(depth*4);
+  const prefix=depth>0?(depth>1?'├── ':'├── '):'';
+  const reqBadges=(node.requires||[]).map(r=>'<span style="background:var(--bg4);color:var(--fg3);padding:1px 5px;border-radius:3px;font-size:.72em;margin-left:4px">'+_escHtml(r)+'</span>').join('');
+  const hasSubs=node.sub_jobs&&node.sub_jobs.length>0;
+  const icon=hasSubs?'&#128194;':'&#9881;';
+  const runBtn=!hasSubs?'<button class="btn-secondary" style="padding:1px 6px;font-size:.7em;margin-left:6px" onclick="triggerJob(\''+_escHtml(node.name)+'\')">Run</button>':'<button class="btn-secondary" style="padding:1px 6px;font-size:.7em;margin-left:6px" onclick="triggerJob(\''+_escHtml(node.name)+'\')">Run All</button>';
+  let h=indent+prefix+icon+' <strong>'+_escHtml(node.name)+'</strong>'+reqBadges+runBtn+'<br>';
+  for(const sub of(node.sub_jobs||[])){h+=renderJobNode(sub,depth+1);}
+  return h;
+}
+async function triggerJob(name){
+  toast('Running '+name+'...');
+  try{
+    const r=await fetch('/actions/'+encodeURIComponent(name),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(d.status==='accepted')toast(name+' queued (priority '+d.priority+')');
+    else toast(d.error||'Failed',true);
+  }catch(e){toast('Error: '+e,true);}
+}
+
 function resSparkHtml(name){const hist=resHistory[name]||[];if(!hist.length)return '';
   const max=Math.max(...hist,1);return '<span class="res-spark">'+hist.map(v=>'<span class="rb" style="height:'+Math.max(1,Math.round(v/max*12))+'px"></span>').join('')+'</span>';
 }
