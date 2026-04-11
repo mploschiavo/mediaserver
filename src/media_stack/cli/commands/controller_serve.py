@@ -95,6 +95,11 @@ def _run_serve(args: argparse.Namespace) -> None:
         except Exception as exc:
             runtime_platform.log(f"[WARN] Config generation failed: {exc}. Bootstrap may skip some steps.")
 
+    # Media server ops are handled by the configure-media-server job framework.
+    # Skip the old media server adapter in finalize to prevent conflicts
+    # (the old adapter reads config.json which has fewer tuners/guides than the profile).
+    os.environ["SKIP_MEDIA_SERVER_ADAPTER_IN_FINALIZE"] = "1"
+
     # Load profile if available (ConfigMap may not be mounted yet on first start).
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
     if profile_file:
@@ -205,6 +210,33 @@ def _run_serve(args: argparse.Namespace) -> None:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
         action_trigger("bootstrap", {})
 
+        # Run media server configuration in a background thread — it doesn't
+        # depend on arr apps and shouldn't wait behind the arr pipeline.
+        # The job DAG dispatcher handles prerequisite gating (waits for
+        # Jellyfin to be reachable + API key before running each job).
+        def _configure_media_server_background() -> None:
+            try:
+                from media_stack.cli.commands.bootstrap_jobs import run_all_media_server_jobs
+                runtime_platform.log("[INFO] Starting media server configuration (background)")
+                result = run_all_media_server_jobs(max_wait=180)
+                status = result.get("status", "unknown")
+                if status == "ok":
+                    runtime_platform.log("[OK] Media server configuration complete (background)")
+                elif status == "prereq_not_met":
+                    runtime_platform.log(
+                        f"[WARN] Media server configuration deferred: {result.get('reason')}. "
+                        "Will retry on next reconcile."
+                    )
+                else:
+                    runtime_platform.log(f"[WARN] Media server configuration: {result}")
+            except Exception as exc:
+                runtime_platform.log(f"[ERR] Media server background configuration: {exc}")
+        ms_thread = threading.Thread(
+            target=_configure_media_server_background,
+            daemon=True, name="configure-media-server-bg",
+        )
+        ms_thread.start()
+
     # Main action dispatch loop — runs forever.
     while True:
         try:
@@ -273,13 +305,17 @@ def _run_serve(args: argparse.Namespace) -> None:
                     for line in trace.splitlines():
                         runtime_platform.log(f"[TRACE] {line}")
 
-                # Still mark initial bootstrap done if it was the bootstrap action
-                # and the error was in post-bootstrap (apps were configured).
+                # Still mark initial bootstrap done if it was the bootstrap action.
+                # Queue deferred steps even on failure — media server config
+                # (libraries, livetv, plugins) doesn't depend on arr apps.
                 if action_name == "bootstrap" and not state.initial_bootstrap_done:
                     state.initial_bootstrap_done = True
                     runtime_platform.log(
                         "[WARN] Initial bootstrap had errors but service is marked ready"
                     )
+                    for queued in ["configure-media-server", "finalize", "envoy-config", "validate-credentials"]:
+                        runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
+                        action_trigger(queued, {})
 
                 # Retry if attempts remain.
                 if attempt <= retry_limit:

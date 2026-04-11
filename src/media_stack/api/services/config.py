@@ -17,17 +17,31 @@ from ._resolve import resolve_config_path, resolve_profile_path
 # Profile section helpers — read/write specific YAML sections
 # ---------------------------------------------------------------------------
 
+_profile_cache: tuple[dict[str, Any], Path | None, float] = ({}, None, 0.0)
+_PROFILE_CACHE_TTL = 5.0  # seconds
+
 def _load_profile_yaml() -> tuple[dict[str, Any], Path | None]:
-    """Load the profile YAML. Returns (data, path) or ({}, None)."""
+    """Load the profile YAML with short TTL cache. Returns (data, path) or ({}, None)."""
+    global _profile_cache
+    import time as _t
+    if _t.time() - _profile_cache[2] < _PROFILE_CACHE_TTL and _profile_cache[1] is not None:
+        return _profile_cache[0], _profile_cache[1]
     resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
     if not resolved:
         return {}, None
     path = Path(resolved)
     try:
         with open(path) as f:
-            return yaml.safe_load(f) or {}, path
+            data = yaml.safe_load(f) or {}
+        _profile_cache = (data, path, _t.time())
+        return data, path
     except Exception:
         return {}, path
+
+
+def _invalidate_profile_cache() -> None:
+    global _profile_cache
+    _profile_cache = ({}, None, 0.0)
 
 
 def _validate_profile_data(data: dict[str, Any]) -> str | None:
@@ -56,6 +70,7 @@ def _save_profile_yaml(data: dict[str, Any], path: Path) -> dict[str, Any]:
             backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
         with open(path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        _invalidate_profile_cache()
         return {"status": "saved", "file": str(path)}
     except Exception as exc:
         return {"error": str(exc)[:120]}
@@ -243,6 +258,7 @@ def get_livetv_sources() -> dict[str, Any]:
         "guides": guides,
         "tuner_url": tuners[0]["url"] if tuners else "",
         "guide_url": guides[0]["url"] if guides else "",
+        "load_all_tuners": bool(ltv.get("load_all_tuners", False)),
         "source": "profile" if tuners else "not_configured",
     }
 
@@ -269,12 +285,15 @@ def update_livetv_sources(
     tuners: list[dict[str, str]] | None = None,
     guides: list[dict[str, str]] | None = None,
     tuner_url: str = "", guide_url: str = "",
+    load_all_tuners: bool | None = None,
 ) -> dict[str, Any]:
     """Update IPTV sources. Supports multiple tuners/guides for multi-country setups."""
     data, path = _load_profile_yaml()
     if path is None:
         return {"error": "Profile file not found"}
     ltv = data.get("live_tv_defaults", {})
+    if load_all_tuners is not None:
+        ltv["load_all_tuners"] = bool(load_all_tuners)
     if tuners is not None:
         ltv["tuners"] = tuners
     elif tuner_url:
@@ -314,24 +333,37 @@ def get_iptv_countries() -> dict[str, Any]:
     ltv_defaults = data.get("live_tv_defaults", {})
     tuner_tpl = ltv_defaults.get("tuner_url_template", "")
     guide_tpl = ltv_defaults.get("guide_url_template", "")
-    countries = [
-        {"code": c, "name": n,
-         "tuner_url": tuner_tpl.replace("{code}", c),
-         "guide_url": guide_tpl.replace("{code}", c)}
-        for c, n in [
-            ("us", "United States"), ("gb", "United Kingdom"), ("ca", "Canada"),
-            ("au", "Australia"), ("de", "Germany"), ("fr", "France"),
-            ("es", "Spain"), ("it", "Italy"), ("br", "Brazil"), ("mx", "Mexico"),
-            ("jp", "Japan"), ("kr", "South Korea"), ("in", "India"),
-            ("nl", "Netherlands"), ("se", "Sweden"), ("no", "Norway"),
-            ("dk", "Denmark"), ("fi", "Finland"), ("pl", "Poland"),
-            ("pt", "Portugal"), ("ru", "Russia"), ("za", "South Africa"),
-            ("ar", "Argentina"), ("co", "Colombia"), ("cl", "Chile"),
-            ("tr", "Turkey"), ("il", "Israel"), ("ae", "UAE"),
-            ("cn", "China"), ("tw", "Taiwan"), ("ph", "Philippines"),
-            ("th", "Thailand"), ("id", "Indonesia"),
-        ]
-    ]
+    # Build country list using templates — no live URL probing.
+    # Actual provider resolution (with fallback) happens at job run time,
+    # not on every dashboard page load.
+    from media_stack.services.epg_provider_service import get_guide_providers, _expand_url
+    guide_providers = get_guide_providers()
+    countries = []
+    for c, n in [
+        ("us", "United States"), ("gb", "United Kingdom"), ("ca", "Canada"),
+        ("au", "Australia"), ("de", "Germany"), ("fr", "France"),
+        ("es", "Spain"), ("it", "Italy"), ("br", "Brazil"), ("mx", "Mexico"),
+        ("jp", "Japan"), ("kr", "South Korea"), ("in", "India"),
+        ("nl", "Netherlands"), ("se", "Sweden"), ("no", "Norway"),
+        ("dk", "Denmark"), ("fi", "Finland"), ("pl", "Poland"),
+        ("pt", "Portugal"), ("ru", "Russia"), ("za", "South Africa"),
+        ("ar", "Argentina"), ("co", "Colombia"), ("cl", "Chile"),
+        ("tr", "Turkey"), ("il", "Israel"), ("ae", "UAE"),
+        ("cn", "China"), ("tw", "Taiwan"), ("ph", "Philippines"),
+        ("th", "Thailand"), ("id", "Indonesia"), ("hk", "Hong Kong"),
+    ]:
+        # Use first provider that has a URL for this country
+        g_url = ""
+        for p in guide_providers:
+            url = _expand_url(p, c)
+            if url:
+                g_url = url
+                break
+        countries.append({
+            "code": c, "name": n,
+            "tuner_url": tuner_tpl.replace("{code}", c),
+            "guide_url": g_url or guide_tpl.replace("{code}", c),
+        })
     return {"countries": countries, "source": "defaults"}
 
 

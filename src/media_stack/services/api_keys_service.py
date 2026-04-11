@@ -91,6 +91,19 @@ class ApiKeysService:
         next_heartbeat = start
         last_error = ""
 
+        # Fast-fail: if no config file exists and the directory is empty,
+        # the service hasn't started or isn't sharing its config with us.
+        # Use a short timeout (15s) instead of blocking for 180s.
+        any_file_exists = any(p.exists() for p in candidate_paths)
+        if not any_file_exists:
+            fast_timeout = min(timeout_seconds, max(5, self.to_int(
+                os.environ.get("BOOTSTRAP_APIKEY_FAST_TIMEOUT_SECONDS"), 15) or 15))
+            self.log(
+                f"[INFO] {app_name}: config file not found, "
+                f"using fast timeout ({fast_timeout}s instead of {timeout_seconds}s)"
+            )
+            timeout_seconds = fast_timeout
+
         # --- Priority 2: config file (registry-driven reader) ---
         while True:
             # Try the registry's format-aware reader first
@@ -101,6 +114,21 @@ class ApiKeysService:
                     return key
             except Exception:
                 pass
+
+            # Also try HTTP early (every 10s) — service may be up even
+            # when config file isn't visible to the controller.
+            elapsed_now = int(time.time() - start)
+            if elapsed_now > 5 and elapsed_now % 10 < interval_seconds + 1:
+                try:
+                    from media_stack.api.services.registry import read_api_key_via_http
+                    http_key = read_api_key_via_http(app_name)
+                    if http_key:
+                        env_name = f"{app_name.upper()}_API_KEY"
+                        os.environ[env_name] = http_key
+                        self.log(f"[OK] {app_name}: recovered API key via HTTP")
+                        return http_key
+                except Exception:
+                    pass
 
             # Also check alt config roots
             for cfg_path in candidate_paths:
@@ -136,7 +164,7 @@ class ApiKeysService:
 
             time.sleep(interval_seconds)
 
-        # --- Priority 3: HTTP fetch from running service ---
+        # --- Priority 3: final HTTP fetch attempt ---
         try:
             from media_stack.api.services.registry import read_api_key_via_http
             http_key = read_api_key_via_http(app_name)

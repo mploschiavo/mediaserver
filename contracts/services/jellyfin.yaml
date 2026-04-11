@@ -44,6 +44,46 @@ plugin:
     jellyfin_playback_service: jellyfin
     jellyfin_plugins_service: jellyfin
     jellyfin_prewarm_service: jellyfin
+  # Jobs: discrete configuration steps the controller can run.
+  # Discovered automatically — no central Python file to edit.
+  # Each job can be triggered individually: POST /actions/{name}
+  # Or all jobs for this service: POST /actions/configure-jellyfin
+  jobs:
+    configure-libraries:
+      handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries
+      phase: media_server
+      priority: 10
+      requires: [media_server_reachable, media_server_api_key]
+    configure-livetv:
+      handler: media_stack.cli.commands.bootstrap_jobs:_configure_livetv
+      phase: media_server
+      priority: 20
+      requires: [media_server_reachable, media_server_api_key]
+    configure-plugins:
+      handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_plugins
+      phase: media_server
+      priority: 30
+      requires: [media_server_reachable, media_server_api_key]
+    configure-playback:
+      handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_playback_defaults
+      phase: media_server
+      priority: 40
+      requires: [media_server_reachable, media_server_api_key]
+    configure-home-rails:
+      handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_home_rails
+      phase: media_server
+      priority: 50
+      requires: [media_server_reachable, media_server_api_key]
+    configure-auto-collections:
+      handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config
+      phase: media_server
+      priority: 60
+      requires: [media_server_reachable, media_server_api_key]
+    configure-prewarm:
+      handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm
+      phase: post
+      priority: 90
+      requires: [media_server_reachable, media_server_api_key]
   event_handlers:
     ENSURE:
       ensure_jellyfin_livetv: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_livetv

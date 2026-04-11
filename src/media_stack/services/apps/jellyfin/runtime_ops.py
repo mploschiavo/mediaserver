@@ -263,12 +263,13 @@ def trigger_jellyfin_scheduled_task(jellyfin_url, jellyfin_api_key, preferred_na
     )
 
 
-def trigger_jellyfin_livetv_refresh(jellyfin_url, jellyfin_api_key, endpoint_path, label):
+def trigger_jellyfin_livetv_refresh(jellyfin_url, jellyfin_api_key, endpoint_path, label, **kwargs):
     return _jellyfin_livetv_state_service().trigger_refresh(
         jellyfin_url=jellyfin_url,
         jellyfin_api_key=jellyfin_api_key,
         endpoint_path=endpoint_path,
         label=label,
+        **kwargs,
     )
 
 

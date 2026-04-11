@@ -36,8 +36,17 @@ class JellyfinLiveTvSourceService:
             return ""
 
         if src.lower().startswith("http://") or src.lower().startswith("https://"):
-            with request.urlopen(src, timeout=timeout_seconds) as resp:
+            import gzip as _gzip
+            req = request.Request(src, headers={"Accept-Encoding": "gzip, identity"})
+            with request.urlopen(req, timeout=timeout_seconds) as resp:
                 payload = resp.read()
+            # Decompress gzip if the URL ends in .gz or the response is gzip-encoded
+            content_enc = (resp.headers.get("Content-Encoding") or "").lower()
+            if src.lower().endswith(".gz") or content_enc == "gzip":
+                try:
+                    payload = _gzip.decompress(payload)
+                except Exception:
+                    pass  # Not actually gzipped, use raw bytes
             return payload.decode("utf-8", errors="replace")
 
         candidate_paths: list[Path] = []

@@ -257,12 +257,45 @@ class JellyfinLiveTvStateService:
             return False, f"failed to trigger task '{task_name}' (HTTP {run_status}): {run_body}"
         return True, task_name
 
+    def wait_for_task(
+        self,
+        jellyfin_url: str,
+        jellyfin_api_key: str,
+        task_names: list[str],
+        timeout_seconds: int = 120,
+        poll_interval: int = 3,
+    ) -> tuple[bool, str]:
+        """Wait for a scheduled task to finish (state != Running)."""
+        import time as _time
+
+        lowered = [n.lower() for n in task_names]
+        deadline = _time.time() + timeout_seconds
+        while _time.time() < deadline:
+            status, tasks, _ = self.jellyfin_request(
+                jellyfin_url, "/ScheduledTasks", jellyfin_api_key,
+            )
+            if status != 200 or not isinstance(tasks, list):
+                _time.sleep(poll_interval)
+                continue
+            for task in tasks:
+                name = str((task or {}).get("Name", "")).strip()
+                if not any(t in name.lower() for t in lowered):
+                    continue
+                state = str((task or {}).get("State", "")).strip()
+                if state != "Running":
+                    last = (task or {}).get("LastExecutionResult", {})
+                    return True, f"{name}: {last.get('Status', 'done')}"
+            _time.sleep(poll_interval)
+        return False, f"timeout waiting for {task_names} after {timeout_seconds}s"
+
     def trigger_refresh(
         self,
         jellyfin_url: str,
         jellyfin_api_key: str,
         endpoint_path: str,
         label: str,
+        wait: bool = False,
+        wait_timeout: int = 120,
     ) -> tuple[bool, str]:
         status, _, body = self.jellyfin_request(
             jellyfin_url,
@@ -270,28 +303,50 @@ class JellyfinLiveTvStateService:
             jellyfin_api_key,
             method="POST",
         )
-        if status in (200, 201, 202, 204):
-            return True, f"requested {label}"
+        triggered_via_task = False
+        task_names: list[str] = []
 
-        # Jellyfin 10.11+ may expose refresh via scheduled tasks instead of
-        # legacy /LiveTv/Refresh* endpoints.
-        if status == 404:
-            fallback_names: list[str] = []
+        if status in (200, 201, 202, 204):
+            detail = f"requested {label}"
+        elif status == 404:
+            # Jellyfin 10.11+ may expose refresh via scheduled tasks instead of
+            # legacy /LiveTv/Refresh* endpoints.
             if "channel" in label:
-                fallback_names = ["TasksRefreshChannels", "Refresh Channels"]
+                task_names = ["TasksRefreshChannels", "Refresh Channels"]
             elif "guide" in label:
-                fallback_names = ["Refresh Guide"]
-            if fallback_names:
+                task_names = ["Refresh Guide"]
+            if task_names:
                 ok, detail = self.trigger_scheduled_task(
-                    jellyfin_url,
-                    jellyfin_api_key,
-                    fallback_names,
+                    jellyfin_url, jellyfin_api_key, task_names,
                 )
                 if ok:
-                    return True, f"requested {label} via scheduled task '{detail}'"
-                return False, (
-                    f"could not request {label} via endpoint (HTTP {status}); "
-                    f"fallback failed: {detail}"
-                )
+                    detail = f"requested {label} via scheduled task '{detail}'"
+                    triggered_via_task = True
+                else:
+                    return False, (
+                        f"could not request {label} via endpoint (HTTP {status}); "
+                        f"fallback failed: {detail}"
+                    )
+            else:
+                return False, f"could not request {label} (HTTP {status}): {body}"
+        else:
+            return False, f"could not request {label} (HTTP {status}): {body}"
 
-        return False, f"could not request {label} (HTTP {status}): {body}"
+        # Wait for completion if requested
+        if wait:
+            if not task_names:
+                if "channel" in label:
+                    task_names = ["TasksRefreshChannels", "Refresh Channels"]
+                elif "guide" in label:
+                    task_names = ["Refresh Guide"]
+            if task_names:
+                ok, wait_detail = self.wait_for_task(
+                    jellyfin_url, jellyfin_api_key, task_names,
+                    timeout_seconds=wait_timeout,
+                )
+                if ok:
+                    detail = f"{label} complete ({wait_detail})"
+                else:
+                    detail = f"{label} triggered but {wait_detail}"
+
+        return True, detail
