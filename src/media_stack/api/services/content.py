@@ -285,7 +285,30 @@ def get_quality_profiles() -> dict[str, Any]:
             req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read())
-            return name, [{"id": p.get("id"), "name": p.get("name", "")} for p in data] if isinstance(data, list) else []
+            result = []
+            if isinstance(data, list):
+                for p in data:
+                    entry: dict[str, Any] = {"id": p.get("id"), "name": p.get("name", "")}
+                    if "upgradeAllowed" in p:
+                        entry["upgradeAllowed"] = p["upgradeAllowed"]
+                    cutoff_id = p.get("cutoff")
+                    if cutoff_id is not None:
+                        cutoff_name = str(cutoff_id)
+                        for item in p.get("items", []):
+                            if item.get("id") == cutoff_id:
+                                cutoff_name = item.get("name", cutoff_name)
+                                break
+                            found = False
+                            for q in item.get("items", []):
+                                if q.get("id") == cutoff_id:
+                                    cutoff_name = q.get("name", cutoff_name)
+                                    found = True
+                                    break
+                            if found:
+                                break
+                        entry["cutoff"] = cutoff_name
+                    result.append(entry)
+            return name, result
         except Exception:
             return name, []
 

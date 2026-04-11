@@ -1158,8 +1158,9 @@ function renderIndexers(){
   h+='<button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="toggleAllIndexers(false)">Disable All</button>';
   h+='<button class="btn-danger" style="padding:3px 8px;font-size:.75em" onclick="deleteDisabledIndexers()">Delete Disabled</button>';
   h+='<span style="color:var(--fg3);font-size:.82em;margin-left:auto">'+enabled+'/'+idx.length+' enabled</span></div>';
+  h+='<input type="text" id="idx-filter" placeholder="Filter by name or type\u2026" oninput="filterIndexers(this.value)" style="width:100%;padding:6px 10px;margin-bottom:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);font-size:.85em;box-sizing:border-box">';
   h+='<div style="max-height:400px;overflow-y:auto">';
-  h+='<table class="idx-table"><thead><tr><th style="width:30px"><input type="checkbox" id="idx-select-all" onchange="selectAllIndexers(this.checked)"></th><th>Name</th><th>Type</th><th>Pri</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  h+='<table class="idx-table" id="idx-main-table"><thead><tr><th style="width:30px"><input type="checkbox" id="idx-select-all" onchange="selectAllIndexers(this.checked)"></th><th>Name</th><th>Type</th><th>Pri</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
   for(const i of idx){
     const statusCls=i.enable?'ok':'';
     const statusTxt=i.enable?'Enabled':'Disabled';
@@ -1209,6 +1210,17 @@ async function deleteDisabledIndexers(){
 }
 function selectAllIndexers(checked){
   document.querySelectorAll('.idx-cb').forEach(cb=>cb.checked=checked);
+}
+function filterIndexers(query){
+  const q=query.toLowerCase().trim();
+  const rows=document.querySelectorAll('#idx-main-table tbody tr');
+  rows.forEach(row=>{
+    if(!q){row.style.display='';return;}
+    const cells=row.querySelectorAll('td');
+    const name=(cells[1]?cells[1].textContent:'').toLowerCase();
+    const type=(cells[2]?cells[2].textContent:'').toLowerCase();
+    row.style.display=(name.includes(q)||type.includes(q))?'':'none';
+  });
 }
 
 /* Profile */
@@ -1842,14 +1854,19 @@ async function loadQualityProfiles(){
     for(const[app,profiles]of Object.entries(d.profiles||{})){if(!profiles.length)continue;
       const svc=SVC_MAP[app];const name=svc?svc.name:app;
       h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">'+_escHtml(name)+' ('+profiles.length+' profiles)</div>';
+      h+='<table class="idx-table"><thead><tr><th>Name</th><th>ID</th><th>Cutoff</th><th>Upgrades</th><th></th></tr></thead><tbody>';
       for(const p of profiles){
-        h+='<div class="svc-row" style="cursor:default;font-size:.85em">';
-        h+='<span class="sname">'+_escHtml(p.name)+'</span>';
-        h+='<span class="smeta" style="min-width:60px">ID: '+p.id+'</span>';
-        if(p.upgradeAllowed!==undefined)h+='<span class="smeta">'+(p.upgradeAllowed?'&#8593; Upgrades':'No upgrades')+'</span>';
-        h+='</div>';
+        h+='<tr>';
+        h+='<td style="font-weight:600;font-size:.85em">'+_escHtml(p.name)+'</td>';
+        h+='<td style="font-family:monospace;font-size:.82em;color:var(--fg3)">'+p.id+'</td>';
+        h+='<td style="font-size:.82em;color:var(--fg3)">'+(p.cutoff?_escHtml(p.cutoff):'-')+'</td>';
+        if(p.upgradeAllowed!==undefined){
+          h+='<td style="font-size:.82em">'+(p.upgradeAllowed?'<span class="ok">Yes</span>':'<span style="color:var(--fg3)">No</span>')+'</td>';
+        }else{h+='<td style="font-size:.82em;color:var(--fg3)">-</td>';}
+        h+='<td><button class="btn-secondary" style="padding:1px 6px;font-size:.7em" onclick="navigator.clipboard.writeText(\''+p.id+'\');toast(\'Copied ID '+p.id+'\')">Copy ID</button></td>';
+        h+='</tr>';
       }
-      h+='</div>';
+      h+='</tbody></table></div>';
     }
     el.innerHTML=h||'<span style="color:var(--fg3)">No profiles found</span>';
   }catch(e){el.innerHTML='Error: '+e;}

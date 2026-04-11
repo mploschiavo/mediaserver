@@ -149,22 +149,66 @@ def _stream_extract_channels(xml_text: str) -> dict[str, list[str]]:
     return channels
 
 
+# Pre-compiled patterns for programme extraction (avoid re-compilation per call)
+_PROG_PATTERN = re.compile(
+    r'<programme\s[^>]*channel="([^"]+)"[^>]*>.*?</programme>',
+    re.DOTALL,
+)
+
+
 def _stream_extract_programmes_for_ids(
     xml_text: str, target_ids: set[str]
 ) -> dict[str, list[str]]:
-    """Extract <programme> blocks for specific channel IDs via regex.
+    """Extract <programme> blocks for specific channel IDs.
 
-    Stream-style: scans once, collects only matching programmes.
-    Much faster than per-channel regex when many channels match.
+    Uses SAX-style line scanning for files > 10MB, regex for smaller.
+    Single pass — O(n) where n = file size.
+    """
+    # For small files, regex is fine
+    if len(xml_text) < 10_000_000:
+        progs: dict[str, list[str]] = {}
+        for match in _PROG_PATTERN.finditer(xml_text):
+            ch_id = match.group(1)
+            if ch_id in target_ids:
+                progs.setdefault(ch_id, []).append(match.group(0))
+        return progs
+
+    # For large files (>10MB), use SAX-style line accumulation
+    # This avoids holding the full regex match state in memory
+    return _sax_extract_programmes(xml_text, target_ids)
+
+
+def _sax_extract_programmes(xml_text: str, target_ids: set[str]) -> dict[str, list[str]]:
+    """SAX-style programme extraction for large XML files.
+
+    Scans line-by-line, accumulates <programme>...</programme> blocks.
+    Memory: O(matched programmes) instead of O(all programmes).
     """
     progs: dict[str, list[str]] = {}
-    for match in re.finditer(
-        r'(<programme\s[^>]*channel="([^"]+)"[^>]*>.*?</programme>)',
-        xml_text, re.DOTALL,
-    ):
-        ch_id = match.group(2)
-        if ch_id in target_ids:
-            progs.setdefault(ch_id, []).append(match.group(1))
+    in_programme = False
+    current_channel = ""
+    current_lines: list[str] = []
+    _ch_re = re.compile(r'channel="([^"]+)"')
+
+    for line in xml_text.split("\n"):
+        stripped = line.strip()
+        if not in_programme:
+            if stripped.startswith("<programme "):
+                m = _ch_re.search(stripped)
+                if m and m.group(1) in target_ids:
+                    in_programme = True
+                    current_channel = m.group(1)
+                    current_lines = [line]
+                    # Single-line programme?
+                    if "</programme>" in stripped:
+                        progs.setdefault(current_channel, []).append("\n".join(current_lines))
+                        in_programme = False
+        else:
+            current_lines.append(line)
+            if "</programme>" in stripped:
+                progs.setdefault(current_channel, []).append("\n".join(current_lines))
+                in_programme = False
+
     return progs
 
 
