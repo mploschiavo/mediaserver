@@ -140,161 +140,18 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
             cfg[lib_key]["libraries"] = lib_override
 
     # Enrich tuners/guides with required handler fields
-    _enrich_livetv_entries(cfg, profile or {})
+    from media_stack.services.livetv_config_service import enrich_livetv_entries
+    enrich_livetv_entries(cfg, profile or {})
 
     return cfg
 
 
-def _url_looks_valid(url: str) -> bool:
-    """Check if a URL looks like a full, valid HTTP URL."""
-    return url.startswith("https://") or url.startswith("http://")
-
-
-def _extract_country_code(name: str, url: str) -> str:
-    """Try to extract a 2-letter country code from a guide name or URL."""
-    import re
-    # From URL: epg-us.xml, epg_US.xml, /us.m3u, etc.
-    m = re.search(r'[/_-]([a-zA-Z]{2})[\d]*\.(xml|m3u)', url)
-    if m:
-        return m.group(1).lower()
-    # From name: "Germany EPG" → look up
-    _NAME_TO_CODE = {
-        "united states": "us", "united kingdom": "gb", "canada": "ca",
-        "australia": "au", "germany": "de", "france": "fr", "spain": "es",
-        "italy": "it", "brazil": "br", "mexico": "mx", "japan": "jp",
-        "south korea": "kr", "india": "in", "china": "cn", "taiwan": "tw",
-        "hong kong": "hk", "philippines": "ph", "thailand": "th",
-        "indonesia": "id", "netherlands": "nl", "sweden": "se",
-        "norway": "no", "denmark": "dk", "finland": "fi", "poland": "pl",
-        "portugal": "pt", "russia": "ru", "turkey": "tr", "israel": "il",
-        "uae": "ae", "chile": "cl", "south africa": "za",
-        "argentina": "ar", "colombia": "co",
-    }
-    name_lower = name.lower().replace(" epg", "").replace(" iptv", "").strip()
-    return _NAME_TO_CODE.get(name_lower, "")
-
-
-def _enrich_livetv_entries(cfg: dict[str, Any], profile: dict[str, Any]) -> None:
-    """Build tuner+guide lists from profile, guides-first.
-
-    Strategy: resolve guides first via the EPG provider fallback chain.
-    Only include tuners whose guide is confirmed working. This ensures
-    every channel has programme data (no blank guide rows).
-
-    Profile flag ``load_all_tuners`` (default False) overrides this and
-    loads every tuner regardless of guide availability.
-    """
-    import hashlib
-
-    ms_id = cfg.get("technology_bindings", {}).get("media_server", "")
-    livetv_key = f"{ms_id}_livetv" if ms_id else ""
-    livetv = cfg.get(livetv_key) if livetv_key else None
-    if not isinstance(livetv, dict):
-        return
-
-    ltv_defaults = profile.get("live_tv_defaults", {})
-    # Templates from profile or EPG provider registry — no hardcoded URLs
-    from media_stack.services.epg_provider_service import get_tuner_providers, get_guide_providers
-    _tp = get_tuner_providers()
-    _gp = get_guide_providers()
-    tuner_tpl = ltv_defaults.get("tuner_url_template", _tp[0].get("url_template", "") if _tp else "")
-    guide_tpl = ltv_defaults.get("guide_url_template", _gp[0].get("url_template", "") if _gp else "")
-    load_all = ltv_defaults.get("load_all_tuners", False)
-
-    raw_tuners = livetv.get("tuners", [])
-    raw_guides = livetv.get("guides", [])
-
-    # Step 1: Resolve and validate guides first
-    resolved_guides: list[dict[str, Any]] = []
-    guide_country_codes: set[str] = set()  # codes that have a working guide
-
-    for guide in raw_guides:
-        if not isinstance(guide, dict):
-            continue
-        guide = dict(guide)  # don't mutate original
-        # Map url → path
-        url = guide.pop("url", None)
-        if url and "path" not in guide:
-            if url.startswith("/"):
-                from urllib.parse import urlparse
-                parsed = urlparse(guide_tpl)
-                url = f"{parsed.scheme}://{parsed.netloc}{url}"
-            guide["path"] = url
-
-        path = guide.get("path", "")
-        guide_name = guide.get("name", "")
-        code = _extract_country_code(guide_name, path)
-
-        # Try the EPG provider chain for the best working URL
-        if code:
-            try:
-                from media_stack.services.epg_provider_service import resolve_guide_url
-                resolved = resolve_guide_url(code)
-                if resolved:
-                    guide["path"] = resolved
-            except Exception:
-                pass
-
-        path = guide.get("path", "")
-        if not _url_looks_valid(path):
-            continue
-
-        # Fill guide defaults
-        guide.setdefault("type", "xmltv")
-        guide.setdefault("enrich_program_icons_from_tuner_logo", True)
-        guide.setdefault("enrich_program_categories_from_tuner_groups", True)
-        guide.setdefault("enable_all_tuners", False)
-        if "materialized_output_path" not in guide:
-            slug = hashlib.md5(path.encode()).hexdigest()[:8]
-            name_slug = (guide_name or "unknown").lower().replace(" ", "-").replace("/", "-")[:20]
-            guide["materialized_output_path"] = f"{ms_id}/livetv-guides/{name_slug}-{slug}.xml"
-
-        resolved_guides.append(guide)
-        if code:
-            guide_country_codes.add(code)
-
-    # Step 2: Build tuner list — only include tuners with a matching guide
-    resolved_tuners: list[dict[str, Any]] = []
-    for tuner in raw_tuners:
-        if not isinstance(tuner, dict):
-            continue
-        tuner = dict(tuner)
-        url = tuner.get("url", "")
-        if url.startswith("/"):
-            from urllib.parse import urlparse
-            parsed = urlparse(tuner_tpl)
-            tuner["url"] = f"{parsed.scheme}://{parsed.netloc}{url}"
-            url = tuner["url"]
-
-        tuner_name = tuner.get("name", "")
-        code = _extract_country_code(tuner_name, url)
-
-        # Gate: only include if guide exists, unless load_all_tuners is set
-        if not load_all and code and code not in guide_country_codes:
-            runtime_platform.log(
-                f"[INFO] Live TV: skipping tuner '{tuner_name}' ({code}) — no working guide. "
-                "Set load_all_tuners=true in profile to override."
-            )
-            continue
-
-        tuner.setdefault("type", "m3u")
-        tuner.setdefault("normalize_tvg_id_suffix", True)
-        tuner.setdefault("filter_to_guide_channels", True)
-        tuner.setdefault("allow_hw_transcoding", True)
-        if "materialized_output_path" not in tuner:
-            slug = hashlib.md5(url.encode()).hexdigest()[:8]
-            name_slug = (tuner_name or "unknown").lower().replace(" ", "-").replace("/", "-")[:20]
-            tuner["materialized_output_path"] = f"{ms_id}/livetv-tuners/{name_slug}-{slug}.m3u"
-
-        resolved_tuners.append(tuner)
-
-    livetv["guides"] = resolved_guides
-    livetv["tuners"] = resolved_tuners
-    runtime_platform.log(
-        f"[INFO] Live TV: {len(resolved_guides)} guides resolved, "
-        f"{len(resolved_tuners)} tuners selected "
-        f"(load_all_tuners={load_all}, skipped={len(raw_tuners) - len(resolved_tuners)})"
-    )
+# Re-export for backward compatibility with tests
+from media_stack.services.livetv_config_service import (  # noqa: E402,F811
+    _url_looks_valid as _url_looks_valid,
+    extract_country_code as _extract_country_code,
+    enrich_livetv_entries as _enrich_livetv_entries_impl,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -620,73 +477,6 @@ def _run_media_server_handler(ctx: JobContext, handler_suffix: str, label: str) 
 def _configure_libraries(ctx: JobContext) -> dict[str, Any]:
     """Create media server libraries (Movies, TV Shows, Music, Books)."""
     return _run_media_server_handler(ctx, "libraries", "Library")
-
-
-def _configure_livetv(ctx: JobContext) -> dict[str, Any]:
-    """Configure Live TV tuners and guide sources.
-
-    Pre-merges all EPG guides into a single XMLTV file with channel IDs
-    rewritten to match M3U tvg-ids. This gives near-100% guide coverage
-    and avoids Jellyfin's issues with multiple overlapping guide providers.
-    """
-    livetv = ctx.cfg.get("jellyfin_livetv", {})
-    tuners = livetv.get("tuners", [])
-    guides = livetv.get("guides", [])
-
-    if not tuners:
-        return {"skipped": "no tuners configured"}
-
-    # Step 1: Pre-merge EPG guides into one file
-    if guides:
-        try:
-            epg_mod = importlib.import_module(f"media_stack.services.apps.{ctx.media_server_id()}.epg_merge_service")
-            merge_epgs = epg_mod.merge_epgs
-
-            # Collect M3U paths (materialized files on disk)
-            m3u_paths = []
-            for t in tuners:
-                mat = t.get("materialized_output_path", "")
-                if mat:
-                    m3u_paths.append(str(Path(ctx.config_root) / mat))
-
-            # Build EPG source list from guides
-            epg_sources = []
-            for g in guides:
-                path = g.get("path", "")
-                name = g.get("name", path[:40])
-                if path and (path.startswith("http://") or path.startswith("https://")):
-                    epg_sources.append({"url": path, "name": name})
-
-            if m3u_paths and epg_sources:
-                ms_id = ctx.media_server_id()
-                merged_path = str(Path(ctx.config_root) / ms_id / "livetv-guides" / "merged-epg.xml")
-                result = merge_epgs(
-                    m3u_paths=m3u_paths,
-                    epg_sources=epg_sources,
-                    output_path=merged_path,
-                    config_root=ctx.config_root,
-                    log=runtime_platform.log,
-                )
-
-                if result.get("channels_with_programmes", 0) > 0:
-                    container_path = "/config/livetv-guides/merged-epg.xml"
-                    livetv["guides"] = [{
-                        "type": "xmltv",
-                        "path": container_path,
-                        "materialized_output_path": f"{ms_id}/livetv-guides/merged-epg.xml",
-                        "enable_all_tuners": True,
-                        "enrich_program_icons_from_tuner_logo": False,
-                        "enrich_program_categories_from_tuner_groups": False,
-                    }]
-                    runtime_platform.log(
-                        f"[OK] Live TV: using merged EPG ({result['channels_with_programmes']} "
-                        f"channels, {result['programmes']} programmes)"
-                    )
-        except Exception as exc:
-            runtime_platform.log(f"[WARN] Live TV: EPG merge failed ({exc}), falling back to individual guides")
-
-    # Step 2: Run the livetv handler with (possibly merged) config
-    return _run_media_server_handler(ctx, "livetv", "Live TV")
 
 
 def _configure_plugins(ctx: JobContext) -> dict[str, Any]:
