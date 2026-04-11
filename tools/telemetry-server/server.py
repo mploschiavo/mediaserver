@@ -325,6 +325,30 @@ class TelemetryHandler(BaseHTTPRequestHandler):
         else:
             self._json(404, {"error": "not found"})
 
+    # Schema v1 field order — must match client
+    _SCHEMA_FIELDS = [
+        "cluster_id", "cluster_name", "ts",
+        "controller.version", "controller.platform", "controller.uptime_hours",
+        "services.total", "services.healthy",
+        "jobs.runs_24h", "jobs.ok", "jobs.errors", "jobs.avg_duration_s",
+        "media.libraries", "media.livetv_tuners", "media.indexers",
+        "media.storage_gb", "media.active_downloads",
+        "media.download_speed_mbps", "media.upload_speed_mbps",
+    ]
+
+    @classmethod
+    def _from_compact(cls, arr: list) -> dict[str, Any]:
+        """Reconstruct full payload from positional array."""
+        result: dict[str, Any] = {}
+        for i, field in enumerate(cls._SCHEMA_FIELDS):
+            val = arr[i] if i < len(arr) else 0
+            parts = field.split(".")
+            if len(parts) == 1:
+                result[parts[0]] = val
+            else:
+                result.setdefault(parts[0], {})[parts[1]] = val
+        return result
+
     def do_POST(self):
         if self.path == "/api/v1/telemetry":
             if not self._check_auth():
@@ -333,11 +357,29 @@ class TelemetryHandler(BaseHTTPRequestHandler):
             if length <= 0 or length > 65536:
                 self._json(400, {"error": "invalid body size"})
                 return
+            raw = self.rfile.read(length)
+            # Decompress gzip if needed
+            enc = (self.headers.get("Content-Encoding") or "").lower()
+            if enc == "gzip":
+                import gzip
+                try:
+                    raw = gzip.decompress(raw)
+                except Exception:
+                    self._json(400, {"error": "gzip decompress failed"})
+                    return
             try:
-                body = json.loads(self.rfile.read(length))
+                body = json.loads(raw)
             except Exception:
                 self._json(400, {"error": "invalid JSON"})
                 return
+            # Handle compact array format: [schema_version, field1, field2, ...]
+            if isinstance(body, list):
+                schema_v = body[0] if body else 0
+                if schema_v == 1 and len(body) > 1:
+                    body = self._from_compact(body[1:])
+                else:
+                    self._json(400, {"error": f"unsupported schema version: {schema_v}"})
+                    return
             if not body.get("cluster_id"):
                 self._json(400, {"error": "cluster_id required"})
                 return
