@@ -239,44 +239,83 @@ th{color:#94a3b8;font-weight:600;font-size:.8em;text-transform:uppercase}
 </style></head><body>
 <h1>&#128225; Fleet Telemetry</h1>
 <div id="fleet" class="grid"></div>
+<div id="alerts"></div>
 <div class="card"><h2>Clusters</h2><div id="clusters">Loading...</div></div>
+<div id="detail" class="card" style="display:none"></div>
 <script>
 async function load(){
   const [fr,cr]=await Promise.all([fetch('/api/v1/fleet'),fetch('/api/v1/clusters')]);
   const fleet=await fr.json(), clusters=await cr.json();
   document.getElementById('fleet').innerHTML=
     card('Active Clusters',fleet.clusters_active+' / '+fleet.clusters_total)+
-    card('Services',fleet.services_healthy+' <span class="ok">healthy</span>')+
+    card('Services',fleet.services_healthy+' <span class="ok">healthy</span>, '+fleet.services_unhealthy+' <span class="err">down</span>')+
     card('Storage',fleet.total_storage_gb+' GB')+
     card('Libraries',fleet.total_libraries)+
     card('Indexers',fleet.total_indexers)+
     card('Live TV',fleet.total_livetv_tuners+' tuners')+
-    card('Network RX',fleet.total_rx_gb+' GB')+
-    card('Network TX',fleet.total_tx_gb+' GB')+
+    card('Network','&#8595;'+fleet.total_rx_gb+'G &#8593;'+fleet.total_tx_gb+'G')+
     card('Ingested',fleet.ingest_total+' payloads');
-  let h='<table><tr><th>Cluster</th><th>Platform</th><th>Version</th><th>Services</th><th>Jobs (24h)</th><th>Storage</th><th>Network I/O</th><th>Last Seen</th></tr>';
+  // Alerts
+  let alerts='';
+  const stale=clusters.filter(c=>c.age_hours>24);
+  const unhealthyClusters=clusters.filter(c=>(c.services?.total||0)-(c.services?.healthy||0)>0);
+  if(stale.length)alerts+='<div class="card" style="border-left:3px solid #ef4444"><h2 style="color:#ef4444">&#9888; Stale Clusters ('+stale.length+')</h2><div style="font-size:.9em">'+stale.map(c=>esc(c.cluster_name)+' ('+Math.round(c.age_hours/24)+'d ago)').join(', ')+'</div></div>';
+  if(unhealthyClusters.length)alerts+='<div class="card" style="border-left:3px solid #f59e0b"><h2 style="color:#f59e0b">&#9888; Unhealthy Services</h2><div style="font-size:.9em">'+unhealthyClusters.map(c=>{const uh=(c.services?.total||0)-(c.services?.healthy||0);return esc(c.cluster_name)+' ('+uh+' down)';}).join(', ')+'</div></div>';
+  document.getElementById('alerts').innerHTML=alerts;
+  // Cluster table
+  let h='<table><tr><th>Cluster</th><th>Platform</th><th>Version</th><th>Services</th><th>Jobs (24h)</th><th>Storage</th><th>Torrent I/O</th><th>Network I/O</th><th>Last Seen</th></tr>';
   for(const c of clusters){
-    const stale=c.age_hours>24?' class="stale"':'';
-    const svc=c.services||{};const jobs=c.jobs||{};const media=c.media||{};
-    const unhealthy=(svc.total||0)-(svc.healthy||0);
-    const svcBadge=unhealthy>0?'<span class="badge badge-err">'+unhealthy+' down</span>':'<span class="badge badge-ok">all ok</span>';
-    h+='<tr'+stale+'><td><b>'+esc(c.cluster_name||c.cluster_id.substring(0,8))+'</b></td>';
+    const cls=c.age_hours>24?' class="stale"':'';
+    const svc=c.services||{};const jobs=c.jobs||{};const media=c.media||{};const net=c.network||{};
+    const uh=(svc.total||0)-(svc.healthy||0);
+    const svcBadge=uh>0?'<span class="badge badge-err">'+uh+' down</span>':'<span class="badge badge-ok">all ok</span>';
+    h+='<tr'+cls+' style="cursor:pointer" onclick="showDetail(\''+esc(c.cluster_id)+'\')">';
+    h+='<td><b>'+esc(c.cluster_name||c.cluster_id.substring(0,8))+'</b></td>';
     h+='<td>'+(c.controller?.platform||'?')+'</td>';
     h+='<td>'+(c.controller?.version||'?')+'</td>';
     h+='<td>'+svcBadge+' '+(svc.healthy||0)+'/'+(svc.total||0)+'</td>';
-    h+='<td>'+(jobs.runs_24h||0)+' runs, '+(jobs.errors||0)+' err</td>';
+    h+='<td>'+(jobs.runs_24h||0)+' runs'+(jobs.errors?' <span class="err">'+jobs.errors+' err</span>':'')+'</td>';
     h+='<td>'+(media.storage_gb||0)+' GB</td>';
-    const net=c.network||{};
+    h+='<td>&#8595;'+(media.torrent_rx_gb||0)+'G &#8593;'+(media.torrent_tx_gb||0)+'G</td>';
     h+='<td>&#8595;'+(net.rx_gb||0)+'G &#8593;'+(net.tx_gb||0)+'G</td>';
-    h+='<td>'+(c.age_hours<1?'just now':c.age_hours<24?Math.round(c.age_hours)+'h ago':Math.round(c.age_hours/24)+'d ago')+'</td></tr>';
+    h+='<td>'+(c.age_hours<1?'<span class="ok">just now</span>':c.age_hours<24?Math.round(c.age_hours)+'h ago':'<span class="err">'+Math.round(c.age_hours/24)+'d ago</span>')+'</td></tr>';
   }
   h+='</table>';
   if(!clusters.length)h='<p style="color:#94a3b8">No clusters reporting yet. Configure TELEMETRY_ENDPOINT on your media stack.</p>';
   document.getElementById('clusters').innerHTML=h;
 }
+async function showDetail(cid){
+  const el=document.getElementById('detail');
+  el.style.display='block';
+  el.innerHTML='<h2>Loading cluster...</h2>';
+  try{
+    const r=await fetch('/api/v1/clusters/'+encodeURIComponent(cid));
+    const c=await r.json();
+    if(c.error){el.innerHTML='<h2>Not found</h2>';return;}
+    const svc=c.services||{};const media=c.media||{};const net=c.network||{};const ctrl=c.controller||{};const jobs=c.jobs||{};
+    const uh=(svc.total||0)-(svc.healthy||0);
+    let h='<h2>'+esc(c.cluster_name||c.cluster_id)+'</h2>';
+    h+='<div class="grid" style="margin-top:12px">';
+    h+=card('Platform',ctrl.platform||'?');
+    h+=card('Version',ctrl.version||'?');
+    h+=card('Uptime',(ctrl.uptime_hours||0)+'h');
+    h+=card('Services',(svc.healthy||0)+'/'+(svc.total||0)+(uh?' <span class="err">('+uh+' down)</span>':''));
+    h+=card('Storage',(media.storage_gb||0)+' GB');
+    h+=card('Libraries',media.libraries||0);
+    h+=card('Indexers',media.indexers||0);
+    h+=card('Live TV',(media.livetv_tuners||0)+' tuners');
+    h+=card('Torrent','&#8595;'+(media.torrent_rx_gb||0)+'G &#8593;'+(media.torrent_tx_gb||0)+'G');
+    h+=card('Network','&#8595;'+(net.rx_gb||0)+'G &#8593;'+(net.tx_gb||0)+'G ('+( net.containers||0)+' containers)');
+    h+=card('Jobs (24h)',(jobs.runs_24h||0)+' runs, '+(jobs.errors||0)+' errors');
+    h+='</div>';
+    h+='<div style="margin-top:8px"><button onclick="document.getElementById(\'detail\').style.display=\'none\'" style="background:#334155;color:#e2e8f0;border:none;padding:6px 16px;border-radius:4px;cursor:pointer">Close</button></div>';
+    el.innerHTML=h;
+    el.scrollIntoView({behavior:'smooth'});
+  }catch(e){el.innerHTML='Error: '+e;}
+}
 function card(t,v){return '<div class="card"><h2>'+t+'</h2><div class="metric">'+v+'</div></div>';}
 function esc(s){return String(s||'').replace(/</g,'&lt;');}
-load();setInterval(load,10000);
+load();setInterval(load,30000);
 </script></body></html>"""
 
 
