@@ -271,6 +271,9 @@ def _run_serve(args: argparse.Namespace) -> None:
         This stub absorbs calls that the dispatch code makes on state
         (record_preflight, mark_service_failed, etc.) without crashing.
         """
+        preflight_results = {}
+        is_cancelled = False
+
         def __getattr__(self, name):
             """Return a no-op for any method call."""
             return lambda *a, **kw: None
