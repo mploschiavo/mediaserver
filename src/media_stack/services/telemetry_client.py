@@ -225,16 +225,61 @@ def _drain_buffer(endpoint: str, api_key: str) -> int:
     return sent
 
 
+# Schema v1: positional array format — no keys transmitted.
+# Both client and server must agree on field order.
+_SCHEMA_VERSION = 1
+_SCHEMA_FIELDS = [
+    "cluster_id", "cluster_name", "ts",
+    "controller.version", "controller.platform", "controller.uptime_hours",
+    "services.total", "services.healthy",
+    "jobs.runs_24h", "jobs.ok", "jobs.errors", "jobs.avg_duration_s",
+    "media.libraries", "media.livetv_tuners", "media.indexers",
+    "media.storage_gb", "media.active_downloads",
+    "media.download_speed_mbps", "media.upload_speed_mbps",
+]
+
+
+def _to_compact(payload: dict[str, Any]) -> list[Any]:
+    """Convert full payload to positional array (4x smaller)."""
+    def _get(d: dict, dotted: str) -> Any:
+        for k in dotted.split("."):
+            if isinstance(d, dict):
+                d = d.get(k, 0)
+            else:
+                return 0
+        return d
+    return [_get(payload, f) for f in _SCHEMA_FIELDS]
+
+
+def _from_compact(arr: list[Any]) -> dict[str, Any]:
+    """Reconstruct full payload from positional array."""
+    result: dict[str, Any] = {}
+    for i, field in enumerate(_SCHEMA_FIELDS):
+        val = arr[i] if i < len(arr) else 0
+        parts = field.split(".")
+        if len(parts) == 1:
+            result[parts[0]] = val
+        else:
+            result.setdefault(parts[0], {})[parts[1]] = val
+    return result
+
+
 def _push_one(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
-    """Push a single payload. Returns True on success."""
+    """Push a single payload. Uses compact array + gzip for efficiency."""
+    import gzip
     try:
-        data = json.dumps(payload).encode("utf-8")
+        # Send compact array with schema version header
+        compact = [_SCHEMA_VERSION] + _to_compact(payload)
+        raw = json.dumps(compact, separators=(",", ":")).encode("utf-8")
+        compressed = gzip.compress(raw)
         req = urllib.request.Request(
             endpoint,
-            data=data,
+            data=compressed,
             method="POST",
             headers={
                 "Content-Type": "application/json",
+                "Content-Encoding": "gzip",
+                "X-Schema-Version": str(_SCHEMA_VERSION),
                 "Authorization": f"Bearer {api_key}",
                 "User-Agent": "media-stack-telemetry/1.0",
             },
@@ -242,7 +287,21 @@ def _push_one(endpoint: str, api_key: str, payload: dict[str, Any]) -> bool:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status in (200, 201, 202, 204)
     except Exception:
-        return False
+        # Fallback to full JSON if compact fails
+        try:
+            data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            req = urllib.request.Request(
+                endpoint, data=data, method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                    "User-Agent": "media-stack-telemetry/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status in (200, 201, 202, 204)
+        except Exception:
+            return False
 
 
 def push_telemetry(log: Any = None) -> dict[str, Any]:
