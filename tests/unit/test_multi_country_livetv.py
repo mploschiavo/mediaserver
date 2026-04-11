@@ -31,6 +31,12 @@ def _make_profile(data, td):
 class TestMultiCountryTuners(unittest.TestCase):
     """Test adding 3, 4, 5 country tuner sources simultaneously."""
 
+    def setUp(self):
+        config_mod._invalidate_profile_cache()
+
+    def tearDown(self):
+        config_mod._invalidate_profile_cache()
+
     def test_three_countries(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)

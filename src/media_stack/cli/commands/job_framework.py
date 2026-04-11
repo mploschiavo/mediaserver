@@ -532,34 +532,9 @@ def _run_media_server_handler(ctx: JobContext, handler_suffix: str, label: str) 
         raise RuntimeError(f"{label} configuration failed: {exc}") from exc
 
 
-def _configure_libraries(ctx: JobContext) -> dict[str, Any]:
-    """Create media server libraries (Movies, TV Shows, Music, Books)."""
-    return _run_media_server_handler(ctx, "libraries", "Library")
-
-
-def _configure_plugins(ctx: JobContext) -> dict[str, Any]:
-    """Install media server plugins."""
-    return _run_media_server_handler(ctx, "plugins", "Plugin")
-
-
-def _configure_playback(ctx: JobContext) -> dict[str, Any]:
-    """Set media server playback defaults."""
-    return _run_media_server_handler(ctx, "playback_defaults", "Playback")
-
-
-def _configure_home_rails(ctx: JobContext) -> dict[str, Any]:
-    """Configure media server home screen collections/rails."""
-    return _run_media_server_handler(ctx, "home_rails", "Home rails")
-
-
-def _configure_auto_collections(ctx: JobContext) -> dict[str, Any]:
-    """Configure auto-collections (TMDb box sets, genre collections)."""
-    return _run_media_server_handler(ctx, "auto_collections_config", "Auto collections")
-
-
-def _configure_prewarm(ctx: JobContext) -> dict[str, Any]:
-    """Prewarm: library refresh, book/music artwork, metadata backfill."""
-    return _run_media_server_handler(ctx, "prewarm", "Prewarm")
+    # Dead wrapper functions removed — contracts point directly to
+    # runtime_ops handlers. Only _configure_categories remains
+    # (referenced by qbittorrent.yaml contract).
 
 
 def _configure_categories(ctx: JobContext) -> dict[str, Any]:

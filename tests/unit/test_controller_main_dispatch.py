@@ -266,7 +266,7 @@ class TestDispatchAction(unittest.TestCase):
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")
     @patch("media_stack.services.runtime_platform.log")
-    @patch("media_stack.cli.commands.action_handlers.action_finalize")
+    @patch("media_stack.cli.commands.action_handlers.action_post_setup")
     def test_dispatch_finalize(self, mock_handler, mock_log, mock_apply):
         _dispatch_action("post-setup", {}, _make_args(), ControllerState())
         mock_handler.assert_called_once()
