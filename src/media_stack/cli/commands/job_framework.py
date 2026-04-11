@@ -158,20 +158,32 @@ from media_stack.services.livetv_config_service import (  # noqa: E402,F811
 # Job execution history — last N runs with per-job timing
 # ---------------------------------------------------------------------------
 
-_JOB_HISTORY: list[dict[str, Any]] = []
 _JOB_HISTORY_MAX = 20
 
 
+def _history_file() -> Path:
+    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+    return Path(config_root) / ".controller" / "job-history.json"
+
+
 def get_job_history() -> list[dict[str, Any]]:
-    """Return recent job execution history (newest first)."""
-    return list(reversed(_JOB_HISTORY))
+    """Return recent job execution history (newest first). Reads from disk."""
+    path = _history_file()
+    if not path.is_file():
+        return []
+    try:
+        import json
+        entries = json.loads(path.read_text())
+        return list(reversed(entries)) if isinstance(entries, list) else []
+    except Exception:
+        return []
 
 
 def _record_history(result: dict[str, Any]) -> None:
-    """Record a job run result in history."""
-    import time as _t
+    """Record a job run result in history. Writes to disk (survives subprocess)."""
+    import json
     entry = {
-        "ts": _t.time(),
+        "ts": time.time(),
         "elapsed": result.get("elapsed", 0),
         "ok": result.get("ok", 0),
         "skipped": result.get("skipped", 0),
@@ -184,9 +196,18 @@ def _record_history(result: dict[str, Any]) -> None:
             for name, r in result.get("jobs", {}).items()
         },
     }
-    _JOB_HISTORY.append(entry)
-    if len(_JOB_HISTORY) > _JOB_HISTORY_MAX:
-        _JOB_HISTORY.pop(0)
+    path = _history_file()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = json.loads(path.read_text()) if path.is_file() else []
+        if not isinstance(existing, list):
+            existing = []
+        existing.append(entry)
+        if len(existing) > _JOB_HISTORY_MAX:
+            existing = existing[-_JOB_HISTORY_MAX:]
+        path.write_text(json.dumps(existing))
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

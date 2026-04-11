@@ -545,7 +545,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-downloads',this)">Downloads</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-metadata',this)">Metadata</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-livetv',this)">Live TV</button>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-jobs',this);loadJobTree()">Jobs</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-jobs',this)">Jobs</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
     </div>
     <div id="cfg-profile" class="subtab active"><div id="profile-view">Loading...</div></div>
@@ -1623,7 +1623,7 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   else if(id==='ops-bw'){renderBandwidthChart();}else if(id==='ops-schedule'){loadServerSchedules();}else if(id==='ops-guardrails')_load(loadDisk);
   else if(id==='ops-gpu')_load(loadGpuInfo);else if(id==='ops-snapshots')_load(loadSnapshots);
   else if(id==='ops-mounts')_load(loadMountInfo);else if(id==='ops-storage-breakdown')_load(loadStorageBreakdown);
-  else if(id==='cfg-drift'){renderDrift();}else if(id==='cfg-deps'){renderTopologySVG();}
+  else if(id==='cfg-drift'){renderDrift();}else if(id==='cfg-jobs')_load(loadJobTree);else if(id==='cfg-deps'){renderTopologySVG();}
   else if(id==='cfg-manifest')_load(loadManifests);else if(id==='cfg-envvars')_load(loadEnvVars);
   else if(id==='cfg-libraries')_load(loadLibrariesConfig);else if(id==='cfg-downloads')_load(loadDownloadsConfig);
   else if(id==='cfg-metadata')_load(loadMetadataConfig);else if(id==='cfg-livetv')_load(loadLiveTvConfig);
