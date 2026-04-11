@@ -749,9 +749,16 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
                 return 204, {}, ""
             raise AssertionError(f"Unexpected Live TV API call: {path} ({method})")
 
+        class _FakeHeaders:
+            def get(self, key, default=""):
+                return default
+
         class _Resp:
+            headers = _FakeHeaders()
+
             def __init__(self, payload: bytes):
                 self._payload = payload
+                self.status = 200
 
             def read(self):
                 return self._payload
@@ -779,11 +786,13 @@ class JellyfinLiveTvRefreshTests(unittest.TestCase):
 
         def fake_urlopen(url, timeout=60):
             del timeout
-            if "countries/us.m3u" in str(url):
+            # url may be a Request object or string
+            url_str = url.full_url if hasattr(url, "full_url") else str(url)
+            if "countries/us.m3u" in url_str:
                 return _Resp(m3u_payload)
-            if "epg-us.xml" in str(url):
+            if "epg-us.xml" in url_str:
                 return _Resp(epg_payload)
-            raise AssertionError(f"Unexpected URL fetch: {url}")
+            raise AssertionError(f"Unexpected URL fetch: {url_str}")
 
         with (
             tempfile.TemporaryDirectory() as tmp,

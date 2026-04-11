@@ -258,7 +258,7 @@ class TestMediaServerJobsNotSkipped(unittest.TestCase):
 
     def test_configure_libraries_not_skipped(self):
         """The configure-libraries job must NOT return 'skipped'."""
-        from media_stack.cli.commands.job_framework import _configure_libraries
+        from media_stack.cli.commands.job_framework import _run_media_server_handler
         ctx = JobContext()
         ctx._profile_cache = {}
         with patch.dict(os.environ, {"JELLYFIN_API_KEY": "test-key"}):
@@ -266,7 +266,7 @@ class TestMediaServerJobsNotSkipped(unittest.TestCase):
                 mock_mod = MagicMock()
                 mock_mod.ensure_jellyfin_libraries = MagicMock()
                 mock_import.return_value = mock_mod
-                result = _configure_libraries(ctx)
+                result = _run_media_server_handler(ctx, "libraries", "Library")
         self.assertNotIn("skipped", result,
                          f"configure-libraries was SKIPPED: {result}. "
                          "Libraries will NOT be created on fresh install.")

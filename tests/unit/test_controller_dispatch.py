@@ -62,14 +62,14 @@ class TestDispatchActionBootstrap(unittest.TestCase):
 
 
 class TestDispatchActionFinalize(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_finalize")
+    @mock.patch(f"{_HANDLER_MODULE}.action_post_setup")
     def test_finalize(self, m_handler):
         _dispatch_action("post-setup", {}, _make_args(), ControllerState())
         m_handler.assert_called_once()
 
 
 class TestDispatchActionAutoIndexers(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_auto_indexers")
+    @mock.patch(f"{_HANDLER_MODULE}.action_discover_indexers")
     def test_auto_indexers(self, m_handler):
         _dispatch_action("discover-indexers", {}, _make_args(), ControllerState())
         m_handler.assert_called_once()
@@ -83,7 +83,7 @@ class TestDispatchActionRestartApps(unittest.TestCase):
 
 
 class TestDispatchActionSyncIndexers(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_sync_indexers")
+    @mock.patch(f"{_HANDLER_MODULE}.action_push_indexers")
     def test_sync_indexers(self, m_handler):
         _dispatch_action("push-indexers", {}, _make_args(), ControllerState())
         m_handler.assert_called_once()
