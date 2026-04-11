@@ -155,6 +155,41 @@ from media_stack.services.livetv_config_service import (  # noqa: E402,F811
 
 
 # ---------------------------------------------------------------------------
+# Job execution history — last N runs with per-job timing
+# ---------------------------------------------------------------------------
+
+_JOB_HISTORY: list[dict[str, Any]] = []
+_JOB_HISTORY_MAX = 20
+
+
+def get_job_history() -> list[dict[str, Any]]:
+    """Return recent job execution history (newest first)."""
+    return list(reversed(_JOB_HISTORY))
+
+
+def _record_history(result: dict[str, Any]) -> None:
+    """Record a job run result in history."""
+    import time as _t
+    entry = {
+        "ts": _t.time(),
+        "elapsed": result.get("elapsed", 0),
+        "ok": result.get("ok", 0),
+        "skipped": result.get("skipped", 0),
+        "errors": result.get("errors", 0),
+        "jobs": {
+            name: {
+                "status": r.get("status", "?"),
+                "elapsed": r.get("elapsed", 0),
+            }
+            for name, r in result.get("jobs", {}).items()
+        },
+    }
+    _JOB_HISTORY.append(entry)
+    if len(_JOB_HISTORY) > _JOB_HISTORY_MAX:
+        _JOB_HISTORY.pop(0)
+
+
+# ---------------------------------------------------------------------------
 # Job framework — prerequisite-based DAG dispatcher
 #
 # The framework is generic. Job definitions, prerequisites, and the tree
@@ -319,7 +354,7 @@ class JobRunner:
         runtime_platform.log(
             f"[INFO] JobRunner: complete — {ok} ok, {skipped} skipped, {errors} errors ({elapsed}s)"
         )
-        return {
+        result = {
             "status": "ok" if errors == 0 else "error",
             "elapsed": elapsed,
             "ok": ok,
@@ -327,6 +362,8 @@ class JobRunner:
             "errors": errors,
             "jobs": self.results,
         }
+        _record_history(result)
+        return result
 
     def _flatten(self, job: Job) -> list[Job]:
         """Flatten the job tree to a priority-ordered list.
