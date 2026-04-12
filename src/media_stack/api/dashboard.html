@@ -642,6 +642,29 @@ const SVC_HEALTH={},SVC_AUTH={},SVC_LOGIN={},SVC_MS={},SVC_AGE={};
 let expanded=null;
 const matrixState={};
 
+/* Action display names — user-facing labels for internal action IDs */
+const ACTION_LABELS={
+  'bootstrap':'Setup All Services',
+  'configure-media-server':'Configure Jellyfin',
+  'configure-libraries':'Add Media Libraries',
+  'configure-livetv':'Setup Live TV & EPG',
+  'configure-plugins':'Install Plugins',
+  'configure-playback':'Apply Playback Settings',
+  'configure-home-screen':'Arrange Home Screen',
+  'configure-collections':'Organize Collections',
+  'configure-categories':'Set Download Categories',
+  'configure-jellyseerr':'Connect Jellyseerr',
+  'refresh-media':'Refresh Media & Artwork',
+  'post-setup':'Apply Passwords & Restart Services',
+  'envoy-config':'Update Proxy Routes',
+  'validate-credentials':'Verify Logins',
+  'discover-indexers':'Scan for Indexers',
+  'push-indexers':'Sync Indexers to Apps',
+  'reconcile':'Reconcile All Config',
+  'restart-apps':'Restart All Services',
+};
+function actionLabel(name){return ACTION_LABELS[name]||name.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+
 /* Theme */
 function toggleTheme(){const l=document.body.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');document.getElementById('themeBtn').textContent=l?'Dark':'Light';}
 (function(){const s=localStorage.getItem('theme');if(s==='light'){document.body.classList.add('light');document.getElementById('themeBtn').textContent='Dark';}
@@ -813,7 +836,7 @@ async function load(){
 
     let h='<div class="phase '+cls+'">'+p.charAt(0).toUpperCase()+p.slice(1)+'</div>';
     if(d.current_action){const a=d.current_action,el=a.elapsed_seconds||0,to=a.timeout_seconds||600,pct=Math.min(100,Math.round(el/to*100));
-      h+='<div class="running" style="font-size:.93em">Running: '+a.name+' ('+relTime(el)+') <button class="btn-danger" style="padding:3px 10px;font-size:.78em;margin-left:8px" onclick="cancelAction()">Cancel</button></div>';
+      h+='<div class="running" style="font-size:.93em">Running: '+actionLabel(a.name)+' ('+relTime(el)+') <button class="btn-danger" style="padding:3px 10px;font-size:.78em;margin-left:8px" onclick="cancelAction()">Cancel</button></div>';
       h+='<div class="progress-wrap"><div class="progress-bar" style="width:'+pct+'%"></div></div>';}
     if(d.error)h+='<div class="error" style="font-size:.9em;word-break:break-word">'+d.error+'</div>';
     if(d.initial_bootstrap_done&&p!=='running'){
@@ -854,7 +877,7 @@ async function load(){
         const started=a.started_at?new Date((a.started_at>1e12?a.started_at:a.started_at*1000)).toLocaleString():'';
         const user=a.triggered_by||'system';
         hx+='<tr style="border-bottom:1px solid var(--border)">';
-        hx+='<td style="padding:5px 6px"><span class="dot '+c+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+a.name+'</td>';
+        hx+='<td style="padding:5px 6px"><span class="dot '+c+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+actionLabel(a.name)+'</td>';
         hx+='<td style="padding:5px 6px;font-size:.82em">'+(a.status||'complete')+'</td>';
         hx+='<td style="padding:5px 6px;color:var(--fg3);font-size:.85em">'+started+'</td>';
         hx+='<td style="padding:5px 6px;font-family:monospace">'+relTime(dur)+'</td>';
@@ -1753,10 +1776,10 @@ function renderTimeline(){
     const startStr=a.started_at?fmt(a.started_at):'';
 
     h+='<div style="height:22px;margin-bottom:3px;display:flex;align-items:center">';
-    h+='<span style="min-width:110px;font-size:.75em;font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+a.name+' ('+user+')">'+a.name+'</span>';
+    h+='<span style="min-width:110px;font-size:.75em;font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+actionLabel(a.name)+' ('+user+')">'+actionLabel(a.name)+'</span>';
     h+='<div style="flex:1;position:relative;height:16px;background:var(--bg3);border-radius:2px">';
     h+='<div style="position:absolute;left:'+startPct+'%;width:'+width+'%;height:100%;background:'+c+';border-radius:2px;min-width:3px;cursor:pointer" ';
-    h+='title="'+a.name+'\nStarted: '+startStr+'\nDuration: '+relTime(a.elapsed_seconds||0)+'\nUser: '+user+(a.error?'\nError: '+a.error.substring(0,80):'')+'" ';
+    h+='title="'+actionLabel(a.name)+'\nStarted: '+startStr+'\nDuration: '+relTime(a.elapsed_seconds||0)+'\nUser: '+user+(a.error?'\nError: '+a.error.substring(0,80):'')+'" ';
     h+='onclick="filterLogsToAction(\''+a.name+'\')">';
     // Show duration label inside bar if wide enough
     if(durPct>8){h+='<span style="position:absolute;left:4px;top:1px;font-size:.65em;color:#fff;white-space:nowrap">'+relTime(a.elapsed_seconds||0)+'</span>';}
@@ -2726,7 +2749,7 @@ async function loadJobTree(){
     const cur=st.current_action;
     if(cur&&cur.name){
       h+='<div class="action-group" style="margin-bottom:12px;border-left:3px solid var(--warn)">';
-      h+='<div class="action-group-title"><span class="spinner"></span> Running: '+_escHtml(cur.name)+'</div>';
+      h+='<div class="action-group-title"><span class="spinner"></span> Running: '+_escHtml(actionLabel(cur.name))+'</div>';
       h+='<div style="font-size:.82em;color:var(--fg3);padding:2px 0">Started: '+new Date(cur.started_at).toLocaleTimeString();
       if(cur.elapsed_seconds)h+=' ('+Math.round(cur.elapsed_seconds)+'s elapsed)';
       h+='</div></div>';
