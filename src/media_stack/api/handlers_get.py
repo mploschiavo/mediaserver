@@ -174,6 +174,19 @@ class GetRequestHandler:
             handler._json_response(200, config_svc.get_livetv_sources())
         elif path == "/api/discovery-lists":
             handler._json_response(200, config_svc.get_discovery_lists())
+        elif path == "/api/display-preferences":
+            # Return current display preference config from contract defaults
+            from media_stack.cli.commands.job_framework import _load_cfg_from_contracts
+            cfg = _load_cfg_from_contracts()
+            playback = cfg.get("jellyfin_playback", {})
+            dp = playback.get("display_preferences", {})
+            handler._json_response(200, {
+                "enabled": dp.get("enabled", True),
+                "show_backdrop": dp.get("show_backdrop", True),
+                "custom_prefs": dp.get("custom_prefs", {}),
+                "per_library_prefs": dp.get("per_library_prefs", {}),
+                "clients": dp.get("clients", ["emby"]),
+            })
         elif path == "/api/iptv-countries":
             handler._json_response(200, config_svc.get_iptv_countries())
         elif path == "/api/epg-providers":
