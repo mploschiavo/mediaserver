@@ -2599,6 +2599,13 @@ async function loadDownloadsConfig(){
     h+='<button class="btn-primary" style="padding:3px 10px;font-size:.78em" onclick="saveScanInterval()">Save Interval</button>';
     h+='</div></div>';
 
+    // Auto-scan webhooks
+    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Auto-Scan on Download</div>';
+    h+='<p style="color:var(--fg3);font-size:.78em;margin:4px 0 8px">Registers webhooks on Sonarr/Radarr so Jellyfin scans automatically when new content is imported.</p>';
+    h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="registerArrWebhooks()">Register Webhooks</button>';
+    h+='<span id="arr-webhook-status" style="font-size:.78em;color:var(--fg3);margin-left:8px"></span>';
+    h+='</div>';
+
     h+='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Download categories for torrent and usenet clients. Changes apply on next bootstrap.</p>';
     h+='<div id="cat-list">';
     let i=0;for(const[name,path]of Object.entries(cats)){
@@ -2646,6 +2653,16 @@ async function saveScanInterval(){
   try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
     const d=await r.json();toast(d.scan_interval?.error||'Scan interval set to '+hrs+'h');
   }catch(e){toast('Error: '+e);}
+}
+async function registerArrWebhooks(){
+  const status=document.getElementById('arr-webhook-status');
+  if(status)status.textContent='Registering...';
+  try{const r=await fetch('/api/arr-webhooks');const d=await r.json();
+    const wh=d.webhooks||{};
+    const parts=Object.entries(wh).map(([k,v])=>k+': '+v);
+    if(status)status.textContent=parts.join(' | ');
+    toast('Webhooks: '+parts.join(', '));
+  }catch(e){if(status)status.textContent='Error';toast('Error: '+e);}
 }
 async function saveCategories(){
   const names=document.querySelectorAll('#cat-list [data-cat-name]');

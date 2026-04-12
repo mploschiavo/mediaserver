@@ -295,6 +295,40 @@ class PostRequestHandler:
                 handler._json_response(200, content_svc_del.delete_indexer(indexer_id))
                 return
 
+        # POST /webhooks/arr — receives Sonarr/Radarr webhook on download/import
+        # Triggers Jellyfin library scan so new content appears immediately.
+        if handler.path == "/webhooks/arr":
+            body = handler._read_json_body()
+            event = body.get("eventType", "unknown")
+            title = ""
+            if body.get("movie"):
+                title = body["movie"].get("title", "")
+            elif body.get("series"):
+                title = body["series"].get("title", "")
+            elif body.get("episodes"):
+                eps = body["episodes"]
+                title = eps[0].get("title", "") if eps else ""
+            import media_stack.services.runtime_platform as _rp
+            _rp.log(f"[INFO] Arr webhook: {event} — {title or 'unknown'}")
+            # Scan on import/download events
+            if event in ("Download", "EpisodeFileDelete", "MovieFileDelete", "MovieAdded", "SeriesAdd", "Grab"):
+                try:
+                    from .services.health import discover_api_keys
+                    from .services.registry import SERVICE_MAP
+                    api_key = discover_api_keys().get("jellyfin", "")
+                    ms = SERVICE_MAP.get("jellyfin")
+                    if ms and api_key:
+                        import urllib.request
+                        urllib.request.urlopen(urllib.request.Request(
+                            f"http://{ms.host}:{ms.port}/Library/Refresh?api_key={api_key}",
+                            method="POST",
+                        ), timeout=5)
+                        _rp.log(f"[OK] Jellyfin scan triggered by arr webhook ({event})")
+                except Exception as exc:
+                    _rp.log(f"[WARN] Jellyfin scan from webhook failed: {exc}")
+            handler._json_response(200, {"status": "ok", "event": event})
+            return
+
         # POST /api/import-lists/{service}/{id}/toggle
         if handler.path.startswith("/api/import-lists/") and handler.path.endswith("/toggle"):
             parts = handler.path.split("/")
