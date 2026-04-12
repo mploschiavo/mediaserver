@@ -252,3 +252,5 @@ resolve_guide_url = _instance.resolve_guide_url
 resolve_tuner_url = _instance.resolve_tuner_url
 run_health_check = _instance.run_health_check
 invalidate_cache = _instance.invalidate_cache
+_expand_url = _instance._expand_url
+_load_providers = _instance._load_providers
