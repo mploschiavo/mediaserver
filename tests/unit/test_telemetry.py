@@ -19,6 +19,7 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+import media_stack.services.telemetry_client as tc
 from media_stack.services.telemetry_client import (
     collect_metrics,
     push_telemetry,
