@@ -312,6 +312,14 @@ class JellyfinPlaybackService:
                         desired_display["ShowBackdrop"] = show_backdrop
                         changed = True
 
+                    # Apply per-library prefs (SortBy, SortOrder, etc.)
+                    per_lib = display_cfg.get("per_library_prefs", {})
+                    lib_prefs = per_lib.get(pref_id, {}) if isinstance(per_lib, dict) else {}
+                    for lib_key, lib_val in lib_prefs.items():
+                        if str(desired_display.get(lib_key, "")) != str(lib_val):
+                            desired_display[lib_key] = lib_val
+                            changed = True
+
                     custom_prefs = desired_display.get("CustomPrefs")
                     if not isinstance(custom_prefs, dict):
                         custom_prefs = {}
