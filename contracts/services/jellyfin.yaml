@@ -408,7 +408,7 @@ defaults:
       replaceAllMetadata: 'false'
       replaceAllImages: 'false'
   home_rails:
-    enabled: false
+    enabled: true
     required: false
     cleanup_collections_when_disabled: true
     cleanup_collection_names:
@@ -525,7 +525,7 @@ defaults:
     config_relative_path: jellyfin-auto-collections/config.yaml
     plugins:
       jellyfin_api:
-        enabled: false
+        enabled: true
         list_ids: []
   home_rails_presets:
   - name: Trending

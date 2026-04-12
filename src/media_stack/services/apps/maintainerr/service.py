@@ -78,7 +78,7 @@ class MaintainerrService:
     def _resolve_path_aware_url(self, cfg: dict[str, Any], app_name: str, base_url: str) -> str:
         app_auth = cfg.get("app_auth") or {}
         if not isinstance(app_auth, dict):
-            return self.normalize_url(base_url)
+            app_auth = {}
         keys = (
             str(app_name or "").strip(),
             str(app_name or "").strip().lower(),
@@ -93,6 +93,22 @@ class MaintainerrService:
                 app_auth.get("url_base_by_app") or {},
                 keys,
             )
+        # Fallback: derive base path from the service registry's health_path.
+        # Maintainerr runs with Next.js basePath /app/maintainerr — all API
+        # routes (even pod-to-pod) require this prefix.
+        if not configured:
+            try:
+                from media_stack.api.services.registry import SERVICE_MAP
+                svc_id = str(app_name or "").strip().lower()
+                svc = SERVICE_MAP.get(svc_id)
+                if svc and svc.preserve_path_prefix and svc.health_path:
+                    hp = svc.health_path
+                    # Extract base path: /app/maintainerr/api/settings → /app/maintainerr
+                    api_idx = hp.find("/api/")
+                    if api_idx > 0:
+                        configured = hp[:api_idx]
+            except Exception:
+                pass
         return self._join_url_base(base_url, configured)
 
     def _ensure_enabled(self, cfg: dict[str, Any], key: str, default: bool = True) -> bool:
