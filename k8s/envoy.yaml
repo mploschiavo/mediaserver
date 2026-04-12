@@ -13,7 +13,7 @@ data:
           address:
             socket_address:
               address: 0.0.0.0
-              port_value: 8080
+              port_value: 8880
           filter_chains:
             - filters:
                 - name: envoy.filters.network.http_connection_manager
@@ -94,7 +94,7 @@ spec:
             - --log-level
             - info
           ports:
-            - containerPort: 8080
+            - containerPort: 8880
               name: http
             - containerPort: 9901
               name: admin
@@ -134,7 +134,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 8080
+      targetPort: 8880
       nodePort: 30180
     - name: admin
       port: 9901

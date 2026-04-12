@@ -6,12 +6,15 @@ resources:
   - secrets.example.yaml
   - storage-pvc.yaml
   - core.yaml
+  - optional.yaml
+  - envoy.yaml
   - controller.yaml
   - ingress-traefik.yaml
+  - unpackerr.yaml
   - scale-policy.yaml
 
 # Controller image — change registry/tag here; kustomize patches all manifests.
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: latest
+    newTag: v1.0.3

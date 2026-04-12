@@ -30,6 +30,19 @@ def _persist_preflight_keys_to_secret(state: object) -> None:
                 if val:
                     string_data[key] = val
 
+    # Also collect from env vars — keys discovered at startup are in os.environ
+    # even if preflight_results is empty (e.g., subprocess stub).
+    from media_stack.api.services.registry import SERVICES
+    for svc in SERVICES:
+        if svc.api_key_env:
+            val = os.environ.get(svc.api_key_env, "").strip()
+            if val and svc.api_key_env not in string_data:
+                string_data[svc.api_key_env] = val
+    # Also check JELLYFIN_USER_ID
+    jf_uid = os.environ.get("JELLYFIN_USER_ID", "").strip()
+    if jf_uid:
+        string_data.setdefault("JELLYFIN_USER_ID", jf_uid)
+
     if not string_data:
         runtime_platform.log("[INFO] No API keys discovered in preflights to persist")
         return

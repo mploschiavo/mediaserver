@@ -252,6 +252,11 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
             "Content-Disposition": f'attachment; filename="media-stack-backup-{time.strftime("%Y%m%d-%H%M%S")}.json"',
         })
 
+    # --- Log level ---
+    elif path == "/api/log-level":
+        from media_stack.services.runtime_platform import get_log_level
+        handler._json_response(200, {"level": get_log_level()})
+
     # --- Ops ---
     elif path == "/api/namespaces":
         handler._json_response(200, ops_svc.get_namespaces())

@@ -26,8 +26,57 @@ from media_stack.services.runtime_service_registry import (
 
 BOOTSTRAP_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "contracts"
 
+# ---------------------------------------------------------------------------
+# Log-level-aware logger
+# ---------------------------------------------------------------------------
+# Supported prefixes: [DEBUG], [INFO], [OK], [WARN], [ERR], [ERROR], [TRACE]
+# Messages without a recognized prefix default to INFO level.
+# Set MEDIA_STACK_LOG_LEVEL=DEBUG to see all, INFO (default) to hide DEBUG.
+
+_LOG_LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARN": 2, "ERROR": 3}
+_PREFIX_TO_LEVEL = {
+    "DEBUG": 0, "INFO": 1, "OK": 1, "WAIT": 1, "RETRY": 1,
+    "CRED": 1, "ACTION": 1, "JOB": 1, "HEAL": 1,
+    "WARN": 2, "ERR": 3, "ERROR": 3, "TRACE": 0,
+}
+_current_log_level = _LOG_LEVEL_ORDER.get(
+    os.environ.get("MEDIA_STACK_LOG_LEVEL", "INFO").upper(), 1
+)
+
+
+def set_log_level(level: str) -> str:
+    """Change log level at runtime. Returns the new level name."""
+    global _current_log_level
+    level = level.upper()
+    if level not in _LOG_LEVEL_ORDER:
+        return get_log_level()
+    _current_log_level = _LOG_LEVEL_ORDER[level]
+    os.environ["MEDIA_STACK_LOG_LEVEL"] = level
+    return level
+
+
+def get_log_level() -> str:
+    """Return the current log level name."""
+    for name, val in _LOG_LEVEL_ORDER.items():
+        if val == _current_log_level:
+            return name
+    return "INFO"
+
+
+def _extract_level(msg: str) -> int:
+    """Parse [PREFIX] from message and return numeric level. Default=INFO."""
+    stripped = msg.lstrip()
+    if stripped.startswith("["):
+        bracket_end = stripped.find("]", 1)
+        if bracket_end != -1:
+            prefix = stripped[1:bracket_end].upper()
+            return _PREFIX_TO_LEVEL.get(prefix, 1)
+    return 1  # Default to INFO
+
 
 def log(msg):
+    if _extract_level(str(msg)) < _current_log_level:
+        return
     ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     print(f"[{ts}] {msg}", flush=True)
 
@@ -52,6 +101,8 @@ def wait_for_service(name, base_url, path, timeout_seconds):
     heartbeat = int(os.environ.get("BOOTSTRAP_WAIT_HEARTBEAT_SECONDS", "15"))
     interval = max(1, interval)
     heartbeat = max(interval, heartbeat)
+    log(f"[DEBUG] wait_for_service: name={name}, url={base_url}{path}, "
+        f"timeout={timeout_seconds}s, interval={interval}s, heartbeat={heartbeat}s")
 
     deadline = time.time() + timeout_seconds
     start = time.time()
@@ -195,6 +246,7 @@ __all__ = [
     "field_map",
     "find_component_by_implementation",
     "deep_merge_objects",
+    "get_log_level",
     "http_request",
     "load_bootstrap_default_json",
     "log",
@@ -205,6 +257,7 @@ __all__ = [
     "resolve_app_service_class",
     "resolve_env_placeholder",
     "resolve_path",
+    "set_log_level",
     "set_runtime_context_cfg",
     "to_int",
     "wait_for_service",

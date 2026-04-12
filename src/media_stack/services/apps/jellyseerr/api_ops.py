@@ -27,22 +27,71 @@ def ensure_main_settings(
         raise RuntimeError(f"Jellyseerr: failed to read main settings (HTTP {status}): {body}")
 
     desired_type = int(media_server_type)
-    if svc.to_int(current.get("mediaServerType")) == desired_type:
-        svc.log(f"[OK] Jellyseerr: mediaServerType already set to {desired_type}")
-        return
+    local_login = svc.bool_cfg(jelly_cfg, "enable_local_login", True)
+    media_server_login = svc.bool_cfg(jelly_cfg, "enable_media_server_login", False)
 
+    updates: dict[str, Any] = {}
+    if svc.to_int(current.get("mediaServerType")) != desired_type:
+        updates["mediaServerType"] = desired_type
+    if current.get("localLogin") != local_login:
+        updates["localLogin"] = local_login
+    if current.get("mediaServerLogin") != media_server_login:
+        updates["mediaServerLogin"] = media_server_login
+    if media_server_login is False and current.get("newPlexLogin") is not False:
+        updates["newPlexLogin"] = False
+
+    if not updates:
+        svc.log(f"[OK] Jellyseerr: main settings already correct")
+    else:
+        status, _, body = svc.http_request(
+            jellyseerr_url,
+            "/api/v1/settings/main",
+            api_key=jellyseerr_key,
+            method="POST",
+            payload=updates,
+        )
+        if status not in (200, 201, 202):
+            raise RuntimeError(f"Jellyseerr: failed to set main settings (HTTP {status}): {body}")
+        svc.log(f"[OK] Jellyseerr: main settings updated ({', '.join(updates.keys())})")
+
+    # Mark Jellyseerr as initialized so the setup wizard is skipped.
+    _ensure_initialized(svc, jellyseerr_url, jellyseerr_key)
+
+
+def _ensure_initialized(
+    svc,
+    jellyseerr_url: str,
+    jellyseerr_key: str,
+) -> None:
+    """Set public.initialized=true via the Jellyseerr API."""
+    status, current, body = svc.http_request(
+        jellyseerr_url, "/api/v1/settings/public", api_key=jellyseerr_key
+    )
+    if status == 200 and isinstance(current, dict) and current.get("initialized"):
+        return
     status, _, body = svc.http_request(
         jellyseerr_url,
-        "/api/v1/settings/main",
+        "/api/v1/settings/initialize",
         api_key=jellyseerr_key,
         method="POST",
-        payload={"mediaServerType": desired_type},
+        payload={},
     )
-    if status in (200, 201, 202):
-        svc.log(f"[OK] Jellyseerr: set mediaServerType={desired_type}")
-        return
-
-    raise RuntimeError(f"Jellyseerr: failed to set mediaServerType (HTTP {status}): {body}")
+    if status in (200, 201, 202, 204):
+        svc.log("[OK] Jellyseerr: marked as initialized")
+    else:
+        # Fallback: try /api/v1/settings/public POST
+        status2, _, body2 = svc.http_request(
+            jellyseerr_url,
+            "/api/v1/settings/public",
+            api_key=jellyseerr_key,
+            method="POST",
+            payload={"initialized": True},
+        )
+        if status2 in (200, 201, 202, 204):
+            svc.log("[OK] Jellyseerr: marked as initialized (via public settings)")
+        else:
+            svc.log(f"[WARN] Jellyseerr: could not mark as initialized "
+                     f"(init: HTTP {status}, public: HTTP {status2})")
 
 
 def ensure_jellyfin_settings(
@@ -261,9 +310,9 @@ def ensure_sonarr(
         language_profiles, sonarr_cfg.get("active_language_profile_id")
     )
     active_language_profile_id = (
-        svc.to_int(selected_language_profile.get("id"))
+        svc.to_int(selected_language_profile.get("id"), 1)
         if selected_language_profile
-        else svc.to_int(sonarr_cfg.get("active_language_profile_id"))
+        else svc.to_int(sonarr_cfg.get("active_language_profile_id"), 1)
     )
 
     active_anime_profile = svc.choose_profile(profiles, sonarr_cfg.get("active_anime_profile_id"))
@@ -305,9 +354,9 @@ def ensure_sonarr(
             active_anime_profile.get("name") if active_anime_profile else None
         ),
         "activeAnimeLanguageProfileId": (
-            svc.to_int(active_anime_language_profile.get("id"))
+            svc.to_int(active_anime_language_profile.get("id"), 1)
             if active_anime_language_profile
-            else svc.to_int(sonarr_cfg.get("active_anime_language_profile_id"))
+            else svc.to_int(sonarr_cfg.get("active_anime_language_profile_id"), 1)
         ),
         "activeAnimeDirectory": sonarr_cfg.get("active_anime_directory"),
         "is4k": svc.bool_cfg(sonarr_cfg, "is4k", False),

@@ -81,6 +81,9 @@ def _dispatch_action(
     )
 
     _apply_overrides(overrides)
+    runtime_platform.log(f"[DEBUG] Action dispatch: name={action_name}, overrides={overrides}, "
+                         f"config_root={os.environ.get('CONFIG_ROOT','?')}, "
+                         f"profile={os.environ.get('BOOTSTRAP_PROFILE_FILE','?')}")
     runtime_platform.log(f"[ACTION] {action_name}: starting (overrides={overrides})")
 
     if action_name == "bootstrap":

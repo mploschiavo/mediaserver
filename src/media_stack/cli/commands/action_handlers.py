@@ -17,11 +17,16 @@ def action_bootstrap(args: argparse.Namespace, state: object,
                      run_preflights: Any, persist_keys: Any, build_runner: Any) -> None:
     """Core bootstrap: preflights + configure arr apps + download clients."""
     run_preflights_enabled = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
+    runtime_platform.log(f"[DEBUG] Bootstrap: preflights={'enabled' if run_preflights_enabled else 'disabled'}, "
+                         f"config={getattr(args, 'config', '?')}, "
+                         f"config_root={getattr(args, 'config_root', '?')}")
     if run_preflights_enabled:
         run_preflights(state, args)
         persist_keys(state)
 
+    runtime_platform.log("[DEBUG] Bootstrap: building runner...")
     runner, runtime_state = build_runner(args)
+    runtime_platform.log(f"[DEBUG] Bootstrap: runner built, plan phases={list(getattr(runtime_state, 'plan', {}).keys()) if hasattr(runtime_state, 'plan') else '?'}")
     runner.run(runtime_state)
     runtime_platform.log("[OK] Bootstrap completed successfully")
 
@@ -29,12 +34,17 @@ def action_bootstrap(args: argparse.Namespace, state: object,
 def action_post_setup(args: argparse.Namespace, state: object,
                     build_runner: Any, run_post_bootstrap: Any) -> None:
     """Deferred post-bootstrap: media-server tuning, disk guardrails, hygiene, app restarts."""
+    runtime_platform.log("[DEBUG] Post-setup: building runner...")
     runner, runtime_state = build_runner(args)
+    runtime_platform.log("[DEBUG] Post-setup: running post-servarr steps...")
     try:
         runner._run_post_servarr_steps(runtime_state)
     except Exception as exc:
         runtime_platform.log(f"[WARN] Finalize post-servarr: {exc}")
+        import traceback
+        runtime_platform.log(f"[DEBUG] Post-setup traceback: {traceback.format_exc()}")
 
+    runtime_platform.log("[DEBUG] Post-setup: running post-bootstrap handlers...")
     run_post_bootstrap(state, args)
     runtime_platform.log("[OK] Finalize completed")
 

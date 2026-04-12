@@ -945,19 +945,23 @@ def get_config_drift() -> dict[str, Any]:
     - API keys: env vars vs config file keys (stale?)
     - Container images: declared vs running
     """
+    import logging as _logging
+    _drift_log = _logging.getLogger("media_stack")
     drifts: list[dict[str, str]] = []
 
     # 1. Routing drift — compare profile vs overrides
     import yaml
     resolved = resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+    _drift_log.debug("[DEBUG] Config drift: profile_path=%s", resolved)
     profile_routing: dict[str, Any] = {}
     if resolved:
         try:
             with open(resolved) as f:
                 profile = yaml.safe_load(f) or {}
             profile_routing = profile.get("routing") or {}
-        except Exception:
-            pass
+            _drift_log.debug("[DEBUG] Config drift: loaded profile routing keys=%s", list(profile_routing.keys()))
+        except Exception as exc:
+            _drift_log.debug("[DEBUG] Config drift: failed to load profile: %s", exc)
     live_routing = get_routing()
     for key in ("base_domain", "stack_subdomain", "gateway_host", "gateway_port", "strategy"):
         expected = str(profile_routing.get(key, ""))
@@ -1006,7 +1010,9 @@ def get_config_drift() -> dict[str, Any]:
     # 4. Credential drift — login validation status
     try:
         from .health import probe_credentials
+        _drift_log.debug("[DEBUG] Config drift: probing credentials...")
         cred_result = probe_credentials()
+        _drift_log.debug("[DEBUG] Config drift: credential results=%s", cred_result.get("credentials", {}))
         for svc_id, status in cred_result.get("credentials", {}).items():
             if status == "fail":
                 drifts.append({
@@ -1015,8 +1021,8 @@ def get_config_drift() -> dict[str, Any]:
                     "actual": "fail (wrong password)",
                     "note": "Run Validate Credentials to auto-sync",
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _drift_log.debug("[DEBUG] Config drift: credential probe error: %s", exc)
 
     # 5. Live TV — configured but no tuners?
     ltv = get_livetv_sources()

@@ -157,7 +157,12 @@ def probe_credentials(
     def _check(name: str) -> tuple[str, str]:
         host, port, path, mode = targets[name]
         svc_key = all_keys.get(name, "")
-        return name, _probe_login(host, port, path, mode, admin_user, admin_pass, api_key=svc_key)
+        logger.debug("[DEBUG] Credential probe: svc=%s, host=%s:%d, path=%s, mode=%s, "
+                     "user=%s, has_api_key=%s", name, host, port, path, mode,
+                     admin_user, bool(svc_key))
+        result = _probe_login(host, port, path, mode, admin_user, admin_pass, api_key=svc_key)
+        logger.debug("[DEBUG] Credential probe result: svc=%s → %s", name, result)
+        return name, result
 
     results: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=8) as pool:

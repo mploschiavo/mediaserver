@@ -116,6 +116,24 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
         handler._json_response(200, admin_svc.hard_reset_service(svc_id, body or {}))
         return
 
+    # POST /api/log-level -- change log level at runtime (no restart needed)
+    if handler.path == "/api/log-level":
+        body = handler._read_json_body() or {}
+        level = body.get("level", "").upper()
+        if level not in ("DEBUG", "INFO", "WARN", "ERROR"):
+            handler._json_response(400, {
+                "error": f"Invalid log level '{level}'",
+                "valid": ["DEBUG", "INFO", "WARN", "ERROR"],
+            })
+            return
+        from media_stack.services.runtime_platform import set_log_level, log
+        new_level = set_log_level(level)
+        log(f"[INFO] Log level changed to {new_level}")
+        # Persist so it survives restarts
+        handler.state.update_config({"_log_level": new_level})
+        handler._json_response(200, {"level": new_level})
+        return
+
     # POST /api/routing
     if handler.path == "/api/routing":
         body = handler._read_json_body()
@@ -359,6 +377,8 @@ def handle(handler: ControllerAPIHandler) -> None:  # noqa: C901
                 handler._json_response(400, {"error": "Invalid webhook URL — must be http:// or https://"})
                 return
             handler.state.webhook_urls.add(url)
+            # Persist webhooks so they survive restarts
+            handler.state.update_config({"_webhook_urls": list(handler.state.webhook_urls)})
         handler._json_response(200, {"webhook_urls": list(handler.state.webhook_urls)})
         return
 

@@ -143,6 +143,7 @@ def _run_serve(args: argparse.Namespace) -> None:
         runtime_platform.log(f"[WARN] API key pre-discovery failed: {exc}")
 
     state = ControllerState()
+    state.load_persisted_config()
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
     action_queue: queue.PriorityQueue[tuple[int, int, str, dict]] = queue.PriorityQueue()
     action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
@@ -286,14 +287,30 @@ def _run_serve(args: argparse.Namespace) -> None:
     ) -> None:
         """Run one action in a subprocess. Logs go to log_queue."""
         import argparse as _ap
+        import signal as _signal
         import traceback as _tb
+
+        # Register SIGTERM handler so job framework can cancel cooperatively
+        # before the process is killed.
+        def _on_sigterm(signum, frame):
+            from media_stack.cli.commands.job_framework import request_cancel
+            request_cancel()
+            log_queue.put(("log", f"[ACTION] {action_name}: SIGTERM received, cancelling jobs"))
+
+        _signal.signal(_signal.SIGTERM, _on_sigterm)
 
         # Reconstruct args namespace from dict
         worker_args = _ap.Namespace(**args_dict)
 
-        # Redirect runtime_platform.log to the queue
+        # Redirect runtime_platform.log to the queue (preserving level filter)
         import media_stack.services.runtime_platform as _rp
-        _rp.log = lambda msg: log_queue.put(("log", msg))
+
+        def _subprocess_log(msg):
+            if _rp._extract_level(str(msg)) < _rp._current_log_level:
+                return
+            log_queue.put(("log", msg))
+
+        _rp.log = _subprocess_log
 
         # Stub state — absorbs record_preflight etc. without error
         stub_state = _SubprocessState()
@@ -322,6 +339,11 @@ def _run_serve(args: argparse.Namespace) -> None:
 
         state.pop_pending(action_name)
 
+        # Merge runtime_config into overrides so toggles like auto_download_content
+        # propagate to _apply_overrides in the subprocess.
+        for cfg_key, cfg_val in state.runtime_config.items():
+            overrides.setdefault(cfg_key, cfg_val)
+
         # Retry support: allow per-action retry via override or env default.
         retry_limit = int(overrides.pop("retry", max_retries))
         attempt = 0
@@ -339,16 +361,30 @@ def _run_serve(args: argparse.Namespace) -> None:
 
             # Run action in subprocess — separate GIL, API stays responsive
             log_q: multiprocessing.Queue = multiprocessing.Queue()
+            runtime_platform.log(f"[DEBUG] Spawning subprocess for action={action_name}, "
+                                 f"pid=parent:{os.getpid()}")
             worker = multiprocessing.Process(
                 target=_action_worker,
                 args=(action_name, dict(overrides), _args_dict, log_q),
                 daemon=True,
             )
             worker.start()
+            runtime_platform.log(f"[DEBUG] Subprocess started: pid={worker.pid}")
 
-            # Drain log queue while worker runs
+            # Drain log queue while worker runs; check for cancellation.
             error_msg = None
+            cancelled = False
             while worker.is_alive() or not log_q.empty():
+                # Check cancel request — kill subprocess immediately.
+                if not cancelled and state.is_cancelled:
+                    cancelled = True
+                    runtime_platform.log(f"[ACTION] {action_name}: cancelling (killing pid={worker.pid})")
+                    worker.terminate()
+                    worker.join(timeout=3)
+                    if worker.is_alive():
+                        worker.kill()
+                        worker.join(timeout=2)
+                    break
                 try:
                     msg_type, msg_data = log_q.get(timeout=0.5)
                     if msg_type == "log":
@@ -360,7 +396,15 @@ def _run_serve(args: argparse.Namespace) -> None:
                 except Exception:
                     pass
 
+            if cancelled:
+                state.finish_action(error="cancelled by user")
+                runtime_platform.log(f"[ACTION] {action_name}: cancelled")
+                break
+
             worker.join(timeout=5)
+            exit_code = worker.exitcode
+            runtime_platform.log(f"[DEBUG] Subprocess finished: pid={worker.pid}, "
+                                 f"exit_code={exit_code}, error={'yes' if error_msg else 'no'}")
 
             if error_msg:
                 state.finish_action(error=error_msg)
@@ -404,12 +448,6 @@ def _run_serve(args: argparse.Namespace) -> None:
 
             else:
                 # Success
-                if state.is_cancelled:
-                    state.current_action.cancel()
-                    state.finish_action(error="cancelled by user")
-                    runtime_platform.log(f"[ACTION] {action_name}: cancelled by user")
-                    break
-
                 state.finish_action()
 
                 _fire_webhooks(state, "action_complete", {
