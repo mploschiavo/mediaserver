@@ -221,6 +221,31 @@ class PostRequestHandler:
             handler._json_response(200, result)
             return
 
+        # POST /api/display-preferences
+        if handler.path == "/api/display-preferences":
+            body = handler._read_json_body()
+            # Update the playback display_preferences section in the per-app config
+            from media_stack.services.app_config_service import load_app_config, save_app_config
+            ms_id = config_svc._media_server_id()
+            if not ms_id:
+                handler._json_response(400, {"error": "No media server configured"})
+                return
+            app_cfg = load_app_config(ms_id)
+            playback = app_cfg.setdefault("playback", {})
+            dp = playback.setdefault("display_preferences", {})
+            if "show_backdrop" in body:
+                dp["show_backdrop"] = bool(body["show_backdrop"])
+            if "custom_prefs" in body and isinstance(body["custom_prefs"], dict):
+                dp["custom_prefs"] = body["custom_prefs"]
+            if "per_library_prefs" in body and isinstance(body["per_library_prefs"], dict):
+                dp["per_library_prefs"] = body["per_library_prefs"]
+            result = save_app_config(ms_id, app_cfg)
+            if "error" not in result and handler.action_trigger:
+                handler.action_trigger("configure-playback", {})
+                result["action"] = "configure-playback queued"
+            handler._json_response(200, result)
+            return
+
         # POST /api/livetv-sources
         if handler.path == "/api/livetv-sources":
             body = handler._read_json_body()

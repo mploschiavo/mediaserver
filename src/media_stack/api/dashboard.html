@@ -543,9 +543,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-downloads',this)">Downloads</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-metadata',this)">Metadata</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-livetv',this)">Live TV</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-display',this)">Display</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-jobs',this)">Jobs</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
     </div>
+    <div id="cfg-display" class="subtab" style="display:none">Loading...</div>
     <div id="cfg-profile" class="subtab active"><div id="profile-view">Loading...</div></div>
     <div id="cfg-drift" class="subtab" style="display:none"><div id="drift-view">Checking config drift...</div></div>
     <div id="cfg-deps" class="subtab" style="display:none"></div>
@@ -1681,6 +1683,7 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   else if(id==='cfg-manifest')_load(loadManifests);else if(id==='cfg-envvars')_load(loadEnvVars);
   else if(id==='cfg-libraries')_load(loadLibrariesConfig);else if(id==='cfg-downloads')_load(loadDownloadsConfig);
   else if(id==='cfg-metadata')_load(loadMetadataConfig);else if(id==='cfg-livetv')_load(loadLiveTvConfig);
+  else if(id==='cfg-display')_load(loadDisplayConfig);
   else if(id==='lib-indexers')_load(loadIndexers);
 }
 
@@ -2707,6 +2710,99 @@ let _iptvCountries=[];
 let _ltvTuners=[];let _ltvGuides=[];let _ltvLoadAll=false;
 // Load country list from API (not hardcoded)
 fetch('/api/iptv-countries').then(r=>r.json()).then(d=>{_iptvCountries=d.countries||[];}).catch(()=>{});
+/* Display Preferences Config */
+const _SECTION_TYPES=[
+  {value:'smalllibrarytiles',label:'Library Tiles'},
+  {value:'resume',label:'Continue Watching'},
+  {value:'latestmedia',label:'Latest Media'},
+  {value:'nextup',label:'Next Up (TV)'},
+  {value:'livetv',label:'Live TV'},
+  {value:'activerecordings',label:'Active Recordings'},
+  {value:'none',label:'— Empty —'},
+];
+const _SORT_OPTIONS=[
+  {value:'DateCreated,SortName',label:'Newest First'},
+  {value:'SortName',label:'A-Z'},
+  {value:'CommunityRating,SortName',label:'Top Rated'},
+  {value:'DatePlayed,SortName',label:'Recently Played'},
+  {value:'PremiereDate,SortName',label:'Release Date'},
+];
+let _dpData={};
+async function loadDisplayConfig(){
+  const el=document.getElementById('cfg-display');
+  try{
+    const r=await fetch('/api/display-preferences');if(!r.ok)return;
+    _dpData=await r.json();
+    const cp=_dpData.custom_prefs||{};
+    const plp=_dpData.per_library_prefs||{};
+    let h='<p style="color:var(--fg2);font-size:.85em;margin:0 0 12px">Jellyfin home screen layout and per-library display settings.</p>';
+
+    // Backdrop toggle
+    h+='<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">';
+    h+='<label class="switch" style="width:34px;height:18px"><input type="checkbox" id="dp-backdrop"'+(_dpData.show_backdrop?' checked':'')+'><span class="slider" style="border-radius:9px"></span></label>';
+    h+='<span style="font-size:.85em">Show Backdrops</span>';
+    h+='<label class="switch" style="width:34px;height:18px;margin-left:16px"><input type="checkbox" id="dp-themes"'+((cp.enableThemeVideos==="true"||cp.enableThemeVideos===true)?' checked':'')+'><span class="slider" style="border-radius:9px"></span></label>';
+    h+='<span style="font-size:.85em">Theme Videos</span>';
+    h+='</div>';
+
+    // Home sections
+    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Home Screen Sections</div>';
+    h+='<p style="color:var(--fg3);font-size:.78em;margin:4px 0 8px">Drag to reorder or change the type. Sections appear top-to-bottom on the home page.</p>';
+    for(let i=0;i<10;i++){
+      const key='homesection'+i;
+      const val=cp[key]||'none';
+      h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+      h+='<span style="color:var(--fg3);font-size:.75em;width:16px">'+(i+1)+'</span>';
+      h+='<select id="dp-'+key+'" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:.85em">';
+      for(const opt of _SECTION_TYPES){
+        h+='<option value="'+opt.value+'"'+(val===opt.value?' selected':'')+'>'+opt.label+'</option>';
+      }
+      h+='</select></div>';
+    }
+    h+='</div>';
+
+    // Per-library sort
+    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Library Sort Order</div>';
+    h+='<p style="color:var(--fg3);font-size:.78em;margin:4px 0 8px">Default sort when entering each library.</p>';
+    for(const lib of ['movies','tv','music','books']){
+      const lp=plp[lib]||{};
+      const sortVal=lp.SortBy||'SortName';
+      h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+      h+='<span style="min-width:60px;font-size:.85em;font-weight:600">'+lib.charAt(0).toUpperCase()+lib.slice(1)+'</span>';
+      h+='<select id="dp-sort-'+lib+'" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:.85em">';
+      for(const opt of _SORT_OPTIONS){
+        h+='<option value="'+opt.value+'"'+(sortVal===opt.value?' selected':'')+'>'+opt.label+'</option>';
+      }
+      h+='</select></div>';
+    }
+    h+='</div>';
+
+    h+='<button class="btn-primary" style="padding:6px 16px;font-size:.85em" onclick="saveDisplayConfig()">Save &amp; Apply</button>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+async function saveDisplayConfig(){
+  const cp=Object.assign({},_dpData.custom_prefs||{});
+  cp.enableBackdrops=document.getElementById('dp-backdrop').checked?'true':'false';
+  cp.enableLibraryBackdrops=cp.enableBackdrops;
+  cp.enableThemeVideos=document.getElementById('dp-themes').checked?'true':'false';
+  for(let i=0;i<10;i++){
+    const sel=document.getElementById('dp-homesection'+i);
+    if(sel)cp['homesection'+i]=sel.value;
+  }
+  const plp={};
+  for(const lib of ['movies','tv','music','books']){
+    const sel=document.getElementById('dp-sort-'+lib);
+    if(sel)plp[lib]={SortBy:sel.value,SortOrder:sel.value.startsWith('DateCreated')||sel.value.startsWith('DatePlayed')||sel.value.startsWith('Community')?'Descending':'Ascending'};
+  }
+  try{
+    const r=await fetch('/api/display-preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({show_backdrop:document.getElementById('dp-backdrop').checked,custom_prefs:cp,per_library_prefs:plp})});
+    const d=await r.json();
+    if(d.error)toast('Error: '+d.error);
+    else toast('Display preferences saved'+(d.action?' — '+d.action:''));
+  }catch(e){toast('Error: '+e);}
+}
+
 async function loadLiveTvConfig(){
   const el=document.getElementById('cfg-livetv');
   try{const r=await fetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
