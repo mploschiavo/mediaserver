@@ -324,17 +324,33 @@ defaults:
         enableBackdrops: true
         enableLibraryBackdrops: true
         enableThemeVideos: true
+        # Home screen layout — uses native Jellyfin sections (no BoxSet collections)
         homesection0: smalllibrarytiles
         homesection1: resume
-        homesection2: livetv
+        homesection2: latestmedia
         homesection3: nextup
-        homesection4: latestmedia
-        homesection5: none
+        homesection4: livetv
+        homesection5: activerecordings
         homesection6: none
         homesection7: none
         homesection8: none
         homesection9: none
       update_existing_custom_prefs_only: false
+      # Per-library view settings — applied to the library-specific preference_ids.
+      # These control what you see when clicking into Movies, TV Shows, etc.
+      per_library_prefs:
+        movies:
+          SortBy: DateCreated,SortName
+          SortOrder: Descending
+        tv:
+          SortBy: DateCreated,SortName
+          SortOrder: Descending
+        music:
+          SortBy: DateCreated,SortName
+          SortOrder: Descending
+        books:
+          SortBy: DateCreated,SortName
+          SortOrder: Descending
     home_media:
       enabled: true
       exclude_collections: true
@@ -408,6 +424,10 @@ defaults:
       replaceAllMetadata: 'false'
       replaceAllImages: 'false'
   home_rails:
+    # REDESIGNED: home screen layout now uses native Jellyfin DisplayPreferences
+    # (homesection0-9 in display_preferences.custom_prefs above).
+    # BoxSet collections are NOT created — they pollute library views.
+    # This section only handles cleanup of legacy BoxSet collections.
     enabled: false
     required: false
     cleanup_collections_when_disabled: true

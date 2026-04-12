@@ -1,8 +1,9 @@
-"""Verify home_rails is disabled by default and document why.
+"""Verify home screen uses native DisplayPreferences, not BoxSet collections.
 
-BoxSet collections created by home_rails appear IN library views (Movies, TV)
-making it look like actual content is missing. Until the feature is redesigned
-to use DisplayPreferences instead of BoxSets, it must stay disabled.
+REDESIGNED 2026-04-12: Home screen layout is now configured entirely through
+DisplayPreferences (homesection0-9). BoxSet collections pollute library views
+and are no longer created. The home_rails section only handles cleanup of
+legacy collections.
 """
 
 import unittest
@@ -37,6 +38,46 @@ class TestHomeRailsDisabledByDefault(unittest.TestCase):
             "cleanup_collections_when_disabled should be true so disabling "
             "home_rails removes the BoxSet collections it created.",
         )
+
+
+class TestHomeScreenViaDisplayPreferences(unittest.TestCase):
+    """Home screen must be configured through native Jellyfin sections."""
+
+    VALID_SECTIONS = {
+        "smalllibrarytiles", "resume", "nextup", "latestmedia",
+        "livetv", "activerecordings", "none",
+    }
+
+    def test_homesections_in_display_prefs(self):
+        """Home screen layout must use native section types in custom_prefs."""
+        contract = ROOT / "contracts" / "services" / "jellyfin.yaml"
+        data = yaml.safe_load(contract.read_text())
+        prefs = data.get("defaults", {}).get("playback", {}).get("display_preferences", {})
+        custom = prefs.get("custom_prefs", {})
+        sections = {k: v for k, v in custom.items() if k.startswith("homesection")}
+        self.assertGreater(len(sections), 0, "No homesection entries in custom_prefs")
+        for key, value in sections.items():
+            self.assertIn(value, self.VALID_SECTIONS,
+                f"{key}={value} is not a valid native Jellyfin section. "
+                f"Valid: {self.VALID_SECTIONS}")
+
+    def test_resume_and_latest_are_enabled(self):
+        """Continue Watching and Latest Media must be in the home layout."""
+        contract = ROOT / "contracts" / "services" / "jellyfin.yaml"
+        data = yaml.safe_load(contract.read_text())
+        custom = data["defaults"]["playback"]["display_preferences"]["custom_prefs"]
+        values = [v for k, v in custom.items() if k.startswith("homesection")]
+        self.assertIn("resume", values, "Continue Watching (resume) must be on the home screen")
+        self.assertIn("latestmedia", values, "Latest Media must be on the home screen")
+
+    def test_per_library_prefs_exist(self):
+        """Per-library display prefs (SortBy, SortOrder) should be configured."""
+        contract = ROOT / "contracts" / "services" / "jellyfin.yaml"
+        data = yaml.safe_load(contract.read_text())
+        prefs = data["defaults"]["playback"]["display_preferences"]
+        per_lib = prefs.get("per_library_prefs", {})
+        self.assertIn("movies", per_lib, "Movies library needs per_library_prefs")
+        self.assertIn("tv", per_lib, "TV library needs per_library_prefs")
 
 
 if __name__ == "__main__":
