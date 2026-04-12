@@ -185,7 +185,7 @@ class TestBuffering(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             with patch.dict(os.environ, {"CONFIG_ROOT": td}):
                 _buffer_payload({"cluster_id": "test", "ts": 1})
-                with patch("media_stack.services.telemetry_client._push_one", return_value=True):
+                with patch.object(tc._instance, "_push_one", return_value=True):
                     sent = _drain_buffer("http://localhost:9999", "key")
         self.assertEqual(sent, 1)  # Should drain the 1 buffered payload
 
@@ -290,37 +290,37 @@ class TestSendTcp(unittest.TestCase):
 class TestPushOne(unittest.TestCase):
     def test_uses_tcp_when_udp_not_available(self):
         import media_stack.services.telemetry_client as tc
-        old_udp = tc._udp_ok
-        tc._udp_ok = False
-        with patch.object(tc, "_send_tcp", return_value=True) as mock_tcp:
+        old_udp = tc._instance._udp_ok
+        tc._instance._udp_ok = False
+        with patch.object(tc._instance, "_send_tcp", return_value=True) as mock_tcp:
             result = _push_one("http://localhost:9999/api", "", {"cluster_id": "x"})
-        tc._udp_ok = old_udp
+        tc._instance._udp_ok = old_udp
         self.assertTrue(result)
         mock_tcp.assert_called_once()
 
     def test_uses_udp_when_available(self):
         import media_stack.services.telemetry_client as tc
-        old_udp, old_probe = tc._udp_ok, tc._udp_last_probe
-        tc._udp_ok = True
-        tc._udp_last_probe = time.time()
-        with patch.object(tc, "_send_udp", return_value=True) as mock_udp:
+        old_udp, old_probe = tc._instance._udp_ok, tc._instance._udp_last_probe
+        tc._instance._udp_ok = True
+        tc._instance._udp_last_probe = time.time()
+        with patch.object(tc._instance, "_send_udp", return_value=True) as mock_udp:
             result = _push_one("http://localhost:9999/api", "", {"cluster_id": "x"})
-        tc._udp_ok, tc._udp_last_probe = old_udp, old_probe
+        tc._instance._udp_ok, tc._instance._udp_last_probe = old_udp, old_probe
         self.assertTrue(result)
         mock_udp.assert_called_once()
 
     def test_falls_back_to_tcp_on_udp_failure(self):
         import media_stack.services.telemetry_client as tc
-        old_udp, old_probe = tc._udp_ok, tc._udp_last_probe
-        tc._udp_ok = True
-        tc._udp_last_probe = time.time()
-        with patch.object(tc, "_send_udp", return_value=False):
-            with patch.object(tc, "_send_tcp", return_value=True) as mock_tcp:
+        old_udp, old_probe = tc._instance._udp_ok, tc._instance._udp_last_probe
+        tc._instance._udp_ok = True
+        tc._instance._udp_last_probe = time.time()
+        with patch.object(tc._instance, "_send_udp", return_value=False):
+            with patch.object(tc._instance, "_send_tcp", return_value=True) as mock_tcp:
                 result = _push_one("http://localhost:9999/api", "", {"cluster_id": "x"})
-        tc._udp_ok, tc._udp_last_probe = old_udp, old_probe
+        tc._instance._udp_ok, tc._instance._udp_last_probe = old_udp, old_probe
         self.assertTrue(result)
         mock_tcp.assert_called_once()
-        self.assertFalse(tc._udp_ok)  # Marked unreliable
+        self.assertFalse(tc._instance._udp_ok)  # Marked unreliable
 
 
 # ---------------------------------------------------------------------------
@@ -340,10 +340,10 @@ class TestPushTelemetry(unittest.TestCase):
                 "CONFIG_ROOT": td,
             }):
                 import media_stack.services.telemetry_client as tc
-                old_udp = tc._udp_ok
-                tc._udp_ok = False  # Skip UDP probe
+                old_udp = tc._instance._udp_ok
+                tc._instance._udp_ok = False  # Skip UDP probe
                 result = push_telemetry()
-                tc._udp_ok = old_udp
+                tc._instance._udp_ok = old_udp
             self.assertEqual(result["status"], "buffered")
             self.assertTrue(_buffer_path().is_file() or True)  # May or may not exist depending on CONFIG_ROOT
 
@@ -354,11 +354,11 @@ class TestPushTelemetry(unittest.TestCase):
                 "CONFIG_ROOT": td,
             }):
                 import media_stack.services.telemetry_client as tc
-                old_udp = tc._udp_ok
-                tc._udp_ok = False
-                with patch.object(tc, "_send_tcp", return_value=True):
+                old_udp = tc._instance._udp_ok
+                tc._instance._udp_ok = False
+                with patch.object(tc._instance, "_send_tcp", return_value=True):
                     result = push_telemetry()
-                tc._udp_ok = old_udp
+                tc._instance._udp_ok = old_udp
             self.assertEqual(result["status"], "ok")
 
 
