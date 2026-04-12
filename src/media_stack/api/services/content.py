@@ -541,10 +541,10 @@ class ContentService:
                 continue
             try:
                 base = f"http://{svc.host}:{svc.port}"
-                # Check existing webhooks (follow redirects for url-base)
-                opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler)
-                req = urllib.request.Request(f"{base}/api/v3/notification", headers={"X-Api-Key": key})
-                existing = json.loads(opener.open(req, timeout=5).read())
+                # Check existing webhooks (use core HTTP client for redirect handling)
+                from media_stack.core.http import HttpClient
+                _http = HttpClient()
+                _, existing, _ = _http.request(base, "/api/v3/notification", api_key=key)
                 already = any(n.get("name") == webhook_name for n in existing)
                 if already:
                     results[svc_id] = "already registered"
@@ -569,13 +569,8 @@ class ContentService:
                     "supportsOnUpgrade": True,
                     "supportsOnImportComplete": True,
                 }
-                req = urllib.request.Request(
-                    f"{base}/api/v3/notification",
-                    data=json.dumps(payload).encode(),
-                    method="POST",
-                    headers={"X-Api-Key": key, "Content-Type": "application/json"},
-                )
-                opener.open(req, timeout=10)
+                _http.request(base, "/api/v3/notification", api_key=key,
+                              method="POST", payload=payload)
                 results[svc_id] = "registered"
             except Exception as exc:
                 results[svc_id] = f"error: {str(exc)[:60]}"
