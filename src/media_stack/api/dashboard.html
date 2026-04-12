@@ -2565,9 +2565,41 @@ async function saveLibraries(){
 /* Download categories config */
 async function loadDownloadsConfig(){
   const el=document.getElementById('cfg-downloads');
-  try{const r=await fetch('/api/download-categories');if(!r.ok)return;const d=await r.json();
+  try{
+    const [catR, dlR]=await Promise.all([fetch('/api/download-categories'),fetch('/api/download-client-settings')]);
+    const d=catR.ok?await catR.json():{};
+    const dl=dlR.ok?await dlR.json():{};
     const cats=d.categories||{};
-    let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Download categories for torrent and usenet clients. Changes apply on next bootstrap.</p>';
+    const tor=dl.torrent||{};
+    const scan=dl.jellyfin_scan||{};
+
+    let h='';
+    // Download client limits
+    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Torrent Client Limits</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:4px 0">';
+    h+='<label style="font-size:.82em;color:var(--fg2)">Max Downloads<br><input type="number" id="dl-max-dl" value="'+(tor.max_active_downloads||3)+'" min="1" max="50" style="width:60px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
+    h+='<label style="font-size:.82em;color:var(--fg2)">Max Active<br><input type="number" id="dl-max-active" value="'+(tor.max_active_torrents||5)+'" min="1" max="100" style="width:60px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
+    h+='<label style="font-size:.82em;color:var(--fg2)">Max Uploads<br><input type="number" id="dl-max-ul" value="'+(tor.max_active_uploads||3)+'" min="1" max="50" style="width:60px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
+    h+='</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 0">';
+    h+='<label style="font-size:.82em;color:var(--fg2)">DL Limit (MB/s, 0=unlimited)<br><input type="number" id="dl-limit" value="'+(tor.dl_limit_mbps||0)+'" min="0" step="0.5" style="width:80px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
+    h+='<label style="font-size:.82em;color:var(--fg2)">UL Limit (MB/s, 0=unlimited)<br><input type="number" id="ul-limit" value="'+(tor.up_limit_mbps||0)+'" min="0" step="0.5" style="width:80px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
+    h+='</div>';
+    h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em;margin-top:4px" onclick="saveDlClientSettings()">Save Limits</button>';
+    h+='</div>';
+
+    // Jellyfin scan
+    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Jellyfin Library Scan</div>';
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0">';
+    h+='<label style="font-size:.82em;color:var(--fg2)">Scan every <select id="dl-scan-interval" style="padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)">';
+    for(const hr of [1,2,4,6,12,24]){h+='<option value="'+hr+'"'+((scan.interval_hours||12)===hr?' selected':'')+'>'+hr+'h</option>';}
+    h+='</select></label>';
+    h+='<span style="font-size:.78em;color:var(--fg3)">Status: '+(scan.state||'?')+' (last: '+(scan.last_status||'?')+')</span>';
+    h+='<button class="btn-secondary" style="padding:3px 10px;font-size:.78em" onclick="scanNow()">Scan Now</button>';
+    h+='<button class="btn-primary" style="padding:3px 10px;font-size:.78em" onclick="saveScanInterval()">Save Interval</button>';
+    h+='</div></div>';
+
+    h+='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Download categories for torrent and usenet clients. Changes apply on next bootstrap.</p>';
     h+='<div id="cat-list">';
     let i=0;for(const[name,path]of Object.entries(cats)){
       h+='<div class="svc-row" style="cursor:default;display:flex;align-items:center;gap:8px">';
@@ -2591,6 +2623,29 @@ function addCategoryRow(){
   h+='<button class="btn-danger" style="padding:2px 8px;font-size:.75em;min-height:28px" onclick="this.closest(\'.svc-row\').remove()">Remove</button>';
   h+='</div>';
   el.insertAdjacentHTML('beforeend',h);
+}
+async function saveDlClientSettings(){
+  const body={torrent:{
+    max_active_downloads:+document.getElementById('dl-max-dl').value,
+    max_active_torrents:+document.getElementById('dl-max-active').value,
+    max_active_uploads:+document.getElementById('dl-max-ul').value,
+    dl_limit_mbps:+document.getElementById('dl-limit').value,
+    up_limit_mbps:+document.getElementById('ul-limit').value,
+  }};
+  try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();toast(d.torrent?.error||'Torrent limits saved');
+  }catch(e){toast('Error: '+e);}
+}
+async function scanNow(){
+  try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_now:true})});
+    const d=await r.json();toast(d.scan?.error||'Library scan triggered');
+  }catch(e){toast('Error: '+e);}
+}
+async function saveScanInterval(){
+  const hrs=+document.getElementById('dl-scan-interval').value;
+  try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
+    const d=await r.json();toast(d.scan_interval?.error||'Scan interval set to '+hrs+'h');
+  }catch(e){toast('Error: '+e);}
 }
 async function saveCategories(){
   const names=document.querySelectorAll('#cat-list [data-cat-name]');
