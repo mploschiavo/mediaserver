@@ -18,7 +18,7 @@ DASHBOARD_HTML = DASHBOARD_PATH.read_text(encoding="utf-8") if DASHBOARD_PATH.ex
 
 class TestConfigDrift(unittest.TestCase):
     @patch.dict(os.environ, {"BOOTSTRAP_PROFILE_FILE": "", "CONFIG_ROOT": "/nonexistent", "K8S_NAMESPACE": ""})
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     def test_no_profile_returns_clean(self, _):
         result = config_mod.get_config_drift()
         self.assertIsInstance(result["drifts"], list)
@@ -30,7 +30,7 @@ class TestConfigDrift(unittest.TestCase):
             import yaml
             yaml.dump({"routing": {"base_domain": "old.com", "strategy": "hybrid"}}, f)
             f.flush()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=f.name), \
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=f.name), \
                  patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent", "K8S_NAMESPACE": ""}):
                 # get_routing will read profile + overrides; profile says old.com
                 # but get_routing may overlay with overrides
@@ -42,7 +42,7 @@ class TestConfigDrift(unittest.TestCase):
 
     @patch.dict(os.environ, {"K8S_NAMESPACE": "", "CONFIG_ROOT": "/nonexistent",
                               "SONARR_API_KEY": "envkey123"})
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     @patch("media_stack.api.services.registry.read_api_key_from_file", return_value="filekey456")
     def test_api_key_drift_detected(self, mock_read, _):
         from media_stack.api.services.registry import SERVICES, ServiceDef
@@ -56,14 +56,14 @@ class TestConfigDrift(unittest.TestCase):
         self.assertEqual(key_drifts[0]["key"], "sonarr")
 
     @patch.dict(os.environ, {"K8S_NAMESPACE": "", "CONFIG_ROOT": "/nonexistent"})
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     def test_clean_when_no_drift(self, _):
         result = config_mod.get_config_drift()
         if result["total"] == 0:
             self.assertTrue(result["clean"])
 
     def test_return_structure(self):
-        with patch("media_stack.api.services.config.resolve_profile_path", return_value=None), \
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None), \
              patch.dict(os.environ, {"K8S_NAMESPACE": "", "CONFIG_ROOT": "/nonexistent"}):
             result = config_mod.get_config_drift()
         self.assertIn("drifts", result)

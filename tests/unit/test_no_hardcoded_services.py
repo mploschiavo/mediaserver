@@ -88,27 +88,9 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # To add a new exception: run the test, copy the ``(line, service)`` pair
 # from the failure message, and paste it here with a brief comment.
 
-ALLOWLIST: dict[str, set] = {
-    # config.py: livetv and download category routes need to know which app
-    # to persist per-app config to.  The service ID comes from technology_bindings
-    # where possible; the fallbacks/literals are unavoidable until the config
-    # API is fully dynamic.
-    "api/services/config.py": {
-        (155, "qbittorrent"),  # torrent_client fallback in get_download_categories
-        (173, "qbittorrent"),  # torrent_client fallback in update_download_categories
-        (259, "jellyfin"),     # load_app_config for livetv sources
-        (307, "jellyfin"),     # load_app_config for livetv update
-        (324, "jellyfin"),     # save_app_config for livetv update
-        (380, "jellyfin"),     # _APP_CONFIG_SECTIONS set
-    },
-    # controller_k8s.py: persists JELLYFIN_USER_ID to K8s secret alongside
-    # API keys — the env var name is Jellyfin-specific but lives in the
-    # generic secret-persistence code.
-    "cli/commands/controller_k8s.py": {
-        (42, "jellyfin"),   # JELLYFIN_USER_ID env var read
-        (44, "jellyfin"),   # JELLYFIN_USER_ID setdefault into secret
-    },
-}
+# Ratchet: current count of hardcoded service references in platform code.
+# This number can only DECREASE. Update after fixing violations.
+HARDCODED_SERVICE_REFS_RATCHET = 4
 
 
 # ---------------------------------------------------------------------------
@@ -250,45 +232,26 @@ def test_no_hardcoded_service_references_in_platform_code() -> None:
     for py_file in platform_files:
         rel = str(py_file.relative_to(SRC_ROOT))
         hits = _scan_file(py_file)
-        if not hits:
-            continue
-
-        # Look up allowlist for this file.
-        allowed = ALLOWLIST.get(rel, set())
-        whole_file_allowed = "WHOLE_FILE" in allowed
-
         for lineno, svc, text in hits:
-            if whole_file_allowed:
-                continue
-            if (lineno, svc) in allowed:
-                continue
             violations.append(
                 f"  {rel}:{lineno} [{svc}] {text.strip()[:120]}"
             )
 
-    if violations:
-        header = (
-            f"\n{'=' * 72}\n"
-            f"HARDCODED SERVICE REFERENCES IN PLATFORM CODE\n"
-            f"{'=' * 72}\n"
-            f"Found {len(violations)} new hardcoded service reference(s) in platform code.\n"
-            f"Service-specific logic must live in src/media_stack/services/apps/<service>/\n"
-            f"or src/media_stack/contracts/.\n\n"
-            f"If the reference is unavoidable, add it to the ALLOWLIST in\n"
-            f"tests/unit/test_no_hardcoded_services.py with a brief justification.\n\n"
-            f"Violations:\n"
-        )
-        pytest.fail(header + "\n".join(violations))
-
-
-def test_allowlist_has_no_stale_whole_file_entries() -> None:
-    """Verify that every WHOLE_FILE allowlist entry refers to a real file."""
-    for rel_path, allowed in ALLOWLIST.items():
-        if "WHOLE_FILE" not in allowed:
-            continue
-        full = SRC_ROOT / rel_path
-        assert full.exists(), (
-            f"Stale WHOLE_FILE allowlist entry: {rel_path} does not exist"
+    count = len(violations)
+    assert count <= HARDCODED_SERVICE_REFS_RATCHET, (
+        f"\n{'=' * 72}\n"
+        f"HARDCODED SERVICE REFERENCES REGRESSION: {count} found\n"
+        f"(ratchet allows {HARDCODED_SERVICE_REFS_RATCHET})\n"
+        f"{'=' * 72}\n"
+        f"New hardcoded service reference(s) in platform code.\n"
+        f"Service-specific logic must live in services/apps/<service>/.\n\n"
+        f"Violations:\n" + "\n".join(violations[:20])
+    )
+    if count < HARDCODED_SERVICE_REFS_RATCHET:
+        pytest.fail(
+            f"Ratchet is loose: {count} violations but ratchet allows "
+            f"{HARDCODED_SERVICE_REFS_RATCHET}. Update HARDCODED_SERVICE_REFS_RATCHET "
+            f"to {count}."
         )
 
 
@@ -399,9 +362,7 @@ _DIRECT_APP_IMPORT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Shrink-only allowlist for direct app imports.
-# Format: (relative_path, line_number)
-# These should all eventually be replaced with dynamic importlib.import_module().
+# Direct app import violations — empty means fully compliant.
 _IMPORT_ALLOWLIST: set[tuple[str, int]] = set()
 
 

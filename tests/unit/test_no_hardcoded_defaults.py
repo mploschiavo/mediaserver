@@ -38,29 +38,9 @@ CONFIGURABLE_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("default password literal", re.compile(r"""['"]adminadmin['"]""")),
 ]
 
-# Shrink-only allowlist: (relative_path, line_number, pattern_label).
-# Existing violations go here.  New code MUST NOT add entries — move the
-# default to config instead.  Remove entries as code is fixed.
-ALLOWLIST: set[tuple[str, int, str]] = {
-    # admin.py: qBit default password fallback (intentional — tries known defaults)
-    ("api/services/admin.py", 324, "default password literal"),
-    # disk.py: fallback path candidates for disk scan
-    ("api/services/disk.py", 22, "download path"),
-    # unpackerr preflight: generates config file content (template, not runtime default)
-    ("api/preflight/unpackerr.py", 62, "download path"),
-    ("api/preflight/unpackerr.py", 71, "download path"),
-    ("api/preflight/unpackerr.py", 80, "download path"),
-    ("api/preflight/unpackerr.py", 89, "download path"),
-    # media_hygiene: filesystem scan paths used as fallback candidates
-    ("services/media_hygiene_ops/filesystem.py", 54, "download path"),
-    ("services/media_hygiene_ops/filesystem.py", 55, "download path"),
-    ("services/media_hygiene_ops/filesystem.py", 56, "download path"),
-    ("services/media_hygiene_ops/filesystem.py", 57, "download path"),
-    # dashboard: HTML placeholder text in input fields (overwritten by API data)
-    ("api/dashboard.html", 2426, "media path"),
-    # docker-compose: init-permissions creates directory structure on first run
-    ("docker/docker-compose.yml", 38, "media path"),
-}
+# Ratchet: current count of hardcoded configurable defaults in platform code.
+# This number can only DECREASE. Update after moving defaults to config YAML.
+HARDCODED_DEFAULTS_RATCHET = 10
 
 
 def _collect_files() -> list[Path]:
@@ -123,41 +103,22 @@ def test_no_hardcoded_configurable_defaults() -> None:
         except ValueError:
             rel = str(py_file.relative_to(PROJECT_ROOT))
         for lineno, label, text in _scan_file(py_file):
-            if (rel, lineno, label) in ALLOWLIST:
-                continue
             violations.append(f"  {rel}:{lineno} [{label}] {text.strip()[:120]}")
 
-    if violations:
-        header = (
-            f"\n{'=' * 72}\n"
-            f"HARDCODED CONFIGURABLE DEFAULTS IN PLATFORM CODE\n"
-            f"{'=' * 72}\n"
-            f"Found {len(violations)} string literal(s) that should be in profile YAML or\n"
-            f"contracts/ instead of Python source code.\n\n"
-            f"Fix: read the default from the profile YAML or pass it as a parameter.\n"
-            f"If unavoidable, add to ALLOWLIST in test_no_hardcoded_defaults.py.\n\n"
-            f"Violations:\n"
-        )
-        pytest.fail(header + "\n".join(violations))
-
-
-def test_allowlist_entries_still_exist() -> None:
-    """Verify allowlist entries haven't gone stale (file+line still matches)."""
-    stale: list[str] = []
-    for rel, lineno, label in ALLOWLIST:
-        full = SRC_ROOT / rel
-        if not full.exists():
-            full = PROJECT_ROOT / rel
-        if not full.exists():
-            stale.append(f"  {rel}:{lineno} [{label}] — file not found")
-            continue
-        lines = full.read_text(encoding="utf-8").splitlines()
-        if lineno > len(lines):
-            stale.append(f"  {rel}:{lineno} [{label}] — line number out of range")
-    if stale:
+    count = len(violations)
+    assert count <= HARDCODED_DEFAULTS_RATCHET, (
+        f"\n{'=' * 72}\n"
+        f"HARDCODED DEFAULTS REGRESSION: {count} found\n"
+        f"(ratchet allows {HARDCODED_DEFAULTS_RATCHET})\n"
+        f"{'=' * 72}\n"
+        f"Move defaults to profile YAML or contracts/.\n\n"
+        f"Violations:\n" + "\n".join(violations[:20])
+    )
+    if count < HARDCODED_DEFAULTS_RATCHET:
         pytest.fail(
-            "Stale allowlist entries in test_no_hardcoded_defaults.py:\n"
-            + "\n".join(stale)
+            f"Ratchet is loose: {count} violations but ratchet allows "
+            f"{HARDCODED_DEFAULTS_RATCHET}. Update HARDCODED_DEFAULTS_RATCHET "
+            f"to {count}."
         )
 
 

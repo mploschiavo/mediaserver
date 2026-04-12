@@ -1,0 +1,37 @@
+# IPTV country codes and names for the Config > Live TV country picker.
+# Users can override in their profile YAML under iptv_countries.
+countries:
+  - {code: us, name: "United States"}
+  - {code: gb, name: "United Kingdom"}
+  - {code: ca, name: "Canada"}
+  - {code: au, name: "Australia"}
+  - {code: de, name: "Germany"}
+  - {code: fr, name: "France"}
+  - {code: es, name: "Spain"}
+  - {code: it, name: "Italy"}
+  - {code: br, name: "Brazil"}
+  - {code: mx, name: "Mexico"}
+  - {code: jp, name: "Japan"}
+  - {code: kr, name: "South Korea"}
+  - {code: in, name: "India"}
+  - {code: nl, name: "Netherlands"}
+  - {code: se, name: "Sweden"}
+  - {code: no, name: "Norway"}
+  - {code: dk, name: "Denmark"}
+  - {code: fi, name: "Finland"}
+  - {code: pl, name: "Poland"}
+  - {code: pt, name: "Portugal"}
+  - {code: ru, name: "Russia"}
+  - {code: za, name: "South Africa"}
+  - {code: ar, name: "Argentina"}
+  - {code: co, name: "Colombia"}
+  - {code: cl, name: "Chile"}
+  - {code: tr, name: "Turkey"}
+  - {code: il, name: "Israel"}
+  - {code: ae, name: "UAE"}
+  - {code: cn, name: "China"}
+  - {code: tw, name: "Taiwan"}
+  - {code: ph, name: "Philippines"}
+  - {code: th, name: "Thailand"}
+  - {code: id, name: "Indonesia"}
+  - {code: hk, name: "Hong Kong"}

@@ -111,7 +111,7 @@ class TestSaveDoesNotCorruptProfile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "profile.yaml"
             yaml.dump(data, open(p, "w"))
-            with patch.object(config_mod, "resolve_profile_path", return_value=str(p)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(p)):
                 update_fn(config_mod)
             saved = yaml.safe_load(p.read_text())
             self.assertEqual(saved.get("metadata", {}).get("name"), "test-stack",
@@ -145,7 +145,7 @@ class TestSaveDoesNotCorruptProfile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "profile.yaml"
             yaml.dump(data, open(p, "w"))
-            with patch.object(config_mod, "resolve_profile_path", return_value=str(p)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(p)):
                 new_content = yaml.dump({"schema_version": 1, "metadata": {"name": "renamed-stack"}})
                 result = config_mod.save_profile(new_content)
             self.assertEqual(result["status"], "saved")

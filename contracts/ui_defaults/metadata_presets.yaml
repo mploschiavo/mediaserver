@@ -1,0 +1,28 @@
+# Metadata language/country presets shown in the dashboard Config > Metadata selector.
+# Users can override in their profile YAML under metadata_presets.
+presets:
+  - {language: en, country: US, label: "English (US)"}
+  - {language: en, country: GB, label: "English (UK)"}
+  - {language: en, country: AU, label: "English (AU)"}
+  - {language: de, country: DE, label: "Deutsch"}
+  - {language: fr, country: FR, label: "Français"}
+  - {language: es, country: ES, label: "Español"}
+  - {language: es, country: MX, label: "Español (MX)"}
+  - {language: pt, country: BR, label: "Português (BR)"}
+  - {language: pt, country: PT, label: "Português (PT)"}
+  - {language: it, country: IT, label: "Italiano"}
+  - {language: nl, country: NL, label: "Nederlands"}
+  - {language: sv, country: SE, label: "Svenska"}
+  - {language: no, country: NO, label: "Norsk"}
+  - {language: da, country: DK, label: "Dansk"}
+  - {language: fi, country: FI, label: "Suomi"}
+  - {language: pl, country: PL, label: "Polski"}
+  - {language: ru, country: RU, label: "Русский"}
+  - {language: ja, country: JP, label: "日本語"}
+  - {language: ko, country: KR, label: "한국어"}
+  - {language: zh, country: CN, label: "中文 (CN)"}
+  - {language: zh, country: TW, label: "中文 (TW)"}
+  - {language: ar, country: AE, label: "العربية"}
+  - {language: hi, country: IN, label: "हिन्दी"}
+  - {language: tr, country: TR, label: "Türkçe"}
+  - {language: th, country: TH, label: "ไทย"}

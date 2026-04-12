@@ -35,7 +35,7 @@ class TestGetBackup(unittest.TestCase):
     def test_backup_contains_version_and_timestamp(self):
         with tempfile.TemporaryDirectory() as tmpdir, \
              patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}), \
-             patch.object(config_mod, "resolve_profile_path", return_value=""):
+             patch("media_stack.api.services._resolve.resolve_profile_path", return_value=""):
             raw = config_mod.get_backup(MagicMock(to_dict=lambda: {}))
             data = json.loads(raw)
             self.assertEqual(data["version"], "2")
@@ -46,7 +46,7 @@ class TestGetBackup(unittest.TestCase):
             (Path(tmpdir) / "sonarr").mkdir()
             (Path(tmpdir) / "sonarr" / "config.xml").write_text("<Config><ApiKey>abc</ApiKey></Config>")
             with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}), \
-                 patch.object(config_mod, "resolve_profile_path", return_value=""), \
+                 patch("media_stack.api.services._resolve.resolve_profile_path", return_value=""), \
                  patch.object(registry_mod, "SERVICES", FAKE_SVCS):
                 raw = config_mod.get_backup(MagicMock(to_dict=lambda: {}))
                 data = json.loads(raw)
@@ -55,7 +55,7 @@ class TestGetBackup(unittest.TestCase):
     def test_backup_includes_full_api_keys(self):
         with tempfile.TemporaryDirectory() as tmpdir, \
              patch.dict(os.environ, {"CONFIG_ROOT": tmpdir, "SONARR_API_KEY": "full-key-value-12345"}), \
-             patch.object(config_mod, "resolve_profile_path", return_value=""):
+             patch("media_stack.api.services._resolve.resolve_profile_path", return_value=""):
             raw = config_mod.get_backup(MagicMock(to_dict=lambda: {}))
             data = json.loads(raw)
             self.assertEqual(data["api_keys"]["SONARR_API_KEY"], "full-key-value-12345")
@@ -64,7 +64,7 @@ class TestGetBackup(unittest.TestCase):
     def test_backup_includes_valid_config_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir, \
              patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}), \
-             patch.object(config_mod, "resolve_profile_path", return_value=""), \
+             patch("media_stack.api.services._resolve.resolve_profile_path", return_value=""), \
              patch.object(registry_mod, "SERVICES", FAKE_SVCS):
             raw = config_mod.get_backup(MagicMock(to_dict=lambda: {}))
             data = json.loads(raw)
@@ -75,7 +75,7 @@ class TestGetBackup(unittest.TestCase):
             (Path(tmpdir) / "sonarr").mkdir()
             (Path(tmpdir) / "sonarr" / "config.xml").write_text("x" * 200_000)
             with patch.dict(os.environ, {"CONFIG_ROOT": tmpdir}), \
-                 patch.object(config_mod, "resolve_profile_path", return_value=""), \
+                 patch("media_stack.api.services._resolve.resolve_profile_path", return_value=""), \
                  patch.object(registry_mod, "SERVICES", FAKE_SVCS):
                 raw = config_mod.get_backup(MagicMock(to_dict=lambda: {}))
                 data = json.loads(raw)
