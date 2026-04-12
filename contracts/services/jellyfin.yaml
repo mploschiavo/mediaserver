@@ -306,7 +306,9 @@ defaults:
         ProcessThreads: 1
     display_preferences:
       enabled: true
-      client: emby
+      clients:
+      - emby
+      - jellyfin-web
       preference_ids:
       - usersettings
       - home

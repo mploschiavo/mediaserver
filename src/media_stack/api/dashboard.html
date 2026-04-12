@@ -236,6 +236,9 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <a href="/api/docs">API</a>
     <label style="display:flex;align-items:center;gap:6px;font-size:.82em;color:var(--fg3);cursor:pointer" title="Play sound on action complete"><label class="switch" style="width:34px;height:18px"><input type="checkbox" id="soundToggle"><span class="slider" style="border-radius:9px"></span></label>Sound</label>
     <button onclick="toggleTheme()" id="themeBtn" title="Toggle light/dark theme (T)">Light</button>
+    <select id="logLevelSelect" title="Controller log level" style="font-size:.82em;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg1);color:var(--fg1);cursor:pointer" onchange="setLogLevel(this.value)">
+      <option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option>
+    </select>
     <button onclick="showSettings()" title="Dashboard settings">Settings</button>
     <button onclick="showShortcuts()" title="Keyboard shortcuts (?)">?</button>
   </div>
@@ -643,6 +646,14 @@ function toggleTheme(){const l=document.body.classList.toggle('light');localStor
 (function(){const s=localStorage.getItem('theme');if(s==='light'){document.body.classList.add('light');document.getElementById('themeBtn').textContent='Dark';}
 else if(!s&&window.matchMedia('(prefers-color-scheme: light)').matches){document.body.classList.add('light');document.getElementById('themeBtn').textContent='Dark';}})();
 
+/* Log level control */
+async function setLogLevel(level){
+  try{const r=await fetch('/api/log-level',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level})});
+  if(r.ok){const d=await r.json();document.getElementById('logLevelSelect').value=d.level;}
+  }catch(e){console.error('Failed to set log level',e);}
+}
+(async function(){try{const r=await fetch('/api/log-level');if(r.ok){const d=await r.json();document.getElementById('logLevelSelect').value=d.level;}}catch(e){}})();
+
 /* Collapsible cards */
 function toggleCard(h2){h2.closest('.card').classList.toggle('collapsed');}
 
@@ -684,7 +695,13 @@ async function doAction(name){
   finally{_actionPending=false;hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
 async function cancelAction(){
-  try{const r=await fetch('/cancel',{method:'POST'});const d=await r.json();toast(d.status==='cancel_requested'?'Cancelling...':'No action running',d.status!=='cancel_requested');}catch(e){toast(e.toString(),true);}
+  try{const r=await fetch('/cancel',{method:'POST'});const d=await r.json();
+  if(d.status==='cancel_requested'){
+    const name=d.current_action?d.current_action.name:'action';
+    toast('Cancelling '+name+'... (killing subprocess)');
+    setTimeout(refreshStatus,1500);
+  }else{toast('No action running',true);}
+  }catch(e){toast(e.toString(),true);}
 }
 async function toggleAuto(on){
   try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_download_content:on})});

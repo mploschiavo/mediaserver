@@ -61,8 +61,8 @@ spec:
       - name: harbor-pull
       containers:
         - name: controller
-          image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-          imagePullPolicy: IfNotPresent
+          image: harbor.iomio.io/library/media-stack-controller:v1.0.3
+          imagePullPolicy: Always
           env:
             - name: SABNZBD_API_KEY
               valueFrom:
@@ -140,6 +140,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: MEDIA_STACK_LOG_LEVEL
+              value: "INFO"
             - name: FULLY_PRECONFIGURED
               value: "1"
             - name: BOOTSTRAP_API_PORT
@@ -153,13 +155,13 @@ spec:
             - name: BOOTSTRAP_PROFILE_FILE
               value: /profile/profile.yaml
             - name: BOOTSTRAP_CONFIG_FILE
-              value: /bootstrap-config/config.json
+              value: /controller-config/config.json
           command:
             - python3
             - /opt/media-stack/bin/controller.py
             - --serve
             - --config
-            - /bootstrap-config/config.json
+            - /controller-config/config.json
             - --config-root
             - /srv-config
             - --wait-timeout
@@ -186,10 +188,10 @@ spec:
             failureThreshold: 60
             periodSeconds: 10
           volumeMounts:
-            - name: bootstrap-config
-              mountPath: /bootstrap-config
+            - name: controller-config
+              mountPath: /controller-config
               readOnly: true
-            - name: bootstrap-profile
+            - name: controller-profile
               mountPath: /profile
               readOnly: true
             - name: cfg-jellyfin
@@ -225,11 +227,11 @@ spec:
             - name: stack-media
               mountPath: /srv-stack/media
       volumes:
-        - name: bootstrap-config
+        - name: controller-config
           configMap:
             name: media-stack-controller-config
             optional: true
-        - name: bootstrap-profile
+        - name: controller-profile
           configMap:
             name: media-stack-controller-profile
             optional: true

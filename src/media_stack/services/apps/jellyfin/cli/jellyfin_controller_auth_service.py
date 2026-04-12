@@ -13,14 +13,22 @@ class JellyfinBootstrapAuthService:
 
     def wait_for_jellyfin(self, base_url: str, timeout_seconds: int = 180):
         start = time.time()
+        attempt = 0
         while time.time() - start < timeout_seconds:
+            attempt += 1
             status, data, _ = self.http_request(base_url, "/System/Info/Public", timeout=8)
+            self.info(f"[DEBUG] Jellyfin wait: attempt={attempt}, status={status}, "
+                      f"elapsed={int(time.time()-start)}s/{timeout_seconds}s")
             if status == 200 and isinstance(data, dict):
+                self.info(f"[DEBUG] Jellyfin ready: version={data.get('Version','?')}, "
+                          f"wizard_done={data.get('StartupWizardCompleted','?')}")
                 return data
             time.sleep(2)
-        self.fail(f"Timed out waiting for Jellyfin at {base_url}/System/Info/Public")
+        self.fail(f"Timed out waiting for Jellyfin at {base_url}/System/Info/Public "
+                  f"after {int(time.time()-start)}s ({attempt} attempts, last_status={status})")
 
     def can_authenticate_jellyfin(self, base_url: str, username: str, password: str) -> bool:
+        self.info(f"[DEBUG] Jellyfin auth check: user='{username}', url={base_url}")
         headers = {
             "X-Emby-Authorization": (
                 'MediaBrowser Client="media-stack-controller", Device="media-stack-controller", '
@@ -35,11 +43,14 @@ class JellyfinBootstrapAuthService:
             payload=payload,
             headers=headers,
         )
-        return bool(
+        success = bool(
             status == 200 and isinstance(data, dict) and str(data.get("AccessToken") or "").strip()
         )
+        self.info(f"[DEBUG] Jellyfin auth result: status={status}, success={success}")
+        return success
 
     def authenticate_with_credentials(self, base_url: str, username: str, password: str):
+        self.info(f"[DEBUG] Jellyfin authenticate: user='{username}', url={base_url}")
         headers = {
             "X-Emby-Authorization": (
                 'MediaBrowser Client="media-stack-controller", Device="media-stack-controller", '
@@ -55,12 +66,15 @@ class JellyfinBootstrapAuthService:
             headers=headers,
         )
         if status != 200 or not isinstance(data, dict):
+            self.info(f"[DEBUG] Jellyfin authenticate failed: status={status}, body={body[:200]}")
             return None, status, body
         token = str(data.get("AccessToken") or "").strip()
         user = data.get("User") or {}
         user_id = str(user.get("Id") or "").strip()
         if not token:
+            self.info("[DEBUG] Jellyfin authenticate: 200 OK but no AccessToken in response")
             return None, status, "Authentication succeeded without access token."
+        self.info(f"[DEBUG] Jellyfin authenticate: success, user_id={user_id}")
         return {"token": token, "user_id": user_id, "username": str(username)}, status, body
 
     def resolve_startup_username(self, base_url: str) -> str:
@@ -74,6 +88,7 @@ class JellyfinBootstrapAuthService:
 
     def try_authenticate_startup_user(self, base_url: str, preferred_password: str):
         startup_username = self.resolve_startup_username(base_url)
+        self.info(f"[DEBUG] Jellyfin startup user resolved: '{startup_username or '(none)'}'")
         if not startup_username:
             return None
         attempted_passwords = []

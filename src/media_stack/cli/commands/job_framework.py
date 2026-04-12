@@ -270,7 +270,14 @@ class Job:
 
     def run(self, ctx: "JobContext") -> dict[str, Any]:
         """Run this job's handler, then sub-jobs. Checks prereqs first."""
+        # Check cancel before starting
+        if ctx.cancelled:
+            return {"status": "cancelled", "elapsed": 0}
+
         runtime_platform.log(f"[JOB] {self.name}: starting")
+        runtime_platform.log(f"[DEBUG] Job {self.name}: requires={self.requires}, "
+                             f"sub_jobs=[{', '.join(s.name for s in self.sub_jobs)}], "
+                             f"handler={self.handler.__module__}.{self.handler.__name__}")
         t0 = time.time()
 
         # Gate on prerequisites
@@ -293,17 +300,31 @@ class Job:
                 return {"status": "skipped", "elapsed": elapsed, **result}
             # Run sub-jobs (each checks its own prereqs)
             for sub in self.sub_jobs:
+                if ctx.cancelled:
+                    runtime_platform.log(f"[ACTION] {self.name}: cancelled before sub-job {sub.name}")
+                    break
                 try:
                     sub.run(ctx)
+                except CancelledError:
+                    break
                 except Exception as exc:
                     runtime_platform.log(f"[WARN] {self.name}/{sub.name}: {exc}")
+            if ctx.cancelled:
+                elapsed = round(time.time() - t0, 1)
+                return {"status": "cancelled", "elapsed": elapsed}
             elapsed = round(time.time() - t0, 1)
             runtime_platform.log(f"[OK] {self.name}: complete ({elapsed}s)")
             return {"status": "ok", "elapsed": elapsed, **result}
+        except CancelledError:
+            elapsed = round(time.time() - t0, 1)
+            runtime_platform.log(f"[ACTION] {self.name}: cancelled ({elapsed}s)")
+            return {"status": "cancelled", "elapsed": elapsed}
         except Exception as exc:
             elapsed = round(time.time() - t0, 1)
             runtime_platform.log(f"[ERR] {self.name}: {exc} ({elapsed}s)")
-            return {"status": "error", "error": str(exc)[:200], "elapsed": elapsed}
+            import traceback as _tb
+            runtime_platform.log(f"[DEBUG] Job {self.name} traceback:\n{_tb.format_exc()}")
+            return {"status": "error", "error": str(exc)[:1000], "elapsed": elapsed}
 
 
 class JobRunner:
@@ -364,6 +385,10 @@ class JobRunner:
 
             # Run all ready jobs
             for job in ready:
+                if self.ctx.cancelled:
+                    self.results[job.name] = {"status": "cancelled", "elapsed": 0}
+                    self.completed.add(job.name)
+                    continue
                 result = job.run(self.ctx)
                 self.completed.add(job.name)
                 self.results[job.name] = result
@@ -423,6 +448,25 @@ class JobRunner:
             runtime_platform.log(f"[INFO] Preflight attempt: {exc}")
 
 
+class CancelledError(RuntimeError):
+    """Raised when a job is cancelled."""
+
+
+# Module-level cancel flag — set by SIGTERM handler in subprocess.
+# JobContext checks this so cancellation propagates through the job tree.
+_cancel_requested = False
+
+
+def request_cancel() -> None:
+    """Signal cancellation from outside (e.g., SIGTERM handler)."""
+    global _cancel_requested
+    _cancel_requested = True
+
+
+def _is_cancel_requested() -> bool:
+    return _cancel_requested
+
+
 class JobContext:
     """Shared context for all bootstrap jobs."""
 
@@ -433,6 +477,20 @@ class JobContext:
         self.admin_password = os.environ.get("STACK_ADMIN_PASSWORD", "")
         self._cfg_cache: dict[str, Any] | None = None
         self._profile_cache: dict[str, Any] | None = None
+        self._cancelled = False
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled or _is_cancel_requested()
+
+    def cancel(self) -> None:
+        """Mark this context as cancelled."""
+        self._cancelled = True
+
+    def check_cancelled(self) -> None:
+        """Raise CancelledError if cancel has been requested."""
+        if self.cancelled:
+            raise CancelledError("cancelled by user")
 
     @property
     def cfg(self) -> dict[str, Any]:
@@ -474,6 +532,25 @@ class JobContext:
         ms_id = self.media_server_id()
         svc = SERVICE_MAP.get(ms_id)
         if svc:
+            return f"http://{svc.host}:{svc.port}"
+        return ""
+
+    def api_key(self, service_id: str) -> str:
+        """Resolve an API key for a service. Tries env var, then config file."""
+        from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file
+        svc = SERVICE_MAP.get(service_id)
+        if not svc:
+            return ""
+        key = os.environ.get(svc.api_key_env or "", "").strip()
+        if not key:
+            key = read_api_key_from_file(service_id, self.config_root)
+        return key
+
+    def service_url(self, service_id: str) -> str:
+        """Return the internal URL for a service from the registry."""
+        from media_stack.api.services.registry import SERVICE_MAP
+        svc = SERVICE_MAP.get(service_id)
+        if svc and svc.port > 0:
             return f"http://{svc.host}:{svc.port}"
         return ""
 

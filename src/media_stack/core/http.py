@@ -104,10 +104,17 @@ class HttpClient:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
 
+        _logger = logging.getLogger("media_stack")
+        _logger.debug("[DEBUG] HTTP %s %s (timeout=%ds)", method, url, timeout)
+
         req = request.Request(url=url, data=data, method=method, headers=headers)
         try:
-            return self._execute_request(req, timeout)
+            status, parsed, body = self._execute_request(req, timeout)
+            _logger.debug("[DEBUG] HTTP %s %s → %d (%d bytes)", method, url, status, len(body or ""))
+            return status, parsed, body
         except RetryableHttpStatusError as exc:
+            _logger.debug("[DEBUG] HTTP %s %s → retryable %d", method, url, exc.status_code)
             return exc.status_code, None, exc.body
         except error.URLError as exc:
+            _logger.debug("[DEBUG] HTTP %s %s → error: %s", method, url, exc)
             raise RuntimeError(f"Request failed for {url}: {exc}") from exc

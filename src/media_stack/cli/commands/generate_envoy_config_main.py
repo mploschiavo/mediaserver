@@ -296,7 +296,8 @@ def main() -> None:
     render_result = dynamic_config_service.render(selected)
     payload = render_result.payload
 
-    # Override listener port if specified (K8s sets ENVOY_LISTENER_PORT=8080).
+    # Allow users to override the listener port via ENVOY_LISTENER_PORT.
+    # Default is 8880 (non-privileged, works in Docker and K8s without root).
     listener_port = int(os.environ.get("ENVOY_LISTENER_PORT", "0"))
     if listener_port > 0:
         try:

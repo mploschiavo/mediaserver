@@ -386,7 +386,7 @@ spec:
             - -c
             - |
               until [ -f /config/config.yaml ]; do
-                echo "[WAIT] jellyfin-auto-collections: waiting for /config/config.yaml from bootstrap..."
+                echo "[WAIT] jellyfin-auto-collections: waiting for /config/config.yaml from controller..."
                 sleep 15
               done
               ln -sf /config/config.yaml /app/config.yaml
@@ -430,7 +430,7 @@ metadata:
   name: media-stack-controller-reconcile
   namespace: media-stack
 spec:
-  # Re-run idempotent bootstrap periodically so curation/integration self-heals over time.
+  # Re-run configuration periodically so curation/integration self-heals over time.
   schedule: "0 */6 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
@@ -446,8 +446,8 @@ spec:
         spec:
           restartPolicy: Never
           containers:
-            - name: bootstrap-reconcile
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.1
+            - name: controller-reconcile
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.3
               imagePullPolicy: IfNotPresent
               env:
                 - name: SABNZBD_API_KEY
@@ -492,12 +492,12 @@ spec:
                 - python3
                 - /opt/media-stack/bin/controller.py
                 - --config
-                - /bootstrap-config/config.json
+                - /controller-config/config.json
                 - --config-root
                 - /srv-config
               volumeMounts:
-                - name: bootstrap-config
-                  mountPath: /bootstrap-config
+                - name: controller-config
+                  mountPath: /controller-config
                   readOnly: true
                 - name: cfg-jellyfin
                   mountPath: /srv-config/jellyfin
@@ -530,7 +530,7 @@ spec:
                 - name: stack-media
                   mountPath: /srv-stack/media
           volumes:
-            - name: bootstrap-config
+            - name: controller-config
               configMap:
                 name: media-stack-controller-config
             - name: cfg-jellyfin
@@ -603,7 +603,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: jellyfin-prewarm
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.1
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.3
               imagePullPolicy: IfNotPresent
               env:
                 - name: JELLYFIN_API_KEY
@@ -634,19 +634,19 @@ spec:
                 - --mode
                 - media-server-prewarm
                 - --config
-                - /bootstrap-config/config.json
+                - /controller-config/config.json
                 - --config-root
                 - /srv-config
               volumeMounts:
-                - name: bootstrap-config
-                  mountPath: /bootstrap-config
+                - name: controller-config
+                  mountPath: /controller-config
                   readOnly: true
                 - name: cfg-jellyfin
                   mountPath: /srv-config/jellyfin
                 - name: stack-media
                   mountPath: /srv-stack/media
           volumes:
-            - name: bootstrap-config
+            - name: controller-config
               configMap:
                 name: media-stack-controller-config
             - name: cfg-jellyfin
@@ -680,7 +680,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: media-hygiene
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.1
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.3
               imagePullPolicy: IfNotPresent
               env:
                 - name: STACK_ADMIN_USERNAME
@@ -735,12 +735,12 @@ spec:
                 - --mode
                 - media-hygiene
                 - --config
-                - /bootstrap-config/config.json
+                - /controller-config/config.json
                 - --config-root
                 - /srv-config
               volumeMounts:
-                - name: bootstrap-config
-                  mountPath: /bootstrap-config
+                - name: controller-config
+                  mountPath: /controller-config
                   readOnly: true
                 - name: cfg-jellyfin
                   mountPath: /srv-config/jellyfin
@@ -773,7 +773,7 @@ spec:
                 - name: stack-media
                   mountPath: /srv-stack/media
           volumes:
-            - name: bootstrap-config
+            - name: controller-config
               configMap:
                 name: media-stack-controller-config
             - name: cfg-jellyfin

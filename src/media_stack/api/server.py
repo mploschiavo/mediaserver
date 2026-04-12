@@ -41,13 +41,13 @@ KNOWN_ACTIONS = handlers_post.KNOWN_ACTIONS
 _CORE_ACTION_PRIORITY: dict[str, int] = {
     "bootstrap":     10,
     "configure-media-server": 15,
+    "validate-credentials": 20,
     "envoy-config":  30,
     "restart-apps":  40,
     "post-setup":      45,
     "reconcile":     50,
     "push-indexers": 60,
     "discover-indexers": 70,
-    "validate-credentials": 80,
 }
 
 def _build_action_priority() -> dict[str, int]:

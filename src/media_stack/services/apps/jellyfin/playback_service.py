@@ -245,7 +245,12 @@ class JellyfinPlaybackService:
         if not isinstance(display_cfg, dict):
             display_cfg = {}
         if d.bool_cfg(display_cfg, "enabled", True):
-            client = str(display_cfg.get("client") or "emby").strip() or "emby"
+            # Support both "client" (string) and "clients" (list)
+            clients_raw = display_cfg.get("clients")
+            if isinstance(clients_raw, list) and clients_raw:
+                clients = [str(c).strip() for c in clients_raw if str(c).strip()]
+            else:
+                clients = [str(display_cfg.get("client") or "emby").strip() or "emby"]
             preference_ids = [
                 str(item).strip()
                 for item in d.coerce_list(
@@ -279,71 +284,72 @@ class JellyfinPlaybackService:
             )
 
             updated_display = 0
-            for pref_id in preference_ids:
-                path = d.build_query_path(
-                    f"/DisplayPreferences/{parse.quote(pref_id, safe='')}",
-                    {"userId": user_id, "client": client},
-                )
-                status, display_payload, body = d.jellyfin_request(
-                    jellyfin_url, path, jellyfin_api_key
-                )
-                if status != 200 or not isinstance(display_payload, dict):
-                    d.log(
-                        f"[WARN] Jellyfin playback: unable to load DisplayPreferences '{pref_id}' "
-                        f"(HTTP {status}): {body}"
+            for client in clients:
+                for pref_id in preference_ids:
+                    path = d.build_query_path(
+                        f"/DisplayPreferences/{parse.quote(pref_id, safe='')}",
+                        {"userId": user_id, "client": client},
                     )
-                    continue
-
-                desired_display = dict(display_payload)
-                changed = False
-                if desired_display.get("ShowBackdrop") != show_backdrop:
-                    desired_display["ShowBackdrop"] = show_backdrop
-                    changed = True
-
-                custom_prefs = desired_display.get("CustomPrefs")
-                if not isinstance(custom_prefs, dict):
-                    custom_prefs = {}
-                new_custom = dict(custom_prefs)
-                custom_changed = False
-                for key, value in custom_prefs_cfg.items():
-                    pref_key = str(key or "").strip()
-                    if not pref_key:
-                        continue
-                    if update_existing_only and pref_key not in custom_prefs:
-                        continue
-                    if isinstance(value, bool):
-                        pref_value = "True" if value else "False"
-                    else:
-                        pref_value = str(value)
-                    if new_custom.get(pref_key) != pref_value:
-                        new_custom[pref_key] = pref_value
-                        custom_changed = True
-                if custom_changed:
-                    desired_display["CustomPrefs"] = new_custom
-                    changed = True
-
-                if not changed:
-                    continue
-
-                status, _, body = d.jellyfin_request(
-                    jellyfin_url,
-                    path,
-                    jellyfin_api_key,
-                    method="POST",
-                    payload=desired_display,
-                )
-                if status not in (200, 201, 202, 204):
-                    d.log(
-                        f"[WARN] Jellyfin playback: failed updating DisplayPreferences '{pref_id}' "
-                        f"(HTTP {status}): {body}"
+                    status, display_payload, body = d.jellyfin_request(
+                        jellyfin_url, path, jellyfin_api_key
                     )
-                    continue
-                updated_display += 1
+                    if status != 200 or not isinstance(display_payload, dict):
+                        d.log(
+                            f"[WARN] Jellyfin playback: unable to load DisplayPreferences '{pref_id}' "
+                            f"(client={client}, HTTP {status}): {body}"
+                        )
+                        continue
+
+                    desired_display = dict(display_payload)
+                    changed = False
+                    if desired_display.get("ShowBackdrop") != show_backdrop:
+                        desired_display["ShowBackdrop"] = show_backdrop
+                        changed = True
+
+                    custom_prefs = desired_display.get("CustomPrefs")
+                    if not isinstance(custom_prefs, dict):
+                        custom_prefs = {}
+                    new_custom = dict(custom_prefs)
+                    custom_changed = False
+                    for key, value in custom_prefs_cfg.items():
+                        pref_key = str(key or "").strip()
+                        if not pref_key:
+                            continue
+                        if update_existing_only and pref_key not in custom_prefs:
+                            continue
+                        if isinstance(value, bool):
+                            pref_value = "true" if value else "false"
+                        else:
+                            pref_value = str(value)
+                        if new_custom.get(pref_key) != pref_value:
+                            new_custom[pref_key] = pref_value
+                            custom_changed = True
+                    if custom_changed:
+                        desired_display["CustomPrefs"] = new_custom
+                        changed = True
+
+                    if not changed:
+                        continue
+
+                    status, _, body = d.jellyfin_request(
+                        jellyfin_url,
+                        path,
+                        jellyfin_api_key,
+                        method="POST",
+                        payload=desired_display,
+                    )
+                    if status not in (200, 201, 202, 204):
+                        d.log(
+                            f"[WARN] Jellyfin playback: failed updating DisplayPreferences '{pref_id}' "
+                            f"(client={client}, HTTP {status}): {body}"
+                        )
+                        continue
+                    updated_display += 1
 
             if updated_display:
                 d.log(
                     "[OK] Jellyfin playback: updated display preferences "
-                    f"(count={updated_display}, client={client})"
+                    f"(count={updated_display}, clients={clients})"
                 )
             else:
                 d.log("[OK] Jellyfin playback: display preferences already match desired config")

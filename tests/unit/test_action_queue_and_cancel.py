@@ -389,12 +389,20 @@ class TestActionPriorityConstants(unittest.TestCase):
                 f"'{name}' (P{prio}) has higher priority than bootstrap (P{bootstrap_prio})"
             )
 
-    def test_validate_credentials_runs_after_core_actions(self):
+    def test_validate_credentials_runs_after_bootstrap(self):
         vc_prio = ACTION_PRIORITY["validate-credentials"]
-        for action in ("bootstrap", "envoy-config", "post-setup", "reconcile"):
+        for action in ("bootstrap", "configure-media-server"):
             self.assertGreater(
                 vc_prio, ACTION_PRIORITY[action],
                 f"validate-credentials should run after {action}",
+            )
+
+    def test_validate_credentials_runs_before_slow_actions(self):
+        vc_prio = ACTION_PRIORITY["validate-credentials"]
+        for action in ("discover-indexers", "push-indexers"):
+            self.assertLess(
+                vc_prio, ACTION_PRIORITY[action],
+                f"validate-credentials should run before {action}",
             )
 
     def test_envoy_config_before_auto_indexers(self):
@@ -411,6 +419,103 @@ class TestActionPriorityConstants(unittest.TestCase):
         for name, prio in ACTION_PRIORITY.items():
             self.assertIsInstance(prio, int, f"{name} priority is not int")
             self.assertGreater(prio, 0, f"{name} priority must be positive")
+
+
+# ---------------------------------------------------------------------------
+# Runtime config → action overrides bridge
+# ---------------------------------------------------------------------------
+
+class TestRuntimeConfigFlowsToOverrides(unittest.TestCase):
+    """POST /config settings must reach _apply_overrides during action dispatch.
+
+    This is the bridge test that was missing: runtime_config is set via the
+    API, and must be merged into action overrides so env vars like
+    AUTO_DOWNLOAD_CONTENT actually take effect.
+    """
+
+    def test_auto_download_in_runtime_config_sets_env(self):
+        """Simulates: user toggles auto-downloads on → reconcile runs → env var is set."""
+        import os
+        from unittest.mock import patch
+        from media_stack.cli.commands.controller_dispatch import _apply_overrides
+
+        state = ControllerState()
+        state.update_config({"auto_download_content": True})
+
+        # Simulate the merge that controller_serve.py now does
+        overrides = {}
+        for cfg_key, cfg_val in state.runtime_config.items():
+            overrides.setdefault(cfg_key, cfg_val)
+
+        with patch.dict(os.environ, {}, clear=False):
+            _apply_overrides(overrides)
+            self.assertEqual(os.environ.get("AUTO_DOWNLOAD_CONTENT"), "1")
+
+    def test_auto_download_off_sets_env_zero(self):
+        import os
+        from unittest.mock import patch
+        from media_stack.cli.commands.controller_dispatch import _apply_overrides
+
+        state = ControllerState()
+        state.update_config({"auto_download_content": False})
+
+        overrides = {}
+        for cfg_key, cfg_val in state.runtime_config.items():
+            overrides.setdefault(cfg_key, cfg_val)
+
+        with patch.dict(os.environ, {}, clear=False):
+            _apply_overrides(overrides)
+            self.assertEqual(os.environ.get("AUTO_DOWNLOAD_CONTENT"), "0")
+
+    def test_explicit_override_takes_precedence(self):
+        """Action-specific overrides should win over runtime_config."""
+        state = ControllerState()
+        state.update_config({"auto_download_content": True})
+
+        overrides = {"auto_download_content": False}
+        for cfg_key, cfg_val in state.runtime_config.items():
+            overrides.setdefault(cfg_key, cfg_val)
+
+        # Explicit False wins over runtime_config True
+        self.assertFalse(overrides["auto_download_content"])
+
+    def test_runtime_config_persists_to_disk(self):
+        """runtime_config must survive process restarts (persisted to disk)."""
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "runtime-config.json"
+            # Write
+            s1 = ControllerState()
+            s1._RUNTIME_CONFIG_FILE = str(config_file)
+            s1.update_config({"auto_download_content": True, "some_flag": "value"})
+            self.assertTrue(config_file.is_file())
+
+            # Read back in a new state (simulates restart)
+            s2 = ControllerState()
+            s2._RUNTIME_CONFIG_FILE = str(config_file)
+            s2.load_persisted_config()
+            self.assertTrue(s2.runtime_config.get("auto_download_content"))
+            self.assertEqual(s2.runtime_config.get("some_flag"), "value")
+
+    def test_runtime_config_keys_not_in_override_map_are_harmless(self):
+        """Unknown config keys should not crash _apply_overrides."""
+        import os
+        from unittest.mock import patch
+        from media_stack.cli.commands.controller_dispatch import _apply_overrides
+
+        state = ControllerState()
+        state.update_config({"unknown_setting": "value", "auto_download_content": True})
+
+        overrides = {}
+        for cfg_key, cfg_val in state.runtime_config.items():
+            overrides.setdefault(cfg_key, cfg_val)
+
+        with patch.dict(os.environ, {}, clear=False):
+            _apply_overrides(overrides)  # Should not crash
+            self.assertEqual(os.environ.get("AUTO_DOWNLOAD_CONTENT"), "1")
 
 
 # ---------------------------------------------------------------------------

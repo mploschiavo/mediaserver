@@ -138,7 +138,7 @@ class ControllerState:
             entry = self.failed_services.get(service_id, {
                 "error": "", "failed_at": 0, "attempts": 0, "last_attempt": 0,
             })
-            entry["error"] = str(error)[:200]
+            entry["error"] = str(error)[:1000]
             entry["attempts"] = entry.get("attempts", 0) + 1
             entry["last_attempt"] = time.time()
             if not entry.get("failed_at"):
@@ -317,11 +317,14 @@ class ControllerState:
         """Block until a new log line is appended (or timeout)."""
         return self._log_event.wait(timeout)
 
-    # --- runtime config ---
+    # --- runtime config (persisted to disk so it survives restarts) ---
+
+    _RUNTIME_CONFIG_FILE = "/srv-config/.controller/runtime-config.json"
 
     def set_config(self, key: str, value: Any) -> None:
         with self._lock:
             self.runtime_config[key] = value
+            self._persist_runtime_config()
 
     def get_config(self, key: str, default: Any = None) -> Any:
         with self._lock:
@@ -331,7 +334,43 @@ class ControllerState:
         """Merge updates into runtime_config, return the full config."""
         with self._lock:
             self.runtime_config.update(updates)
+            self._persist_runtime_config()
             return dict(self.runtime_config)
+
+    def load_persisted_config(self) -> None:
+        """Load runtime_config from disk (call at startup).
+
+        Also restores webhook_urls and log level from persisted config.
+        """
+        import json
+        from pathlib import Path
+        path = Path(self._RUNTIME_CONFIG_FILE)
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text())
+                self.runtime_config.update(data)
+                # Restore webhooks
+                saved_webhooks = data.get("_webhook_urls", [])
+                if isinstance(saved_webhooks, list):
+                    self.webhook_urls = list(saved_webhooks)
+                # Restore log level
+                saved_level = data.get("_log_level", "")
+                if saved_level:
+                    from media_stack.services.runtime_platform import set_log_level
+                    set_log_level(saved_level)
+            except Exception:
+                pass
+
+    def _persist_runtime_config(self) -> None:
+        """Write runtime_config to disk (called on every update)."""
+        import json
+        from pathlib import Path
+        path = Path(self._RUNTIME_CONFIG_FILE)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(self.runtime_config))
+        except Exception:
+            pass
 
     # --- serialization ---
 
