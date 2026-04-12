@@ -22,7 +22,8 @@ SRC = ROOT / "src" / "media_stack"
 # Run: python -m pytest tests/unit/test_codebase_class_structure.py -v
 # to see the current count and which modules are non-compliant.
 # ---------------------------------------------------------------------------
-MODULES_WITHOUT_CLASS_RATCHET = 133
+MODULES_WITHOUT_CLASS_RATCHET = 0
+LOOSE_FUNCTIONS_RATCHET = 70
 
 
 def _scan_modules() -> list[tuple[Path, str]]:
@@ -53,8 +54,23 @@ def _modules_without_class() -> list[str]:
     return violations
 
 
+def _modules_with_loose_functions() -> list[str]:
+    """Return modules that have ANY top-level function definitions (public or private)."""
+    violations = []
+    for py, rel in _scan_modules():
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        loose_funcs = [n.name for n in ast.iter_child_nodes(tree)
+                       if isinstance(n, ast.FunctionDef)]
+        if loose_funcs:
+            violations.append(f"{rel} ({', '.join(loose_funcs[:5])}{'...' if len(loose_funcs) > 5 else ''})")
+    return violations
+
+
 class TestClassStructureRatchet(unittest.TestCase):
-    """Module count without classes can only go DOWN, never up."""
+    """No module-level functions anywhere — all logic must live in classes."""
 
     def test_no_new_modules_without_class(self):
         violations = _modules_without_class()
@@ -82,6 +98,30 @@ class TestClassStructureRatchet(unittest.TestCase):
                 f"Ratchet is loose: {count} violations but ratchet allows "
                 f"{MODULES_WITHOUT_CLASS_RATCHET}. Update MODULES_WITHOUT_CLASS_RATCHET "
                 f"to {count} to lock in the improvement."
+            )
+
+    def test_no_loose_functions(self):
+        """No module-level function defs — all logic in classes."""
+        violations = _modules_with_loose_functions()
+        count = len(violations)
+        self.assertLessEqual(
+            count, LOOSE_FUNCTIONS_RATCHET,
+            f"\n{'=' * 70}\n"
+            f"LOOSE FUNCTION REGRESSION: {count} modules with module-level functions\n"
+            f"(ratchet allows {LOOSE_FUNCTIONS_RATCHET})\n"
+            f"{'=' * 70}\n"
+            f"Move functions into the class as methods or static methods.\n\n"
+            + "\n".join(f"  {v}" for v in violations[:20])
+            + (f"\n  ... and {count - 20} more" if count > 20 else ""),
+        )
+
+    def test_loose_functions_ratchet_is_tight(self):
+        violations = _modules_with_loose_functions()
+        count = len(violations)
+        if count < LOOSE_FUNCTIONS_RATCHET:
+            self.fail(
+                f"Ratchet is loose: {count} modules with loose functions but ratchet allows "
+                f"{LOOSE_FUNCTIONS_RATCHET}. Update LOOSE_FUNCTIONS_RATCHET to {count}."
             )
 
 

@@ -22,52 +22,58 @@ from media_stack.services.runtime_secrets import read_api_key
 from .policy_service import MaintainerrPolicyService
 
 
-def _read_jellyseerr_api_key(config_root, timeout_seconds=120):
-    return read_api_key(config_root, "jellyseerr")
+class MaintainerrRuntimeOps:
+
+    @staticmethod
+    def _read_jellyseerr_api_key(config_root, timeout_seconds=120):
+        return read_api_key(config_root, "jellyseerr")
+
+    @staticmethod
+    def _maintainerr_policy_service(_cfg=None) -> MaintainerrPolicyService:
+        service_cls = resolve_app_service_class(
+            "maintainerr_policy_service",
+            MaintainerrPolicyService,
+            technology="maintainerr",
+        )
+        return service_cls(
+            bool_cfg=bool_cfg,
+            coerce_list=coerce_list,
+            resolve_path=resolve_path,
+            log=log,
+            load_bootstrap_default_json=load_bootstrap_default_json,
+            deep_merge_objects=deep_merge_objects,
+        )
+
+    @staticmethod
+    def _maintainerr_service(cfg=None) -> MaintainerrService:
+        service_cls = resolve_app_service_class("maintainerr_service", MaintainerrService)
+        return service_cls(
+            log=log,
+            bool_cfg=bool_cfg,
+            normalize_url=normalize_url,
+            wait_for_service=wait_for_service,
+            http_request=http_request,
+            read_api_key=read_api_key,
+            read_jellyseerr_api_key=_read_jellyseerr_api_key,
+            get_arr_app=find_component_by_implementation,
+            resolve_path=resolve_path,
+        )
+
+    def ensure_maintainerr_policy(self, cfg, config_root):
+        _maintainerr_policy_service(cfg).ensure_policy(cfg, config_root)
+
+    def ensure_maintainerr_integrations(self, cfg, config_root, arr_apps, wait_timeout):
+        _maintainerr_service(cfg).ensure_integrations(
+            cfg=cfg,
+            config_root=config_root,
+            arr_apps=arr_apps,
+            wait_timeout=wait_timeout,
+        )
 
 
-def _maintainerr_policy_service(_cfg=None) -> MaintainerrPolicyService:
-    service_cls = resolve_app_service_class(
-        "maintainerr_policy_service",
-        MaintainerrPolicyService,
-        technology="maintainerr",
-    )
-    return service_cls(
-        bool_cfg=bool_cfg,
-        coerce_list=coerce_list,
-        resolve_path=resolve_path,
-        log=log,
-        load_bootstrap_default_json=load_bootstrap_default_json,
-        deep_merge_objects=deep_merge_objects,
-    )
-
-
-def _maintainerr_service(cfg=None) -> MaintainerrService:
-    service_cls = resolve_app_service_class("maintainerr_service", MaintainerrService)
-    return service_cls(
-        log=log,
-        bool_cfg=bool_cfg,
-        normalize_url=normalize_url,
-        wait_for_service=wait_for_service,
-        http_request=http_request,
-        read_api_key=read_api_key,
-        read_jellyseerr_api_key=_read_jellyseerr_api_key,
-        get_arr_app=find_component_by_implementation,
-        resolve_path=resolve_path,
-    )
-
-
-def ensure_maintainerr_policy(cfg, config_root):
-    _maintainerr_policy_service(cfg).ensure_policy(cfg, config_root)
-
-
-def ensure_maintainerr_integrations(cfg, config_root, arr_apps, wait_timeout):
-    _maintainerr_service(cfg).ensure_integrations(
-        cfg=cfg,
-        config_root=config_root,
-        arr_apps=arr_apps,
-        wait_timeout=wait_timeout,
-    )
+_instance = MaintainerrRuntimeOps()
+ensure_maintainerr_policy = _instance.ensure_maintainerr_policy
+ensure_maintainerr_integrations = _instance.ensure_maintainerr_integrations
 
 
 __all__ = [

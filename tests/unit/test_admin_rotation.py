@@ -73,7 +73,7 @@ class TestRestartService(unittest.TestCase):
 
 
 class TestBatchRestart(unittest.TestCase):
-    @patch.object(admin_mod, "restart_service")
+    @patch.object(admin_mod._instance, "restart_service")
     def test_restarts_multiple(self, mock_restart):
         mock_restart.return_value = {"status": "restarted"}
         result = admin_mod.batch_restart(["sonarr", "radarr"])

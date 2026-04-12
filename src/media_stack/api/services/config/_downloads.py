@@ -12,14 +12,34 @@ class DownloadConfigService:
     def __init__(self, profile: ProfileService):
         self._profile = profile
 
-    def get_download_categories(self) -> dict[str, Any]:
-        from media_stack.services.app_config_service import load_app_config
+    @staticmethod
+    def _default_torrent_client_id() -> str:
+        """Derive the default torrent client from the service registry capabilities."""
+        try:
+            from ..registry import SERVICES
+            for svc in SERVICES:
+                caps = getattr(svc, "capabilities", None) or {}
+                if isinstance(caps, dict) and caps.get("torrent_client"):
+                    return svc.id
+        except Exception:
+            pass
+        return ""
+
+    def _torrent_client_id(self) -> str:
         data, _ = self._profile.load()
         bindings = data.get("technology_bindings", {})
-        tc_id = bindings.get("torrent_client", "qbittorrent")
+        return bindings.get("torrent_client") or self._default_torrent_client_id()
+
+    def get_download_categories(self) -> dict[str, Any]:
+        from media_stack.services.app_config_service import load_app_config
+        tc_id = self._torrent_client_id()
+        if not tc_id:
+            return {"categories": {}, "source": "not_configured",
+                    "note": "No torrent client configured"}
         app_cfg = load_app_config(tc_id)
         if "categories" in app_cfg:
             return {"categories": app_cfg["categories"], "source": "app_config"}
+        data, _ = self._profile.load()
         cats = data.get("download_categories")
         if isinstance(cats, dict) and cats:
             return {"categories": cats, "source": "profile"}
@@ -29,9 +49,9 @@ class DownloadConfigService:
     def update_download_categories(self, categories: dict[str, str]) -> dict[str, Any]:
         if not categories:
             return {"error": "At least one category is required"}
-        data, _ = self._profile.load()
-        bindings = data.get("technology_bindings", {})
-        tc_id = bindings.get("torrent_client", "qbittorrent")
+        tc_id = self._torrent_client_id()
+        if not tc_id:
+            return {"error": "No torrent client configured"}
         from media_stack.services.app_config_service import update_app_config_section
         result = update_app_config_section(tc_id, "categories", categories)
         if "error" not in result:
