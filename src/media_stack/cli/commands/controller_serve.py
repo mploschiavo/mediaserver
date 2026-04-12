@@ -216,45 +216,6 @@ def _run_serve(args: argparse.Namespace) -> None:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
         action_trigger("bootstrap", {})
 
-        # Run media server configuration in a SUBPROCESS — separate GIL
-        # so the API server stays responsive during heavy EPG/livetv work.
-        def _ms_worker(log_q: multiprocessing.Queue) -> None:
-            import media_stack.services.runtime_platform as _rp
-            _rp.log = lambda msg: log_q.put(msg)
-            try:
-                from media_stack.cli.commands.job_framework import run_all_media_server_jobs
-                log_q.put("[INFO] Starting media server configuration (background)")
-                result = run_all_media_server_jobs(max_wait=180)
-                status = result.get("status", "unknown")
-                if status == "ok":
-                    log_q.put("[OK] Media server configuration complete (background)")
-                elif status == "prereq_not_met":
-                    log_q.put(f"[WARN] Media server configuration deferred: {result.get('reason')}")
-                else:
-                    log_q.put(f"[WARN] Media server configuration: {result}")
-            except Exception as exc:
-                log_q.put(f"[ERR] Media server background configuration: {exc}")
-            log_q.put(None)  # sentinel
-
-        ms_log_q: multiprocessing.Queue = multiprocessing.Queue()
-        ms_proc = multiprocessing.Process(
-            target=_ms_worker, args=(ms_log_q,), daemon=True,
-        )
-        ms_proc.start()
-
-        # Drain log queue in a lightweight thread (no GIL contention)
-        def _drain_ms_logs() -> None:
-            while True:
-                try:
-                    msg = ms_log_q.get(timeout=1)
-                    if msg is None:
-                        break
-                    runtime_platform.log(msg)
-                except Exception:
-                    if not ms_proc.is_alive():
-                        break
-        threading.Thread(target=_drain_ms_logs, daemon=True, name="ms-log-drain").start()
-
     # -----------------------------------------------------------------------
     # Action worker — runs in a SUBPROCESS (separate GIL) so the API
     # server stays responsive while jobs execute.
@@ -464,38 +425,3 @@ def _run_serve(args: argparse.Namespace) -> None:
                         action_trigger(queued, {})
 
                 break  # Success — exit retry loop.
-
-                # Retry if attempts remain.
-                if attempt <= retry_limit:
-                    delay = min(10.0, 2.0 ** (attempt - 1))
-                    runtime_platform.log(
-                        f"[RETRY] {action_name}: retrying in {delay:.0f}s "
-                        f"(attempt {attempt}/{retry_limit + 1})"
-                    )
-                    import time as _time
-
-                    _time.sleep(delay)
-                    continue
-
-                # Track failed services for auto-heal.
-                _track_failed_service(state, str(exc))
-
-                # Fire webhooks on final failure.
-                _fire_webhooks(state, "action_error", {
-                    "action": action_name,
-                    "status": "error",
-                    "error": str(exc),
-                    "elapsed_seconds": action_record.elapsed_seconds,
-                })
-
-                # Auto-queue reconcile if services failed (heal after delay).
-                if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
-                    heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
-                    runtime_platform.log(
-                        f"[HEAL] {len(state.get_failed_services())} services need healing. "
-                        f"Auto-queuing reconcile in {heal_delay}s."
-                    )
-                    import threading as _threading
-                    _threading.Timer(heal_delay, lambda: action_trigger("reconcile", {})).start()
-
-                break  # Exhausted retries.

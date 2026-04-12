@@ -112,7 +112,8 @@ class TestActionTriggerQueue(unittest.TestCase):
     def test_action_priority_values(self):
         from media_stack.api.server import ACTION_PRIORITY
         self.assertLess(ACTION_PRIORITY["bootstrap"], ACTION_PRIORITY["reconcile"])
-        self.assertLess(ACTION_PRIORITY["reconcile"], ACTION_PRIORITY["validate-credentials"])
+        # validate-credentials runs early (priority 20) so users see logins faster
+        self.assertLess(ACTION_PRIORITY["validate-credentials"], ACTION_PRIORITY["reconcile"])
 
     def test_all_known_actions_have_priority(self):
         from media_stack.api.server import ACTION_PRIORITY

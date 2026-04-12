@@ -101,6 +101,13 @@ ALLOWLIST: dict[str, set] = {
         (324, "jellyfin"),     # save_app_config for livetv update
         (380, "jellyfin"),     # _APP_CONFIG_SECTIONS set
     },
+    # controller_k8s.py: persists JELLYFIN_USER_ID to K8s secret alongside
+    # API keys — the env var name is Jellyfin-specific but lives in the
+    # generic secret-persistence code.
+    "cli/commands/controller_k8s.py": {
+        (42, "jellyfin"),   # JELLYFIN_USER_ID env var read
+        (44, "jellyfin"),   # JELLYFIN_USER_ID setdefault into secret
+    },
 }
 
 

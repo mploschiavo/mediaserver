@@ -58,6 +58,7 @@ class JellyfinPlaybackService:
                 "Jellyfin playback: no Jellyfin user id could be resolved. Set JELLYFIN_USER_ID or "
                 "keep jellyfin_playback.auto_discover_user_id=true."
             )
+        d.log(f"[DEBUG] Jellyfin playback: user_id={user_id}, url={jellyfin_url}, api_key_len={len(jellyfin_api_key)}")
 
         user_defaults = playback_cfg.get("user_defaults")
         if not isinstance(user_defaults, dict) or not user_defaults:
@@ -283,6 +284,11 @@ class JellyfinPlaybackService:
                 display_cfg, "update_existing_custom_prefs_only", False
             )
 
+            d.log(
+                f"[DEBUG] Jellyfin playback: display_preferences — "
+                f"clients={clients}, preference_ids={preference_ids}, "
+                f"show_backdrop={show_backdrop}, custom_prefs_keys={list(custom_prefs_cfg.keys()) if isinstance(custom_prefs_cfg, dict) else 'defaults'}"
+            )
             updated_display = 0
             for client in clients:
                 for pref_id in preference_ids:

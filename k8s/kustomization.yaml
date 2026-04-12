@@ -13,8 +13,20 @@ resources:
   - unpackerr.yaml
   - scale-policy.yaml
 
+# User-supplied controller configuration (optional).
+# Uncomment and point to your profile YAML to customize the stack.
+# See examples/bootstrap-profiles/ for templates.
+#
+# configMapGenerator:
+#   - name: media-stack-controller-profile
+#     namespace: media-stack
+#     files:
+#       - profile.yaml=../examples/bootstrap-profiles/media-k8s-standard.yaml
+#     options:
+#       disableNameSuffixHash: true
+
 # Controller image — change registry/tag here; kustomize patches all manifests.
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.3
+    newTag: v1.0.4

@@ -1,14 +1,3 @@
-# Media Automation Stack — Kubernetes Single-File Deploy
-#
-# Deploy:   kubectl apply -f k8s-deploy.yaml
-# Status:   kubectl -n media-stack get pods
-# Dashboard: kubectl -n media-stack port-forward svc/media-stack-controller 9100:9100
-#            Then open http://localhost:9100
-# Teardown: kubectl delete -f k8s-deploy.yaml
-#
-# Prerequisites: Kubernetes cluster with default StorageClass
-# More info: https://github.com/mploschiavo/mediaserver
----
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -70,15 +59,14 @@ subjects:
 apiVersion: v1
 data:
   envoy.runtime.base.yaml: |
-    # Base template — the envoy-config-init job merges routes/clusters into this.
-    # This is a placeholder that gets overwritten by the init job.
+    # Keep in sync with config/defaults/compose/envoy.runtime.base.yaml
     static_resources:
       listeners:
         - name: listener_http
           address:
             socket_address:
               address: 0.0.0.0
-              port_value: 8080
+              port_value: 8880
           filter_chains:
             - filters:
                 - name: envoy.filters.network.http_connection_manager
@@ -90,6 +78,132 @@ data:
                       name: media_stack_routes
                       virtual_hosts: []
                     http_filters:
+                      - name: envoy.filters.http.lua
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                          inline_code: |
+                            local function media_stack_escape_js_string(value)
+                              if value == nil then
+                                return ""
+                              end
+                              local escaped = tostring(value)
+                              escaped = string.gsub(escaped, "\\", "\\\\")
+                              escaped = string.gsub(escaped, "'", "\\'")
+                              return escaped
+                            end
+
+                            local function media_stack_rewrite_base_href(html, prefix)
+                              if prefix == nil or prefix == "" or prefix == "/" then
+                                return html
+                              end
+                              local new_base = prefix .. "/"
+                              html = string.gsub(html, '<base%s+href="/"', '<base href="' .. new_base .. '"')
+                              html = string.gsub(html, "<base%s+href='/'", "<base href='" .. new_base .. "'")
+                              return html
+                            end
+
+                            local function media_stack_inject_prefix_patch(handle, prefix)
+                              if prefix == nil or prefix == "" or prefix == "/" then
+                                return
+                              end
+                              local content_type = string.lower(handle:headers():get("content-type") or "")
+                              if not string.find(content_type, "text/html", 1, true) then
+                                return
+                              end
+                              local body = handle:body()
+                              if body == nil then
+                                return
+                              end
+                              local length = body:length()
+                              if length == nil or length == 0 then
+                                return
+                              end
+                              local html = body:getBytes(0, length) or ""
+                              if html == "" then
+                                return
+                              end
+                              if string.find(html, "data-media-stack-prefix-patch=", 1, true) ~= nil then
+                                return
+                              end
+
+                              html = media_stack_rewrite_base_href(html, prefix)
+
+                              local escaped_prefix = media_stack_escape_js_string(prefix)
+                              local script = "<script data-media-stack-prefix-patch='" .. escaped_prefix .. "'>(function(){var prefix='" .. escaped_prefix .. "';if(!prefix||prefix==='/'||typeof window==='undefined'){return;}var parts=prefix.split('/');var appRoot=parts.length>=2?'/'+parts[1]+'/':'';function normalize(url){if(typeof url!=='string'||url===''){return url;}if(url.indexOf('javascript:')===0||url.indexOf('mailto:')===0||url.indexOf('tel:')===0||url.indexOf('#')===0){return url;}try{var u=new URL(url,window.location.origin);if(u.origin!==window.location.origin){return url;}if(u.pathname===prefix||u.pathname.indexOf(prefix+'/')===0){return u.pathname+u.search+u.hash;}if(appRoot&&u.pathname.indexOf(appRoot)===0&&u.pathname!==prefix){return u.pathname+u.search+u.hash;}if(u.pathname.indexOf('/')===0){return prefix+u.pathname+u.search+u.hash;}return url;}catch(e){return url;}}function patchAnchor(a){if(!a){return;}var href=a.getAttribute('href');var next=normalize(href);if(next&&href!==next){a.setAttribute('href',next);}}function patchAll(){var anchors=document.querySelectorAll('a[href^=\"/\"]');for(var i=0;i<anchors.length;i++){patchAnchor(anchors[i]);}}var push=history.pushState;history.pushState=function(state,title,url){return push.call(this,state,title,normalize(url));};var replace=history.replaceState;history.replaceState=function(state,title,url){return replace.call(this,state,title,normalize(url));};var current=normalize(window.location.pathname+window.location.search+window.location.hash);if(current&&current!==(window.location.pathname+window.location.search+window.location.hash)){replace.call(history,history.state,document.title,current);}document.addEventListener('click',function(ev){var el=ev.target;while(el&&el.tagName!=='A'){el=el.parentElement;}if(el){patchAnchor(el);}},true);if(document.documentElement&&typeof MutationObserver!=='undefined'){(new MutationObserver(function(){patchAll();})).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href']});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',patchAll,{once:true});}else{patchAll();}})();</script>"
+
+                              local rewritten = nil
+                              local head_start, head_end = string.find(html, "</head>", 1, true)
+                              if head_start ~= nil then
+                                rewritten = string.sub(html, 1, head_start - 1) .. script .. string.sub(html, head_start)
+                              else
+                                local body_start, body_end = string.find(html, "</body>", 1, true)
+                                if body_start ~= nil then
+                                  rewritten = string.sub(html, 1, body_start - 1) .. script .. string.sub(html, body_start)
+                                else
+                                  rewritten = html .. script
+                                end
+                              end
+
+                              if rewritten ~= nil and rewritten ~= html then
+                                body:setBytes(rewritten)
+                                handle:headers():remove("content-length")
+                              end
+                            end
+
+                            function envoy_on_response(handle)
+                              local prefix = handle:headers():get("x-media-stack-prefix")
+                              if prefix == nil or prefix == "" then
+                                return
+                              end
+                              local host_hint = handle:headers():get("x-media-stack-host")
+                              local location = handle:headers():get("location")
+                              if location ~= nil and location ~= "" then
+                                local normalized = nil
+                                local is_absolute_uri = string.match(location, "^[a-zA-Z][a-zA-Z0-9+.-]*://") ~= nil
+                                local is_scheme_relative = string.sub(location, 1, 2) == "//"
+                                if not is_scheme_relative then
+                                  if is_absolute_uri then
+                                    if host_hint ~= nil and host_hint ~= "" then
+                                      local scheme_sep = string.find(location, "://", 1, true)
+                                      if scheme_sep ~= nil then
+                                        local authority_start = scheme_sep + 3
+                                        local path_start = string.find(location, "/", authority_start, true)
+                                        local authority = nil
+                                        if path_start ~= nil then
+                                          authority = string.sub(location, authority_start, path_start - 1)
+                                        else
+                                          authority = string.sub(location, authority_start)
+                                        end
+                                        local authority_lower = string.lower(authority or "")
+                                        local host_lower = string.lower(host_hint)
+                                        local host_port_prefix = host_lower .. ":"
+                                        if authority_lower == host_lower or string.sub(authority_lower, 1, string.len(host_port_prefix)) == host_port_prefix then
+                                          if path_start ~= nil then
+                                            normalized = string.sub(location, path_start)
+                                          else
+                                            normalized = "/"
+                                          end
+                                        end
+                                      end
+                                    end
+                                  else
+                                    normalized = location
+                                  end
+
+                                  if normalized ~= nil and normalized ~= "" then
+                                    if string.sub(normalized, 1, 1) ~= "/" then
+                                      normalized = "/" .. normalized
+                                    end
+                                    if string.sub(normalized, 1, string.len(prefix)) ~= prefix then
+                                      handle:headers():replace("location", prefix .. normalized)
+                                    end
+                                  end
+                                end
+                              end
+                              media_stack_inject_prefix_patch(handle, prefix)
+                              handle:headers():remove("x-media-stack-prefix")
+                              handle:headers():remove("x-media-stack-host")
+                            end
                       - name: envoy.filters.http.router
                         typed_config:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -99,36 +213,13 @@ data:
         socket_address:
           address: 0.0.0.0
           port_value: 9901
+      access_log_path: /dev/null
 kind: ConfigMap
 metadata:
+  annotations:
+    media-stack.io/canonical-source: config/defaults/compose/envoy.runtime.base.yaml
   name: media-stack-envoy-base-template
   namespace: media-stack
----
-# Controller config — created with defaults here; deploy-k8s.sh overlays
-# the real config.json and profile. CronJobs and the controller Deployment
-# reference this ConfigMap, so it MUST exist for pods to schedule.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: media-stack-controller-config
-  namespace: media-stack
-data:
-  config.json: "{}"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: media-stack-controller-profile
-  namespace: media-stack
-data:
-  profile.yaml: |
-    install_profile: standard
-    routing:
-      gateway_host: k8s.my
-      base_domain: my
-      stack_subdomain: k8s
-      gateway_port: 80
-      app_path_prefix: /app
 ---
 apiVersion: v1
 kind: Secret
@@ -136,7 +227,6 @@ metadata:
   name: media-stack-secrets
   namespace: media-stack
 stringData:
-  BAZARR_API_KEY: ""
   JELLYFIN_API_KEY: ""
   JELLYFIN_USER_ID: ""
   JELLYSEERR_API_KEY: ""
@@ -173,7 +263,7 @@ spec:
   - name: http
     nodePort: 30180
     port: 80
-    targetPort: 8080
+    targetPort: 8880
   - name: admin
     port: 9901
     targetPort: 9901
@@ -646,8 +736,8 @@ spec:
           httpGet:
             path: /
             port: 6767
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: bazarr
         ports:
         - containerPort: 6767
@@ -655,8 +745,8 @@ spec:
           httpGet:
             path: /
             port: 6767
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -715,7 +805,7 @@ spec:
           periodSeconds: 30
         name: envoy
         ports:
-        - containerPort: 8080
+        - containerPort: 8880
           name: http
         - containerPort: 9901
           name: admin
@@ -737,11 +827,8 @@ spec:
           if [ ! -f /etc/envoy/envoy.yaml ]; then
             echo "Seeding base envoy config from template..."
             cp /base-template/envoy.runtime.base.yaml /etc/envoy/envoy.yaml
-          elif grep -q 'port_value: 80$' /etc/envoy/envoy.yaml 2>/dev/null; then
-            echo "Stale config detected (port 80). Reseeding from template..."
-            cp /base-template/envoy.runtime.base.yaml /etc/envoy/envoy.yaml
           else
-            echo "envoy.yaml already exists and looks valid, skipping seed."
+            echo "envoy.yaml already exists, skipping seed."
           fi
         image: busybox:1.36
         name: seed-base-config
@@ -780,8 +867,8 @@ spec:
           httpGet:
             path: /
             port: 8191
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: flaresolverr
         ports:
         - containerPort: 8191
@@ -789,8 +876,8 @@ spec:
           httpGet:
             path: /
             port: 8191
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -835,8 +922,8 @@ spec:
           httpGet:
             path: /
             port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: homepage
         ports:
         - containerPort: 3000
@@ -844,8 +931,8 @@ spec:
           httpGet:
             path: /
             port: 3000
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -888,8 +975,8 @@ spec:
           httpGet:
             path: /health
             port: 8096
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: jellyfin
         ports:
         - containerPort: 8096
@@ -897,8 +984,8 @@ spec:
           httpGet:
             path: /health
             port: 8096
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -955,7 +1042,7 @@ spec:
         - -c
         - |
           until [ -f /config/config.yaml ]; do
-            echo "[WAIT] jellyfin-auto-collections: waiting for /config/config.yaml from bootstrap..."
+            echo "[WAIT] jellyfin-auto-collections: waiting for /config/config.yaml from controller..."
             sleep 15
           done
           ln -sf /config/config.yaml /app/config.yaml
@@ -1018,8 +1105,8 @@ spec:
           httpGet:
             path: /api/v1/status
             port: 5055
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: jellyseerr
         ports:
         - containerPort: 5055
@@ -1027,8 +1114,8 @@ spec:
           httpGet:
             path: /api/v1/status
             port: 5055
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1076,8 +1163,8 @@ spec:
           httpGet:
             path: /ping
             port: 8686
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: lidarr
         ports:
         - containerPort: 8686
@@ -1085,8 +1172,8 @@ spec:
           httpGet:
             path: /ping
             port: 8686
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1171,8 +1258,8 @@ spec:
           httpGet:
             path: /app/maintainerr/api/settings
             port: 6246
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: maintainerr
         ports:
         - containerPort: 6246
@@ -1180,8 +1267,8 @@ spec:
           httpGet:
             path: /app/maintainerr/api/settings
             port: 6246
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1231,7 +1318,7 @@ spec:
         - /opt/media-stack/bin/controller.py
         - --serve
         - --config
-        - /bootstrap-config/config.json
+        - /controller-config/config.json
         - --config-root
         - /srv-config
         - --wait-timeout
@@ -1309,16 +1396,12 @@ spec:
               key: PROWLARR_API_KEY
               name: media-stack-secrets
               optional: true
-        - name: BAZARR_API_KEY
-          valueFrom:
-            secretKeyRef:
-              key: BAZARR_API_KEY
-              name: media-stack-secrets
-              optional: true
         - name: K8S_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: MEDIA_STACK_LOG_LEVEL
+          value: INFO
         - name: FULLY_PRECONFIGURED
           value: "1"
         - name: BOOTSTRAP_API_PORT
@@ -1332,8 +1415,8 @@ spec:
         - name: BOOTSTRAP_PROFILE_FILE
           value: /profile/profile.yaml
         - name: BOOTSTRAP_CONFIG_FILE
-          value: /bootstrap-config/config.json
-        image: harbor.iomio.io/library/media-stack-controller:v1.0.1
+          value: /controller-config/config.json
+        image: harbor.iomio.io/library/media-stack-controller:v1.0.4
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1358,11 +1441,11 @@ spec:
             port: api
           periodSeconds: 10
         volumeMounts:
-        - mountPath: /bootstrap-config
-          name: bootstrap-config
+        - mountPath: /controller-config
+          name: controller-config
           readOnly: true
         - mountPath: /profile
-          name: bootstrap-profile
+          name: controller-profile
           readOnly: true
         - mountPath: /srv-config/jellyfin
           name: cfg-jellyfin
@@ -1396,16 +1479,18 @@ spec:
           name: stack-usenet
         - mountPath: /srv-stack/media
           name: stack-media
+      imagePullSecrets:
+      - name: harbor-pull
       serviceAccountName: media-stack-controller
       volumes:
       - configMap:
           name: media-stack-controller-config
           optional: true
-        name: bootstrap-config
+        name: controller-config
       - configMap:
           name: media-stack-controller-profile
           optional: true
-        name: bootstrap-profile
+        name: controller-profile
       - name: cfg-jellyfin
         persistentVolumeClaim:
           claimName: media-stack-config-jellyfin
@@ -1476,8 +1561,8 @@ spec:
           httpGet:
             path: /identity
             port: 32400
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: plex
         ports:
         - containerPort: 32400
@@ -1485,8 +1570,8 @@ spec:
           httpGet:
             path: /identity
             port: 32400
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1544,8 +1629,8 @@ spec:
           httpGet:
             path: /ping
             port: 9696
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: prowlarr
         ports:
         - containerPort: 9696
@@ -1553,8 +1638,8 @@ spec:
           httpGet:
             path: /ping
             port: 9696
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1604,8 +1689,8 @@ spec:
           httpGet:
             path: /
             port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: qbittorrent
         ports:
         - containerPort: 8080
@@ -1613,8 +1698,8 @@ spec:
           httpGet:
             path: /
             port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1667,8 +1752,8 @@ spec:
           httpGet:
             path: /ping
             port: 7878
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: radarr
         ports:
         - containerPort: 7878
@@ -1676,8 +1761,8 @@ spec:
           httpGet:
             path: /ping
             port: 7878
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1758,8 +1843,8 @@ spec:
           httpGet:
             path: /ping
             port: 8787
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: readarr
         ports:
         - containerPort: 8787
@@ -1767,8 +1852,8 @@ spec:
           httpGet:
             path: /ping
             port: 8787
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1849,8 +1934,8 @@ spec:
           httpGet:
             path: /
             port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: sabnzbd
         ports:
         - containerPort: 8080
@@ -1858,8 +1943,8 @@ spec:
           httpGet:
             path: /
             port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -1927,8 +2012,8 @@ spec:
           httpGet:
             path: /ping
             port: 8989
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: sonarr
         ports:
         - containerPort: 8989
@@ -1936,8 +2021,8 @@ spec:
           httpGet:
             path: /ping
             port: 8989
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -2013,8 +2098,8 @@ spec:
           httpGet:
             path: /status
             port: 8181
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         name: tautulli
         ports:
         - containerPort: 8181
@@ -2022,8 +2107,8 @@ spec:
           httpGet:
             path: /status
             port: 8181
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
         resources:
           limits:
             cpu: "2"
@@ -2143,7 +2228,7 @@ spec:
             - python3
             - /opt/media-stack/bin/controller.py
             - --config
-            - /bootstrap-config/config.json
+            - /controller-config/config.json
             - --config-root
             - /srv-config
             env:
@@ -2185,12 +2270,12 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-            imagePullPolicy: Always
-            name: bootstrap-reconcile
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.4
+            imagePullPolicy: IfNotPresent
+            name: controller-reconcile
             volumeMounts:
-            - mountPath: /bootstrap-config
-              name: bootstrap-config
+            - mountPath: /controller-config
+              name: controller-config
               readOnly: true
             - mountPath: /srv-config/jellyfin
               name: cfg-jellyfin
@@ -2227,7 +2312,7 @@ spec:
           - configMap:
               name: media-stack-controller-config
               optional: true
-            name: bootstrap-config
+            name: controller-config
           - name: cfg-jellyfin
             persistentVolumeClaim:
               claimName: media-stack-config-jellyfin
@@ -2300,7 +2385,7 @@ spec:
             - --mode
             - media-server-prewarm
             - --config
-            - /bootstrap-config/config.json
+            - /controller-config/config.json
             - --config-root
             - /srv-config
             env:
@@ -2326,12 +2411,12 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-            imagePullPolicy: Always
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.4
+            imagePullPolicy: IfNotPresent
             name: jellyfin-prewarm
             volumeMounts:
-            - mountPath: /bootstrap-config
-              name: bootstrap-config
+            - mountPath: /controller-config
+              name: controller-config
               readOnly: true
             - mountPath: /srv-config/jellyfin
               name: cfg-jellyfin
@@ -2342,7 +2427,7 @@ spec:
           - configMap:
               name: media-stack-controller-config
               optional: true
-            name: bootstrap-config
+            name: controller-config
           - name: cfg-jellyfin
             persistentVolumeClaim:
               claimName: media-stack-config-jellyfin
@@ -2376,7 +2461,7 @@ spec:
             - --mode
             - media-hygiene
             - --config
-            - /bootstrap-config/config.json
+            - /controller-config/config.json
             - --config-root
             - /srv-config
             env:
@@ -2426,12 +2511,12 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.1
-            imagePullPolicy: Always
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.4
+            imagePullPolicy: IfNotPresent
             name: media-hygiene
             volumeMounts:
-            - mountPath: /bootstrap-config
-              name: bootstrap-config
+            - mountPath: /controller-config
+              name: controller-config
               readOnly: true
             - mountPath: /srv-config/jellyfin
               name: cfg-jellyfin
@@ -2468,7 +2553,7 @@ spec:
           - configMap:
               name: media-stack-controller-config
               optional: true
-            name: bootstrap-config
+            name: controller-config
           - name: cfg-jellyfin
             persistentVolumeClaim:
               claimName: media-stack-config-jellyfin
@@ -2621,6 +2706,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     kubernetes.io/ingress.class: public
     media-stack.io/author: Matthew Loschiavo
     media-stack.io/contact: mploschiavo@gmail.com
@@ -2631,6 +2717,16 @@ metadata:
 spec:
   ingressClassName: public
   rules:
+  - host: jf.iomio.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: jellyfin
+            port:
+              number: 8096
+        path: /
+        pathType: Prefix
   - host: homepage.local
     http:
       paths:
@@ -2781,3 +2877,7 @@ spec:
               number: 9000
         path: /
         pathType: Prefix
+  tls:
+  - hosts:
+    - jf.iomio.io
+    secretName: iomio-tls

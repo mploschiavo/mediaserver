@@ -117,7 +117,7 @@ class TestActionValidateCredentials(unittest.TestCase):
     def test_action_has_priority(self, mock_rp, mock_probe):
         from media_stack.api.server import ACTION_PRIORITY
         self.assertIn("validate-credentials", ACTION_PRIORITY)
-        self.assertEqual(ACTION_PRIORITY["validate-credentials"], 80)
+        self.assertEqual(ACTION_PRIORITY["validate-credentials"], 20)
 
 
 if __name__ == "__main__":
