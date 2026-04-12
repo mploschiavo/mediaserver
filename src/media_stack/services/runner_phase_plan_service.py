@@ -7,6 +7,8 @@ from typing import Any, Callable
 
 import importlib as _importlib
 
+from .enums import RunnerEvent
+
 
 class RunnerPhasePlanService:
     @staticmethod
