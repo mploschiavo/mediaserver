@@ -115,8 +115,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         """
         path = self.path.split("?")[0]
 
-        # Probes are always public
-        if path in ("/healthz", "/readyz"):
+        # Probes and arr webhooks are always public (internal network only)
+        if path in ("/healthz", "/readyz", "/webhooks/arr"):
             return True
 
         username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
