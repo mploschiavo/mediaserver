@@ -493,6 +493,31 @@ class ContentService:
             "top_indexers": [{"name": n, "count": c} for n, c in top_indexers],
         }
 
+    def toggle_import_list(self, service_id: str, list_id: int, enabled: bool) -> dict[str, Any]:
+        """Enable or disable an import list on a specific arr service."""
+        api_keys = discover_api_keys()
+        svc = SERVICE_MAP.get(service_id)
+        if not svc or not svc.import_list_path:
+            return {"error": f"Service '{service_id}' not found or has no import list support"}
+        key = api_keys.get(service_id, "")
+        if not key:
+            return {"error": f"No API key for {service_id}"}
+        try:
+            # GET current list, flip enabled, PUT back
+            url = f"http://{svc.host}:{svc.port}{svc.import_list_path}/{list_id}"
+            req = urllib.request.Request(url, headers={"X-Api-Key": key})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            data["enabled"] = enabled
+            put_req = urllib.request.Request(
+                url, data=json.dumps(data).encode(),
+                method="PUT", headers={"X-Api-Key": key, "Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(put_req, timeout=10)
+            return {"status": "toggled", "service": service_id, "list_id": list_id, "enabled": enabled}
+        except Exception as exc:
+            return {"error": str(exc)[:120]}
+
     def delete_import_list(self, service_id: str, list_id: int) -> dict[str, Any]:
         """Delete an import list from a specific arr service."""
         api_keys = discover_api_keys()
@@ -585,6 +610,7 @@ toggle_indexer = _instance.toggle_indexer
 delete_indexer = _instance.delete_indexer
 get_all_import_lists = _instance.get_all_import_lists
 get_download_analytics = _instance.get_download_analytics
+toggle_import_list = _instance.toggle_import_list
 delete_import_list = _instance.delete_import_list
 
 # Backward compat alias

@@ -127,7 +127,15 @@ class GetRequestHandler:
         elif path == "/api/import-lists":
             handler._json_response(200, content_svc.get_import_lists())
         elif path == "/api/libraries":
-            handler._json_response(200, content_svc.get_jellyfin_libraries())
+            # Merge live Jellyfin libraries with configured libraries
+            live = content_svc.get_jellyfin_libraries()
+            configured = config_svc.get_libraries()
+            handler._json_response(200, {
+                "live": live.get("libraries", []),
+                "configured": configured.get("libraries", []),
+                "source": configured.get("source", "unknown"),
+                "media_server": configured.get("media_server", ""),
+            })
         elif path == "/api/recent":
             handler._json_response(200, content_svc.get_recent())
 
@@ -156,7 +164,7 @@ class GetRequestHandler:
             handler._json_response(200, api_cache.get_or_compute(
                 "config_drift", config_svc.get_config_drift, ttl=60,
             ))
-        elif path == "/api/libraries":
+        elif path == "/api/config/libraries":
             handler._json_response(200, config_svc.get_libraries())
         elif path == "/api/download-categories":
             handler._json_response(200, config_svc.get_download_categories())
