@@ -20,16 +20,6 @@ from .registry import SERVICE_MAP, SERVICES
 
 
 
-# Download client category → fetch function.  Extend for new client types.
-_DOWNLOAD_FETCHERS: dict[str, Any] = {
-    "torrent": _fetch_qbit_downloads,
-    "usenet": _fetch_sab_downloads,
-}
-
-# Map service IDs to their download category (from app layer).
-_DOWNLOAD_CLIENT_IDS: dict[str, str] = DOWNLOAD_CLIENT_CATEGORIES
-
-
 class ContentService:
     """Content operations: library stats, downloads, indexers, versions, history."""
 
@@ -601,3 +591,11 @@ delete_import_list = _instance.delete_import_list
 get_jellyfin_libraries = get_media_server_libraries
 _fetch_qbit_downloads = _instance._fetch_qbit_downloads
 _fetch_sab_downloads = _instance._fetch_sab_downloads
+
+# Download client category → fetch function.  Extend for new client types.
+_DOWNLOAD_FETCHERS: dict[str, Any] = {
+    "torrent": _fetch_qbit_downloads,
+    "usenet": _fetch_sab_downloads,
+}
+# Map service IDs to their download category (from app layer).
+_DOWNLOAD_CLIENT_IDS: dict[str, str] = DOWNLOAD_CLIENT_CATEGORIES

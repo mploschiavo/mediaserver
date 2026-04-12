@@ -37,10 +37,7 @@ from pathlib import Path
 
 
 
-# Known services with their default ports — used when compose file is unavailable (K8s).
-# Built from the service registry; non-registry services listed below as overrides.
-
-_DEFAULT_SERVICE_PORTS: dict[str, int] = _build_default_service_ports()
+# _DEFAULT_SERVICE_PORTS is initialized after the class definition (needs _build_default_service_ports)
 
 
 
@@ -349,3 +346,6 @@ _load_bootstrap_edge_hooks = _instance._load_bootstrap_edge_hooks
 _load_profile = _instance._load_profile
 _build_default_service_ports = _instance._build_default_service_ports
 _build_synthetic_services = _instance._build_synthetic_services
+
+# Known services with their default ports — used when compose file is unavailable (K8s).
+_DEFAULT_SERVICE_PORTS: dict[str, int] = _build_default_service_ports()
