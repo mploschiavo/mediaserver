@@ -112,3 +112,4 @@ setup_qbit_storage_defaults = _instance.setup_qbit_storage_defaults
 setup_torrent_storage_defaults = _instance.setup_torrent_storage_defaults
 setup_qbit_categories = _instance.setup_qbit_categories
 setup_torrent_categories = _instance.setup_torrent_categories
+_cfg_with_url_hint = _instance._cfg_with_url_hint

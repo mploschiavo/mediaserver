@@ -226,3 +226,12 @@ main = _instance.main
 
 if __name__ == "__main__":
     raise SystemExit(main())
+_choose_kubectl = _instance._choose_kubectl
+_err = _instance._err
+_info = _instance._info
+_load_jellyfin_runtime_module = _instance._load_jellyfin_runtime_module
+_parse_args = _instance._parse_args
+_read_secret_jellyfin_api_key = _instance._read_secret_jellyfin_api_key
+_ts = _instance._ts
+_wait_http_ok = _instance._wait_http_ok
+_warn = _instance._warn

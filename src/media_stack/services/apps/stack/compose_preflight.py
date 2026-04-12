@@ -202,3 +202,10 @@ ensure_compose_stack_filesystem_paths = _instance.ensure_compose_stack_filesyste
 
 
 __all__ = ["ensure_compose_stack_filesystem_paths"]
+_ensure_config_paths_writable = _instance._ensure_config_paths_writable
+_ensure_paths_writable = _instance._ensure_paths_writable
+_reconcile_permissions_with_helper = _instance._reconcile_permissions_with_helper
+_required_config_paths = _instance._required_config_paths
+_required_paths = _instance._required_paths
+_text = _instance._text
+_to_uid = _instance._to_uid

@@ -210,3 +210,6 @@ class QueueGuardrailsService:
 
 _instance = QueueGuardrailsService()
 run_qbit_queue_guardrails = _instance.run_qbit_queue_guardrails
+_execute_deletions = _instance._execute_deletions
+_log_dry_run = _instance._log_dry_run
+_parse_torrent_record = _instance._parse_torrent_record

@@ -139,3 +139,7 @@ set_runtime_context_cfg = _instance.set_runtime_context_cfg
 get_runtime_context_cfg = _instance.get_runtime_context_cfg
 get_runtime_binding = _instance.get_runtime_binding
 resolve_app_service_class = _instance.resolve_app_service_class
+_active_adapter_hooks = _instance._active_adapter_hooks
+_canonical_technology_key = _instance._canonical_technology_key
+_load_class_from_spec = _instance._load_class_from_spec
+_manifest_adapter_hooks = _instance._manifest_adapter_hooks

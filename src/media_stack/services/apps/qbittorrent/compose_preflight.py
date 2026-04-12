@@ -329,3 +329,15 @@ ensure_compose_torrent_client_credentials = _instance.ensure_compose_torrent_cli
 
 
 __all__ = ["ensure_compose_torrent_client_credentials"]
+_decode_logs = _instance._decode_logs
+_exec_shell = _instance._exec_shell
+_extract_temporary_password = _instance._extract_temporary_password
+_login_with_container = _instance._login_with_container
+_read_temporary_password = _instance._read_temporary_password
+_reset_auth_config_in_container = _instance._reset_auth_config_in_container
+_restart_container = _instance._restart_container
+_set_credentials_with_container = _instance._set_credentials_with_container
+_text = _instance._text
+_upsert_env_file = _instance._upsert_env_file
+_wait_for_login = _instance._wait_for_login
+_wait_for_webui_ready = _instance._wait_for_webui_ready

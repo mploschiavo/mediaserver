@@ -70,3 +70,5 @@ load_app_config = _instance.load_app_config
 save_app_config = _instance.save_app_config
 update_app_config_section = _instance.update_app_config_section
 get_merged_app_config = _instance.get_merged_app_config
+_app_config_path = _instance._app_config_path
+_config_root = _instance._config_root

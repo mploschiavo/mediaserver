@@ -153,3 +153,4 @@ class ServarrHttpPreflight:
 
 _instance = ServarrHttpPreflight()
 run_preflight = _instance.run_preflight
+_restart_app = _instance._restart_app

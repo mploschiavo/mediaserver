@@ -187,3 +187,7 @@ run_qbit_duplicate_prune = _instance.run_qbit_duplicate_prune
 run_qbit_ipfilter_refresh = _instance.run_qbit_ipfilter_refresh
 run_media_hygiene = _instance.run_media_hygiene
 enforce_disk_guardrails = _instance.enforce_disk_guardrails
+_disk_guardrails_service = _instance._disk_guardrails_service
+_media_hygiene_ops_service = _instance._media_hygiene_ops_service
+_media_hygiene_service = _instance._media_hygiene_service
+_walk_existing_files = _instance._walk_existing_files

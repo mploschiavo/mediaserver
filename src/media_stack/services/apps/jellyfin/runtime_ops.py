@@ -506,3 +506,12 @@ __all__ = [
     "trigger_jellyfin_scheduled_task",
     "update_collection_items",
 ]
+_jellyfin_auto_collections_service = _instance._jellyfin_auto_collections_service
+_jellyfin_home_rails_service = _instance._jellyfin_home_rails_service
+_jellyfin_libraries_service = _instance._jellyfin_libraries_service
+_jellyfin_livetv_source_service = _instance._jellyfin_livetv_source_service
+_jellyfin_livetv_state_service = _instance._jellyfin_livetv_state_service
+_jellyfin_playback_service = _instance._jellyfin_playback_service
+_jellyfin_plugins_service = _instance._jellyfin_plugins_service
+_jellyfin_prewarm_service = _instance._jellyfin_prewarm_service
+_jellyfin_service = _instance._jellyfin_service

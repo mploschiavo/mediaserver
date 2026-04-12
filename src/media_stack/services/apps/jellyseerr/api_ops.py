@@ -420,3 +420,4 @@ ensure_main_settings = _instance.ensure_main_settings
 ensure_jellyfin_settings = _instance.ensure_jellyfin_settings
 ensure_radarr = _instance.ensure_radarr
 ensure_sonarr = _instance.ensure_sonarr
+_ensure_initialized = _instance._ensure_initialized

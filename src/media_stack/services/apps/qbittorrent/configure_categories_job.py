@@ -86,3 +86,4 @@ class QbittorrentConfigureCategoriesJob:
 
 _instance = QbittorrentConfigureCategoriesJob()
 configure_categories = _instance.configure_categories
+_build_arr_apps = _instance._build_arr_apps

@@ -67,3 +67,4 @@ ensure_homepage_services_config = _instance.ensure_homepage_services_config
 
 
 __all__ = ["ensure_homepage_services_config"]
+_homepage_service = _instance._homepage_service

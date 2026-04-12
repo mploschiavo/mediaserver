@@ -143,3 +143,5 @@ class JellyseerrLocalAdminOps:
 
 _instance = JellyseerrLocalAdminOps()
 ensure_local_admin_user = _instance.ensure_local_admin_user
+_cfg_bool = _instance._cfg_bool
+_cfg_text = _instance._cfg_text

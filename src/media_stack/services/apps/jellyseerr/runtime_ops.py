@@ -139,3 +139,6 @@ _instance = JellyseerrRuntimeOps()
 read_jellyseerr_api_key = _instance.read_jellyseerr_api_key
 resolve_jellyfin_api_key = _instance.resolve_jellyfin_api_key
 configure_jellyseerr = _instance.configure_jellyseerr
+_get_arr_root_folder_path = _instance._get_arr_root_folder_path
+_get_sonarr_language_profile_id = _instance._get_sonarr_language_profile_id
+_jellyseerr_service = _instance._jellyseerr_service

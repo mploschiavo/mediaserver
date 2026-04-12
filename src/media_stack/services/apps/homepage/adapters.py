@@ -283,3 +283,14 @@ class HomepageAdapters:
 
 _instance = HomepageAdapters()
 render_services_yaml = _instance.render_services_yaml
+_build_onboarding_cards = _instance._build_onboarding_cards
+_default_onboarding_cards = _instance._default_onboarding_cards
+_normalize_hosts = _instance._normalize_hosts
+_normalize_target_url = _instance._normalize_target_url
+_ordered_hosts = _instance._ordered_hosts
+_prefix = _instance._prefix
+_qr_href = _instance._qr_href
+_service_meta = _instance._service_meta
+_service_token = _instance._service_token
+_short_link_label = _instance._short_link_label
+_yaml_quote = _instance._yaml_quote

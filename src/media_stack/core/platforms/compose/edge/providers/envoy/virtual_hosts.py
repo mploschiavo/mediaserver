@@ -135,3 +135,4 @@ class EnvoyVirtualHostService:
 
 _instance = EnvoyVirtualHostService()
 build_virtual_hosts = _instance.build_virtual_hosts
+_extra_domain_aliases = _instance._extra_domain_aliases

@@ -202,3 +202,6 @@ class SabnzbdHttpPreflight:
 
 _instance = SabnzbdHttpPreflight()
 run_preflight = _instance.run_preflight
+_restart_container = _instance._restart_container
+_update_ini_value = _instance._update_ini_value
+_wait_ready = _instance._wait_ready

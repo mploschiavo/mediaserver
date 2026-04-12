@@ -324,3 +324,12 @@ class QbittorrentHttpPreflight:
 _instance = QbittorrentHttpPreflight()
 run_preflight = _instance.run_preflight
 _extract_temp_password = _instance._extract_temp_password
+_disable_login_ban = _instance._disable_login_ban
+_login = _instance._login
+_read_temp_password_docker = _instance._read_temp_password_docker
+_read_temp_password_from_logs = _instance._read_temp_password_from_logs
+_read_temp_password_k8s = _instance._read_temp_password_k8s
+_reset_auth_in_config = _instance._reset_auth_in_config
+_restart_container = _instance._restart_container
+_set_preferences = _instance._set_preferences
+_wait_ready = _instance._wait_ready

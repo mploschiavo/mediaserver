@@ -301,3 +301,4 @@ _instance = CatalogLoaderService()
 load_bootstrap_profile_catalog = _instance.load_bootstrap_profile_catalog
 clear_catalog_cache = _instance.clear_catalog_cache
 _load_bootstrap_profile_catalog_cached = _instance._load_bootstrap_profile_catalog_cached
+_resolve_catalog_path = _instance._resolve_catalog_path

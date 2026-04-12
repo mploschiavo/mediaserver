@@ -212,3 +212,5 @@ class JellyfinHttpPreflight:
 
 _instance = JellyfinHttpPreflight()
 run_preflight = _instance.run_preflight
+_http = _instance._http
+_wait_ready = _instance._wait_ready

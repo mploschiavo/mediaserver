@@ -54,3 +54,4 @@ class DefaultsService:
 
 _instance = DefaultsService()
 default_controller_image = _instance.default_controller_image
+_load_controller_image_from_profile = _instance._load_controller_image_from_profile
