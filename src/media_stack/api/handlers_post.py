@@ -246,6 +246,13 @@ class PostRequestHandler:
             handler._json_response(200, result)
             return
 
+        # POST /api/download-client-settings
+        if handler.path == "/api/download-client-settings":
+            body = handler._read_json_body()
+            from .services import content as content_svc_dl
+            handler._json_response(200, content_svc_dl.update_download_client_settings(body))
+            return
+
         # POST /api/livetv-sources
         if handler.path == "/api/livetv-sources":
             body = handler._read_json_body()

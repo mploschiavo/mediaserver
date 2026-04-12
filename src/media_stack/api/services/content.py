@@ -538,6 +538,138 @@ class ContentService:
             return {"error": str(exc)[:120]}
 
 
+    def get_download_client_settings(self) -> dict[str, Any]:
+        """Get qBittorrent download limits and Jellyfin scan schedule."""
+        result: dict[str, Any] = {"torrent": {}, "jellyfin_scan": {}}
+        # qBittorrent settings
+        try:
+            import http.cookiejar
+            cj = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+            user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+            pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+            svc = SERVICE_MAP.get("qbittorrent")
+            if svc:
+                opener.open(urllib.request.Request(
+                    f"http://{svc.host}:{svc.port}/api/v2/auth/login",
+                    data=f"username={user}&password={pw}".encode(),
+                ))
+                prefs = json.loads(opener.open(f"http://{svc.host}:{svc.port}/api/v2/app/preferences").read())
+                result["torrent"] = {
+                    "max_active_downloads": prefs.get("max_active_downloads", 3),
+                    "max_active_torrents": prefs.get("max_active_torrents", 5),
+                    "max_active_uploads": prefs.get("max_active_uploads", 3),
+                    "dl_limit_mbps": round(prefs.get("dl_limit", 0) / 1024 / 1024, 1) if prefs.get("dl_limit") else 0,
+                    "up_limit_mbps": round(prefs.get("up_limit", 0) / 1024 / 1024, 1) if prefs.get("up_limit") else 0,
+                    "queueing_enabled": prefs.get("queueing_enabled", True),
+                }
+        except Exception as exc:
+            result["torrent"]["error"] = str(exc)[:80]
+        # Jellyfin scan schedule
+        try:
+            api_key = discover_api_keys().get("jellyfin", "")
+            ms = SERVICE_MAP.get("jellyfin")
+            if ms and api_key:
+                tasks = json.loads(urllib.request.urlopen(
+                    f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=5
+                ).read())
+                for t in tasks:
+                    if "Scan Media" in t.get("Name", ""):
+                        triggers = t.get("Triggers", [])
+                        interval_h = 12
+                        if triggers:
+                            ticks = triggers[0].get("IntervalTicks", 0)
+                            if ticks:
+                                interval_h = int(ticks / 36000000000)
+                        result["jellyfin_scan"] = {
+                            "task_id": t.get("Id", ""),
+                            "state": t.get("State", "?"),
+                            "interval_hours": interval_h,
+                            "last_status": t.get("LastExecutionResult", {}).get("Status", "never"),
+                        }
+                        break
+        except Exception as exc:
+            result["jellyfin_scan"]["error"] = str(exc)[:80]
+        return result
+
+    def update_download_client_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        """Update qBittorrent limits and/or trigger Jellyfin scan."""
+        results: dict[str, Any] = {}
+        # Update qBittorrent
+        torrent = settings.get("torrent", {})
+        if torrent:
+            try:
+                import http.cookiejar
+                cj = http.cookiejar.CookieJar()
+                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+                user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+                pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+                svc = SERVICE_MAP.get("qbittorrent")
+                if svc:
+                    opener.open(urllib.request.Request(
+                        f"http://{svc.host}:{svc.port}/api/v2/auth/login",
+                        data=f"username={user}&password={pw}".encode(),
+                    ))
+                    prefs = {}
+                    if "max_active_downloads" in torrent:
+                        prefs["max_active_downloads"] = int(torrent["max_active_downloads"])
+                    if "max_active_torrents" in torrent:
+                        prefs["max_active_torrents"] = int(torrent["max_active_torrents"])
+                    if "max_active_uploads" in torrent:
+                        prefs["max_active_uploads"] = int(torrent["max_active_uploads"])
+                    if "dl_limit_mbps" in torrent:
+                        prefs["dl_limit"] = int(float(torrent["dl_limit_mbps"]) * 1024 * 1024)
+                    if "up_limit_mbps" in torrent:
+                        prefs["up_limit"] = int(float(torrent["up_limit_mbps"]) * 1024 * 1024)
+                    if prefs:
+                        req = urllib.request.Request(
+                            f"http://{svc.host}:{svc.port}/api/v2/app/setPreferences",
+                            data=f"json={json.dumps(prefs)}".encode(),
+                        )
+                        opener.open(req)
+                        results["torrent"] = {"status": "updated", "settings": prefs}
+            except Exception as exc:
+                results["torrent"] = {"error": str(exc)[:80]}
+        # Trigger Jellyfin scan
+        if settings.get("scan_now"):
+            try:
+                api_key = discover_api_keys().get("jellyfin", "")
+                ms = SERVICE_MAP.get("jellyfin")
+                if ms and api_key:
+                    urllib.request.urlopen(urllib.request.Request(
+                        f"http://{ms.host}:{ms.port}/Library/Refresh?api_key={api_key}",
+                        method="POST",
+                    ), timeout=5)
+                    results["scan"] = {"status": "triggered"}
+            except Exception as exc:
+                results["scan"] = {"error": str(exc)[:80]}
+        # Update Jellyfin scan interval
+        scan_interval = settings.get("jellyfin_scan_interval_hours")
+        if scan_interval is not None:
+            try:
+                api_key = discover_api_keys().get("jellyfin", "")
+                ms = SERVICE_MAP.get("jellyfin")
+                if ms and api_key:
+                    tasks = json.loads(urllib.request.urlopen(
+                        f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=5
+                    ).read())
+                    for t in tasks:
+                        if "Scan Media" in t.get("Name", ""):
+                            ticks = int(scan_interval) * 36000000000
+                            triggers = [{"Type": "IntervalTrigger", "IntervalTicks": ticks}]
+                            req = urllib.request.Request(
+                                f"http://{ms.host}:{ms.port}/ScheduledTasks/{t['Id']}/Triggers?api_key={api_key}",
+                                data=json.dumps(triggers).encode(),
+                                method="POST",
+                                headers={"Content-Type": "application/json"},
+                            )
+                            urllib.request.urlopen(req, timeout=5)
+                            results["scan_interval"] = {"status": "updated", "hours": int(scan_interval)}
+                            break
+            except Exception as exc:
+                results["scan_interval"] = {"error": str(exc)[:80]}
+        return results or {"status": "no changes"}
+
     @staticmethod
     def _fetch_qbit_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
         """Fetch active torrents from the torrent client API."""
@@ -625,3 +757,5 @@ _DOWNLOAD_FETCHERS: dict[str, Any] = {
 }
 # Map service IDs to their download category (from app layer).
 _DOWNLOAD_CLIENT_IDS: dict[str, str] = DOWNLOAD_CLIENT_CATEGORIES
+get_download_client_settings = _instance.get_download_client_settings
+update_download_client_settings = _instance.update_download_client_settings
