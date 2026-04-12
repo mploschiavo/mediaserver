@@ -78,7 +78,7 @@ class TestOnboardingStatus(unittest.TestCase):
     @patch("media_stack.api.services.health.probe_services", return_value={"services": {}, "healthy": 0, "total": 0})
     @patch("media_stack.api.services.health.discover_api_keys", return_value={})
     def test_returns_steps(self, *_):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_onboarding_status()
         self.assertIn("steps", result)
         self.assertIn("progress_pct", result)
@@ -87,7 +87,7 @@ class TestOnboardingStatus(unittest.TestCase):
     @patch("media_stack.api.services.health.probe_services", return_value={"services": {}, "healthy": 0, "total": 0})
     @patch("media_stack.api.services.health.discover_api_keys", return_value={})
     def test_first_run_detected(self, *_):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_onboarding_status()
         self.assertTrue(result["is_first_run"])
 
@@ -98,14 +98,14 @@ class TestOnboardingStatus(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = Path(td) / "profile.yaml"
             yaml.dump({"technology_bindings": {"torrent_client": "qbittorrent", "usenet_client": "sabnzbd"}, "routing": {"gateway_host": "gw.local"}}, open(profile, "w"))
-            with patch.object(config_mod, "resolve_profile_path", return_value=str(profile)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile)):
                 result = config_mod.get_onboarding_status()
         self.assertGreater(result["progress_pct"], 0)
 
     @patch("media_stack.api.services.health.probe_services", return_value={"services": {}, "healthy": 0, "total": 0})
     @patch("media_stack.api.services.health.discover_api_keys", return_value={})
     def test_step_ids_unique(self, *_):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_onboarding_status()
         ids = [s["id"] for s in result["steps"]]
         self.assertEqual(len(ids), len(set(ids)))

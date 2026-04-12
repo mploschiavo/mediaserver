@@ -33,12 +33,11 @@ class DownloadConfigService:
     def get_download_categories(self) -> dict[str, Any]:
         from media_stack.services.app_config_service import load_app_config
         tc_id = self._torrent_client_id()
-        if not tc_id:
-            return {"categories": {}, "source": "not_configured",
-                    "note": "No torrent client configured"}
-        app_cfg = load_app_config(tc_id)
-        if "categories" in app_cfg:
-            return {"categories": app_cfg["categories"], "source": "app_config"}
+        if tc_id:
+            app_cfg = load_app_config(tc_id)
+            if "categories" in app_cfg:
+                return {"categories": app_cfg["categories"], "source": "app_config"}
+        # Fallback: check profile regardless of torrent client
         data, _ = self._profile.load()
         cats = data.get("download_categories")
         if isinstance(cats, dict) and cats:
@@ -50,10 +49,15 @@ class DownloadConfigService:
         if not categories:
             return {"error": "At least one category is required"}
         tc_id = self._torrent_client_id()
-        if not tc_id:
-            return {"error": "No torrent client configured"}
-        from media_stack.services.app_config_service import update_app_config_section
-        result = update_app_config_section(tc_id, "categories", categories)
+        if tc_id:
+            from media_stack.services.app_config_service import update_app_config_section
+            result = update_app_config_section(tc_id, "categories", categories)
+            if "error" not in result:
+                result["categories"] = categories
+                result["note"] = "Run configure-categories to apply changes"
+            return result
+        # No torrent client — save to profile as fallback
+        result = self._profile.update_section("download_categories", categories)
         if "error" not in result:
             result["categories"] = categories
             result["note"] = "Run configure-categories to apply changes"
