@@ -408,7 +408,7 @@ defaults:
       replaceAllMetadata: 'false'
       replaceAllImages: 'false'
   home_rails:
-    enabled: true
+    enabled: false
     required: false
     cleanup_collections_when_disabled: true
     cleanup_collection_names:
