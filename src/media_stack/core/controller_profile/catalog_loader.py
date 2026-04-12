@@ -38,8 +38,8 @@ class CatalogLoaderService:
         return _DEFAULT_PROFILE_CATALOG_PATH
     
     
-    @lru_cache(maxsize=8)
     @staticmethod
+    @lru_cache(maxsize=8)
     def _load_bootstrap_profile_catalog_cached(path_token: str) -> Any:
         from media_stack.core.controller_profile.models import ControllerProfileCatalog
     
@@ -300,5 +300,5 @@ class CatalogLoaderService:
 _instance = CatalogLoaderService()
 load_bootstrap_profile_catalog = _instance.load_bootstrap_profile_catalog
 clear_catalog_cache = _instance.clear_catalog_cache
-_load_bootstrap_profile_catalog_cached = _instance._load_bootstrap_profile_catalog_cached
+_load_bootstrap_profile_catalog_cached = CatalogLoaderService._load_bootstrap_profile_catalog_cached
 _resolve_catalog_path = _instance._resolve_catalog_path
