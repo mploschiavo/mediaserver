@@ -279,8 +279,8 @@ class TestReadKeyDispatcher(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestRotateKeys(unittest.TestCase):
-    @mock.patch("media_stack.api.services.admin.restart_service")
-    @mock.patch("media_stack.api.services.admin.persist_keys_to_secret")
+    @mock.patch("media_stack.api.services.admin._instance.restart_service")
+    @mock.patch("media_stack.api.services.admin._instance.persist_keys_to_secret")
     @mock.patch("media_stack.api.services.admin.get_services_with_api_keys")
     def test_rotates_file_based_keys(self, mock_get_svcs, mock_persist, mock_restart):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -320,8 +320,8 @@ class TestRotateKeys(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestResetPassword(unittest.TestCase):
-    @mock.patch("media_stack.api.services.admin.restart_service")
-    @mock.patch("media_stack.api.services.admin.persist_keys_to_secret")
+    @mock.patch("media_stack.api.services.admin._instance.restart_service")
+    @mock.patch("media_stack.api.services.admin._instance.persist_keys_to_secret")
     @mock.patch("media_stack.api.services.admin.get_services_with_password_config")
     @mock.patch("media_stack.api.services.admin.get_services_with_password_api")
     @mock.patch("media_stack.api.services.admin.SERVICE_MAP", {})
@@ -357,8 +357,8 @@ class TestResetPassword(unittest.TestCase):
             self.assertIn("username = admin", content)
             self.assertIn("download_dir = /data", content)
 
-    @mock.patch("media_stack.api.services.admin.restart_service")
-    @mock.patch("media_stack.api.services.admin.persist_keys_to_secret")
+    @mock.patch("media_stack.api.services.admin._instance.restart_service")
+    @mock.patch("media_stack.api.services.admin._instance.persist_keys_to_secret")
     @mock.patch("media_stack.api.services.admin.get_services_with_password_config")
     @mock.patch("media_stack.api.services.admin.get_services_with_password_api")
     @mock.patch("media_stack.api.services.admin.SERVICES", [])
