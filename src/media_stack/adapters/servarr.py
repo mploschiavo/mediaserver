@@ -121,3 +121,5 @@ choose_profile = _instance.choose_profile
 choose_root_folder = _instance.choose_root_folder
 normalize_remote_path_mappings = _instance.normalize_remote_path_mappings
 find_existing_servarr = _instance.find_existing_servarr
+_norm_profile_name = _instance._norm_profile_name
+_normalize_mapping_path = _instance._normalize_mapping_path

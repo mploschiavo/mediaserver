@@ -75,3 +75,4 @@ class MediaServerPlanService:
 _instance = MediaServerPlanService()
 resolve_backend_plan = _instance.resolve_backend_plan
 run_phase_plan = _instance.run_phase_plan
+_load_indexer_token_aliases = _instance._load_indexer_token_aliases

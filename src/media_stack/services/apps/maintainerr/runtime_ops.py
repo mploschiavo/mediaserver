@@ -81,3 +81,6 @@ __all__ = [
     "ensure_maintainerr_policy",
     "ensure_maintainerr_integrations",
 ]
+_maintainerr_policy_service = _instance._maintainerr_policy_service
+_maintainerr_service = _instance._maintainerr_service
+_read_jellyseerr_api_key = _instance._read_jellyseerr_api_key

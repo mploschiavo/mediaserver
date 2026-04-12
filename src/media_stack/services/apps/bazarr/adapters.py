@@ -107,3 +107,7 @@ class BazarrAdapters:
 
 _instance = BazarrAdapters()
 apply_scalar_updates = _instance.apply_scalar_updates
+_find_key_block_bounds = _instance._find_key_block_bounds
+_find_section_bounds = _instance._find_section_bounds
+_render_key_block = _instance._render_key_block
+_yaml_scalar = _instance._yaml_scalar

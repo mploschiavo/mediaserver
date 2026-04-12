@@ -90,3 +90,4 @@ _instance = AdapterReflection()
 module_token_from_key = _instance.module_token_from_key
 class_prefix_from_key = _instance.class_prefix_from_key
 discover_adapter_class = _instance.discover_adapter_class
+_candidate_classes_from_module = _instance._candidate_classes_from_module

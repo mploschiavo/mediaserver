@@ -111,3 +111,4 @@ _instance = RestartAppsService()
 write_config_and_restart = _instance.write_config_and_restart
 _apps_to_restart = _instance._apps_to_restart
 _APPS_TO_RESTART = _apps_to_restart()
+_restart = _instance._restart

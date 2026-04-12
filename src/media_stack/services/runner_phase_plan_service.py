@@ -276,3 +276,10 @@ class RunnerPhasePlanService:
 
 _instance = RunnerPhasePlanService()
 run_phase_plan = _instance.run_phase_plan
+_has_runtime_value = _instance._has_runtime_value
+_load_indexer_token_aliases = _instance._load_indexer_token_aliases
+_resolve_runtime_bool_attr = _instance._resolve_runtime_bool_attr
+_resolve_step_args = _instance._resolve_step_args
+_resolve_step_callable = _instance._resolve_step_callable
+_resolve_step_event_and_handler = _instance._resolve_step_event_and_handler
+_resolve_steps_for_phase = _instance._resolve_steps_for_phase

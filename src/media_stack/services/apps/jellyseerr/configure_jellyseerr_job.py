@@ -131,3 +131,5 @@ class JellyseerrConfigureJob:
 
 _instance = JellyseerrConfigureJob()
 configure_jellyseerr = _instance.configure_jellyseerr
+_restart_jellyseerr = _instance._restart_jellyseerr
+_sync_jellyfin_libraries = _instance._sync_jellyfin_libraries

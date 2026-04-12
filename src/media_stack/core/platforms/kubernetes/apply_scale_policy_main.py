@@ -171,3 +171,8 @@ class ApplyScalePolicyCommand:
 _instance = ApplyScalePolicyCommand()
 build_arg_parser = _instance.build_arg_parser
 main = _instance.main
+_current_replicas = _instance._current_replicas
+_default_config_file = _instance._default_config_file
+_deployment_exists = _instance._deployment_exists
+_env_truthy = _instance._env_truthy
+_scale_deployment = _instance._scale_deployment

@@ -264,3 +264,14 @@ ensure_compose_sabnzbd_api_access = _instance.ensure_compose_sabnzbd_api_access
 
 
 __all__ = ["ensure_compose_sabnzbd_api_access"]
+_decode_logs = _instance._decode_logs
+_dedupe_csv = _instance._dedupe_csv
+_desired_host_whitelist = _instance._desired_host_whitelist
+_desired_local_ranges = _instance._desired_local_ranges
+_exec_shell = _instance._exec_shell
+_parse_markers = _instance._parse_markers
+_reconcile_sabnzbd_config = _instance._reconcile_sabnzbd_config
+_restart_container = _instance._restart_container
+_split_csv = _instance._split_csv
+_text = _instance._text
+_wait_for_ready = _instance._wait_for_ready

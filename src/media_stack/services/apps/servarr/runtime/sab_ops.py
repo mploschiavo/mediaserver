@@ -52,3 +52,4 @@ sabnzbd_request = _instance.sabnzbd_request
 sabnzbd_get_config_section = _instance.sabnzbd_get_config_section
 ensure_sabnzbd_defaults = _instance.ensure_sabnzbd_defaults
 ensure_sabnzbd_categories = _instance.ensure_sabnzbd_categories
+_sab_service_cfg = _instance._sab_service_cfg

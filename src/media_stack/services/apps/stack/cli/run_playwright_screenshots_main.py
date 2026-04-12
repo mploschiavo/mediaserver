@@ -222,3 +222,9 @@ if __name__ == "__main__":
     except (ConfigError, MediaStackError) as exc:
         print(f"[ERR] {exc}", file=sys.stderr)
         sys.exit(1)
+_capture = _instance._capture
+_ensure_node_modules = _instance._ensure_node_modules
+_hosts_csv = _instance._hosts_csv
+_run = _instance._run
+_run_playwright_capture = _instance._run_playwright_capture
+_secret_value = _instance._secret_value

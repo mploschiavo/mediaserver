@@ -57,3 +57,4 @@ _instance = DiscoveryListOpsService()
 ensure_sonarr_seed_series = _instance.ensure_sonarr_seed_series
 resolve_series_language_profile_id = _instance.resolve_series_language_profile_id
 resolve_series_quality_profile_id = _instance.resolve_series_quality_profile_id
+_load_tv_seed_module = _instance._load_tv_seed_module

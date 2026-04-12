@@ -180,3 +180,5 @@ class OpenSeerrFileOps:
 
 _instance = OpenSeerrFileOps()
 configure_via_settings_file = _instance.configure_via_settings_file
+_request_manager_cfg = _instance._request_manager_cfg
+_settings_path_for = _instance._settings_path_for

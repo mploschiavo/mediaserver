@@ -292,3 +292,8 @@ ensure_compose_jellyfin_bootstrap_access = _instance.ensure_compose_jellyfin_boo
 
 
 __all__ = ["ensure_compose_jellyfin_bootstrap_access"]
+_container_network_ipv4 = _instance._container_network_ipv4
+_http_request = _instance._http_request
+_resolve_bootstrap_endpoint = _instance._resolve_bootstrap_endpoint
+_resolve_reachable_bootstrap_endpoint = _instance._resolve_reachable_bootstrap_endpoint
+_text = _instance._text

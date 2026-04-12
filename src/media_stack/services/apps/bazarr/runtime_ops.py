@@ -49,3 +49,4 @@ class BazarrRuntimeOps:
 
 _instance = BazarrRuntimeOps()
 ensure_bazarr_arr_integration = _instance.ensure_bazarr_arr_integration
+_bazarr_service = _instance._bazarr_service

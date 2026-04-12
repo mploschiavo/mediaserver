@@ -104,3 +104,4 @@ class OpenSeerrOrchestratorOps:
 _instance = OpenSeerrOrchestratorOps()
 permission_error = _instance.permission_error
 configure = _instance.configure
+_request_manager_cfg = _instance._request_manager_cfg

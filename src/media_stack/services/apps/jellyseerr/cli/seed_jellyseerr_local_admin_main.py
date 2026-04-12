@@ -252,3 +252,6 @@ main = _instance.main
 
 if __name__ == "__main__":
     raise SystemExit(main())
+_first_pod = _instance._first_pod
+_secret_field = _instance._secret_field
+_wait_for_rollout = _instance._wait_for_rollout

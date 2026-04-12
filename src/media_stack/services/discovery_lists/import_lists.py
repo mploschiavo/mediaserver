@@ -427,3 +427,4 @@ ensure_sonarr_seed_series = _instance.ensure_sonarr_seed_series
 resolve_import_list_definitions = _instance.resolve_import_list_definitions
 build_arr_import_list_payload = _instance.build_arr_import_list_payload
 ensure_arr_discovery_lists_for_app = _instance.ensure_arr_discovery_lists_for_app
+_find_tv_arr_id = _instance._find_tv_arr_id
