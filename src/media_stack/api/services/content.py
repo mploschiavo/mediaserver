@@ -541,9 +541,10 @@ class ContentService:
                 continue
             try:
                 base = f"http://{svc.host}:{svc.port}"
-                # Check existing webhooks
+                # Check existing webhooks (follow redirects for url-base)
+                opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler)
                 req = urllib.request.Request(f"{base}/api/v3/notification", headers={"X-Api-Key": key})
-                existing = json.loads(urllib.request.urlopen(req, timeout=5).read())
+                existing = json.loads(opener.open(req, timeout=5).read())
                 already = any(n.get("name") == webhook_name for n in existing)
                 if already:
                     results[svc_id] = "already registered"
@@ -574,7 +575,7 @@ class ContentService:
                     method="POST",
                     headers={"X-Api-Key": key, "Content-Type": "application/json"},
                 )
-                urllib.request.urlopen(req, timeout=10)
+                opener.open(req, timeout=10)
                 results[svc_id] = "registered"
             except Exception as exc:
                 results[svc_id] = f"error: {str(exc)[:60]}"
