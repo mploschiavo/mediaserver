@@ -89,159 +89,165 @@ const get = (sql, params = []) =>
 """
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="bin/seed-jellyseerr-local-admin.sh",
-        description="Seed Jellyseerr local admin from STACK_ADMIN credentials in Kubernetes secret.",
-    )
-    parser.add_argument(
-        "--namespace",
-        default=(os.environ.get("NAMESPACE", "media-stack") or "media-stack"),
-        help="Kubernetes namespace (default: media-stack)",
-    )
-    parser.add_argument(
-        "--secret-name",
-        default=(os.environ.get("SECRET_NAME", "media-stack-secrets") or "media-stack-secrets"),
-        help="Secret containing STACK_ADMIN_USERNAME/PASSWORD",
-    )
-    return parser.parse_args(argv)
+class SeedJellyseerrLocalAdminMain:
 
+    def parse_args(self, argv: list[str] | None = None) -> argparse.Namespace:
+        parser = argparse.ArgumentParser(
+            prog="bin/seed-jellyseerr-local-admin.sh",
+            description="Seed Jellyseerr local admin from STACK_ADMIN credentials in Kubernetes secret.",
+        )
+        parser.add_argument(
+            "--namespace",
+            default=(os.environ.get("NAMESPACE", "media-stack") or "media-stack"),
+            help="Kubernetes namespace (default: media-stack)",
+        )
+        parser.add_argument(
+            "--secret-name",
+            default=(os.environ.get("SECRET_NAME", "media-stack-secrets") or "media-stack-secrets"),
+            help="Secret containing STACK_ADMIN_USERNAME/PASSWORD",
+        )
+        return parser.parse_args(argv)
 
-def _secret_field(kubectl: list[str], namespace: str, secret_name: str, field: str) -> str:
-    proc = run_command(
-        [
-            *kubectl,
-            "-n",
-            namespace,
-            "get",
-            "secret",
-            secret_name,
-            "-o",
-            f"jsonpath={{.data.{field}}}",
-        ],
-        check=True,
-    )
-    encoded = (proc.stdout or "").strip()
-    if not encoded:
-        return ""
-    return base64.b64decode(encoded).decode("utf-8", errors="ignore").strip()
+    @staticmethod
+    def _secret_field(kubectl: list[str], namespace: str, secret_name: str, field: str) -> str:
+        proc = run_command(
+            [
+                *kubectl,
+                "-n",
+                namespace,
+                "get",
+                "secret",
+                secret_name,
+                "-o",
+                f"jsonpath={{.data.{field}}}",
+            ],
+            check=True,
+        )
+        encoded = (proc.stdout or "").strip()
+        if not encoded:
+            return ""
+        return base64.b64decode(encoded).decode("utf-8", errors="ignore").strip()
 
+    @staticmethod
+    def _first_pod(kubectl: list[str], namespace: str, selector: str) -> str:
+        proc = run_command(
+            [
+                *kubectl,
+                "-n",
+                namespace,
+                "get",
+                "pod",
+                "-l",
+                selector,
+                "-o",
+                "jsonpath={.items[0].metadata.name}",
+            ],
+            check=True,
+        )
+        return (proc.stdout or "").strip()
 
-def _first_pod(kubectl: list[str], namespace: str, selector: str) -> str:
-    proc = run_command(
-        [
-            *kubectl,
-            "-n",
-            namespace,
-            "get",
-            "pod",
-            "-l",
-            selector,
-            "-o",
-            "jsonpath={.items[0].metadata.name}",
-        ],
-        check=True,
-    )
-    return (proc.stdout or "").strip()
-
-
-def _wait_for_rollout(kubectl: list[str], namespace: str) -> None:
-    run_command(
-        [
-            *kubectl,
-            "-n",
-            namespace,
-            "rollout",
-            "status",
-            "deployment/jellyseerr",
-            "--timeout=180s",
-        ],
-        check=True,
-    )
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    kubectl = kube_cmd()
-
-    admin_user = _secret_field(kubectl, args.namespace, args.secret_name, "STACK_ADMIN_USERNAME")
-    admin_pass = _secret_field(kubectl, args.namespace, args.secret_name, "STACK_ADMIN_PASSWORD")
-    if not admin_user or not admin_pass:
-        raise ConfigError(
-            f"STACK_ADMIN_USERNAME / STACK_ADMIN_PASSWORD missing in secret "
-            f"{args.namespace}/{args.secret_name}."
+    @staticmethod
+    def _wait_for_rollout(kubectl: list[str], namespace: str) -> None:
+        run_command(
+            [
+                *kubectl,
+                "-n",
+                namespace,
+                "rollout",
+                "status",
+                "deployment/jellyseerr",
+                "--timeout=180s",
+            ],
+            check=True,
         )
 
-    _wait_for_rollout(kubectl, args.namespace)
-    pod = _first_pod(kubectl, args.namespace, "app=jellyseerr")
-    if not pod:
-        raise MediaStackError(f"Could not find jellyseerr pod in namespace {args.namespace}.")
+    def main(self, argv: list[str] | None = None) -> int:
+        args = parse_args(argv)
+        kubectl = kube_cmd()
 
-    user_b64 = base64.b64encode(admin_user.encode("utf-8")).decode("ascii")
-    pass_b64 = base64.b64encode(admin_pass.encode("utf-8")).decode("ascii")
-
-    print(f"[INFO] Seeding Jellyseerr local admin in pod {pod} (email/username: {admin_user})")
-    shell_script = (
-        "cd /app && "
-        f"ADMIN_USER_B64={shlex.quote(user_b64)} "
-        f"ADMIN_PASS_B64={shlex.quote(pass_b64)} "
-        "node - <<'NODE'\n"
-        f"{NODE_SCRIPT}\n"
-        "NODE"
-    )
-    seed_cmd = [*kubectl, "-n", args.namespace, "exec", pod, "--", "sh", "-lc", shell_script]
-    proc = run_command(seed_cmd, check=False)
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        if (
-            "container not found" in detail.lower()
-            or "unable to upgrade connection" in detail.lower()
-        ):
-            print(
-                "[WARN] Jellyseerr pod changed during seed attempt; retrying once after rollout check."
+        admin_user = _secret_field(kubectl, args.namespace, args.secret_name, "STACK_ADMIN_USERNAME")
+        admin_pass = _secret_field(kubectl, args.namespace, args.secret_name, "STACK_ADMIN_PASSWORD")
+        if not admin_user or not admin_pass:
+            raise ConfigError(
+                f"STACK_ADMIN_USERNAME / STACK_ADMIN_PASSWORD missing in secret "
+                f"{args.namespace}/{args.secret_name}."
             )
-            time.sleep(3)
-            _wait_for_rollout(kubectl, args.namespace)
-            pod = _first_pod(kubectl, args.namespace, "app=jellyseerr")
-            if not pod:
-                raise MediaStackError(
-                    f"Could not find jellyseerr pod in namespace {args.namespace} after retry."
+
+        _wait_for_rollout(kubectl, args.namespace)
+        pod = _first_pod(kubectl, args.namespace, "app=jellyseerr")
+        if not pod:
+            raise MediaStackError(f"Could not find jellyseerr pod in namespace {args.namespace}.")
+
+        user_b64 = base64.b64encode(admin_user.encode("utf-8")).decode("ascii")
+        pass_b64 = base64.b64encode(admin_pass.encode("utf-8")).decode("ascii")
+
+        print(f"[INFO] Seeding Jellyseerr local admin in pod {pod} (email/username: {admin_user})")
+        shell_script = (
+            "cd /app && "
+            f"ADMIN_USER_B64={shlex.quote(user_b64)} "
+            f"ADMIN_PASS_B64={shlex.quote(pass_b64)} "
+            "node - <<'NODE'\n"
+            f"{NODE_SCRIPT}\n"
+            "NODE"
+        )
+        seed_cmd = [*kubectl, "-n", args.namespace, "exec", pod, "--", "sh", "-lc", shell_script]
+        proc = run_command(seed_cmd, check=False)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()
+            if (
+                "container not found" in detail.lower()
+                or "unable to upgrade connection" in detail.lower()
+            ):
+                print(
+                    "[WARN] Jellyseerr pod changed during seed attempt; retrying once after rollout check."
                 )
-            seed_cmd = [
+                time.sleep(3)
+                _wait_for_rollout(kubectl, args.namespace)
+                pod = _first_pod(kubectl, args.namespace, "app=jellyseerr")
+                if not pod:
+                    raise MediaStackError(
+                        f"Could not find jellyseerr pod in namespace {args.namespace} after retry."
+                    )
+                seed_cmd = [
+                    *kubectl,
+                    "-n",
+                    args.namespace,
+                    "exec",
+                    pod,
+                    "--",
+                    "sh",
+                    "-lc",
+                    shell_script,
+                ]
+                proc = run_command(seed_cmd, check=False)
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "").strip() or f"exit code {proc.returncode}"
+                raise MediaStackError(f"Jellyseerr seed failed: {detail}")
+
+        print("[INFO] Restarting jellyseerr deployment to ensure settings are reloaded")
+        run_command(
+            [*kubectl, "-n", args.namespace, "rollout", "restart", "deployment/jellyseerr"],
+            check=True,
+        )
+        run_command(
+            [
                 *kubectl,
                 "-n",
                 args.namespace,
-                "exec",
-                pod,
-                "--",
-                "sh",
-                "-lc",
-                shell_script,
-            ]
-            proc = run_command(seed_cmd, check=False)
-        if proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout or "").strip() or f"exit code {proc.returncode}"
-            raise MediaStackError(f"Jellyseerr seed failed: {detail}")
+                "rollout",
+                "status",
+                "deployment/jellyseerr",
+                "--timeout=180s",
+            ],
+            check=True,
+        )
+        print("[OK] Jellyseerr local admin is seeded and deployment is ready.")
+        return 0
 
-    print("[INFO] Restarting jellyseerr deployment to ensure settings are reloaded")
-    run_command(
-        [*kubectl, "-n", args.namespace, "rollout", "restart", "deployment/jellyseerr"],
-        check=True,
-    )
-    run_command(
-        [
-            *kubectl,
-            "-n",
-            args.namespace,
-            "rollout",
-            "status",
-            "deployment/jellyseerr",
-            "--timeout=180s",
-        ],
-        check=True,
-    )
-    print("[OK] Jellyseerr local admin is seeded and deployment is ready.")
-    return 0
+
+_instance = SeedJellyseerrLocalAdminMain()
+parse_args = _instance.parse_args
+main = _instance.main
 
 
 if __name__ == "__main__":

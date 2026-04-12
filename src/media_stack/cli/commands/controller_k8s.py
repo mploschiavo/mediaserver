@@ -38,10 +38,23 @@ def _persist_preflight_keys_to_secret(state: object) -> None:
             val = os.environ.get(svc.api_key_env, "").strip()
             if val and svc.api_key_env not in string_data:
                 string_data[svc.api_key_env] = val
-    # Also check JELLYFIN_USER_ID
-    jf_uid = os.environ.get("JELLYFIN_USER_ID", "").strip()
-    if jf_uid:
-        string_data.setdefault("JELLYFIN_USER_ID", jf_uid)
+    # Persist user IDs from env — derived from service registry user_id_env fields.
+    _user_id_env_keys = {
+        env_key
+        for svc in SERVICES
+        for env_key in [getattr(svc, "user_id_env", None)]
+        if env_key
+    }
+    # Fallback: common convention <SERVICE>_USER_ID for media servers
+    if not _user_id_env_keys:
+        for svc in SERVICES:
+            candidate = f"{svc.id.upper()}_USER_ID"
+            if os.environ.get(candidate, "").strip():
+                _user_id_env_keys.add(candidate)
+    for uid_key in _user_id_env_keys:
+        uid_val = os.environ.get(uid_key, "").strip()
+        if uid_val:
+            string_data.setdefault(uid_key, uid_val)
 
     if not string_data:
         runtime_platform.log("[INFO] No API keys discovered in preflights to persist")

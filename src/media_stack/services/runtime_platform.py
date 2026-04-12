@@ -29,10 +29,6 @@ BOOTSTRAP_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "contracts"
 # ---------------------------------------------------------------------------
 # Log-level-aware logger
 # ---------------------------------------------------------------------------
-# Supported prefixes: [DEBUG], [INFO], [OK], [WARN], [ERR], [ERROR], [TRACE]
-# Messages without a recognized prefix default to INFO level.
-# Set MEDIA_STACK_LOG_LEVEL=DEBUG to see all, INFO (default) to hide DEBUG.
-
 _LOG_LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARN": 2, "ERROR": 3}
 _PREFIX_TO_LEVEL = {
     "DEBUG": 0, "INFO": 1, "OK": 1, "WAIT": 1, "RETRY": 1,
@@ -44,201 +40,185 @@ _current_log_level = _LOG_LEVEL_ORDER.get(
 )
 
 
-def set_log_level(level: str) -> str:
-    """Change log level at runtime. Returns the new level name."""
-    global _current_log_level
-    level = level.upper()
-    if level not in _LOG_LEVEL_ORDER:
-        return get_log_level()
-    _current_log_level = _LOG_LEVEL_ORDER[level]
-    os.environ["MEDIA_STACK_LOG_LEVEL"] = level
-    return level
 
 
-def get_log_level() -> str:
-    """Return the current log level name."""
-    for name, val in _LOG_LEVEL_ORDER.items():
-        if val == _current_log_level:
-            return name
-    return "INFO"
+class RuntimePlatformService:
+    """Wraps all runtime platform adapter functions."""
+
+    def set_log_level(self, level: str) -> str:
+        global _current_log_level
+        level = level.upper()
+        if level not in _LOG_LEVEL_ORDER:
+            return self.get_log_level()
+        _current_log_level = _LOG_LEVEL_ORDER[level]
+        os.environ["MEDIA_STACK_LOG_LEVEL"] = level
+        return level
+
+    def get_log_level(self) -> str:
+        for name, val in _LOG_LEVEL_ORDER.items():
+            if val == _current_log_level:
+                return name
+        return "INFO"
+
+    def log(self, msg):
+        if _extract_level(str(msg)) < _current_log_level:
+            return
+        ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        print(f"[{ts}] {msg}", flush=True)
+
+    def normalize_url(self, url):
+        return _lib_normalize_url(url)
+
+    def http_request(self, base_url, path, api_key=None, method="GET", payload=None, timeout=20):
+        return _lib_http_request(base_url, path, api_key=api_key, method=method, payload=payload, timeout=timeout)
+
+    def wait_for_service(self, name, base_url, path, timeout_seconds):
+        interval = int(os.environ.get("BOOTSTRAP_WAIT_INTERVAL_SECONDS", "3"))
+        heartbeat = int(os.environ.get("BOOTSTRAP_WAIT_HEARTBEAT_SECONDS", "15"))
+        interval = max(1, interval)
+        heartbeat = max(interval, heartbeat)
+        self.log(f"[DEBUG] wait_for_service: name={name}, url={base_url}{path}, "
+            f"timeout={timeout_seconds}s, interval={interval}s, heartbeat={heartbeat}s")
+        deadline = time.time() + timeout_seconds
+        start = time.time()
+        next_heartbeat = start
+        attempt = 0
+        last_status = None
+        last_error = None
+        while time.time() < deadline:
+            attempt += 1
+            try:
+                status, _, _ = self.http_request(base_url, path, timeout=10)
+                last_status = status
+                last_error = None
+                if 200 <= status < 500:
+                    self.log(f"[OK] {name} reachable at {base_url}{path} (HTTP {status})")
+                    return
+            except Exception as exc:
+                last_error = str(exc)
+            now = time.time()
+            if now >= next_heartbeat:
+                elapsed = int(now - start)
+                remaining = int(max(0, deadline - now))
+                status_fragment = f"last HTTP {last_status}" if last_status is not None else "no HTTP response yet"
+                err_fragment = f"; last error: {last_error}" if last_error else ""
+                self.log(f"[WAIT] {name} not ready yet at {base_url}{path} "
+                    f"(attempt={attempt}, elapsed={elapsed}s, remaining={remaining}s, "
+                    f"{status_fragment}{err_fragment})")
+                next_heartbeat = now + heartbeat
+            time.sleep(interval)
+        elapsed = int(time.time() - start)
+        raise RuntimeError(
+            f"Timed out waiting for {name} at {base_url}{path} after {elapsed}s "
+            f"(attempts={attempt}, last_status={last_status}, last_error={last_error})")
+
+    def resolve_path(self, base_root, maybe_relative):
+        p = Path(str(maybe_relative))
+        if p.is_absolute():
+            return p
+        return Path(base_root) / p
+
+    def normalize_base_path(self, path_value):
+        return _lib_normalize_base_path(path_value)
+
+    def parse_service_url(self, url, default_port):
+        return _lib_parse_service_url(url, default_port)
+
+    def to_int(self, value, fallback=None):
+        return _lib_to_int(value, fallback=fallback)
+
+    def coerce_list(self, value):
+        return _lib_coerce_list(value)
+
+    def bool_cfg(self, cfg, key, default):
+        return _lib_bool_cfg(cfg, key, default)
+
+    def env_truthy(self, name, default=False):
+        return _lib_env_truthy(name, default=default)
+
+    def load_bootstrap_default_json(self, filename, fallback):
+        return _lib_load_json_default(BOOTSTRAP_DEFAULTS_DIR, filename, fallback, log=self.log)
+
+    def deep_merge_objects(self, base_obj, override_obj):
+        if not isinstance(base_obj, dict):
+            base_obj = {}
+        if not isinstance(override_obj, dict):
+            return json.loads(json.dumps(base_obj))
+        out = json.loads(json.dumps(base_obj))
+        for key, value in override_obj.items():
+            if isinstance(value, dict) and isinstance(out.get(key), dict):
+                out[key] = self.deep_merge_objects(out.get(key), value)
+                continue
+            out[key] = json.loads(json.dumps(value))
+        return out
+
+    def field_map(self, field_list):
+        out = {}
+        for item in field_list or []:
+            name = item.get("name")
+            if not name:
+                continue
+            out[name] = item.get("value", "")
+        return out
+
+    def field_list(self, mapping):
+        return [{"name": key, "value": value} for key, value in mapping.items()]
+
+    def normalize_token(self, value):
+        return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+    def resolve_env_placeholder(self, value):
+        if isinstance(value, str):
+            raw = value.strip()
+            match = re.fullmatch(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", raw)
+            if match:
+                return os.environ.get(match.group(1), "")
+        return value
+
+    def find_component_by_implementation(self, components, implementation):
+        target = str(implementation or "").strip()
+        for component in components or []:
+            if str((component or {}).get("implementation") or "").strip() == target:
+                return component
+        return None
 
 
-def _extract_level(msg: str) -> int:
-    """Parse [PREFIX] from message and return numeric level. Default=INFO."""
-    stripped = msg.lstrip()
-    if stripped.startswith("["):
-        bracket_end = stripped.find("]", 1)
-        if bracket_end != -1:
-            prefix = stripped[1:bracket_end].upper()
-            return _PREFIX_TO_LEVEL.get(prefix, 1)
-    return 1  # Default to INFO
+    @staticmethod
+    def _extract_level(msg: str) -> int:
+        stripped = msg.lstrip()
+        if stripped.startswith("["):
+            bracket_end = stripped.find("]", 1)
+            if bracket_end != -1:
+                prefix = stripped[1:bracket_end].upper()
+                return _PREFIX_TO_LEVEL.get(prefix, 1)
+        return 1
 
 
-def log(msg):
-    if _extract_level(str(msg)) < _current_log_level:
-        return
-    ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    print(f"[{ts}] {msg}", flush=True)
-
-
-def normalize_url(url):
-    return _lib_normalize_url(url)
-
-
-def http_request(base_url, path, api_key=None, method="GET", payload=None, timeout=20):
-    return _lib_http_request(
-        base_url,
-        path,
-        api_key=api_key,
-        method=method,
-        payload=payload,
-        timeout=timeout,
-    )
-
-
-def wait_for_service(name, base_url, path, timeout_seconds):
-    interval = int(os.environ.get("BOOTSTRAP_WAIT_INTERVAL_SECONDS", "3"))
-    heartbeat = int(os.environ.get("BOOTSTRAP_WAIT_HEARTBEAT_SECONDS", "15"))
-    interval = max(1, interval)
-    heartbeat = max(interval, heartbeat)
-    log(f"[DEBUG] wait_for_service: name={name}, url={base_url}{path}, "
-        f"timeout={timeout_seconds}s, interval={interval}s, heartbeat={heartbeat}s")
-
-    deadline = time.time() + timeout_seconds
-    start = time.time()
-    next_heartbeat = start
-    attempt = 0
-    last_status = None
-    last_error = None
-
-    while time.time() < deadline:
-        attempt += 1
-        try:
-            status, _, _ = http_request(base_url, path, timeout=10)
-            last_status = status
-            last_error = None
-            if 200 <= status < 500:
-                log(f"[OK] {name} reachable at {base_url}{path} (HTTP {status})")
-                return
-        except Exception as exc:
-            last_error = str(exc)
-
-        now = time.time()
-        if now >= next_heartbeat:
-            elapsed = int(now - start)
-            remaining = int(max(0, deadline - now))
-            status_fragment = (
-                f"last HTTP {last_status}" if last_status is not None else "no HTTP response yet"
-            )
-            err_fragment = f"; last error: {last_error}" if last_error else ""
-            log(
-                f"[WAIT] {name} not ready yet at {base_url}{path} "
-                f"(attempt={attempt}, elapsed={elapsed}s, remaining={remaining}s, "
-                f"{status_fragment}{err_fragment})"
-            )
-            next_heartbeat = now + heartbeat
-
-        time.sleep(interval)
-
-    elapsed = int(time.time() - start)
-    raise RuntimeError(
-        f"Timed out waiting for {name} at {base_url}{path} after {elapsed}s "
-        f"(attempts={attempt}, last_status={last_status}, last_error={last_error})"
-    )
-
-
-def resolve_path(base_root, maybe_relative):
-    p = Path(str(maybe_relative))
-    if p.is_absolute():
-        return p
-    return Path(base_root) / p
-
-
-def normalize_base_path(path_value):
-    return _lib_normalize_base_path(path_value)
-
-
-def parse_service_url(url, default_port):
-    return _lib_parse_service_url(url, default_port)
-
-
-def to_int(value, fallback=None):
-    return _lib_to_int(value, fallback=fallback)
-
-
-def coerce_list(value):
-    return _lib_coerce_list(value)
-
-
-def bool_cfg(cfg, key, default):
-    return _lib_bool_cfg(cfg, key, default)
-
-
-def env_truthy(name, default=False):
-    return _lib_env_truthy(name, default=default)
-
-
-def load_bootstrap_default_json(filename, fallback):
-    return _lib_load_json_default(
-        BOOTSTRAP_DEFAULTS_DIR,
-        filename,
-        fallback,
-        log=log,
-    )
-
-
-def deep_merge_objects(base_obj, override_obj):
-    if not isinstance(base_obj, dict):
-        base_obj = {}
-    if not isinstance(override_obj, dict):
-        return json.loads(json.dumps(base_obj))
-
-    out = json.loads(json.dumps(base_obj))
-    for key, value in override_obj.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = deep_merge_objects(out.get(key), value)
-            continue
-        out[key] = json.loads(json.dumps(value))
-    return out
-
-
-def field_map(field_list):
-    out = {}
-    for item in field_list or []:
-        name = item.get("name")
-        if not name:
-            continue
-        out[name] = item.get("value", "")
-    return out
-
-
-def field_list(mapping):
-    return [{"name": key, "value": value} for key, value in mapping.items()]
-
-
-def normalize_token(value):
-    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
-
-
-def resolve_env_placeholder(value):
-    if isinstance(value, str):
-        raw = value.strip()
-        match = re.fullmatch(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", raw)
-        if match:
-            return os.environ.get(match.group(1), "")
-    return value
-
-
-def find_component_by_implementation(components, implementation):
-    target = str(implementation or "").strip()
-    for component in components or []:
-        if str((component or {}).get("implementation") or "").strip() == target:
-            return component
-    return None
-
+_instance = RuntimePlatformService()
+set_log_level = _instance.set_log_level
+get_log_level = _instance.get_log_level
+log = _instance.log
+normalize_url = _instance.normalize_url
+http_request = _instance.http_request
+wait_for_service = _instance.wait_for_service
+resolve_path = _instance.resolve_path
+normalize_base_path = _instance.normalize_base_path
+parse_service_url = _instance.parse_service_url
+to_int = _instance.to_int
+coerce_list = _instance.coerce_list
+bool_cfg = _instance.bool_cfg
+env_truthy = _instance.env_truthy
+load_bootstrap_default_json = _instance.load_bootstrap_default_json
+deep_merge_objects = _instance.deep_merge_objects
+field_map = _instance.field_map
+field_list = _instance.field_list
+normalize_token = _instance.normalize_token
+resolve_env_placeholder = _instance.resolve_env_placeholder
+find_component_by_implementation = _instance.find_component_by_implementation
 
 __all__ = [
     "BOOTSTRAP_DEFAULTS_DIR",
+    "RuntimePlatformService",
     "bool_cfg",
     "coerce_list",
     "env_truthy",
@@ -262,3 +242,4 @@ __all__ = [
     "to_int",
     "wait_for_service",
 ]
+_extract_level = _instance._extract_level
