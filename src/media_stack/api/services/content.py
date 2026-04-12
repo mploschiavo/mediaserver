@@ -518,6 +518,68 @@ class ContentService:
         except Exception as exc:
             return {"error": str(exc)[:120]}
 
+    def ensure_arr_scan_webhooks(self, controller_url: str = "") -> dict[str, Any]:
+        """Register webhooks on Sonarr/Radarr to trigger Jellyfin scan on import.
+
+        Creates a 'media-stack-scan' webhook on each arr service that POSTs
+        to /webhooks/arr on the controller when content is downloaded.
+        """
+        if not controller_url:
+            controller_url = f"http://media-stack-controller:{os.environ.get('BOOTSTRAP_API_PORT', '9100')}"
+        webhook_url = f"{controller_url}/webhooks/arr"
+        webhook_name = "media-stack-scan"
+        api_keys = discover_api_keys()
+        results: dict[str, str] = {}
+
+        for svc_id in ("sonarr", "radarr"):
+            svc = SERVICE_MAP.get(svc_id)
+            if not svc:
+                continue
+            key = api_keys.get(svc_id, "")
+            if not key:
+                results[svc_id] = "no API key"
+                continue
+            try:
+                base = f"http://{svc.host}:{svc.port}"
+                # Check existing webhooks
+                req = urllib.request.Request(f"{base}/api/v3/notification", headers={"X-Api-Key": key})
+                existing = json.loads(urllib.request.urlopen(req, timeout=5).read())
+                already = any(n.get("name") == webhook_name for n in existing)
+                if already:
+                    results[svc_id] = "already registered"
+                    continue
+                # Create webhook
+                payload = {
+                    "name": webhook_name,
+                    "implementation": "Webhook",
+                    "configContract": "WebhookSettings",
+                    "fields": [
+                        {"name": "url", "value": webhook_url},
+                        {"name": "method", "value": 1},  # POST
+                    ],
+                    "onDownload": True,
+                    "onUpgrade": True,
+                    "onImportComplete": True,
+                    "onMovieAdded": svc_id == "radarr",
+                    "onSeriesAdd": svc_id == "sonarr",
+                    "onEpisodeFileDelete": svc_id == "sonarr",
+                    "onMovieFileDelete": svc_id == "radarr",
+                    "supportsOnDownload": True,
+                    "supportsOnUpgrade": True,
+                    "supportsOnImportComplete": True,
+                }
+                req = urllib.request.Request(
+                    f"{base}/api/v3/notification",
+                    data=json.dumps(payload).encode(),
+                    method="POST",
+                    headers={"X-Api-Key": key, "Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=10)
+                results[svc_id] = "registered"
+            except Exception as exc:
+                results[svc_id] = f"error: {str(exc)[:60]}"
+        return {"webhooks": results, "url": webhook_url}
+
     def delete_import_list(self, service_id: str, list_id: int) -> dict[str, Any]:
         """Delete an import list from a specific arr service."""
         api_keys = discover_api_keys()
@@ -759,3 +821,4 @@ _DOWNLOAD_FETCHERS: dict[str, Any] = {
 _DOWNLOAD_CLIENT_IDS: dict[str, str] = DOWNLOAD_CLIENT_CATEGORIES
 get_download_client_settings = _instance.get_download_client_settings
 update_download_client_settings = _instance.update_download_client_settings
+ensure_arr_scan_webhooks = _instance.ensure_arr_scan_webhooks

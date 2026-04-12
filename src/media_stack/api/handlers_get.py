@@ -122,6 +122,8 @@ class GetRequestHandler:
             handler._json_response(200, content_svc.get_indexer_stats())
         elif path == "/api/download-history":
             handler._json_response(200, content_svc.get_download_history())
+        elif path == "/api/arr-webhooks":
+            handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
         elif path == "/api/download-client-settings":
             handler._json_response(200, content_svc.get_download_client_settings())
         elif path == "/api/quality-profiles":
