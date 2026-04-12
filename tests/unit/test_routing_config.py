@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 class TestGetRoutingDefaults(unittest.TestCase):
     """get_routing() returns defaults when no profile or overrides exist."""
 
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     @patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent"}, clear=False)
     def test_returns_defaults_no_profile_no_overrides(self, mock_resolve):
         from media_stack.api.services.config import get_routing
@@ -33,7 +33,7 @@ class TestGetRoutingDefaults(unittest.TestCase):
         self.assertFalse(result["internet_exposed"])
         self.assertEqual(result["direct_hosts"], {})
 
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     @patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent"}, clear=False)
     def test_default_types_are_correct(self, mock_resolve):
         from media_stack.api.services.config import get_routing
@@ -63,7 +63,7 @@ class TestGetRoutingFromProfile(unittest.TestCase):
             profile_path = Path(tmpdir) / "profile.yaml"
             import yaml
             profile_path.write_text(yaml.dump(profile_yaml))
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent"}):
                     from media_stack.api.services.config import get_routing
                     result = get_routing()
@@ -81,7 +81,7 @@ class TestGetRoutingFromProfile(unittest.TestCase):
             profile_path = Path(tmpdir) / "profile.yaml"
             import yaml
             profile_path.write_text(yaml.dump(profile_yaml))
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent"}):
                     from media_stack.api.services.config import get_routing
                     result = get_routing()
@@ -95,7 +95,7 @@ class TestGetRoutingFromProfile(unittest.TestCase):
             profile_path = Path(tmpdir) / "profile.yaml"
             import yaml
             profile_path.write_text(yaml.dump(profile_yaml))
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent"}):
                     from media_stack.api.services.config import get_routing
                     result = get_routing()
@@ -120,7 +120,7 @@ class TestGetRoutingOverrides(unittest.TestCase):
             overrides_path = controller_dir / "routing-overrides.yaml"
             overrides_path.write_text(yaml.dump(overrides_yaml))
 
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": str(config_root)}):
                     from media_stack.api.services.config import get_routing
                     result = get_routing()
@@ -137,7 +137,7 @@ class TestGetRoutingOverrides(unittest.TestCase):
             profile_path = Path(tmpdir) / "profile.yaml"
             profile_path.write_text(yaml.dump(profile_yaml))
 
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": "/nonexistent"}):
                     from media_stack.api.services.config import get_routing
                     result = get_routing()
@@ -170,7 +170,7 @@ class TestUpdateRoutingPersistence(unittest.TestCase):
         import yaml
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"strategy": "subdomain-only"})
@@ -189,7 +189,7 @@ class TestUpdateRoutingPersistence(unittest.TestCase):
                 "base_domain": "local",
                 "strategy": "hybrid",
             })
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"strategy": "hybrid"})
@@ -199,7 +199,7 @@ class TestUpdateRoutingPersistence(unittest.TestCase):
     def test_ignores_unknown_keys(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"unknown_key": "value", "another": 123})
@@ -227,7 +227,7 @@ class TestUpdateRoutingGatewayDerivation(unittest.TestCase):
     def test_derives_gateway_host_from_subdomain_change(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"stack_subdomain": "mystack"})
@@ -238,7 +238,7 @@ class TestUpdateRoutingGatewayDerivation(unittest.TestCase):
     def test_derives_gateway_host_from_domain_change(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"base_domain": "example.com"})
@@ -249,7 +249,7 @@ class TestUpdateRoutingGatewayDerivation(unittest.TestCase):
     def test_derives_gateway_host_from_both_subdomain_and_domain(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({
@@ -268,7 +268,7 @@ class TestUpdateRoutingGatewayDerivation(unittest.TestCase):
                 "gateway_host": "portal.media-stack.local",
                 "gateway_port": 80,
             })
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"stack_subdomain": "newstack"})
@@ -296,7 +296,7 @@ class TestUpdateRoutingReverseDerivation(unittest.TestCase):
     def test_derives_subdomain_and_domain_from_gateway_host(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"gateway_host": "gw.production.example.com"})
@@ -309,7 +309,7 @@ class TestUpdateRoutingReverseDerivation(unittest.TestCase):
     def test_gateway_host_with_multi_part_domain(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"gateway_host": "apps.stack.sub.domain.org"})
@@ -320,7 +320,7 @@ class TestUpdateRoutingReverseDerivation(unittest.TestCase):
     def test_gateway_host_docker_media_stack_local(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({"gateway_host": "docker.media-stack.local"})
@@ -332,7 +332,7 @@ class TestUpdateRoutingReverseDerivation(unittest.TestCase):
         """When both gateway_host and subdomain change, gateway_host derivation wins."""
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_path, config_root = self._setup_env(tmpdir)
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=profile_path):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile_path):
                 with patch.dict(os.environ, {"CONFIG_ROOT": config_root}):
                     from media_stack.api.services.config import update_routing
                     result = update_routing({
@@ -361,7 +361,7 @@ class TestUpdateRoutingEnvoyTrigger(unittest.TestCase):
             config_root.mkdir()
 
             action_trigger = MagicMock()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": str(config_root)}):
                     from media_stack.api.services.config import update_routing
                     update_routing({"strategy": "subdomain-only"}, action_trigger=action_trigger)
@@ -376,7 +376,7 @@ class TestUpdateRoutingEnvoyTrigger(unittest.TestCase):
             profile_path.write_text(yaml.dump(profile))
 
             action_trigger = MagicMock()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": str(tmpdir)}):
                     from media_stack.api.services.config import update_routing
                     update_routing({"strategy": "hybrid"}, action_trigger=action_trigger)
@@ -387,7 +387,7 @@ class TestUpdateRoutingEnvoyTrigger(unittest.TestCase):
 class TestUpdateRoutingMissingProfile(unittest.TestCase):
     """update_routing() handles missing profile gracefully."""
 
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     def test_returns_error_when_profile_missing(self, mock_resolve):
         from media_stack.api.services.config import update_routing
         result = update_routing({"strategy": "subdomain-only"})
@@ -411,7 +411,7 @@ class TestUpdateRoutingGatewayFormats(unittest.TestCase):
             config_root = Path(tmpdir) / "config"
             config_root.mkdir()
 
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                 with patch.dict(os.environ, {"CONFIG_ROOT": str(config_root)}):
                     from media_stack.api.services.config import update_routing
                     return update_routing({"gateway_host": gateway_host})
@@ -764,7 +764,7 @@ class TestUpdateRoutingReadOnlyProfile(unittest.TestCase):
             config_root.mkdir()
 
             try:
-                with patch("media_stack.api.services.config.resolve_profile_path", return_value=str(profile_path)):
+                with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=str(profile_path)):
                     with patch.dict(os.environ, {"CONFIG_ROOT": str(config_root)}):
                         from media_stack.api.services.config import update_routing
                         result = update_routing({"strategy": "path-only"})

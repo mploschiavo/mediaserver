@@ -23,7 +23,7 @@ class TestGetProfile(unittest.TestCase):
     def tearDown(self):
         config_mod._invalidate_profile_cache()
 
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     def test_not_found(self, _):
         result = config_mod.get_profile()
         self.assertIsNone(result["profile"])
@@ -33,7 +33,7 @@ class TestGetProfile(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("services:\n  sonarr: {}\n")
             f.flush()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=f.name):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=f.name):
                 result = config_mod.get_profile()
         os.unlink(f.name)
         self.assertIsNotNone(result["profile"])
@@ -45,14 +45,14 @@ class TestSaveProfile(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("old content")
             f.flush()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=f.name):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=f.name):
                 result = config_mod.save_profile("new content")
         content = Path(f.name).read_text()
         os.unlink(f.name)
         self.assertEqual(result["status"], "saved")
         self.assertEqual(content, "new content")
 
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     def test_save_not_found(self, _):
         result = config_mod.save_profile("content")
         self.assertIn("error", result)
@@ -62,14 +62,14 @@ class TestSaveProfile(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("")
             f.flush()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=f.name):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=f.name):
                 config_mod.save_profile("content", reload_config=callback)
         os.unlink(f.name)
         callback.assert_called_once()
 
 
 class TestGetRouting(unittest.TestCase):
-    @patch("media_stack.api.services.config.resolve_profile_path", return_value=None)
+    @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
     def test_defaults_when_no_profile(self, _):
         result = config_mod.get_routing()
         self.assertEqual(result["base_domain"], "local")
@@ -80,7 +80,7 @@ class TestGetRouting(unittest.TestCase):
             import yaml
             yaml.dump({"routing": {"base_domain": "example.com", "gateway_port": 8080}}, f)
             f.flush()
-            with patch("media_stack.api.services.config.resolve_profile_path", return_value=f.name):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=f.name):
                 result = config_mod.get_routing()
         os.unlink(f.name)
         self.assertEqual(result["base_domain"], "example.com")
