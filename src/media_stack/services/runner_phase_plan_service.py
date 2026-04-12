@@ -283,3 +283,5 @@ _resolve_step_args = _instance._resolve_step_args
 _resolve_step_callable = _instance._resolve_step_callable
 _resolve_step_event_and_handler = _instance._resolve_step_event_and_handler
 _resolve_steps_for_phase = _instance._resolve_steps_for_phase
+DEFAULT_ARG_TOKEN_ATTRS = _instance.DEFAULT_ARG_TOKEN_ATTRS
+_PROWLARR_TOKEN_ALIASES = _instance._PROWLARR_TOKEN_ALIASES

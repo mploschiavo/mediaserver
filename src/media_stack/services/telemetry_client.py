@@ -486,3 +486,4 @@ _collect_network_io = _instance._collect_network_io
 _collect_media_metrics = _instance._collect_media_metrics
 _parse_host_port = _instance._parse_host_port
 _send_tcp = _instance._send_tcp
+_UDP_PROBE_INTERVAL = _instance._UDP_PROBE_INTERVAL
