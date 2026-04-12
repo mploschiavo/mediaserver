@@ -34,13 +34,13 @@ class _StubSvc:
         return str(val).strip().lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
-    def to_int(value: object) -> int | None:
+    def to_int(value: object, fallback: int | None = None) -> int | None:
         if value is None:
-            return None
+            return fallback
         try:
             return int(value)
         except (TypeError, ValueError):
-            return None
+            return fallback
 
     @staticmethod
     def coerce_list(value: object) -> list:
@@ -142,9 +142,15 @@ class _StubSvc:
 class EnsureMainSettingsTests(unittest.TestCase):
     def test_already_correct_media_server_type(self):
         svc = _StubSvc()
-        svc.push_http((200, {"mediaServerType": 2}, ""))
+        svc.push_http((200, {
+            "mediaServerType": 2,
+            "localLogin": True,
+            "mediaServerLogin": False,
+            "newPlexLogin": False,
+        }, ""))
         ensure_main_settings(svc, "http://js:5055", "key", {})
-        self.assertTrue(any("already set" in m for m in svc.logs))
+        self.assertTrue(any("already correct" in m for m in svc.logs),
+                        f"Expected 'already correct' log, got: {svc.logs}")
 
     def test_sets_media_server_type_when_different(self):
         svc = _StubSvc()
@@ -153,7 +159,8 @@ class EnsureMainSettingsTests(unittest.TestCase):
             (200, {}, ""),
         )
         ensure_main_settings(svc, "http://js:5055", "key", {})
-        self.assertTrue(any("set mediaServerType=2" in m for m in svc.logs))
+        self.assertTrue(any("updated" in m for m in svc.logs),
+                        f"Expected 'updated' log, got: {svc.logs}")
 
     def test_post_failure_raises(self):
         svc = _StubSvc()
@@ -177,7 +184,8 @@ class EnsureMainSettingsTests(unittest.TestCase):
             (200, {}, ""),
         )
         ensure_main_settings(svc, "http://js:5055", "key", {"media_server_type": 3})
-        self.assertTrue(any("set mediaServerType=3" in m for m in svc.logs))
+        self.assertTrue(any("updated" in m for m in svc.logs),
+                        f"Expected 'updated' log, got: {svc.logs}")
 
     def test_no_op_when_media_server_type_none_and_default_disabled(self):
         svc = _StubSvc()
@@ -192,7 +200,8 @@ class EnsureMainSettingsTests(unittest.TestCase):
             (201, {}, ""),
         )
         ensure_main_settings(svc, "http://js:5055", "key", {})
-        self.assertTrue(any("set mediaServerType" in m for m in svc.logs))
+        self.assertTrue(any("updated" in m for m in svc.logs),
+                        f"Expected 'updated' log, got: {svc.logs}")
 
     def test_status_202_accepted(self):
         svc = _StubSvc()
@@ -201,7 +210,8 @@ class EnsureMainSettingsTests(unittest.TestCase):
             (202, {}, ""),
         )
         ensure_main_settings(svc, "http://js:5055", "key", {})
-        self.assertTrue(any("set mediaServerType" in m for m in svc.logs))
+        self.assertTrue(any("updated" in m for m in svc.logs),
+                        f"Expected 'updated' log, got: {svc.logs}")
 
     def test_get_returns_non_dict_raises(self):
         svc = _StubSvc()

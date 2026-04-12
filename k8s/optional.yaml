@@ -533,6 +533,7 @@ spec:
             - name: controller-config
               configMap:
                 name: media-stack-controller-config
+                optional: true
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin
@@ -649,6 +650,7 @@ spec:
             - name: controller-config
               configMap:
                 name: media-stack-controller-config
+                optional: true
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin
@@ -776,6 +778,7 @@ spec:
             - name: controller-config
               configMap:
                 name: media-stack-controller-config
+                optional: true
             - name: cfg-jellyfin
               persistentVolumeClaim:
                 claimName: media-stack-config-jellyfin

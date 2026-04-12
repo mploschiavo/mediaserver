@@ -100,7 +100,8 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
                     cfg[f"{svc_id}_{sub_key}"] = sub_val
             else:
                 cfg[svc_id] = defaults
-        except Exception:
+        except Exception as exc:
+            runtime_platform.log(f"[DEBUG] Failed to load contract {svc_yaml.name}: {exc}")
             continue
 
     # Fill in technology_bindings from service capabilities if not in profile
@@ -583,8 +584,8 @@ def _ensure_media_server_api_key(ctx: JobContext) -> None:
     if not discovered:
         try:
             discovered = read_api_key_via_http(ms_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            runtime_platform.log(f"[DEBUG] {ms_id}: HTTP API key discovery failed: {exc}")
     if discovered:
         os.environ[svc.api_key_env] = discovered
         runtime_platform.log(f"[OK] {ms_id}: API key auto-discovered for job")
@@ -716,7 +717,8 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
                     "requires": list(job_def.get("requires", [])),
                     "service": svc_id,
                 })
-        except Exception:
+        except Exception as exc:
+            runtime_platform.log(f"[DEBUG] Failed to discover jobs from {svc_yaml.name}: {exc}")
             continue
 
     _DISCOVERED_JOBS_CACHE = sorted(jobs, key=lambda j: (j["phase"], j["priority"]))
@@ -783,7 +785,8 @@ def build_job_framework() -> Job:
                 raw_fn = _resolve_handler(j["handler"])
                 handler = _make_handler_wrapper(raw_fn, j["service"])
                 phase_job.add_sub_job(Job(j["name"], handler, requires=j.get("requires", [])))
-            except Exception:
+            except Exception as exc:
+                runtime_platform.log(f"[WARN] Cannot resolve handler for remaining-phase job {j['name']}: {exc}")
                 continue
         root.add_sub_job(phase_job)
 

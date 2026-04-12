@@ -104,7 +104,7 @@ class TestJobRegistry(unittest.TestCase):
         expected = {"configure-libraries", "configure-livetv", "configure-plugins",
                     "configure-playback", "configure-home-screen",
                     "configure-collections", "refresh-media",
-                    "configure-categories"}
+                    "configure-categories", "configure-jellyseerr"}
         self.assertEqual(set(registry.keys()), expected)
 
     def test_all_handlers_callable(self):

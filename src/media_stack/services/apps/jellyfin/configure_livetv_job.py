@@ -69,14 +69,33 @@ def configure_livetv(ctx: Any) -> dict[str, Any]:
 
                 if result.get("channels_with_programmes", 0) > 0:
                     container_path = "/config/livetv-guides/merged-epg.xml"
-                    livetv["guides"] = [{
+                    # Carry forward enrichment flags from the original guide configs
+                    # so the downstream handler enriches programmes with channel logos.
+                    enrich_icons = any(
+                        g.get("enrich_program_icons_from_tuner_logo", False) for g in guides
+                    )
+                    enrich_categories = any(
+                        g.get("enrich_program_categories_from_tuner_groups", False) for g in guides
+                    )
+                    merged_guide: dict[str, Any] = {
                         "type": "xmltv",
                         "path": container_path,
                         "materialized_output_path": f"{ms_id}/livetv-guides/merged-epg.xml",
                         "enable_all_tuners": True,
-                        "enrich_program_icons_from_tuner_logo": False,
-                        "enrich_program_categories_from_tuner_groups": False,
-                    }]
+                        "enrich_program_icons_from_tuner_logo": enrich_icons,
+                        "enrich_program_categories_from_tuner_groups": enrich_categories,
+                    }
+                    # Carry forward icon/category config from the first guide that has them
+                    for g in guides:
+                        for key in (
+                            "default_program_icon_url",
+                            "replace_existing_program_icons_with_tuner_logo",
+                            "movie_categories", "sports_categories",
+                            "kids_categories", "news_categories",
+                        ):
+                            if key in g and key not in merged_guide:
+                                merged_guide[key] = g[key]
+                    livetv["guides"] = [merged_guide]
                     runtime_platform.log(
                         f"[OK] Live TV: using merged EPG ({result['channels_with_programmes']} "
                         f"channels, {result['programmes']} programmes)"
@@ -94,8 +113,8 @@ def configure_livetv(ctx: Any) -> dict[str, Any]:
         if not discovered:
             try:
                 discovered = read_api_key_via_http(ms_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                runtime_platform.log(f"[DEBUG] {ms_id}: HTTP API key discovery failed: {exc}")
         if discovered:
             os.environ[svc.api_key_env] = discovered
 

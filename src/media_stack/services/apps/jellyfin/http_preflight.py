@@ -37,7 +37,9 @@ def _http(
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
         return exc.code, None, body
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger("media_stack").debug("[DEBUG] Jellyfin preflight HTTP %s %s → error: %s", method, url, exc)
         return 0, None, ""
 
 

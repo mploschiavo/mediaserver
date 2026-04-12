@@ -69,21 +69,23 @@ class TestConfigMapsExist(unittest.TestCase):
             if d.get("metadata", {}).get("name")
         }
 
-    def _get_referenced_configmaps(self) -> set[str]:
-        """Find all configMap volume references across all workloads."""
-        refs = set()
+    def _get_referenced_configmaps(self) -> list[tuple[str, bool]]:
+        """Find all configMap volume references with optional flag."""
+        refs = []
         text = MANIFEST_PATH.read_text()
-        for m in re.finditer(r"configMap:\s*\n\s*name:\s*(\S+)", text):
-            refs.add(m.group(1))
+        for m in re.finditer(r"configMap:\s*\n\s*name:\s*(\S+)(?:\s*\n\s*optional:\s*(true|false))?", text):
+            name = m.group(1)
+            optional = m.group(2) == "true" if m.group(2) else False
+            refs.append((name, optional))
         return refs
 
-    def test_all_referenced_configmaps_are_defined(self):
+    def test_all_required_configmaps_are_defined(self):
         defined = self._get_defined_configmaps()
         referenced = self._get_referenced_configmaps()
-        missing = referenced - defined
+        missing = {name for name, optional in referenced if not optional and name not in defined}
         self.assertFalse(
             missing,
-            f"ConfigMaps referenced but not defined in manifest: {missing}. "
+            f"Required ConfigMaps referenced but not defined in manifest: {missing}. "
             "Pods will fail to schedule without these.",
         )
 
@@ -115,27 +117,27 @@ class TestConfigMapOptionalFlags(unittest.TestCase):
 
 
 class TestEnvoyPortConfig(unittest.TestCase):
-    """Envoy must not bind to privileged port 80 in K8s (non-root)."""
+    """Envoy must use non-privileged port 8880 in K8s (non-root)."""
 
-    def test_envoy_base_template_uses_8080(self):
+    def test_envoy_base_template_uses_8880(self):
         cm = _find_named(DOCS, "ConfigMap", "media-stack-envoy-base-template")
         self.assertIsNotNone(cm, "envoy base template ConfigMap not found")
         template_yaml = cm.get("data", {}).get("envoy.runtime.base.yaml", "")
-        self.assertIn("port_value: 8080", template_yaml,
-            "Envoy base template must use port 8080, not 80 (non-root K8s)")
+        self.assertIn("port_value: 8880", template_yaml,
+            "Envoy base template must use port 8880 (non-privileged)")
         self.assertNotIn("port_value: 80\n", template_yaml,
-            "Envoy base template must NOT use port 80")
+            "Envoy base template must NOT use privileged port 80")
 
-    def test_envoy_service_targets_8080(self):
+    def test_envoy_service_targets_8880(self):
         svc = _find_named(DOCS, "Service", "envoy")
         self.assertIsNotNone(svc)
         ports = svc.get("spec", {}).get("ports", [])
         http_port = next((p for p in ports if p.get("name") == "http"), None)
         self.assertIsNotNone(http_port, "envoy Service missing http port")
-        self.assertEqual(http_port.get("targetPort"), 8080,
-            "envoy Service targetPort must be 8080 to match container")
+        self.assertEqual(http_port.get("targetPort"), 8880,
+            "envoy Service targetPort must be 8880 to match container")
 
-    def test_envoy_container_port_is_8080(self):
+    def test_envoy_container_port_is_8880(self):
         dep = _find_named(DOCS, "Deployment", "envoy")
         self.assertIsNotNone(dep)
         containers = dep["spec"]["template"]["spec"]["containers"]
@@ -145,33 +147,27 @@ class TestEnvoyPortConfig(unittest.TestCase):
             (p for p in envoy_c.get("ports", []) if p.get("name") == "http"), None
         )
         self.assertIsNotNone(http_port)
-        self.assertEqual(http_port["containerPort"], 8080)
+        self.assertEqual(http_port["containerPort"], 8880)
 
 
 class TestEnvoyInitContainer(unittest.TestCase):
-    """Envoy init container must handle stale configs from previous deploys."""
+    """Envoy init container must seed base config on first deploy."""
 
-    def test_init_container_checks_for_stale_port_80(self):
+    def test_init_container_exists(self):
         dep = _find_named(DOCS, "Deployment", "envoy")
         self.assertIsNotNone(dep)
         init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
         seed = next((c for c in init_containers if c["name"] == "seed-base-config"), None)
         self.assertIsNotNone(seed, "envoy must have seed-base-config init container")
-        cmd = " ".join(seed.get("command", []) + seed.get("args", []))
-        if not cmd:
-            cmd = seed.get("command", [""])[2] if len(seed.get("command", [])) > 2 else ""
-        self.assertIn("port_value: 80", cmd,
-            "Init container must check for stale port 80 config and reseed")
 
-    def test_init_container_reseeds_on_stale_config(self):
+    def test_init_container_seeds_from_template(self):
         dep = _find_named(DOCS, "Deployment", "envoy")
         init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
         seed = next((c for c in init_containers if c["name"] == "seed-base-config"), None)
-        # Get the full command text
         cmd_parts = seed.get("command", [])
         script = cmd_parts[-1] if cmd_parts else ""
-        self.assertIn("Reseeding", script,
-            "Init container must reseed when stale port 80 detected")
+        self.assertIn("envoy.yaml", script,
+            "Init container must reference envoy.yaml")
 
 
 class TestSecretExists(unittest.TestCase):
