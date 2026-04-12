@@ -34,7 +34,7 @@ _CORE_ACTIONS = {
 }
 
 
-KNOWN_ACTIONS = _build_known_actions()
+# KNOWN_ACTIONS initialized after class (needs _build_known_actions)
 
 
 # ---------------------------------------------------------------------------
@@ -430,3 +430,4 @@ handle = _instance.handle
 # ---------------------------------------------------------------------------
 _build_known_actions = _instance._build_known_actions
 _handle_service_api_key_post = _instance._handle_service_api_key_post
+KNOWN_ACTIONS = _build_known_actions()
