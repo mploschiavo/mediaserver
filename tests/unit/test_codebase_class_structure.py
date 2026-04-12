@@ -39,9 +39,19 @@ CLASSES_OVER_15_METHODS_RATCHET = 23      # too many responsibilities
 CIRCULAR_IMPORT_RISK_RATCHET = 136        # lazy imports in methods — poor layering
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
 
+# Hygiene ratchets
+SWALLOWED_EXCEPTIONS_RATCHET = 176  # except Exception: pass — silent failures
+PRINT_STATEMENTS_RATCHET = 232      # should use logging/runtime_platform.log
+FILES_OVER_400_LINES_RATCHET = 43   # large files — split into modules
+HARDCODED_URLS_RATCHET = 140        # URLs should come from contracts/config
+DUPLICATE_STRINGS_5PLUS_RATCHET = 53  # extract to constants or config
+MAGIC_NUMBERS_OVER_100_RATCHET = 804  # extract to named constants
+
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0
 MUTABLE_DEFAULT_ARGS_HARD_GATE = 0
+WILDCARD_IMPORTS_HARD_GATE = 0
+TODO_FIXME_HACK_HARD_GATE = 0
 
 
 def _scan_modules() -> list[tuple[Path, str]]:
@@ -332,6 +342,137 @@ class TestHardGates(unittest.TestCase):
         self.assertEqual(len(violations), MUTABLE_DEFAULT_ARGS_HARD_GATE,
             f"mutable default args (shared state bug):\n"
             + "\n".join(f"  {v}" for v in violations))
+
+    def test_no_wildcard_imports(self):
+        """from x import * pollutes namespace and hides dependencies."""
+        violations = []
+        for py, rel in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.names:
+                    if any(a.name == "*" for a in node.names):
+                        violations.append(f"{rel}:{node.lineno}")
+        self.assertEqual(len(violations), WILDCARD_IMPORTS_HARD_GATE,
+            f"wildcard imports:\n" + "\n".join(f"  {v}" for v in violations))
+
+    def test_no_todo_fixme_hack(self):
+        """Untracked work — use issues or ratchets, not code comments."""
+        violations = []
+        for py, rel in _scan_modules():
+            try:
+                lines = py.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                continue
+            for i, line in enumerate(lines, 1):
+                s = line.strip()
+                if s.startswith("#"):
+                    for tag in ("TODO", "FIXME", "HACK", "XXX"):
+                        if tag in s:
+                            violations.append(f"{rel}:{i} {s[:60]}")
+                            break
+        self.assertEqual(len(violations), TODO_FIXME_HACK_HARD_GATE,
+            f"TODO/FIXME/HACK comments (use issues instead):\n"
+            + "\n".join(f"  {v}" for v in violations))
+
+
+class TestHygieneRatchets(unittest.TestCase):
+    """Track code hygiene issues that indicate technical debt."""
+
+    def _ratchet(self, name: str, count: int, limit: int) -> None:
+        self.assertLessEqual(count, limit,
+            f"{name} regression: {count} (ratchet: {limit})")
+        if count < limit:
+            self.fail(f"Tighten {name}: {count} (was {limit})")
+
+    def test_swallowed_exceptions(self):
+        """except Exception: pass — silent failures mask bugs."""
+        count = 0
+        for py, _ in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ExceptHandler) and node.type:
+                    if isinstance(node.type, ast.Name) and node.type.id == "Exception":
+                        if len(node.body) == 1 and isinstance(node.body[0], (ast.Pass, ast.Continue)):
+                            count += 1
+        self._ratchet("SWALLOWED_EXCEPTIONS_RATCHET", count, SWALLOWED_EXCEPTIONS_RATCHET)
+
+    def test_print_statements(self):
+        """print() should be logging or runtime_platform.log."""
+        count = 0
+        for py, _ in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                    if node.func.id == "print":
+                        count += 1
+        self._ratchet("PRINT_STATEMENTS_RATCHET", count, PRINT_STATEMENTS_RATCHET)
+
+    def test_files_over_400_lines(self):
+        """Large files are hard to navigate — split into modules."""
+        count = 0
+        for py, _ in _scan_modules():
+            try:
+                if len(py.read_text(encoding="utf-8").splitlines()) > 400:
+                    count += 1
+            except Exception:
+                continue
+        self._ratchet("FILES_OVER_400_LINES_RATCHET", count, FILES_OVER_400_LINES_RATCHET)
+
+    def test_hardcoded_urls(self):
+        """URLs should come from contracts or config, not inline literals."""
+        import re
+        _URL_RE = re.compile(r'https?://(?!example\.com|localhost|127\.0\.0\.1)')
+        _SKIP_RE = re.compile(r'iptv-org|github\.com|githubusercontent|epg|manifest|intro-skipper|schema|json-schema', re.I)
+        count = 0
+        for py, _ in _scan_modules():
+            try:
+                lines = py.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                continue
+            for line in lines:
+                if line.strip().startswith("#"):
+                    continue
+                if _URL_RE.search(line) and not _SKIP_RE.search(line):
+                    count += 1
+        self._ratchet("HARDCODED_URLS_RATCHET", count, HARDCODED_URLS_RATCHET)
+
+    def test_duplicate_strings(self):
+        """Same string literal 5+ times — extract to constant or config."""
+        count = 0
+        for py, _ in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            strings: dict[str, int] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and len(node.value) > 10:
+                    strings[node.value] = strings.get(node.value, 0) + 1
+            count += sum(1 for c in strings.values() if c >= 5)
+        self._ratchet("DUPLICATE_STRINGS_5PLUS_RATCHET", count, DUPLICATE_STRINGS_5PLUS_RATCHET)
+
+    def test_magic_numbers(self):
+        """Numeric literals >100 should be named constants."""
+        count = 0
+        for py, _ in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, int):
+                    if node.value > 100:
+                        count += 1
+        self._ratchet("MAGIC_NUMBERS_OVER_100_RATCHET", count, MAGIC_NUMBERS_OVER_100_RATCHET)
 
 
 class TestConfigModuleDataInYaml(unittest.TestCase):
