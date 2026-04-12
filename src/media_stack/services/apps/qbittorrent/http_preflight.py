@@ -323,3 +323,4 @@ class QbittorrentHttpPreflight:
 
 _instance = QbittorrentHttpPreflight()
 run_preflight = _instance.run_preflight
+_extract_temp_password = _instance._extract_temp_password

@@ -155,3 +155,4 @@ if __name__ == "__main__":
                 runtime_platform.log(f"[TRACE] {line}")
         sys.exit(1)
 _run_oneshot = _instance._run_oneshot
+# _track_failed_service is imported from controller_dispatch at module level (line 30)
