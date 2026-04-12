@@ -22,11 +22,26 @@ SRC = ROOT / "src" / "media_stack"
 # Run: python -m pytest tests/unit/test_codebase_class_structure.py -v
 # to see the current count and which modules are non-compliant.
 # ---------------------------------------------------------------------------
+# Structure ratchets (can only go DOWN)
 MODULES_WITHOUT_CLASS_RATCHET = 0
 LOOSE_FUNCTIONS_RATCHET = 70
+
+# DI migration ratchets
 STATIC_METHOD_RATCHET = 415       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 133  # _instance = Foo() — should use DI container
 OS_ENVIRON_IN_METHODS_RATCHET = 367  # os.environ in methods — should be config injection
+
+# Code quality ratchets
+METHODS_OVER_50_LINES_RATCHET = 220       # long methods — extract sub-methods
+DEEPLY_NESTED_4PLUS_RATCHET = 143         # 4+ nesting levels — use early returns
+GOD_CLASSES_OVER_500_LINES_RATCHET = 7    # classes doing too much — split
+CLASSES_OVER_15_METHODS_RATCHET = 23      # too many responsibilities
+CIRCULAR_IMPORT_RISK_RATCHET = 136        # lazy imports in methods — poor layering
+NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
+
+# Hard gates (zero tolerance — any regression fails immediately)
+BARE_EXCEPT_HARD_GATE = 0
+MUTABLE_DEFAULT_ARGS_HARD_GATE = 0
 
 
 def _scan_modules() -> list[tuple[Path, str]]:
@@ -195,6 +210,128 @@ class TestOOPQualityRatchets(unittest.TestCase):
             f"os.environ regression: {count} (ratchet: {OS_ENVIRON_IN_METHODS_RATCHET})")
         if count < OS_ENVIRON_IN_METHODS_RATCHET:
             self.fail(f"Tighten OS_ENVIRON_IN_METHODS_RATCHET: {count} (was {OS_ENVIRON_IN_METHODS_RATCHET})")
+
+
+class TestCodeQualityRatchets(unittest.TestCase):
+    """Track code quality metrics that affect readability and maintainability."""
+
+    def _scan_all(self):
+        """Parse all modules once, return list of (rel, tree) tuples."""
+        results = []
+        for py, rel in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+                results.append((rel, tree))
+            except Exception:
+                continue
+        return results
+
+    def _ratchet(self, name: str, count: int, limit: int) -> None:
+        self.assertLessEqual(count, limit,
+            f"{name} regression: {count} (ratchet: {limit})")
+        if count < limit:
+            self.fail(f"Tighten {name}: {count} (was {limit})")
+
+    def test_methods_over_50_lines(self):
+        count = 0
+        for _, tree in self._scan_all():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.end_lineno:
+                    if node.end_lineno - node.lineno > 50:
+                        count += 1
+        self._ratchet("METHODS_OVER_50_LINES_RATCHET", count, METHODS_OVER_50_LINES_RATCHET)
+
+    def test_deeply_nested_4plus(self):
+        count = 0
+        for _, tree in self._scan_all():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    max_depth = [0]
+                    def _walk(n, d, md=max_depth):
+                        if isinstance(n, (ast.If, ast.For, ast.While, ast.With, ast.Try)):
+                            d += 1
+                            md[0] = max(md[0], d)
+                        for c in ast.iter_child_nodes(n):
+                            _walk(c, d)
+                    _walk(node, 0)
+                    if max_depth[0] >= 4:
+                        count += 1
+        self._ratchet("DEEPLY_NESTED_4PLUS_RATCHET", count, DEEPLY_NESTED_4PLUS_RATCHET)
+
+    def test_god_classes_over_500_lines(self):
+        count = 0
+        for _, tree in self._scan_all():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.end_lineno:
+                    if node.end_lineno - node.lineno > 500:
+                        count += 1
+        self._ratchet("GOD_CLASSES_OVER_500_LINES_RATCHET", count, GOD_CLASSES_OVER_500_LINES_RATCHET)
+
+    def test_classes_over_15_methods(self):
+        count = 0
+        for _, tree in self._scan_all():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    methods = sum(1 for n in node.body if isinstance(n, ast.FunctionDef))
+                    if methods > 15:
+                        count += 1
+        self._ratchet("CLASSES_OVER_15_METHODS_RATCHET", count, CLASSES_OVER_15_METHODS_RATCHET)
+
+    def test_circular_import_risk(self):
+        count = 0
+        for _, tree in self._scan_all():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.ImportFrom):
+                            count += 1
+                            break
+        self._ratchet("CIRCULAR_IMPORT_RISK_RATCHET", count, CIRCULAR_IMPORT_RISK_RATCHET)
+
+    def test_no_type_hints_public_methods(self):
+        count = 0
+        for _, tree in self._scan_all():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+                    if node.returns is None:
+                        count += 1
+        self._ratchet("NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET", count, NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET)
+
+
+class TestHardGates(unittest.TestCase):
+    """Zero-tolerance gates — any regression fails immediately."""
+
+    def test_no_bare_except(self):
+        """bare except: swallows KeyboardInterrupt and SystemExit."""
+        violations = []
+        for py, rel in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ExceptHandler) and node.type is None:
+                    violations.append(f"{rel}:{node.lineno}")
+        self.assertEqual(len(violations), BARE_EXCEPT_HARD_GATE,
+            f"bare except found (blocks KeyboardInterrupt):\n"
+            + "\n".join(f"  {v}" for v in violations))
+
+    def test_no_mutable_default_args(self):
+        """def f(x=[]) is a classic Python bug — shared across calls."""
+        violations = []
+        for py, rel in _scan_modules():
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    for default in node.args.defaults + node.args.kw_defaults:
+                        if default and isinstance(default, (ast.List, ast.Dict, ast.Set)):
+                            violations.append(f"{rel}:{node.lineno} {node.name}()")
+        self.assertEqual(len(violations), MUTABLE_DEFAULT_ARGS_HARD_GATE,
+            f"mutable default args (shared state bug):\n"
+            + "\n".join(f"  {v}" for v in violations))
 
 
 class TestConfigModuleDataInYaml(unittest.TestCase):
