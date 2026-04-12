@@ -71,6 +71,7 @@ class StackControllerConfigPolicy:
         parent[leaf_name] = bool(value)
 
     @staticmethod
+    @lru_cache(maxsize=4)
     def _load_policy_catalog() -> dict[str, Any]:
         for path in [_POLICY_CATALOG_PATH, _IMAGE_POLICY_PATH]:
             if path.is_file():
@@ -677,7 +678,7 @@ _set_enabled = _instance._set_enabled
 _slugify = _instance._slugify
 _tokenize = _instance._tokenize
 _walk_path = _instance._walk_path
-_load_policy_catalog = _instance._load_policy_catalog
+_load_policy_catalog = StackControllerConfigPolicy._load_policy_catalog
 _selected_apps_policy_cfg = _instance._selected_apps_policy_cfg
 _policy_map = _instance._policy_map
 _policy_set = _instance._policy_set
