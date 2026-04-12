@@ -94,7 +94,7 @@ class TestMetadataUpdateMerges(unittest.TestCase):
     def test_preserves_metadata_name(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 result = config_mod.update_metadata_settings("de", "DE")
             self.assertEqual(result["status"], "saved")
             # Verify metadata.name is still there
@@ -107,7 +107,7 @@ class TestMetadataUpdateMerges(unittest.TestCase):
     def test_preserves_metadata_platform(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 config_mod.update_metadata_settings("fr", "FR")
             import yaml
             data = yaml.safe_load(Path(profile).read_text())
@@ -117,7 +117,7 @@ class TestMetadataUpdateMerges(unittest.TestCase):
         """If metadata section doesn't exist, create it — but validation will fail."""
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({"routing": {}}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 result = config_mod.update_metadata_settings("en", "US")
             # Should fail validation because metadata.name would be missing
             self.assertIn("error", result)
@@ -135,7 +135,7 @@ class TestProfileSectionUpdate(unittest.TestCase):
     def test_preserves_routing(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 config_mod.update_profile_section("download_categories", {"tv": "/data/tv"})
             import yaml
             data = yaml.safe_load(Path(profile).read_text())
@@ -145,7 +145,7 @@ class TestProfileSectionUpdate(unittest.TestCase):
     def test_preserves_metadata(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 config_mod.update_profile_section("live_tv_defaults", {"tuner_url": "http://example.com"})
             import yaml
             data = yaml.safe_load(Path(profile).read_text())
@@ -165,7 +165,7 @@ class TestLiveTvSaveDoesNotCorrupt(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_livetv_sources(
@@ -180,7 +180,7 @@ class TestLiveTvSaveDoesNotCorrupt(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile(VALID_PROFILE, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_livetv_sources(
@@ -204,7 +204,7 @@ class TestLibrarySaveDoesNotCorrupt(unittest.TestCase):
             data = {**VALID_PROFILE, "technology_bindings": {"media_server": "jellyfin"}}
             profile = _make_profile(data, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_libraries([

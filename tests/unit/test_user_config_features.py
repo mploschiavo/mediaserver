@@ -40,7 +40,7 @@ class TestGetLibraries(unittest.TestCase):
         config_mod._invalidate_profile_cache()
 
     def test_returns_defaults_when_no_profile(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_libraries()
         self.assertIn("libraries", result)
 
@@ -51,7 +51,7 @@ class TestGetLibraries(unittest.TestCase):
                 "jellyfin": {"libraries": [{"name": "Anime", "collection_type": "tvshows", "paths": ["/media/anime"]}]},
             }, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.get_libraries()
@@ -70,7 +70,7 @@ class TestUpdateLibraries(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({"technology_bindings": {"media_server": "jellyfin"}}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_libraries([
@@ -83,12 +83,12 @@ class TestUpdateLibraries(unittest.TestCase):
     def test_rejects_invalid_library(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({"technology_bindings": {"media_server": "jellyfin"}}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 result = config_mod.update_libraries([{"name": ""}])
         self.assertIn("error", result)
 
     def test_no_profile_returns_error(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.update_libraries([{"name": "X", "collection_type": "movies", "paths": ["/x"]}])
         self.assertIn("error", result)
 
@@ -106,7 +106,7 @@ class TestGetDownloadCategories(unittest.TestCase):
 
     def test_returns_empty_when_no_config(self):
         with (
-            patch.object(config_mod, "resolve_profile_path", return_value=None),
+            patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None),
             patch.dict(os.environ, {"CONFIG_ROOT": "/tmp/nonexistent-cfg-root"}),
         ):
             result = config_mod.get_download_categories()
@@ -117,7 +117,7 @@ class TestGetDownloadCategories(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({"download_categories": {"anime": "/data/anime", "audiobooks": "/data/audiobooks"}}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.get_download_categories()
@@ -136,7 +136,7 @@ class TestUpdateDownloadCategories(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_download_categories({"anime": "/data/anime"})
@@ -159,7 +159,7 @@ class TestMetadataSettings(unittest.TestCase):
         config_mod._invalidate_profile_cache()
 
     def test_defaults(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_metadata_settings()
         self.assertEqual(result["language"], "en")
         self.assertEqual(result["country"], "US")
@@ -167,7 +167,7 @@ class TestMetadataSettings(unittest.TestCase):
     def test_update_saves(self):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 result = config_mod.update_metadata_settings("de", "DE")
         self.assertEqual(result["status"], "saved")
         self.assertEqual(result["metadata"]["language"], "de")
@@ -190,7 +190,7 @@ class TestLiveTvSources(unittest.TestCase):
 
     def test_empty_when_not_configured(self):
         with (
-            patch.object(config_mod, "resolve_profile_path", return_value=None),
+            patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None),
             patch.dict(os.environ, {"CONFIG_ROOT": "/tmp/nonexistent-cfg-root"}),
         ):
             result = config_mod.get_livetv_sources()
@@ -201,7 +201,7 @@ class TestLiveTvSources(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_livetv_sources(
@@ -215,7 +215,7 @@ class TestLiveTvSources(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_livetv_sources(

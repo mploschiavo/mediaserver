@@ -41,7 +41,7 @@ class TestMultiCountryTuners(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_livetv_sources(tuners=[
@@ -56,7 +56,7 @@ class TestMultiCountryTuners(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_livetv_sources(tuners=[
@@ -71,7 +71,7 @@ class TestMultiCountryTuners(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 result = config_mod.update_livetv_sources(
@@ -102,7 +102,7 @@ class TestMultiCountryPersistence(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             profile = _make_profile({}, td)
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_livetv_sources(tuners=[
@@ -122,7 +122,7 @@ class TestMultiCountryPersistence(unittest.TestCase):
             profile = _make_profile({}, td)
             config_mod._invalidate_profile_cache()
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_livetv_sources(tuners=[
@@ -145,7 +145,7 @@ class TestMultiCountryPersistence(unittest.TestCase):
             profile = _make_profile({}, td)
             config_mod._invalidate_profile_cache()
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_livetv_sources(
@@ -166,7 +166,7 @@ class TestReconfiguration(unittest.TestCase):
             profile = _make_profile({}, td)
             config_mod._invalidate_profile_cache()
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 # First config: US + UK
@@ -192,7 +192,7 @@ class TestReconfiguration(unittest.TestCase):
             profile = _make_profile({}, td)
             config_mod._invalidate_profile_cache()
             with (
-                patch.object(config_mod, "resolve_profile_path", return_value=profile),
+                patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile),
                 patch.dict(os.environ, {"CONFIG_ROOT": td}),
             ):
                 config_mod.update_livetv_sources(tuners=[
@@ -214,13 +214,13 @@ class TestIptvCountriesApi(unittest.TestCase):
         config_mod._invalidate_profile_cache()
 
     def test_returns_countries(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_iptv_countries()
         self.assertIn("countries", result)
         self.assertGreater(len(result["countries"]), 10)
 
     def test_countries_have_required_fields(self):
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_iptv_countries()
         for c in result["countries"]:
             self.assertIn("code", c)
@@ -229,7 +229,7 @@ class TestIptvCountriesApi(unittest.TestCase):
     def test_countries_have_guide_urls(self):
         """Each country should have a guide URL from the EPG provider registry."""
         config_mod._invalidate_profile_cache()
-        with patch.object(config_mod, "resolve_profile_path", return_value=None):
+        with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None):
             result = config_mod.get_iptv_countries()
         us = next(c for c in result["countries"] if c["code"] == "us")
         # Guide URL comes from EPG provider registry
@@ -243,7 +243,7 @@ class TestIptvCountriesApi(unittest.TestCase):
                 ]
             }, td)
             config_mod._invalidate_profile_cache()
-            with patch.object(config_mod, "resolve_profile_path", return_value=profile):
+            with patch("media_stack.api.services._resolve.resolve_profile_path", return_value=profile):
                 result = config_mod.get_iptv_countries()
             config_mod._invalidate_profile_cache()
         self.assertEqual(len(result["countries"]), 1)
