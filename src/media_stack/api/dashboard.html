@@ -1855,12 +1855,55 @@ function checkAlerts(){
 (function(){const sel=document.getElementById('alertSvc');SVCS.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});renderAlertRules();})();
 
 /* #8 Media library browser */
+let _libData=[];
 async function loadLibraries(){
-  try{const r=await fetch('/api/libraries');if(!r.ok)return;const d=await r.json();
-    if(d.error){document.getElementById('lib-libraries').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
-    let h='';for(const lib of(d.libraries||[])){h+='<div class="svc-row" style="cursor:default"><span class="dot ok"></span><span class="sname">'+lib.name+'</span><span class="smeta">'+lib.type+' · '+lib.locations.length+' path(s)</span></div>';}
-    document.getElementById('lib-libraries').innerHTML=h||'<span style="color:var(--fg3)">No libraries found</span>';
-  }catch(e){}
+  const el=document.getElementById('lib-libraries');
+  try{
+    const r=await fetch('/api/libraries');if(!r.ok)return;const d=await r.json();
+    _libData=d.configured||[];
+    _renderLibraries(el, d.live||[]);
+  }catch(e){el.innerHTML='Error: '+e;}
+}
+function _renderLibraries(el, live){
+  let h='';
+  // Show live Jellyfin libraries (read-only status)
+  if(live&&live.length){
+    h+='<div class="action-group" style="margin-bottom:10px;padding:8px"><div class="action-group-title">Active in Jellyfin ('+live.length+')</div>';
+    for(const lib of live){
+      h+='<div class="svc-row" style="cursor:default;font-size:.85em"><span class="dot ok"></span><span class="sname">'+_escHtml(lib.name||'')+'</span><span class="smeta">'+_escHtml(lib.type||'')+' · '+(lib.locations||[]).length+' path(s)</span></div>';
+    }
+    h+='</div>';
+  }
+  h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Configured libraries — edit below, then Save &amp; Apply to push to Jellyfin.</p>';
+  _libData.forEach((lib,i)=>{
+    h+='<div class="action-group" style="margin-bottom:6px;padding:8px">';
+    h+='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+    h+='<input value="'+_escHtml(lib.name||'')+'" placeholder="Name" style="width:140px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)" onchange="_libData['+i+'].name=this.value">';
+    h+='<select style="padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)" onchange="_libData['+i+'].collection_type=this.value">';
+    for(const t of['movies','tvshows','music','books','mixed','homevideos','photos']){
+      h+='<option value="'+t+'"'+(lib.collection_type===t?' selected':'')+'>'+t+'</option>';
+    }
+    h+='</select>';
+    h+='<input value="'+_escHtml((lib.paths||[]).join(', '))+'" placeholder="/media/movies" style="flex:1;min-width:200px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)" onchange="_libData['+i+'].paths=this.value.split(\',\').map(s=>s.trim()).filter(Boolean)">';
+    h+='<button class="btn-danger" style="padding:3px 8px;font-size:.75em" onclick="_libData.splice('+i+',1);_renderLibraries(document.getElementById(\'lib-libraries\'))">Remove</button>';
+    h+='</div></div>';
+  });
+  h+='<div style="display:flex;gap:8px;margin-top:8px">';
+  h+='<button class="btn-secondary" style="padding:4px 12px;font-size:.82em" onclick="_libData.push({name:\'\',collection_type:\'movies\',paths:[]});_renderLibraries(document.getElementById(\'lib-libraries\'))">+ Add Library</button>';
+  h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="saveLibrariesFromContent()">Save &amp; Apply</button>';
+  h+='</div>';
+  el.innerHTML=h;
+}
+async function saveLibrariesFromContent(){
+  const valid=_libData.filter(l=>l.name&&l.collection_type&&l.paths&&l.paths.length);
+  if(!valid.length){toast('Add at least one library with name and paths');return;}
+  try{
+    const r=await fetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:valid})});
+    const d=await r.json();
+    if(d.error){toast('Error: '+d.error);return;}
+    toast('Libraries saved'+(d.action?' — '+d.action:''));
+    loadLibraries();
+  }catch(e){toast('Error: '+e);}
 }
 
 /* #9 Download history */
@@ -1913,32 +1956,60 @@ async function loadQualityProfiles(){
   }catch(e){el.innerHTML='Error: '+e;}
 }
 
-/* #12 Import / discovery lists — with enable/disable and delete */
+/* #12 Import / discovery lists — show live arr lists + editable config discovery lists */
 async function loadImportLists(){
   const el=document.getElementById('lib-imports');
   el.innerHTML='<span class="spinner"></span> Loading discovery lists...';
-  try{const r=await fetch('/api/import-lists');if(!r.ok)return;const d=await r.json();
-    let h='<p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Discovery lists auto-add content to your library. Toggle or delete below.</p>';
+  try{
+    // Fetch both: live import lists from arr services AND config discovery lists
+    const [liveR, cfgR]=await Promise.all([fetch('/api/import-lists'),fetch('/api/discovery-lists')]);
+    const liveD=liveR.ok?await liveR.json():{};
+    const cfgD=cfgR.ok?await cfgR.json():{};
+    let h='';
+
+    // Section 1: Active import lists from arr services (enable/disable/delete)
+    const lists=liveD.lists||liveD.import_lists||{};
     let total=0;
-    for(const[app,lists]of Object.entries(d.import_lists||{})){if(!lists.length)continue;
+    for(const[app,appLists]of Object.entries(lists)){
+      if(!Array.isArray(appLists)||!appLists.length)continue;
       const svc=SVC_MAP[app];const name=svc?svc.name:app;
-      h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">'+_escHtml(name)+' ('+lists.length+' lists)</div>';
-      for(const il of lists){total++;
-        const dotCls=il.enabled?'ok':'idle';
-        const statusTxt=il.enabled?'Enabled':'Disabled';
+      h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">'+_escHtml(name)+' ('+appLists.length+' lists)</div>';
+      for(const il of appLists){total++;
+        const enabled=il.enabled!==false;
+        const dotCls=enabled?'ok':'idle';
         h+='<div class="svc-row" style="cursor:default;font-size:.85em;display:flex;align-items:center;gap:6px">';
         h+='<span class="dot '+dotCls+'"></span>';
-        h+='<span class="sname">'+_escHtml(il.name)+'</span>';
-        h+='<span class="smeta" style="flex:1">'+_escHtml(il.type||'')+'</span>';
-        h+='<span class="smeta" style="font-size:.75em">'+statusTxt+'</span>';
-        h+='<button class="btn-danger" style="padding:1px 6px;font-size:.7em" onclick="deleteImportList(\''+_escHtml(app)+'\','+il.id+',\''+_escHtml(il.name)+'\')">Del</button>';
+        h+='<span class="sname" style="flex:1">'+_escHtml(il.name||'')+'</span>';
+        h+='<span class="smeta">'+_escHtml(il.listType||il.type||'')+'</span>';
+        h+='<label class="switch" style="width:34px;height:18px;margin:0 4px" title="'+(enabled?'Disable':'Enable')+'"><input type="checkbox"'+(enabled?' checked':'')+' onchange="toggleImportList(\''+_escHtml(app)+'\','+il.id+',this.checked)"><span class="slider" style="border-radius:9px"></span></label>';
+        h+='<button class="btn-danger" style="padding:1px 6px;font-size:.7em" onclick="deleteImportList(\''+_escHtml(app)+'\','+il.id+',\''+_escHtml(il.name||'')+'\')">Del</button>';
         h+='</div>';
       }
       h+='</div>';
     }
-    if(!total)h+='<span style="color:var(--fg3)">No discovery lists. Run bootstrap to auto-create from profile.</span>';
+    if(!total)h+='<p style="color:var(--fg3);font-size:.85em">No active import lists in arr services.</p>';
+
+    // Section 2: Configured discovery lists from profile (editable)
+    const cfgLists=cfgD.lists||[];
+    h+='<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">';
+    h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 8px"><b>Profile Discovery Lists</b> — these get pushed to arr services on bootstrap.</p>';
+    if(cfgLists.length){
+      for(const dl of cfgLists){
+        h+='<div class="svc-row" style="cursor:default;font-size:.85em"><span class="dot ok"></span><span class="sname">'+_escHtml(dl.name||dl.url||'')+'</span><span class="smeta">'+_escHtml(dl.type||'trakt')+'</span></div>';
+      }
+    }else{h+='<p style="color:var(--fg3);font-size:.82em">No discovery lists in profile. Run bootstrap to auto-discover.</p>';}
+    h+='</div>';
+
     el.innerHTML=h;
   }catch(e){el.innerHTML='Error: '+e;}
+}
+async function toggleImportList(svcId,listId,enabled){
+  try{
+    const r=await fetch('/api/import-lists/'+svcId+'/'+listId+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})});
+    const d=await r.json();
+    if(d.error)toast('Error: '+d.error);else toast((enabled?'Enabled':'Disabled')+' list');
+    loadImportLists();
+  }catch(e){toast('Error: '+e);}
 }
 async function deleteImportList(svcId,listId,name){
   if(!confirm('Delete list "'+name+'" from '+svcId+'?'))return;

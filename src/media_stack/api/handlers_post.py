@@ -182,7 +182,11 @@ class PostRequestHandler:
             if not isinstance(libraries, list):
                 handler._json_response(400, {"error": "libraries must be an array"})
                 return
-            handler._json_response(200, config_svc.update_libraries(libraries))
+            result = config_svc.update_libraries(libraries)
+            if "error" not in result and handler.action_trigger:
+                handler.action_trigger("configure-libraries", {})
+                result["action"] = "configure-libraries queued"
+            handler._json_response(200, result)
             return
 
         # POST /api/download-categories
@@ -201,6 +205,20 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.update_metadata_settings(
                 body.get("language", ""), body.get("country", ""),
             ))
+            return
+
+        # POST /api/discovery-lists
+        if handler.path == "/api/discovery-lists":
+            body = handler._read_json_body()
+            lists = body.get("lists")
+            if not isinstance(lists, list):
+                handler._json_response(400, {"error": "lists array required"})
+                return
+            result = config_svc.update_discovery_lists(lists)
+            if "error" not in result and handler.action_trigger:
+                handler.action_trigger("bootstrap", {})
+                result["action"] = "bootstrap queued"
+            handler._json_response(200, result)
             return
 
         # POST /api/livetv-sources
@@ -243,6 +261,22 @@ class PostRequestHandler:
             if body.get("_method") == "DELETE":
                 from .services import content as content_svc_del
                 handler._json_response(200, content_svc_del.delete_indexer(indexer_id))
+                return
+
+        # POST /api/import-lists/{service}/{id}/toggle
+        if handler.path.startswith("/api/import-lists/") and handler.path.endswith("/toggle"):
+            parts = handler.path.split("/")
+            if len(parts) >= 5:
+                svc_id = parts[3]
+                try:
+                    list_id = int(parts[4])
+                except ValueError:
+                    handler._json_response(400, {"error": "Invalid list ID"})
+                    return
+                body = handler._read_json_body()
+                enabled = body.get("enabled", True)
+                from .services import content as content_svc_toggle
+                handler._json_response(200, content_svc_toggle.toggle_import_list(svc_id, list_id, enabled))
                 return
 
         # POST /api/import-lists/{service}/{id}/delete
