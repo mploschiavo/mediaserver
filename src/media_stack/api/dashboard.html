@@ -237,9 +237,12 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <a href="/api/docs">API</a>
     <label style="display:flex;align-items:center;gap:6px;font-size:.82em;color:var(--fg3);cursor:pointer" title="Play sound on action complete"><label class="switch" style="width:34px;height:18px"><input type="checkbox" id="soundToggle"><span class="slider" style="border-radius:9px"></span></label>Sound</label>
     <button onclick="toggleTheme()" id="themeBtn" title="Toggle light/dark theme (T)">Light</button>
-    <select id="logLevelSelect" title="Controller log level" style="font-size:.82em;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg1);color:var(--fg1);cursor:pointer" onchange="setLogLevel(this.value)">
-      <option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option>
-    </select>
+    <span id="logLevelGroup" style="display:inline-flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:.72em" title="Controller log level">
+      <button onclick="setLogLevel('DEBUG')" data-level="DEBUG" style="padding:3px 7px;border:none;background:var(--bg1);color:var(--fg3);cursor:pointer;border-right:1px solid var(--border)">Debug</button>
+      <button onclick="setLogLevel('INFO')" data-level="INFO" class="ll-active" style="padding:3px 7px;border:none;background:var(--accent);color:#fff;cursor:pointer;border-right:1px solid var(--border)">Info</button>
+      <button onclick="setLogLevel('WARN')" data-level="WARN" style="padding:3px 7px;border:none;background:var(--bg1);color:var(--fg3);cursor:pointer;border-right:1px solid var(--border)">Warn</button>
+      <button onclick="setLogLevel('ERROR')" data-level="ERROR" style="padding:3px 7px;border:none;background:var(--bg1);color:var(--fg3);cursor:pointer">Error</button>
+    </span>
     <button onclick="showSettings()" title="Dashboard settings">Settings</button>
     <button onclick="showShortcuts()" title="Keyboard shortcuts (?)">?</button>
   </div>
@@ -673,12 +676,23 @@ function toggleTheme(){const l=document.body.classList.toggle('light');localStor
 else if(!s&&window.matchMedia('(prefers-color-scheme: light)').matches){document.body.classList.add('light');document.getElementById('themeBtn').textContent='Dark';}})();
 
 /* Log level control */
+function _highlightLogLevel(level){
+  const grp=document.getElementById('logLevelGroup');
+  if(!grp)return;
+  for(const btn of grp.querySelectorAll('button')){
+    if(btn.dataset.level===level){
+      btn.style.background='var(--accent)';btn.style.color='#fff';
+    }else{
+      btn.style.background='var(--bg1)';btn.style.color='var(--fg3)';
+    }
+  }
+}
 async function setLogLevel(level){
   try{const r=await fetch('/api/log-level',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level})});
-  if(r.ok){const d=await r.json();document.getElementById('logLevelSelect').value=d.level;}
+  if(r.ok){const d=await r.json();_highlightLogLevel(d.level);}
   }catch(e){console.error('Failed to set log level',e);}
 }
-(async function(){try{const r=await fetch('/api/log-level');if(r.ok){const d=await r.json();document.getElementById('logLevelSelect').value=d.level;}}catch(e){}})();
+(async function(){try{const r=await fetch('/api/log-level');if(r.ok){const d=await r.json();_highlightLogLevel(d.level);}}catch(e){}})();
 
 /* Collapsible cards */
 function toggleCard(h2){h2.closest('.card').classList.toggle('collapsed');}
