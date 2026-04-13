@@ -711,6 +711,16 @@ function showTab(id,btn){
 
 /* Toast + Sound */
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className=err?'err':'';t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
+/* Action button helper: shows spinner, disables button, runs async fn, toasts result */
+async function actionBtn(btn,fn,successMsg){
+  if(!btn)return;
+  const orig=btn.innerHTML;
+  btn.disabled=true;btn.style.opacity='0.6';btn.innerHTML='<span class="spinner" style="width:12px;height:12px;display:inline-block;vertical-align:middle"></span> Working...';
+  try{const result=await fn();
+    toast(successMsg||(typeof result==='string'?result:'Done'));
+  }catch(e){toast('Error: '+e,true);}
+  finally{btn.disabled=false;btn.style.opacity='1';btn.innerHTML=orig;}
+}
 function playSound(){if(!document.getElementById('soundToggle').checked)return;try{const ac=new(window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator();const g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=800;g.gain.value=0.15;o.start();o.stop(ac.currentTime+0.15);setTimeout(()=>{o.frequency.value=1200;const o2=ac.createOscillator();const g2=ac.createGain();o2.connect(g2);g2.connect(ac.destination);o2.frequency.value=1200;g2.gain.value=0.15;o2.start();o2.stop(ac.currentTime+0.15);},180);}catch(e){}}
 
 function _escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -1905,7 +1915,7 @@ function _renderLibraries(el, live){
   });
   h+='<div style="display:flex;gap:8px;margin-top:8px">';
   h+='<button class="btn-secondary" style="padding:4px 12px;font-size:.82em" onclick="_libData.push({name:\'\',collection_type:\'movies\',paths:[]});_renderLibraries(document.getElementById(\'lib-libraries\'))">+ Add Library</button>';
-  h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="saveLibrariesFromContent()">Save &amp; Apply</button>';
+  h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="actionBtn(this,saveLibrariesFromContent,\'Libraries saved\')">Save &amp; Apply</button>';
   h+='</div>';
   el.innerHTML=h;
 }
@@ -2637,7 +2647,7 @@ async function loadDownloadsConfig(){
     h+='<label style="font-size:.82em;color:var(--fg2)">DL Limit (MB/s, 0=unlimited)<br><input type="number" id="dl-limit" value="'+(tor.dl_limit_mbps||0)+'" min="0" step="0.5" style="width:80px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
     h+='<label style="font-size:.82em;color:var(--fg2)">UL Limit (MB/s, 0=unlimited)<br><input type="number" id="ul-limit" value="'+(tor.up_limit_mbps||0)+'" min="0" step="0.5" style="width:80px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg)"></label>';
     h+='</div>';
-    h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em;margin-top:4px" onclick="saveDlClientSettings()">Save Limits</button>';
+    h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em;margin-top:4px" onclick="actionBtn(this,saveDlClientSettings,\'Torrent limits saved\')">Save Limits</button>';
     h+='</div>';
 
     // Jellyfin scan
@@ -2647,14 +2657,14 @@ async function loadDownloadsConfig(){
     for(const hr of [1,2,4,6,12,24]){h+='<option value="'+hr+'"'+((scan.interval_hours||12)===hr?' selected':'')+'>'+hr+'h</option>';}
     h+='</select></label>';
     h+='<span style="font-size:.78em;color:var(--fg3)">Status: '+(scan.state||'?')+' (last: '+(scan.last_status||'?')+')</span>';
-    h+='<button class="btn-secondary" style="padding:3px 10px;font-size:.78em" onclick="scanNow()">Scan Now</button>';
-    h+='<button class="btn-primary" style="padding:3px 10px;font-size:.78em" onclick="saveScanInterval()">Save Interval</button>';
+    h+='<button class="btn-secondary" style="padding:3px 10px;font-size:.78em" onclick="actionBtn(this,scanNow,\'Library scan triggered\')">Scan Now</button>';
+    h+='<button class="btn-primary" style="padding:3px 10px;font-size:.78em" onclick="actionBtn(this,saveScanInterval)">Save Interval</button>';
     h+='</div></div>';
 
     // Auto-scan webhooks
     h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Auto-Scan on Download</div>';
     h+='<p style="color:var(--fg3);font-size:.78em;margin:4px 0 8px">Registers webhooks on Sonarr/Radarr so Jellyfin scans automatically when new content is imported.</p>';
-    h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="registerArrWebhooks()">Register Webhooks</button>';
+    h+='<button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="actionBtn(this,registerArrWebhooks,\'Webhooks registered\')">Register Webhooks</button>';
     h+='<span id="arr-webhook-status" style="font-size:.78em;color:var(--fg3);margin-left:8px"></span>';
     h+='</div>';
 
@@ -2691,30 +2701,31 @@ async function saveDlClientSettings(){
     dl_limit_mbps:+document.getElementById('dl-limit').value,
     up_limit_mbps:+document.getElementById('ul-limit').value,
   }};
-  try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();toast(d.torrent?.error||'Torrent limits saved');
-  }catch(e){toast('Error: '+e);}
+  const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(d.torrent?.error)throw new Error(d.torrent.error);
+  return 'Torrent limits saved';
 }
 async function scanNow(){
-  try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_now:true})});
-    const d=await r.json();toast(d.scan?.error||'Library scan triggered');
-  }catch(e){toast('Error: '+e);}
+  const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_now:true})});
+  const d=await r.json();
+  if(d.scan?.error)throw new Error(d.scan.error);
+  return 'Library scan triggered';
 }
 async function saveScanInterval(){
   const hrs=+document.getElementById('dl-scan-interval').value;
-  try{const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
-    const d=await r.json();toast(d.scan_interval?.error||'Scan interval set to '+hrs+'h');
-  }catch(e){toast('Error: '+e);}
+  const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
+  const d=await r.json();
+  if(d.scan_interval?.error)throw new Error(d.scan_interval.error);
+  return 'Scan interval set to '+hrs+'h';
 }
 async function registerArrWebhooks(){
+  const r=await fetch('/api/arr-webhooks');const d=await r.json();
+  const wh=d.webhooks||{};
+  const parts=Object.entries(wh).map(([k,v])=>k+': '+v);
   const status=document.getElementById('arr-webhook-status');
-  if(status)status.textContent='Registering...';
-  try{const r=await fetch('/api/arr-webhooks');const d=await r.json();
-    const wh=d.webhooks||{};
-    const parts=Object.entries(wh).map(([k,v])=>k+': '+v);
-    if(status)status.textContent=parts.join(' | ');
-    toast('Webhooks: '+parts.join(', '));
-  }catch(e){if(status)status.textContent='Error';toast('Error: '+e);}
+  if(status)status.textContent=parts.join(' | ');
+  return 'Webhooks: '+parts.join(', ');
 }
 async function saveCategories(){
   const names=document.querySelectorAll('#cat-list [data-cat-name]');
@@ -2903,7 +2914,7 @@ async function loadDisplayConfig(){
     }
     h+='</div>';
 
-    h+='<button class="btn-primary" style="padding:6px 16px;font-size:.85em" onclick="saveDisplayConfig()">Save &amp; Apply</button>';
+    h+='<button class="btn-primary" style="padding:6px 16px;font-size:.85em" onclick="actionBtn(this,saveDisplayConfig,\'Display preferences saved\')">Save &amp; Apply</button>';
     el.innerHTML=h;
   }catch(e){el.innerHTML='Error: '+e;}
 }
