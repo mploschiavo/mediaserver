@@ -246,6 +246,22 @@ class PostRequestHandler:
             handler._json_response(200, result)
             return
 
+        # POST /api/quality-profiles/toggle
+        if handler.path == "/api/quality-profiles/toggle":
+            body = handler._read_json_body()
+            from media_stack.services.apps.servarr.quality_preset_service import toggle_quality, toggle_upgrade
+            if "quality" in body:
+                handler._json_response(200, toggle_quality(
+                    body["service"], int(body["profile_id"]), body["quality"], bool(body["enabled"])
+                ))
+            elif "upgradeAllowed" in body:
+                handler._json_response(200, toggle_upgrade(
+                    body["service"], int(body["profile_id"]), bool(body["upgradeAllowed"])
+                ))
+            else:
+                handler._json_response(400, {"error": "quality or upgradeAllowed required"})
+            return
+
         # POST /api/download-client-settings
         if handler.path == "/api/download-client-settings":
             body = handler._read_json_body()

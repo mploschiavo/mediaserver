@@ -122,6 +122,18 @@ class GetRequestHandler:
             handler._json_response(200, content_svc.get_indexer_stats())
         elif path == "/api/download-history":
             handler._json_response(200, content_svc.get_download_history())
+        elif path == "/api/quality-presets":
+            from media_stack.services.apps.servarr.quality_preset_service import list_presets
+            handler._json_response(200, list_presets())
+        elif path.startswith("/api/quality-profiles/"):
+            # GET /api/quality-profiles/{service}
+            svc_id = path.split("/")[-1]
+            from media_stack.services.apps.servarr.quality_preset_service import get_current_profiles
+            handler._json_response(200, get_current_profiles(svc_id))
+        elif path.startswith("/api/custom-formats/"):
+            svc_id = path.split("/")[-1]
+            from media_stack.services.apps.servarr.quality_preset_service import get_custom_formats
+            handler._json_response(200, get_custom_formats(svc_id))
         elif path == "/api/arr-webhooks":
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
         elif path == "/api/download-client-settings":
