@@ -376,11 +376,12 @@ class GetRequestHandler:
              "host": s.host, "port": s.port}
             for s in SERVICES
         ]
-        ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9876"))
+        ctrl_port = int(os.environ.get("BOOTSTRAP_API_PORT", os.environ.get("CONTROLLER_PORT", "9100")))
         svc_list.append({
             "id": "controller", "name": "Media Stack Controller",
             "desc": "Orchestration API and dashboard",
-            "category": "infrastructure", "host": "localhost", "port": ctrl_port,
+            "category": "infrastructure", "host": "media-stack-controller", "port": ctrl_port,
+            "health_path": "/healthz",
         })
         handler._json_response(200, svc_list)
 
