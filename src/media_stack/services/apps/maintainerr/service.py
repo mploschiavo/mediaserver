@@ -7,8 +7,9 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .rule_sync_service import (
 import logging
+
+from .rule_sync_service import (
     MaintainerrRuleSyncDependencies,
     MaintainerrRuleSyncService,
 )
