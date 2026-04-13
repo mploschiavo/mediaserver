@@ -58,7 +58,8 @@ class RestartAppsService:
                         if resp.status_code in (200, 401, 403):
                             info(f"App restart: {app_name} ready")
                             break
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     time.sleep(5)
 
@@ -85,7 +86,8 @@ class RestartAppsService:
             container.restart(timeout=15)
             info(f"App restart: {app_name} (Docker)")
             return
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             from kubernetes import client, config

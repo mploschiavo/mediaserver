@@ -358,7 +358,8 @@ class ControllerState:
                 if saved_level:
                     from media_stack.services.runtime_platform import set_log_level
                     set_log_level(saved_level)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
     def _persist_runtime_config(self) -> None:
@@ -369,7 +370,8 @@ class ControllerState:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(self.runtime_config))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     # --- serialization ---

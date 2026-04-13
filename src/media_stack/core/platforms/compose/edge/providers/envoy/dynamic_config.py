@@ -210,7 +210,8 @@ class EnvoyDynamicConfigService:
                     if svc and not svc.preserve_path_prefix:
                         needs_strip = True
                         strip_prefix = path_prefix  # propagate to fallback routes
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             if needs_strip and path_prefix != "/":

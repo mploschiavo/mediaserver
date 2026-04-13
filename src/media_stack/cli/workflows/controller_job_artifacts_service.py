@@ -34,5 +34,6 @@ class ControllerJobArtifactsService:
         for file_path in (artifacts.job_log_file, artifacts.job_config_file):
             try:
                 file_path.unlink(missing_ok=True)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass

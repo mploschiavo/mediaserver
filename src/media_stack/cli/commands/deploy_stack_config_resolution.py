@@ -188,7 +188,8 @@ class ConfigResolutionMixin:
             svcs = get_web_ui_services()
             if svcs:
                 return tuple(s.id for s in svcs)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ()
 
@@ -213,7 +214,8 @@ class ConfigResolutionMixin:
             svcs = get_preserve_path_prefix_services()
             if svcs:
                 return tuple(s.id for s in svcs)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ()
 
@@ -260,7 +262,8 @@ class ConfigResolutionMixin:
             raw_profile = routing.get("media_server_service_names")
             if isinstance(raw_profile, list) and raw_profile:
                 return tuple(str(s).strip().lower() for s in raw_profile if str(s).strip())
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         # 3. Derive from technology_bindings
         cfg = self._resolved_bootstrap_config()

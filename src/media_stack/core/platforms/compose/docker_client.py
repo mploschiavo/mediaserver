@@ -151,8 +151,9 @@ class DockerClient:
             return None
         try:
             container.reload()
-        except Exception:
+        except Exception as exc:
             # Best effort reload. Continue with last known attrs.
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         attrs = dict(getattr(container, "attrs", {}) or {})
         state = dict(attrs.get("State") or {})

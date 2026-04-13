@@ -83,7 +83,8 @@ class ApiKeysService:
             svc = SERVICE_MAP.get(app_name)
             if svc and svc.api_key_config:
                 rel_path = svc.api_key_config
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         candidate_paths = [root / rel_path for root in self.candidate_config_roots(config_root)]
@@ -112,7 +113,8 @@ class ApiKeysService:
                 key = read_api_key_from_file(app_name, config_root)
                 if key:
                     return key
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
             # Also try HTTP early (every 10s) — service may be up even
@@ -127,7 +129,8 @@ class ApiKeysService:
                         os.environ[env_name] = http_key
                         self.log(f"[OK] {app_name}: recovered API key via HTTP")
                         return http_key
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             # Also check alt config roots
@@ -173,7 +176,8 @@ class ApiKeysService:
                 os.environ[env_name] = http_key
                 self.log(f"[OK] {app_name}: recovered API key via HTTP")
                 return http_key
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         raise RuntimeError(

@@ -63,7 +63,8 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
                 "the same directory to fix."
             )
             return
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass  # Service not ready yet — skip validation
 
 
@@ -354,7 +355,8 @@ def _run_serve(args: argparse.Namespace) -> None:
                         pass
                     elif msg_type == "error":
                         error_msg = msg_data
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             if cancelled:

@@ -40,7 +40,8 @@ class JellyfinGpu:
             runtime = jf.attrs.get("HostConfig", {}).get("Runtime", "")
             if runtime == "nvidia":
                 result["jellyfin_has_gpu"] = True
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
@@ -56,7 +57,8 @@ class JellyfinGpu:
                 )
                 if m:
                     result["jellyfin_hw_type"] = m.group(1)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         return result

@@ -100,7 +100,8 @@ class LiveTvConfigEnrichmentService:
                     resolved = resolve_guide_url(code)
                     if resolved:
                         guide["path"] = resolved
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             path = guide.get("path", "")

@@ -102,7 +102,8 @@ class ApiKeyPreflightService:
                 if row and row[0]:
                     discovered["JELLYFIN_USER_ID"] = str(row[0]).strip()
                     info(f"API key discovered: JELLYFIN_USER_ID from jellyfin/data/jellyfin.db")
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         info(f"API key discovery: {len(discovered)} keys found")

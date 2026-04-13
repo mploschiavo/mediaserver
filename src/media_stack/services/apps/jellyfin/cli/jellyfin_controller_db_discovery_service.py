@@ -101,7 +101,8 @@ class JellyfinControllerDbDiscoveryService:
         finally:
             try:
                 os.remove(local_db)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
 

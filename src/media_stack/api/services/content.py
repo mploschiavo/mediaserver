@@ -61,7 +61,8 @@ class ContentService:
                     n, v = f.result()
                     if v:
                         versions[n] = v
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         result = {"versions": versions}
         cache.set("versions", result)
@@ -114,7 +115,8 @@ class ContentService:
                 try:
                     n, v = f.result()
                     stats[n] = v
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         result = {"stats": stats}
         cache.set("stats", result)
@@ -201,7 +203,8 @@ class ContentService:
                 try:
                     n, v = f.result()
                     history[n] = v
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"history": history}
 
@@ -255,7 +258,8 @@ class ContentService:
                 try:
                     n, v = f.result()
                     profiles[n] = v
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"profiles": profiles}
 
@@ -290,7 +294,8 @@ class ContentService:
                 try:
                     n, v = f.result()
                     lists[n] = v
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"lists": lists}
 
@@ -354,7 +359,8 @@ class ContentService:
                 try:
                     n, v = f.result()
                     recent[n] = v
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"recent": recent}
 
@@ -466,7 +472,8 @@ class ContentService:
                             "quality": str(r.get("quality", {}).get("quality", {}).get("name", "")) if isinstance(r.get("quality"), dict) else "",
                             "indexer": str(r.get("data", {}).get("indexer", "")) if isinstance(r.get("data"), dict) else "",
                         })
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Aggregate by day

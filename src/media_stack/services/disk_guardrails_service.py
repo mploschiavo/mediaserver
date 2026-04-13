@@ -203,5 +203,6 @@ class DiskGuardrailsService:
                     "[WARN] Disk guardrails: still above target after cleanup. "
                     "Consider stronger retention rules or larger storage."
                 )
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass

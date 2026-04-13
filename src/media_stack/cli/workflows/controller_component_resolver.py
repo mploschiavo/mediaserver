@@ -214,7 +214,8 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
                     ).strip().lower()
                     if platform:
                         break
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
     if not platform:
         return payload
@@ -239,7 +240,8 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
                             merged[key] = value
                     payload = dict(payload)
                     payload["adapter_hooks"] = merged
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             break
     return payload
@@ -371,9 +373,11 @@ def resolve_runner_phase_script(
                             result = str(phase_scripts.get(phase_key) or "").strip()
                             if result:
                                 return result
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
 
     # 2. Fall back to config.json runner_phase_scripts
@@ -652,7 +656,8 @@ def _resolve_scale_policy_lists(
                 s.id for s in get_scale_to_zero_services() if s.id in managed_apps
             )
             return managed_apps, scale_to_zero
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
 
     raise ConfigError(

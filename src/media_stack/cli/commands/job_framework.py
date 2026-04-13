@@ -207,7 +207,8 @@ def _record_history(result: dict[str, Any]) -> None:
         if len(existing) > _JOB_HISTORY_MAX:
             existing = existing[-_JOB_HISTORY_MAX:]
         path.write_text(json.dumps(existing))
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
 
 

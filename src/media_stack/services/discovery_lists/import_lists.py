@@ -243,7 +243,8 @@ class DiscoveryImportListService:
                         "metadata profiles",
                     )
                     break
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
             if selected_metadata_profile_id:
                 service.log(

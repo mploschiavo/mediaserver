@@ -41,7 +41,8 @@ class ControllerConfigLoader:
                             data = yaml.safe_load(f) or {}
                         if isinstance(data, dict):
                             defaults.update(data)
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                 break
 
@@ -66,7 +67,8 @@ class ControllerConfigLoader:
                         if svc_entry.get("top_level_config_key"):
                             if svc_id not in defaults:
                                 defaults[svc_id] = svc_defaults
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                 break
 
@@ -98,7 +100,8 @@ class ControllerConfigLoader:
                         ).strip().lower()
                         if platform:
                             break
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         if not platform:
@@ -121,7 +124,8 @@ class ControllerConfigLoader:
                         )
                         loaded = dict(loaded)
                         loaded["adapter_hooks"] = merged
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
                 break
         return loaded
@@ -170,7 +174,8 @@ class ControllerConfigLoader:
                             if value is not None:
                                 loaded[cfg_key] = value
                         break
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         # Merge platform-specific adapter hooks from YAML (e.g. adapter-hooks.k8s.yaml)

@@ -198,7 +198,8 @@ def _load_from_service_yamls() -> list[PluginManifest]:
                     capability_defaults=dict(plugin.get("capabilities") or plugin.get("capability_defaults") or {}),
                     source_path=yaml_file,
                 ))
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         break  # Use first directory found
     return manifests

@@ -313,6 +313,7 @@ def read_api_key_via_http(service_id: str) -> str:
         m = _re.search(r"apiKey['\"]?\s*[:=]\s*['\"]([a-f0-9A-F]+)['\"]", body)
         if m and m.group(1).strip():
             return m.group(1).strip()
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
     return ""

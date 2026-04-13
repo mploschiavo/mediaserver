@@ -425,7 +425,8 @@ class MaintainerrRuleTranslationService:
                         parsed = json.loads(rule_json)
                         if isinstance(parsed, dict):
                             clause_source = parsed
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         continue
 
             copied = json.loads(json.dumps(clause_source))

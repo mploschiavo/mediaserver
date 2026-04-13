@@ -85,7 +85,8 @@ class IpFilterService:
         for mirror in mirror_paths:
             try:
                 mirror.parent.mkdir(parents=True, exist_ok=True)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
         state_file = Path(state_path)
         state_file.parent.mkdir(parents=True, exist_ok=True)

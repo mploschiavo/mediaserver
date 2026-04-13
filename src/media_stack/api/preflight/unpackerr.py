@@ -106,7 +106,8 @@ class UnpackerrPreflightService:
             container = client.containers.get(container_name)
             container.restart(timeout=15)
             restarted = True
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         if not restarted:
             try:
@@ -124,7 +125,8 @@ class UnpackerrPreflightService:
                 for pod in pods.items:
                     v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
                 restarted = True
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if restarted:
             info(f"Unpackerr: restarted {container_name}")

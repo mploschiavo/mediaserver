@@ -83,7 +83,8 @@ class ComposeContainerRuntimeService:
             key = f"{container_port}/{protocol}"
             try:
                 port_value = int(host_port)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
             if host_ip:
                 out[key] = (host_ip, port_value)
@@ -233,7 +234,8 @@ class ComposeContainerRuntimeService:
         if "retries" in raw:
             try:
                 out["retries"] = int(raw.get("retries"))
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return out or None
 
@@ -265,7 +267,8 @@ class ComposeContainerRuntimeService:
                     host_ip, host_port = "0.0.0.0", value
                 try:
                     parsed_port = int(host_port)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
                 out.append((service_name, self._normalize_host_ip(host_ip), parsed_port, protocol))
         return out
@@ -356,7 +359,8 @@ class ComposeContainerRuntimeService:
             for file_name in files:
                 try:
                     total += int((base_path / file_name).stat().st_size)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
         return total
 

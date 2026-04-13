@@ -270,7 +270,8 @@ class ComposeBootstrapService:
             handle.close()
             try:
                 Path(handle.name).unlink()
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             raise
 
@@ -394,7 +395,8 @@ class ComposeBootstrapService:
                         ip = str(net_info.get("IPAddress", "")).strip()
                         if ip:
                             return f"http://{ip}:{port}"
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
             _time.sleep(1)
         return f"http://{container_name}:{port}"
@@ -426,7 +428,8 @@ class ComposeBootstrapService:
                 pass  # Container not ready yet.
             except RuntimeError:
                 raise
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             time.sleep(3)
 
@@ -558,7 +561,8 @@ class ComposeBootstrapService:
             if container is not None:
                 try:
                     container.stop(timeout=10)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
             logs = self._container_logs(container) if container is not None else ""
             raise RuntimeError(
@@ -569,5 +573,6 @@ class ComposeBootstrapService:
             self.docker.remove_container(container_name, force=True)
             try:
                 runtime_cfg_file.unlink()
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass

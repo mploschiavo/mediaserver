@@ -233,9 +233,11 @@ class RunBootstrapJobRunner:
                                 s = str(spec or "").strip()
                                 if k and s and ":" in s:
                                     out[k] = s
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         # 2. Fill gaps from config.json (backward compat)

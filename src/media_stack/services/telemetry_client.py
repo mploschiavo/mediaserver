@@ -68,7 +68,8 @@ class TelemetryClient:
         try:
             id_file.parent.mkdir(parents=True, exist_ok=True)
             id_file.write_text(cid)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return cid
 
@@ -89,12 +90,14 @@ class TelemetryClient:
             version_file = Path("/opt/media-stack/VERSION")
             if version_file.is_file():
                 info["version"] = version_file.read_text().strip()
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             with open("/proc/uptime") as f:
                 info["uptime_hours"] = round(float(f.read().split()[0]) / 3600, 1)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return info
 
@@ -156,12 +159,14 @@ class TelemetryClient:
                     io["rx_gb"] += rx
                     io["tx_gb"] += tx
                     io["containers"] += 1
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
             io["rx_gb"] = round(io["rx_gb"] / (1024**3), 2)
             io["tx_gb"] = round(io["tx_gb"] / (1024**3), 2)
             return io
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             with open("/proc/net/dev") as f:
@@ -176,7 +181,8 @@ class TelemetryClient:
                     io["tx_gb"] += int(parts[9])
             io["rx_gb"] = round(io["rx_gb"] / (1024**3), 2)
             io["tx_gb"] = round(io["tx_gb"] / (1024**3), 2)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return io
 
@@ -215,7 +221,8 @@ class TelemetryClient:
                 from media_stack.api.services.config import _load_profile_yaml
                 data, _ = _load_profile_yaml()
                 tc_id = data.get("technology_bindings", {}).get("torrent_client", "")
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             if tc_id:
                 client = docker.from_env()
@@ -226,7 +233,8 @@ class TelemetryClient:
                         media["torrent_rx_gb"] = round(sum(n.get("rx_bytes", 0) for n in nets.values()) / (1024**3), 2)
                         media["torrent_tx_gb"] = round(sum(n.get("tx_bytes", 0) for n in nets.values()) / (1024**3), 2)
                         break
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             from media_stack.api.services.content import get_downloads
@@ -251,7 +259,8 @@ class TelemetryClient:
                 existing = existing[-48:]
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(existing))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     def _drain_buffer(self, endpoint: str, api_key: str) -> int:
@@ -277,7 +286,8 @@ class TelemetryClient:
                 path.write_text(json.dumps(remaining))
             else:
                 path.unlink(missing_ok=True)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return sent
 
@@ -450,7 +460,8 @@ class TelemetryClient:
             while True:
                 try:
                     self.push_telemetry(log=log)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
                 _t.sleep(interval)
 

@@ -297,7 +297,8 @@ class QueryMixin:
                     namespace=namespace, label_selector=label_selector
                 )
                 pods = [p for p in (payload.items or []) if p.status and p.status.phase == "Running"]
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             if not pods:
                 return self._error_result(

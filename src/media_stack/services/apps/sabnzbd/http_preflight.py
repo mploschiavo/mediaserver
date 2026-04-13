@@ -42,7 +42,8 @@ class SabnzbdHttpPreflight:
             container = client.containers.get(container_name)
             container.restart(timeout=15)
             return
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             from kubernetes import client, config
