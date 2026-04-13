@@ -74,7 +74,10 @@ class RoutingConfigService:
             "app_path_prefix": str(routing.get("app_path_prefix", "/app")),
             "strategy": str(routing.get("strategy", "hybrid")),
             "internet_exposed": bool(routing.get("internet_exposed", False)),
-            "direct_hosts": dict(routing.get("direct_hosts") or {}),
+            "direct_hosts": {
+                k: str(v) for k, v in (routing.get("direct_hosts") or {}).items()
+                if isinstance(v, str) and v
+            },
         }
 
     def update_routing(self, updates: dict[str, Any], action_trigger: Callable | None = None) -> dict[str, Any]:
