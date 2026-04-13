@@ -131,7 +131,7 @@ class HealthService:
                         labels = p.metadata.labels or {}
                         names.add(labels.get("app", p.metadata.name))
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         else:
             try:
@@ -140,7 +140,7 @@ class HealthService:
                 for c in client.containers.list():
                     names.add(c.name)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return names
 
@@ -222,7 +222,7 @@ class HealthService:
                     name, result = future.result()
                     results[name] = result
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
         # Mark services that have no HTTP endpoint (port=0) as disabled so
@@ -315,7 +315,7 @@ class HealthService:
                 if exc.code in (401, 403):
                     pass  # Auth required — proceed
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         elif mode == "form" and api_key:
             # Arr apps expose authentication mode at /api/v{1,3}/system/status
@@ -331,7 +331,7 @@ class HealthService:
                             return "disabled"
                         break  # Got a valid response — stop trying API versions
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
     
         try:
@@ -397,7 +397,7 @@ class HealthService:
             try:
                 history = json.loads(_HEALTH_HISTORY_PATH.read_text())
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         history.extend(_HEALTH_HISTORY_BUFFER)
         _HEALTH_HISTORY_BUFFER.clear()
@@ -405,7 +405,7 @@ class HealthService:
         try:
             _HEALTH_HISTORY_PATH.write_text(json.dumps(history))
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
 

@@ -10,6 +10,7 @@ import os
 import urllib.request
 from pathlib import Path
 from typing import Any
+import logging
 
 
 class JellyfinAdminOps:
@@ -37,7 +38,7 @@ class JellyfinAdminOps:
                 if policy.get("IsAdministrator"):
                     return u.get("Id", "")
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ""
 
@@ -76,7 +77,7 @@ class JellyfinAdminOps:
                 urllib.request.urlopen(req, timeout=10)
                 return True, ""
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
         # Hard reset fallback (Jellyfin 10.9+)
@@ -140,7 +141,7 @@ class JellyfinAdminOps:
                     restart_msg = "Service restarted."
                     break
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
             else:
                 restart_msg = "Service restarting (health check pending)."

@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+import logging
 
 LogFn = Callable[[str], None]
 ToIntFn = Callable[[Any, Any], Any]
@@ -84,7 +85,7 @@ class ApiKeysService:
             if svc and svc.api_key_config:
                 rel_path = svc.api_key_config
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         candidate_paths = [root / rel_path for root in self.candidate_config_roots(config_root)]
@@ -114,7 +115,7 @@ class ApiKeysService:
                 if key:
                     return key
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
             # Also try HTTP early (every 10s) — service may be up even
@@ -130,7 +131,7 @@ class ApiKeysService:
                         self.log(f"[OK] {app_name}: recovered API key via HTTP")
                         return http_key
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             # Also check alt config roots
@@ -177,7 +178,7 @@ class ApiKeysService:
                 self.log(f"[OK] {app_name}: recovered API key via HTTP")
                 return http_key
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         raise RuntimeError(

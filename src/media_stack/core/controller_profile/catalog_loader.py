@@ -11,6 +11,7 @@ import yaml
 
 from media_stack.core.auth.provider_registry import merge_auth_provider_defaults
 from media_stack.core.controller_profile.normalizers import (
+import logging
     _as_bool_with_tokens,
     _coerce_url_list,
     _normalize_alias_dict,
@@ -66,7 +67,7 @@ class CatalogLoaderService:
                 if key not in existing_keys:
                     apps_section.setdefault("keys", []).append(key)
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
     
         deployment_aliases = _normalize_alias_dict(

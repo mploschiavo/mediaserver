@@ -21,6 +21,7 @@ from .services import ops as ops_svc
 
 if TYPE_CHECKING:
     from .server import ControllerAPIHandler
+import logging
 
 # ---------------------------------------------------------------------------
 # Dashboard / static assets
@@ -340,7 +341,7 @@ class GetRequestHandler:
                     "description": f"Gateway root ({gw_host})",
                 })
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9100"))
         servers.append({

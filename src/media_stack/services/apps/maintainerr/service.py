@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .rule_sync_service import (
+import logging
     MaintainerrRuleSyncDependencies,
     MaintainerrRuleSyncService,
 )
@@ -108,7 +109,7 @@ class MaintainerrService:
                     if api_idx > 0:
                         configured = hp[:api_idx]
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return self._join_url_base(base_url, configured)
 

@@ -11,6 +11,7 @@ from typing import Any
 from media_stack.services.plugin_manifest_loader import load_plugin_manifests
 from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 from media_stack.core.exceptions import ConfigError
+import logging
 
 
 def normalize_technology_token(value: Any) -> str:
@@ -215,7 +216,7 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
                     if platform:
                         break
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
     if not platform:
         return payload
@@ -241,7 +242,7 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
                     payload = dict(payload)
                     payload["adapter_hooks"] = merged
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             break
     return payload
@@ -374,10 +375,10 @@ def resolve_runner_phase_script(
                             if result:
                                 return result
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
 
     # 2. Fall back to config.json runner_phase_scripts
@@ -657,7 +658,7 @@ def _resolve_scale_policy_lists(
             )
             return managed_apps, scale_to_zero
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
 
     raise ConfigError(

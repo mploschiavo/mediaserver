@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 import media_stack.services.runtime_platform as runtime_platform
+import logging
 
 
 _NAME_TO_CODE = {
@@ -101,7 +102,7 @@ class LiveTvConfigEnrichmentService:
                     if resolved:
                         guide["path"] = resolved
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             path = guide.get("path", "")

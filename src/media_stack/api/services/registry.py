@@ -314,6 +314,6 @@ def read_api_key_via_http(service_id: str) -> str:
         if m and m.group(1).strip():
             return m.group(1).strip()
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
     return ""

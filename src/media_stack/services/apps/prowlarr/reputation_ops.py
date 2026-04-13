@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+import logging
 
 
 class ProwlarrReputationOps:
@@ -33,7 +34,7 @@ class ProwlarrReputationOps:
                 if isinstance(loaded, dict):
                     return loaded
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return {"schema": 1, "indexers": {}}
 

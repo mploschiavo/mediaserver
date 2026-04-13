@@ -9,6 +9,7 @@ from typing import Any
 
 from .. import _resolve as _resolve_mod
 from ._profile import ProfileService
+import logging
 
 
 class DiagnosticsService:
@@ -49,7 +50,7 @@ class DiagnosticsService:
                             node_ips.append(addr.address)
                             break
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return {
             "namespace": namespace, "profile_name": profile_name,
@@ -89,7 +90,7 @@ class DiagnosticsService:
                             if len(content) < 100_000:
                                 service_configs[cf] = content
                         except Exception as exc:
-                            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                             pass
         if service_configs:
             backup["service_configs"] = service_configs
@@ -136,7 +137,7 @@ class DiagnosticsService:
                 try:
                     pre_restore[rel_path] = existing.read_text(encoding="utf-8", errors="replace")
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         for rel_path, content in service_configs.items():
             if ".." in rel_path or rel_path.startswith("/"):
@@ -159,7 +160,7 @@ class DiagnosticsService:
                     (config_root / rel_path).write_text(content, encoding="utf-8")
                     rollback_ok += 1
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
             return {"status": "rolled_back", "errors": errors, "rollback_count": rollback_ok,
                     "note": "More errors than successes — rolled back to pre-restore state"}
@@ -220,7 +221,7 @@ class DiagnosticsService:
                 }
                 return {"type": "bootstrap-config", "file": config_path, "content": json.dumps(summary, indent=2)}
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         try:
             import docker
@@ -228,7 +229,7 @@ class DiagnosticsService:
             containers = [{"name": c.name, "image": c.image.tags[0] if c.image.tags else str(c.image.short_id), "status": c.status} for c in client.containers.list()]
             return {"type": "compose-runtime", "content": json.dumps(containers, indent=2), "note": "Compose file not mounted. Showing running containers."}
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return {"type": "unknown", "content": None, "error": "No manifest found. Mount compose file or use K8s."}
 
@@ -333,7 +334,7 @@ class DiagnosticsService:
                     profile = yaml.safe_load(f) or {}
                 profile_routing = profile.get("routing") or {}
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         live_routing = _routing.get_routing()
         for key in ("base_domain", "stack_subdomain", "gateway_host", "gateway_port", "strategy"):
@@ -368,7 +369,7 @@ class DiagnosticsService:
                                 "expected": "latest pulled image", "actual": f"running image created {created[:19]}",
                                 "note": "Container running older image than what's pulled"})
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         try:
             from ..health import probe_credentials
@@ -379,7 +380,7 @@ class DiagnosticsService:
                         "expected": "ok (valid login)", "actual": "fail (wrong password)",
                         "note": "Run Validate Credentials to auto-sync"})
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         ltv = _ltv.get_livetv_sources()
         if ltv.get("source") == "not_configured":

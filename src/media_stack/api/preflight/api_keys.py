@@ -11,6 +11,7 @@ from typing import Any
 
 from media_stack.api.services.admin import _KEY_READERS
 from media_stack.api.services.registry import SERVICES
+import logging
 
 
 class ApiKeyPreflightService:
@@ -103,7 +104,7 @@ class ApiKeyPreflightService:
                     discovered["JELLYFIN_USER_ID"] = str(row[0]).strip()
                     info(f"API key discovered: JELLYFIN_USER_ID from jellyfin/data/jellyfin.db")
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         info(f"API key discovery: {len(discovered)} keys found")

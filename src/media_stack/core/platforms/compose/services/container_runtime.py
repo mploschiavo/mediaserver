@@ -13,6 +13,7 @@ from typing import Any
 from media_stack.core.platforms.compose.docker_client import DockerClient, DockerContainerState
 from media_stack.core.platforms.compose.services.labels import ComposeLabelService
 from media_stack.core.platforms.compose.services.spec import ComposeSpecResolver, parse_duration_nanoseconds
+import logging
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,7 @@ class ComposeContainerRuntimeService:
             try:
                 port_value = int(host_port)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
             if host_ip:
                 out[key] = (host_ip, port_value)
@@ -235,7 +236,7 @@ class ComposeContainerRuntimeService:
             try:
                 out["retries"] = int(raw.get("retries"))
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return out or None
 
@@ -268,7 +269,7 @@ class ComposeContainerRuntimeService:
                 try:
                     parsed_port = int(host_port)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
                 out.append((service_name, self._normalize_host_ip(host_ip), parsed_port, protocol))
         return out
@@ -360,7 +361,7 @@ class ComposeContainerRuntimeService:
                 try:
                     total += int((base_path / file_name).stat().st_size)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
         return total
 

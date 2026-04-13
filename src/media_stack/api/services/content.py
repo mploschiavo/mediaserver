@@ -14,6 +14,7 @@ from typing import Any
 from media_stack.services.apps.download_clients.registry_helpers import DOWNLOAD_CLIENT_CATEGORIES
 from .health import discover_api_keys
 from .registry import SERVICE_MAP, SERVICES
+import logging
 
 
 
@@ -62,7 +63,7 @@ class ContentService:
                     if v:
                         versions[n] = v
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         result = {"versions": versions}
         cache.set("versions", result)
@@ -116,7 +117,7 @@ class ContentService:
                     n, v = f.result()
                     stats[n] = v
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         result = {"stats": stats}
         cache.set("stats", result)
@@ -204,7 +205,7 @@ class ContentService:
                     n, v = f.result()
                     history[n] = v
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"history": history}
 
@@ -259,7 +260,7 @@ class ContentService:
                     n, v = f.result()
                     profiles[n] = v
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"profiles": profiles}
 
@@ -295,7 +296,7 @@ class ContentService:
                     n, v = f.result()
                     lists[n] = v
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"lists": lists}
 
@@ -360,7 +361,7 @@ class ContentService:
                     n, v = f.result()
                     recent[n] = v
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return {"recent": recent}
 
@@ -473,7 +474,7 @@ class ContentService:
                             "indexer": str(r.get("data", {}).get("indexer", "")) if isinstance(r.get("data"), dict) else "",
                         })
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Aggregate by day

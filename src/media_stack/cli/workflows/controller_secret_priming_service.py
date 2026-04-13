@@ -11,6 +11,7 @@ from typing import Callable
 
 from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
+import logging
 
 LogFn = Callable[[str], None]
 
@@ -127,7 +128,7 @@ class ControllerSecretPrimingService:
                     if apps:
                         return apps
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # 2. Derive from per-service YAML registry (category=automation)
@@ -137,7 +138,7 @@ class ControllerSecretPrimingService:
             if apps:
                 return apps
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         raise ConfigError(

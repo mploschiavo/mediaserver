@@ -12,6 +12,7 @@ import time
 from typing import Any
 
 import requests
+import logging
 
 
 
@@ -59,7 +60,7 @@ class RestartAppsService:
                             info(f"App restart: {app_name} ready")
                             break
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     time.sleep(5)
 
@@ -87,7 +88,7 @@ class RestartAppsService:
             info(f"App restart: {app_name} (Docker)")
             return
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             from kubernetes import client, config

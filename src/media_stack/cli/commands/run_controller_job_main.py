@@ -62,6 +62,7 @@ from media_stack.cli.workflows.run_controller_job_cli_config_service import (
 
 
 from media_stack.cli.workflows.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
+import logging
 
 
 class RunBootstrapJobRunner:
@@ -234,10 +235,10 @@ class RunBootstrapJobRunner:
                                 if k and s and ":" in s:
                                     out[k] = s
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         # 2. Fill gaps from config.json (backward compat)

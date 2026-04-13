@@ -8,6 +8,7 @@ import signal
 import socket
 import subprocess
 from typing import Any
+import logging
 
 
 def choose_kubectl() -> list[str]:
@@ -96,7 +97,7 @@ class PortForward:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             try:
                 self.proc.wait(timeout=5)
@@ -104,7 +105,7 @@ class PortForward:
                 try:
                     os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
     def ensure_alive(self) -> None:
@@ -114,12 +115,12 @@ class PortForward:
             try:
                 out = self.proc.stdout.read() if self.proc.stdout else ""
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             try:
                 err = self.proc.stderr.read() if self.proc.stderr else ""
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             raise RuntimeError(
                 f"kubectl port-forward exited early (code={self.proc.returncode}). stdout={out} stderr={err}"

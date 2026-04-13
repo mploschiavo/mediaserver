@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._profile import ProfileService
+import logging
 
 
 class DownloadConfigService:
@@ -22,7 +23,7 @@ class DownloadConfigService:
                 if isinstance(caps, dict) and caps.get("torrent_client"):
                     return svc.id
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ""
 

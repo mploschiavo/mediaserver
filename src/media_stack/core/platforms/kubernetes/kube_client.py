@@ -126,7 +126,7 @@ class KubernetesClient(ManifestsMixin, QueryMixin, WorkloadsMixin):
 
                     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
         api_client = k8s_client.ApiClient(configuration=configuration)

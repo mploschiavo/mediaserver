@@ -19,6 +19,7 @@ from media_stack.cli.commands.controller_handlers import (
     _resolve_config_path,
 )
 from media_stack.cli.commands.controller_profile import (
+import logging
     _apply_profile_env,
 )
 
@@ -64,7 +65,7 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
             )
             return
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass  # Service not ready yet — skip validation
 
 
@@ -356,7 +357,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                     elif msg_type == "error":
                         error_msg = msg_data
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             if cancelled:

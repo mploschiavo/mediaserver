@@ -21,6 +21,7 @@ from typing import Any, Callable
 import yaml
 
 import media_stack.services.runtime_platform as runtime_platform
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ def _record_history(result: dict[str, Any]) -> None:
             existing = existing[-_JOB_HISTORY_MAX:]
         path.write_text(json.dumps(existing))
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
 
 

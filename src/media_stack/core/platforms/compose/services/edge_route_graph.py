@@ -11,6 +11,7 @@ from typing import Any
 
 from media_stack.core.platforms.compose.services.labels import ComposeLabelService
 from media_stack.core.platforms.compose.services.spec import ComposeSpecResolver
+import logging
 
 _TOKEN_RENAMES = {
     "certresolver": "certResolver",
@@ -181,7 +182,7 @@ class ComposeEdgeRouteGraphService:
                     try:
                         service_ports[logical_service_name] = int(raw_port)
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         continue
                 raw_scheme = str(fields.get("loadbalancer.server.scheme") or "").strip().lower()
                 if raw_scheme:

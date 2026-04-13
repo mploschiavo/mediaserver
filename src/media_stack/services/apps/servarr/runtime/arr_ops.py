@@ -12,6 +12,7 @@ from media_stack.services.runtime_platform import (
 )
 
 from .factory import (
+import logging
     _arr_service,
     _auth_service,
     _health_service,
@@ -102,7 +103,7 @@ class ServarrArrOps:
                 )
                 break
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
         if metadata_id is None:

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .enums import RunnerEvent
+import logging
 
 DEFAULT_PLUGIN_MANIFESTS_DIR = (
     Path(__file__).resolve().parents[1] / "contracts" / "plugins"
@@ -199,7 +200,7 @@ def _load_from_service_yamls() -> list[PluginManifest]:
                     source_path=yaml_file,
                 ))
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         break  # Use first directory found
     return manifests

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 import yaml
+import logging
 
 
 class DefaultsService:
@@ -36,7 +37,7 @@ class DefaultsService:
                     if registry and name:
                         return f"{registry}/{name}:{tag}"
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return "harbor.iomio.io/library/media-stack-controller:latest"
 

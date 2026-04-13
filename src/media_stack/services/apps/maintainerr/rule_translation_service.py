@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+import logging
 
 LogFn = Callable[[str], None]
 RequestFn = Callable[..., tuple[int, Any, str]]
@@ -426,7 +427,7 @@ class MaintainerrRuleTranslationService:
                         if isinstance(parsed, dict):
                             clause_source = parsed
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         continue
 
             copied = json.loads(json.dumps(clause_source))

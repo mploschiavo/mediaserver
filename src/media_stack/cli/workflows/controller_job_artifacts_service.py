@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+import logging
 
 
 @dataclass(frozen=True)
@@ -35,5 +36,5 @@ class ControllerJobArtifactsService:
             try:
                 file_path.unlink(missing_ok=True)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass

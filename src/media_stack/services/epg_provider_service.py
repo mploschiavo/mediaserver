@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+import logging
 
 
 class EpgProviderService:
@@ -75,7 +76,7 @@ class EpgProviderService:
                 self._health_cache = json.loads(path.read_text())
                 return self._health_cache
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         self._health_cache = {}
         return self._health_cache
@@ -87,7 +88,7 @@ class EpgProviderService:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(cache, indent=2))
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     @staticmethod

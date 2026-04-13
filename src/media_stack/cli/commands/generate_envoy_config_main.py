@@ -29,6 +29,7 @@ import json
 import os
 import sys
 from pathlib import Path
+import logging
 
 
 
@@ -106,7 +107,7 @@ class GenerateEnvoyConfigCommand:
                 from media_stack.api.services.registry import get_preserve_path_prefix_services
                 preserve_names = tuple(s.id for s in get_preserve_path_prefix_services())
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         media_server_names = _csv(os.environ.get("MEDIA_SERVER_SERVICES", ""))
@@ -134,7 +135,7 @@ class GenerateEnvoyConfigCommand:
                 from media_stack.api.services.registry import get_web_ui_services
                 redirect_names = tuple(s.id for s in get_web_ui_services())
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Load compose label specs from provider builtins, overlay config.json if present
@@ -245,7 +246,7 @@ class GenerateEnvoyConfigCommand:
                     addr = listeners[0].get("address", {}).get("socket_address", {})
                     addr["port_value"] = listener_port
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Write output.

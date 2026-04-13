@@ -10,6 +10,7 @@ from typing import Any
 
 from media_stack.api.services._resolve import resolve_config_path
 from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
+import logging
 
 
 class DiskService:
@@ -44,7 +45,7 @@ class DiskService:
                                 if len(parts) >= 3 and parts[1] == str(path) or str(path).startswith(parts[1] + "/"):
                                     fstype = parts[2]
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     entry: dict[str, Any] = {
                         "path": str(path),
@@ -191,7 +192,7 @@ class DiskService:
                 },
             }
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return guardrails
 

@@ -15,6 +15,7 @@ from ..apps.servarr.config_models_discovery import (
 )
 from .common import coerce_for_example
 import importlib as _importlib
+import logging
 
 
 class DiscoveryImportListService:
@@ -244,7 +245,7 @@ class DiscoveryImportListService:
                     )
                     break
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
             if selected_metadata_profile_id:
                 service.log(

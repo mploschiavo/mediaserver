@@ -6,6 +6,7 @@ import io
 import re
 from typing import Any, Callable
 from xml.sax.saxutils import escape
+import logging
 
 
 class JellyfinLiveTvSourceOps:
@@ -120,7 +121,7 @@ class JellyfinLiveTvSourceOps:
             try:
                 m3u_text = read_text_from_source(source_url, config_root, 90)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
             for line in m3u_text.splitlines():

@@ -1,6 +1,7 @@
 """Helpers to resolve deploy/bootstrap hook config from bootstrap JSON."""
 
 from __future__ import annotations
+import logging
 
 
 class DeployHookConfigResolverService:
@@ -205,10 +206,10 @@ class DeployHookConfigResolverService:
                             handlers.append(spec)
                             seen.add(spec)
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         raw = bootstrap_job_cfg.get("compose_preflight_handlers")
         if isinstance(raw, list):

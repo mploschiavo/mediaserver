@@ -6,6 +6,7 @@ from typing import Any
 import yaml
 
 from ._profile import ProfileService
+import logging
 
 
 class LibraryConfigService:
@@ -34,7 +35,7 @@ class LibraryConfigService:
                 svc_cfg = yaml.safe_load(svc_yaml.read_text()) or {}
                 libs = svc_cfg.get("defaults", {}).get("libraries", {}).get("libraries", [])
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return {"libraries": libs, "source": "defaults" if libs else "not_configured", "media_server": ms_id}
 

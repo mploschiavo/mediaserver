@@ -12,6 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+import logging
 
 
 class QbittorrentAdminOps:
@@ -35,7 +36,7 @@ class QbittorrentAdminOps:
             if match:
                 passwords_to_try.insert(1, match.group(1))
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         for try_pw in passwords_to_try:
@@ -67,7 +68,7 @@ class QbittorrentAdminOps:
                 opener.open(req2, timeout=5)
                 return True, ""
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
         return False, "login failed with all known passwords"
