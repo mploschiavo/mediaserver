@@ -18,8 +18,9 @@ from media_stack.cli.commands.controller_dispatch import (
 from media_stack.cli.commands.controller_handlers import (
     _resolve_config_path,
 )
-from media_stack.cli.commands.controller_profile import (
 import logging
+
+from media_stack.cli.commands.controller_profile import (
     _apply_profile_env,
 )
 

@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib import request
 
-from .livetv_source_ops import (
 import logging
+
+from .livetv_source_ops import (
     collect_tuner_channel_metadata,
     enrich_xmltv_programmes,
     transform_m3u_for_guide,

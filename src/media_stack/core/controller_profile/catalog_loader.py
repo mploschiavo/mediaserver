@@ -10,8 +10,9 @@ from typing import Any
 import yaml
 
 from media_stack.core.auth.provider_registry import merge_auth_provider_defaults
-from media_stack.core.controller_profile.normalizers import (
 import logging
+
+from media_stack.core.controller_profile.normalizers import (
     _as_bool_with_tokens,
     _coerce_url_list,
     _normalize_alias_dict,
