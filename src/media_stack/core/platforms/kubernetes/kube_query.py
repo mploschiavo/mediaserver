@@ -18,6 +18,7 @@ from media_stack.core.platforms.kubernetes.kube_helpers import (
     _render_custom_columns,
 )
 from media_stack.core.subprocess_utils import CommandResult
+import logging
 
 
 class QueryMixin:
@@ -298,7 +299,7 @@ class QueryMixin:
                 )
                 pods = [p for p in (payload.items or []) if p.status and p.status.phase == "Running"]
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             if not pods:
                 return self._error_result(

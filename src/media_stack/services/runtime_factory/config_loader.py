@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..top_level_config_model import TopLevelBootstrapConfig
 from .models import DeepMergeFn
+import logging
 
 
 class ControllerConfigLoader:
@@ -42,7 +43,7 @@ class ControllerConfigLoader:
                         if isinstance(data, dict):
                             defaults.update(data)
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                 break
 
@@ -68,7 +69,7 @@ class ControllerConfigLoader:
                             if svc_id not in defaults:
                                 defaults[svc_id] = svc_defaults
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                 break
 
@@ -101,7 +102,7 @@ class ControllerConfigLoader:
                         if platform:
                             break
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         if not platform:
@@ -125,7 +126,7 @@ class ControllerConfigLoader:
                         loaded = dict(loaded)
                         loaded["adapter_hooks"] = merged
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
                 break
         return loaded
@@ -175,7 +176,7 @@ class ControllerConfigLoader:
                                 loaded[cfg_key] = value
                         break
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         # Merge platform-specific adapter hooks from YAML (e.g. adapter-hooks.k8s.yaml)

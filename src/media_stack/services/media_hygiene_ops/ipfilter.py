@@ -11,6 +11,7 @@ from typing import Any
 from urllib import request
 
 from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
+import logging
 
 
 
@@ -86,7 +87,7 @@ class IpFilterService:
             try:
                 mirror.parent.mkdir(parents=True, exist_ok=True)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
         state_file = Path(state_path)
         state_file.parent.mkdir(parents=True, exist_ok=True)

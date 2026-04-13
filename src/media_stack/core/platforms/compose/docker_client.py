@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from media_stack.core.exceptions import ConfigError, DockerError
+import logging
 
 
 def _is_not_found(exc: Exception) -> bool:
@@ -153,7 +154,7 @@ class DockerClient:
             container.reload()
         except Exception as exc:
             # Best effort reload. Continue with last known attrs.
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         attrs = dict(getattr(container, "attrs", {}) or {})
         state = dict(attrs.get("State") or {})

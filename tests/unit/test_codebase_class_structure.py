@@ -24,20 +24,20 @@ SRC = ROOT / "src" / "media_stack"
 # ---------------------------------------------------------------------------
 # Structure ratchets (can only go DOWN)
 MODULES_WITHOUT_CLASS_RATCHET = 0
-LOOSE_FUNCTIONS_RATCHET = 70
+LOOSE_FUNCTIONS_RATCHET = 69
 
 # DI migration ratchets
-STATIC_METHOD_RATCHET = 415       # @staticmethod — should be instance methods with DI
+STATIC_METHOD_RATCHET = 400       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 135  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 375  # os.environ in methods — should be config injection
+OS_ENVIRON_IN_METHODS_RATCHET = 357  # os.environ in methods — should be config injection
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 225       # long methods — extract sub-methods
-DEEPLY_NESTED_4PLUS_RATCHET = 148         # 4+ nesting levels — use early returns
-GOD_CLASSES_OVER_500_LINES_RATCHET = 7    # classes doing too much — split
-CLASSES_OVER_15_METHODS_RATCHET = 23      # too many responsibilities
-CIRCULAR_IMPORT_RISK_RATCHET = 141        # lazy imports in methods — poor layering
-NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
+METHODS_OVER_50_LINES_RATCHET = 219       # long methods — extract sub-methods
+DEEPLY_NESTED_4PLUS_RATCHET = 145         # 4+ nesting levels — use early returns
+GOD_CLASSES_OVER_500_LINES_RATCHET = 6    # classes doing too much — split
+CLASSES_OVER_15_METHODS_RATCHET = 21      # too many responsibilities
+CIRCULAR_IMPORT_RISK_RATCHET = 132        # lazy imports in methods — poor layering
+NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 167  # public API without type hints
 
 # Hygiene ratchets
 SWALLOWED_EXCEPTIONS_RATCHET = 0    # except Exception: pass — all now log at DEBUG
@@ -45,7 +45,7 @@ PRINT_STATEMENTS_RATCHET = 232      # should use logging/runtime_platform.log
 FILES_OVER_400_LINES_RATCHET = 44   # large files — split into modules
 HARDCODED_URLS_RATCHET = 158        # URLs should come from contracts/config
 DUPLICATE_STRINGS_5PLUS_RATCHET = 80  # extract to constants or config
-MAGIC_NUMBERS_OVER_100_RATCHET = 832  # extract to named constants
+MAGIC_NUMBERS_OVER_100_RATCHET = 804  # extract to named constants
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

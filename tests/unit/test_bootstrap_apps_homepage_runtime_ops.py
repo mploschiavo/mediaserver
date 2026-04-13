@@ -14,7 +14,7 @@ class HomepageRuntimeOpsTests(unittest.TestCase):
         service = mock.Mock()
         service.ensure_services_config.return_value = True
 
-        with mock.patch.object(MODULE, "_homepage_service", return_value=service):
+        with mock.patch.object(MODULE._instance, "_homepage_service", return_value=service):
             with mock.patch.object(
                 MODULE,
                 "http_request",
@@ -33,7 +33,7 @@ class HomepageRuntimeOpsTests(unittest.TestCase):
         service = mock.Mock()
         service.ensure_services_config.return_value = False
 
-        with mock.patch.object(MODULE, "_homepage_service", return_value=service):
+        with mock.patch.object(MODULE._instance, "_homepage_service", return_value=service):
             with mock.patch.object(MODULE, "http_request") as request_mock:
                 changed = MODULE.ensure_homepage_services_config(
                     {"homepage": {"url": "http://homepage:3000"}},

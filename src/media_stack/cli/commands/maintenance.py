@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from media_stack.api.services.registry import SERVICES
+import logging
 
 
 
@@ -40,7 +41,7 @@ class MaintenanceService:
                     text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
                     snapshot[f"{app}/{rel}"] = text
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
         ts = time.strftime("%Y%m%dT%H%M%S")
@@ -75,7 +76,7 @@ class MaintenanceService:
                         pruned += 1
                         log(f"[INFO] Pruned stale XMLTV guide: {old.name} ({sz // 1048576}MB)")
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         # Media server log directories.
@@ -88,7 +89,7 @@ class MaintenanceService:
                         old.unlink()
                         pruned += 1
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         # Arr services (XML config format) store logs in <id>/logs/.
@@ -103,7 +104,7 @@ class MaintenanceService:
                         old.unlink()
                         pruned += 1
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
 
         if pruned:

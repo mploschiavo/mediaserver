@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
 from media_stack.cli.workflows.cli_common import kube_cmd, run_command
+import logging
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,7 @@ def _pod_readiness_summary(pods_table: str) -> tuple[int, int]:
                 if int(ready) != int(total):
                     not_ready += 1
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if status in {"CrashLoopBackOff", "Error", "ImagePullBackOff", "RunContainerError"}:
             unhealthy += 1
@@ -120,7 +121,7 @@ def _deployment_pending_summary(deploy_table: str) -> int:
             if ready != desired:
                 pending += 1
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             continue
     return pending
 

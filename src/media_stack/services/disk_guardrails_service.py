@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
+import logging
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -204,5 +205,5 @@ class DiskGuardrailsService:
                     "Consider stronger retention rules or larger storage."
                 )
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass

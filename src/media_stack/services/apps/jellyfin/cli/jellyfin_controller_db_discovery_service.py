@@ -6,6 +6,7 @@ import tempfile
 from typing import Callable
 
 from .jellyfin_controller_kube_service import run_cmd
+import logging
 
 
 class JellyfinControllerDbDiscoveryService:
@@ -102,7 +103,7 @@ class JellyfinControllerDbDiscoveryService:
             try:
                 os.remove(local_db)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
 

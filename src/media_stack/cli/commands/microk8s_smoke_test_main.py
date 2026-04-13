@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
 from media_stack.cli.workflows.cli_common import kube_cmd, run_command
+import logging
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,7 @@ def _first_host_ip() -> str:
             if value and not value.startswith("127."):
                 return value
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
     return ""
 

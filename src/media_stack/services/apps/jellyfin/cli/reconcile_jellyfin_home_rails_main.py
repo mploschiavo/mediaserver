@@ -18,6 +18,7 @@ from urllib import error, request
 from media_stack.cli.workflows.cli_common import repo_root_from_script_file
 
 from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
+import logging
 
 
 class ReconcileJellyfinHomeRailsMain:
@@ -176,7 +177,7 @@ class ReconcileJellyfinHomeRailsMain:
                     ]:
                         print(line, file=sys.stderr)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
                 return 1
 
@@ -212,7 +213,7 @@ class ReconcileJellyfinHomeRailsMain:
             try:
                 pf_log_path.unlink(missing_ok=True)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         if args.force_enable:

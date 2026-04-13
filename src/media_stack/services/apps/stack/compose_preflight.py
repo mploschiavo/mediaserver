@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
+import logging
 
 InfoFn = Callable[[str], None]
 
@@ -72,7 +73,7 @@ class StackComposePreflight:
             raw_client.images.pull(helper_image)
         except Exception as exc:
             # Continue when the helper image is already present/offline.
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             raw_client.containers.run(
@@ -104,7 +105,7 @@ class StackComposePreflight:
                 directory.chmod(mode)
             except Exception as exc:
                 # Keep preflight non-fatal when chmod is restricted by host FS policy.
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return total, created
 
@@ -129,7 +130,7 @@ class StackComposePreflight:
             try:
                 directory.chmod(0o775)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
             try:

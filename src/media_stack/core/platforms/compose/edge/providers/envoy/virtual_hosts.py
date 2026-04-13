@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 from media_stack.core.platforms.compose.edge.providers.envoy.helpers import _virtual_host_name
+import logging
 
 
 
@@ -51,7 +52,7 @@ class EnvoyVirtualHostService:
                         extras.append(mid_alias)
                         extras.append(f"{mid_alias}:*")
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return extras
     

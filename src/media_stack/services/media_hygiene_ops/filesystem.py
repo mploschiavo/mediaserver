@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+import logging
 
 
 
@@ -90,7 +91,7 @@ class FilesystemHygieneService:
             except FileNotFoundError:
                 continue
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
     
             age_hours = max(0.0, (now_ts - float(st.st_mtime)) / 3600.0)
@@ -101,7 +102,7 @@ class FilesystemHygieneService:
                         file_path.unlink()
                         removed_zero += 1
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     continue
                 if suffix in temp_extensions:
@@ -109,7 +110,7 @@ class FilesystemHygieneService:
                         file_path.unlink()
                         removed_temp += 1
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     continue
     
@@ -137,7 +138,7 @@ class FilesystemHygieneService:
                         deletions_left -= 1
                         ops.log(f"[OK] Media hygiene: removed duplicate file {dup_path}")
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         continue
     
         if remove_empty_dirs:
@@ -156,7 +157,7 @@ class FilesystemHygieneService:
                         p.rmdir()
                         removed_empty += 1
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         continue
     
         summary = {

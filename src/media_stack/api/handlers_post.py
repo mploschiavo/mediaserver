@@ -503,7 +503,7 @@ class PostRequestHandler:
             for job in discover_jobs_from_contracts():
                 actions.add(job["name"])
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return frozenset(actions)
 

@@ -26,6 +26,7 @@ from media_stack.cli.workflows import deploy_hook_config_resolver
 
 if TYPE_CHECKING:
     from media_stack.cli.workflows.deploy_cli_config_service import DeployStackConfig
+import logging
 
 
 class ConfigResolutionMixin:
@@ -189,7 +190,7 @@ class ConfigResolutionMixin:
             if svcs:
                 return tuple(s.id for s in svcs)
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ()
 
@@ -215,7 +216,7 @@ class ConfigResolutionMixin:
             if svcs:
                 return tuple(s.id for s in svcs)
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ()
 
@@ -263,7 +264,7 @@ class ConfigResolutionMixin:
             if isinstance(raw_profile, list) and raw_profile:
                 return tuple(str(s).strip().lower() for s in raw_profile if str(s).strip())
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         # 3. Derive from technology_bindings
         cfg = self._resolved_bootstrap_config()

@@ -10,6 +10,7 @@ import yaml
 from .. import _resolve as _resolve_mod
 from ._profile import ProfileService
 from ._livetv import APP_CONFIG_SECTIONS, STRIPPED_FROM_PROFILE
+import logging
 
 
 class RoutingConfigService:
@@ -54,7 +55,7 @@ class RoutingConfigService:
                     profile = yaml.safe_load(f) or {}
                 routing = dict(profile.get("routing") or {})
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
         overrides_path = config_root / ".controller" / "routing-overrides.yaml"
@@ -63,7 +64,7 @@ class RoutingConfigService:
                 overrides = yaml.safe_load(overrides_path.read_text(encoding="utf-8")) or {}
                 routing.update(overrides.get("routing") or {})
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return {
             "base_domain": str(routing.get("base_domain", "local")),

@@ -42,6 +42,7 @@ from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts impor
 )
 from media_stack.core.platforms.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
 from media_stack.core.platforms.compose.services.spec import ComposeSpecResolver
+import logging
 
 _DEFAULT_TEMPLATE_RELATIVE_PATH = Path("config/defaults/compose/envoy.runtime.base.yaml")
 _PRIMARY_ROUTE_RANK_BASE = 3000
@@ -211,7 +212,7 @@ class EnvoyDynamicConfigService:
                         needs_strip = True
                         strip_prefix = path_prefix  # propagate to fallback routes
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
             if needs_strip and path_prefix != "/":

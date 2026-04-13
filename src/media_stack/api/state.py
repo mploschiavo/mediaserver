@@ -8,6 +8,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
+import logging
 
 
 class ActionStatus(str, enum.Enum):
@@ -359,7 +360,7 @@ class ControllerState:
                     from media_stack.services.runtime_platform import set_log_level
                     set_log_level(saved_level)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
     def _persist_runtime_config(self) -> None:
@@ -371,7 +372,7 @@ class ControllerState:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(self.runtime_config))
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     # --- serialization ---

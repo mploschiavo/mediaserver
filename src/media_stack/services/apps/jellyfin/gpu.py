@@ -11,6 +11,7 @@ import re
 import time
 from pathlib import Path
 from typing import Any
+import logging
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +42,7 @@ class JellyfinGpu:
             if runtime == "nvidia":
                 result["jellyfin_has_gpu"] = True
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
@@ -58,7 +59,7 @@ class JellyfinGpu:
                 if m:
                     result["jellyfin_hw_type"] = m.group(1)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         return result

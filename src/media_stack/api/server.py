@@ -60,7 +60,7 @@ def _build_action_priority() -> dict[str, int]:
             base = _PHASE_BASE.get(job["phase"], 55)
             priorities.setdefault(job["name"], base + job.get("priority", 50) // 10)
     except Exception as exc:
-        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
     return priorities
 
@@ -144,7 +144,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 if provided_user == username and provided_pass == password:
                     return True
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         self.send_response(401)
         self.send_header("WWW-Authenticate", 'Basic realm="Media Stack Controller"')

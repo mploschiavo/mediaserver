@@ -10,6 +10,7 @@ from typing import Any, Callable
 from urllib import request
 
 from .livetv_source_ops import (
+import logging
     collect_tuner_channel_metadata,
     enrich_xmltv_programmes,
     transform_m3u_for_guide,
@@ -46,7 +47,7 @@ class JellyfinLiveTvSourceService:
                 try:
                     payload = _gzip.decompress(payload)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass  # Not actually gzipped, use raw bytes
             return payload.decode("utf-8", errors="replace")
 

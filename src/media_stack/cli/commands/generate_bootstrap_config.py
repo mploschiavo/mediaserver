@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import logging
 
 
 class GenerateBootstrapConfigCommand:
@@ -51,7 +52,7 @@ class GenerateBootstrapConfigCommand:
                 schema = json.loads(schema_path.read_text())
                 allowed_keys = set(schema.get("allowed_keys", schema.get("properties", {})).keys())
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if svc_dir.is_dir():
             for svc_yaml in sorted(svc_dir.glob("*.yaml")):
@@ -83,7 +84,7 @@ class GenerateBootstrapConfigCommand:
                     else:
                         config[svc_id] = defaults
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
         # 3. Load operation plans AND event handlers as adapter_hooks
@@ -96,7 +97,7 @@ class GenerateBootstrapConfigCommand:
                 if isinstance(plan_data, dict):
                     adapter_hooks.update(plan_data)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         # Event handlers + runner_phase_scripts from service contracts
         runner_phase_scripts: dict[str, str] = {}
@@ -121,7 +122,7 @@ class GenerateBootstrapConfigCommand:
                     if isinstance(phase_scripts, dict):
                         runner_phase_scripts.update(phase_scripts)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         if runner_phase_scripts:
             adapter_hooks["runner_phase_scripts"] = runner_phase_scripts
@@ -134,7 +135,7 @@ class GenerateBootstrapConfigCommand:
             try:
                 config["app_capability_defaults"] = json.loads(defaults_json.read_text())
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # 5. Write output

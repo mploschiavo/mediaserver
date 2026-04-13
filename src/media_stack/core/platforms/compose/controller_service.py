@@ -15,6 +15,7 @@ from typing import Any, Callable
 from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 
 from media_stack.core.platforms.compose.docker_client import DockerClient
+import logging
 
 InfoFn = Callable[[str], None]
 
@@ -271,7 +272,7 @@ class ComposeBootstrapService:
             try:
                 Path(handle.name).unlink()
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             raise
 
@@ -396,7 +397,7 @@ class ComposeBootstrapService:
                         if ip:
                             return f"http://{ip}:{port}"
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
             _time.sleep(1)
         return f"http://{container_name}:{port}"
@@ -429,7 +430,7 @@ class ComposeBootstrapService:
             except RuntimeError:
                 raise
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             time.sleep(3)
 
@@ -562,7 +563,7 @@ class ComposeBootstrapService:
                 try:
                     container.stop(timeout=10)
                 except Exception as exc:
-                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
             logs = self._container_logs(container) if container is not None else ""
             raise RuntimeError(
@@ -574,5 +575,5 @@ class ComposeBootstrapService:
             try:
                 runtime_cfg_file.unlink()
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass

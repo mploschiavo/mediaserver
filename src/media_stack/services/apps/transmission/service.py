@@ -9,6 +9,7 @@ from typing import Any, Callable
 from urllib import error, request
 
 from media_stack.services.apps.download_clients.config_models import DownloadClientConfig
+import logging
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
@@ -64,7 +65,7 @@ class TransmissionService:
             try:
                 args["seedRatioLimit"] = float(preferences.get("max_ratio"))
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if "max_seeding_time_enabled" in preferences:
             args["seedIdleLimited"] = bool(preferences.get("max_seeding_time_enabled"))

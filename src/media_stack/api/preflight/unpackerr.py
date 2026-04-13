@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import logging
 
 
 class UnpackerrPreflightService:
@@ -107,7 +108,7 @@ class UnpackerrPreflightService:
             container.restart(timeout=15)
             restarted = True
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         if not restarted:
             try:
@@ -126,7 +127,7 @@ class UnpackerrPreflightService:
                     v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
                 restarted = True
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if restarted:
             info(f"Unpackerr: restarted {container_name}")

@@ -12,6 +12,7 @@ from .cli.jellyfin_controller_api_key_service import (
     validate_api_key,
 )
 from .cli.jellyfin_controller_auth_service import JellyfinBootstrapAuthService
+import logging
 
 InfoFn = Callable[[str], None]
 
@@ -87,7 +88,7 @@ class JellyfinComposePreflight:
                 reload_fn()
         except Exception as exc:
             # Best effort only; continue with last-known attrs.
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         attrs = dict(getattr(container, "attrs", {}) or {})
         network_settings = attrs.get("NetworkSettings")

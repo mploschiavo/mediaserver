@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import logging
 
 
 _ARR_APPS = {
@@ -107,7 +108,7 @@ class ServarrHttpPreflight:
                             info(f"ARR preflight: {app_name} ready")
                             break
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     time.sleep(5)
         else:
@@ -128,7 +129,7 @@ class ServarrHttpPreflight:
                 log(f"ARR preflight: restarted {app_name} (Docker)")
             return
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             import os

@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 from xml.sax.saxutils import escape as xml_escape
+import logging
 
 
 LogFn = Callable[[str], None]
@@ -63,7 +64,7 @@ class EpgMergeService:
             try:
                 payload = gzip.decompress(payload)
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return payload.decode("utf-8", errors="replace")
 
@@ -82,7 +83,7 @@ class EpgMergeService:
                 if time.time() - meta.get("ts", 0) < _CACHE_TTL_SECONDS:
                     return cache_file.read_text(encoding="utf-8", errors="replace")
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Download
@@ -93,7 +94,7 @@ class EpgMergeService:
             cache_file.write_text(xml_text, encoding="utf-8")
             meta_file.write_text(json.dumps({"ts": time.time(), "url": url, "size": len(xml_text)}))
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         return xml_text

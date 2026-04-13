@@ -8,6 +8,7 @@ import json
 import os
 
 import media_stack.services.runtime_platform as runtime_platform
+import logging
 
 
 def _resolve_config_path(candidate: str | None = None) -> str | None:
@@ -59,10 +60,10 @@ def _load_handler_specs(key: str) -> list[dict]:
                                 specs.append(handler)
                                 seen_names.add(name)
                     except Exception as exc:
-                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     # 2. Load from config.json (backward compat, fills gaps)
@@ -76,7 +77,7 @@ def _load_handler_specs(key: str) -> list[dict]:
                     specs.append(spec)
                     seen_names.add(name)
         except Exception as exc:
-            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     return specs
@@ -165,7 +166,7 @@ def _run_handler_specs(
             try:
                 future.result()
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass  # Errors already recorded in state by _exec_spec
 
 

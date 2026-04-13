@@ -6,6 +6,7 @@ import base64
 import json
 from dataclasses import dataclass
 from typing import Callable
+import logging
 
 InfoFn = Callable[[str], None]
 RunKubeFn = Callable[..., object]
@@ -62,7 +63,7 @@ class RebuildSecretPreservationService:
             try:
                 decoded = base64.b64decode(encoded).decode("utf-8")
             except Exception as exc:
-                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
             if decoded:
                 restored[key] = decoded
