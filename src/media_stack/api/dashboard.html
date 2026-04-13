@@ -289,48 +289,22 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   </div>
 </div>
 
-<!-- Actions -->
+<!-- Quick Actions -->
 <div class="card">
-  <h2 onclick="toggleCard(this)">Actions <span class="collapse-icon">&#9660;</span></h2>
-  <div class="card-body" id="action-buttons">
-    <div class="action-grid">
-    <div class="action-group">
-      <div class="action-group-title">General</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <label class="switch"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider"></span></label>
-        <div><span id="autoLabel" style="font-weight:600">Auto-Downloads: <b>off</b></span><div class="action-group-desc">Automatically fetch new content when available</div></div>
-      </div>
-      <button class="btn-primary" onclick="confirmAction('bootstrap','Configure All','Full setup pipeline: health checks, credentials, download clients, libraries, routing. Safe to re-run.')" title="(B)">Configure All</button>
-      <div class="action-group-desc">Apply recommended settings across all services</div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 0">
+    <div style="display:flex;align-items:center;gap:8px">
+      <label class="switch" style="width:34px;height:18px"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider" style="border-radius:9px"></span></label>
+      <span id="autoLabel" style="font-size:.82em;font-weight:600">Auto-Downloads</span>
     </div>
-    <div class="action-group">
-      <div class="action-group-title">Indexers & Sync</div>
-      <div class="actions">
-        <button class="btn-secondary" onclick="confirmAction('discover-indexers','Discover Indexers','Scans Prowlarr indexer presets and tests connectivity. Takes 1-2 minutes.')" title="(I)">Discover Indexers</button>
-        <button class="btn-secondary" onclick="confirmAction('push-indexers','Sync Indexers','Push Prowlarr indexers to all Arr apps.')">Sync Indexers</button>
-        <button class="btn-secondary" onclick="confirmAction('reconcile','Reconcile','Re-check all configs and fix drift.')">Reconcile</button>
-      </div>
-      <div class="action-group-desc">Find content sources, sync state, fix mismatches</div>
-    </div>
-    <div class="action-group">
-      <div class="action-group-title">System</div>
-      <div class="actions">
-        <button class="btn-secondary" onclick="confirmAction('envoy-config','Rebuild Routing','Regenerates Envoy gateway routing config from current profile.')">Rebuild Routing</button>
-        <button class="btn-secondary" style="border-color:var(--warn);color:var(--warn)" onclick="confirmAction('restart-apps','Restart All Apps','Rolling restart of all service containers. Services will be briefly unavailable.')">Restart All</button>
-      </div>
-      <div class="action-group-desc">Routing rules and service lifecycle</div>
-    </div>
-    <div class="action-group">
-      <div class="action-group-title">Security</div>
-      <div class="actions">
-        <button class="btn-secondary" onclick="showExportKeys()">Export Keys</button>
-        <button class="btn-secondary" onclick="showHardReset()">Hard Reset Service</button>
-        <button class="btn-danger" onclick="confirmRotateKeys()">Rotate API Keys</button>
-        <button class="btn-danger" onclick="promptResetPassword()">Reset Password</button>
-      </div>
-      <div class="action-group-desc">View, export, or regenerate credentials.</div>
-    </div>
-    </div>
+    <span style="border-left:1px solid var(--border);height:20px"></span>
+    <button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="confirmAction('bootstrap','Setup All Services','Full setup pipeline. Safe to re-run.')" title="(B)">Setup All</button>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="confirmAction('reconcile','Reconcile All Config','Re-check all configs and fix drift.')">Reconcile</button>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="confirmAction('discover-indexers','Scan for Indexers','Scans Prowlarr presets. Takes 1-2 min.')" title="(I)">Scan Indexers</button>
+    <span style="border-left:1px solid var(--border);height:20px"></span>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:.78em;border-color:var(--warn);color:var(--warn)" onclick="confirmAction('restart-apps','Restart All Services','Rolling restart. Services briefly unavailable.')">Restart All</button>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showExportKeys()">Keys</button>
+    <button class="btn-danger" style="padding:4px 10px;font-size:.78em" onclick="confirmRotateKeys()">Rotate Keys</button>
+    <button class="btn-danger" style="padding:4px 10px;font-size:.78em" onclick="promptResetPassword()">Reset Password</button>
   </div>
 </div>
 
