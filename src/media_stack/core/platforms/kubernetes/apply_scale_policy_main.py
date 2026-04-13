@@ -158,14 +158,6 @@ class ApplyScalePolicyCommand:
     
         print("[OK] Scale policy applied.")
         return 0
-    
-    
-    if __name__ == "__main__":
-        try:
-            sys.exit(main())
-        except MediaStackError as exc:
-            print(f"[ERR] {exc}", file=sys.stderr)
-            sys.exit(1)
 
 
 _instance = ApplyScalePolicyCommand()
@@ -176,3 +168,10 @@ _default_config_file = _instance._default_config_file
 _deployment_exists = _instance._deployment_exists
 _env_truthy = _instance._env_truthy
 _scale_deployment = _instance._scale_deployment
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as exc:
+        print(f"[ERR] {exc}", file=sys.stderr)
+        sys.exit(1)
