@@ -78,3 +78,5 @@ run_phase_plan = _instance.run_phase_plan
 _load_indexer_token_aliases = _instance._load_indexer_token_aliases
 _ARG_TOKEN_ATTRS = _instance._ARG_TOKEN_ATTRS
 _PROWLARR_TOKEN_ALIASES = _instance._PROWLARR_TOKEN_ALIASES
+run_event_phase_plan = MediaServerPlanService.run_event_phase_plan
+from media_stack.services.runner_phase_plan_service import run_phase_plan as run_event_phase_plan
