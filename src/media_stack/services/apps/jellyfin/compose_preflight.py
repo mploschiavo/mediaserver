@@ -85,8 +85,9 @@ class JellyfinComposePreflight:
             reload_fn = getattr(container, "reload", None)
             if callable(reload_fn):
                 reload_fn()
-        except Exception:
+        except Exception as exc:
             # Best effort only; continue with last-known attrs.
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         attrs = dict(getattr(container, "attrs", {}) or {})
         network_settings = attrs.get("NetworkSettings")

@@ -244,7 +244,8 @@ class OpsService:
                 if runtime == "nvidia":
                     result["gpus"].append({"type": "nvidia", "name": f"NVIDIA runtime on {c.name}", "container": c.name})
                     result["detected"] = True
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         # Strategy 2: Query host Docker info for GPU-related runtimes
@@ -262,7 +263,8 @@ class OpsService:
                 for s in security:
                     if "gpu" in str(s).lower():
                         result["detected"] = True
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Strategy 3: Check inside this container (works if GPU is passed through)
@@ -318,7 +320,8 @@ class OpsService:
                 check_fn = getattr(gpu_mod, f"check_{ms.id}_gpu", None)
                 if check_fn:
                     result.update(check_fn(client))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         if result["detected"]:
@@ -333,7 +336,8 @@ class OpsService:
                     snippet_fn = getattr(gpu_mod, "build_compose_snippet", None)
                     if snippet_fn:
                         result["compose_snippet"] = snippet_fn(result["hw_accel_type"])
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
             result["can_auto_configure"] = result.get(f"{ms.id}_has_gpu" if ms else "has_gpu", False)
         return result
@@ -385,7 +389,8 @@ class OpsService:
                     text = re.sub(r"api_key\s*=\s*\S+", "api_key = ***", text)
                     text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
                     snapshot[f"{app}/{rel}"] = text
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
         ts = time.strftime("%Y%m%dT%H%M%S")
@@ -461,7 +466,8 @@ class OpsService:
                         mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
                     elif fstype.strip("()").startswith(("nfs", "cifs", "smb")):
                         mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return {
             "mounts": mounts,

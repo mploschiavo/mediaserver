@@ -63,7 +63,8 @@ class TransmissionService:
         if "max_ratio" in preferences:
             try:
                 args["seedRatioLimit"] = float(preferences.get("max_ratio"))
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if "max_seeding_time_enabled" in preferences:
             args["seedIdleLimited"] = bool(preferences.get("max_seeding_time_enabled"))

@@ -65,7 +65,8 @@ class CatalogLoaderService:
             for key in registry_app_keys:
                 if key not in existing_keys:
                     apps_section.setdefault("keys", []).append(key)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
     
         deployment_aliases = _normalize_alias_dict(

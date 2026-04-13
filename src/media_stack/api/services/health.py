@@ -130,7 +130,8 @@ class HealthService:
                     if p.status.phase == "Running":
                         labels = p.metadata.labels or {}
                         names.add(labels.get("app", p.metadata.name))
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         else:
             try:
@@ -138,7 +139,8 @@ class HealthService:
                 client = docker.from_env()
                 for c in client.containers.list():
                     names.add(c.name)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return names
 
@@ -219,7 +221,8 @@ class HealthService:
                 try:
                     name, result = future.result()
                     results[name] = result
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
         # Mark services that have no HTTP endpoint (port=0) as disabled so
@@ -311,7 +314,8 @@ class HealthService:
             except urllib.error.HTTPError as exc:
                 if exc.code in (401, 403):
                     pass  # Auth required — proceed
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         elif mode == "form" and api_key:
             # Arr apps expose authentication mode at /api/v{1,3}/system/status
@@ -326,7 +330,8 @@ class HealthService:
                         if auth_mode in ("none", ""):
                             return "disabled"
                         break  # Got a valid response — stop trying API versions
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     continue
     
         try:
@@ -391,14 +396,16 @@ class HealthService:
         if _HEALTH_HISTORY_PATH.exists():
             try:
                 history = json.loads(_HEALTH_HISTORY_PATH.read_text())
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         history.extend(_HEALTH_HISTORY_BUFFER)
         _HEALTH_HISTORY_BUFFER.clear()
         history = history[-1440:]  # Keep ~24h at 1-min intervals
         try:
             _HEALTH_HISTORY_PATH.write_text(json.dumps(history))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
 

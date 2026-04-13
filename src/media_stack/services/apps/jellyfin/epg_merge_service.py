@@ -62,7 +62,8 @@ class EpgMergeService:
         if url.lower().endswith(".gz") or enc == "gzip":
             try:
                 payload = gzip.decompress(payload)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return payload.decode("utf-8", errors="replace")
 
@@ -80,7 +81,8 @@ class EpgMergeService:
                 meta = json.loads(meta_file.read_text())
                 if time.time() - meta.get("ts", 0) < _CACHE_TTL_SECONDS:
                     return cache_file.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # Download
@@ -90,7 +92,8 @@ class EpgMergeService:
         try:
             cache_file.write_text(xml_text, encoding="utf-8")
             meta_file.write_text(json.dumps({"ts": time.time(), "url": url, "size": len(xml_text)}))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         return xml_text

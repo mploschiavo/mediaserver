@@ -97,7 +97,8 @@ def _pod_readiness_summary(pods_table: str) -> tuple[int, int]:
                 ready, total = readiness.split("/", 1)
                 if int(ready) != int(total):
                     not_ready += 1
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         if status in {"CrashLoopBackOff", "Error", "ImagePullBackOff", "RunContainerError"}:
             unhealthy += 1
@@ -118,7 +119,8 @@ def _deployment_pending_summary(deploy_table: str) -> int:
             desired = int(parts[2])
             if ready != desired:
                 pending += 1
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             continue
     return pending
 

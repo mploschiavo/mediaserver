@@ -21,7 +21,8 @@ class DownloadConfigService:
                 caps = getattr(svc, "capabilities", None) or {}
                 if isinstance(caps, dict) and caps.get("torrent_client"):
                     return svc.id
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return ""
 

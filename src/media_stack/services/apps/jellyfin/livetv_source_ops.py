@@ -119,7 +119,8 @@ class JellyfinLiveTvSourceOps:
                 continue
             try:
                 m3u_text = read_text_from_source(source_url, config_root, 90)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
             for line in m3u_text.splitlines():

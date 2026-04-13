@@ -126,7 +126,8 @@ class ControllerSecretPrimingService:
                             apps.append(app)
                     if apps:
                         return apps
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         # 2. Derive from per-service YAML registry (category=automation)
@@ -135,7 +136,8 @@ class ControllerSecretPrimingService:
             apps = [s.id for s in SERVICES if s.category == "automation"]
             if apps:
                 return apps
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         raise ConfigError(

@@ -43,7 +43,8 @@ class DiskService:
                                 parts = line.split()
                                 if len(parts) >= 3 and parts[1] == str(path) or str(path).startswith(parts[1] + "/"):
                                     fstype = parts[2]
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     entry: dict[str, Any] = {
                         "path": str(path),
@@ -189,7 +190,8 @@ class DiskService:
                     "categories": list(qc.get("categories", [])),
                 },
             }
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return guardrails
 

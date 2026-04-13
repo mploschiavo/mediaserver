@@ -40,7 +40,7 @@ CIRCULAR_IMPORT_RISK_RATCHET = 136        # lazy imports in methods — poor lay
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
 
 # Hygiene ratchets
-SWALLOWED_EXCEPTIONS_RATCHET = 176  # except Exception: pass — silent failures
+SWALLOWED_EXCEPTIONS_RATCHET = 0    # except Exception: pass — all now log at DEBUG
 PRINT_STATEMENTS_RATCHET = 232      # should use logging/runtime_platform.log
 FILES_OVER_400_LINES_RATCHET = 43   # large files — split into modules
 HARDCODED_URLS_RATCHET = 140        # URLs should come from contracts/config

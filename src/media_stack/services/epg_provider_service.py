@@ -74,7 +74,8 @@ class EpgProviderService:
             try:
                 self._health_cache = json.loads(path.read_text())
                 return self._health_cache
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         self._health_cache = {}
         return self._health_cache
@@ -85,7 +86,8 @@ class EpgProviderService:
             path = self._health_cache_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(cache, indent=2))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     @staticmethod

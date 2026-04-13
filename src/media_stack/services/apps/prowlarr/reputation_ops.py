@@ -32,7 +32,8 @@ class ProwlarrReputationOps:
                 loaded = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(loaded, dict):
                     return loaded
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return {"schema": 1, "indexers": {}}
 

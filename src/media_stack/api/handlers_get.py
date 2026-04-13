@@ -339,7 +339,8 @@ class GetRequestHandler:
                     "url": f"http://{gw_host}{port_str}",
                     "description": f"Gateway root ({gw_host})",
                 })
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9100"))
         servers.append({

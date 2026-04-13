@@ -204,9 +204,11 @@ class DeployHookConfigResolverService:
                         if spec and ":" in spec and spec not in seen:
                             handlers.append(spec)
                             seen.add(spec)
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         raw = bootstrap_job_cfg.get("compose_preflight_handlers")
         if isinstance(raw, list):

@@ -61,7 +61,8 @@ class RebuildSecretPreservationService:
                 continue
             try:
                 decoded = base64.b64decode(encoded).decode("utf-8")
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
             if decoded:
                 restored[key] = decoded

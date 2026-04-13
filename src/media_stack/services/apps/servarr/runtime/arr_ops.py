@@ -101,7 +101,8 @@ class ServarrArrOps:
                     "metadata profiles",
                 )
                 break
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
         if metadata_id is None:

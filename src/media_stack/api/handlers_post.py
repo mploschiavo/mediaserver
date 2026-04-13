@@ -502,7 +502,8 @@ class PostRequestHandler:
             from media_stack.cli.commands.job_framework import discover_jobs_from_contracts
             for job in discover_jobs_from_contracts():
                 actions.add(job["name"])
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return frozenset(actions)
 

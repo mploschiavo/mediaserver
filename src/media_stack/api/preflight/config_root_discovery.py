@@ -68,7 +68,8 @@ def _build_container_map(containers: list[Any]) -> dict[str, Any]:
             compose_svc = labels.get("com.docker.compose.service", "").strip()
             if compose_svc:
                 container_map[compose_svc.lower()] = c
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         # Compose v2 dashes: "project-service-N" -> strip trailing -N
@@ -147,7 +148,8 @@ def _discover_via_docker_mounts(log: Any = None) -> DiscoveryResult:
                         root = source
                     if root:
                         candidate_roots[root] = candidate_roots.get(root, 0) + 1
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             continue
 
     if candidate_roots:
@@ -214,7 +216,8 @@ def _discover_via_docker_env(log: Any = None) -> DiscoveryResult:
                 if val:
                     result.keys[svc.api_key_env] = val
                     break
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             continue
 
     return result

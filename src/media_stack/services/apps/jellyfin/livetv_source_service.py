@@ -45,7 +45,8 @@ class JellyfinLiveTvSourceService:
             if src.lower().endswith(".gz") or content_enc == "gzip":
                 try:
                     payload = _gzip.decompress(payload)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass  # Not actually gzipped, use raw bytes
             return payload.decode("utf-8", errors="replace")
 

@@ -58,9 +58,11 @@ def _load_handler_specs(key: str) -> list[dict]:
                             if name not in seen_names:
                                 specs.append(handler)
                                 seen_names.add(name)
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     # 2. Load from config.json (backward compat, fills gaps)
@@ -73,7 +75,8 @@ def _load_handler_specs(key: str) -> list[dict]:
                 if name and name not in seen_names:
                     specs.append(spec)
                     seen_names.add(name)
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
     return specs
@@ -161,7 +164,8 @@ def _run_handler_specs(
         for future in as_completed(futures):
             try:
                 future.result()
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass  # Errors already recorded in state by _exec_spec
 
 

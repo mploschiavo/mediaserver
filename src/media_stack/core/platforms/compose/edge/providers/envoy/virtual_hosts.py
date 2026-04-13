@@ -50,7 +50,8 @@ class EnvoyVirtualHostService:
                     if mid_alias != host and mid_alias != alias:
                         extras.append(mid_alias)
                         extras.append(f"{mid_alias}:*")
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         return extras
     

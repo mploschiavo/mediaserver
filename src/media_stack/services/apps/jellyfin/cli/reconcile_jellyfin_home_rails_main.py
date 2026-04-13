@@ -175,7 +175,8 @@ class ReconcileJellyfinHomeRailsMain:
                         :120
                     ]:
                         print(line, file=sys.stderr)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
                 return 1
 
@@ -210,7 +211,8 @@ class ReconcileJellyfinHomeRailsMain:
                     proc.kill()
             try:
                 pf_log_path.unlink(missing_ok=True)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
 
         if args.force_enable:

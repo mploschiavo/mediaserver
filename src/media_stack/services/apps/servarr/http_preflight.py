@@ -106,7 +106,8 @@ class ServarrHttpPreflight:
                         if resp.status_code == 200:
                             info(f"ARR preflight: {app_name} ready")
                             break
-                    except Exception:
+                    except Exception as exc:
+                        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                         pass
                     time.sleep(5)
         else:
@@ -126,7 +127,8 @@ class ServarrHttpPreflight:
             if log:
                 log(f"ARR preflight: restarted {app_name} (Docker)")
             return
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
         try:
             import os

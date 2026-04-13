@@ -35,7 +35,8 @@ class DefaultsService:
                     tag = ctrl.get("image_tag", "latest")
                     if registry and name:
                         return f"{registry}/{name}:{tag}"
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
         return "harbor.iomio.io/library/media-stack-controller:latest"
 

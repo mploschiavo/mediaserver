@@ -59,7 +59,8 @@ def _build_action_priority() -> dict[str, int]:
         for job in discover_jobs_from_contracts():
             base = _PHASE_BASE.get(job["phase"], 55)
             priorities.setdefault(job["name"], base + job.get("priority", 50) // 10)
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
     return priorities
 
@@ -142,7 +143,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 provided_user, _, provided_pass = decoded.partition(":")
                 if provided_user == username and provided_pass == password:
                     return True
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         self.send_response(401)
         self.send_header("WWW-Authenticate", 'Basic realm="Media Stack Controller"')

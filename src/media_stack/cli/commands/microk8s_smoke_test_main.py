@@ -30,7 +30,8 @@ def _first_host_ip() -> str:
         for value in values:
             if value and not value.startswith("127."):
                 return value
-    except Exception:
+    except Exception as exc:
+        import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass
     return ""
 

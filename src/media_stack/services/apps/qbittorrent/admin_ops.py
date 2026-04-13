@@ -34,7 +34,8 @@ class QbittorrentAdminOps:
             match = re.search(r"temporary password[^:]*:\s*(\S+)", logs, re.IGNORECASE)
             if match:
                 passwords_to_try.insert(1, match.group(1))
-        except Exception:
+        except Exception as exc:
+            import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass
 
         for try_pw in passwords_to_try:
@@ -65,7 +66,8 @@ class QbittorrentAdminOps:
                 )
                 opener.open(req2, timeout=5)
                 return True, ""
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 continue
 
         return False, "login failed with all known passwords"

@@ -107,7 +107,8 @@ class MaintainerrService:
                     api_idx = hp.find("/api/")
                     if api_idx > 0:
                         configured = hp[:api_idx]
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
         return self._join_url_base(base_url, configured)
 

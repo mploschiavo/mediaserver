@@ -95,14 +95,16 @@ class PortForward:
         if self.proc and self.proc.poll() is None:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             try:
                 self.proc.wait(timeout=5)
             except Exception:
                 try:
                     os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
-                except Exception:
+                except Exception as exc:
+                    import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                     pass
 
     def ensure_alive(self) -> None:
@@ -111,11 +113,13 @@ class PortForward:
             err = ""
             try:
                 out = self.proc.stdout.read() if self.proc.stdout else ""
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             try:
                 err = self.proc.stderr.read() if self.proc.stderr else ""
-            except Exception:
+            except Exception as exc:
+                import logging; logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
                 pass
             raise RuntimeError(
                 f"kubectl port-forward exited early (code={self.proc.returncode}). stdout={out} stderr={err}"
