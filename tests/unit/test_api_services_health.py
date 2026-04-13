@@ -327,8 +327,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_ok(self, mock_urlopen, mock_containers, mock_keys):
         mock_resp = MagicMock()
@@ -352,8 +352,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen", side_effect=Exception("connection refused"))
     def test_probe_error(self, mock_urlopen, mock_containers, mock_keys):
         cache = self._make_cache(None)
@@ -369,8 +369,8 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
     })
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod, "discover_api_keys", return_value={"sonarr": "my-key"})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={"sonarr": "my-key"})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_with_auth_header(self, mock_urlopen, mock_containers, mock_keys):
         mock_resp = MagicMock()
@@ -391,8 +391,8 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
     })
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_no_key_auth(self, mock_urlopen, mock_containers, mock_keys):
         mock_resp = MagicMock()
@@ -411,8 +411,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value={"radarr"})
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value={"radarr"})
     @patch("urllib.request.urlopen")
     def test_probe_disabled_service(self, mock_urlopen, mock_containers, mock_keys):
         """Service not in running set should be reported as disabled."""
@@ -429,8 +429,8 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test123"})
     @patch("urllib.request.urlopen")
     def test_probe_login_ok(self, mock_urlopen, mock_containers, mock_keys):
@@ -463,8 +463,8 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "wrong"})
     @patch("urllib.request.urlopen")
     def test_probe_login_fail(self, mock_urlopen, mock_containers, mock_keys):
@@ -499,8 +499,8 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_login_disabled(self, mock_urlopen, mock_containers, mock_keys):
         """Login probe returns 'disabled' when basic-mode pre-check gets 200 (no auth)."""
@@ -521,8 +521,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod, "discover_api_keys", return_value={})
-    @patch.object(health_mod, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
+    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_login_na(self, mock_urlopen, mock_containers, mock_keys):
         """Services without login_mode should get login='n/a'."""
