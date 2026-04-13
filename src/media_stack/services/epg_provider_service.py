@@ -54,7 +54,7 @@ class EpgProviderService:
     @staticmethod
     def _expand_url(provider: dict[str, Any], country_code: str) -> str:
         """Build the URL for a country from a provider's template or country_urls."""
-        code = country_code.lower()
+        code = str(country_code or "").lower()
         country_urls = provider.get("country_urls", {})
         if isinstance(country_urls, dict) and code in country_urls:
             return country_urls[code]

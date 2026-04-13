@@ -118,8 +118,8 @@ class LiveTvConfigService:
         guide_providers = get_guide_providers()
         countries = []
         for entry in self._load_default_countries():
-            c = entry.get("code", "")
-            n = entry.get("name", "")
+            c = str(entry.get("code", ""))
+            n = str(entry.get("name", ""))
             g_url = ""
             for p in guide_providers:
                 url = _expand_url(p, c)

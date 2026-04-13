@@ -16,7 +16,7 @@ countries:
   - {code: in, name: "India"}
   - {code: nl, name: "Netherlands"}
   - {code: se, name: "Sweden"}
-  - {code: no, name: "Norway"}
+  - {code: "no", name: "Norway"}
   - {code: dk, name: "Denmark"}
   - {code: fi, name: "Finland"}
   - {code: pl, name: "Poland"}
