@@ -116,8 +116,9 @@ class TestProviderService(unittest.TestCase):
             # First provider fails, second succeeds
             return call_count["n"] > 1
 
-        with patch("media_stack.services.epg_provider_service._probe_url", side_effect=mock_probe):
-            with patch("media_stack.services.epg_provider_service._load_health_cache", return_value={}):
+        import media_stack.services.epg_provider_service as _epg_mod
+        with patch.object(_epg_mod._instance, "_probe_url", side_effect=mock_probe):
+            with patch.object(_epg_mod._instance, "_load_health_cache", return_value={}):
                 url = resolve_guide_url("us")
         self.assertTrue(url, "Should have found a fallback provider")
         self.assertGreater(call_count["n"], 1, "Should have tried multiple providers")
