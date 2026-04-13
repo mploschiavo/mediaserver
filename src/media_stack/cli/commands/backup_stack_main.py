@@ -118,9 +118,9 @@ class BackupStackCommand:
 _instance = BackupStackCommand()
 parse_args = _instance.parse_args
 main = _instance.main
+_env_bool = _instance._env_bool
+_copy_tree_if_exists = _instance._copy_tree_if_exists
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-_env_bool = _instance._env_bool
-_copy_tree_if_exists = _instance._copy_tree_if_exists

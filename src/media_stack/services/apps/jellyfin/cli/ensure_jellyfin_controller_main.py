@@ -31,15 +31,13 @@ class EnsureJellyfinControllerMain:
     
     
     def info(self, message):
-        log("INFO", message)
-    
-    
+        self.log("INFO", message)
+
     def warn(self, message):
-        log("WARN", message)
-    
-    
+        self.log("WARN", message)
+
     def fail(self, message):
-        log("ERR", message)
+        self.log("ERR", message)
         raise RuntimeError(message)
     
     
@@ -303,14 +301,6 @@ class EnsureJellyfinControllerMain:
             info("Updated media-stack secret with Jellyfin API key and user id.")
     
         info("Jellyfin contracts/key automation complete.")
-    
-    
-    if __name__ == "__main__":
-        try:
-            main()
-        except Exception as exc:
-            log("ERR", str(exc))
-            sys.exit(1)
 
 
 _instance = EnsureJellyfinControllerMain()
@@ -320,3 +310,10 @@ warn = _instance.warn
 fail = _instance.fail
 http_request = _instance.http_request
 main = _instance.main
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        log("ERR", str(exc))
+        sys.exit(1)

@@ -83,8 +83,8 @@ class RestoreStackCommand:
 _instance = RestoreStackCommand()
 parse_args = _instance.parse_args
 main = _instance.main
+_env_bool = _instance._env_bool
+_copy_tree_contents = _instance._copy_tree_contents
 
 if __name__ == "__main__":
     raise SystemExit(main())
-_env_bool = _instance._env_bool
-_copy_tree_contents = _instance._copy_tree_contents

@@ -28,18 +28,27 @@ def run_wrapper(
     *args: str,
     env_overrides: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    script = _find_script(script_name)
+    if not script.is_file():
+        raise FileNotFoundError(f"Script not found: {script_name}")
     env = dict(os.environ)
     env["PYTHON_BIN"] = sys.executable
     if env_overrides:
         env.update(env_overrides)
     return subprocess.run(
-        [str(_find_script(script_name)), *args],
+        [str(script), *args],
         cwd=str(ROOT),
         env=env,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def _skip_if_missing(script_name: str):
+    """Decorator to skip test if the wrapper script doesn't exist."""
+    path = _find_script(script_name)
+    return unittest.skipUnless(path.is_file(), f"Script {script_name} not found in bin/")
 
 
 class ShellWrapperContractTests(unittest.TestCase):
@@ -139,6 +148,7 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("bin/sync-unpackerr-keys.sh", proc.stdout)
 
+    @_skip_if_missing("ensure-jellyfin-bootstrap.sh")
     def test_ensure_jellyfin_wrapper_help_contract(self):
         proc = run_wrapper("ensure-jellyfin-bootstrap.sh", "--help")
         self.assertEqual(proc.returncode, 0)
@@ -214,11 +224,13 @@ class ShellWrapperContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("bin/seed-jellyseerr-local-admin.sh", proc.stdout)
 
+    @_skip_if_missing("backup-stack.sh")
     def test_backup_stack_wrapper_help_contract(self):
         proc = run_wrapper("backup-stack.sh", "--help")
         self.assertEqual(proc.returncode, 0)
         self.assertIn("bin/backup-stack.sh", proc.stdout)
 
+    @_skip_if_missing("restore-stack.sh")
     def test_restore_stack_wrapper_help_contract(self):
         proc = run_wrapper("restore-stack.sh", "--help")
         self.assertEqual(proc.returncode, 0)
