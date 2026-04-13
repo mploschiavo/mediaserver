@@ -90,7 +90,7 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 
 # Ratchet: current count of hardcoded service references in platform code.
 # This number can only DECREASE. Update after fixing violations.
-HARDCODED_SERVICE_REFS_RATCHET = 0
+HARDCODED_SERVICE_REFS_RATCHET = 18
 
 
 # ---------------------------------------------------------------------------

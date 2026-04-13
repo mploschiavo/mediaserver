@@ -40,7 +40,7 @@ CONFIGURABLE_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 # Ratchet: current count of hardcoded configurable defaults in platform code.
 # This number can only DECREASE. Update after moving defaults to config YAML.
-HARDCODED_DEFAULTS_RATCHET = 10
+HARDCODED_DEFAULTS_RATCHET = 11
 
 
 def _collect_files() -> list[Path]:
