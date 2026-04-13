@@ -2859,12 +2859,14 @@ async function loadDisplayConfig(){
 
     // Home sections
     h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">Home Screen Sections</div>';
-    h+='<p style="color:var(--fg3);font-size:.78em;margin:4px 0 8px">Drag to reorder or change the type. Sections appear top-to-bottom on the home page.</p>';
+    h+='<p style="color:var(--fg3);font-size:.78em;margin:4px 0 8px">Use arrows to reorder. Sections appear top-to-bottom on the home page.</p>';
     for(let i=0;i<10;i++){
       const key='homesection'+i;
       const val=cp[key]||'none';
-      h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
-      h+='<span style="color:var(--fg3);font-size:.75em;width:16px">'+(i+1)+'</span>';
+      h+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px" data-section-row="'+i+'">';
+      h+='<button style="padding:1px 4px;font-size:.7em;cursor:pointer;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--fg3)" onclick="moveSectionUp('+i+')"'+(i===0?' disabled':'')+'>&#9650;</button>';
+      h+='<button style="padding:1px 4px;font-size:.7em;cursor:pointer;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--fg3)" onclick="moveSectionDown('+i+')"'+(i===9?' disabled':'')+'>&#9660;</button>';
+      h+='<span style="color:var(--fg3);font-size:.72em;width:14px;text-align:center">'+(i+1)+'</span>';
       h+='<select id="dp-'+key+'" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:.85em">';
       for(const opt of _SECTION_TYPES){
         h+='<option value="'+opt.value+'"'+(val===opt.value?' selected':'')+'>'+opt.label+'</option>';
@@ -2892,6 +2894,18 @@ async function loadDisplayConfig(){
     h+='<button class="btn-primary" style="padding:6px 16px;font-size:.85em" onclick="saveDisplayConfig()">Save &amp; Apply</button>';
     el.innerHTML=h;
   }catch(e){el.innerHTML='Error: '+e;}
+}
+function moveSectionUp(idx){
+  if(idx<=0)return;
+  const cur=document.getElementById('dp-homesection'+idx);
+  const prev=document.getElementById('dp-homesection'+(idx-1));
+  if(cur&&prev){const tmp=cur.value;cur.value=prev.value;prev.value=tmp;}
+}
+function moveSectionDown(idx){
+  if(idx>=9)return;
+  const cur=document.getElementById('dp-homesection'+idx);
+  const next=document.getElementById('dp-homesection'+(idx+1));
+  if(cur&&next){const tmp=cur.value;cur.value=next.value;next.value=tmp;}
 }
 async function saveDisplayConfig(){
   const cp=Object.assign({},_dpData.custom_prefs||{});
