@@ -372,10 +372,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('lib-indexers',this)">Indexers</button>
     </div>
     <div id="lib-libraries" class="subtab active" style="min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading libraries...</span></div>
-    <div id="lib-history" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
-    <div id="lib-profiles" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
-    <div id="lib-imports" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
-    <div id="lib-indexers" class="subtab" style="display:none">Loading...</div>
+    <div id="lib-history" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="lib-profiles" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="lib-imports" class="subtab" style="display:none;min-height:120px"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="lib-indexers" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
   </div>
 
   <!-- Routing tab (was DNS) -->
@@ -461,7 +461,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <p style="color:var(--fg2);font-size:.9em;margin:0 0 10px">Disk guardrails automatically clean completed torrents when storage exceeds the threshold.</p>
       <div id="guardrail-config">Loading guardrail config...</div>
     </div>
-    <div id="ops-images" class="subtab" style="display:none">Loading...</div>
+    <div id="ops-images" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="ops-heatmap" class="subtab" style="display:none"></div>
     <div id="ops-bw" class="subtab" style="display:none">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:.82em">
@@ -533,17 +533,17 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-jobs',this)">Jobs</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="loadBackup()">Backup</button>
     </div>
-    <div id="cfg-display" class="subtab active">Loading...</div>
+    <div id="cfg-display" class="subtab active"><span class="spinner" style="display:inline-block"></span> Loading display settings...</div>
     <div id="cfg-profile" class="subtab" style="display:none"><div id="profile-view">Loading...</div></div>
     <div id="cfg-drift" class="subtab" style="display:none"><div id="drift-view">Checking config drift...</div></div>
     <div id="cfg-deps" class="subtab" style="display:none"></div>
-    <div id="cfg-manifest" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-envvars" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-libraries" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-downloads" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-metadata" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-livetv" class="subtab" style="display:none">Loading...</div>
-    <div id="cfg-jobs" class="subtab" style="display:none">Loading...</div>
+    <div id="cfg-manifest" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-envvars" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-libraries" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-downloads" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-metadata" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-livetv" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-jobs" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -3285,16 +3285,15 @@ async function onTabShow(tabId){
   if(tabLoaded[tabId])return;tabLoaded[tabId]=true;
   showLoading();
   try{
-    if(tabId==='tab-content'){await Promise.all([loadLibraries(),loadIndexers()]);loadIndexerStats();}
+    if(tabId==='tab-content'){await loadLibraries();}
     else if(tabId==='tab-routing'){await loadRoutingConfig();}
-    else if(tabId==='tab-ops'){renderSLA();await Promise.all([loadTraffic(),loadNamespaces()]);}
-    else if(tabId==='tab-profile'){await loadProfile();}
+    else if(tabId==='tab-ops'){/* ops-actions is static, no load needed */}
+    else if(tabId==='tab-profile'){await loadDisplayConfig();}
   }finally{hideLoading();}
 }
-/* Preload tabs 3s after page load so subsequent clicks feel instant */
+/* Preload other tabs 3s after page load so switching feels instant */
 setTimeout(async()=>{
-  try{await Promise.all([loadLibraries(),loadIndexers(),loadRoutingConfig()]);}catch(e){}
-  try{renderSLA();loadTraffic();}catch(e){}
+  try{await Promise.all([loadRoutingConfig(),loadDisplayConfig()]);}catch(e){}
 },3000);
 
 /* Widget visibility */
