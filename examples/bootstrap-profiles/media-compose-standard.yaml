@@ -1,38 +1,75 @@
-schema_version: 1
-kind: media_stack_profile
-metadata:
-  name: media-stack
-  platform: compose
-  purpose: standard
-  description: Standard local stack profile
-  language: en
-  country: US
-resources:
-  disk_space_gb: 50
-  network_cidr: 192.168.1.0/24
-install_profile: standard
-technology_bindings:
-  torrent_client: qbittorrent
-  usenet_client: sabnzbd
-  media_server: jellyfin
-  request_manager: jellyseerr
-  indexer_manager: prowlarr
-bootstrap:
-  preconfigure_apps: true
-  preconfigure_api_keys: true
-  apply_initial_preferences: true
-routing:
-  internet_exposed: false
-  strategy: hybrid
-  provider: envoy
-  base_domain: local
-  stack_subdomain: media-stack
-  gateway_host: docker.media-stack.local
-  gateway_port: 80
-  app_path_prefix: /app
-  direct_hosts:
-    media_server: true
 app_auth:
   enabled: true
   method: Forms
   required: DisabledForLocalAddresses
+auth:
+  enabled: true
+  middleware: authelia@docker
+  mode: authelia
+  oidc_config:
+    client_id: 338059854510-cndqa5sdc27r9656ukvbds11ttvgae9p.apps.googleusercontent.com
+    client_secret: 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
+  oidc_provider: google
+  per_service:
+    authelia: public
+    authentik: public
+    bazarr: protected
+    emby: native
+    envoy: public
+    flaresolverr: protected
+    grabit: protected
+    homepage: protected
+    jdownloader: protected
+    jellyfin: native
+    jellyseerr: native
+    lidarr: protected
+    maintainerr: protected
+    media-stack-controller: protected
+    mythtv: native
+    nzbget: protected
+    plex: native
+    prowlarr: protected
+    qbittorrent: protected
+    radarr: protected
+    readarr: protected
+    sabnzbd: protected
+    sonarr: protected
+    tautulli: protected
+    traefik: public
+    unpackerr: protected
+  provider: authelia
+bootstrap:
+  apply_initial_preferences: true
+  preconfigure_api_keys: true
+  preconfigure_apps: true
+install_profile: standard
+kind: media_stack_profile
+metadata:
+  country: US
+  description: Standard local stack profile
+  language: en
+  name: media-stack
+  platform: compose
+  purpose: standard
+resources:
+  disk_space_gb: 50
+  network_cidr: 192.168.1.0/24
+routing:
+  app_path_prefix: /app
+  base_domain: local
+  direct_hosts:
+    media_server: true
+  gateway_host: apps.media-stack.local
+  gateway_port: 443
+  internet_exposed: false
+  provider: envoy
+  scheme: https
+  stack_subdomain: media-stack
+  strategy: hybrid
+schema_version: 1
+technology_bindings:
+  indexer_manager: prowlarr
+  media_server: jellyfin
+  request_manager: jellyseerr
+  torrent_client: qbittorrent
+  usenet_client: sabnzbd

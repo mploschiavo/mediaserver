@@ -72,7 +72,7 @@ services:
       retries: 5
 
   authelia:
-    image: authelia/authelia:4.39
+    image: authelia/authelia:4.38
     container_name: authelia
     profiles: ["auth-authelia"]
     command:
@@ -183,7 +183,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.1}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.35}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -198,6 +198,7 @@ services:
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT:-./config}:/runtime-config:rw
       - ../contracts:/contracts:ro
+      - ./config/certs:/certs:ro
     restart: "no"
 
   envoy:
@@ -214,10 +215,12 @@ services:
       - --log-level
       - info
     ports:
-      - "${TRAEFIK_HTTP_PORT:-80}:8880"
+      - "${TRAEFIK_HTTP_PORT:-443}:8880"
+      - "80:8080"
       - "${ENVOY_ADMIN_PORT:-9901}:9901"
     volumes:
       - ${CONFIG_ROOT:-./config}/envoy:/etc/envoy:ro
+      - ${CONFIG_ROOT:-./config}/certs:/certs:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
@@ -285,10 +288,14 @@ services:
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
 
   jellyseerr:
-    image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+    image: fallenbagel/jellyseerr:preview-OIDC
     container_name: jellyseerr
+    extra_hosts:
+      - "auth.media-stack.local:host-gateway"
+      - "apps.media-stack.local:host-gateway"
     environment:
       TZ: ${TZ:-UTC}
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
       BASE_URL: ${JELLYSEERR_BASE_PATH:-}
     volumes:
       - ${CONFIG_ROOT:-./config}/jellyseerr:/app/config
@@ -603,7 +610,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.1}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.35}
     container_name: media-stack-controller
     command:
       - python3

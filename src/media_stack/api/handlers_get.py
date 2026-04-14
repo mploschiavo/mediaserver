@@ -259,6 +259,33 @@ class GetRequestHandler:
             from media_stack.services.runtime_platform import get_log_level
             handler._json_response(200, {"level": get_log_level()})
 
+        # --- Auth ---
+        elif path == "/api/auth/identity":
+            # Read forwarded identity headers from Authelia/Authentik
+            user = handler.headers.get("Remote-User", "") or handler.headers.get("X-authentik-username", "")
+            name = handler.headers.get("Remote-Name", "") or handler.headers.get("X-authentik-name", "")
+            email = handler.headers.get("Remote-Email", "") or handler.headers.get("X-authentik-email", "")
+            groups = handler.headers.get("Remote-Groups", "") or handler.headers.get("X-authentik-groups", "")
+            handler._json_response(200, {
+                "authenticated": bool(user),
+                "user": user,
+                "display_name": name,
+                "email": email,
+                "groups": groups,
+            })
+        elif path == "/api/auth/config":
+            from .services.auth_config import AuthConfigService
+            handler._json_response(200, AuthConfigService().get_current_config())
+        elif path == "/api/auth/modes":
+            from .services.auth_config import AuthConfigService
+            handler._json_response(200, {"modes": AuthConfigService().get_auth_modes()})
+        elif path == "/api/auth/oidc-providers":
+            from .services.auth_config import AuthConfigService
+            handler._json_response(200, {"providers": AuthConfigService().get_oidc_providers()})
+        elif path == "/api/auth/service-policies":
+            from .services.auth_config import AuthConfigService
+            handler._json_response(200, {"services": AuthConfigService().get_service_policies()})
+
         # --- Ops ---
         elif path == "/api/namespaces":
             handler._json_response(200, ops_svc.get_namespaces())

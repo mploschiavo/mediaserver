@@ -1,5 +1,99 @@
 # Authelia authentication provider for K8s.
-# Include this resource in your kustomization.yaml to enable Authelia.
+# Includes: ConfigMap (config + users), Deployment, Service, PVC.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-config
+  namespace: media-stack
+data:
+  configuration.yml: |
+    server:
+      address: tcp://0.0.0.0:9091
+    log:
+      level: info
+    theme: auto
+    identity_validation:
+      reset_password:
+        jwt_secret: a2ddef69376fdff8ac2fc004ac6c751c93807ad9f7ea91fee6234d927ba61b20
+    authentication_backend:
+      file:
+        path: /config/users_database.yml
+    access_control:
+      default_policy: deny
+      rules:
+        - domain:
+            - '*.iomio.io'
+          networks:
+            - 192.168.0.0/16
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 127.0.0.0/8
+          policy: one_factor
+        - domain:
+            - jf.iomio.io
+          policy: bypass
+        - domain:
+            - '*.iomio.io'
+          policy: one_factor
+    session:
+      name: authelia_session
+      secret: 4799a297140a5d80e1babd457451cf768d5ac654f7081fb5a712690b10f9bd41
+      cookies:
+        - domain: iomio.io
+          authelia_url: https://auth.iomio.io
+          default_redirection_url: https://m.iomio.io
+    regulation:
+      max_retries: 3
+      find_time: 120
+      ban_time: 300
+    storage:
+      encryption_key: 744487b958c96db4a3b30a4ead60781d5e8197204384c037f468dd72bf421e9d
+      local:
+        path: /data/db.sqlite3
+    notifier:
+      filesystem:
+        filename: /data/notification.txt
+    identity_providers:
+      oidc:
+        hmac_secret: 7a9f3c2e1d4b8a6f5e0c9d7b3a2f1e8c4d6b0a9f7e5c3d1b8a6f4e2c0d9b7a
+        jwks:
+          - key_id: default
+            algorithm: RS256
+            use: sig
+            key: |
+              -----PLACEHOLDER-----
+              Generate with: authelia crypto pair rsa generate
+              Mount as Secret volume or replace this placeholder
+              -----END PLACEHOLDER-----
+        clients:
+          - client_id: jellyseerr
+            client_name: Jellyseerr
+            client_secret: '$pbkdf2-sha512$310000$flbOrIFNRVnbhXbFRPQQ1Q$OKyR8ryBAh7Hkuxfxu5lZ/Tl7oCIsJQMyrOhmVOK7A.eP/4YjcdDJD6kAf5dYOl07FViChA353qi8U2tV46wgA'
+            public: false
+            authorization_policy: one_factor
+            consent_mode: implicit
+            require_pkce: false
+            redirect_uris:
+              - https://m.iomio.io/login?provider=authelia&callback=true
+              - http://m.iomio.io/login?provider=authelia&callback=true
+              - https://m.iomio.io/app/jellyseerr/login?provider=authelia&callback=true
+            scopes: [openid, email, profile, groups]
+            response_types: [code]
+            grant_types: [authorization_code]
+            access_token_signed_response_alg: none
+            userinfo_signed_response_alg: none
+            token_endpoint_auth_method: client_secret_post
+  users_database.yml: |
+    users:
+      admin:
+        disabled: false
+        displayname: Media Stack Admin
+        password: "$argon2id$v=19$m=65536,t=3,p=4$A91qJYXDYjCTqE6rrIa0CA$+9uJek6nf6ysCEfQkbVeKg8eSzRGwLXFb9j0OGdua64"
+        email: admin@iomio.io
+        groups:
+          - admins
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,46 +108,45 @@ spec:
       labels: {app: authelia}
     spec:
       initContainers:
-        - name: init-authelia-config
+        - name: init-config
           image: busybox:1.36
           command:
             - sh
             - -c
             - |
-              if [ ! -f /config/configuration.yml ]; then
-                echo "No configuration.yml found — copy your template to the PVC."
+              cp /cm/configuration.yml /config/configuration.yml
+              if [ ! -f /config/users_database.yml ]; then
+                cp /cm/users_database.yml /config/users_database.yml
               fi
           volumeMounts:
+            - {name: configmap, mountPath: /cm, readOnly: true}
             - {name: config, mountPath: /config}
       containers:
         - name: authelia
-          image: authelia/authelia:4.39
+          image: authelia/authelia:4.38
           args: ["--config", "/config/configuration.yml"]
           resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: "1"
-              memory: 512Mi
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
           ports:
             - containerPort: 9091
           volumeMounts:
             - {name: config, mountPath: /config}
+            - {name: data, mountPath: /data}
           readinessProbe:
             httpGet: {path: /api/health, port: 9091}
-            initialDelaySeconds: 10
-            periodSeconds: 15
+            initialDelaySeconds: 5
+            periodSeconds: 10
           livenessProbe:
             httpGet: {path: /api/health, port: 9091}
-            initialDelaySeconds: 30
+            initialDelaySeconds: 15
             periodSeconds: 30
-          startupProbe:
-            httpGet: {path: /api/health, port: 9091}
-            failureThreshold: 30
-            periodSeconds: 10
       volumes:
+        - name: configmap
+          configMap: {name: authelia-config}
         - name: config
+          emptyDir: {}
+        - name: data
           persistentVolumeClaim: {claimName: media-stack-config-authelia}
 ---
 apiVersion: v1

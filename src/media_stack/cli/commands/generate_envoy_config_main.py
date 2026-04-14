@@ -216,9 +216,32 @@ class GenerateEnvoyConfigCommand:
             info=lambda msg: print(f"[INFO] {msg}"),
         )
 
+        # Resolve gateway auth policy from profile auth section.
+        # Auth works on both LAN and internet-exposed deployments.
+        auth_policy = None
+        if auth_cfg.get("provider") and auth_cfg.get("provider") != "none":
+            from media_stack.core.auth.gateway_policy import AuthContractService
+            auth_contract = AuthContractService()
+            # Build service list with categories for per-service resolution
+            svc_list: list[tuple[str, str]] = []
+            try:
+                from media_stack.api.services.registry import SERVICES as _reg_svcs
+                svc_list = [(s.id, s.category) for s in _reg_svcs]
+            except Exception:
+                pass
+            svc_list.append(("media-stack-controller", "infrastructure"))
+            auth_policy = auth_contract.resolve_policy(auth_cfg, svc_list)
+            if auth_policy.ext_authz:
+                print(f"[INFO] Gateway auth: {auth_policy.mode} (ext_authz → {auth_policy.ext_authz.host}:{auth_policy.ext_authz.port})")
+                protected = [s for s, p in auth_policy.service_policies.items() if p == "protected"]
+                native = [s for s, p in auth_policy.service_policies.items() if p == "native"]
+                print(f"[INFO]   Protected: {', '.join(sorted(protected)[:8])}{'...' if len(protected) > 8 else ''}")
+                print(f"[INFO]   Native auth: {', '.join(sorted(native))}")
+
         dynamic_config_service = EnvoyDynamicConfigService(
             route_graph_service=route_graph_service,
             spec_resolver=spec_resolver,
+            auth_policy=auth_policy,
         )
 
         # Load services — from compose spec or synthetic (K8s mode).
@@ -341,10 +364,6 @@ class GenerateEnvoyConfigCommand:
 
 _instance = GenerateEnvoyConfigCommand()
 main = _instance.main
-
-
-if __name__ == "__main__":
-    main()
 _csv = _instance._csv
 _load_bootstrap_edge_hooks = _instance._load_bootstrap_edge_hooks
 _load_profile = _instance._load_profile
@@ -353,3 +372,6 @@ _build_synthetic_services = _instance._build_synthetic_services
 
 # Known services with their default ports — used when compose file is unavailable (K8s).
 _DEFAULT_SERVICE_PORTS: dict[str, int] = _build_default_service_ports()
+
+if __name__ == "__main__":
+    main()

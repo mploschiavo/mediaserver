@@ -127,6 +127,31 @@ class PostRequestHandler:
             handler._json_response(200, {"level": new_level})
             return
 
+        # POST /api/auth/config -- update auth configuration
+        if handler.path == "/api/auth/config":
+            body = handler._read_json_body()
+            if not body:
+                handler._json_response(400, {"error": "JSON body required"})
+                return
+            from .services.auth_config import AuthConfigService
+            result = AuthConfigService().update_auth_config(body, handler.action_trigger)
+            status = 200 if "error" not in result else 400
+            handler._json_response(status, result)
+            return
+
+        # POST /api/auth/parse-oidc -- parse uploaded OIDC provider JSON
+        if handler.path == "/api/auth/parse-oidc":
+            body = handler._read_json_body()
+            if not body:
+                handler._json_response(400, {"error": "JSON body required"})
+                return
+            from media_stack.core.auth.oidc_config_parser import parse_oidc_config
+            result = parse_oidc_config(body)
+            # Strip raw echo to keep response small
+            result.pop("raw", None)
+            handler._json_response(200, result)
+            return
+
         # POST /api/routing
         if handler.path == "/api/routing":
             body = handler._read_json_body()

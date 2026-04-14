@@ -125,7 +125,7 @@ class HomepageConfig(BoolSectionConfig):
         src = dict(data or {})
         hosts = [str(x).strip() for x in (src.get("hosts") or []) if str(x).strip()]
         return cls(
-            enabled=bool(src.get("enabled", False)),
+            enabled=bool(src.get("enabled", True)),
             required=bool(src.get("required", False)),
             hosts=hosts,
             raw=src,

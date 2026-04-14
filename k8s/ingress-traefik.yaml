@@ -15,8 +15,14 @@ spec:
   tls:
     - hosts:
         - jf.iomio.io
+        - m.iomio.io
+        - auth.iomio.io
       secretName: iomio-tls
   rules:
+    - host: m.iomio.io
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: envoy, port: {number: 80}}}}]}
+    - host: auth.iomio.io
+      http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: authelia, port: {number: 9091}}}}]}
     - host: jf.iomio.io
       http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: jellyfin, port: {number: 8096}}}}]}
     - host: homepage.local

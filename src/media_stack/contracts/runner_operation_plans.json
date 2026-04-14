@@ -83,7 +83,7 @@
         "event": "ENSURE",
         "handler": "ensure_homepage_services_config",
         "args": ["cfg", "config_root"],
-        "enabled_attr": "configure_dashboard_services",
+        "enabled_attr": "configure_dashboard",
         "required_attr": "homepage_required",
         "warning_message": "[WARN] Homepage: config-as-code bootstrap skipped. Set homepage.required=true to fail the bootstrap instead."
       }

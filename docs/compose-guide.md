@@ -99,6 +99,7 @@ Auth provider notes:
   - Authelia: update `${CONFIG_ROOT}/authelia/configuration.yml` to match your upstream federation design.
 
 See also:
+- [Authentication Guide](auth-guide.md)
 - [Bootstrap Profile](bootstrap-profile.md)
 - [Deployment Model](deployment-model.md)
 - [Kubernetes Guide](k8s-guide.md)

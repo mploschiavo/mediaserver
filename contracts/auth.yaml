@@ -1,0 +1,190 @@
+# Authentication contract — defines supported auth modes, provider configs,
+# and per-service auth policy defaults.
+#
+# Profile `auth:` section references these definitions.
+# The controller + Envoy config generator consume this at runtime.
+
+schema_version: 1
+kind: auth_contract
+
+# --------------------------------------------------------------------------
+# Supported auth modes
+# --------------------------------------------------------------------------
+# Each mode describes how gateway (Envoy) and controller auth work together.
+#
+#   mode          | gateway auth         | controller auth     | use case
+#   ------------- | -------------------- | ------------------- | -------------------
+#   none          | —                    | —                   | trusted LAN
+#   basic         | —                    | HTTP Basic Auth     | LAN + minimal security
+#   authelia      | Authelia ext_authz   | forwarded identity  | internet-exposed
+#   authentik     | Authentik ext_authz  | forwarded identity  | internet-exposed + multi-IdP
+
+modes:
+  none:
+    display_name: No Authentication
+    description: No authentication on gateway or controller. Trusted LAN only.
+    gateway_auth: false
+    controller_auth: none
+
+  basic:
+    display_name: Basic Auth
+    description: >
+      HTTP Basic Auth on the controller. No gateway-level auth.
+      Good for local networks with minimal security.
+    gateway_auth: false
+    controller_auth: basic
+
+  authelia:
+    display_name: Authelia (SSO)
+    description: >
+      Authelia forward-auth via Envoy ext_authz. Single sign-on with
+      local accounts, OIDC upstream, or LDAP. Lightweight (single Go binary).
+    gateway_auth: true
+    controller_auth: forwarded
+    provider_service: authelia
+    ext_authz:
+      # Authelia forward-auth endpoint for Envoy ext_authz HTTP service
+      cluster_name: ext_authz_authelia
+      host: authelia
+      port: 9091
+      path_prefix: /api/authz/forward-auth?authz_path=
+      # Headers forwarded from Authelia to upstream services
+      response_headers_to_add:
+        - Remote-User
+        - Remote-Groups
+        - Remote-Name
+        - Remote-Email
+
+  authentik:
+    display_name: Authentik (IdP)
+    description: >
+      Authentik forward-auth via Envoy ext_authz. Full identity provider
+      with OIDC/SAML federation. Heavier resource usage (~1GB RAM).
+    gateway_auth: true
+    controller_auth: forwarded
+    provider_service: authentik
+    ext_authz:
+      cluster_name: ext_authz_authentik
+      host: authentik
+      port: 9000
+      path_prefix: /outpost.goauthentik.io/auth/envoy
+      response_headers_to_add:
+        - X-authentik-username
+        - X-authentik-groups
+        - X-authentik-email
+        - X-authentik-name
+        - X-authentik-uid
+
+# --------------------------------------------------------------------------
+# Per-service auth policy
+# --------------------------------------------------------------------------
+# Each service gets one of these policies when a gateway auth provider is active.
+#
+#   protected — ext_authz enforced; user must authenticate through the provider
+#   native    — service handles its own auth; ext_authz bypassed
+#               (e.g., Jellyfin — TV/mobile apps can't do OIDC redirects)
+#   public    — no auth at all (internal endpoints, webhooks)
+
+service_policies:
+  - protected
+  - native
+  - public
+
+# Default policy per service category (from contracts/services/*.yaml).
+# Services not listed inherit from their category default.
+category_defaults:
+  media: native        # media servers use built-in auth for device compatibility
+  management: protected
+  download: protected
+  indexer: protected
+  infrastructure: public  # edge proxies, DNS — not user-facing
+  monitoring: protected
+  request: protected
+
+# Explicit per-service overrides (take precedence over category defaults).
+# These represent well-known services where the category default is wrong.
+service_overrides:
+  # Jellyfin: MUST be native — TV apps (Roku, Fire TV, Apple TV, Android TV),
+  # mobile apps, and DLNA clients cannot handle OIDC/SAML redirects.
+  # Jellyfin has solid built-in username/password auth.
+  jellyfin: native
+  plex: native
+  emby: native
+
+  # Controller: protected when internet-exposed (SSO covers dashboard access)
+  media-stack-controller: protected
+
+  # Jellyseerr: protected — web-only UI, SSO works fine.
+  # Jellyseerr also has native auth but SSO is better UX.
+  jellyseerr: protected
+
+  # Homepage: protected — dashboard shows sensitive service status
+  homepage: protected
+
+  # Auth providers themselves: public (they ARE the auth layer)
+  authelia: public
+  authentik: public
+
+  # Envoy/Traefik: public (infrastructure, not user-facing)
+  envoy: public
+  traefik: public
+
+# --------------------------------------------------------------------------
+# OIDC Identity Providers (upstream)
+# --------------------------------------------------------------------------
+# Authelia and Authentik both act as the LOCAL forward-auth proxy, but they
+# can delegate authentication to an external OIDC/SAML identity provider.
+# This means you don't need a separate "mode" for Auth0, Okta, etc. —
+# you configure authelia as the gateway and point it at your IdP upstream.
+#
+# This registry defines known OIDC providers for UI dropdowns and config
+# generation. The user can also add custom OIDC providers.
+
+oidc_providers:
+  local:
+    display_name: Local Accounts
+    description: File-based users managed by the auth provider directly
+    discovery_url: ""  # no OIDC — local user database
+
+  auth0:
+    display_name: Auth0
+    description: Auth0 by Okta — cloud identity platform
+    discovery_url_template: "https://{tenant}.auth0.com/.well-known/openid-configuration"
+    required_fields: [tenant, client_id, client_secret]
+
+  okta:
+    display_name: Okta
+    description: Okta Workforce/Customer Identity
+    discovery_url_template: "https://{domain}/oauth2/default/.well-known/openid-configuration"
+    required_fields: [domain, client_id, client_secret]
+
+  google:
+    display_name: Google
+    description: Google Workspace or personal Gmail accounts
+    discovery_url: "https://accounts.google.com/.well-known/openid-configuration"
+    required_fields: [client_id, client_secret]
+
+  microsoft:
+    display_name: Microsoft Entra ID
+    description: Azure AD / Microsoft 365 accounts
+    discovery_url_template: "https://login.microsoftonline.com/{tenant_id}/v2.0/.well-known/openid-configuration"
+    required_fields: [tenant_id, client_id, client_secret]
+
+  github:
+    display_name: GitHub
+    description: GitHub OAuth (limited OIDC — email + username only)
+    authorization_url: "https://github.com/login/oauth/authorize"
+    token_url: "https://github.com/login/oauth/access_token"
+    userinfo_url: "https://api.github.com/user"
+    required_fields: [client_id, client_secret]
+
+  keycloak:
+    display_name: Keycloak
+    description: Self-hosted open-source IdP
+    discovery_url_template: "https://{host}/realms/{realm}/.well-known/openid-configuration"
+    required_fields: [host, realm, client_id, client_secret]
+
+  custom:
+    display_name: Custom OIDC Provider
+    description: Any OIDC-compliant identity provider
+    required_fields: [discovery_url, client_id, client_secret]
