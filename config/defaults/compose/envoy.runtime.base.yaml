@@ -104,30 +104,37 @@ static_resources:
                         end
 
                         function envoy_on_request(handle)
-                          -- Save x-forwarded-prefix from request headers to dynamic
-                          -- metadata so envoy_on_response can access it. Route-level
-                          -- response_headers_to_add runs AFTER filters, so reading
-                          -- x-media-stack-prefix from response headers doesn't work
-                          -- when multiple HTTP filters are in the chain.
-                          local prefix = handle:headers():get("x-forwarded-prefix") or ""
+                          -- Extract the app prefix from the request path.
+                          -- Route-level headers (x-forwarded-prefix) are added AFTER
+                          -- the filter chain, so we can't read them here. Instead,
+                          -- parse /app/<service> from :path directly.
+                          local path = handle:headers():get(":path") or ""
+                          local prefix = string.match(path, "^(/app/[^/]+)")
                           local host = handle:headers():get(":authority") or ""
-                          if prefix ~= "" then
+                          if prefix ~= nil and prefix ~= "" then
                             handle:streamInfo():dynamicMetadata():set("media_stack", "prefix", prefix)
                             handle:streamInfo():dynamicMetadata():set("media_stack", "host", host)
                           end
                         end
 
                         function envoy_on_response(handle)
-                          -- Read prefix from dynamic metadata (set in envoy_on_request)
-                          -- Fall back to response header for backward compatibility.
-                          local prefix = handle:streamInfo():dynamicMetadata():get("media_stack", "prefix")
+                          -- Read prefix from dynamic metadata (set in envoy_on_request).
+                          -- dynamicMetadata():get(filter) returns the filter's table,
+                          -- so index into it with ["key"].
+                          local meta = handle:streamInfo():dynamicMetadata():get("media_stack")
+                          local prefix = nil
+                          local host_hint = nil
+                          if meta ~= nil then
+                            prefix = meta["prefix"]
+                            host_hint = meta["host"]
+                          end
+                          -- Fall back to response header for backward compatibility
                           if prefix == nil or prefix == "" then
                             prefix = handle:headers():get("x-media-stack-prefix")
                           end
                           if prefix == nil or prefix == "" then
                             return
                           end
-                          local host_hint = handle:streamInfo():dynamicMetadata():get("media_stack", "host")
                           if host_hint == nil or host_hint == "" then
                             host_hint = handle:headers():get("x-media-stack-host")
                           end

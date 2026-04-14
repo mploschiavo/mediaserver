@@ -157,59 +157,35 @@ def inject_ext_authz_into_payload(
             router_idx = i
             break
 
-    # Insert a Lua filter to set X-Forwarded-Host and X-Forwarded-URI
-    # from the original request. ext_authz rewrites the Host header to
-    # the auth service host, so the auth provider needs these headers
-    # to know which service the original request was for.
-    auth_lua_filter = {
-        "name": "envoy.filters.http.lua",
-        "typed_config": {
-            "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua",
-            "inline_code": (
-                'function envoy_on_request(handle)\n'
-                '  local host = handle:headers():get(":authority") or ""\n'
-                '  local path = handle:headers():get(":path") or "/"\n'
-                '  handle:headers():replace("x-forwarded-host", host)\n'
-                '  handle:headers():replace("x-forwarded-uri", path)\n'
-                '  handle:headers():replace("x-forwarded-proto", "https")\n'
-                '  handle:headers():replace("x-forwarded-method", handle:headers():get(":method") or "GET")\n'
-                'end\n'
-            ),
-        },
-    }
+    # Merge auth header injection into the EXISTING base Lua filter.
+    # Multiple Lua filters break envoy_on_response callbacks, so all
+    # Lua code must live in a single filter. The base template Lua
+    # (filter[0]) already has envoy_on_request and envoy_on_response.
+    # We prepend auth header code to envoy_on_request.
+    base_lua = http_filters[0] if http_filters and http_filters[0].get("name") == "envoy.filters.http.lua" else None
+    if base_lua and "inline_code" in base_lua.get("typed_config", {}):
+        old_code = base_lua["typed_config"]["inline_code"]
+        # Inject auth header setup at the START of envoy_on_request
+        auth_request_code = (
+            '  -- [AUTH] Set forwarded headers for ext_authz\n'
+            '  handle:headers():replace("x-forwarded-host", handle:headers():get(":authority") or "")\n'
+            '  handle:headers():replace("x-forwarded-uri", handle:headers():get(":path") or "/")\n'
+            '  handle:headers():replace("x-forwarded-proto", "https")\n'
+            '  handle:headers():replace("x-forwarded-method", handle:headers():get(":method") or "GET")\n'
+        )
+        # Insert after "function envoy_on_request(handle)" line
+        old_code = old_code.replace(
+            'function envoy_on_request(handle)\n',
+            'function envoy_on_request(handle)\n' + auth_request_code,
+            1,
+        )
+        base_lua["typed_config"]["inline_code"] = old_code
+
     ext_authz_filter = build_ext_authz_filter(policy.ext_authz, auth_portal_url)
-    # Lua filter to strip auth session cookies AFTER ext_authz approves.
-    # Prevents 431 Request Header Fields Too Large on upstreams with
-    # small header limits (Sonarr/Radarr Kestrel server = 8KB).
-    cookie_strip_filter = {
-        "name": "envoy.filters.http.lua",
-        "typed_config": {
-            "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua",
-            "inline_code": (
-                'function envoy_on_request(handle)\n'
-                '  local cookie = handle:headers():get("cookie") or ""\n'
-                '  if cookie ~= "" then\n'
-                '    local cleaned = cookie:gsub("authelia_session=[^;]*;?%s*", "")\n'
-                '    cleaned = cleaned:gsub("authentik_session=[^;]*;?%s*", "")\n'
-                '    cleaned = cleaned:gsub(";%s*$", "")\n'
-                '    if cleaned ~= "" then\n'
-                '      handle:headers():replace("cookie", cleaned)\n'
-                '    else\n'
-                '      handle:headers():remove("cookie")\n'
-                '    end\n'
-                '  end\n'
-                'end\n'
-            ),
-        },
-    }
     if router_idx is not None:
-        http_filters.insert(router_idx, auth_lua_filter)
-        http_filters.insert(router_idx + 1, ext_authz_filter)
-        http_filters.insert(router_idx + 2, cookie_strip_filter)
+        http_filters.insert(router_idx, ext_authz_filter)
     else:
-        http_filters.append(auth_lua_filter)
         http_filters.append(ext_authz_filter)
-        http_filters.append(cookie_strip_filter)
 
     # 2. Add auth cluster
     clusters = static_resources.get("clusters", [])
