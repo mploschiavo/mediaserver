@@ -2,6 +2,7 @@
   "allowed_keys": {
     "config_version": "integer",
     "adapter_hooks": "object",
+    "auth": "object",
     "app_auth": "object",
     "app_capability_defaults": "object",
     "arr_apps": "array",
@@ -34,6 +35,7 @@
     "prowlarr_url": "string",
     "quality_profiles": "object",
     "readarr": "object",
+    "routing": "object",
     "refresh_health_after_setup": "boolean",
     "sonarr_seed_series": "object",
     "technology_bindings": "object",

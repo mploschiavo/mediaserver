@@ -261,5 +261,38 @@ class TestLoadProfileConfig(unittest.TestCase):
         self.assertIn("routing", cfg)
 
 
+class TestTopLevelSchemaAllowsProfileKeys(unittest.TestCase):
+    """The top-level config schema must allow auth and routing keys.
+
+    Root cause regression: config_loader merges auth/routing from the
+    profile into the cfg dict, but TopLevelBootstrapConfig rejected
+    them as unknown keys, crashing the controller on startup.
+    """
+
+    def test_schema_allows_auth(self) -> None:
+        import json
+        schema_path = (
+            Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "contracts"
+            / "top_level_config_schema.json"
+        )
+        schema = json.loads(schema_path.read_text())
+        allowed = schema.get("allowed_keys", {})
+        self.assertIn("auth", allowed,
+            "top_level_config_schema must allow 'auth' key")
+
+    def test_schema_allows_routing(self) -> None:
+        import json
+        schema_path = (
+            Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "contracts"
+            / "top_level_config_schema.json"
+        )
+        schema = json.loads(schema_path.read_text())
+        allowed = schema.get("allowed_keys", {})
+        self.assertIn("routing", allowed,
+            "top_level_config_schema must allow 'routing' key")
+
+
 if __name__ == "__main__":
     unittest.main()
