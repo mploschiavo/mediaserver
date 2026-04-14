@@ -308,6 +308,15 @@ class ControllerRuntimeBuilder:
                 "password_env": "STACK_ADMIN_PASSWORD",
                 "include": include_apps,
             }
+        # When SSO is active (authelia/authentik), set External auth on arr
+        # apps so they trust the reverse proxy and don't show a login form.
+        # External auth means "someone upstream already authenticated this user."
+        auth_section = cfg.get("auth") or {}
+        auth_mode = str(auth_section.get("provider") or auth_section.get("mode") or "").strip().lower()
+        if auth_mode in ("authelia", "authentik") and app_auth_cfg.get("enabled"):
+            app_auth_cfg["method"] = "External"
+            app_auth_cfg["required"] = "DisabledForLocalAddresses"
+
         app_auth_model = AppAuthConfig.from_dict(app_auth_cfg)
 
         auto_indexers = bool(

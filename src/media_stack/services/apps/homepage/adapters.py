@@ -243,11 +243,35 @@ class HomepageAdapters:
                 cards.append((name, href, description))
         return cards
 
+    def _gateway_href(
+        self,
+        host: str,
+        scheme: str,
+        gateway_base_url: str,
+        app_path_prefix: str,
+    ) -> str:
+        """Build a browser-reachable URL for a service tile.
+
+        When a gateway is configured, returns a path-prefix URL like
+        ``http://apps.media-stack.local/app/sonarr`` so tiles actually
+        load real content in the browser.  Falls back to the direct
+        host URL when no gateway is set.
+        """
+        if gateway_base_url:
+            token = self._service_token(host)
+            if token:
+                base = gateway_base_url.rstrip("/")
+                prefix = app_path_prefix.rstrip("/")
+                return f"{base}{prefix}/{token}"
+        return self._normalize_target_url(host, scheme, host)
+
     def render_services_yaml(
         self,
         hosts: Iterable[str],
         scheme: str = "http",
         onboarding: Dict[str, object] | None = None,
+        gateway_base_url: str = "",
+        app_path_prefix: str = "/app",
     ) -> str:
         ordered = self._ordered_hosts(hosts)
         if not ordered:
@@ -256,7 +280,7 @@ class HomepageAdapters:
         lines = ["---", "- Media Stack:"]
         for host in ordered:
             title, description = self._service_meta(host)
-            href = self._normalize_target_url(host, scheme, host)
+            href = self._gateway_href(host, scheme, gateway_base_url, app_path_prefix)
             lines.extend(
                 [
                     f"    - {title}:",

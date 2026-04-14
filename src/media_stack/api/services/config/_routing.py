@@ -73,6 +73,7 @@ class RoutingConfigService:
             "gateway_port": int(routing.get("gateway_port", 80)),
             "app_path_prefix": str(routing.get("app_path_prefix", "/app")),
             "strategy": str(routing.get("strategy", "hybrid")),
+            "scheme": str(routing.get("scheme") or ""),
             "internet_exposed": bool(routing.get("internet_exposed", False)),
             "direct_hosts": {
                 k: str(v) for k, v in (routing.get("direct_hosts") or {}).items()

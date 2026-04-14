@@ -81,6 +81,10 @@ Reference diagram:
 
 ![Network and protocol topology](diagrams/network-protocol-topology.png)
 
+## Authentication
+
+See [Authentication Guide](auth-guide.md) for Authelia/Authentik SSO setup, OIDC configuration, and per-service auth policies.
+
 ## TLS
 
 Optional LAN TLS helper:

@@ -42,6 +42,11 @@ from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts impor
 )
 from media_stack.core.platforms.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
 from media_stack.core.platforms.compose.services.spec import ComposeSpecResolver
+from media_stack.core.auth.gateway_policy import GatewayAuthPolicy
+from media_stack.core.auth.envoy_ext_authz import (
+    apply_per_route_auth_policy,
+    inject_ext_authz_into_payload,
+)
 import logging
 
 _DEFAULT_TEMPLATE_RELATIVE_PATH = Path("config/defaults/compose/envoy.runtime.base.yaml")
@@ -69,6 +74,7 @@ class EnvoyDynamicConfigService:
     spec_resolver: ComposeSpecResolver
     runtime_template_path: Path | None = None
     template_loader: TemplateLoaderFn | None = None
+    auth_policy: GatewayAuthPolicy | None = None
 
     @staticmethod
     def _repo_root() -> Path:
@@ -154,6 +160,11 @@ class EnvoyDynamicConfigService:
         if not isinstance(static_resources, dict):
             raise RuntimeError("Envoy runtime template is missing static_resources mapping.")
         static_resources["clusters"] = list(clusters)
+
+    def _apply_route_auth(self, route: dict[str, Any], service_name: str) -> None:
+        """Apply per-route auth policy if gateway auth is active."""
+        if self.auth_policy and self.auth_policy.ext_authz:
+            apply_per_route_auth_policy(route, service_name, self.auth_policy)
 
     def render(self, services: dict[str, dict[str, Any]]) -> EnvoyDynamicConfigRender:
         route_graph = self.route_graph_service.render(services)
@@ -344,6 +355,27 @@ class EnvoyDynamicConfigService:
                             },
                         )
                     )
+            # Catch-all for unknown /app/X paths in HTML browsers: redirect
+            # to /app/homepage so users see the dashboard instead of a blank
+            # page or wrong service.  Rank just above the root HTML redirect
+            # but below all known service routes.
+            if app_root and app_root != "/":
+                routes_by_host.setdefault(host_token, []).append(
+                    (
+                        _DEFAULT_HTML_REDIRECT_ROUTE_RANK + 1,
+                        {
+                            "match": {
+                                "prefix": f"{app_root}/",
+                                "headers": [
+                                    html_accept_header_match(),
+                                ],
+                            },
+                            "redirect": {
+                                "path_redirect": homepage_path,
+                            },
+                        },
+                    )
+                )
             # Exact root match: redirect "/" to the default app path for all
             # request types (browsers and TV apps). Rank above cookie fallback
             # so stale app cookies don't hijack root. TV apps that follow
@@ -374,12 +406,125 @@ class EnvoyDynamicConfigService:
                 )
             )
 
+        # /app/controller → /app/media-stack-controller redirect alias.
+        # The controller service ID is media-stack-controller, but users
+        # expect /app/controller to work as a shortcut.
+        for host_token, host_routes in routes_by_host.items():
+            has_controller = any(
+                r.get("match", {}).get("prefix") == "/app/media-stack-controller"
+                for _, r in host_routes
+                if isinstance(r, dict)
+            )
+            if has_controller:
+                host_routes.append((
+                    _PRIMARY_ROUTE_RANK_BASE + len("/app/controller") + 1,
+                    {
+                        "match": {"prefix": "/app/controller/"},
+                        "redirect": {"prefix_rewrite": "/app/media-stack-controller/"},
+                    },
+                ))
+                host_routes.append((
+                    _PRIMARY_ROUTE_RANK_BASE + len("/app/controller") + 2,
+                    {
+                        "match": {"path": "/app/controller"},
+                        "redirect": {"path_redirect": "/app/media-stack-controller"},
+                    },
+                ))
+
+        # OIDC callback route: /login → redirect to /app/jellyseerr/login
+        # Jellyseerr's OIDC flow redirects to /login at the root (without
+        # the /app/jellyseerr prefix) because it uses window.location.origin.
+        # Route this to Jellyseerr so the OIDC callback completes.
+        if self.auth_policy and self.auth_policy.ext_authz:
+            for host_token, host_routes in routes_by_host.items():
+                has_jellyseerr = any(
+                    r.get("match", {}).get("prefix") == "/app/jellyseerr"
+                    for _, r in host_routes
+                    if isinstance(r, dict)
+                )
+                if has_jellyseerr:
+                    from media_stack.core.auth.envoy_ext_authz import route_ext_authz_disabled_config as _authz_off
+                    host_routes.append((
+                        _PRIMARY_ROUTE_RANK_BASE + len("/login") + 1,
+                        {
+                            "match": {"prefix": "/login"},
+                            "redirect": {"prefix_rewrite": "/app/jellyseerr/login"},
+                            "typed_per_filter_config": _authz_off(),
+                        },
+                    ))
+
         clusters = build_clusters_from_service_map(service_map)
+
+        # Add auth portal vhost + cluster when gateway auth is active.
+        # The auth portal (e.g. auth.media-stack.local) must be reachable
+        # through Envoy so browsers can load the login page.
+        _auth_vhost = None
+        if self.auth_policy and self.auth_policy.ext_authz:
+            ext = self.auth_policy.ext_authz
+            # Derive auth portal hostname from the gateway host
+            # (e.g. apps.media-stack.local → auth.media-stack.local)
+            env = self.spec_resolver.compose_environment()
+            gw_host = str(env.get("APP_GATEWAY_HOST", "")).strip()
+            if gw_host:
+                parts = gw_host.split(".", 1)
+                auth_host = f"auth.{parts[1]}" if len(parts) > 1 else f"auth.{gw_host}"
+                auth_cluster_name = f"service_{ext.host}"
+                # Proxy all requests on auth subdomain to auth provider
+                auth_route: dict[str, Any] = {
+                    "match": {"prefix": "/"},
+                    "route": {"cluster": auth_cluster_name, "timeout": "0s"},
+                }
+                # Disable ext_authz on the auth portal itself
+                from media_stack.core.auth.envoy_ext_authz import route_ext_authz_disabled_config
+                auth_route["typed_per_filter_config"] = route_ext_authz_disabled_config()
+                _auth_vhost = {
+                    "name": f"vhost_{ext.host}",
+                    "domains": [auth_host, f"{auth_host}:*"],
+                    "routes": [auth_route],
+                }
+                # Remove any existing routes for this host to prevent
+                # build_virtual_hosts from creating a duplicate vhost.
+                routes_by_host.pop(auth_host, None)
+                # Add cluster for auth provider (if not already in clusters)
+                auth_cluster_names = {c["name"] for c in clusters}
+                if auth_cluster_name not in auth_cluster_names:
+                    from media_stack.core.platforms.compose.edge.providers.envoy.clusters import build_cluster_entry
+                    clusters.append(build_cluster_entry(
+                        auth_cluster_name, address=ext.host, port=ext.port,
+                    ))
+
         virtual_hosts, route_count = build_virtual_hosts(routes_by_host)
+
+        # Insert auth portal vhost before the catch-all (if created above)
+        if _auth_vhost is not None:
+            catchall_idx = next(
+                (i for i, vh in enumerate(virtual_hosts) if vh.get("name") == "vhost_catchall"),
+                len(virtual_hosts),
+            )
+            virtual_hosts.insert(catchall_idx, _auth_vhost)
+            route_count += 1
+
+        # Apply per-route auth policy (ext_authz bypass for native/public services)
+        if self.auth_policy and self.auth_policy.ext_authz:
+            self._apply_auth_to_virtual_hosts(virtual_hosts, service_map)
 
         payload = self._load_runtime_template_payload()
         self._replace_virtual_hosts(payload, virtual_hosts)
         self._replace_clusters(payload, clusters)
+
+        # Inject ext_authz filter and cluster into the payload
+        if self.auth_policy and self.auth_policy.ext_authz:
+            # Build auth portal URL for Authelia redirect parameter
+            _auth_portal = ""
+            if _auth_vhost is not None:
+                _auth_domains = _auth_vhost.get("domains", [])
+                if _auth_domains:
+                    _auth_portal = f"https://{_auth_domains[0]}"
+            inject_ext_authz_into_payload(payload, self.auth_policy, _auth_portal)
+
+        # Inject TLS transport socket if cert files exist (compose with TLS).
+        # K8s uses ingress TLS termination, so certs won't be present.
+        self._inject_tls_if_available(payload)
 
         return EnvoyDynamicConfigRender(
             payload=payload,
@@ -387,3 +532,72 @@ class EnvoyDynamicConfigService:
             cluster_count=len(clusters),
             ignored_redirect_middleware_count=ignored_redirect_middleware_count,
         )
+
+    @staticmethod
+    def _inject_tls_if_available(payload: dict[str, Any]) -> None:
+        """Add TLS transport socket to the main listener if cert files exist.
+
+        Compose deployments mount certs at /certs/. K8s uses ingress TLS
+        termination so certs won't be present and Envoy runs plain HTTP.
+        """
+        cert_paths = [
+            ("/certs/media-stack.crt", "/certs/media-stack.key"),
+            ("/etc/envoy/certs/media-stack.crt", "/etc/envoy/certs/media-stack.key"),
+        ]
+        cert_path = key_path = None
+        for c, k in cert_paths:
+            if Path(c).exists() and Path(k).exists():
+                cert_path, key_path = c, k
+                break
+        if not cert_path:
+            return
+
+        listeners = payload.get("static_resources", {}).get("listeners", [])
+        if not listeners:
+            return
+        main_listener = listeners[0]
+        filter_chains = main_listener.get("filter_chains", [])
+        if not filter_chains:
+            return
+        # Only add if not already present
+        if "transport_socket" in filter_chains[0]:
+            return
+        filter_chains[0]["transport_socket"] = {
+            "name": "envoy.transport_sockets.tls",
+            "typed_config": {
+                "@type": "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext",
+                "common_tls_context": {
+                    "tls_certificates": [{
+                        "certificate_chain": {"filename": cert_path},
+                        "private_key": {"filename": key_path},
+                    }],
+                },
+            },
+        }
+        main_listener["name"] = "listener_https"
+
+    def _apply_auth_to_virtual_hosts(
+        self,
+        virtual_hosts: list[dict[str, Any]],
+        service_map: dict[str, Any],
+    ) -> None:
+        """Apply per-route ext_authz bypass based on service auth policy.
+
+        Walks all routes in all virtual hosts. For each route, extracts the
+        cluster name to resolve the service, then applies auth policy.
+        """
+        if not self.auth_policy:
+            return
+
+        # Build cluster→service_name mapping
+        cluster_to_service: dict[str, str] = {}
+        for svc_name in service_map:
+            cluster_to_service[_cluster_name(svc_name)] = svc_name
+
+        for vhost in virtual_hosts:
+            for route in vhost.get("routes", []):
+                route_action = route.get("route") or {}
+                cluster = route_action.get("cluster", "")
+                svc_name = cluster_to_service.get(cluster, "")
+                if svc_name:
+                    self._apply_route_auth(route, svc_name)

@@ -5,7 +5,7 @@
 *{box-sizing:border-box}
 :root{--bg:#0f1923;--bg2:#162230;--bg3:#1e3044;--bg4:#0b1219;--fg:#e0e0e0;--fg2:#94a3b8;--fg3:#64748b;--border:#1e3044;--ok:#4ade80;--err:#f87171;--warn:#fbbf24;--blue:#3b82f6;--accent:#4ade80}
 body.light{--bg:#f8fafc;--bg2:#fff;--bg3:#e2e8f0;--bg4:#f1f5f9;--fg:#1e293b;--fg2:#475569;--fg3:#94a3b8;--border:#e2e8f0;--ok:#16a34a;--err:#dc2626;--warn:#d97706;--blue:#2563eb;--accent:#16a34a}
-body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:0;transition:background .3s,color .3s}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:0;transition:background .3s,color .3s;overflow-y:scroll}
 header{background:var(--bg2);padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:40}
 header h1{margin:0;font-size:1.35em;color:var(--accent);display:flex;align-items:center;gap:8px}
 .badge{font-size:.55em;padding:3px 8px;border-radius:10px;font-weight:normal;color:var(--bg);display:inline-block}
@@ -88,6 +88,12 @@ button{border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight
 header .switch{width:34px;height:18px}
 header .switch .slider:before{height:12px;width:12px;left:3px;bottom:3px}
 header .switch input:checked+.slider:before{transform:translateX(16px)}
+.user-badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);font-size:.82em;color:var(--fg2);background:transparent}
+.user-badge:hover{border-color:var(--accent);color:var(--accent)}
+.user-badge .user-icon{width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:.7em;font-weight:700;flex-shrink:0}
+.user-badge .user-name{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-badge a{color:var(--fg3);text-decoration:none;font-size:.85em;margin-left:2px}
+.user-badge a:hover{color:var(--err)}
 #toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);color:var(--ok);padding:12px 20px;border-radius:8px;border:1px solid var(--ok);display:none;z-index:99;font-size:.9em;max-width:360px;animation:fadeIn .2s ease}
 #toast.err{color:var(--err);border-color:var(--err)}
 .progress-wrap{background:var(--bg4);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
@@ -129,7 +135,7 @@ header .switch input:checked+.slider:before{transform:translateX(16px)}
 .tab-bar{display:flex;gap:2px;margin-bottom:12px;border-bottom:2px solid var(--border);flex-wrap:wrap}
 .tab-bar button{background:transparent;color:var(--fg3);border:none;padding:8px 14px;font-size:.85em;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
 .tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}.tab-bar button:hover{color:var(--fg)}
-.tab-content{display:none}.tab-content.active{display:block;animation:fadeIn .2s ease}
+.tab-content{display:none;min-height:60vh}.tab-content.active{display:block;animation:fadeIn .15s ease}
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .15s ease}
 .confirm-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%}
 .confirm-box h3{margin:0 0 8px;color:var(--fg);font-size:1.1em}
@@ -143,7 +149,7 @@ header .switch input:checked+.slider:before{transform:translateX(16px)}
 .dur-bar.error{background:var(--err)}
 .status-counts{display:flex;gap:10px;font-size:.82em;font-weight:normal}
 .status-counts span{display:flex;align-items:center;gap:3px}
-.subtab{display:none;min-height:100px}.subtab.active{display:block;animation:fadeIn .2s ease}
+.subtab{display:none;min-height:200px}.subtab.active{display:block;animation:fadeIn .15s ease}
 .dep-graph{font-family:'Fira Code',monospace;font-size:.82em;background:var(--bg4);padding:12px;border-radius:6px;line-height:1.8;color:var(--fg2)}
 .dep-graph .dep-arrow{color:var(--accent)}.dep-graph .dep-svc{color:var(--blue);font-weight:600}
 .sla-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.85em;border-bottom:1px solid var(--border)}
@@ -243,6 +249,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button onclick="setLogLevel('WARN')" data-level="WARN" style="padding:3px 7px;border:none;background:var(--bg1);color:var(--fg3);cursor:pointer;border-right:1px solid var(--border)">Warn</button>
       <button onclick="setLogLevel('ERROR')" data-level="ERROR" style="padding:3px 7px;border:none;background:var(--bg1);color:var(--fg3);cursor:pointer">Error</button>
     </span>
+    <span id="user-badge" class="user-badge" style="display:none" title="Authenticated user"><span class="user-icon" id="user-initial"></span><span class="user-name" id="user-name"></span><a href="#" id="user-logout" title="Logout" onclick="authLogout();return false;">Logout</a></span>
     <button onclick="showSettings()" title="Dashboard settings">Settings</button>
     <button onclick="showShortcuts()" title="Keyboard shortcuts (?)">?</button>
   </div>
@@ -526,6 +533,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-downloads',this)">Downloads</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-metadata',this)">Metadata</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-livetv',this)">Live TV</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-auth',this)">Auth</button>
       <span style="border-left:1px solid var(--border);height:20px;margin:0 2px"></span>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-profile',this)">Profile</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showSubTab('cfg-drift',this)">Drift</button>
@@ -544,6 +552,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="cfg-metadata" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="cfg-livetv" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="cfg-jobs" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="cfg-auth" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
   </div>
   <div id="tab-webhooks" class="tab-content">
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Webhooks + alert rules. Webhooks receive JSON POST on action events.</p>
@@ -596,6 +605,30 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <div id="toast"></div>
 <div id="confirm-root"></div>
 <script>
+/* Authenticated fetch wrapper — ensures credentials are sent on every request */
+function apiFetch(url,opts){opts=opts||{};opts.credentials='same-origin';return window.fetch(url,opts);}
+async function loadAuthIdentity(){
+  try{
+    const r=await apiFetch('/api/auth/identity');
+    if(!r.ok)return;
+    const d=await r.json();
+    const badge=document.getElementById('user-badge');
+    if(!d.authenticated||!d.user){if(badge)badge.style.display='none';return;}
+    const displayName=d.display_name||d.user;
+    const initial=(displayName.charAt(0)||'?').toUpperCase();
+    document.getElementById('user-initial').textContent=initial;
+    document.getElementById('user-name').textContent=displayName;
+    badge.title='Signed in as '+d.user+(d.email?' ('+d.email+')':'');
+    badge.style.display='flex';
+  }catch(e){}
+}
+function authLogout(){
+  // Redirect to Authelia/Authentik logout endpoint
+  const loc=window.location;
+  const base=loc.protocol+'//auth.'+loc.hostname.split('.').slice(1).join('.')+
+    (loc.port&&loc.port!=='80'&&loc.port!=='443'?':'+loc.port:'');
+  window.location.href=base+'/api/authz/logout?rd='+encodeURIComponent(loc.origin+'/');
+}
 let logRaw=[],logSeq=0,evtSource=null,statusData=null,logAutoScroll=true;
 let logFilter='all',sseAlive=false,svcSort='default',svcVersions={},prevPhase='idle';
 let hideDisabled=true;
@@ -605,7 +638,7 @@ let SVCS=[];
 let SVC_MAP={};
 async function loadServicesFromAPI(){
   try{
-    const[svcsRes,catsRes]=await Promise.all([fetch('/api/services'),fetch('/api/services/categories')]);
+    const[svcsRes,catsRes]=await Promise.all([apiFetch('/api/services'),apiFetch('/api/services/categories')]);
     if(svcsRes.ok)SVCS=await svcsRes.json();
     if(catsRes.ok)CATS=await catsRes.json();
   }catch(e){console.warn('Failed to load services from API, using fallback');}
@@ -671,11 +704,11 @@ function _highlightLogLevel(level){
   }
 }
 async function setLogLevel(level){
-  try{const r=await fetch('/api/log-level',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level})});
+  try{const r=await apiFetch('/api/log-level',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level})});
   if(r.ok){const d=await r.json();_highlightLogLevel(d.level);}
   }catch(e){console.error('Failed to set log level',e);}
 }
-(async function(){try{const r=await fetch('/api/log-level');if(r.ok){const d=await r.json();_highlightLogLevel(d.level);}}catch(e){}})();
+(async function(){try{const r=await apiFetch('/api/log-level');if(r.ok){const d=await r.json();_highlightLogLevel(d.level);}}catch(e){}})();
 
 /* Collapsible cards */
 function toggleCard(h2){h2.closest('.card').classList.toggle('collapsed');}
@@ -686,7 +719,8 @@ function showTab(id,btn){
   document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if(btn)btn.classList.add('active');
-  location.hash=id.replace('tab-','');
+  /* Use replaceState instead of location.hash to avoid browser scroll-jump */
+  history.replaceState(null,null,'#'+id.replace('tab-',''));
   onTabShow(id);
 }
 (function(){const h=location.hash.replace('#','');if(h){const tabId='tab-'+h;const tab=document.getElementById(tabId);
@@ -722,13 +756,13 @@ async function doAction(name){
   _actionPending=true;showLoading();
   document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
   toast(name+' starting...');
-  try{const r=await fetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  try{const r=await apiFetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d=await r.json();if(r.status>=400)toast(d.error||'Failed',true);else{toast(name+' accepted');setTimeout(load,1500);}
   }catch(e){toast(e.toString(),true);}
   finally{_actionPending=false;hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
 async function cancelAction(){
-  try{const r=await fetch('/cancel',{method:'POST'});const d=await r.json();
+  try{const r=await apiFetch('/cancel',{method:'POST'});const d=await r.json();
   if(d.status==='cancel_requested'){
     const name=d.current_action?d.current_action.name:'action';
     toast('Cancelling '+name+'... (killing subprocess)');
@@ -737,7 +771,7 @@ async function cancelAction(){
   }catch(e){toast(e.toString(),true);}
 }
 async function toggleAuto(on){
-  try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_download_content:on})});
+  try{await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_download_content:on})});
     document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(on?'on':'off')+'</b>';
     toast('Auto-downloads '+(on?'enabled — running reconcile to apply...':'disabled — running reconcile to apply...'));
     // Auto-trigger reconcile so the config change takes effect immediately.
@@ -831,7 +865,7 @@ function buildQuickLinks(){
 /* Main status */
 async function load(){
   try{
-    const r=await fetch('/status');const d=await r.json();statusData=d;
+    const r=await apiFetch('/status');const d=await r.json();statusData=d;
     const p=d.phase,cls=p==='complete'?'ok':p==='error'?'error':p==='running'?'running':'idle';
     document.getElementById('hbadge').textContent=p.toUpperCase();
     document.getElementById('hbadge').className='badge '+cls;
@@ -995,7 +1029,7 @@ function toggleSvc(id){
 /* Per-service restart */
 async function restartService(name){
   toast('Restarting '+name+'...');
-  try{const r=await fetch('/api/restart/'+name,{method:'POST'});const d=await r.json();toast(d.status==='restarted'?name+' restarted':'Restart failed: '+(d.error||''),d.status!=='restarted');}catch(e){toast(e.toString(),true);}
+  try{const r=await apiFetch('/api/restart/'+name,{method:'POST'});const d=await r.json();toast(d.status==='restarted'?name+' restarted':'Restart failed: '+(d.error||''),d.status!=='restarted');}catch(e){toast(e.toString(),true);}
 }
 
 /* Credential revalidation */
@@ -1004,7 +1038,7 @@ async function revalidateCredentials(svcId){
   const label=svcId||'all services';
   toast('Checking credentials for '+label+'...');
   try{
-    const r=await fetch('/api/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(services?{services}:{})});
+    const r=await apiFetch('/api/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(services?{services}:{})});
     if(r.ok){const d=await r.json();
       for(const[k,v]of Object.entries(d.credentials||{})){SVC_LOGIN[k]=v;}
       const ok=d.ok||0,total=d.total||0;
@@ -1016,7 +1050,7 @@ async function revalidateCredentials(svcId){
 
 /* Health probes + sparkline history */
 async function probeServices(){
-  try{const r=await fetch('/api/health');if(r.ok){const d=await r.json();for(const[k,v]of Object.entries(d.services||{})){
+  try{const r=await apiFetch('/api/health');if(r.ok){const d=await r.json();for(const[k,v]of Object.entries(d.services||{})){
     SVC_HEALTH[k]=v.status;if(v.ms!==undefined)SVC_MS[k]=v.ms;if(v.auth)SVC_AUTH[k]=v.auth;if(v.login)SVC_LOGIN[k]=v.login;
     if(!healthHistory[k])healthHistory[k]=[];healthHistory[k].push(v.status);if(healthHistory[k].length>12)healthHistory[k].shift();
   }}}catch(e){}
@@ -1025,12 +1059,12 @@ async function probeServices(){
 
 /* Versions */
 async function loadVersions(){
-  try{const r=await fetch('/api/versions');if(r.ok){const d=await r.json();svcVersions=d.versions||{};if(statusData)renderServices(statusData.preflight_results||{});}}catch(e){}
+  try{const r=await apiFetch('/api/versions');if(r.ok){const d=await r.json();svcVersions=d.versions||{};if(statusData)renderServices(statusData.preflight_results||{});}}catch(e){}
 }
 
 /* Stats */
 async function loadStats(){
-  try{const r=await fetch('/api/stats');if(r.ok){const d=await r.json();const s=d.stats||{};
+  try{const r=await apiFetch('/api/stats');if(r.ok){const d=await r.json();const s=d.stats||{};
     let h='';for(const[k,v]of Object.entries(s)){h+='<div class="stat-item"><span class="label">'+(SVC_MAP[k]?SVC_MAP[k].name:k)+'</span><span class="val">'+(v.count||0)+' '+v.label+'</span></div>';}
     document.getElementById('stats-lib').innerHTML=h||'<span style="color:var(--fg3);font-size:.85em">Run Configure All first</span>';}}catch(e){}
 }
@@ -1053,7 +1087,7 @@ function goToDriftTab(){
 
 /* Config drift indicator — top-level summary */
 async function loadDriftIndicator(){
-  try{const r=await fetch('/api/config-drift');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/config-drift');if(!r.ok)return;const d=await r.json();
     const el=document.getElementById('drift-summary');if(!el)return;
     if(d.clean){
       el.innerHTML='<span class="ok" style="font-size:.85em;cursor:pointer" onclick="goToDriftTab()">No drift &#10003;</span>';
@@ -1066,7 +1100,7 @@ async function loadDriftIndicator(){
 }
 
 async function loadDisk(){
-  try{const r=await fetch('/api/disk');if(r.ok){const d=await r.json();const disks=d.disk||{};
+  try{const r=await apiFetch('/api/disk');if(r.ok){const d=await r.json();const disks=d.disk||{};
     _diskGuardrails=d.guardrails||{};
     const gEnabled=_diskGuardrails.enabled;
     const gMax=_diskGuardrails.max_used_percent||65;
@@ -1127,7 +1161,7 @@ async function saveGuardrails(){
     qbit_max_delete_per_run:parseInt(document.getElementById('gr-qbit_maxdel')?.value)||80,
     qbit_delete_files:document.getElementById('gr-qbit_delfiles')?.checked||false,
   };
-  try{const r=await fetch('/api/guardrails',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{const r=await apiFetch('/api/guardrails',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.status==='updated'){toast('Guardrails saved: '+d.changed.join(', '));loadDisk();}
     else{toast(d.error||d.status||'Save failed',true);}}catch(e){toast('Error: '+e.message,true);}
@@ -1135,7 +1169,7 @@ async function saveGuardrails(){
 async function previewCleanup(){
   const el=document.getElementById('cleanup-preview');if(!el)return;
   el.innerHTML='<span style="color:var(--fg3)">Scanning completed torrents...</span>';
-  try{const r=await fetch('/api/cleanup-preview');const d=await r.json();
+  try{const r=await apiFetch('/api/cleanup-preview');const d=await r.json();
     if(d.error){el.innerHTML='<span class="error">'+d.error+'</span>';return;}
     if(!d.candidates||!d.candidates.length){
       let noMsg='<div style="font-size:.88em">';
@@ -1161,7 +1195,7 @@ async function previewCleanup(){
   }catch(e){el.innerHTML='<span class="error">Error: '+e.message+'</span>';}
 }
 async function loadDownloads(){
-  try{const r=await fetch('/api/downloads');if(r.ok){const d=await r.json();
+  try{const r=await apiFetch('/api/downloads');if(r.ok){const d=await r.json();
     let h='';
     if(d.qbittorrent){const q=d.qbittorrent;if(q.error){h+='<div style="font-size:.83em;color:var(--fg3)">qBit: '+q.error+'</div>';}
       else{h+='<div class="stat-item"><span class="label">qBittorrent</span><span class="val">'+q.active+' active</span></div>';
@@ -1174,7 +1208,7 @@ async function loadDownloads(){
 
 /* Recent */
 async function loadRecent(){
-  try{const r=await fetch('/api/recent');if(r.ok){const d=await r.json();const rc=d.recent||{};
+  try{const r=await apiFetch('/api/recent');if(r.ok){const d=await r.json();const rc=d.recent||{};
     let total=0,h='';for(const[k,items]of Object.entries(rc)){if(!items.length)continue;total+=items.length;
       h+='<div class="cat-label">'+(SVC_MAP[k]?SVC_MAP[k].name:k)+'</div>';
       for(const i of items)h+='<div class="svc-row" style="cursor:default"><span class="sname">'+i.title+'</span><span class="smeta">'+i.added+'</span></div>';}
@@ -1186,7 +1220,7 @@ let _indexers=[];
 async function loadIndexers(){
   const el=document.getElementById('lib-indexers');
   el.innerHTML='<span class="spinner"></span> Loading indexers...';
-  try{const r=await fetch('/api/indexers');if(!r.ok){el.innerHTML='Failed';return;}
+  try{const r=await apiFetch('/api/indexers');if(!r.ok){el.innerHTML='Failed';return;}
     const d=await r.json();
     if(d.error){el.innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     _indexers=d.indexers||[];renderIndexers();
@@ -1229,13 +1263,13 @@ function renderIndexers(){
   el.innerHTML=h;
 }
 async function toggleIndexer(id,enable){
-  try{await fetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});
+  try{await apiFetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});
     toast((enable?'Enabled':'Disabled')+' indexer');loadIndexers();
   }catch(e){toast('Error: '+e,true);}
 }
 async function deleteIndexer(id,name){
   if(!confirm('Delete indexer "'+name+'"?'))return;
-  try{await fetch('/api/indexers/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});
+  try{await apiFetch('/api/indexers/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});
     toast('Deleted '+name);loadIndexers();
   }catch(e){toast('Error: '+e,true);}
 }
@@ -1244,7 +1278,7 @@ async function toggleAllIndexers(enable){
   if(!ids.length){toast('Nothing to change');return;}
   toast((enable?'Enabling':'Disabling')+' '+ids.length+' indexers...');
   for(const id of ids){
-    try{await fetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});}catch(e){}
+    try{await apiFetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});}catch(e){}
   }
   loadIndexers();
 }
@@ -1254,7 +1288,7 @@ async function deleteDisabledIndexers(){
   if(!confirm('Delete '+disabled.length+' disabled indexers?'))return;
   toast('Deleting '+disabled.length+' indexers...');
   for(const i of disabled){
-    try{await fetch('/api/indexers/'+i.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});}catch(e){}
+    try{await apiFetch('/api/indexers/'+i.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});}catch(e){}
   }
   loadIndexers();
 }
@@ -1275,7 +1309,7 @@ function filterIndexers(query){
 
 /* Profile */
 async function loadProfile(){
-  try{const r=await fetch('/api/profile');if(r.ok){const d=await r.json();
+  try{const r=await apiFetch('/api/profile');if(r.ok){const d=await r.json();
     if(d.error){document.getElementById('profile-view').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     const content=d.profile?JSON.stringify(d.profile,null,2):(d.profile_raw||'');
     document.getElementById('profile-view').innerHTML='<div style="font-size:.82em;color:var(--fg3);margin-bottom:6px">'+d.file+'</div><pre class="profile-pre">'+content.replace(/</g,'&lt;')+'</pre>';}}catch(e){}
@@ -1283,7 +1317,7 @@ async function loadProfile(){
 
 /* Env banner */
 async function loadEnv(){
-  try{const r=await fetch('/api/env');if(r.ok){const d=await r.json();
+  try{const r=await apiFetch('/api/env');if(r.ok){const d=await r.json();
     envData=d;
     let h='<b>'+d.runtime.toUpperCase()+'</b>';
     if(d.namespace)h+=' · ns: <b>'+d.namespace+'</b>';
@@ -1301,7 +1335,7 @@ async function loadEnv(){
 let _routingCfg={base_domain:'local',stack_subdomain:'media-stack',gateway_host:'apps.media-stack.local',gateway_port:80,app_path_prefix:'/app'};
 function getHostIp(){const h=location.hostname;return (h==='localhost'||h==='127.0.0.1'||!h)?'127.0.0.1':h;}
 async function loadRoutingConfig(){
-  try{const r=await fetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
+  try{const r=await apiFetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
   renderRoutingPanel();buildDns();
   // Populate edit form — derive prefix/subdomain/domain from gateway_host
   const gwHost=_routingCfg.gateway_host||'';
@@ -1367,7 +1401,7 @@ function renderMatrix(){
     h+='<td><div class="matrix-cell"><span class="dot '+ds+'"></span><a href="'+urls.direct+'" target="_blank">'+urls.direct.replace('http://','')+'</a></div></td></tr>';}
   h+='</tbody></table>';document.getElementById('dns-matrix').innerHTML=h;
 }
-async function probeUrl(url,timeout){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout||4000);try{await fetch(url,{mode:'no-cors',cache:'no-store',signal:c.signal});clearTimeout(t);return 'ok';}catch(e){clearTimeout(t);return 'error';}}
+async function probeUrl(url,timeout){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout||4000);try{await window.fetch(url,{mode:'no-cors',cache:'no-store',signal:c.signal});clearTimeout(t);return 'ok';}catch(e){clearTimeout(t);return 'error';}}
 async function probeMatrix(){
   toast('Testing all access paths...');showLoading();const tasks=[];
   for(const s of SVCS){const urls=getAccessUrls(s);matrixState[s.id+'_loc']='warn';matrixState[s.id+'_gw']='warn';matrixState[s.id+'_sub']='warn';matrixState[s.id+'_dir']='warn';
@@ -1383,7 +1417,7 @@ function copyDns(){navigator.clipboard.writeText(document.getElementById('dns-en
 /* Export Keys */
 async function showExportKeys(){
   try{
-    const r=await fetch('/api/keys');const d=await r.json();
+    const r=await apiFetch('/api/keys');const d=await r.json();
     let rows='';
     for(const [id,key] of Object.entries(d.keys||{})){
       const s=SVC_MAP[id];const name=s?s.name:id;
@@ -1428,7 +1462,7 @@ async function rotateKeys(){
   const selected=[...document.querySelectorAll('.rk-svc-cb:checked')].map(cb=>cb.value);
   if(!selected.length){toast('Select at least one service',true);return;}
   toast('Rotating API keys for '+selected.length+' services...');showLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
-  try{const r=await fetch('/api/rotate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:selected})});const d=await r.json();
+  try{const r=await apiFetch('/api/rotate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:selected})});const d=await r.json();
     if(d.status==='rotated'){
       let msg='Rotated '+d.keys.length+' keys';
       if(d.restarted&&d.restarted.length)msg+=', restarted: '+d.restarted.join(', ');
@@ -1453,7 +1487,7 @@ async function doHardReset(){
   let okCount=0,errCount=0;
   for(const id of selected){
     try{
-      const r=await fetch('/api/services/'+id+'/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+      const r=await apiFetch('/api/services/'+id+'/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
       const d=await r.json();
       if(d.status==='reset'){toast(d.service+': reset'+(d.key_discovered?' (key found)':''));okCount++;}
       else{toast(d.service+': '+(d.error||'failed'),true);errCount++;}
@@ -1478,7 +1512,7 @@ async function resetPassword(){
   const selected=[...document.querySelectorAll('.pw-svc-cb:checked')].map(cb=>cb.value);
   if(!selected.length){toast('Select at least one service',true);return;}
   toast('Resetting password for '+selected.length+' services...');showLoading();
-  try{const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,services:selected})});
+  try{const r=await apiFetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,services:selected})});
     const d=await r.json();
     if(d.status==='updated'){
       let msg='Password updated for '+d.services.join(', ');
@@ -1521,7 +1555,7 @@ async function saveRouting(){
   const port=document.getElementById('rt-port')?.value?.trim();if(port)body.gateway_port=parseInt(port);
   if(!Object.keys(body).length){toast('No changes',true);return;}
   toast('Saving routing config...');showLoading();
-  try{const r=await fetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{const r=await apiFetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.status==='updated'){toast('Routing updated: '+d.changed.join(', ')+'. Envoy rebuild queued.');loadRoutingConfig();}
     else if(d.status==='no_changes'){toast('No changes needed');}
@@ -1538,11 +1572,11 @@ function loadWebhooks(urls){
   el.innerHTML=h;
 }
 async function addWebhook(){const url=document.getElementById('webhookUrl').value.trim();if(!url){toast('Enter a URL',true);return;}
-  try{const r=await fetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}else{const d=await r.json();toast(d.error||'Failed',true);}}catch(e){toast(e.toString(),true);}}
-async function removeWebhook(url){try{await fetch('/webhooks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});toast('Removed');load();}catch(e){toast(e.toString(),true);}}
+  try{const r=await apiFetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}else{const d=await r.json();toast(d.error||'Failed',true);}}catch(e){toast(e.toString(),true);}}
+async function removeWebhook(url){try{await apiFetch('/webhooks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});toast('Removed');load();}catch(e){toast(e.toString(),true);}}
 async function testWebhooks(){
   toast('Sending test webhook...');
-  try{const r=await fetch('/webhooks/test',{method:'POST'});const d=await r.json();
+  try{const r=await apiFetch('/webhooks/test',{method:'POST'});const d=await r.json();
     if(d.tested===0)toast('No webhooks configured',true);
     else{const ok=d.results.filter(r=>r.status==='ok').length;toast(ok+'/'+d.tested+' webhooks delivered',ok<d.tested);}}catch(e){toast(e.toString(),true);}
 }
@@ -1557,7 +1591,7 @@ function filterLogsToAction(actionName){
   document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-logs').classList.add('active');
   document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent==='Logs')b.classList.add('active');});
-  location.hash='logs';
+  history.replaceState(null,null,'#logs');
   const sel=document.getElementById('logActionFilter');
   if(sel){sel.value=actionName;applyLogFilter();}
 }
@@ -1580,7 +1614,7 @@ async function _fetchSvcLogs(svcId){
   _renderActiveSvcBadges();
   toast('Loading '+svcId+' logs...');
   try{
-    const r=await fetch('/api/logs/'+svcId+'?lines=200');const d=await r.json();
+    const r=await apiFetch('/api/logs/'+svcId+'?lines=200');const d=await r.json();
     const c=_srcColor(svcId);
     for(const line of(d.lines||[])){
       const cls=line.includes('error')||line.includes('ERR')?'err':line.includes('warn')||line.includes('WARN')?'warn':'';
@@ -1671,6 +1705,8 @@ function downloadLogs(){const t=logRaw.map(e=>e.msg).join('\n');const b=new Blob
 function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.querySelectorAll('.subtab').forEach(t=>{t.classList.remove('active');t.style.display='none';});
   const tab=document.getElementById(id);tab.classList.add('active');tab.style.display='block';
   parent.querySelectorAll('.btn-secondary').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  /* Scroll subtab into view without moving the whole page */
+  tab.scrollTop=0;
   // Show skeleton immediately if content is empty/loading text
   const inner=tab.innerHTML.trim();
   if(!inner||inner.startsWith('<span')||inner==='Loading...'||inner.includes('Loading ')){
@@ -1691,12 +1727,13 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   else if(id==='cfg-libraries')_load(loadLibrariesConfig);else if(id==='cfg-downloads')_load(loadDownloadsConfig);
   else if(id==='cfg-metadata')_load(loadMetadataConfig);else if(id==='cfg-livetv')_load(loadLiveTvConfig);
   else if(id==='cfg-display')_load(loadDisplayConfig);
+  else if(id==='cfg-auth')_load(loadAuthConfig);
   else if(id==='lib-indexers')_load(loadIndexers);
 }
 
 /* #1 Bandwidth + #2 Error rates */
 async function loadTraffic(){
-  try{const r=await fetch('/api/envoy/stats');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/envoy/stats');if(!r.ok)return;const d=await r.json();
     if(d.error){document.getElementById('ops-traffic').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     const cl=d.clusters||{};let h='<table class="idx-table"><thead><tr><th>Service</th><th>Requests</th><th>2xx</th><th>4xx</th><th>5xx</th><th>Active</th></tr></thead><tbody>';
     for(const[k,v]of Object.entries(cl)){
@@ -1869,7 +1906,7 @@ let _libData=[];
 async function loadLibraries(){
   const el=document.getElementById('lib-libraries');
   try{
-    const r=await fetch('/api/libraries');if(!r.ok)return;const d=await r.json();
+    const r=await apiFetch('/api/libraries');if(!r.ok)return;const d=await r.json();
     _libData=d.configured||[];
     _renderLibraries(el, d.live||[]);
   }catch(e){el.innerHTML='Error: '+e;}
@@ -1908,7 +1945,7 @@ async function saveLibrariesFromContent(){
   const valid=_libData.filter(l=>l.name&&l.collection_type&&l.paths&&l.paths.length);
   if(!valid.length){toast('Add at least one library with name and paths');return;}
   try{
-    const r=await fetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:valid})});
+    const r=await apiFetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:valid})});
     const d=await r.json();
     if(d.error){toast('Error: '+d.error);return;}
     toast('Libraries saved'+(d.action?' — '+d.action:''));
@@ -1918,7 +1955,7 @@ async function saveLibrariesFromContent(){
 
 /* #9 Download history */
 async function loadDownloadHistory(){
-  try{const r=await fetch('/api/download-history');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/download-history');if(!r.ok)return;const d=await r.json();
     let h='';for(const[app,items]of Object.entries(d.history||{})){if(!items.length)continue;
       h+='<div class="cat-label">'+(SVC_MAP[app]?SVC_MAP[app].name:app)+'</div>';
       for(const i of items)h+='<div class="svc-row" style="cursor:default;font-size:.83em"><span class="sname">'+i.title+'</span><span class="smeta">'+i.quality+' · '+i.event+' · '+i.date+'</span></div>';}
@@ -1928,7 +1965,7 @@ async function loadDownloadHistory(){
 
 /* #10 Indexer stats — enhance existing indexers tab */
 async function loadIndexerStats(){
-  try{const r=await fetch('/api/indexer-stats');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/indexer-stats');if(!r.ok)return;const d=await r.json();
     if(d.error||!d.indexers)return;
     const existing=document.getElementById('lib-indexers');
     let h=existing.innerHTML;h+='<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px"><b style="color:var(--fg2);font-size:.9em">Performance</b></div>';
@@ -1949,7 +1986,7 @@ async function loadQualityProfiles(){
     let h='<p style="color:var(--fg2);font-size:.85em;margin:0 0 8px">Quality profiles control download quality. Toggle qualities, enable upgrades, or manage custom formats.</p>';
 
     for(const svcId of services){
-      const r=await fetch('/api/quality-profiles/'+svcId);if(!r.ok)continue;
+      const r=await apiFetch('/api/quality-profiles/'+svcId);if(!r.ok)continue;
       const d=await r.json();if(d.error)continue;
       const profiles=d.profiles||[];if(!profiles.length)continue;
       const name=SVC_MAP[svcId]?SVC_MAP[svcId].name:svcId;
@@ -1977,7 +2014,7 @@ async function loadQualityProfiles(){
     }
 
     // TRASHguides presets section
-    const pr=await fetch('/api/quality-presets');
+    const pr=await apiFetch('/api/quality-presets');
     if(pr.ok){
       const pd=await pr.json();
       const presets=pd.presets||[];
@@ -2000,7 +2037,7 @@ async function loadQualityProfiles(){
 }
 async function toggleProfileUpgrade(svcId,profileId,enabled){
   try{
-    const r=await fetch('/api/quality-profiles/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:svcId,profile_id:profileId,upgradeAllowed:enabled})});
+    const r=await apiFetch('/api/quality-profiles/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:svcId,profile_id:profileId,upgradeAllowed:enabled})});
     const d=await r.json();
     toast(d.error||'Upgrades '+(enabled?'enabled':'disabled'));
   }catch(e){toast('Error: '+e);}
@@ -2012,7 +2049,7 @@ async function loadImportLists(){
   el.innerHTML='<span class="spinner"></span> Loading discovery lists...';
   try{
     // Fetch both: live import lists from arr services AND config discovery lists
-    const [liveR, cfgR]=await Promise.all([fetch('/api/import-lists'),fetch('/api/discovery-lists')]);
+    const [liveR, cfgR]=await Promise.all([apiFetch('/api/import-lists'),apiFetch('/api/discovery-lists')]);
     const liveD=liveR.ok?await liveR.json():{};
     const cfgD=cfgR.ok?await cfgR.json():{};
     let h='';
@@ -2055,7 +2092,7 @@ async function loadImportLists(){
 }
 async function toggleImportList(svcId,listId,enabled){
   try{
-    const r=await fetch('/api/import-lists/'+svcId+'/'+listId+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})});
+    const r=await apiFetch('/api/import-lists/'+svcId+'/'+listId+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})});
     const d=await r.json();
     if(d.error)toast('Error: '+d.error);else toast((enabled?'Enabled':'Disabled')+' list');
     loadImportLists();
@@ -2063,7 +2100,7 @@ async function toggleImportList(svcId,listId,enabled){
 }
 async function deleteImportList(svcId,listId,name){
   if(!confirm('Delete list "'+name+'" from '+svcId+'?'))return;
-  try{const r=await fetch('/api/import-lists/'+svcId+'/'+listId+'/delete',{method:'POST'});
+  try{const r=await apiFetch('/api/import-lists/'+svcId+'/'+listId+'/delete',{method:'POST'});
     const d=await r.json();toast(d.status==='deleted'?'Deleted '+name:(d.error||'Failed'));loadImportLists();
   }catch(e){toast('Error: '+e,true);}
 }
@@ -2110,7 +2147,7 @@ async function renderDrift(){
   el.innerHTML='<span class="spinner"></span> <span style="color:var(--fg3)">Checking config drift (may take a few seconds on first load)...</span>';
   // Fetch real drift data from backend (cached 60s on server side)
   let driftData=null;
-  try{const r=await fetch('/api/config-drift');if(r.ok)driftData=await r.json();}catch(e){}
+  try{const r=await apiFetch('/api/config-drift');if(r.ok)driftData=await r.json();}catch(e){}
   let h='<div style="font-size:.85em">';
   // Drift results from backend
   if(driftData&&driftData.drifts&&driftData.drifts.length>0){
@@ -2153,7 +2190,7 @@ function loadBackup(){window.open('/api/backup','_blank');toast('Downloading bac
 
 /* #17 Multi-namespace + replicas + resources */
 async function loadNamespaces(){
-  try{const r=await fetch('/api/namespaces');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/namespaces');if(!r.ok)return;const d=await r.json();
     if(d.error){document.getElementById('ops-ns').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     let h='<div class="cat-label">Namespaces</div>';
     for(const ns of(d.namespaces||[])){const cls=ns.running===ns.pods?'ok':ns.running>0?'warn':'error';
@@ -2194,7 +2231,7 @@ async function viewSvcLogs(svcId){
   document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-logs').classList.add('active');
   document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent==='Logs')b.classList.add('active');});
-  location.hash='logs';
+  history.replaceState(null,null,'#logs');
   // Load service logs and set filter
   await _fetchSvcLogs(svcId);
   const sel=document.getElementById('logActionFilter');
@@ -2215,7 +2252,7 @@ function checkRemediation(){
 
 /* #7 Image update checker */
 async function loadImageUpdates(){
-  try{const r=await fetch('/api/image-updates');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/image-updates');if(!r.ok)return;const d=await r.json();
     if(d.error)return;
     for(const img of(d.images||[])){if(typeof img.days_old==='number')SVC_AGE[img.name]=img.days_old;}
     if(statusData)renderServices(statusData.preflight_results||{});
@@ -2239,7 +2276,7 @@ async function loadImageUpdates(){
 
 /* GPU Info */
 async function loadGpuInfo(){
-  try{const r=await fetch('/api/gpu');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/gpu');if(!r.ok)return;const d=await r.json();
     let h='';
     // Host GPU detection
     h+='<div class="action-group" style="margin-bottom:8px"><div class="action-group-title">Host GPU</div>';
@@ -2296,7 +2333,7 @@ async function enableGpuTranscoding(){
   if(!confirm('Enable hardware transcoding in Jellyfin? This will modify system.xml and restart Jellyfin.'))return;
   showLoading();toast('Enabling GPU transcoding...');
   try{
-    const r=await fetch('/api/gpu/enable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const r=await apiFetch('/api/gpu/enable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d=await r.json();
     hideLoading();
     if(d.status==='ok'){
@@ -2311,14 +2348,14 @@ async function enableGpuTranscoding(){
 /* Config Snapshots */
 async function takeSnapshot(){
   showLoading();toast('Taking snapshot...');
-  try{const r=await fetch('/api/snapshot',{method:'POST'});const d=await r.json();
+  try{const r=await apiFetch('/api/snapshot',{method:'POST'});const d=await r.json();
     if(d.status==='created'){toast('Snapshot created: '+d.file+' ('+d.configs+' configs)');loadSnapshots();}
     else{toast(d.error||'Snapshot failed',true);}
   }catch(e){toast('Error: '+e.message,true);}
   finally{hideLoading();}
 }
 async function loadSnapshots(){
-  try{const r=await fetch('/api/snapshots');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/snapshots');if(!r.ok)return;const d=await r.json();
     const snaps=d.snapshots||[];
     if(!snaps.length){document.getElementById('ops-snapshots').innerHTML='<span style="color:var(--fg3)">No snapshots yet. First snapshot taken 1 minute after controller start.</span>';return;}
     let h='';
@@ -2339,7 +2376,7 @@ async function loadSnapshots(){
 async function viewSnapshot(file){
   const el=document.getElementById('snapshot-detail');if(!el)return;
   el.innerHTML='Loading...';
-  try{const r=await fetch('/api/snapshots/'+file);const d=await r.json();
+  try{const r=await apiFetch('/api/snapshots/'+file);const d=await r.json();
     if(d.error){el.innerHTML='<span class="error">'+d.error+'</span>';return;}
     let h='<b style="font-size:.85em;color:var(--fg2)">'+file+'</b>';
     const snap=d.snapshot||{};
@@ -2355,7 +2392,7 @@ async function diffSnapshots(){
   if(!a||!b||a===b){toast('Select two different snapshots',true);return;}
   const el=document.getElementById('snapshot-detail');if(!el)return;
   el.innerHTML='Comparing...';
-  try{const r=await fetch('/api/snapshot-diff?a='+a+'&b='+b);const d=await r.json();
+  try{const r=await apiFetch('/api/snapshot-diff?a='+a+'&b='+b);const d=await r.json();
     if(d.error){el.innerHTML='<span class="error">'+d.error+'</span>';return;}
     if(!d.diffs||!d.diffs.length){el.innerHTML='<span style="color:var(--ok)">No differences between snapshots</span>';return;}
     let h='<b style="font-size:.85em;color:var(--fg2)">'+d.total_changes+' change(s)</b><table class="idx-table" style="margin-top:4px"><thead><tr><th>Config File</th><th>Status</th></tr></thead><tbody>';
@@ -2367,7 +2404,7 @@ async function diffSnapshots(){
 
 /* Mount Info */
 async function loadMountInfo(){
-  try{const r=await fetch('/api/mounts');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/mounts');if(!r.ok)return;const d=await r.json();
     const mounts=d.mounts||[];
     if(!mounts.length){document.getElementById('ops-mounts').innerHTML='<span style="color:var(--fg3)">No relevant mounts detected.</span>';return;}
     let h='<table class="idx-table"><thead><tr><th>Device</th><th>Mount Point</th><th>Type</th></tr></thead><tbody>';
@@ -2383,7 +2420,7 @@ async function loadMountInfo(){
 
 /* #8 Manifest viewer */
 async function loadManifests(){
-  try{const r=await fetch('/api/manifests');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/manifests');if(!r.ok)return;const d=await r.json();
     let h='<div style="font-size:.82em;color:var(--fg3);margin-bottom:6px">Type: '+d.type+(d.file?' · '+d.file:'')+'</div>';
     if(d.content)h+='<pre class="profile-pre">'+d.content.replace(/</g,'&lt;')+'</pre>';
     else h+='<span style="color:var(--fg3)">'+(d.error||'No manifest found')+'</span>';
@@ -2400,7 +2437,7 @@ function selectAllSvcs(){const cbs=document.querySelectorAll('.svc-cb');cbs.forE
 async function batchRestart(){
   if(!batchSelected.size){toast('No services selected',true);return;}
   const names=[...batchSelected];toast('Restarting '+names.length+' services...');showLoading();
-  try{const r=await fetch('/api/batch-restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:names})});
+  try{const r=await apiFetch('/api/batch-restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:names})});
     const d=await r.json();toast(d.restarted+'/'+d.total+' restarted');batchSelected.clear();
     document.querySelectorAll('.svc-cb').forEach(cb=>cb.checked=false);
   }catch(e){toast(e.toString(),true);}
@@ -2410,7 +2447,7 @@ async function batchRestart(){
 /* #11 Config editor */
 async function saveProfile(){
   const ta=document.getElementById('profile-editor');if(!ta)return;
-  try{const r=await fetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ta.value})});
+  try{const r=await apiFetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ta.value})});
     const d=await r.json();toast(d.status==='saved'?'Profile saved & reloaded':'Error: '+(d.error||''),d.status!=='saved');
   }catch(e){toast(e.toString(),true);}
 }
@@ -2434,14 +2471,14 @@ function showSettings(){
 }
 function closeSettings(){document.getElementById('settings-root').innerHTML='';}
 async function revealPassword(btn){
-  try{const r=await fetch('/api/envvars');const d=await r.json();
+  try{const r=await apiFetch('/api/envvars');const d=await r.json();
     const pw=d.STACK_ADMIN_PASSWORD||'(not set)';const user=d.STACK_ADMIN_USERNAME||'admin';
     btn.parentElement.innerHTML='<code style="user-select:all">'+pw+'</code>';
     const uel=document.getElementById('set-admin-user');if(uel)uel.textContent=user;
   }catch(e){btn.textContent='Error';}
 }
 // Load admin username on settings open
-setTimeout(async()=>{const uel=document.getElementById('set-admin-user');if(!uel)return;try{const r=await fetch('/api/envvars');const d=await r.json();uel.textContent=d.STACK_ADMIN_USERNAME||'admin';}catch(e){}},100);
+setTimeout(async()=>{const uel=document.getElementById('set-admin-user');if(!uel)return;try{const r=await apiFetch('/api/envvars');const d=await r.json();uel.textContent=d.STACK_ADMIN_USERNAME||'admin';}catch(e){}},100);
 function applySettings(){
   dashSettings.refreshInterval=parseInt(document.getElementById('set-refresh').value)||4000;
   dashSettings.healthInterval=parseInt(document.getElementById('set-health').value)||30000;
@@ -2474,7 +2511,7 @@ function importDashState(){
 
 /* #14 Env var editor */
 async function loadEnvVars(){
-  try{const r=await fetch('/api/envvars');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/envvars');if(!r.ok)return;const d=await r.json();
     let h='<table class="idx-table"><thead><tr><th>Variable</th><th>Value</th></tr></thead><tbody>';
     for(const[k,v]of Object.entries(d)){h+='<tr><td style="font-weight:600;font-size:.82em">'+k+'</td><td style="font-size:.78em;color:var(--fg3);word-break:break-all">'+v+'</td></tr>';}
     h+='</tbody></table>';
@@ -2552,12 +2589,12 @@ function renderWizardSteps(){
   el.innerHTML=h;
 }
 let _wizardRouting=null;
-fetch('/api/routing').then(r=>r.json()).then(d=>{_wizardRouting=d;}).catch(()=>{});
+apiFetch('/api/routing').then(r=>r.json()).then(d=>{_wizardRouting=d;}).catch(()=>{});
 
 /* Libraries config */
 async function loadLibrariesConfig(){
   const el=document.getElementById('cfg-libraries');
-  try{const r=await fetch('/api/libraries');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/libraries');if(!r.ok)return;const d=await r.json();
     let libs=d.libraries||[];
     let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Manage Jellyfin media libraries. Changes apply on next bootstrap.</p>';
     h+='<div id="lib-list">';
@@ -2602,7 +2639,7 @@ async function saveLibraries(){
     if(name&&paths.length)libs.push({name,collection_type:type,paths});
   });
   if(!libs.length){toast('Add at least one library',true);return;}
-  try{const r=await fetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:libs})});
+  try{const r=await apiFetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:libs})});
     const d=await r.json();
     if(d.status==='saved'){toast('Libraries saved. Run Configure All to apply.');loadLibrariesConfig();}
     else toast(d.error||'Save failed',true);
@@ -2613,7 +2650,7 @@ async function saveLibraries(){
 async function loadDownloadsConfig(){
   const el=document.getElementById('cfg-downloads');
   try{
-    const [catR, dlR]=await Promise.all([fetch('/api/download-categories'),fetch('/api/download-client-settings')]);
+    const [catR, dlR]=await Promise.all([apiFetch('/api/download-categories'),apiFetch('/api/download-client-settings')]);
     const d=catR.ok?await catR.json():{};
     const dl=dlR.ok?await dlR.json():{};
     const cats=d.categories||{};
@@ -2686,26 +2723,26 @@ async function saveDlClientSettings(){
     dl_limit_mbps:+document.getElementById('dl-limit').value,
     up_limit_mbps:+document.getElementById('ul-limit').value,
   }};
-  const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json();
   if(d.torrent?.error)throw new Error(d.torrent.error);
   return 'Torrent limits saved';
 }
 async function scanNow(){
-  const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_now:true})});
+  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_now:true})});
   const d=await r.json();
   if(d.scan?.error)throw new Error(d.scan.error);
   return 'Library scan triggered';
 }
 async function saveScanInterval(){
   const hrs=+document.getElementById('dl-scan-interval').value;
-  const r=await fetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
+  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
   const d=await r.json();
   if(d.scan_interval?.error)throw new Error(d.scan_interval.error);
   return 'Scan interval set to '+hrs+'h';
 }
 async function registerArrWebhooks(){
-  const r=await fetch('/api/arr-webhooks');const d=await r.json();
+  const r=await apiFetch('/api/arr-webhooks');const d=await r.json();
   const wh=d.webhooks||{};
   const parts=Object.entries(wh).map(([k,v])=>k+': '+v);
   const status=document.getElementById('arr-webhook-status');
@@ -2721,7 +2758,7 @@ async function saveCategories(){
     if(name)cats[name]=path||'/data/torrents/completed/'+name;
   });
   if(!Object.keys(cats).length){toast('Add at least one category',true);return;}
-  try{const r=await fetch('/api/download-categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categories:cats})});
+  try{const r=await apiFetch('/api/download-categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categories:cats})});
     const d=await r.json();
     if(d.status==='saved'){toast('Categories saved. Run Configure All to apply.');loadDownloadsConfig();}
     else toast(d.error||'Save failed',true);
@@ -2731,7 +2768,7 @@ async function saveCategories(){
 /* Metadata settings config */
 async function loadMetadataConfig(){
   const el=document.getElementById('cfg-metadata');
-  try{const r=await fetch('/api/metadata-settings');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/metadata-settings');if(!r.ok)return;const d=await r.json();
     const presets=d.presets||[];
     let h='<p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Set the preferred language for media metadata (movie/show descriptions, artwork, etc.)</p>';
     // Quick-pick presets
@@ -2766,7 +2803,7 @@ async function saveMetadata(){
   const lang=document.getElementById('meta-lang')?.value.trim()||'';
   const country=document.getElementById('meta-country')?.value.trim()||'';
   if(!lang||!country){toast('Language and country required',true);return;}
-  try{const r=await fetch('/api/metadata-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:lang,country})});
+  try{const r=await apiFetch('/api/metadata-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:lang,country})});
     const d=await r.json();
     if(d.status==='saved'){toast('Metadata set to '+lang+'/'+country);loadMetadataConfig();}
     else toast(d.error||'Save failed',true);
@@ -2776,7 +2813,7 @@ async function saveMetadata(){
 /* Storage breakdown by media type */
 async function loadStorageBreakdown(){
   const el=document.getElementById('ops-storage-breakdown');
-  try{const r=await fetch('/api/storage-breakdown');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/storage-breakdown');if(!r.ok)return;const d=await r.json();
     if(d.error){el.innerHTML='<span class="error">'+_escHtml(d.error)+'</span>';return;}
     const items=d.breakdown||[];
     if(!items.length){el.innerHTML='<span style="color:var(--fg3)">No media folders found at '+_escHtml(d.media_root||'?')+'</span>';return;}
@@ -2793,7 +2830,7 @@ async function loadStorageBreakdown(){
 
 /* Server-side persistent scheduler */
 async function loadServerSchedules(){
-  try{const r=await fetch('/api/schedules');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/schedules');if(!r.ok)return;const d=await r.json();
     const el=document.getElementById('ops-schedule');if(!el)return;
     const scheds=d.schedules||[];
     if(!scheds.length){el.innerHTML='<div style="color:var(--fg3);font-size:.85em">No server-side schedules.</div>';return;}
@@ -2810,7 +2847,7 @@ async function addServerSchedule(){
   const action=document.getElementById('serverSchedAction')?.value||'';
   const mins=parseInt(document.getElementById('serverSchedMins')?.value||'60');
   if(!action){toast('Select an action',true);return;}
-  try{const r=await fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},
+  try{const r=await apiFetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action,interval_seconds:mins*60})});
     const d=await r.json();
     if(d.status==='created'){toast('Schedule created');loadServerSchedules();}
@@ -2818,7 +2855,7 @@ async function addServerSchedule(){
   }catch(e){toast('Error: '+e,true);}
 }
 async function deleteServerSchedule(id){
-  try{const r=await fetch('/api/schedules/'+id+'/delete',{method:'POST'});
+  try{const r=await apiFetch('/api/schedules/'+id+'/delete',{method:'POST'});
     const d=await r.json();
     if(d.status==='removed'){toast('Schedule removed');loadServerSchedules();}
     else toast(d.error||'Failed',true);
@@ -2829,7 +2866,7 @@ async function deleteServerSchedule(id){
 let _iptvCountries=[];
 let _ltvTuners=[];let _ltvGuides=[];let _ltvLoadAll=false;
 // Load country list from API (not hardcoded)
-fetch('/api/iptv-countries').then(r=>r.json()).then(d=>{_iptvCountries=d.countries||[];}).catch(()=>{});
+apiFetch('/api/iptv-countries').then(r=>r.json()).then(d=>{_iptvCountries=d.countries||[];}).catch(()=>{});
 /* Display Preferences Config */
 const _SECTION_TYPES=[
   {value:'smalllibrarytiles',label:'Library Tiles'},
@@ -2851,7 +2888,7 @@ let _dpData={};
 async function loadDisplayConfig(){
   const el=document.getElementById('cfg-display');
   try{
-    const r=await fetch('/api/display-preferences');if(!r.ok)return;
+    const r=await apiFetch('/api/display-preferences');if(!r.ok)return;
     _dpData=await r.json();
     const cp=_dpData.custom_prefs||{};
     const plp=_dpData.per_library_prefs||{};
@@ -2930,7 +2967,7 @@ async function saveDisplayConfig(){
     if(sel)plp[lib]={SortBy:sel.value,SortOrder:sel.value.startsWith('DateCreated')||sel.value.startsWith('DatePlayed')||sel.value.startsWith('Community')?'Descending':'Ascending'};
   }
   try{
-    const r=await fetch('/api/display-preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({show_backdrop:document.getElementById('dp-backdrop').checked,custom_prefs:cp,per_library_prefs:plp})});
+    const r=await apiFetch('/api/display-preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({show_backdrop:document.getElementById('dp-backdrop').checked,custom_prefs:cp,per_library_prefs:plp})});
     const d=await r.json();
     if(d.error)toast('Error: '+d.error);
     else toast('Display preferences saved'+(d.action?' — '+d.action:''));
@@ -2939,7 +2976,7 @@ async function saveDisplayConfig(){
 
 async function loadLiveTvConfig(){
   const el=document.getElementById('cfg-livetv');
-  try{const r=await fetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
+  try{const r=await apiFetch('/api/livetv-sources');if(!r.ok)return;const d=await r.json();
     _ltvTuners=d.tuners||[];_ltvGuides=d.guides||[];_ltvLoadAll=!!d.load_all_tuners;
     renderLiveTvConfig();
   }catch(e){el.innerHTML='Error: '+e;}
@@ -3019,7 +3056,7 @@ function addCustomLiveTv(){
 function removeLiveTvTuner(i){_ltvTuners.splice(i,1);renderLiveTvConfig();}
 function removeLiveTvGuide(i){_ltvGuides.splice(i,1);renderLiveTvConfig();}
 async function saveLiveTv(){
-  try{const r=await fetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},
+  try{const r=await apiFetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({tuners:_ltvTuners,guides:_ltvGuides,load_all_tuners:_ltvLoadAll})});
     const d=await r.json();
     if(d.status==='saved'){toast('Live TV saved — configuring media server automatically...');loadLiveTvConfig();}
@@ -3036,12 +3073,231 @@ function recordResMetrics(metrics){
     resHistory[name].push(memMi);if(resHistory[name].length>12)resHistory[name].shift();
   }
 }
+/* ---- Auth config ---- */
+let _authModes=[],_authOidcProviders=[],_authServicePolicies=[];
+async function loadAuthConfig(){
+  const el=document.getElementById('cfg-auth');if(!el)return;
+  try{
+    const [cfgR,modesR,oidcR,svcR]=await Promise.all([
+      apiFetch('/api/auth/config'),apiFetch('/api/auth/modes'),
+      apiFetch('/api/auth/oidc-providers'),apiFetch('/api/auth/service-policies')
+    ]);
+    const cfg=cfgR.ok?await cfgR.json():{};
+    _authModes=(modesR.ok?await modesR.json():{}).modes||[];
+    _authOidcProviders=(oidcR.ok?await oidcR.json():{}).providers||[];
+    _authServicePolicies=(svcR.ok?await svcR.json():{}).services||[];
+    renderAuthConfig(cfg);
+  }catch(e){el.innerHTML='<p style="color:var(--red)">Failed to load auth config</p>';}
+}
+/* State object holds unsaved auth form values so dropdowns don't reset */
+let _authFormState={mode:'none',oidc:'local',oidcConfig:{},internetExposed:false,appAuthSummary:''};
+function renderAuthConfig(cfg){
+  const el=document.getElementById('cfg-auth');if(!el)return;
+  _authFormState.mode=cfg.mode||'none';
+  _authFormState.oidc=cfg.oidc_provider||'local';
+  _authFormState.oidcConfig=cfg.oidc_config||{};
+  _authFormState.internetExposed=cfg.internet_exposed||false;
+  _authFormState.appAuthSummary=cfg.app_auth_summary||'';
+  _renderAuthForm(el);
+}
+function _renderAuthForm(el){
+  const mode=_authFormState.mode;const oidc=_authFormState.oidc;
+  const internetExposed=_authFormState.internetExposed;
+  let h='<div style="max-width:700px">';
+  h+='<h3 style="margin:0 0 12px;font-size:1em;color:var(--fg1)">Authentication</h3>';
+
+  // Internet exposed indicator
+  h+='<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg0);border-radius:6px;border:1px solid var(--border)">';
+  h+='<span style="color:var(--fg3);font-size:.85em">Internet exposed: </span>';
+  h+='<span style="color:'+(internetExposed?'var(--orange)':'var(--green)')+';font-weight:600">'+(internetExposed?'Yes — auth recommended':'No — local network')+'</span>';
+  h+='</div>';
+
+  // App auth status
+  const appAuthSummary=_authFormState.appAuthSummary;
+  if(appAuthSummary){
+    h+='<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg0);border-radius:6px;border:1px solid var(--border)">';
+    h+='<span style="color:var(--fg3);font-size:.85em">Per-app auth (Sonarr, Radarr, etc.): </span>';
+    h+='<span style="font-size:.85em;color:var(--fg2)">'+appAuthSummary+'</span>';
+    h+='</div>';
+  }
+
+  // Auth mode selector
+  h+='<label style="font-size:.85em;color:var(--fg3);display:block;margin-bottom:4px">Auth Mode</label>';
+  h+='<select id="auth-mode" onchange="onAuthModeChange()" style="width:100%;padding:8px;background:var(--bg1);color:var(--fg1);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">';
+  for(const m of _authModes){
+    h+='<option value="'+m.key+'"'+(m.key===mode?' selected':'')+'>'+m.display_name+'</option>';
+  }
+  h+='</select>';
+  const modeSpec=_authModes.find(m=>m.key===mode);
+  if(modeSpec)h+='<p id="auth-mode-desc" style="font-size:.8em;color:var(--fg3);margin:0 0 16px">'+modeSpec.description+'</p>';
+
+  // OIDC provider (only visible for authelia/authentik modes)
+  const showOidc=modeSpec&&modeSpec.gateway_auth;
+  h+='<div id="auth-oidc-section" style="'+(showOidc?'':'display:none;')+'margin-bottom:16px">';
+  h+='<label style="font-size:.85em;color:var(--fg3);display:block;margin-bottom:4px">Identity Provider (OIDC Upstream)</label>';
+  h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">';
+  h+='<select id="auth-oidc" onchange="onOidcProviderChange()" style="flex:1;padding:8px;background:var(--bg1);color:var(--fg1);border:1px solid var(--border);border-radius:6px">';
+  for(const p of _authOidcProviders){
+    h+='<option value="'+p.key+'"'+(p.key===oidc?' selected':'')+'>'+p.display_name+'</option>';
+  }
+  h+='</select>';
+  h+='<label style="padding:7px 14px;background:var(--bg3);color:var(--fg2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.85em;white-space:nowrap">';
+  h+='<input type="file" accept=".json,application/json" style="display:none" onchange="uploadOidcConfig(this)">';
+  h+='Upload JSON</label>';
+  h+='</div>';
+  h+='<div id="auth-oidc-upload-status"></div>';
+  // OIDC config fields container — rebuilt on provider change
+  h+='<div id="auth-oidc-fields">';
+  h+=_renderOidcFields(oidc);
+  h+='</div>';
+  h+='</div>';
+
+  // Per-service auth policies
+  h+='<div id="auth-svc-policies" style="'+(showOidc?'':'display:none;')+'">';
+  if(_authServicePolicies.length>0){
+    h+='<h4 style="margin:16px 0 8px;font-size:.9em;color:var(--fg2)">Per-Service Auth Policy</h4>';
+    h+='<p style="font-size:.8em;color:var(--fg3);margin:0 0 8px">Choose which services require SSO login, use native auth, or are public.</p>';
+    h+='<table style="width:100%;font-size:.85em;border-collapse:collapse">';
+    h+='<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Service</th><th style="text-align:left;padding:4px 8px">Category</th><th style="text-align:center;padding:4px 8px">Policy</th></tr>';
+    for(const svc of _authServicePolicies){
+      const pol=svc.policy;
+      h+='<tr style="border-bottom:1px solid var(--bg1)">';
+      h+='<td style="padding:4px 8px">'+svc.service_name+'</td>';
+      h+='<td style="padding:4px 8px;color:var(--fg3)">'+svc.category+'</td>';
+      h+='<td style="padding:4px 8px;text-align:center">';
+      h+='<select data-svc="'+svc.service_id+'" class="auth-policy-select" style="padding:3px 6px;background:var(--bg1);color:var(--fg1);border:1px solid var(--border);border-radius:4px;font-size:.85em">';
+      for(const p of ['protected','native','public']){
+        h+='<option value="'+p+'"'+(p===pol?' selected':'')+'>'+p+'</option>';
+      }
+      h+='</select></td></tr>';
+    }
+    h+='</table>';
+    h+='<p style="font-size:.75em;color:var(--fg3);margin:6px 0 0"><b>protected</b>: SSO required &nbsp; <b>native</b>: app handles auth (Jellyfin TV) &nbsp; <b>public</b>: no auth</p>';
+  }
+  h+='</div>';
+
+  // Save button
+  h+='<div style="margin-top:16px;display:flex;gap:8px">';
+  h+='<button class="btn-primary" style="padding:8px 20px" onclick="saveAuthConfig()">Save Auth Settings</button>';
+  h+='</div>';
+  h+='</div>';
+  el.innerHTML=h;
+}
+function _renderOidcFields(oidcKey){
+  const oidcSpec=_authOidcProviders.find(p=>p.key===oidcKey);
+  let h='';
+  if(oidcSpec&&oidcSpec.required_fields&&oidcSpec.required_fields.length>0){
+    h+='<div style="margin-top:8px">';
+    for(const f of oidcSpec.required_fields){
+      const val=_authFormState.oidcConfig[f]||'';
+      const isSecret=f.includes('secret');
+      h+='<label style="font-size:.8em;color:var(--fg3);display:block;margin:6px 0 2px">'+f.replace(/_/g,' ')+'</label>';
+      h+='<input type="'+(isSecret?'password':'text')+'" id="oidc-'+f+'" value="'+val+'" placeholder="'+f+'" style="width:100%;padding:6px 8px;background:var(--bg0);color:var(--fg1);border:1px solid var(--border);border-radius:4px;font-size:.85em">';
+    }
+    h+='</div>';
+  }
+  if(oidcSpec)h+='<p style="font-size:.8em;color:var(--fg3);margin:4px 0 0">'+oidcSpec.description+'</p>';
+  return h;
+}
+function onAuthModeChange(){
+  const mode=document.getElementById('auth-mode').value;
+  _authFormState.mode=mode;
+  const modeSpec=_authModes.find(m=>m.key===mode);
+  const showOidc=modeSpec&&modeSpec.gateway_auth;
+  const oidcSection=document.getElementById('auth-oidc-section');
+  const svcPolicies=document.getElementById('auth-svc-policies');
+  const descEl=document.getElementById('auth-mode-desc');
+  if(oidcSection)oidcSection.style.display=showOidc?'':'none';
+  if(svcPolicies)svcPolicies.style.display=showOidc?'':'none';
+  if(descEl&&modeSpec)descEl.textContent=modeSpec.description;
+}
+function onOidcProviderChange(){
+  const oidcKey=document.getElementById('auth-oidc').value;
+  _authFormState.oidc=oidcKey;
+  /* Just re-render the config fields, not the whole page */
+  const container=document.getElementById('auth-oidc-fields');
+  if(container)container.innerHTML=_renderOidcFields(oidcKey);
+}
+async function uploadOidcConfig(input){
+  const statusEl=document.getElementById('auth-oidc-upload-status');
+  const file=input.files&&input.files[0];
+  if(!file){return;}
+  try{
+    const text=await file.text();
+    const json=JSON.parse(text);
+    /* Send to server for provider detection + field extraction */
+    const r=await apiFetch('/api/auth/parse-oidc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(json)});
+    const d=await r.json();
+    if(d.error){
+      if(statusEl)statusEl.innerHTML='<p style="color:var(--err);font-size:.8em;margin:4px 0">'+d.error+'</p>';
+      return;
+    }
+    /* Auto-select provider in dropdown */
+    const provider=d.provider||'custom';
+    const sel=document.getElementById('auth-oidc');
+    if(sel){
+      /* Check if provider exists in dropdown */
+      const opt=Array.from(sel.options).find(o=>o.value===provider);
+      if(opt){sel.value=provider;}else{sel.value='custom';}
+    }
+    _authFormState.oidc=sel?sel.value:provider;
+    /* Populate oidcConfig with all extracted fields */
+    for(const[k,v]of Object.entries(d)){
+      if(k!=='provider'&&k!=='raw'&&typeof v==='string'&&v){
+        _authFormState.oidcConfig[k]=v;
+      }
+    }
+    /* Re-render fields with populated values */
+    const container=document.getElementById('auth-oidc-fields');
+    if(container)container.innerHTML=_renderOidcFields(_authFormState.oidc);
+    /* Show success */
+    if(statusEl)statusEl.innerHTML='<p style="color:var(--ok);font-size:.8em;margin:4px 0">Detected <b>'+provider+'</b> — fields auto-filled from '+file.name+'</p>';
+    /* Also fill any extra fields not in the spec's required_fields */
+    setTimeout(()=>{
+      for(const[k,v]of Object.entries(d)){
+        if(k==='provider'||k==='raw')continue;
+        const inp=document.getElementById('oidc-'+k);
+        if(inp&&!inp.value&&v)inp.value=v;
+      }
+    },50);
+  }catch(e){
+    if(statusEl)statusEl.innerHTML='<p style="color:var(--err);font-size:.8em;margin:4px 0">Invalid JSON: '+e.message+'</p>';
+  }
+  /* Reset file input so the same file can be re-uploaded */
+  input.value='';
+}
+async function saveAuthConfig(){
+  const mode=document.getElementById('auth-mode').value;
+  const oidcEl=document.getElementById('auth-oidc');
+  const oidcProvider=oidcEl?oidcEl.value:'local';
+  // Collect OIDC config fields
+  const oidcSpec=_authOidcProviders.find(p=>p.key===oidcProvider);
+  const oidcConfig={};
+  if(oidcSpec&&oidcSpec.required_fields){
+    for(const f of oidcSpec.required_fields){
+      const inp=document.getElementById('oidc-'+f);
+      if(inp&&inp.value)oidcConfig[f]=inp.value;
+    }
+  }
+  // Collect per-service policies
+  const perService={};
+  document.querySelectorAll('.auth-policy-select').forEach(sel=>{
+    perService[sel.dataset.svc]=sel.value;
+  });
+  try{
+    const r=await apiFetch('/api/auth/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,oidc_provider:oidcProvider,oidc_config:oidcConfig,per_service:perService})});
+    const d=await r.json();
+    if(d.error)toast('Error: '+d.error,true);
+    else toast('Auth settings saved'+(d.changed?' ('+d.changed.length+' changes)':''));
+  }catch(e){toast('Error: '+e,true);}
+}
+
 /* Job tree + execution history with per-job timing */
 async function loadJobTree(){
   const el=document.getElementById('cfg-jobs');
   if(!el)return;
   try{
-    const [jobsResp, statusResp] = await Promise.all([fetch('/api/jobs'), fetch('/status')]);
+    const [jobsResp, statusResp] = await Promise.all([apiFetch('/api/jobs'), apiFetch('/status')]);
     if(!jobsResp.ok){el.innerHTML='Failed';return;}
     const d=await jobsResp.json();
     const st=statusResp.ok?await statusResp.json():{};
@@ -3114,7 +3370,7 @@ function renderJobNode(node,depth){
 async function triggerJob(name){
   toast('Running '+name+'...');
   try{
-    const r=await fetch('/actions/'+encodeURIComponent(name),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const r=await apiFetch('/actions/'+encodeURIComponent(name),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d=await r.json();
     if(d.status==='accepted')toast(name+' queued (priority '+d.priority+')');
     else toast(d.error||'Failed',true);
@@ -3338,7 +3594,7 @@ const _intervals=[];
 
 /* Init */
 loadServicesFromAPI().then(()=>{
-load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE();loadRoutingConfig();buildQuickLinks();loadLibraries();
+load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE();loadRoutingConfig();buildQuickLinks();loadLibraries();loadAuthIdentity();
 // Populate service log picker
 (function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;
   sel.innerHTML+='<option value="media-stack-controller">Controller (container)</option>';
@@ -3350,12 +3606,12 @@ setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();
 // Lazy: indexers, libraries, etc. load when their tab is opened
 _intervals.push(setInterval(()=>{loadStats();loadDisk();loadDownloads();
   // Bandwidth tracking
-  fetch('/api/envoy/stats').then(r=>r.json()).then(d=>{recordBandwidth(d);}).catch(()=>{});
+  apiFetch('/api/envoy/stats').then(r=>r.json()).then(d=>{recordBandwidth(d);}).catch(()=>{});
 },dashSettings.statsInterval));
 _intervals.push(setInterval(loadVersions,300000));
 // Load namespace metrics for resource sparklines
-_intervals.push(setInterval(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},30000));
-setTimeout(()=>{fetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},5000);
+_intervals.push(setInterval(()=>{apiFetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},30000));
+setTimeout(()=>{apiFetch('/api/namespaces').then(r=>r.json()).then(d=>{recordResMetrics(d.pod_metrics);}).catch(()=>{});},5000);
 // Cleanup intervals on page unload
 window.addEventListener('beforeunload',()=>{_intervals.forEach(id=>clearInterval(id));});
 });

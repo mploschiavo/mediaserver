@@ -12,8 +12,14 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
                 codec_type: AUTO
+                max_request_headers_kb: 96
                 route_config:
                   name: media_stack_routes
+                  request_headers_to_add:
+                    - header:
+                        key: x-forwarded-proto
+                        value: https
+                      append_action: OVERWRITE_IF_EXISTS_OR_ADD
                   virtual_hosts: []
                 http_filters:
                   - name: envoy.filters.http.lua
@@ -97,12 +103,34 @@ static_resources:
                           end
                         end
 
+                        function envoy_on_request(handle)
+                          -- Save x-forwarded-prefix from request headers to dynamic
+                          -- metadata so envoy_on_response can access it. Route-level
+                          -- response_headers_to_add runs AFTER filters, so reading
+                          -- x-media-stack-prefix from response headers doesn't work
+                          -- when multiple HTTP filters are in the chain.
+                          local prefix = handle:headers():get("x-forwarded-prefix") or ""
+                          local host = handle:headers():get(":authority") or ""
+                          if prefix ~= "" then
+                            handle:streamInfo():dynamicMetadata():set("media_stack", "prefix", prefix)
+                            handle:streamInfo():dynamicMetadata():set("media_stack", "host", host)
+                          end
+                        end
+
                         function envoy_on_response(handle)
-                          local prefix = handle:headers():get("x-media-stack-prefix")
+                          -- Read prefix from dynamic metadata (set in envoy_on_request)
+                          -- Fall back to response header for backward compatibility.
+                          local prefix = handle:streamInfo():dynamicMetadata():get("media_stack", "prefix")
+                          if prefix == nil or prefix == "" then
+                            prefix = handle:headers():get("x-media-stack-prefix")
+                          end
                           if prefix == nil or prefix == "" then
                             return
                           end
-                          local host_hint = handle:headers():get("x-media-stack-host")
+                          local host_hint = handle:streamInfo():dynamicMetadata():get("media_stack", "host")
+                          if host_hint == nil or host_hint == "" then
+                            host_hint = handle:headers():get("x-media-stack-host")
+                          end
                           local location = handle:headers():get("location")
                           if location ~= nil and location ~= "" then
                             local normalized = nil
@@ -154,6 +182,29 @@ static_resources:
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+    - name: listener_http_redirect
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http_redirect
+                codec_type: AUTO
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  virtual_hosts:
+                    - name: redirect_all
+                      domains: ["*"]
+                      routes:
+                        - match: {prefix: "/"}
+                          redirect: {https_redirect: true}
   clusters: []
 admin:
   address:
