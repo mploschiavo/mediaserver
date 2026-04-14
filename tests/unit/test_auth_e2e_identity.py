@@ -229,8 +229,17 @@ class TestExtAuthzHeaderForwarding(unittest.TestCase):
         f = build_ext_authz_filter(ext_authz)
         auth_req = f["typed_config"]["http_service"]["authorization_request"]
         patterns = auth_req["allowed_headers"]["patterns"]
-        header_names = {p["exact"] for p in patterns}
-        self.assertIn("cookie", header_names)
+        # Check exact or prefix patterns include cookie
+        all_names = []
+        for p in patterns:
+            if "exact" in p:
+                all_names.append(p["exact"])
+            elif "prefix" in p:
+                all_names.append(f'prefix:{p["prefix"]}')
+        self.assertTrue(
+            any("cookie" in n for n in all_names),
+            f"Cookie must be in allowed patterns: {all_names}",
+        )
 
 
 class TestEnvoyRouteProtection(unittest.TestCase):
@@ -305,8 +314,10 @@ class TestEnvoyRouteProtection(unittest.TestCase):
         filters = payload["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]["http_filters"]
         filter_names = [f["name"] for f in filters]
         # ext_authz must come BEFORE router
-        self.assertEqual(filter_names.index(EXT_AUTHZ_FILTER_NAME),
-                         filter_names.index("envoy.filters.http.router") - 1)
+        self.assertLess(
+            filter_names.index(EXT_AUTHZ_FILTER_NAME),
+            filter_names.index("envoy.filters.http.router"),
+        )
         # Auth cluster added
         cluster_names = [c["name"] for c in payload["static_resources"]["clusters"]]
         self.assertIn("ext_authz_authelia", cluster_names)

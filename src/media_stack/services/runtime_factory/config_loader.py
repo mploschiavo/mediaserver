@@ -146,12 +146,18 @@ class ControllerConfigLoader:
             merged_loaded.update(loaded)
             loaded = merged_loaded
 
-        # Load settings from profile YAML when not in config.json
+        # Load settings from profile YAML when not in config.json.
+        # The profile YAML is the single source of truth for deployment
+        # config. ALL profile sections must be available in the cfg dict
+        # so downstream consumers (runtime_builder, envoy config, etc.)
+        # can read auth, routing, app_auth without re-reading the profile.
         _profile_keys_needed = {
             "technology_bindings": ("technology_bindings",),
             "trigger_indexer_sync": ("bootstrap", "trigger_indexer_sync"),
             "refresh_health_after_setup": ("bootstrap", "refresh_health_after_setup"),
             "app_auth": ("app_auth",),
+            "auth": ("auth",),
+            "routing": ("routing",),
         }
         missing_keys = [k for k in _profile_keys_needed if k not in loaded]
         if missing_keys:

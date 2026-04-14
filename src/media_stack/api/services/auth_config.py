@@ -184,12 +184,17 @@ class AuthConfigService:
                 # When SSO is off, re-enable Forms auth on arr apps.
                 app_auth = profile.setdefault("app_auth", {})
                 if mode_spec.gateway_auth:
-                    # SSO active → set External auth on arr apps so they
-                    # trust the reverse proxy and don't show a login form.
-                    app_auth["method"] = "External"
+                    # SSO active → use ProfileConfig.effective_app_auth_method
+                    # which returns External (trust reverse proxy).
+                    try:
+                        from media_stack.services.profile_config import get_profile_config
+                        profile = get_profile_config()
+                        app_auth["method"] = profile.effective_app_auth_method
+                    except Exception:
+                        app_auth["method"] = "External"
                     app_auth["required"] = "DisabledForLocalAddresses"
                     app_auth["enabled"] = True
-                    changed.append("app_auth.method=External (trust SSO proxy)")
+                    changed.append(f"app_auth.method={app_auth['method']} (SSO proxy)")
                 else:
                     # No SSO → re-enable Forms auth so apps have their own login
                     if new_mode == "none":

@@ -308,14 +308,21 @@ class ControllerRuntimeBuilder:
                 "password_env": "STACK_ADMIN_PASSWORD",
                 "include": include_apps,
             }
-        # When SSO is active (authelia/authentik), set External auth on arr
-        # apps so they trust the reverse proxy and don't show a login form.
-        # External auth means "someone upstream already authenticated this user."
-        auth_section = cfg.get("auth") or {}
-        auth_mode = str(auth_section.get("provider") or auth_section.get("mode") or "").strip().lower()
-        if auth_mode in ("authelia", "authentik") and app_auth_cfg.get("enabled"):
-            app_auth_cfg["method"] = "External"
-            app_auth_cfg["required"] = "DisabledForLocalAddresses"
+        # When SSO is active, set External auth on arr apps so they trust
+        # the reverse proxy. Use ProfileConfig as the source of truth.
+        try:
+            from media_stack.services.profile_config import get_profile_config
+            profile = get_profile_config()
+            if profile.is_sso_active and app_auth_cfg.get("enabled"):
+                app_auth_cfg["method"] = profile.effective_app_auth_method
+                app_auth_cfg["required"] = "DisabledForLocalAddresses"
+        except Exception:
+            # Fallback: read from cfg dict (backward compat)
+            auth_section = cfg.get("auth") or {}
+            auth_mode = str(auth_section.get("provider") or auth_section.get("mode") or "").strip().lower()
+            if auth_mode in ("authelia", "authentik") and app_auth_cfg.get("enabled"):
+                app_auth_cfg["method"] = "External"
+                app_auth_cfg["required"] = "DisabledForLocalAddresses"
 
         app_auth_model = AppAuthConfig.from_dict(app_auth_cfg)
 
