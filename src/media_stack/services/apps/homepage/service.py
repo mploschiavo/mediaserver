@@ -49,13 +49,18 @@ class HomepageService:
 
         # Build gateway base URL from routing config so tiles link to
         # real browser-reachable URLs (e.g. http://apps.media-stack.local/app/sonarr).
-        # Check cfg first (may have routing from profile merge), then fall back
-        # to reading the profile directly.
+        # Use ProfileConfig as the source of truth.
         routing_cfg = cfg.get("routing") or {}
         if not routing_cfg.get("gateway_host"):
             try:
-                from media_stack.api.services import config as _cfg_svc
-                routing_cfg = _cfg_svc.get_routing() or {}
+                from media_stack.services.profile_config import get_profile_config
+                profile = get_profile_config()
+                routing_cfg = {
+                    "gateway_host": profile.routing.gateway_host,
+                    "gateway_port": profile.routing.gateway_port,
+                    "app_path_prefix": profile.routing.app_path_prefix,
+                    "scheme": profile.routing.resolved_scheme,
+                }
             except Exception:
                 pass
         gateway_host = str(routing_cfg.get("gateway_host", "")).strip()
