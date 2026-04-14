@@ -182,6 +182,39 @@ static_resources:
                               end
                             end
                           end
+                          -- Rewrite root-relative asset paths in HTML responses.
+                          -- SPA apps (Sonarr v4) use <script src="/index.js"> which
+                          -- 404s through the gateway. Rewrite to /app/sonarr/index.js.
+                          local content_type = handle:headers():get("content-type") or ""
+                          if string.find(content_type, "text/html", 1, true) then
+                            local body = handle:body()
+                            if body ~= nil then
+                              local html = body:getBytes(0, body:length())
+                              if html ~= nil and string.len(html) > 0 then
+                                -- Rewrite src="/..." and href="/..." to src="/app/svc/..."
+                                -- but skip absolute URLs and already-prefixed paths
+                                local pfx = prefix
+                                html = string.gsub(html, '(src=")(/[^"]*")', function(attr, path)
+                                  if string.sub(path, 1, string.len(pfx)) == pfx then return attr .. path end
+                                  return attr .. pfx .. path
+                                end)
+                                html = string.gsub(html, "(src=')(/[^']*')", function(attr, path)
+                                  if string.sub(path, 1, string.len(pfx)) == pfx then return attr .. path end
+                                  return attr .. pfx .. path
+                                end)
+                                html = string.gsub(html, '(href=")(/[^"]*")', function(attr, path)
+                                  if string.sub(path, 1, string.len(pfx)) == pfx then return attr .. path end
+                                  return attr .. pfx .. path
+                                end)
+                                html = string.gsub(html, "(href=')(/[^']*')", function(attr, path)
+                                  if string.sub(path, 1, string.len(pfx)) == pfx then return attr .. path end
+                                  return attr .. pfx .. path
+                                end)
+                                body:setBytes(html)
+                                handle:headers():replace("content-length", tostring(string.len(html)))
+                              end
+                            end
+                          end
                           media_stack_inject_prefix_patch(handle, prefix)
                           handle:headers():remove("x-media-stack-prefix")
                           handle:headers():remove("x-media-stack-host")
