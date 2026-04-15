@@ -256,6 +256,16 @@ class EnvoyDynamicConfigService:
                 if regex_rewrite is not None:
                     route_cfg["route"]["regex_rewrite"] = dict(regex_rewrite)
                 routes_by_host.setdefault(host_token, []).append((primary_rank, dict(route_cfg)))
+                # Redirect /app/service (no trailing slash) → /app/service/
+                # so relative URLs in SPAs resolve correctly.
+                if path_prefix and path_prefix != "/" and not path_prefix.endswith("/"):
+                    routes_by_host.setdefault(host_token, []).append((
+                        primary_rank + 2,
+                        {
+                            "match": {"path": path_prefix},
+                            "redirect": {"path_redirect": path_prefix + "/"},
+                        },
+                    ))
                 html_route_cfg = primary_route_cfg(
                     host=host_token,
                     path_prefix=path_prefix,
