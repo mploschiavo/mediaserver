@@ -77,9 +77,14 @@ spec:
     metadata:
       labels: {app: jellyseerr}
     spec:
+      hostAliases:
+        - ip: "192.168.1.60"
+          hostnames: ["auth.iomio.io", "m.iomio.io"]
       containers:
         - name: jellyseerr
-          image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+          image: fallenbagel/jellyseerr:preview-OIDC
+          env:
+            - {name: NODE_TLS_REJECT_UNAUTHORIZED, value: "0"}
           resources:
             requests:
               cpu: 100m
