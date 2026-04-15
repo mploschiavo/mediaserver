@@ -27,6 +27,12 @@ def build_ext_authz_filter(
     It sends each request to the auth provider for verification before forwarding.
     """
     path_prefix = ext_authz.path_prefix
+    # For Authelia /api/verify, add rd= parameter so unauthenticated
+    # requests get 302 redirect instead of bare 401.
+    if auth_portal_url and "/api/verify" in path_prefix:
+        from urllib.parse import quote
+        separator = "&" if "?" in path_prefix else "?"
+        path_prefix = f"{path_prefix}{separator}rd={quote(auth_portal_url, safe=':/')}"
 
     return {
         "name": EXT_AUTHZ_FILTER_NAME,
