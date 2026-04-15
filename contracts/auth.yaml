@@ -47,7 +47,7 @@ modes:
       cluster_name: ext_authz_authelia
       host: authelia
       port: 9091
-      path_prefix: /api/authz/forward-auth?authz_path=
+      path_prefix: /api/verify?authz_path=
       # Headers forwarded from Authelia to upstream services
       response_headers_to_add:
         - Remote-User
