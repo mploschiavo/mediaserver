@@ -26,9 +26,10 @@ class User:
     updated_at: str
     last_login_at: str = ""
     provider_refs: dict[str, str] = field(default_factory=dict)
+    password_history: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def to_dict(self, include_sensitive: bool = False) -> dict[str, Any]:
+        out: dict[str, Any] = {
             "id": self.id,
             "email": self.email,
             "username": self.username,
@@ -40,6 +41,9 @@ class User:
             "last_login_at": self.last_login_at,
             "provider_refs": dict(self.provider_refs),
         }
+        if include_sensitive:
+            out["password_history"] = list(self.password_history)
+        return out
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "User":
@@ -54,6 +58,7 @@ class User:
             updated_at=str(data.get("updated_at", "")),
             last_login_at=str(data.get("last_login_at", "")),
             provider_refs=dict(data.get("provider_refs", {})),
+            password_history=list(data.get("password_history", [])),
         )
 
 
@@ -73,6 +78,10 @@ class Role:
     # Implies controller-UI access: the same credential authenticates
     # against the controller's basic-auth.
     propagate_to_service_admins: bool = False
+    # When true, users with this role MUST have 2FA enrolled in Authelia
+    # before they can authenticate to the controller UI. Enforced by
+    # BasicAuthVerifier when it sees the flag on the matched role.
+    require_2fa: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -84,6 +93,7 @@ class Role:
                 k: dict(v) for k, v in self.provider_payloads.items()
             },
             "propagate_to_service_admins": self.propagate_to_service_admins,
+            "require_2fa": self.require_2fa,
         }
 
     @classmethod
@@ -101,6 +111,7 @@ class Role:
             propagate_to_service_admins=bool(
                 data.get("propagate_to_service_admins", False),
             ),
+            require_2fa=bool(data.get("require_2fa", False)),
         )
 
 

@@ -6,6 +6,7 @@ first argument so it can call response helpers and access ``self.state``.
 
 from __future__ import annotations
 
+import base64
 import os
 import time
 from http import HTTPStatus
@@ -13,7 +14,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs
 
-from media_stack.core.auth.users.user_service import build_default_service
+from media_stack.core.auth.users.user_service_factory import (
+    build_default_invite_service,
+    build_default_service,
+)
+from media_stack.core.auth.users.metrics import render_metrics
 
 from .cache import api_cache
 from .services import health as health_svc
@@ -143,7 +148,8 @@ class GetRequestHandler:
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
         elif path == "/api/users" or path.startswith("/api/users/") \
                 or path in ("/api/roles", "/api/user-providers",
-                            "/api/audit-log", "/api/users-reconcile"):
+                            "/api/audit-log", "/api/users-reconcile",
+                            "/api/invites", "/api/me", "/metrics"):
             self._handle_user_mgmt(handler, path)
         elif path == "/api/download-client-settings":
             handler._json_response(200, content_svc.get_download_client_settings())
@@ -539,6 +545,17 @@ class GetRequestHandler:
         if path == "/api/users-reconcile":
             handler._json_response(ok, {"diffs": svc.reconcile_report()})
             return
+        if path == "/api/invites":
+            handler._json_response(
+                ok, {"invites": build_default_invite_service().list_pending()},
+            )
+            return
+        if path == "/api/me":
+            handler._json_response(ok, self._build_me_response(handler, svc))
+            return
+        if path == "/metrics":
+            self._emit_metrics(handler, svc)
+            return
         if path == "/api/audit-log":
             qs = parse_qs(urlparse(handler.path).query)
             limit = int(qs.get("limit", ["100"])[0])
@@ -547,13 +564,59 @@ class GetRequestHandler:
                 "entries": svc.audit_recent(limit=limit, action_filter=action_filter),
             })
             return
+        # /api/users/{id}/sessions
+        parts = path.split("/")
+        if len(parts) >= 5 and parts[4] == "sessions":
+            handler._json_response(ok, {"sessions": svc.list_sessions(parts[3])})
+            return
+        # /api/users/{id}
         user_id = path.split("/")[-1]
-        user = svc.get_user(user_id)
+        user = svc.user_detail(user_id)
         if user:
             handler._json_response(ok, user)
         else:
             handler._json_response(HTTPStatus.NOT_FOUND,
                                    {"error": f"user {user_id} not found"})
+
+    def _build_me_response(self, handler, svc) -> dict:
+        """Return the authenticated user's record (from the basic-auth
+        Authorization header). Anonymous / unresolvable callers get {}."""
+        auth_header = handler.headers.get("Authorization", "")
+        username = ""
+        if auth_header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+                username, _, _ = decoded.partition(":")
+            except Exception:  # noqa: BLE001
+                username = ""
+        if not username:
+            return {"authenticated": False}
+        detail: dict = {"authenticated": True, "username": username}
+        # Look up by username; best-effort — admin users may authenticate
+        # via env fallback and have no store row yet.
+        for u in svc.list_users():
+            if u.get("username", "").lower() == username.lower():
+                detail.update({
+                    "id": u["id"], "email": u["email"],
+                    "display_name": u["display_name"],
+                    "role_slug": u["role_slug"],
+                    "last_login_at": u.get("last_login_at", ""),
+                })
+                break
+        return detail
+
+    def _emit_metrics(self, handler, svc) -> None:
+        payload = render_metrics(
+            users=svc.list_users(include_deleted=True),
+            roles=svc.list_roles(),
+            provider_health=svc.provider_health(),
+            audit_recent=svc.audit_recent(limit=5 * 100),
+        ).encode("utf-8")
+        handler.send_response(HTTPStatus.OK)
+        handler.send_header("Content-Type", "text/plain; version=0.0.4")
+        handler.send_header("Content-Length", str(len(payload)))
+        handler.end_headers()
+        handler.wfile.write(payload)
 
     @staticmethod
     def _handle_api_docs(handler: ControllerAPIHandler) -> None:

@@ -179,6 +179,16 @@ class AutheliaFileProvider:
     def set_groups(self, external_id: str, groups: list[str]) -> None:
         self.update_user(external_id, groups=groups)
 
+    def list_sessions(self, external_id: str) -> list:
+        """File backend has no session introspection endpoint."""
+        del external_id
+        return []
+
+    def last_activity(self, external_id: str) -> str:
+        """File backend doesn't track per-user login timestamps."""
+        del external_id
+        return ""
+
     def revoke_sessions(self, external_id: str) -> None:
         """No-op for the file backend.
 

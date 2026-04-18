@@ -15,14 +15,18 @@ takes effect immediately for controller access — no restart needed.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import yaml
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
+from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
 from media_stack.core.auth.users.role_catalog import RoleCatalog
 from media_stack.core.auth.users.user_store import UserStore
+
+_log = logging.getLogger("media_stack")
 
 
 class BasicAuthVerifier:
@@ -39,6 +43,8 @@ class BasicAuthVerifier:
         fallback_username: str,
         fallback_password: str,
         hasher: PasswordHasher | None = None,
+        failed_login_tracker: FailedLoginTracker | None = None,
+        alert_fn=None,  # callable(username, count) for brute-force alerts
     ) -> None:
         self._store = store
         self._roles = role_catalog
@@ -46,51 +52,73 @@ class BasicAuthVerifier:
         self._fallback_username = fallback_username
         self._fallback_password = fallback_password
         self._hasher = hasher or PasswordHasher()
+        self._failed = failed_login_tracker
+        self._alert_fn = alert_fn
 
     def verify(self, username: str, password: str) -> bool:
         """Return True if the credentials authenticate a controller admin."""
         if not username or password is None:
             return False
-        if self._verify_from_store(username, password):
-            return True
-        return self._verify_fallback(username, password)
+        ok = self._verify_from_store(username, password) \
+            or self._verify_fallback(username, password)
+        self._record_result(username, ok)
+        return ok
+
+    def _record_result(self, username: str, ok: bool) -> None:
+        if self._failed is None:
+            return
+        if ok:
+            self._failed.register_success(username)
+            return
+        alert, count = self._failed.register_failure(username)
+        if alert and self._alert_fn is not None:
+            try:
+                self._alert_fn(username, count)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("[DEBUG] failed-login alert_fn raised: %s", exc)
 
     def _verify_from_store(self, username: str, password: str) -> bool:
         user = self._store.get_by_username(username)
         if user is None or user.state.value != "active":
             return False
         role = self._roles.get(user.role_slug)
-        # Only roles with propagate_to_service_admins may authenticate to
-        # the controller UI directly. End-user roles (adult/teen/kid) log
-        # into apps via Authelia SSO, not the controller.
         if role is None or not role.propagate_to_service_admins:
             return False
-        stored_hash = self._lookup_provider_hash(user)
+        entry = self._read_authelia_entry(user)
+        stored_hash = str(entry.get("password") or "") if entry else ""
         if not stored_hash:
             return False
         try:
-            return bool(self._hasher.verify(stored_hash, password))
+            password_ok = bool(self._hasher.verify(stored_hash, password))
         except VerifyMismatchError:
             return False
         except Exception:  # noqa: BLE001
             return False
+        if not password_ok:
+            return False
+        if role.require_2fa and not self._has_2fa_enrolled(entry):
+            return False
+        return True
 
-    def _lookup_provider_hash(self, user) -> str:
-        # Source-of-truth provider is Authelia (file-backed). Read the
-        # hash directly — avoids an import cycle on the provider module.
+    def _has_2fa_enrolled(self, entry: dict) -> bool:
+        if entry.get("has_2fa") is True:
+            return True
+        method = str(entry.get("method", "")).lower()
+        return method in ("totp", "webauthn")
+
+    def _read_authelia_entry(self, user) -> dict:
         if not self._users_db_path.is_file():
-            return ""
+            return {}
         authelia_ref = user.provider_refs.get("authelia", "")
         if not authelia_ref:
-            return ""
+            return {}
         try:
             data = yaml.safe_load(
                 self._users_db_path.read_text(encoding="utf-8"),
             ) or {}
         except yaml.YAMLError:
-            return ""
-        entry = (data.get("users") or {}).get(authelia_ref) or {}
-        return str(entry.get("password") or "")
+            return {}
+        return (data.get("users") or {}).get(authelia_ref) or {}
 
     def _verify_fallback(self, username: str, password: str) -> bool:
         return (

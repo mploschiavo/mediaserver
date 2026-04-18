@@ -184,14 +184,14 @@ class ReconcileAdminEndToEndTests(unittest.TestCase):
             admin_id = users[0]["id"]
 
             # Reset admin password — propagates everywhere
-            result = svc.reset_password(admin_id, password="S3cure!")
+            result = svc.reset_password(admin_id, password="S3cure_Admin-Pass!")
             self.assertEqual(result["providers"]["authelia"], "ok")
             self.assertEqual(result["service_admins"]["qbittorrent"], "ok")
             self.assertEqual(result["service_admins"]["sonarr"], "ok")
-            qbit.set_admin_password.assert_called_once_with("S3cure!")
-            sonarr.set_admin_password.assert_called_once_with("S3cure!")
+            qbit.set_admin_password.assert_called_once_with("S3cure_Admin-Pass!")
+            sonarr.set_admin_password.assert_called_once_with("S3cure_Admin-Pass!")
             # Authelia record has the new password
-            self.assertEqual(authelia._users["admin"]["password"], "S3cure!")
+            self.assertEqual(authelia._users["admin"]["password"], "S3cure_Admin-Pass!")
 
 
 class RegularUserLifecycleTests(unittest.TestCase):
@@ -210,7 +210,7 @@ class RegularUserLifecycleTests(unittest.TestCase):
 
             created = svc.create_user(
                 email="j@x", username="jane", display_name="Jane",
-                role_slug="adult", password="pw1",
+                role_slug="adult", password="First-Str0ng_Pw!",
             )
             self.assertEqual(authelia._users["authelia-1"]["groups"],
                              ["family"])
@@ -226,7 +226,7 @@ class RegularUserLifecycleTests(unittest.TestCase):
 
             # Reset password — adult/teen has NO service-admin propagation
             qbit.set_admin_password.reset_mock()
-            result = svc.reset_password(created["id"], password="pw2")
+            result = svc.reset_password(created["id"], password="Second-Str0ng_Pw!")
             self.assertEqual(result["providers"]["authelia"], "ok")
             self.assertEqual(result["service_admins"], {})
             qbit.set_admin_password.assert_not_called()
@@ -267,7 +267,7 @@ class OidcAutoProvisionReconcileTests(unittest.TestCase):
             # exists, Jellyseerr is deferred.
             created = svc.create_user(
                 email="j@x", username="jane", display_name="J",
-                role_slug="adult", password="pw",
+                role_slug="adult", password="Test-Str0ng_Pw!2026",
             )
             # Jellyseerr should NOT have been called at create time
             self.assertEqual(jellyseerr.create_calls, 0)
@@ -305,10 +305,10 @@ class AdminPropagationIsolationTests(unittest.TestCase):
             )
             guest = svc.create_user(
                 email="g@x", username="guest", display_name="G",
-                role_slug="guest", password="pw",
+                role_slug="guest", password="Test-Str0ng_Pw!2026",
             )
             qbit.set_admin_password.reset_mock()
-            svc.reset_password(guest["id"], password="newpw")
+            svc.reset_password(guest["id"], password="New-Str0ng_Pw!2026")
             qbit.set_admin_password.assert_not_called()
 
     def test_family_admin_does_not_propagate(self):
@@ -321,10 +321,10 @@ class AdminPropagationIsolationTests(unittest.TestCase):
             )
             fa = svc.create_user(
                 email="fa@x", username="fa", display_name="FA",
-                role_slug="family_admin", password="pw",
+                role_slug="family_admin", password="Fam-Admin_Pw!2026",
             )
             qbit.set_admin_password.reset_mock()
-            svc.reset_password(fa["id"], password="newpw")
+            svc.reset_password(fa["id"], password="New-Str0ng_Pw!2026")
             qbit.set_admin_password.assert_not_called()
 
 

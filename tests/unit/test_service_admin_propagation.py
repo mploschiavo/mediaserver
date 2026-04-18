@@ -104,10 +104,10 @@ class PropagationTests(unittest.TestCase):
             )
             qbit.set_admin_password.reset_mock()
             sonarr.set_admin_password.reset_mock()
-            result = svc.reset_password(admin["id"], password="new-pw")
+            result = svc.reset_password(admin["id"], password="New-Str0ng_Pw!2026")
 
-            qbit.set_admin_password.assert_called_once_with("new-pw")
-            sonarr.set_admin_password.assert_called_once_with("new-pw")
+            qbit.set_admin_password.assert_called_once_with("New-Str0ng_Pw!2026")
+            sonarr.set_admin_password.assert_called_once_with("New-Str0ng_Pw!2026")
             self.assertEqual(result["service_admins"]["qbittorrent"], "ok")
             self.assertEqual(result["service_admins"]["sonarr"], "ok")
 
@@ -120,7 +120,7 @@ class PropagationTests(unittest.TestCase):
                 role_slug="adult",
             )
             qbit.set_admin_password.reset_mock()
-            result = svc.reset_password(adult["id"], password="new-pw")
+            result = svc.reset_password(adult["id"], password="New-Str0ng_Pw!2026")
 
             qbit.set_admin_password.assert_not_called()
             self.assertEqual(result["service_admins"], {})
@@ -136,7 +136,7 @@ class PropagationTests(unittest.TestCase):
                 email="a@x", username="admin", display_name="A",
                 role_slug="superadmin",
             )
-            result = svc.reset_password(admin["id"], password="new-pw")
+            result = svc.reset_password(admin["id"], password="New-Str0ng_Pw!2026")
             self.assertIn("qbit down",
                           result["service_admins"]["qbittorrent"])
             self.assertEqual(result["service_admins"]["sonarr"], "ok")
@@ -150,7 +150,7 @@ class PropagationTests(unittest.TestCase):
                 email="a@x", username="admin", display_name="A",
                 role_slug="superadmin",
             )
-            svc.reset_password(admin["id"], password="new-pw")
+            svc.reset_password(admin["id"], password="New-Str0ng_Pw!2026")
             recent = svc.audit_recent()
             reset_entry = next(e for e in reversed(recent)
                                 if e["action"] == "reset_password")

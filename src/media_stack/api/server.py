@@ -24,11 +24,13 @@ from . import handlers_get
 from . import handlers_post
 
 try:
-    from media_stack.core.auth.users.user_service import (
+    from media_stack.core.auth.users.user_service_factory import (
         build_default_auth_verifier as _build_auth_verifier,
+        build_default_scheduled_reconciler as _build_sched_reconciler,
     )
 except ImportError:
     _build_auth_verifier = None
+    _build_sched_reconciler = None
 
 
 def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
@@ -433,6 +435,14 @@ def start_api_server(
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True, name="api-server")
     thread.start()
+
+    if _build_sched_reconciler is not None:
+        try:
+            _build_sched_reconciler().start()
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] scheduled reconcile not started: %s", exc,
+            )
 
     # Graceful shutdown on SIGTERM
     def _shutdown(signum: int, frame: Any) -> None:

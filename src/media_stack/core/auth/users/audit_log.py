@@ -13,12 +13,19 @@ from typing import Any, Iterator
 from media_stack.core.auth.users.models import AuditEntry
 
 _DEFAULT_RECENT_LIMIT = 100
+_BYTES_PER_MIB = 2 ** 20
+_DEFAULT_MAX_SIZE_BYTES = 10 * _BYTES_PER_MIB
+_DEFAULT_KEEP_ARCHIVES = 5
+_MIN_ROTATION_BYTES = 2 ** 10
 
 
 class AuditLog:
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, max_size_bytes: int = _DEFAULT_MAX_SIZE_BYTES,
+                 keep_archives: int = _DEFAULT_KEEP_ARCHIVES) -> None:
         self._path = Path(path)
+        self._max_size_bytes = max(_MIN_ROTATION_BYTES, int(max_size_bytes))
+        self._keep_archives = max(1, int(keep_archives))
         self._lock = threading.Lock()
 
     def _now_iso(self) -> str:
@@ -70,7 +77,35 @@ class AuditLog:
                 f.write(self._canonical(entry.to_dict()) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+            self._rotate_if_needed()
         return entry
+
+    def _rotate_if_needed(self) -> None:
+        """Rollover the active log to ``<name>.<ts>.jsonl`` if it's grown
+        past max size. Keeps at most ``keep_archives`` archives."""
+        try:
+            size = self._path.stat().st_size
+        except FileNotFoundError:
+            return
+        if size < self._max_size_bytes:
+            return
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        archive = self._path.with_name(f"{self._path.name}.{stamp}")
+        try:
+            self._path.rename(archive)
+        except OSError:
+            return
+        # Prune older archives
+        archives = sorted(
+            self._path.parent.glob(f"{self._path.name}.*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for stale in archives[self._keep_archives:]:
+            try:
+                stale.unlink()
+            except OSError:
+                continue
 
     def iter_entries(self) -> Iterator[AuditEntry]:
         if not self._path.is_file():

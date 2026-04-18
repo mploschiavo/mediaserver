@@ -12,6 +12,7 @@ from http import HTTPStatus
 from typing import Any
 
 from media_stack.core.auth.users.provider import (
+    ExternalSession,
     ExternalUser,
     ProviderCapabilities,
     ProviderHealth,
@@ -196,6 +197,44 @@ class JellyfinApiProvider:
     def _require_api_key(self) -> None:
         if not self._api_key:
             raise JellyfinProviderError("API key not set")
+
+    def list_sessions(self, external_id: str) -> list[ExternalSession]:
+        if not external_id or not self._api_key:
+            return []
+        try:
+            status, body, _ = self._http.request(
+                self._base_url, "/Sessions", api_key=self._api_key,
+            )
+        except Exception:  # noqa: BLE001
+            return []
+        if status != HTTPStatus.OK or not isinstance(body, list):
+            return []
+        out: list[ExternalSession] = []
+        for s in body:
+            if not isinstance(s, dict) or str(s.get("UserId", "")) != external_id:
+                continue
+            out.append(ExternalSession(
+                session_id=str(s.get("Id", "")),
+                device=str(s.get("DeviceName", "") or s.get("Device", "")),
+                client=str(s.get("Client", "")),
+                last_activity=str(s.get("LastActivityDate", "")),
+                ip=str(s.get("RemoteEndPoint", "")),
+            ))
+        return out
+
+    def last_activity(self, external_id: str) -> str:
+        if not external_id or not self._api_key:
+            return ""
+        try:
+            status, body, _ = self._http.request(
+                self._base_url, f"/Users/{external_id}",
+                api_key=self._api_key,
+            )
+        except Exception:  # noqa: BLE001
+            return ""
+        if status != HTTPStatus.OK or not isinstance(body, dict):
+            return ""
+        return str(body.get("LastActivityDate") or body.get("LastLoginDate") or "")
 
     def revoke_sessions(self, external_id: str) -> None:
         """Kill every active session belonging to this user.

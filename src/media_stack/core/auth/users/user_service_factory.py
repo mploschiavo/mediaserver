@@ -15,13 +15,18 @@ from typing import Any
 import yaml
 
 from media_stack.core.auth.basic_auth_verifier import BasicAuthVerifier
+from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
 from media_stack.core.auth.users.audit_log import AuditLog
+from media_stack.core.auth.users.invite_service import InviteService
+from media_stack.core.auth.users.invite_store import InviteStore
 from media_stack.core.auth.users.legacy_service_admin_adapter import (
     LegacyServiceAdminAdapter,
 )
+from media_stack.core.auth.users.password_policy import PasswordPolicy
 from media_stack.core.auth.users.provider import UserProvider
 from media_stack.core.auth.users.role_catalog import RoleCatalog
 from media_stack.core.auth.users.role_policy_mapper import RolePolicyMapper
+from media_stack.core.auth.users.scheduled_reconcile import ScheduledReconciler
 from media_stack.core.auth.users.service_admin_provider import ServiceAdminProvider
 from media_stack.core.auth.users.user_service import UserService
 from media_stack.core.auth.users.user_store import UserStore
@@ -72,6 +77,25 @@ class UserServiceFactory:
             service_admins=service_admins,
         )
 
+    def build_scheduled_reconciler(self) -> ScheduledReconciler:
+        interval = int(self._env.get("RECONCILE_INTERVAL_SEC", 60 * 60))
+        return ScheduledReconciler(
+            service_factory=self.build,
+            interval_sec=interval,
+        )
+
+    def build_invite_service(self) -> InviteService:
+        env = self._env
+        config_root = Path(env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
+        audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
+        invites = InviteStore(config_root / "controller" / "invites.json")
+        service = self.build()
+        return InviteService(
+            invites=invites,
+            user_creator=service.create_user,
+            audit=audit,
+        )
+
     def build_auth_verifier(self) -> BasicAuthVerifier:
         env = self._env
         config_root = Path(env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
@@ -82,12 +106,33 @@ class UserServiceFactory:
         roles_path = self._find_contract(
             env.get("ROLE_CATALOG_PATH", ""), "roles.yaml",
         )
+        audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
+        tracker = _SHARED_TRACKER
+
+        def _alert(username: str, count: int) -> None:
+            audit.append(
+                actor="auth-watchdog",
+                action="brute_force_alert",
+                target=username,
+                result="alert",
+                detail={"failed_count": count,
+                        "window_seconds": tracker.window_seconds},
+            )
+
         return BasicAuthVerifier(
             store=UserStore(config_root / "controller" / "users.json"),
             role_catalog=RoleCatalog(roles_path),
             users_db_path=users_db_path,
             fallback_username=env.get("STACK_ADMIN_USERNAME", "admin"),
             fallback_password=env.get("STACK_ADMIN_PASSWORD", ""),
+            failed_login_tracker=tracker,
+            alert_fn=_alert,
+        )
+
+    def resolve_roles_path(self) -> Path:
+        """Public accessor for callers that need to edit roles.yaml in place."""
+        return self._find_contract(
+            self._env.get("ROLE_CATALOG_PATH", ""), "roles.yaml",
         )
 
     def _find_contract(self, explicit: str, filename: str) -> Path:
@@ -175,6 +220,13 @@ class UserServiceFactory:
         )
 
 
+# One process-wide tracker so repeated verify() calls across
+# build_auth_verifier() invocations share the same burst counters.
+_SHARED_TRACKER = FailedLoginTracker()
+
 _default_factory = UserServiceFactory()
 build_default_service = _default_factory.build
 build_default_auth_verifier = _default_factory.build_auth_verifier
+build_default_invite_service = _default_factory.build_invite_service
+build_default_scheduled_reconciler = _default_factory.build_scheduled_reconciler
+resolve_default_roles_path = _default_factory.resolve_roles_path

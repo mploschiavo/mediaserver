@@ -141,6 +141,25 @@ class JellyseerrApiProvider:
         # Jellyseerr logins are federated via OIDC — no password to set.
         del external_id, password
 
+    def list_sessions(self, external_id: str) -> list:
+        """Jellyseerr doesn't expose a session-listing API."""
+        del external_id
+        return []
+
+    def last_activity(self, external_id: str) -> str:
+        if not external_id or not self._api_key:
+            return ""
+        try:
+            status, body, _ = self._http.request(
+                self._base_url, f"/api/v1/user/{external_id}",
+                api_key=self._api_key,
+            )
+        except Exception:  # noqa: BLE001
+            return ""
+        if status != HTTPStatus.OK or not isinstance(body, dict):
+            return ""
+        return str(body.get("updatedAt") or body.get("createdAt") or "")
+
     def revoke_sessions(self, external_id: str) -> None:
         """Jellyseerr doesn't expose an explicit session revocation API.
 
