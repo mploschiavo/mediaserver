@@ -8,7 +8,14 @@ from __future__ import annotations
 
 import logging
 import os
+from http import HTTPStatus
 from typing import TYPE_CHECKING
+
+from media_stack.core.auth.users.models import UserState
+from media_stack.core.auth.users.user_service import (
+    UserServiceError,
+    build_default_service,
+)
 
 from .services import admin as admin_svc
 from .services import config as config_svc
@@ -20,6 +27,8 @@ if TYPE_CHECKING:
     from .server import ControllerAPIHandler
 
 logger = logging.getLogger("controller_api")
+
+_ERR_LEN = 99
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +296,11 @@ class PostRequestHandler:
                 handler._json_response(400, {"error": "quality or upgradeAllowed required"})
             return
 
+        # User management — delegated to class method.
+        if handler.path == "/api/users" or handler.path.startswith("/api/users/"):
+            self._handle_user_mgmt(handler)
+            return
+
         # POST /api/custom-formats/import — import TRASHguides custom formats
         if handler.path == "/api/custom-formats/import":
             body = handler._read_json_body()
@@ -530,6 +544,58 @@ class PostRequestHandler:
 
         handler._json_response(404, {"error": "not found"})
 
+    def _handle_user_mgmt(self, handler: ControllerAPIHandler) -> None:
+        """Dispatch user-management POST endpoints."""
+        body = handler._read_json_body()
+        actor = str(body.get("_actor", "") or "controller-ui")
+        svc = build_default_service()
+        try:
+            if handler.path == "/api/users":
+                result = self._user_create(svc, body, actor)
+            else:
+                result = self._user_action(handler.path, svc, body, actor)
+            if result is None:
+                handler._json_response(
+                    HTTPStatus.BAD_REQUEST, {"error": "invalid user request"},
+                )
+                return
+            handler._json_response(HTTPStatus.OK, result)
+        except UserServiceError as exc:
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
+            )
+
+    def _user_create(self, svc, body: dict, actor: str) -> dict:
+        return svc.create_user(
+            email=str(body.get("email", "")).strip(),
+            username=str(body.get("username", "")).strip(),
+            display_name=str(body.get("display_name", "")).strip(),
+            role_slug=str(body.get("role_slug", "")).strip(),
+            password=str(body.get("password", "") or ""),
+            actor=actor,
+        )
+
+    def _user_action(self, path: str, svc, body: dict, actor: str) -> dict | None:
+        parts = path.split("/")
+        if len(parts) < 4:
+            raise UserServiceError("user id required")
+        user_id = parts[3]
+        action = parts[4] if len(parts) >= 5 else ""
+        if action == "" and body.get("_method") == "DELETE":
+            action = "delete"
+        dispatch = {
+            "role": lambda: svc.set_role(
+                user_id, str(body.get("role_slug", "")).strip(), actor=actor),
+            "state": lambda: svc.set_state(
+                user_id, UserState(str(body.get("state", "active"))), actor=actor),
+            "reset-password": lambda: svc.reset_password(
+                user_id, password=str(body.get("password", "") or ""), actor=actor),
+            "delete": lambda: svc.delete_user(user_id, actor=actor),
+        }
+        fn = dispatch.get(action)
+        if fn is None:
+            raise UserServiceError(f"unknown action: {action}")
+        return fn()
 
     @staticmethod
     def _build_known_actions() -> frozenset[str]:

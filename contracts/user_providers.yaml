@@ -1,0 +1,25 @@
+# Pluggable UserProvider registry. Platform code dynamic-imports each
+# module at build time so core/ stays free of backend-specific symbols.
+#
+# Adding a new provider = add an entry here + drop a module at
+# services/apps/<id>/user_provider.py. No Python edit in core/.
+
+version: 1
+providers:
+  - id: authelia
+    module: media_stack.services.apps.authelia.user_provider
+    class: AutheliaFileProvider
+    args:
+      users_db_path:
+        env: AUTHELIA_USERS_DB
+        default: "{config_root}/authelia/users_database.yml"
+  - id: jellyfin
+    module: media_stack.services.apps.jellyfin.user_provider
+    class: JellyfinApiProvider
+    args:
+      base_url:
+        env: JELLYFIN_URL
+        default: "http://jellyfin:8096"
+      api_key:
+        env: JELLYFIN_API_KEY
+        default: ""
