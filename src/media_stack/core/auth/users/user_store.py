@@ -58,7 +58,7 @@ class UserStore:
         payload = {
             "version": _SCHEMA_VERSION,
             "updated_at": self._now_iso(),
-            "users": [u.to_dict() for u in users.values()],
+            "users": [u.to_dict(include_sensitive=True) for u in users.values()],
         }
         fd, tmp_path = tempfile.mkstemp(
             prefix="users.", suffix=".json.tmp", dir=str(self._path.parent)
@@ -132,7 +132,7 @@ class UserStore:
 
     def update(self, user_id: str, **fields: Any) -> User:
         allowed = {"email", "username", "display_name", "state", "role_slug",
-                   "last_login_at", "provider_refs"}
+                   "last_login_at", "provider_refs", "password_history"}
         with self._lock:
             users = self._load()
             user = users.get(user_id)

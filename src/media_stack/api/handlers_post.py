@@ -9,14 +9,18 @@ from __future__ import annotations
 import logging
 import os
 from http import HTTPStatus
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.auth.rate_limiter import RateLimiter
 from media_stack.core.auth.users.models import UserState
-from media_stack.core.auth.users.user_service import (
-    UserServiceError,
+from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditor
+from media_stack.core.auth.users.user_service import UserServiceError
+from media_stack.core.auth.users.user_service_factory import (
+    build_default_invite_service,
     build_default_service,
+    resolve_default_roles_path,
 )
 
 _USER_MGMT_BUCKET_CAPACITY = 10
@@ -25,8 +29,28 @@ _user_mgmt_limiter = RateLimiter(
     capacity=_USER_MGMT_BUCKET_CAPACITY,
     refill_per_second=_USER_MGMT_REFILL_PER_SECOND,
 )
+# Per-account rate limit for password reset — prevents an attacker from
+# brute-forcing reset endpoints by rotating IPs.
+_PW_RESET_BUCKET_CAPACITY = 3
+_PW_RESET_REFILL_PER_SECOND = 0.05  # ~1 token per 20s = slow, deliberate
+_pw_reset_limiter = RateLimiter(
+    capacity=_PW_RESET_BUCKET_CAPACITY,
+    refill_per_second=_PW_RESET_REFILL_PER_SECOND,
+)
 _csrf = CsrfProtector()
-_CSRF_ENFORCE = (os.getenv("CSRF_ENFORCE", "") or "").strip() == "1"
+# CSRF is ON by default for BROWSER requests (detected via Cookie
+# header). API clients using basic auth WITHOUT a Cookie header are
+# exempt — they can't be CSRF'd because the attacker can't set the
+# basic-auth header cross-origin. CSRF_ENFORCE=1 forces it on for
+# everyone (including API clients); CSRF_ENFORCE=0 disables it entirely.
+_CSRF_MODE = (os.getenv("CSRF_ENFORCE", "") or "").strip()
+_CSRF_DEFAULT_ON_FOR_BROWSERS = _CSRF_MODE != "0"
+# _CSRF_ENFORCE=True forces strict CSRF for every request (including
+# header-less API clients). This is what the test suite patches to
+# verify strict-mode behavior. With it False (default), we fall back to
+# the smart default: strict for browsers (Cookie header present),
+# exempt for API clients.
+_CSRF_ENFORCE = _CSRF_MODE == "1"
 
 from .services import admin as admin_svc
 from .services import config as config_svc
@@ -55,6 +79,125 @@ _CORE_ACTIONS = {
 
 
 # KNOWN_ACTIONS initialized after class (needs _build_known_actions)
+
+
+# ---------------------------------------------------------------------------
+# User-management helper (invites, bulk import, roles, session revocation)
+# ---------------------------------------------------------------------------
+
+
+class _UserMgmtPostHelper:
+    """Extracted POST handlers for invites, bulk import, role editing, and
+    cross-provider session revocation. Kept out of PostRequestHandler so
+    the main request router stays under the class-method ratchet.
+    """
+
+    _ALLOWED_ROLE_FIELDS = frozenset({
+        "name", "description", "sso_groups",
+        "propagate_to_service_admins", "require_2fa",
+        "provider_payloads",
+    })
+
+    def invite_create(self, body: dict, actor: str) -> dict:
+        inv_svc = build_default_invite_service()
+        return inv_svc.create_invite(
+            email=str(body.get("email", "")).strip(),
+            role_slug=str(body.get("role_slug", "")).strip(),
+            ttl_hours=int(body.get("ttl_hours", 0) or 7 * 24),
+            actor=actor,
+        )
+
+    def invite_accept(self, body: dict) -> dict:
+        inv_svc = build_default_invite_service()
+        return inv_svc.accept(
+            token=str(body.get("token", "")),
+            username=str(body.get("username", "")).strip(),
+            display_name=str(body.get("display_name", "")).strip(),
+            password=str(body.get("password", "")),
+        )
+
+    def invite_revoke(self, path: str, actor: str) -> dict:
+        invite_id = path.rsplit("/", 1)[-1]
+        return build_default_invite_service().revoke(invite_id, actor)
+
+    def bulk_import(self, svc, body: dict, actor: str) -> dict:
+        rows = body.get("users") or []
+        if not isinstance(rows, list):
+            raise UserServiceError("users must be a list")
+        imported: list[dict] = []
+        errors: list[str] = []
+        for row in rows:
+            try:
+                result = svc.create_user(
+                    email=str(row.get("email", "")).strip(),
+                    username=str(row.get("username", "")).strip(),
+                    display_name=str(row.get("display_name", "")).strip(),
+                    role_slug=str(row.get("role_slug", "adult")).strip() or "adult",
+                    actor=actor,
+                )
+                imported.append({
+                    "email": result["email"],
+                    "user_id": result["id"],
+                    "generated_password": result.get("generated_password", ""),
+                })
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{row.get('email', '')}: {str(exc)[:_ERR_LEN]}")
+        return {"imported": imported, "errors": errors,
+                "count": len(imported)}
+
+    def role_update(self, path: str, body: dict, actor: str) -> dict:
+        slug = path.rsplit("/", 1)[-1]
+        if not slug:
+            raise UserServiceError("role slug required")
+        roles_path = self._resolve_roles_path()
+        allowed = self._ALLOWED_ROLE_FIELDS
+
+        def _mutator(current: dict) -> dict:
+            roles = dict(current.get("roles") or {})
+            existing = dict(roles.get(slug) or {})
+            for k, v in (body or {}).items():
+                if k in allowed:
+                    existing[k] = v
+            roles[slug] = existing
+            new = dict(current)
+            new["roles"] = roles
+            return new
+
+        SafeYamlEditor(roles_path).edit(_mutator)
+        build_default_service()._roles.reload()
+        return {"role": slug, "updated": True, "actor": actor}
+
+    def revoke_sessions(self, svc, user_id: str, actor: str) -> dict:
+        user = svc._store.get(user_id)
+        if user is None:
+            return {"user_id": user_id, "error": "not found"}
+        results: dict[str, str] = {}
+        for provider in svc._providers:
+            results[provider.name] = self._revoke_on_provider(provider, user)
+        svc._audit.append(
+            actor=actor, action="revoke_sessions", target=user.email,
+            result="ok", detail={"user_id": user_id, "providers": results},
+        )
+        return {"user_id": user_id, "providers": results}
+
+    def _revoke_on_provider(self, provider, user) -> str:
+        external_id = user.provider_refs.get(provider.name)
+        if not external_id:
+            return "no_ref"
+        revoke = getattr(provider, "revoke_sessions", None)
+        if revoke is None:
+            return "unsupported"
+        try:
+            revoke(external_id)
+            return "ok"
+        except Exception as exc:  # noqa: BLE001
+            return f"error: {str(exc)[:_ERR_LEN]}"
+
+    def _resolve_roles_path(self) -> Path:
+        return resolve_default_roles_path()
+
+
+_user_mgmt_helper = _UserMgmtPostHelper()
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +454,12 @@ class PostRequestHandler:
         if (handler.path == "/api/users"
                 or handler.path.startswith("/api/users/")
                 or handler.path in ("/api/users-reconcile/import",
-                                    "/api/users-reconcile/unlink")):
+                                    "/api/users-reconcile/unlink",
+                                    "/api/invites",
+                                    "/api/invites/accept",
+                                    "/api/users-bulk-import")
+                or handler.path.startswith("/api/invites/")
+                or handler.path.startswith("/api/roles/")):
             self._handle_user_mgmt(handler)
             return
 
@@ -611,23 +759,53 @@ class PostRequestHandler:
                 provider_name=str(body.get("provider_name", "")),
                 actor=actor,
             )
+        if path == "/api/invites":
+            return _user_mgmt_helper.invite_create(body, actor)
+        if path == "/api/invites/accept":
+            return _user_mgmt_helper.invite_accept(body)
+        if path.startswith("/api/invites/"):
+            return _user_mgmt_helper.invite_revoke(path, actor)
+        if path == "/api/users-bulk-import":
+            return _user_mgmt_helper.bulk_import(svc, body, actor)
+        if path.startswith("/api/roles/"):
+            return _user_mgmt_helper.role_update(path, body, actor)
         if path == "/api/users":
             return self._user_create(svc, body, actor)
         return self._user_action(path, svc, body, actor)
 
     def _check_rate_limit(self, handler) -> bool:
         client_id = handler.client_address[0] if handler.client_address else "-"
-        return _user_mgmt_limiter.allow(client_id=client_id, bucket="user-mgmt")
+        if not _user_mgmt_limiter.allow(client_id=client_id, bucket="user-mgmt"):
+            return False
+        # Reset-password gets a separate, tighter per-ACCOUNT bucket so
+        # an attacker rotating IPs still trips the throttle on the
+        # target user_id.
+        parts = handler.path.split("/")
+        if len(parts) >= 5 and parts[4] == "reset-password":
+            target_uid = parts[3]
+            if not _pw_reset_limiter.allow(client_id=target_uid,
+                                            bucket="pw-reset"):
+                return False
+        return True
 
     def _check_csrf(self, handler) -> bool:
-        """CSRF enforcement is opt-in via env so basic-auth API clients keep
-        working without breaking changes. Set CSRF_ENFORCE=1 to enable.
+        """CSRF enforcement — smart default.
+
+        Requests that include a session cookie are assumed to come from a
+        browser and must present a matching X-CSRF-Token header. Requests
+        without a cookie are API clients using basic-auth from a script;
+        they're not CSRF-vulnerable and are allowed through unless
+        CSRF_ENFORCE=1 forces strict mode.
         """
-        if not _CSRF_ENFORCE:
+        if _CSRF_MODE == "0":
             return True
         cookie_header = handler.headers.get("Cookie", "")
         csrf_header = handler.headers.get(_csrf.header_name, "")
-        return _csrf.verify(cookie_header=cookie_header, header_value=csrf_header)
+        has_cookie = isinstance(cookie_header, str) and bool(cookie_header.strip())
+        if _CSRF_ENFORCE or has_cookie:
+            return _csrf.verify(cookie_header=cookie_header,
+                                header_value=csrf_header)
+        return True
 
     def _user_create(self, svc, body: dict, actor: str) -> dict:
         return svc.create_user(
@@ -655,6 +833,8 @@ class PostRequestHandler:
             "reset-password": lambda: svc.reset_password(
                 user_id, password=str(body.get("password", "") or ""), actor=actor),
             "delete": lambda: svc.delete_user(user_id, actor=actor),
+            "revoke-sessions": lambda: _user_mgmt_helper.revoke_sessions(
+                svc, user_id, actor),
         }
         fn = dispatch.get(action)
         if fn is None:

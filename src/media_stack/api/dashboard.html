@@ -585,13 +585,17 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Manage users across Authelia (auth), Jellyfin (streaming), and Jellyseerr (requests). Roles map to each provider's policy via the role catalog.</p>
     <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-list',this)">Users</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-invites',this)">Invites</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-roles',this)">Roles</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-audit',this)">Audit Log</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-providers',this)">Providers</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-me',this)">My Profile</button>
     </div>
     <div id="users-list" class="subtab active" style="min-height:80px">
       <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="showAddUserDialog()">Add User</button>
+        <button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="showInviteDialog()">Create Invite</button>
+        <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="showBulkImportDialog()">Bulk CSV Import</button>
         <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="loadUserList()">Refresh</button>
         <span style="border-left:1px solid var(--border);margin:0 4px;height:20px"></span>
         <button class="btn-secondary" id="bulk-reset-btn" style="padding:6px 14px;font-size:.85em" onclick="bulkResetPassword()" disabled>Reset Passwords (<span id="bulk-count-a">0</span>)</button>
@@ -599,9 +603,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       </div>
       <div id="user-table"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
     </div>
+    <div id="users-invites" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="users-roles" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="users-audit" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="users-providers" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="users-me" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
   </div>
 </div>
 
@@ -1184,7 +1190,9 @@ function _renderStorageStatCard(disks,gMax,gTarget){
     if(v.error)return `<div class="stat-item"><span class="label">${k}</span><span class="val" style="color:var(--fg3)">${v.error}</span></div>`;
     const pct=(v.percent_used||0).toFixed(1);
     const color=pct>gMax?'var(--err)':pct>gTarget?'var(--warn)':'var(--fg)';
-    return `<div class="stat-item"><span class="label">${k}</span><span class="val" style="color:${color}">${pct}% <span style="color:var(--fg3);font-size:.8em">of ${fmtBytes(v.total_bytes)}</span></span></div>`;
+    const used=fmtBytes(v.used_bytes);
+    const total=fmtBytes(v.total_bytes);
+    return `<div class="stat-item"><span class="label">${k}</span><span class="val" style="color:${color}">${used} / ${total} <span style="color:var(--fg3);font-size:.85em">(${pct}%)</span></span></div>`;
   }).join('');
 }
 function renderGuardrailConfig(){
@@ -1794,9 +1802,11 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   else if(id==='cfg-auth')_load(loadAuthConfig);
   else if(id==='lib-indexers')_load(loadIndexers);
   else if(id==='users-list')_load(loadUserList);
+  else if(id==='users-invites')_load(loadInvites);
   else if(id==='users-roles')_load(loadRoleList);
   else if(id==='users-audit')_load(loadAuditLog);
   else if(id==='users-providers')_load(loadUserProviders);
+  else if(id==='users-me')_load(loadMyProfile);
 }
 /* Users tab — separate helper that matches showSubTab's contract but uses
  * the "users-" prefix so we can share the same sub-tab machinery. */
@@ -1927,18 +1937,222 @@ async function loadUserList(){
   }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
 }
 
-function showAddUserDialog(){
-  const email=prompt('Email:');if(!email)return;
-  const username=prompt('Username:');if(!username)return;
-  const display_name=prompt('Display name (optional):','')||'';
-  const role_slug=prompt('Role slug (superadmin/family_admin/adult/teen/kid/guest):','adult')||'adult';
-  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
-    body:JSON.stringify({email,username,display_name,role_slug})})
-    .then(r=>r.json()).then(j=>{
-      if(j.error){alert('Error: '+j.error);return;}
-      alert(`Created ${j.email}\nTemp password: ${j.generated_password}\nStore it now — it is not recoverable.`);
-      loadUserList();
-    }).catch(e=>alert('Error: '+e));
+function _modal(title,bodyHtml,onConfirm,confirmLabel){
+  confirmLabel=confirmLabel||'Create';
+  const root=document.getElementById('confirm-root');
+  root.innerHTML=`<div class="confirm-overlay" onclick="if(event.target===this)closeConfirm()"><div class="confirm-box" style="max-width:480px"><h3>${_escHtml(title)}</h3>${bodyHtml}<div class="actions" style="margin-top:14px"><button class="btn-secondary" onclick="closeConfirm()">Cancel</button> <button class="btn-primary" id="modal-confirm-btn">${_escHtml(confirmLabel)}</button></div></div></div>`;
+  document.getElementById('modal-confirm-btn').addEventListener('click',async()=>{
+    try{await onConfirm();}catch(e){alert('Error: '+e);}
+  });
+}
+
+async function showAddUserDialog(){
+  const rolesJson=await (await fetch('/api/roles')).json();
+  const roles=rolesJson.roles||[];
+  const roleOpts=roles.map(r=>`<option value="${r.slug}"${r.slug==='adult'?' selected':''}>${r.name} (${r.slug})</option>`).join('');
+  const body=`<div style="display:flex;flex-direction:column;gap:8px;font-size:.88em">
+    <label>Email <input id="au-email" type="email" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Username <input id="au-username" type="text" autocomplete="off" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Display Name <input id="au-display" type="text" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Role <select id="au-role" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px">${roleOpts}</select></label>
+    <label>Custom Password (optional — random generated if blank)
+      <input id="au-pw" type="text" autocomplete="new-password" placeholder="min 12 chars, 3 classes, not reused" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px;font-family:monospace">
+    </label>
+    <div id="au-pw-meter" style="font-size:.8em;color:var(--fg3);min-height:16px"></div>
+  </div>`;
+  _modal('Add User',body,async()=>{
+    const payload={
+      email:document.getElementById('au-email').value.trim(),
+      username:document.getElementById('au-username').value.trim(),
+      display_name:document.getElementById('au-display').value.trim(),
+      role_slug:document.getElementById('au-role').value,
+      password:document.getElementById('au-pw').value,
+    };
+    const r=await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(payload)});
+    const j=await r.json();
+    closeConfirm();
+    if(j.error){alert('Error: '+j.error);return;}
+    alert(`Created ${j.email}\nPassword: ${j.generated_password}\nStore it now — not recoverable.`);
+    loadUserList();
+  });
+  // password strength meter
+  setTimeout(()=>{
+    const pw=document.getElementById('au-pw');
+    const meter=document.getElementById('au-pw-meter');
+    pw.oninput=()=>{
+      const v=pw.value||'';
+      if(!v){meter.textContent='blank = auto-generated strong';meter.style.color='var(--fg3)';return;}
+      const classes=[/[a-z]/,/[A-Z]/,/\d/,/[^a-zA-Z0-9]/].reduce((n,re)=>n+(re.test(v)?1:0),0);
+      const shortMsg=v.length<12?'too short ':'';
+      const classMsg=classes<3?`need ${3-classes} more class(es) `:'';
+      if(!shortMsg && !classMsg){meter.textContent='strong';meter.style.color='var(--ok)';}
+      else{meter.textContent=shortMsg+classMsg;meter.style.color='var(--warn)';}
+    };
+  },10);
+}
+
+async function showInviteDialog(){
+  const rolesJson=await (await fetch('/api/roles')).json();
+  const roles=rolesJson.roles||[];
+  const roleOpts=roles.map(r=>`<option value="${r.slug}"${r.slug==='adult'?' selected':''}>${r.name}</option>`).join('');
+  const body=`<p style="color:var(--fg3);font-size:.82em;margin:0 0 10px">Generate a single-use invite link. The recipient sets their own password — the controller never learns it. Token expires after the chosen window.</p>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:.88em">
+    <label>Email <input id="inv-email" type="email" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Role <select id="inv-role" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px">${roleOpts}</select></label>
+    <label>TTL (hours) <input id="inv-ttl" type="number" value="168" min="1" max="720" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+  </div>`;
+  _modal('Create Invite',body,async()=>{
+    const r=await fetch('/api/invites',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
+      body:JSON.stringify({
+        email:document.getElementById('inv-email').value.trim(),
+        role_slug:document.getElementById('inv-role').value,
+        ttl_hours:parseInt(document.getElementById('inv-ttl').value,10)||168,
+      })});
+    const j=await r.json();
+    closeConfirm();
+    if(j.error){alert('Error: '+j.error);return;}
+    const link=`${window.location.origin}/?invite=${encodeURIComponent(j.token)}`;
+    prompt(`Send this link to ${j.email}:\n(token shown ONCE — copy now)`,link);
+    loadInvites();
+  },'Create Invite');
+}
+
+async function showBulkImportDialog(){
+  const body=`<p style="color:var(--fg3);font-size:.82em;margin:0 0 10px">Paste CSV. First line is the header. Required columns: <code>email</code>, <code>username</code>. Optional: <code>display_name</code>, <code>role_slug</code> (default adult).</p>
+  <textarea id="bulk-csv" rows="10" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:.82em" placeholder="email,username,display_name,role_slug
+jane@local,jane,Jane Doe,adult
+bob@local,bob,Bob,teen"></textarea>`;
+  _modal('Bulk CSV Import',body,async()=>{
+    const csv=document.getElementById('bulk-csv').value.trim();
+    if(!csv){alert('CSV is empty');return;}
+    const lines=csv.split(/\r?\n/).filter(l=>l.trim());
+    const headers=lines.shift().split(',').map(s=>s.trim());
+    const rows=lines.map(l=>{
+      const cells=l.split(',').map(s=>s.trim());
+      const obj={};headers.forEach((h,i)=>obj[h]=cells[i]||'');return obj;
+    });
+    const r=await fetch('/api/users-bulk-import',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({users:rows})});
+    const j=await r.json();
+    closeConfirm();
+    if(j.error){alert('Error: '+j.error);return;}
+    let msg=`Imported ${j.count} user(s).`;
+    if(j.imported && j.imported.length)msg+='\n\nPasswords (save NOW):\n'+j.imported.map(u=>`  ${u.email}: ${u.generated_password}`).join('\n');
+    if(j.errors && j.errors.length)msg+='\n\nErrors:\n'+j.errors.join('\n');
+    alert(msg);
+    loadUserList();
+  },'Import');
+}
+
+async function loadInvites(){
+  const box=document.getElementById('users-invites');
+  try{
+    const j=await (await fetch('/api/invites')).json();
+    const invites=j.invites||[];
+    let h='<div style="margin-bottom:10px"><button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="showInviteDialog()">New Invite</button> <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="loadInvites()">Refresh</button></div>';
+    if(!invites.length){h+='<p style="color:var(--fg3);font-size:.85em">No pending invites.</p>';box.innerHTML=h;return;}
+    h+='<table id="invites-table" style="width:100%;border-collapse:collapse;font-size:.85em">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left">';
+    h+='<th data-sort-key="email" style="padding:6px 4px">Email</th><th data-sort-key="role">Role</th><th data-sort-key="created">Created</th><th data-sort-key="expires">Expires</th><th>By</th><th>Actions</th></tr></thead><tbody>';
+    for(const inv of invites){
+      h+=`<tr style="border-bottom:1px solid var(--border)" data-email="${inv.email}" data-role="${inv.role_slug}" data-created="${inv.created_at}" data-expires="${inv.expires_at}">`;
+      h+=`<td style="padding:6px 4px">${inv.email}</td>`;
+      h+=`<td><code>${inv.role_slug}</code></td>`;
+      h+=`<td style="color:var(--fg3);font-size:.78em">${(inv.created_at||'').replace('T',' ').slice(0,16)}</td>`;
+      h+=`<td style="color:var(--fg3);font-size:.78em">${(inv.expires_at||'').replace('T',' ').slice(0,16)}</td>`;
+      h+=`<td style="color:var(--fg3);font-size:.8em">${inv.created_by||''}</td>`;
+      h+=`<td><button class="btn-danger" style="padding:2px 6px;font-size:.78em" onclick="revokeInvite('${inv.id}')">Revoke</button></td>`;
+      h+='</tr>';
+    }
+    h+='</tbody></table>';
+    box.innerHTML=h;
+    makeSortable('invites-table');
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+async function revokeInvite(id){
+  if(!confirm('Revoke this invite? The link will no longer work.'))return;
+  const r=await fetch(`/api/invites/${id}`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({_method:'DELETE'})});
+  const j=await r.json();
+  if(j.error)alert(j.error);else loadInvites();
+}
+
+async function loadMyProfile(){
+  const box=document.getElementById('users-me');
+  try{
+    const j=await (await fetch('/api/me')).json();
+    let h='<h3 style="margin:0 0 12px">My Profile</h3>';
+    if(!j.authenticated){h+='<p style="color:var(--fg3)">Not authenticated.</p>';box.innerHTML=h;return;}
+    h+='<table style="width:100%;font-size:.9em;border-collapse:collapse">';
+    const row=(k,v)=>`<tr><td style="padding:6px;color:var(--fg3);width:180px">${k}</td><td style="padding:6px;font-family:monospace">${_escHtml(v||'\u2014')}</td></tr>`;
+    h+=row('Username',j.username);
+    h+=row('Email',j.email);
+    h+=row('Display Name',j.display_name);
+    h+=row('Role',j.role_slug);
+    h+=row('Last Login',(j.last_login_at||'').replace('T',' ').slice(0,19));
+    h+='</table>';
+    h+='<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">';
+    h+='<a class="btn-secondary" style="padding:6px 14px;font-size:.85em;text-decoration:none" href="/?tab=authelia" target="_blank">Manage 2FA / Password via Authelia</a>';
+    if(j.id)h+=`<button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="loadMySessions('${j.id}')">View My Sessions</button>`;
+    h+='</div>';
+    h+='<div id="my-sessions-view" style="margin-top:12px"></div>';
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+async function loadMySessions(userId){
+  const box=document.getElementById('my-sessions-view');
+  box.innerHTML='Loading sessions...';
+  try{
+    const j=await (await fetch(`/api/users/${userId}/sessions`)).json();
+    const sessions=j.sessions||[];
+    if(!sessions.length){box.innerHTML='<p style="color:var(--fg3);font-size:.85em">No active sessions.</p>';return;}
+    let h='<table style="width:100%;font-size:.85em;border-collapse:collapse">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left"><th style="padding:6px 4px">Provider</th><th>Device</th><th>Client</th><th>Last Activity</th><th>IP</th></tr></thead><tbody>';
+    for(const s of sessions){
+      h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 4px">${s.provider}</td><td>${s.device||'—'}</td><td>${s.client||'—'}</td><td style="color:var(--fg3);font-size:.78em">${(s.last_activity||'').replace('T',' ').slice(0,19)}</td><td style="color:var(--fg3);font-size:.8em;font-family:monospace">${s.ip||'—'}</td></tr>`;
+    }
+    h+='</tbody></table>';
+    h+=`<div style="margin-top:8px"><button class="btn-danger" style="padding:4px 10px;font-size:.82em" onclick="revokeMySessions('${userId}')">Log out of all devices</button></div>`;
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+async function revokeMySessions(userId){
+  if(!confirm('Log out of all devices? You may need to sign in again.'))return;
+  const r=await fetch(`/api/users/${userId}/revoke-sessions`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
+  const j=await r.json();
+  if(j.error)alert(j.error);else{alert('Sessions revoked.');loadMySessions(userId);}
+}
+
+/* Handle invite acceptance: if URL has ?invite=TOKEN, show the accept
+ * dialog on page load. */
+(function(){
+  const params=new URLSearchParams(window.location.search);
+  const token=params.get('invite');
+  if(!token)return;
+  setTimeout(()=>showAcceptInviteDialog(token),400);
+})();
+function showAcceptInviteDialog(token){
+  const body=`<p style="color:var(--fg3);font-size:.82em;margin:0 0 10px">You've been invited to the media stack. Choose a username and strong password to complete setup.</p>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:.88em">
+    <label>Username <input id="acc-username" type="text" autocomplete="off" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Display Name <input id="acc-display" type="text" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Password (min 12 chars, 3+ classes) <input id="acc-pw" type="password" autocomplete="new-password" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+    <label>Confirm Password <input id="acc-pw2" type="password" autocomplete="new-password" style="width:100%;padding:6px;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px"></label>
+  </div>`;
+  _modal('Accept Invite',body,async()=>{
+    const pw=document.getElementById('acc-pw').value;
+    const pw2=document.getElementById('acc-pw2').value;
+    if(pw!==pw2){alert("Passwords don't match");return;}
+    const r=await fetch('/api/invites/accept',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({
+      token,
+      username:document.getElementById('acc-username').value.trim(),
+      display_name:document.getElementById('acc-display').value.trim(),
+      password:pw,
+    })});
+    const j=await r.json();
+    closeConfirm();
+    if(j.error){alert('Error: '+j.error);return;}
+    alert('Account created — you can now sign in via Authelia.');
+    window.location.href='/';
+  },'Create Account');
 }
 
 async function setUserRole(userId,roleSlug){

@@ -15,6 +15,9 @@ def _post_handler(path: str, body: dict):
     h = MagicMock()
     h.path = path
     h._read_json_body.return_value = body
+    # Default: no cookie → API-client path, CSRF smart-default lets it through.
+    h.headers.get.side_effect = lambda name, default="": default
+    h.client_address = ("127.0.0.1", 0)
     captured: dict = {}
 
     def _respond(status, payload):
