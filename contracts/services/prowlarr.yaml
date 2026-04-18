@@ -34,6 +34,12 @@ plugin:
     prowlarr_flaresolverr_service: prowlarr
     prowlarr_precheck_service: prowlarr
     prowlarr_indexer_pipeline_service: prowlarr
+  jobs:
+    configure-indexers:
+      handler: media_stack.services.apps.prowlarr.configure_indexers_job:configure_indexers
+      phase: download_clients
+      priority: 20
+      requires: []
   event_handlers:
     VALIDATE:
       ensure_prowlarr_ready: media_stack.services.apps.prowlarr.runtime_ops:ensure_prowlarr_ready

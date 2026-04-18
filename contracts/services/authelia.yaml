@@ -14,3 +14,11 @@ service:
   profiles: ['auth-authelia']
 
   scalable: false
+plugin:
+  technology: authelia
+  jobs:
+    configure-auth:
+      handler: media_stack.core.auth.configure_auth_job:configure_auth
+      phase: default
+      priority: 5
+      requires: []

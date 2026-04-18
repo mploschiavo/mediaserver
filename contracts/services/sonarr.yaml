@@ -36,6 +36,12 @@ plugin:
     supports_seed_series: true
   adapter_classes:
     servarr: media_stack.services.apps.servarr.technologies.sonarr:SonarrAdapter
+  jobs:
+    configure-arr-clients:
+      handler: media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients
+      phase: download_clients
+      priority: 10
+      requires: []
 defaults:
   root_folder: /media/tv
   discovery_lists:

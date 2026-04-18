@@ -18,7 +18,12 @@ class ActionHandlerService:
 
     def action_bootstrap(self, args: argparse.Namespace, state: object,
                          run_preflights: Any, persist_keys: Any, build_runner: Any) -> None:
-        """Core bootstrap: preflights + configure arr apps + download clients."""
+        """Core bootstrap: preflights + configure arr apps + download clients.
+
+        Runs both the legacy adapter_hooks-driven runner AND the jobs framework so
+        discrete jobs discovered from contracts/services/*.yaml always execute —
+        even when adapter_hooks are missing from the generated config.
+        """
         run_preflights_enabled = os.environ.get("BOOTSTRAP_RUN_PREFLIGHTS", "1") == "1"
         runtime_platform.log(f"[DEBUG] Bootstrap: preflights={'enabled' if run_preflights_enabled else 'disabled'}, "
                              f"config={getattr(args, 'config', '?')}, "
@@ -31,7 +36,38 @@ class ActionHandlerService:
         runner, runtime_state = build_runner(args)
         runtime_platform.log(f"[DEBUG] Bootstrap: runner built, plan phases={list(getattr(runtime_state, 'plan', {}).keys()) if hasattr(runtime_state, 'plan') else '?'}")
         runner.run(runtime_state)
+        runtime_platform.log("[OK] Bootstrap (legacy runner) completed")
+
+        if os.environ.get("BOOTSTRAP_SKIP_JOBS_FRAMEWORK", "") != "1":
+            self._run_jobs_framework()
+
         runtime_platform.log("[OK] Bootstrap completed successfully")
+
+    def _run_jobs_framework(self) -> None:
+        """Execute the full job tree discovered from contracts/services/*.yaml."""
+        try:
+            from media_stack.cli.commands.job_framework import (
+                JobContext,
+                JobRunner,
+                build_job_framework,
+            )
+        except ImportError as exc:
+            runtime_platform.log(f"[WARN] Jobs framework unavailable: {exc}")
+            return
+
+        try:
+            root = build_job_framework()
+            ctx = JobContext()
+            result = JobRunner(root, ctx).run()
+            runtime_platform.log(
+                f"[OK] Jobs framework completed: "
+                f"{len([r for r in (result.get('results') or {}).values() if r.get('status') == 'ok'])} ok, "
+                f"{len([r for r in (result.get('results') or {}).values() if r.get('status') != 'ok'])} other"
+            )
+        except Exception as exc:
+            runtime_platform.log(f"[WARN] Jobs framework execution failed: {exc}")
+            import traceback
+            runtime_platform.log(f"[DEBUG] Jobs framework traceback:\n{traceback.format_exc()}")
 
     def action_post_setup(self, args: argparse.Namespace, state: object,
                         build_runner: Any, run_post_bootstrap: Any) -> None:

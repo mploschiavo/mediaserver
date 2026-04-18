@@ -216,6 +216,21 @@ class TestAllMediaServerJobsRun(unittest.TestCase):
                 with patch.multiple(
                     "media_stack.services.apps.jellyfin.runtime_ops",
                     **handler_patches,
+                ), patch(
+                    "media_stack.services.apps.jellyseerr.configure_jellyseerr_job.configure_jellyseerr",
+                    return_value={"skipped": "test"},
+                ), patch(
+                    "media_stack.services.apps.prowlarr.configure_indexers_job.configure_indexers",
+                    return_value={"skipped": "test"},
+                ), patch(
+                    "media_stack.services.apps.servarr.configure_arr_clients_job.configure_arr_clients",
+                    return_value={"skipped": "test"},
+                ), patch(
+                    "media_stack.core.auth.configure_auth_job.configure_auth",
+                    return_value={"skipped": "test"},
+                ), patch(
+                    "media_stack.services.apps.qbittorrent.configure_categories_job.configure_categories",
+                    return_value={"skipped": "test"},
                 ):
                     result = run_all_media_server_jobs(max_wait=1)
 
