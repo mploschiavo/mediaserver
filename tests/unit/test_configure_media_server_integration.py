@@ -231,6 +231,9 @@ class TestAllMediaServerJobsRun(unittest.TestCase):
                 ), patch(
                     "media_stack.services.apps.qbittorrent.configure_categories_job.configure_categories",
                     return_value={"skipped": "test"},
+                ), patch(
+                    "media_stack.services.apps.servarr.configure_auto_scan_job.configure_auto_scan",
+                    return_value={"skipped": "test"},
                 ):
                     result = run_all_media_server_jobs(max_wait=1)
 

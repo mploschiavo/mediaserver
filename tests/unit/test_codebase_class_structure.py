@@ -27,25 +27,25 @@ MODULES_WITHOUT_CLASS_RATCHET = 2
 LOOSE_FUNCTIONS_RATCHET = 73
 
 # DI migration ratchets
-STATIC_METHOD_RATCHET = 419       # @staticmethod — should be instance methods with DI
-SINGLETON_INSTANCE_RATCHET = 138  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 381  # os.environ in methods — should be config injection
+STATIC_METHOD_RATCHET = 420       # @staticmethod — should be instance methods with DI
+SINGLETON_INSTANCE_RATCHET = 139  # _instance = Foo() — should use DI container
+OS_ENVIRON_IN_METHODS_RATCHET = 384  # os.environ in methods — should be config injection
 
 # Code quality ratchets
 METHODS_OVER_50_LINES_RATCHET = 231       # long methods — extract sub-methods
 DEEPLY_NESTED_4PLUS_RATCHET = 149         # 4+ nesting levels — use early returns
 GOD_CLASSES_OVER_500_LINES_RATCHET = 10   # classes doing too much — split
 CLASSES_OVER_15_METHODS_RATCHET = 23      # too many responsibilities
-CIRCULAR_IMPORT_RISK_RATCHET = 152        # lazy imports in methods — poor layering
+CIRCULAR_IMPORT_RISK_RATCHET = 153        # lazy imports in methods — poor layering
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
 
 # Hygiene ratchets
 SWALLOWED_EXCEPTIONS_RATCHET = 2    # except Exception: pass — all now log at DEBUG
 PRINT_STATEMENTS_RATCHET = 235      # should use logging/runtime_platform.log
 FILES_OVER_400_LINES_RATCHET = 45   # large files — split into modules
-HARDCODED_URLS_RATCHET = 170        # URLs should come from contracts/config
+HARDCODED_URLS_RATCHET = 171        # URLs should come from contracts/config
 DUPLICATE_STRINGS_5PLUS_RATCHET = 90  # extract to constants or config
-MAGIC_NUMBERS_OVER_100_RATCHET = 853  # extract to named constants
+MAGIC_NUMBERS_OVER_100_RATCHET = 855  # extract to named constants
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

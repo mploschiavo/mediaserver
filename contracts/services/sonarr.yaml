@@ -42,6 +42,11 @@ plugin:
       phase: download_clients
       priority: 10
       requires: []
+    configure-auto-scan:
+      handler: media_stack.services.apps.servarr.configure_auto_scan_job:configure_auto_scan
+      phase: post
+      priority: 80
+      requires: []
 defaults:
   root_folder: /media/tv
   discovery_lists:

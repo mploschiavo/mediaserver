@@ -106,7 +106,7 @@ class TestJobRegistry(unittest.TestCase):
                     "configure-collections", "refresh-media",
                     "configure-categories", "configure-jellyseerr",
                     "configure-arr-clients", "configure-indexers",
-                    "configure-auth"}
+                    "configure-auth", "configure-auto-scan"}
         self.assertEqual(set(registry.keys()), expected)
 
     def test_all_handlers_callable(self):
