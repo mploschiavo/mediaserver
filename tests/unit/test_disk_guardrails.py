@@ -119,23 +119,23 @@ class TestGetDisk(unittest.TestCase):
 
 
 class TestPreviewCleanup(unittest.TestCase):
-    @patch("media_stack.api.services.disk._load_guardrail_config", return_value={"enabled": False})
+    @patch("media_stack.api.services.disk.DiskService._load_guardrail_config", return_value={"enabled": False})
     def test_disabled_guardrails(self, _):
         result = disk_mod.preview_cleanup()
         self.assertEqual(result["candidates"], [])
         self.assertIn("disabled", result.get("message", "").lower())
 
-    @patch("media_stack.api.services.disk._load_guardrail_config",
+    @patch("media_stack.api.services.disk.DiskService._load_guardrail_config",
            return_value={"enabled": True, "qbit_cleanup": {"enabled": False}})
     def test_disabled_qbit_cleanup(self, _):
         result = disk_mod.preview_cleanup()
         self.assertIn("disabled", result.get("message", "").lower())
 
-    @patch("media_stack.api.services.disk._load_guardrail_config",
+    @patch("media_stack.api.services.disk.DiskService._load_guardrail_config",
            return_value={"enabled": True, "max_used_percent": 65,
                          "qbit_cleanup": {"enabled": True, "min_completion_age_hours": 36,
                                          "min_ratio": 1.0, "min_seeding_time_minutes": 720}})
-    @patch("media_stack.api.services.disk.get_disk", return_value={"disk": {}})
+    @patch("media_stack.api.services.disk.DiskService.get_disk", return_value={"disk": {}})
     @patch("media_stack.api.services.disk.default_torrent_client_url", return_value="http://localhost:8080")
     @patch("urllib.request.build_opener")
     def test_qbit_login_failure(self, mock_opener, *_):
@@ -143,11 +143,11 @@ class TestPreviewCleanup(unittest.TestCase):
         result = disk_mod.preview_cleanup()
         self.assertIn("error", result)
 
-    @patch("media_stack.api.services.disk._load_guardrail_config",
+    @patch("media_stack.api.services.disk.DiskService._load_guardrail_config",
            return_value={"enabled": True, "max_used_percent": 65,
                          "qbit_cleanup": {"enabled": True, "min_completion_age_hours": 0,
                                          "min_ratio": 0, "min_seeding_time_minutes": 0}})
-    @patch("media_stack.api.services.disk.get_disk", return_value={"disk": {}})
+    @patch("media_stack.api.services.disk.DiskService.get_disk", return_value={"disk": {}})
     @patch("media_stack.api.services.disk.default_torrent_client_url", return_value="http://localhost:8080")
     @patch("urllib.request.build_opener")
     def test_candidates_returned(self, mock_opener, *_):

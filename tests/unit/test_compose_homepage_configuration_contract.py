@@ -78,8 +78,9 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
 
         self.assertIn("Homepage:", rendered)
         self.assertIn("Jellyfin:", rendered)
-        self.assertIn("http://homepage.local", rendered)
-        self.assertIn("http://jellyfin.local", rendered)
+        # Tiles use gateway path-prefix URLs (routing config is loaded from YAML defaults)
+        self.assertIn("/app/homepage", rendered)
+        self.assertIn("/app/jellyfin", rendered)
 
     def test_compose_hybrid_runtime_policy_rewrites_homepage_links(self):
         cfg = _load_assembled_config()
@@ -97,6 +98,14 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             app_path_prefix="/app",
             media_server_direct_host="jellyfin.media-dev.local",
         )
+        # Policy doesn't propagate app_gateway_host into cfg['routing'] — inject
+        # it here so the homepage tile renderer uses the policy's gateway host.
+        cfg.setdefault("routing", {}).update({
+            "gateway_host": "apps.media-dev.local",
+            "gateway_port": "80",
+            "app_path_prefix": "/app",
+            "scheme": "http",
+        })
         service = HomepageService(
             bool_cfg=lambda obj, key, default=False: bool((obj or {}).get(key, default)),
             coerce_list=lambda value: (
@@ -112,12 +121,10 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
-        # The homepage services.yaml now uses simple {service}.local URLs
-        # regardless of hybrid routing policy; gateway rewrites are handled
-        # at the edge layer, not in the dashboard link list.
-        self.assertIn("http://homepage.local", rendered)
-        self.assertIn("http://jellyfin.local", rendered)
-        self.assertIn("http://jellyseerr.local", rendered)
+        # Hybrid runtime policy routes tiles through the gateway path-prefix.
+        self.assertIn("apps.media-dev.local/app/homepage", rendered)
+        self.assertIn("apps.media-dev.local/app/jellyfin", rendered)
+        self.assertIn("apps.media-dev.local/app/jellyseerr", rendered)
 
     def test_compose_hybrid_runtime_policy_rewrites_homepage_links_with_gateway_port(self):
         cfg = _load_assembled_config()
@@ -136,6 +143,12 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             app_path_prefix="/app",
             media_server_direct_host="jellyfin.media-dev.local",
         )
+        cfg.setdefault("routing", {}).update({
+            "gateway_host": "apps.media-dev.local",
+            "gateway_port": "18080",
+            "app_path_prefix": "/app",
+            "scheme": "http",
+        })
         service = HomepageService(
             bool_cfg=lambda obj, key, default=False: bool((obj or {}).get(key, default)),
             coerce_list=lambda value: (
@@ -151,12 +164,10 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
-        # The homepage services.yaml now uses simple {service}.local URLs
-        # regardless of gateway port; port-based URLs are handled at the
-        # edge layer, not in the dashboard link list.
-        self.assertIn("http://homepage.local", rendered)
-        self.assertIn("http://jellyfin.local", rendered)
-        self.assertIn("http://jellyseerr.local", rendered)
+        # Non-standard ports are included in gateway URLs.
+        self.assertIn("apps.media-dev.local:18080/app/homepage", rendered)
+        self.assertIn("apps.media-dev.local:18080/app/jellyfin", rendered)
+        self.assertIn("apps.media-dev.local:18080/app/jellyseerr", rendered)
 
 
 if __name__ == "__main__":

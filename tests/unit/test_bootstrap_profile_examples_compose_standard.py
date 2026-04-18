@@ -17,8 +17,8 @@ class ComposeStandardProfileExampleTests(unittest.TestCase):
         # hybrid routes most apps through the single gateway and serves Jellyfin directly
         # so that native device clients (apps, TVs) can connect without path-prefix complexity.
         self.assertEqual(str(routing.get("strategy") or "").strip().lower(), "hybrid")
-        self.assertEqual(str(routing.get("gateway_host") or "").strip(), "docker.media-stack.local")
-        self.assertEqual(str(routing.get("gateway_port") or "").strip(), "80")
+        self.assertEqual(str(routing.get("gateway_host") or "").strip(), "apps.media-stack.local")
+        self.assertEqual(str(routing.get("gateway_port") or "").strip(), "443")
         self.assertEqual(str(routing.get("app_path_prefix") or "").strip(), "/app")
         direct_hosts = routing.get("direct_hosts") or {}
         self.assertTrue(

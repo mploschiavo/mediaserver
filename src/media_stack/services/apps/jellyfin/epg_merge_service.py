@@ -32,6 +32,11 @@ _CACHE_TTL_SECONDS = int(os.environ.get("EPG_CACHE_TTL_SECONDS", "21600"))  # 6 
 _DOWNLOAD_WORKERS = int(os.environ.get("EPG_DOWNLOAD_WORKERS", "6"))
 _DOWNLOAD_TIMEOUT = int(os.environ.get("EPG_DOWNLOAD_TIMEOUT", "120"))
 
+_PROG_PATTERN = re.compile(
+    r'<programme\s+[^>]*channel="([^"]+)"[^>]*>.*?</programme>',
+    re.DOTALL,
+)
+
 
 # ---------------------------------------------------------------------------
 # Download + cache
