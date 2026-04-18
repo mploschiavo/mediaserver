@@ -118,9 +118,63 @@ live in `contracts/roles.yaml`.
 
 | Env var | Default | Meaning |
 |---|---|---|
+| `CONTROLLER_AUTH` | `all` when password set, else `none` | `all` = every `/api/*`, `/metrics`, `/logs/*` endpoint requires auth regardless of method. `write` = legacy mode, GETs public except sensitive paths (still gated). `none` = no auth. |
 | `CSRF_ENFORCE` | (unset) | `1` = strict CSRF for every request (incl. API clients); `0` = disabled; default = smart (strict for browsers, exempt for API clients without Cookie header) |
+| `STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD` | env | Fallback basic-auth principal when the controller user store isn't populated. |
 | `RECONCILE_INTERVAL_SEC` | `3600` | Background reconcile cadence |
 | `AUTHELIA_USERS_DB` | derived | Path to Authelia `users_database.yml` for basic-auth fallback |
+
+### API auth: basic auth vs bearer tokens
+
+**Basic auth** (`Authorization: Basic ...`) works for dashboard and
+one-off curl. Creds are the admin username + password.
+
+**Bearer tokens** (`Authorization: Bearer ...`) are the recommended
+path for programmatic clients:
+
+- Create at Settings → Users → Tokens (or POST `/api/tokens`
+  `{"name": "ci-runner", "scope": "read", "ttl_seconds": 0}`).
+- Plaintext is returned **once** at creation — copy it immediately.
+- Scopes: `admin` (full access) or `read` (GET-only; any mutating call
+  returns 403).
+- Tokens are 256-bit random, SHA-256 hashed at rest in
+  `<config>/controller/api_tokens.json`. Leaking the file doesn't leak
+  tokens.
+- Revoke any time: POST `/api/tokens/{id}` with `{}` body → sets
+  `revoked=true`. No re-verification succeeds after.
+- Optional TTL: `ttl_seconds > 0` sets `expires_at`; the verifier
+  rejects expired tokens.
+
+```bash
+# Mint an admin token with 30-day TTL
+curl -u admin:$PW -X POST https://controller/api/tokens \
+  -H 'X-CSRF-Token: $CSRF' \
+  -d '{"name":"ci","scope":"admin","ttl_seconds":2592000}'
+# → {"id":"...","token":"9x_...","scope":"admin", ...}
+
+# Use the token (no basic auth needed)
+curl -H "Authorization: Bearer 9x_..." https://controller/api/users
+
+# Revoke
+curl -u admin:$PW -X POST https://controller/api/tokens/<id> -d '{}'
+```
+
+### Global API hardening
+
+- **CSRF double-submit cookie** on every mutating endpoint (not just
+  `/api/users`). Smart-default: strict for browser requests (Cookie
+  header present), exempt for header-less API clients.
+- **Per-IP rate limit** on every POST (30 token bucket, 3/s refill).
+  Separate tighter bucket (10 burst, 1/s) for `/api/users/*`, and a
+  per-account slow-deliberate bucket for password reset (~1 per 20s
+  per target user) to resist IP-rotation brute force.
+- **Webhook SSRF block**: `/webhooks` resolves the URL and rejects
+  private/loopback/link-local/multicast/reserved IPs. Defeats DNS
+  rebinding by checking every address the hostname maps to.
+- **Security headers** on every response: Strict-Transport-Security
+  (1y), Content-Security-Policy (same-origin + `unsafe-inline` for
+  inline dashboard JS), X-Frame-Options: DENY, X-Content-Type-Options:
+  nosniff, Referrer-Policy: no-referrer, Permissions-Policy locked down.
 
 ## 2. End-user runbook
 
