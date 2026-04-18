@@ -143,8 +143,7 @@ class UserServiceFactory:
             return []
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         specs = data.get("providers") or []
-        if _LEGACY_RESET_PASSWORD_FN is None:
-            return []
+        config_root = Path(self._env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
         adapters: list[ServiceAdminProvider] = []
         for spec in specs:
             if not isinstance(spec, dict):
@@ -152,10 +151,28 @@ class UserServiceFactory:
             svc_id = str(spec.get("id", "")).strip()
             if not svc_id:
                 continue
-            adapters.append(LegacyServiceAdminAdapter(
-                svc_id, reset_fn=_LEGACY_RESET_PASSWORD_FN,
-            ))
+            adapter = self._build_service_admin(spec, svc_id, config_root)
+            if adapter is not None:
+                adapters.append(adapter)
         return adapters
+
+    def _build_service_admin(self, spec: dict, svc_id: str,
+                             config_root: Path) -> ServiceAdminProvider | None:
+        module_name = str(spec.get("module", "")).strip()
+        class_name = str(spec.get("class", "")).strip()
+        if module_name and class_name:
+            kwargs = self._resolve_args(
+                spec.get("args") or {}, self._env, config_root,
+            )
+            mod = importlib.import_module(module_name)
+            return getattr(mod, class_name)(**kwargs)
+        # Fall back to the legacy adapter that routes through
+        # api/services/admin.py:reset_password with a single-service filter.
+        if _LEGACY_RESET_PASSWORD_FN is None:
+            return None
+        return LegacyServiceAdminAdapter(
+            svc_id, reset_fn=_LEGACY_RESET_PASSWORD_FN,
+        )
 
 
 _default_factory = UserServiceFactory()

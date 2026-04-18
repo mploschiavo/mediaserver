@@ -65,7 +65,11 @@ class GenerateSecretsMainTests(unittest.TestCase):
         self.assertEqual(values["STACK_ADMIN_USERNAME"], "new-admin")
         self.assertEqual(values["STACK_ADMIN_PASSWORD"], "new-pass")
 
-    def test_build_secret_values_defaults_password_to_namespace(self):
+    def test_build_secret_values_empty_password_generates_random(self):
+        """An empty admin password must be replaced with a strong random
+        value — never the namespace literal. Random values are never equal
+        to the namespace or any well-known default.
+        """
         values = self.mod.build_secret_values(
             current={"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": ""},
             stack_admin_user="",
@@ -73,17 +77,24 @@ class GenerateSecretsMainTests(unittest.TestCase):
             rotate_existing=False,
             namespace="media-dev",
         )
-        self.assertEqual(values["STACK_ADMIN_PASSWORD"], "media-dev")
+        pw = values["STACK_ADMIN_PASSWORD"]
+        self.assertEqual(len(pw), 24)
+        self.assertNotIn(pw, {"media-dev", "media-stack", "media-stack-admin",
+                              "admin", ""})
 
-    def test_build_secret_values_migrates_legacy_default_password_to_namespace(self):
+    def test_build_secret_values_replaces_legacy_default_with_random(self):
         values = self.mod.build_secret_values(
-            current={"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "media-stack-admin"},
+            current={"STACK_ADMIN_USERNAME": "admin",
+                     "STACK_ADMIN_PASSWORD": "media-stack-admin"},
             stack_admin_user="",
             pass_length=24,
             rotate_existing=False,
             namespace="media-dev",
         )
-        self.assertEqual(values["STACK_ADMIN_PASSWORD"], "media-dev")
+        pw = values["STACK_ADMIN_PASSWORD"]
+        self.assertEqual(len(pw), 24)
+        self.assertNotEqual(pw, "media-stack-admin")
+        self.assertNotEqual(pw, "media-dev")
 
     def test_apply_secret_includes_extended_keys_in_manifest(self):
         observed: dict[str, str] = {}

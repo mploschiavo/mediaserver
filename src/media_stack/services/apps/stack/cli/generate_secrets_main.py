@@ -198,10 +198,13 @@ def build_secret_values(
             )
         stack_user = stack_admin_user
 
-    # Use namespace-aligned credentials by default unless explicitly rotated.
-    if (not stack_pass or stack_pass == legacy_default_password) and not rotate_existing:
-        stack_pass = namespace_default_password
-    if not stack_pass or rotate_existing:
+    # Generate a random admin password when none exists (or the legacy
+    # insecure default is still in use). We no longer fall back to
+    # namespace-aligned plaintext — that's a notoriously bad default
+    # people forget to change.
+    well_known_defaults = {legacy_default_password, namespace_default_password,
+                           "admin"}
+    if not stack_pass or stack_pass in well_known_defaults or rotate_existing:
         stack_pass = _rand_secret(pass_length)
 
     values["STACK_ADMIN_USERNAME"] = stack_user

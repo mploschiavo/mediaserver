@@ -9,11 +9,81 @@
 
 version: 1
 providers:
+  # qBit / Prowlarr / SABnzbd work fine via the legacy admin.py path
+  # (no urlBase redirect quirks). Omit module/class → LegacyServiceAdminAdapter.
   - id: qbittorrent
-  - id: sonarr
-  - id: radarr
-  - id: lidarr
-  - id: readarr
-  - id: bazarr
   - id: prowlarr
   - id: sabnzbd
+
+  # Arrs need the urlBase-aware adapter that follows 307/308 redirects.
+  - id: sonarr
+    module: media_stack.services.apps.servarr.service_admin_provider
+    class: ArrServiceAdminProvider
+    args:
+      service_id: sonarr
+      base_url:
+        env: SONARR_URL
+        default: "http://sonarr:8989"
+      api_key:
+        env: SONARR_API_KEY
+        default: ""
+      admin_username:
+        env: STACK_ADMIN_USERNAME
+        default: "admin"
+  - id: radarr
+    module: media_stack.services.apps.servarr.service_admin_provider
+    class: ArrServiceAdminProvider
+    args:
+      service_id: radarr
+      base_url:
+        env: RADARR_URL
+        default: "http://radarr:7878"
+      api_key:
+        env: RADARR_API_KEY
+        default: ""
+      admin_username:
+        env: STACK_ADMIN_USERNAME
+        default: "admin"
+  - id: lidarr
+    module: media_stack.services.apps.servarr.service_admin_provider
+    class: ArrServiceAdminProvider
+    args:
+      service_id: lidarr
+      base_url:
+        env: LIDARR_URL
+        default: "http://lidarr:8686"
+      api_key:
+        env: LIDARR_API_KEY
+        default: ""
+      admin_username:
+        env: STACK_ADMIN_USERNAME
+        default: "admin"
+  - id: readarr
+    module: media_stack.services.apps.servarr.service_admin_provider
+    class: ArrServiceAdminProvider
+    args:
+      service_id: readarr
+      base_url:
+        env: READARR_URL
+        default: "http://readarr:8787"
+      api_key:
+        env: READARR_API_KEY
+        default: ""
+      admin_username:
+        env: STACK_ADMIN_USERNAME
+        default: "admin"
+
+  # Bazarr has a different API shape + 302 response that confuses urllib.
+  - id: bazarr
+    module: media_stack.services.apps.bazarr.service_admin_provider
+    class: BazarrServiceAdminProvider
+    args:
+      base_url:
+        env: BAZARR_URL
+        default: "http://bazarr:6767"
+      api_key:
+        env: BAZARR_API_KEY
+        default: ""
+      admin_username:
+        env: STACK_ADMIN_USERNAME
+        default: "admin"
