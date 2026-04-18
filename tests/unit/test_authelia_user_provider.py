@@ -100,13 +100,23 @@ class AutheliaFileProviderTests(unittest.TestCase):
             self.assertFalse(health.ok)
             self.assertIn("missing", health.detail)
 
-    def test_validator_rejects_entry_without_password(self):
+    def test_validator_allows_entry_without_password(self):
+        """Password absence is allowed (Authelia itself accepts this) — but
+        an explicitly-empty password must still be rejected as corrupt.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "users_database.yml"
-            path.write_text(yaml.safe_dump({"users": {"bad": {"email": "x@x"}}}))
+            path.write_text(yaml.safe_dump({"users": {"pending": {"email": "x@x"}}}))
             p = AutheliaFileProvider(users_db_path=path)
-            # Operating on this file should require the validator to reject it
-            from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditError
+            # Missing password key should not block an unrelated update
+            p.update_user("pending", groups=["new"])
+
+    def test_validator_rejects_empty_password_string(self):
+        from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditError
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "users_database.yml"
+            path.write_text(yaml.safe_dump({"users": {"bad": {"email": "x@x", "password": ""}}}))
+            p = AutheliaFileProvider(users_db_path=path)
             with self.assertRaises(SafeYamlEditError):
                 p.update_user("bad", groups=["x"])
 

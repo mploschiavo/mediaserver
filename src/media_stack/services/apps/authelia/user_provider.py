@@ -46,8 +46,13 @@ class AutheliaFileProvider:
         for username, entry in data["users"].items():
             if not isinstance(entry, dict):
                 raise ValueError(f"user {username!r}: entry must be a dict")
-            if not entry.get("password"):
-                raise ValueError(f"user {username!r}: missing password")
+            # Password absence is allowed — Authelia accepts users without a
+            # password hash (they simply can't authenticate via the file
+            # backend until one is set). We only reject an explicitly empty
+            # string, which Authelia treats as a corrupt hash.
+            pw = entry.get("password")
+            if pw is not None and not str(pw).strip():
+                raise ValueError(f"user {username!r}: password set but empty")
 
     def _editor(self) -> SafeYamlEditor:
         return SafeYamlEditor(self._path, validator=self._validator)

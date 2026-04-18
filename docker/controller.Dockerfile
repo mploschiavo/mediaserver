@@ -19,7 +19,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/media-stack
 
-RUN pip install --no-cache-dir bcrypt docker kubernetes pyyaml requests
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
+    && pip install --no-cache-dir argon2-cffi bcrypt docker kubernetes pyyaml requests \
+    && apk del .build-deps
 
 COPY VERSION /opt/media-stack/VERSION
 COPY bin /opt/media-stack/bin
