@@ -29,7 +29,11 @@ def _ns(**kw):
 class ActionBootstrapTests(unittest.TestCase):
     """Tests for action_bootstrap."""
 
-    @mock.patch.dict("os.environ", {"BOOTSTRAP_RUN_PREFLIGHTS": "1"}, clear=False)
+    @mock.patch.dict(
+        "os.environ",
+        {"BOOTSTRAP_RUN_PREFLIGHTS": "1", "BOOTSTRAP_SKIP_JOBS_FRAMEWORK": "1"},
+        clear=False,
+    )
     @mock.patch(LOG_PATH)
     def test_preflights_run_when_enabled(self, mock_log):
         state = MagicMock()
@@ -48,7 +52,11 @@ class ActionBootstrapTests(unittest.TestCase):
         runner.run.assert_called_once_with(runtime_state)
         mock_log.assert_called_with("[OK] Bootstrap completed successfully")
 
-    @mock.patch.dict("os.environ", {"BOOTSTRAP_RUN_PREFLIGHTS": "0"}, clear=False)
+    @mock.patch.dict(
+        "os.environ",
+        {"BOOTSTRAP_RUN_PREFLIGHTS": "0", "BOOTSTRAP_SKIP_JOBS_FRAMEWORK": "1"},
+        clear=False,
+    )
     @mock.patch(LOG_PATH)
     def test_preflights_skipped_when_disabled(self, mock_log):
         state = MagicMock()
