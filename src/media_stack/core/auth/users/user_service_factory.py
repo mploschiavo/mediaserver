@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from media_stack.core.auth.api_token_store import ApiTokenStore
 from media_stack.core.auth.basic_auth_verifier import BasicAuthVerifier
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
 from media_stack.core.auth.users.audit_log import AuditLog
@@ -39,6 +40,7 @@ except ImportError:
     _LEGACY_RESET_PASSWORD_FN = None
 
 
+_CONFIG_ROOT_ENV = "CONFIG_ROOT"
 _DEFAULT_CONFIG_ROOT = "/srv-config"
 
 
@@ -55,7 +57,7 @@ class UserServiceFactory:
 
     def build(self) -> UserService:
         env = self._env
-        config_root = Path(env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
+        config_root = Path(env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
         roles_path = self._find_contract(
             env.get("ROLE_CATALOG_PATH", ""), "roles.yaml",
         )
@@ -86,7 +88,7 @@ class UserServiceFactory:
 
     def build_invite_service(self) -> InviteService:
         env = self._env
-        config_root = Path(env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
+        config_root = Path(env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
         audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
         invites = InviteStore(config_root / "controller" / "invites.json")
         service = self.build()
@@ -98,7 +100,7 @@ class UserServiceFactory:
 
     def build_auth_verifier(self) -> BasicAuthVerifier:
         env = self._env
-        config_root = Path(env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
+        config_root = Path(env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
         users_db_path = Path(
             env.get("AUTHELIA_USERS_DB")
             or config_root / "authelia" / "users_database.yml"
@@ -128,6 +130,10 @@ class UserServiceFactory:
             failed_login_tracker=tracker,
             alert_fn=_alert,
         )
+
+    def build_api_token_store(self) -> ApiTokenStore:
+        config_root = Path(self._env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
+        return ApiTokenStore(config_root / "controller" / "api_tokens.json")
 
     def resolve_roles_path(self) -> Path:
         """Public accessor for callers that need to edit roles.yaml in place."""
@@ -188,7 +194,7 @@ class UserServiceFactory:
             return []
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         specs = data.get("providers") or []
-        config_root = Path(self._env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
+        config_root = Path(self._env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
         adapters: list[ServiceAdminProvider] = []
         for spec in specs:
             if not isinstance(spec, dict):
@@ -229,4 +235,5 @@ build_default_service = _default_factory.build
 build_default_auth_verifier = _default_factory.build_auth_verifier
 build_default_invite_service = _default_factory.build_invite_service
 build_default_scheduled_reconciler = _default_factory.build_scheduled_reconciler
+build_default_api_token_store = _default_factory.build_api_token_store
 resolve_default_roles_path = _default_factory.resolve_roles_path

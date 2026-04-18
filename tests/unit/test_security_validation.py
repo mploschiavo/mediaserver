@@ -22,6 +22,12 @@ class _MockHandler:
         self.state = MagicMock()
         self.state.webhook_urls = set()
         self.action_trigger = None
+        # Attributes read by the global preflight (rate limit + CSRF).
+        # Default: localhost client + no cookie (API-client path, CSRF
+        # smart-default lets it through).
+        self.client_address = ("127.0.0.1", 0)
+        self.headers = MagicMock()
+        self.headers.get.side_effect = lambda name, default="": default
 
     def _read_json_body(self):
         return self._body

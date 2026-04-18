@@ -27,10 +27,101 @@ try:
     from media_stack.core.auth.users.user_service_factory import (
         build_default_auth_verifier as _build_auth_verifier,
         build_default_scheduled_reconciler as _build_sched_reconciler,
+        build_default_api_token_store as _build_token_store,
     )
 except ImportError:
     _build_auth_verifier = None
     _build_sched_reconciler = None
+    _build_token_store = None
+
+
+_H_CONTENT_LENGTH = "Content-Length"
+
+
+class _AuthPolicy:
+    """Encapsulates the auth decision + bearer-token verification.
+
+    Extracted out of ControllerAPIHandler so that class stays under the
+    class-method ratchet. Instance methods take the live handler so they
+    can read headers/command/path without ControllerAPIHandler having to
+    carry the logic."""
+
+    _PUBLIC_PATHS = frozenset({"/healthz", "/readyz", "/webhooks/arr"})
+
+    def is_public(self, handler, path: str) -> bool:
+        if path in self._PUBLIC_PATHS:
+            return True
+        if path == "/api/invites/accept" and handler.command == "POST":
+            return True
+        return False
+
+    def decision(self, handler, path: str, password: str) -> str:
+        auth_mode = os.environ.get("CONTROLLER_AUTH", "").strip().lower()
+        if not auth_mode:
+            auth_mode = "all" if password else "none"
+        if auth_mode == "none":
+            return "allow"
+        is_sensitive = (
+            path.startswith("/api/")
+            or path == "/metrics"
+            or path.startswith("/logs/")
+        )
+        if auth_mode == "write" and handler.command == "GET" and not is_sensitive:
+            return "allow"
+        return "require"
+
+    def verify_bearer(self, handler, plaintext: str) -> bool:
+        if _build_token_store is None or not plaintext:
+            return False
+        try:
+            tok = _build_token_store().verify(plaintext)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] token verify failed: %s", exc,
+            )
+            return False
+        if tok is None:
+            return False
+        if tok.scope == "read" and handler.command != "GET":
+            return False
+        return True
+
+    def send_401(self, handler) -> None:
+        handler.send_response(401)
+        handler.send_header(
+            "WWW-Authenticate", 'Basic realm="Media Stack Controller"',
+        )
+        handler.send_header(_H_CONTENT_LENGTH, "0")
+        handler.end_headers()
+
+    def emit_security_headers(self, handler) -> None:
+        """Send hardening headers on every response.
+
+        CSP uses 'unsafe-inline' because dashboard.html has inline
+        scripts/styles; tightening to nonce-based CSP is the ideal
+        next step.
+        """
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.send_header("X-Frame-Options", "DENY")
+        handler.send_header("Referrer-Policy", "no-referrer")
+        handler.send_header("Permissions-Policy",
+                           "geolocation=(), camera=(), microphone=()")
+        handler.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'",
+        )
+        handler.send_header("Strict-Transport-Security",
+                           "max-age=31536000; includeSubDomains")
+
+
+_auth_policy = _AuthPolicy()
 
 
 def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
@@ -137,44 +228,31 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     # --- Auth ---
 
     def _check_auth(self) -> bool:
-        """Check Basic Auth.
+        """Check authentication (bearer token or basic auth).
 
-        CONTROLLER_AUTH modes:
-          "all"   — protect all endpoints (dashboard + API + write)
-          "write" — protect POST/PUT/DELETE only (default when password is set)
-          "none"  — no auth (default when no password)
-
-        /healthz and /readyz are always public (K8s probes).
+        Policy logic lives in module-level _auth_policy so this class
+        stays under the methods-per-class ratchet. Bearer tokens are
+        preferred for programmatic clients; basic auth works for
+        browser/curl. Bearer scope is 'admin' (full) or 'read' (GET only).
         """
         path = self.path.split("?")[0]
-
-        # Probes and arr webhooks are always public (internal network only)
-        if path in ("/healthz", "/readyz", "/webhooks/arr"):
+        if _auth_policy.is_public(self, path):
             return True
-
         username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         password = os.environ.get("STACK_ADMIN_PASSWORD", "")
-        auth_mode = os.environ.get("CONTROLLER_AUTH", "").strip().lower()
-
-        # Determine effective mode
-        if not auth_mode:
-            auth_mode = "write" if password else "none"
-
-        if auth_mode == "none":
+        if _auth_policy.decision(self, path, password) == "allow":
             return True
-        if auth_mode == "write" and self.command == "GET":
-            return True
-
-        # Auth required — check credentials
         if not password:
-            return True  # No password configured, can't authenticate
-        auth_header = self.headers.get("Authorization", "")
-        if _verify_basic_auth(auth_header, username, password):
             return True
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="Media Stack Controller"')
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            if _auth_policy.verify_bearer(
+                self, auth_header[len("Bearer "):].strip(),
+            ):
+                return True
+        elif _verify_basic_auth(auth_header, username, password):
+            return True
+        _auth_policy.send_401(self)
         return False
 
     # --- Response helpers ---
@@ -183,7 +261,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         payload = json.dumps(body, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
+        self.send_header(_H_CONTENT_LENGTH, str(len(payload)))
+        _auth_policy.emit_security_headers(self)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -191,21 +270,23 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         payload = html.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
+        self.send_header(_H_CONTENT_LENGTH, str(len(payload)))
+        _auth_policy.emit_security_headers(self)
         self.end_headers()
         self.wfile.write(payload)
 
     def _raw_response(self, status: int, content_type: str, payload: bytes, headers: dict[str, str] | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(payload)))
+        self.send_header(_H_CONTENT_LENGTH, str(len(payload)))
         for k, v in (headers or {}).items():
             self.send_header(k, v)
+        _auth_policy.emit_security_headers(self)
         self.end_headers()
         self.wfile.write(payload)
 
     def _read_json_body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0))
+        length = int(self.headers.get(_H_CONTENT_LENGTH, 0))
         if length <= 0:
             return {}
         try:

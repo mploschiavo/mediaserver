@@ -28,7 +28,7 @@ from typing import Any
 from media_stack.core.auth.users.models import Invite
 
 
-_DEFAULT_TTL_HOURS = 7 * 24
+_DEFAULT_TTL_HOURS = 24
 
 
 class InviteStore:

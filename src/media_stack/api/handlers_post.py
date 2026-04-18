@@ -6,11 +6,14 @@ first argument so it can call response helpers and access ``self.state``.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
+import socket
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.auth.rate_limiter import RateLimiter
@@ -18,11 +21,21 @@ from media_stack.core.auth.users.models import UserState
 from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditor
 from media_stack.core.auth.users.user_service import UserServiceError
 from media_stack.core.auth.users.user_service_factory import (
+    build_default_api_token_store,
     build_default_invite_service,
     build_default_service,
     resolve_default_roles_path,
 )
 
+# Global per-IP rate limit applied to EVERY POST. Wider bucket than the
+# user-mgmt one because it covers all mutating traffic, not just
+# sensitive ops. Anyone exceeding this is clearly not a human.
+_GLOBAL_POST_CAPACITY = 30
+_GLOBAL_POST_REFILL = 3.0  # 3 tokens/sec sustained
+_global_post_limiter = RateLimiter(
+    capacity=_GLOBAL_POST_CAPACITY,
+    refill_per_second=_GLOBAL_POST_REFILL,
+)
 _USER_MGMT_BUCKET_CAPACITY = 10
 _USER_MGMT_REFILL_PER_SECOND = 1.0
 _user_mgmt_limiter = RateLimiter(
@@ -66,6 +79,47 @@ logger = logging.getLogger("controller_api")
 _ERR_LEN = 99
 
 
+class _WebhookUrlValidator:
+    """Reject webhook URLs that could be used for SSRF.
+
+    Blocks private, loopback, link-local, multicast, and reserved IP
+    ranges so an attacker can't add cloud-metadata endpoints (e.g. the
+    169.254.x.x link-local range), the controller itself via 127.0.0.1,
+    or in-cluster service IPs as webhook targets. DNS resolution is
+    performed against every address the hostname maps to, defeating DNS
+    rebinding where a public hostname points at an internal IP.
+    """
+
+    _INVALID_SCHEME_MSG = "Invalid webhook URL — must be http:// or https://"
+
+    def validate(self, url: str) -> str | None:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return self._INVALID_SCHEME_MSG
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return "Invalid webhook URL — missing hostname"
+        try:
+            infos = socket.getaddrinfo(hostname, None)
+        except socket.gaierror:
+            return f"webhook URL hostname does not resolve: {hostname}"
+        for info in infos:
+            addr = info[4][0]
+            try:
+                ip = ipaddress.ip_address(addr)
+            except ValueError:
+                continue
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+                return (f"webhook URL resolves to a blocked address ({addr}); "
+                        "private, loopback, link-local, and multicast ranges "
+                        "are not allowed")
+        return None
+
+
+_webhook_url_validator = _WebhookUrlValidator()
+
+
 # ---------------------------------------------------------------------------
 # Known actions
 # ---------------------------------------------------------------------------
@@ -98,12 +152,29 @@ class _UserMgmtPostHelper:
         "provider_payloads",
     })
 
+    def token_create(self, body: dict, actor: str) -> dict:
+        store = build_default_api_token_store()
+        ttl_seconds = int(body.get("ttl_seconds", 0) or 0)
+        token, plaintext = store.create(
+            owner_username=str(body.get("owner_username", actor)).strip() or actor,
+            name=str(body.get("name", "")).strip() or "api-token",
+            scope=str(body.get("scope", "admin")).strip() or "admin",
+            ttl_seconds=max(0, ttl_seconds),
+        )
+        # Plaintext is returned ONCE — never persisted, never logged.
+        return {**token.to_dict(), "token": plaintext}
+
+    def token_revoke(self, path: str, actor: str) -> dict:
+        token_id = path.rsplit("/", 1)[-1]
+        ok = build_default_api_token_store().revoke(token_id)
+        return {"token_id": token_id, "revoked": ok, "actor": actor}
+
     def invite_create(self, body: dict, actor: str) -> dict:
         inv_svc = build_default_invite_service()
         return inv_svc.create_invite(
             email=str(body.get("email", "")).strip(),
             role_slug=str(body.get("role_slug", "")).strip(),
-            ttl_hours=int(body.get("ttl_hours", 0) or 7 * 24),
+            ttl_hours=int(body.get("ttl_hours", 0) or 24),
             actor=actor,
         )
 
@@ -207,8 +278,21 @@ _user_mgmt_helper = _UserMgmtPostHelper()
 class PostRequestHandler:
     """Wraps POST request routing logic."""
 
+    _CSRF_EXEMPT_POST_PATHS = frozenset({
+        # Arr webhook is from trusted internal services with a shared
+        # secret elsewhere; it has no Cookie header and doesn't need CSRF.
+        "/webhooks/arr",
+    })
+
     def handle(self, handler: ControllerAPIHandler) -> None:  # noqa: C901
         """Route a POST request to the appropriate handler function."""
+
+        # Apply rate-limit + CSRF to every mutating request before we
+        # touch any business logic. This covers /api/rotate-keys,
+        # /api/reset-password, /api/restart/*, /actions/*, /config,
+        # /webhooks, and everything else — not just user-mgmt.
+        if not self._global_preflight(handler):
+            return
 
         # POST /run -- backward-compatible alias
         if handler.path == "/run":
@@ -457,9 +541,11 @@ class PostRequestHandler:
                                     "/api/users-reconcile/unlink",
                                     "/api/invites",
                                     "/api/invites/accept",
-                                    "/api/users-bulk-import")
+                                    "/api/users-bulk-import",
+                                    "/api/tokens")
                 or handler.path.startswith("/api/invites/")
-                or handler.path.startswith("/api/roles/")):
+                or handler.path.startswith("/api/roles/")
+                or handler.path.startswith("/api/tokens/")):
             self._handle_user_mgmt(handler)
             return
 
@@ -693,10 +779,9 @@ class PostRequestHandler:
             body = handler._read_json_body()
             url = body.get("url", "").strip()
             if url:
-                from urllib.parse import urlparse
-                parsed = urlparse(url)
-                if parsed.scheme not in ("http", "https") or not parsed.netloc:
-                    handler._json_response(400, {"error": "Invalid webhook URL — must be http:// or https://"})
+                err = _webhook_url_validator.validate(url)
+                if err is not None:
+                    handler._json_response(400, {"error": err})
                     return
                 handler.state.webhook_urls.add(url)
                 # Persist webhooks so they survive restarts
@@ -730,17 +815,42 @@ class PostRequestHandler:
                 HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
             )
 
-    def _preflight(self, handler) -> bool:
-        if not self._check_rate_limit(handler):
+    def _global_preflight(self, handler) -> bool:
+        """Rate-limit + CSRF gate applied to every POST.
+
+        The user-mgmt-specific bucket (_user_mgmt_limiter) still runs
+        inside _preflight for /api/users/** so those stay tight; this
+        is the wider global envelope."""
+        client_id = self._client_ip(handler)
+        if not _global_post_limiter.allow(client_id=client_id,
+                                           bucket="global-post"):
             handler._json_response(
                 HTTPStatus.TOO_MANY_REQUESTS,
                 {"error": "rate limit exceeded; slow down"},
             )
             return False
+        if handler.path in self._CSRF_EXEMPT_POST_PATHS:
+            return True
         if not self._check_csrf(handler):
             handler._json_response(
                 HTTPStatus.FORBIDDEN,
                 {"error": "CSRF token missing or invalid"},
+            )
+            return False
+        return True
+
+    def _client_ip(self, handler) -> str:
+        addr = getattr(handler, "client_address", None)
+        if addr and len(addr) >= 1:
+            return str(addr[0])
+        return "-"
+
+    def _preflight(self, handler) -> bool:
+        # User-mgmt-specific tighter limit (CSRF already handled globally).
+        if not self._check_rate_limit(handler):
+            handler._json_response(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": "rate limit exceeded; slow down"},
             )
             return False
         return True
@@ -769,12 +879,16 @@ class PostRequestHandler:
             return _user_mgmt_helper.bulk_import(svc, body, actor)
         if path.startswith("/api/roles/"):
             return _user_mgmt_helper.role_update(path, body, actor)
+        if path == "/api/tokens":
+            return _user_mgmt_helper.token_create(body, actor)
+        if path.startswith("/api/tokens/"):
+            return _user_mgmt_helper.token_revoke(path, actor)
         if path == "/api/users":
             return self._user_create(svc, body, actor)
         return self._user_action(path, svc, body, actor)
 
     def _check_rate_limit(self, handler) -> bool:
-        client_id = handler.client_address[0] if handler.client_address else "-"
+        client_id = self._client_ip(handler)
         if not _user_mgmt_limiter.allow(client_id=client_id, bucket="user-mgmt"):
             return False
         # Reset-password gets a separate, tighter per-ACCOUNT bucket so
@@ -799,8 +913,14 @@ class PostRequestHandler:
         """
         if _CSRF_MODE == "0":
             return True
-        cookie_header = handler.headers.get("Cookie", "")
-        csrf_header = handler.headers.get(_csrf.header_name, "")
+        headers = getattr(handler, "headers", None)
+        if headers is None:
+            return True  # can't evaluate CSRF; let upstream auth gate decide
+        try:
+            cookie_header = headers.get("Cookie", "")
+            csrf_header = headers.get(_csrf.header_name, "")
+        except AttributeError:
+            return True
         has_cookie = isinstance(cookie_header, str) and bool(cookie_header.strip())
         if _CSRF_ENFORCE or has_cookie:
             return _csrf.verify(cookie_header=cookie_header,

@@ -34,7 +34,7 @@ class InviteService:
         self._audit = audit
 
     def create_invite(self, *, email: str, role_slug: str, actor: str,
-                      ttl_hours: int = 7 * 24) -> dict[str, Any]:
+                      ttl_hours: int = 24) -> dict[str, Any]:
         if not email or not role_slug:
             raise InviteError("email and role_slug are required")
         invite, token = self._invites.create(
