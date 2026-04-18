@@ -11,23 +11,24 @@ new backend requires no edits to this file.
 
 from __future__ import annotations
 
-import importlib
-import os
+import logging
 import secrets
-from pathlib import Path
 from typing import Any
 
-import yaml
-
 from media_stack.core.auth.users.audit_log import AuditLog
+
+_log = logging.getLogger("media_stack")
 from media_stack.core.auth.users.models import User, UserState
 from media_stack.core.auth.users.provider import UserProvider
+from media_stack.core.auth.users.reconcile import UserReconciler
 from media_stack.core.auth.users.role_catalog import RoleCatalog
 from media_stack.core.auth.users.role_policy_mapper import RolePolicyMapper
+from media_stack.core.auth.users.service_admin_provider import (
+    ServiceAdminProvider,
+)
 from media_stack.core.auth.users.user_store import UserStore
 
 _PASSWORD_ENTROPY_BYTES = 16
-_DEFAULT_CONFIG_ROOT = "/srv-config"
 _ERR_LEN = 99
 
 
@@ -46,12 +47,14 @@ class UserServiceBase:
         mapper: RolePolicyMapper,
         providers: list[UserProvider],
         audit: AuditLog,
+        service_admins: list[ServiceAdminProvider] | None = None,
     ) -> None:
         self._store = store
         self._roles = role_catalog
         self._mapper = mapper
         self._providers = list(providers)
         self._audit = audit
+        self._service_admins = list(service_admins or [])
 
     def _source_of_truth(self) -> UserProvider | None:
         for p in self._providers:
@@ -93,6 +96,36 @@ class UserQueryService(UserServiceBase):
                      target_filter: str = "") -> list[dict[str, Any]]:
         return self._audit.recent(limit=limit, action_filter=action_filter,
                                   target_filter=target_filter)
+
+    def reconcile_report(self) -> list[dict[str, Any]]:
+        reconciler = UserReconciler(
+            store=self._store, providers=self._providers, audit=self._audit,
+        )
+        return [d.to_dict() for d in reconciler.diff()]
+
+
+class UserReconcileService(UserServiceBase):
+    """Drift reconciliation commands (orphan import, ghost unlink)."""
+
+    def _reconciler(self) -> UserReconciler:
+        return UserReconciler(
+            store=self._store, providers=self._providers, audit=self._audit,
+        )
+
+    def import_orphan(self, *, provider_name: str, external_id: str,
+                      role_slug: str, actor: str = "system") -> dict[str, Any]:
+        if not self._roles.get(role_slug):
+            raise UserServiceError(f"unknown role: {role_slug}")
+        return self._reconciler().import_orphan(
+            provider_name=provider_name, external_id=external_id,
+            role_slug=role_slug, actor=actor,
+        )
+
+    def unlink_ghost(self, *, user_id: str, provider_name: str,
+                     actor: str = "system") -> dict[str, Any]:
+        return self._reconciler().unlink_ghost(
+            user_id=user_id, provider_name=provider_name, actor=actor,
+        )
 
 
 class UserWriteService(UserServiceBase):
@@ -197,12 +230,25 @@ class UserWriteService(UserServiceBase):
             if not external_id:
                 results[provider.name] = "no_ref"
                 continue
+            self._revoke_sessions_best_effort(provider, external_id)
             try:
                 provider.delete_user(external_id)
                 results[provider.name] = "ok"
             except Exception as exc:  # noqa: BLE001
                 results[provider.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
+
+    def _revoke_sessions_best_effort(self, provider, external_id: str) -> None:
+        revoke = getattr(provider, "revoke_sessions", None)
+        if revoke is None:
+            return
+        try:
+            revoke(external_id)
+        except Exception as exc:  # noqa: BLE001
+            # Session revocation is best-effort; we never block the
+            # delete on it.
+            _log.debug("[DEBUG] revoke_sessions failed for %s/%s: %s",
+                       provider.name, external_id, exc)
 
     def set_role(self, user_id: str, role_slug: str,
                  *, actor: str = "system") -> dict[str, Any]:
@@ -258,14 +304,23 @@ class UserWriteService(UserServiceBase):
             raise UserServiceError(f"user not found: {user_id}")
         password = password or self._generate_password()
         provider_results = self._forall_providers_set_password(user, password)
+        role = self._roles.get(user.role_slug)
+        service_admin_results: dict[str, Any] = {}
+        if role is not None and role.propagate_to_service_admins:
+            service_admin_results = self._propagate_to_service_admins(password)
         self._audit.append(
             actor=actor, action="reset_password", target=user.email, result="ok",
-            detail={"user_id": user_id, "providers": provider_results},
+            detail={
+                "user_id": user_id,
+                "providers": provider_results,
+                "service_admins": service_admin_results,
+            },
         )
         return {
             "user_id": user_id,
             "generated_password": password,
             "providers": provider_results,
+            "service_admins": service_admin_results,
         }
 
     def _forall_providers_set_password(self, user, password):
@@ -284,84 +339,38 @@ class UserWriteService(UserServiceBase):
                 results[provider.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
 
-
-class UserService(UserQueryService, UserWriteService):
-    """Facade exposing read + write operations; delegates via MRO."""
-
-
-class UserServiceFactory:
-    """Build a UserService from env + contract files.
-
-    All os.environ access + path resolution lives here so core data
-    modules stay env-agnostic. Providers are dynamic-imported from
-    ``contracts/user_providers.yaml`` — no backend names in core.
-    """
-
-    def build(self) -> UserService:
-        env = os.environ
-        config_root = Path(env.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT))
-        roles_path = self._find_contract(env.get("ROLE_CATALOG_PATH", ""), "roles.yaml")
-        providers_path = self._find_contract(
-            env.get("USER_PROVIDERS_PATH", ""), "user_providers.yaml",
-        )
-
-        store = UserStore(config_root / "controller" / "users.json")
-        catalog = RoleCatalog(roles_path)
-        audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
-        providers = self._load_providers(providers_path, env, config_root)
-        return UserService(
-            store=store, role_catalog=catalog, mapper=RolePolicyMapper(),
-            providers=providers, audit=audit,
-        )
-
-    def _find_contract(self, explicit: str, filename: str) -> Path:
-        if explicit:
-            return Path(explicit)
-        for candidate in (
-            Path(f"/app/contracts/{filename}"),
-            Path(__file__).resolve().parents[5] / "contracts" / filename,
-        ):
-            if candidate.is_file():
-                return candidate
-        return Path(f"contracts/{filename}")
-
-    def _load_providers(self, providers_path: Path,
-                        env: Any, config_root: Path) -> list[UserProvider]:
-        if not providers_path.is_file():
-            return []
-        data = yaml.safe_load(providers_path.read_text(encoding="utf-8")) or {}
-        specs = data.get("providers") or []
-        providers: list[UserProvider] = []
-        for spec in specs:
-            if not isinstance(spec, dict):
-                continue
-            module_name = str(spec.get("module", "")).strip()
-            class_name = str(spec.get("class", "")).strip()
-            if not module_name or not class_name:
-                continue
-            kwargs = self._resolve_args(spec.get("args") or {}, env, config_root)
-            mod = importlib.import_module(module_name)
-            providers.append(getattr(mod, class_name)(**kwargs))
-        return providers
-
-    def _resolve_args(self, args_spec: dict, env: Any,
-                      config_root: Path) -> dict[str, Any]:
-        resolved: dict[str, Any] = {}
-        for key, binding in args_spec.items():
-            if not isinstance(binding, dict):
-                resolved[key] = binding
-                continue
-            env_name = binding.get("env", "")
-            default = binding.get("default", "")
-            value = env.get(env_name, "") if env_name else ""
-            if not value:
-                value = str(default).replace("{config_root}", str(config_root))
-            if key.endswith("_path"):
-                resolved[key] = Path(value)
-            else:
-                resolved[key] = value
-        return resolved
+    def _propagate_to_service_admins(self, password: str) -> dict[str, Any]:
+        results: dict[str, Any] = {}
+        for adapter in self._service_admins:
+            try:
+                adapter.set_admin_password(password)
+                results[adapter.name] = "ok"
+            except Exception as exc:  # noqa: BLE001
+                results[adapter.name] = f"error: {str(exc)[:_ERR_LEN]}"
+        return results
 
 
-_default_factory = UserServiceFactory()
-build_default_service = _default_factory.build
+class UserService(UserQueryService, UserWriteService, UserReconcileService):
+    """Facade exposing query + write + reconcile operations via MRO."""
+
+
+# Factory + default-service builders are imported here for backward
+# compatibility; the implementation lives in user_service_factory to
+# keep this module under the files-over-400-lines ratchet.
+from media_stack.core.auth.users.user_service_factory import (  # noqa: E402
+    UserServiceFactory,
+    build_default_auth_verifier,
+    build_default_service,
+)
+
+__all__ = [
+    "UserService",
+    "UserServiceError",
+    "UserServiceBase",
+    "UserQueryService",
+    "UserWriteService",
+    "UserReconcileService",
+    "UserServiceFactory",
+    "build_default_service",
+    "build_default_auth_verifier",
+]

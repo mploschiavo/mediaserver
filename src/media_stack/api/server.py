@@ -23,6 +23,36 @@ from .state import ControllerState
 from . import handlers_get
 from . import handlers_post
 
+try:
+    from media_stack.core.auth.users.user_service import (
+        build_default_auth_verifier as _build_auth_verifier,
+    )
+except ImportError:
+    _build_auth_verifier = None
+
+
+def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
+    """Verify basic-auth. Prefer the store-backed verifier so password
+    resets in the UI take effect immediately; fall back to env creds.
+    """
+    if not auth_header.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("media_stack").debug("[DEBUG] bad auth header: %s", exc)
+        return False
+    provided_user, _, provided_pass = decoded.partition(":")
+    if _build_auth_verifier is not None:
+        try:
+            if _build_auth_verifier().verify(provided_user, provided_pass):
+                return True
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] store-backed verifier failed: %s", exc,
+            )
+    return provided_user == fb_user and provided_pass == fb_pass
+
 # Re-export for backward compatibility — other modules import these from server.py
 from .webhooks import _fire_webhooks  # noqa: F401
 from .cache import api_cache as _api_cache  # noqa: F401
@@ -137,15 +167,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         if not password:
             return True  # No password configured, can't authenticate
         auth_header = self.headers.get("Authorization", "")
-        if auth_header.startswith("Basic "):
-            try:
-                decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
-                provided_user, _, provided_pass = decoded.partition(":")
-                if provided_user == username and provided_pass == password:
-                    return True
-            except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+        if _verify_basic_auth(auth_header, username, password):
+            return True
         self.send_response(401)
         self.send_header("WWW-Authenticate", 'Basic realm="Media Stack Controller"')
         self.send_header("Content-Length", "0")

@@ -142,7 +142,8 @@ class GetRequestHandler:
         elif path == "/api/arr-webhooks":
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
         elif path == "/api/users" or path.startswith("/api/users/") \
-                or path in ("/api/roles", "/api/user-providers", "/api/audit-log"):
+                or path in ("/api/roles", "/api/user-providers",
+                            "/api/audit-log", "/api/users-reconcile"):
             self._handle_user_mgmt(handler, path)
         elif path == "/api/download-client-settings":
             handler._json_response(200, content_svc.get_download_client_settings())
@@ -534,6 +535,9 @@ class GetRequestHandler:
             return
         if path == "/api/user-providers":
             handler._json_response(ok, {"providers": svc.provider_health()})
+            return
+        if path == "/api/users-reconcile":
+            handler._json_response(ok, {"diffs": svc.reconcile_report()})
             return
         if path == "/api/audit-log":
             qs = parse_qs(urlparse(handler.path).query)
