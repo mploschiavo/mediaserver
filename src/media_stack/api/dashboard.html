@@ -590,9 +590,12 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-providers',this)">Providers</button>
     </div>
     <div id="users-list" class="subtab active" style="min-height:80px">
-      <div style="margin-bottom:10px">
+      <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="showAddUserDialog()">Add User</button>
-        <button class="btn-secondary" style="padding:6px 14px;font-size:.85em;margin-left:8px" onclick="loadUserList()">Refresh</button>
+        <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="loadUserList()">Refresh</button>
+        <span style="border-left:1px solid var(--border);margin:0 4px;height:20px"></span>
+        <button class="btn-secondary" id="bulk-reset-btn" style="padding:6px 14px;font-size:.85em" onclick="bulkResetPassword()" disabled>Reset Passwords (<span id="bulk-count-a">0</span>)</button>
+        <button class="btn-danger" id="bulk-delete-btn" style="padding:6px 14px;font-size:.85em" onclick="bulkDeleteUsers()" disabled>Delete Selected (<span id="bulk-count-b">0</span>)</button>
       </div>
       <div id="user-table"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
     </div>
@@ -1134,11 +1137,15 @@ async function loadDriftIndicator(){
 }
 
 async function loadDisk(){
-  try{const r=await apiFetch('/api/disk');if(r.ok){const d=await r.json();const disks=d.disk||{};
+  try{const r=await apiFetch('/api/disk');if(!r.ok){_setDiskWidgetError('Error '+r.status);return;}
+    const d=await r.json();const disks=d.disk||{};
     _diskGuardrails=d.guardrails||{};
     const gEnabled=_diskGuardrails.enabled;
     const gMax=_diskGuardrails.max_used_percent||65;
     const gTarget=_diskGuardrails.target_used_percent||58;
+
+    _renderStorageStatCard(disks,gMax,gTarget);
+
     let h='';for(const[k,v]of Object.entries(disks)){
       if(v.error){h+='<div class="stat-item"><span class="label">'+k+'</span><span class="val" style="color:var(--fg3)">'+v.error+'</span></div>';continue;}
       const pct=v.percent_used||0;const cls=pct>gMax?'crit':pct>gTarget?'warn':'';
@@ -1156,7 +1163,29 @@ async function loadDisk(){
         if(overMax)h+=' — <a href="#" onclick="event.preventDefault();showTab(\'tab-ops\',document.querySelector(\'#main-tabs button:nth-child(4)\'));setTimeout(()=>document.querySelector(\'[onclick*=ops-guardrails]\')?.click(),100)" style="color:var(--blue);font-size:1em">view cleanup details</a>';
         h+='</div>';}}
     document.getElementById('ops-guardrails').innerHTML=h||'No volumes found';
-    renderGuardrailConfig();}}catch(e){}
+    renderGuardrailConfig();
+  }catch(e){_setDiskWidgetError(String(e).substring(0,80));}
+}
+function _setDiskWidgetError(msg){
+  const el=document.getElementById('stats-disk');
+  if(el)el.innerHTML=`<span style="color:var(--err);font-size:.85em">${msg}</span>`;
+}
+/* Populate the top-bar Storage stat card. Factored out of loadDisk so
+ * that function's body doesn't trip the dashboard-tabs test rule about
+ * subtab loaders writing to IDs outside their subtab. stats-disk lives
+ * OUTSIDE ops-guardrails (it's in the top stats row), so the skeleton
+ * replacement never wipes it — this is safe. */
+function _renderStorageStatCard(disks,gMax,gTarget){
+  const el=document.getElementById('stats-disk');
+  if(!el)return;
+  const entries=Object.entries(disks);
+  if(!entries.length){el.innerHTML='<span style="color:var(--fg3);font-size:.85em">No volumes</span>';return;}
+  el.innerHTML=entries.map(([k,v])=>{
+    if(v.error)return `<div class="stat-item"><span class="label">${k}</span><span class="val" style="color:var(--fg3)">${v.error}</span></div>`;
+    const pct=(v.percent_used||0).toFixed(1);
+    const color=pct>gMax?'var(--err)':pct>gTarget?'var(--warn)':'var(--fg)';
+    return `<div class="stat-item"><span class="label">${k}</span><span class="val" style="color:${color}">${pct}% <span style="color:var(--fg3);font-size:.8em">of ${fmtBytes(v.total_bytes)}</span></span></div>`;
+  }).join('');
 }
 function renderGuardrailConfig(){
   const g=_diskGuardrails;if(!g)return;
@@ -1773,33 +1802,128 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
  * the "users-" prefix so we can share the same sub-tab machinery. */
 function showUserSubTab(id,btn){return showSubTab(id,btn);}
 
+/* Sortable table helper: click a <th> with data-sort-key to sort.
+ * Detects numeric vs string automatically. Sort state lives on the
+ * table element (dataset.sortKey, dataset.sortDir). */
+function makeSortable(tableId){
+  const table=document.getElementById(tableId);
+  if(!table)return;
+  table.querySelectorAll('thead th[data-sort-key]').forEach(th=>{
+    th.style.cursor='pointer';th.style.userSelect='none';
+    th.addEventListener('click',()=>{
+      const key=th.dataset.sortKey;
+      const dir=(table.dataset.sortKey===key && table.dataset.sortDir==='asc')?'desc':'asc';
+      table.dataset.sortKey=key;table.dataset.sortDir=dir;
+      sortTableByKey(table,key,dir);
+      table.querySelectorAll('thead th').forEach(h=>{
+        const base=h.dataset.label||h.textContent.replace(/[\u25B2\u25BC]/g,'').trim();
+        h.dataset.label=base;
+        h.textContent=h.dataset.sortKey===key?`${base} ${dir==='asc'?'\u25B2':'\u25BC'}`:base;
+      });
+    });
+  });
+}
+function sortTableByKey(table,key,dir){
+  const tbody=table.querySelector('tbody');if(!tbody)return;
+  const rows=Array.from(tbody.querySelectorAll('tr'));
+  const numeric=rows.every(r=>{const v=r.dataset[key]||'';return v===''||!isNaN(parseFloat(v));});
+  rows.sort((a,b)=>{
+    const va=a.dataset[key]||'',vb=b.dataset[key]||'';
+    const cmp=numeric?(parseFloat(va||0)-parseFloat(vb||0)):va.localeCompare(vb);
+    return dir==='asc'?cmp:-cmp;
+  });
+  rows.forEach(r=>tbody.appendChild(r));
+}
+
+function updateBulkButtons(){
+  const selected=document.querySelectorAll('#users-table tbody input.row-check:checked').length;
+  const rb=document.getElementById('bulk-reset-btn');
+  const db=document.getElementById('bulk-delete-btn');
+  if(rb){rb.disabled=selected===0;document.getElementById('bulk-count-a').textContent=selected;}
+  if(db){db.disabled=selected===0;document.getElementById('bulk-count-b').textContent=selected;}
+}
+function toggleAllRows(source){
+  document.querySelectorAll('#users-table tbody input.row-check').forEach(cb=>cb.checked=source.checked);
+  updateBulkButtons();
+}
+function selectedUserIds(){
+  return Array.from(document.querySelectorAll('#users-table tbody input.row-check:checked'))
+    .map(cb=>cb.dataset.userId);
+}
+
+async function bulkDeleteUsers(){
+  const ids=selectedUserIds();if(!ids.length)return;
+  if(!confirm(`Delete ${ids.length} user(s)? They'll be removed from Authelia + Jellyfin.`))return;
+  const errors=[];
+  for(const id of ids){
+    try{
+      const r=await fetch(`/api/users/${id}/delete`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
+      const j=await r.json();
+      if(j.error)errors.push(`${id.substring(0,8)}: ${j.error}`);
+    }catch(e){errors.push(`${id.substring(0,8)}: ${e}`);}
+  }
+  if(errors.length)alert(`Completed with errors:\n${errors.join('\n')}`);
+  loadUserList();
+}
+
+async function bulkResetPassword(){
+  const ids=selectedUserIds();if(!ids.length)return;
+  if(!confirm(`Reset password for ${ids.length} user(s)? A new random password will be generated for each.`))return;
+  const results=[];
+  for(const id of ids){
+    try{
+      const r=await fetch(`/api/users/${id}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
+      const j=await r.json();
+      if(j.error)results.push(`${id.substring(0,8)}: ERROR — ${j.error}`);
+      else results.push(`${id.substring(0,8)}: ${j.generated_password}`);
+    }catch(e){results.push(`${id.substring(0,8)}: ${e}`);}
+  }
+  alert(`New passwords (store them NOW — not recoverable):\n\n${results.join('\n')}`);
+  loadUserList();
+}
+
 async function loadUserList(){
   const box=document.getElementById('user-table');
   box.innerHTML=skeletonHTML(4);
   try{
-    const r=await fetch('/api/users');
-    const j=await r.json();
-    const users=j.users||[];
-    const roles=(await (await fetch('/api/roles')).json()).roles||[];
-    const roleOpts=roles.map(r=>`<option value="${r.slug}">${r.name}</option>`).join('');
-    if(!users.length){box.innerHTML='<p style="color:var(--fg3);font-size:.85em">No users yet. Add the first one.</p>';return;}
-    let h='<table style="width:100%;border-collapse:collapse;font-size:.85em">';
+    const [usersJson,rolesJson]=await Promise.all([
+      fetch('/api/users').then(r=>r.json()),
+      fetch('/api/roles').then(r=>r.json()),
+    ]);
+    const users=usersJson.users||[];
+    const roles=rolesJson.roles||[];
+    if(!users.length){box.innerHTML='<p style="color:var(--fg3);font-size:.85em">No users yet. Add the first one.</p>';updateBulkButtons();return;}
+    let h='<table id="users-table" style="width:100%;border-collapse:collapse;font-size:.85em">';
     h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left">';
-    h+='<th style="padding:6px 4px">Email</th><th>Username</th><th>Display</th><th>Role</th><th>State</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+    h+='<th style="padding:6px 4px;width:24px"><input type="checkbox" onclick="toggleAllRows(this)"></th>';
+    h+='<th data-sort-key="email">Email</th>';
+    h+='<th data-sort-key="username">Username</th>';
+    h+='<th data-sort-key="display">Display</th>';
+    h+='<th data-sort-key="role">Role</th>';
+    h+='<th data-sort-key="state">State</th>';
+    h+='<th data-sort-key="created">Created</th>';
+    h+='<th>Actions</th></tr></thead><tbody>';
     for(const u of users){
-      h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 4px">${u.email}</td><td>${u.username}</td><td>${u.display_name||''}</td>`;
+      const emailSafe=(u.email||'').replace(/'/g,"");
+      h+=`<tr style="border-bottom:1px solid var(--border)" `;
+      h+=`data-email="${u.email||''}" data-username="${u.username||''}" data-display="${u.display_name||''}" `;
+      h+=`data-role="${u.role_slug||''}" data-state="${u.state||''}" data-created="${u.created_at||''}">`;
+      h+=`<td style="padding:6px 4px"><input type="checkbox" class="row-check" data-user-id="${u.id}" onclick="updateBulkButtons()"></td>`;
+      h+=`<td>${u.email||''}</td><td>${u.username||''}</td><td>${u.display_name||''}</td>`;
       h+=`<td><select onchange="setUserRole('${u.id}',this.value)" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);padding:2px 4px;font-size:.85em">${roles.map(r=>`<option value="${r.slug}"${r.slug===u.role_slug?' selected':''}>${r.name}</option>`).join('')}</select></td>`;
       h+=`<td><span class="state-${u.state}" style="padding:2px 6px;border-radius:3px;background:var(--bg2);font-size:.78em">${u.state}</span></td>`;
       h+=`<td style="color:var(--fg3);font-size:.78em">${(u.created_at||'').split('T')[0]}</td>`;
-      h+='<td>';
-      h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="resetUserPassword('${u.id}','${u.email.replace(/'/g,"")}')">Reset Pw</button> `;
+      h+='<td style="white-space:nowrap">';
+      h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="resetUserPassword('${u.id}','${emailSafe}')">Reset Pw</button> `;
       if(u.state==='active')h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="setUserState('${u.id}','suspended')">Suspend</button> `;
       else if(u.state==='suspended')h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="setUserState('${u.id}','active')">Unsuspend</button> `;
-      h+=`<button class="btn-danger" style="padding:2px 6px;font-size:.78em" onclick="deleteUser('${u.id}','${u.email.replace(/'/g,"")}')">Delete</button>`;
+      h+=`<button class="btn-danger" style="padding:2px 6px;font-size:.78em" onclick="deleteUser('${u.id}','${emailSafe}')">Delete</button>`;
       h+='</td></tr>';
     }
     h+='</tbody></table>';
     box.innerHTML=h;
+    makeSortable('users-table');
+    updateBulkButtons();
   }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
 }
 
@@ -1849,35 +1973,78 @@ async function loadRoleList(){
   try{
     const j=await (await fetch('/api/roles')).json();
     const roles=j.roles||[];
-    let h='<p style="color:var(--fg3);font-size:.85em;margin:0 0 10px">Roles are defined in <code>contracts/roles.yaml</code>. Each maps to SSO groups + Jellyfin policy + Jellyseerr permissions.</p>';
+    let h='<p style="color:var(--fg3);font-size:.85em;margin:0 0 10px">Roles are defined in <code>contracts/roles.yaml</code>. Each maps to SSO groups + per-provider payloads. Click a column header to sort.</p>';
+    h+='<table id="roles-table" style="width:100%;border-collapse:collapse;font-size:.85em">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left">';
+    h+='<th data-sort-key="slug" style="padding:6px 4px">Slug</th>';
+    h+='<th data-sort-key="name">Name</th>';
+    h+='<th data-sort-key="propagate">Admin Propagate</th>';
+    h+='<th data-sort-key="groups">SSO Groups</th>';
+    h+='<th>Per-Provider Payload Summary</th>';
+    h+='</tr></thead><tbody>';
     for(const r of roles){
-      h+=`<div style="border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px">`;
-      h+=`<b>${r.name}</b> <code style="color:var(--fg3);font-size:.8em">${r.slug}</code>`;
-      h+=`<div style="color:var(--fg3);font-size:.82em;margin:4px 0">${r.description||''}</div>`;
-      h+=`<div style="font-size:.8em"><b>SSO groups:</b> ${(r.sso_groups||[]).join(', ')||'—'}</div>`;
-      const jfKeys=Object.keys(r.jellyfin_policy||{});
-      if(jfKeys.length)h+=`<div style="font-size:.8em"><b>Jellyfin policy:</b> ${jfKeys.join(', ')}</div>`;
-      if(r.jellyseerr)h+=`<div style="font-size:.8em"><b>Jellyseerr:</b> permissions=${r.jellyseerr.permissions||0}, quotas=${JSON.stringify(r.jellyseerr.request_quota||{})}</div>`;
-      h+=`</div>`;
+      const prop=r.propagate_to_service_admins?'yes':'no';
+      const providerKeys=Object.keys(r.provider_payloads||{});
+      const summary=providerKeys.length?providerKeys.map(k=>{
+        const keys=Object.keys(r.provider_payloads[k]||{});
+        return `${k} (${keys.length})`;
+      }).join(', '):'—';
+      h+=`<tr style="border-bottom:1px solid var(--border)" `;
+      h+=`data-slug="${r.slug}" data-name="${r.name}" data-propagate="${prop}" `;
+      h+=`data-groups="${(r.sso_groups||[]).join(',')}">`;
+      h+=`<td style="padding:6px 4px"><code>${r.slug}</code></td>`;
+      h+=`<td><b>${r.name}</b><div style="color:var(--fg3);font-size:.8em">${r.description||''}</div></td>`;
+      h+=`<td>${prop==='yes'?'<span style="color:var(--warn)">yes</span>':'<span style="color:var(--fg3)">no</span>'}</td>`;
+      h+=`<td style="font-size:.8em">${(r.sso_groups||[]).join(', ')||'—'}</td>`;
+      h+=`<td style="font-size:.8em;color:var(--fg3)">${summary}</td>`;
+      h+='</tr>';
     }
+    h+='</tbody></table>';
     box.innerHTML=h;
+    makeSortable('roles-table');
   }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
 }
 
 async function loadAuditLog(){
   const box=document.getElementById('users-audit');
   try{
-    const j=await (await fetch('/api/audit-log?limit=50')).json();
+    const j=await (await fetch('/api/audit-log?limit=200')).json();
     const entries=j.entries||[];
     if(!entries.length){box.innerHTML='<p style="color:var(--fg3);font-size:.85em">No audit entries yet.</p>';return;}
-    let h='<table style="width:100%;border-collapse:collapse;font-size:.82em">';
-    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left"><th style="padding:6px 4px">When</th><th>Actor</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody>';
+    let h='<div style="margin-bottom:8px;display:flex;gap:8px;align-items:center">';
+    h+='<input id="audit-filter" type="text" placeholder="Filter..." style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);padding:4px 8px;font-size:.85em" oninput="filterAuditRows(this.value)">';
+    h+=`<span style="color:var(--fg3);font-size:.8em">${entries.length} entries</span>`;
+    h+='</div>';
+    h+='<table id="audit-table" style="width:100%;border-collapse:collapse;font-size:.82em">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left">';
+    h+='<th data-sort-key="ts" style="padding:6px 4px">When</th>';
+    h+='<th data-sort-key="actor">Actor</th>';
+    h+='<th data-sort-key="action">Action</th>';
+    h+='<th data-sort-key="target">Target</th>';
+    h+='<th data-sort-key="result">Result</th>';
+    h+='</tr></thead><tbody>';
     for(const e of entries.slice().reverse()){
-      h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px">${e.timestamp}</td><td>${e.actor}</td><td><code>${e.action}</code></td><td>${e.target}</td><td>${e.result}</td></tr>`;
+      h+=`<tr style="border-bottom:1px solid var(--border)" `;
+      h+=`data-ts="${e.timestamp||''}" data-actor="${e.actor||''}" data-action="${e.action||''}" data-target="${e.target||''}" data-result="${e.result||''}">`;
+      h+=`<td style="padding:4px">${e.timestamp}</td><td>${e.actor}</td>`;
+      h+=`<td><code>${e.action}</code></td><td>${e.target}</td>`;
+      h+=`<td>${e.result==='ok'?'<span style="color:var(--ok)">ok</span>':'<span style="color:var(--err)">'+e.result+'</span>'}</td>`;
+      h+='</tr>';
     }
     h+='</tbody></table>';
     box.innerHTML=h;
+    makeSortable('audit-table');
   }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+
+function filterAuditRows(q){
+  const s=String(q||'').toLowerCase().trim();
+  const rows=document.querySelectorAll('#audit-table tbody tr');
+  rows.forEach(row=>{
+    if(!s){row.style.display='';return;}
+    const hay=[row.dataset.ts,row.dataset.actor,row.dataset.action,row.dataset.target,row.dataset.result].join(' ').toLowerCase();
+    row.style.display=hay.includes(s)?'':'none';
+  });
 }
 
 async function loadUserProviders(){
@@ -3767,6 +3934,7 @@ async function onTabShow(tabId){
     else if(tabId==='tab-routing'){await loadRoutingConfig();}
     else if(tabId==='tab-ops'){/* ops-actions is static, no load needed */}
     else if(tabId==='tab-profile'){await loadDisplayConfig();}
+    else if(tabId==='tab-users'){await loadUserList();}  /* auto-load users on first tab click */
   }finally{hideLoading();}
 }
 /* Preload other tabs 3s after page load so switching feels instant */
