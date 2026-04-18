@@ -287,6 +287,18 @@ class PostRequestHandler:
                 handler._json_response(400, {"error": "quality or upgradeAllowed required"})
             return
 
+        # POST /api/custom-formats/import — import TRASHguides custom formats
+        if handler.path == "/api/custom-formats/import":
+            body = handler._read_json_body()
+            service_id = body.get("service", "")
+            index_url = body.get("index_url", "")
+            if not service_id or not index_url:
+                handler._json_response(400, {"error": "service and index_url required"})
+                return
+            from media_stack.services.apps.servarr.quality_preset_service import import_trash_custom_formats
+            handler._json_response(200, import_trash_custom_formats(service_id, index_url))
+            return
+
         # POST /api/download-client-settings
         if handler.path == "/api/download-client-settings":
             body = handler._read_json_body()

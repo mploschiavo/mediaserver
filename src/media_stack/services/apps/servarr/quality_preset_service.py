@@ -201,9 +201,93 @@ class QualityPresetService:
         return {"status": "updated", "upgradeAllowed": enabled}
 
 
+    def _fetch_trash_custom_formats(self, index_url: str, arr: str) -> list[dict[str, Any]]:
+        """Fetch custom-format JSON blobs from the TRASHguides index URL.
+
+        The index contains one object per format with at least ``trash_id``.
+        Each format's full spec lives at ``<dir>/<trash_id>.json`` relative
+        to the index. Returns a list of arr-ready CF payloads.
+        """
+        req = urllib.request.Request(index_url, headers={"User-Agent": "media-stack/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            index = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(index, list):
+            raise ValueError("TRASH index: expected a JSON list")
+        base = index_url.rsplit("/", 1)[0]
+        payloads: list[dict[str, Any]] = []
+        for entry in index:
+            trash_id = entry.get("trash_id") or entry.get("id")
+            if not trash_id:
+                continue
+            detail_req = urllib.request.Request(f"{base}/{trash_id}.json",
+                                                headers={"User-Agent": "media-stack/1.0"})
+            with urllib.request.urlopen(detail_req, timeout=15) as resp:
+                detail = json.loads(resp.read().decode("utf-8"))
+            # Strip fields the arr API rejects when creating
+            detail.pop("id", None)
+            detail.pop("trash_id", None)
+            detail.pop("trash_score", None)
+            payloads.append(detail)
+        return payloads
+
+    def import_trash_custom_formats(self, service_id: str, index_url: str) -> dict[str, Any]:
+        """Import TRASHguides custom formats into Sonarr/Radarr.
+
+        Fetches the custom-format definitions from ``index_url`` (JSON list),
+        then POSTs each one to the arr service. Idempotent: skips formats
+        that already exist by name.
+        """
+        from media_stack.api.services.health import discover_api_keys
+        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.http import HttpClient
+
+        svc = SERVICE_MAP.get(service_id)
+        if not svc:
+            return {"error": f"Service {service_id} not found"}
+        key = discover_api_keys().get(service_id, "")
+        if not key:
+            return {"error": f"No API key for {service_id}"}
+
+        try:
+            payloads = self._fetch_trash_custom_formats(index_url, service_id)
+        except Exception as exc:
+            return {"error": f"Fetch failed: {str(exc)[:120]}"}
+
+        _http = HttpClient()
+        base = f"http://{svc.host}:{svc.port}"
+        _, existing, _ = _http.request(base, "/api/v3/customformat", api_key=key)
+        existing_names = {cf.get("name", "") for cf in (existing or [])}
+
+        imported: list[str] = []
+        skipped: list[str] = []
+        errors: list[str] = []
+        for payload in payloads:
+            name = payload.get("name", "")
+            if not name:
+                continue
+            if name in existing_names:
+                skipped.append(name)
+                continue
+            try:
+                _http.request(base, "/api/v3/customformat", api_key=key,
+                              method="POST", payload=payload)
+                imported.append(name)
+            except Exception as exc:
+                errors.append(f"{name}: {str(exc)[:60]}")
+
+        return {
+            "service": service_id,
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors,
+            "total_available": len(payloads),
+        }
+
+
 _instance = QualityPresetService()
 list_presets = _instance.list_presets
 get_current_profiles = _instance.get_current_profiles
 get_custom_formats = _instance.get_custom_formats
 toggle_quality = _instance.toggle_quality
 toggle_upgrade = _instance.toggle_upgrade
+import_trash_custom_formats = _instance.import_trash_custom_formats
