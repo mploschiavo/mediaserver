@@ -24,8 +24,8 @@ def _service():
         log=lambda _msg: None,
         load_bootstrap_default_json=lambda _name, fallback: fallback,
         default_homepage_hosts=["jellyfin.local"],
-        render_homepage_services_yaml=lambda hosts, scheme, onboarding: (
-            f"hosts={hosts};scheme={scheme};onboarding={onboarding}"
+        render_homepage_services_yaml=lambda hosts, scheme, onboarding, gateway_base_url="", app_path_prefix="/app": (
+            f"hosts={hosts};scheme={scheme};onboarding={onboarding};gw={gateway_base_url};prefix={app_path_prefix}"
         ),
     )
 

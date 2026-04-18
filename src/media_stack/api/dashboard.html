@@ -1714,6 +1714,7 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   }
   // Lazy load with loading indicator
   const _load=async(fn)=>{showLoading();try{await fn();}finally{hideLoading();}};
+  if(id==='ops-actions'){return;}
   if(id==='lib-history')_load(loadDownloadHistory);else if(id==='lib-profiles')_load(loadQualityProfiles);
   else if(id==='lib-imports')_load(loadImportLists);else if(id==='lib-libraries')_load(loadLibraries);
   else if(id==='ops-traffic')_load(loadTraffic);else if(id==='ops-sla'){renderSLA();}
