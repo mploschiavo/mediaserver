@@ -11,11 +11,22 @@ import os
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
+from media_stack.core.auth.csrf import CsrfProtector
+from media_stack.core.auth.rate_limiter import RateLimiter
 from media_stack.core.auth.users.models import UserState
 from media_stack.core.auth.users.user_service import (
     UserServiceError,
     build_default_service,
 )
+
+_USER_MGMT_BUCKET_CAPACITY = 10
+_USER_MGMT_REFILL_PER_SECOND = 1.0
+_user_mgmt_limiter = RateLimiter(
+    capacity=_USER_MGMT_BUCKET_CAPACITY,
+    refill_per_second=_USER_MGMT_REFILL_PER_SECOND,
+)
+_csrf = CsrfProtector()
+_CSRF_ENFORCE = (os.getenv("CSRF_ENFORCE", "") or "").strip() == "1"
 
 from .services import admin as admin_svc
 from .services import config as config_svc
@@ -297,7 +308,10 @@ class PostRequestHandler:
             return
 
         # User management — delegated to class method.
-        if handler.path == "/api/users" or handler.path.startswith("/api/users/"):
+        if (handler.path == "/api/users"
+                or handler.path.startswith("/api/users/")
+                or handler.path in ("/api/users-reconcile/import",
+                                    "/api/users-reconcile/unlink")):
             self._handle_user_mgmt(handler)
             return
 
@@ -546,14 +560,13 @@ class PostRequestHandler:
 
     def _handle_user_mgmt(self, handler: ControllerAPIHandler) -> None:
         """Dispatch user-management POST endpoints."""
+        if not self._preflight(handler):
+            return
         body = handler._read_json_body()
         actor = str(body.get("_actor", "") or "controller-ui")
         svc = build_default_service()
         try:
-            if handler.path == "/api/users":
-                result = self._user_create(svc, body, actor)
-            else:
-                result = self._user_action(handler.path, svc, body, actor)
+            result = self._dispatch_user_mgmt(handler.path, svc, body, actor)
             if result is None:
                 handler._json_response(
                     HTTPStatus.BAD_REQUEST, {"error": "invalid user request"},
@@ -564,6 +577,57 @@ class PostRequestHandler:
             handler._json_response(
                 HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
             )
+        except Exception as exc:  # noqa: BLE001
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
+            )
+
+    def _preflight(self, handler) -> bool:
+        if not self._check_rate_limit(handler):
+            handler._json_response(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": "rate limit exceeded; slow down"},
+            )
+            return False
+        if not self._check_csrf(handler):
+            handler._json_response(
+                HTTPStatus.FORBIDDEN,
+                {"error": "CSRF token missing or invalid"},
+            )
+            return False
+        return True
+
+    def _dispatch_user_mgmt(self, path: str, svc, body: dict, actor: str):
+        if path == "/api/users-reconcile/import":
+            return svc.import_orphan(
+                provider_name=str(body.get("provider_name", "")),
+                external_id=str(body.get("external_id", "")),
+                role_slug=str(body.get("role_slug", "")),
+                actor=actor,
+            )
+        if path == "/api/users-reconcile/unlink":
+            return svc.unlink_ghost(
+                user_id=str(body.get("user_id", "")),
+                provider_name=str(body.get("provider_name", "")),
+                actor=actor,
+            )
+        if path == "/api/users":
+            return self._user_create(svc, body, actor)
+        return self._user_action(path, svc, body, actor)
+
+    def _check_rate_limit(self, handler) -> bool:
+        client_id = handler.client_address[0] if handler.client_address else "-"
+        return _user_mgmt_limiter.allow(client_id=client_id, bucket="user-mgmt")
+
+    def _check_csrf(self, handler) -> bool:
+        """CSRF enforcement is opt-in via env so basic-auth API clients keep
+        working without breaking changes. Set CSRF_ENFORCE=1 to enable.
+        """
+        if not _CSRF_ENFORCE:
+            return True
+        cookie_header = handler.headers.get("Cookie", "")
+        csrf_header = handler.headers.get(_csrf.header_name, "")
+        return _csrf.verify(cookie_header=cookie_header, header_value=csrf_header)
 
     def _user_create(self, svc, body: dict, actor: str) -> dict:
         return svc.create_user(

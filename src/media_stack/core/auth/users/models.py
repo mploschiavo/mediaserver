@@ -67,6 +67,12 @@ class Role:
     # provider's update_user/create_user call. Keeping it provider-keyed
     # means the core model never mentions a specific backend.
     provider_payloads: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Service-admin propagation: when true, password changes on users with
+    # this role also update every ServiceAdminProvider (single-admin
+    # services that don't have user accounts — qBit, Arrs, Bazarr, etc).
+    # Implies controller-UI access: the same credential authenticates
+    # against the controller's basic-auth.
+    propagate_to_service_admins: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,6 +83,7 @@ class Role:
             "provider_payloads": {
                 k: dict(v) for k, v in self.provider_payloads.items()
             },
+            "propagate_to_service_admins": self.propagate_to_service_admins,
         }
 
     @classmethod
@@ -91,6 +98,9 @@ class Role:
                 for k, v in (data.get("provider_payloads") or {}).items()
                 if isinstance(k, str)
             },
+            propagate_to_service_admins=bool(
+                data.get("propagate_to_service_admins", False),
+            ),
         )
 
 

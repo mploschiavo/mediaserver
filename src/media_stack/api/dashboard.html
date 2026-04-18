@@ -712,6 +712,14 @@ const ACTION_LABELS={
 };
 function actionLabel(name){return ACTION_LABELS[name]||name.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
 
+/* Read the CSRF cookie so mutating requests can echo it in X-CSRF-Token.
+ * Empty string when CSRF is disabled server-side — the header is still
+ * sent but ignored. */
+function mediaStackCsrfToken(){
+  const m=document.cookie.match(/(?:^|; )media_stack_csrf=([^;]+)/);
+  return m?decodeURIComponent(m[1]):'';
+}
+
 /* Theme */
 function toggleTheme(){const l=document.body.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');document.getElementById('themeBtn').textContent=l?'Dark':'Light';}
 (function(){const s=localStorage.getItem('theme');if(s==='light'){document.body.classList.add('light');document.getElementById('themeBtn').textContent='Dark';}
@@ -730,7 +738,7 @@ function _highlightLogLevel(level){
   }
 }
 async function setLogLevel(level){
-  try{const r=await apiFetch('/api/log-level',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level})});
+  try{const r=await apiFetch('/api/log-level',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({level})});
   if(r.ok){const d=await r.json();_highlightLogLevel(d.level);}
   }catch(e){console.error('Failed to set log level',e);}
 }
@@ -782,7 +790,7 @@ async function doAction(name){
   _actionPending=true;showLoading();
   document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
   toast(name+' starting...');
-  try{const r=await apiFetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  try{const r=await apiFetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
     const d=await r.json();if(r.status>=400)toast(d.error||'Failed',true);else{toast(name+' accepted');setTimeout(load,1500);}
   }catch(e){toast(e.toString(),true);}
   finally{_actionPending=false;hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
@@ -797,7 +805,7 @@ async function cancelAction(){
   }catch(e){toast(e.toString(),true);}
 }
 async function toggleAuto(on){
-  try{await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_download_content:on})});
+  try{await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({auto_download_content:on})});
     document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(on?'on':'off')+'</b>';
     toast('Auto-downloads '+(on?'enabled — running reconcile to apply...':'disabled — running reconcile to apply...'));
     // Auto-trigger reconcile so the config change takes effect immediately.
@@ -1064,7 +1072,7 @@ async function revalidateCredentials(svcId){
   const label=svcId||'all services';
   toast('Checking credentials for '+label+'...');
   try{
-    const r=await apiFetch('/api/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(services?{services}:{})});
+    const r=await apiFetch('/api/credentials',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(services?{services}:{})});
     if(r.ok){const d=await r.json();
       for(const[k,v]of Object.entries(d.credentials||{})){SVC_LOGIN[k]=v;}
       const ok=d.ok||0,total=d.total||0;
@@ -1187,7 +1195,7 @@ async function saveGuardrails(){
     qbit_max_delete_per_run:parseInt(document.getElementById('gr-qbit_maxdel')?.value)||80,
     qbit_delete_files:document.getElementById('gr-qbit_delfiles')?.checked||false,
   };
-  try{const r=await apiFetch('/api/guardrails',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{const r=await apiFetch('/api/guardrails',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.status==='updated'){toast('Guardrails saved: '+d.changed.join(', '));loadDisk();}
     else{toast(d.error||d.status||'Save failed',true);}}catch(e){toast('Error: '+e.message,true);}
@@ -1289,13 +1297,13 @@ function renderIndexers(){
   el.innerHTML=h;
 }
 async function toggleIndexer(id,enable){
-  try{await apiFetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});
+  try{await apiFetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({enable})});
     toast((enable?'Enabled':'Disabled')+' indexer');loadIndexers();
   }catch(e){toast('Error: '+e,true);}
 }
 async function deleteIndexer(id,name){
   if(!confirm('Delete indexer "'+name+'"?'))return;
-  try{await apiFetch('/api/indexers/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});
+  try{await apiFetch('/api/indexers/'+id,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({_method:'DELETE'})});
     toast('Deleted '+name);loadIndexers();
   }catch(e){toast('Error: '+e,true);}
 }
@@ -1304,7 +1312,7 @@ async function toggleAllIndexers(enable){
   if(!ids.length){toast('Nothing to change');return;}
   toast((enable?'Enabling':'Disabling')+' '+ids.length+' indexers...');
   for(const id of ids){
-    try{await apiFetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})});}catch(e){}
+    try{await apiFetch('/api/indexers/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({enable})});}catch(e){}
   }
   loadIndexers();
 }
@@ -1314,7 +1322,7 @@ async function deleteDisabledIndexers(){
   if(!confirm('Delete '+disabled.length+' disabled indexers?'))return;
   toast('Deleting '+disabled.length+' indexers...');
   for(const i of disabled){
-    try{await apiFetch('/api/indexers/'+i.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_method:'DELETE'})});}catch(e){}
+    try{await apiFetch('/api/indexers/'+i.id,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({_method:'DELETE'})});}catch(e){}
   }
   loadIndexers();
 }
@@ -1488,7 +1496,7 @@ async function rotateKeys(){
   const selected=[...document.querySelectorAll('.rk-svc-cb:checked')].map(cb=>cb.value);
   if(!selected.length){toast('Select at least one service',true);return;}
   toast('Rotating API keys for '+selected.length+' services...');showLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
-  try{const r=await apiFetch('/api/rotate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:selected})});const d=await r.json();
+  try{const r=await apiFetch('/api/rotate-keys',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({services:selected})});const d=await r.json();
     if(d.status==='rotated'){
       let msg='Rotated '+d.keys.length+' keys';
       if(d.restarted&&d.restarted.length)msg+=', restarted: '+d.restarted.join(', ');
@@ -1513,7 +1521,7 @@ async function doHardReset(){
   let okCount=0,errCount=0;
   for(const id of selected){
     try{
-      const r=await apiFetch('/api/services/'+id+'/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+      const r=await apiFetch('/api/services/'+id+'/reset',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({})});
       const d=await r.json();
       if(d.status==='reset'){toast(d.service+': reset'+(d.key_discovered?' (key found)':''));okCount++;}
       else{toast(d.service+': '+(d.error||'failed'),true);errCount++;}
@@ -1538,7 +1546,7 @@ async function resetPassword(){
   const selected=[...document.querySelectorAll('.pw-svc-cb:checked')].map(cb=>cb.value);
   if(!selected.length){toast('Select at least one service',true);return;}
   toast('Resetting password for '+selected.length+' services...');showLoading();
-  try{const r=await apiFetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,services:selected})});
+  try{const r=await apiFetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({password:pw,services:selected})});
     const d=await r.json();
     if(d.status==='updated'){
       let msg='Password updated for '+d.services.join(', ');
@@ -1581,7 +1589,7 @@ async function saveRouting(){
   const port=document.getElementById('rt-port')?.value?.trim();if(port)body.gateway_port=parseInt(port);
   if(!Object.keys(body).length){toast('No changes',true);return;}
   toast('Saving routing config...');showLoading();
-  try{const r=await apiFetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{const r=await apiFetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.status==='updated'){toast('Routing updated: '+d.changed.join(', ')+'. Envoy rebuild queued.');loadRoutingConfig();}
     else if(d.status==='no_changes'){toast('No changes needed');}
@@ -1598,7 +1606,7 @@ function loadWebhooks(urls){
   el.innerHTML=h;
 }
 async function addWebhook(){const url=document.getElementById('webhookUrl').value.trim();if(!url){toast('Enter a URL',true);return;}
-  try{const r=await apiFetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}else{const d=await r.json();toast(d.error||'Failed',true);}}catch(e){toast(e.toString(),true);}}
+  try{const r=await apiFetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({url})});if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}else{const d=await r.json();toast(d.error||'Failed',true);}}catch(e){toast(e.toString(),true);}}
 async function removeWebhook(url){try{await apiFetch('/webhooks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});toast('Removed');load();}catch(e){toast(e.toString(),true);}}
 async function testWebhooks(){
   toast('Sending test webhook...');
@@ -1800,7 +1808,7 @@ function showAddUserDialog(){
   const username=prompt('Username:');if(!username)return;
   const display_name=prompt('Display name (optional):','')||'';
   const role_slug=prompt('Role slug (superadmin/family_admin/adult/teen/kid/guest):','adult')||'adult';
-  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},
+  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
     body:JSON.stringify({email,username,display_name,role_slug})})
     .then(r=>r.json()).then(j=>{
       if(j.error){alert('Error: '+j.error);return;}
@@ -1810,20 +1818,20 @@ function showAddUserDialog(){
 }
 
 async function setUserRole(userId,roleSlug){
-  const r=await fetch(`/api/users/${userId}/role`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_slug:roleSlug})});
+  const r=await fetch(`/api/users/${userId}/role`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({role_slug:roleSlug})});
   const j=await r.json();
   if(j.error)alert('Error: '+j.error);else loadUserList();
 }
 
 async function setUserState(userId,state){
-  const r=await fetch(`/api/users/${userId}/state`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state})});
+  const r=await fetch(`/api/users/${userId}/state`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({state})});
   const j=await r.json();
   if(j.error)alert('Error: '+j.error);else loadUserList();
 }
 
 async function resetUserPassword(userId,email){
   if(!confirm(`Reset password for ${email}? A new password will be generated.`))return;
-  const r=await fetch(`/api/users/${userId}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const r=await fetch(`/api/users/${userId}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({})});
   const j=await r.json();
   if(j.error){alert('Error: '+j.error);return;}
   alert(`New password for ${email}:\n\n${j.generated_password}\n\nStore it now — it is not recoverable.`);
@@ -1831,7 +1839,7 @@ async function resetUserPassword(userId,email){
 
 async function deleteUser(userId,email){
   if(!confirm(`Delete ${email}? This removes them from Authelia and Jellyfin.`))return;
-  const r=await fetch(`/api/users/${userId}/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const r=await fetch(`/api/users/${userId}/delete`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({})});
   const j=await r.json();
   if(j.error)alert('Error: '+j.error);else loadUserList();
 }
@@ -1875,16 +1883,74 @@ async function loadAuditLog(){
 async function loadUserProviders(){
   const box=document.getElementById('users-providers');
   try{
-    const j=await (await fetch('/api/user-providers')).json();
-    const providers=j.providers||[];
+    const [hJson,rJson,rolesJson]=await Promise.all([
+      (await fetch('/api/user-providers')).json(),
+      (await fetch('/api/users-reconcile')).json(),
+      (await fetch('/api/roles')).json(),
+    ]);
+    const providers=hJson.providers||[];
+    const diffs=rJson.diffs||[];
+    const roles=rolesJson.roles||[];
+    const roleOpts=roles.map(r=>`<option value="${r.slug}">${r.name}</option>`).join('');
     let h='<table style="width:100%;border-collapse:collapse;font-size:.85em">';
     h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left"><th style="padding:6px 4px">Provider</th><th>Source of Truth</th><th>Health</th><th>Detail</th></tr></thead><tbody>';
     for(const p of providers){
       h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 4px"><b>${p.name}</b></td><td>${p.source_of_truth?'yes':''}</td><td>${p.ok?'<span style="color:var(--ok)">OK</span>':'<span style="color:var(--err)">FAIL</span>'}</td><td style="color:var(--fg3);font-size:.8em">${p.detail||''}</td></tr>`;
     }
     h+='</tbody></table>';
+
+    h+='<h3 style="margin-top:16px;font-size:.95em">Drift Reconciliation</h3>';
+    h+='<p style="color:var(--fg3);font-size:.82em;margin:4px 0 10px">Orphans exist in a provider but not in the controller DB (e.g. bootstrap-generated admin, OIDC-auto-provisioned users). Ghosts exist in the controller DB but have been deleted out-of-band.</p>';
+    let anyDrift=false;
+    for(const d of diffs){
+      h+=`<div style="border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px">`;
+      h+=`<b>${d.provider}</b> <span style="color:var(--fg3);font-size:.8em">matched=${d.matched}, orphans=${(d.orphans||[]).length}, ghosts=${(d.ghosts||[]).length}</span>`;
+      for(const o of (d.orphans||[])){
+        anyDrift=true;
+        const eid=(o.external_id||'').replace(/'/g,"");
+        h+=`<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82em">`;
+        h+=`<span>Orphan: <b>${o.username||o.external_id}</b> ${o.email?'('+o.email+')':''}</span>`;
+        h+=`<span style="color:var(--fg3)">groups: ${(o.groups||[]).join(', ')||'\u2014'}</span>`;
+        h+=`<select id="role-${d.provider}-${eid}" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);padding:2px 4px">${roleOpts}</select>`;
+        h+=`<button class="btn-primary" style="padding:2px 8px" onclick="importOrphan('${d.provider}','${eid}')">Import</button>`;
+        h+=`</div>`;
+      }
+      for(const g of (d.ghosts||[])){
+        anyDrift=true;
+        h+=`<div style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.82em">`;
+        if(g.error){h+=`<span style="color:var(--err)">Error: ${g.error}</span>`;}
+        else{
+          h+=`<span>Ghost: <b>${g.email}</b> (controller id ${g.user_id.substring(0,8)})</span>`;
+          h+=`<button class="btn-secondary" style="padding:2px 8px" onclick="unlinkGhost('${g.user_id}','${d.provider}')">Unlink</button>`;
+        }
+        h+=`</div>`;
+      }
+      h+=`</div>`;
+    }
+    if(!anyDrift)h+='<p style="color:var(--fg3);font-size:.82em">No drift \u2014 controller DB matches every provider.</p>';
+
     box.innerHTML=h;
   }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+
+async function importOrphan(provider,externalId){
+  const sel=document.getElementById(`role-${provider}-${externalId}`);
+  const role_slug=sel?sel.value:'adult';
+  const r=await fetch('/api/users-reconcile/import',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
+    body:JSON.stringify({provider_name:provider,external_id:externalId,role_slug})});
+  const j=await r.json();
+  if(j.error){alert('Import failed: '+j.error);return;}
+  alert(`Imported ${j.email||externalId} as ${j.role_slug}`);
+  loadUserProviders();loadUserList();
+}
+
+async function unlinkGhost(userId,provider){
+  if(!confirm(`Remove stale ${provider} ref from controller user?`))return;
+  const r=await fetch('/api/users-reconcile/unlink',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
+    body:JSON.stringify({user_id:userId,provider_name:provider})});
+  const j=await r.json();
+  if(j.error){alert('Unlink failed: '+j.error);return;}
+  loadUserProviders();loadUserList();
 }
 
 /* #1 Bandwidth + #2 Error rates */
@@ -2101,7 +2167,7 @@ async function saveLibrariesFromContent(){
   const valid=_libData.filter(l=>l.name&&l.collection_type&&l.paths&&l.paths.length);
   if(!valid.length){toast('Add at least one library with name and paths');return;}
   try{
-    const r=await apiFetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:valid})});
+    const r=await apiFetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({libraries:valid})});
     const d=await r.json();
     if(d.error){toast('Error: '+d.error);return;}
     toast('Libraries saved'+(d.action?' — '+d.action:''));
@@ -2193,7 +2259,7 @@ async function loadQualityProfiles(){
 }
 async function toggleProfileUpgrade(svcId,profileId,enabled){
   try{
-    const r=await apiFetch('/api/quality-profiles/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:svcId,profile_id:profileId,upgradeAllowed:enabled})});
+    const r=await apiFetch('/api/quality-profiles/toggle',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({service:svcId,profile_id:profileId,upgradeAllowed:enabled})});
     const d=await r.json();
     toast(d.error||'Upgrades '+(enabled?'enabled':'disabled'));
   }catch(e){toast('Error: '+e);}
@@ -2248,7 +2314,7 @@ async function loadImportLists(){
 }
 async function toggleImportList(svcId,listId,enabled){
   try{
-    const r=await apiFetch('/api/import-lists/'+svcId+'/'+listId+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})});
+    const r=await apiFetch('/api/import-lists/'+svcId+'/'+listId+'/toggle',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({enabled:enabled})});
     const d=await r.json();
     if(d.error)toast('Error: '+d.error);else toast((enabled?'Enabled':'Disabled')+' list');
     loadImportLists();
@@ -2489,7 +2555,7 @@ async function enableGpuTranscoding(){
   if(!confirm('Enable hardware transcoding in Jellyfin? This will modify system.xml and restart Jellyfin.'))return;
   showLoading();toast('Enabling GPU transcoding...');
   try{
-    const r=await apiFetch('/api/gpu/enable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const r=await apiFetch('/api/gpu/enable',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
     const d=await r.json();
     hideLoading();
     if(d.status==='ok'){
@@ -2593,7 +2659,7 @@ function selectAllSvcs(){const cbs=document.querySelectorAll('.svc-cb');cbs.forE
 async function batchRestart(){
   if(!batchSelected.size){toast('No services selected',true);return;}
   const names=[...batchSelected];toast('Restarting '+names.length+' services...');showLoading();
-  try{const r=await apiFetch('/api/batch-restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({services:names})});
+  try{const r=await apiFetch('/api/batch-restart',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({services:names})});
     const d=await r.json();toast(d.restarted+'/'+d.total+' restarted');batchSelected.clear();
     document.querySelectorAll('.svc-cb').forEach(cb=>cb.checked=false);
   }catch(e){toast(e.toString(),true);}
@@ -2603,7 +2669,7 @@ async function batchRestart(){
 /* #11 Config editor */
 async function saveProfile(){
   const ta=document.getElementById('profile-editor');if(!ta)return;
-  try{const r=await apiFetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ta.value})});
+  try{const r=await apiFetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({content:ta.value})});
     const d=await r.json();toast(d.status==='saved'?'Profile saved & reloaded':'Error: '+(d.error||''),d.status!=='saved');
   }catch(e){toast(e.toString(),true);}
 }
@@ -2795,7 +2861,7 @@ async function saveLibraries(){
     if(name&&paths.length)libs.push({name,collection_type:type,paths});
   });
   if(!libs.length){toast('Add at least one library',true);return;}
-  try{const r=await apiFetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraries:libs})});
+  try{const r=await apiFetch('/api/libraries',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({libraries:libs})});
     const d=await r.json();
     if(d.status==='saved'){toast('Libraries saved. Run Configure All to apply.');loadLibrariesConfig();}
     else toast(d.error||'Save failed',true);
@@ -2879,20 +2945,20 @@ async function saveDlClientSettings(){
     dl_limit_mbps:+document.getElementById('dl-limit').value,
     up_limit_mbps:+document.getElementById('ul-limit').value,
   }};
-  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(body)});
   const d=await r.json();
   if(d.torrent?.error)throw new Error(d.torrent.error);
   return 'Torrent limits saved';
 }
 async function scanNow(){
-  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_now:true})});
+  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({scan_now:true})});
   const d=await r.json();
   if(d.scan?.error)throw new Error(d.scan.error);
   return 'Library scan triggered';
 }
 async function saveScanInterval(){
   const hrs=+document.getElementById('dl-scan-interval').value;
-  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
+  const r=await apiFetch('/api/download-client-settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({jellyfin_scan_interval_hours:hrs})});
   const d=await r.json();
   if(d.scan_interval?.error)throw new Error(d.scan_interval.error);
   return 'Scan interval set to '+hrs+'h';
@@ -2914,7 +2980,7 @@ async function saveCategories(){
     if(name)cats[name]=path||'/data/torrents/completed/'+name;
   });
   if(!Object.keys(cats).length){toast('Add at least one category',true);return;}
-  try{const r=await apiFetch('/api/download-categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({categories:cats})});
+  try{const r=await apiFetch('/api/download-categories',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({categories:cats})});
     const d=await r.json();
     if(d.status==='saved'){toast('Categories saved. Run Configure All to apply.');loadDownloadsConfig();}
     else toast(d.error||'Save failed',true);
@@ -2959,7 +3025,7 @@ async function saveMetadata(){
   const lang=document.getElementById('meta-lang')?.value.trim()||'';
   const country=document.getElementById('meta-country')?.value.trim()||'';
   if(!lang||!country){toast('Language and country required',true);return;}
-  try{const r=await apiFetch('/api/metadata-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:lang,country})});
+  try{const r=await apiFetch('/api/metadata-settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({language:lang,country})});
     const d=await r.json();
     if(d.status==='saved'){toast('Metadata set to '+lang+'/'+country);loadMetadataConfig();}
     else toast(d.error||'Save failed',true);
@@ -3003,7 +3069,7 @@ async function addServerSchedule(){
   const action=document.getElementById('serverSchedAction')?.value||'';
   const mins=parseInt(document.getElementById('serverSchedMins')?.value||'60');
   if(!action){toast('Select an action',true);return;}
-  try{const r=await apiFetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},
+  try{const r=await apiFetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
     body:JSON.stringify({action,interval_seconds:mins*60})});
     const d=await r.json();
     if(d.status==='created'){toast('Schedule created');loadServerSchedules();}
@@ -3123,7 +3189,7 @@ async function saveDisplayConfig(){
     if(sel)plp[lib]={SortBy:sel.value,SortOrder:sel.value.startsWith('DateCreated')||sel.value.startsWith('DatePlayed')||sel.value.startsWith('Community')?'Descending':'Ascending'};
   }
   try{
-    const r=await apiFetch('/api/display-preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({show_backdrop:document.getElementById('dp-backdrop').checked,custom_prefs:cp,per_library_prefs:plp})});
+    const r=await apiFetch('/api/display-preferences',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({show_backdrop:document.getElementById('dp-backdrop').checked,custom_prefs:cp,per_library_prefs:plp})});
     const d=await r.json();
     if(d.error)toast('Error: '+d.error);
     else toast('Display preferences saved'+(d.action?' — '+d.action:''));
@@ -3212,7 +3278,7 @@ function addCustomLiveTv(){
 function removeLiveTvTuner(i){_ltvTuners.splice(i,1);renderLiveTvConfig();}
 function removeLiveTvGuide(i){_ltvGuides.splice(i,1);renderLiveTvConfig();}
 async function saveLiveTv(){
-  try{const r=await apiFetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json'},
+  try{const r=await apiFetch('/api/livetv-sources',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
     body:JSON.stringify({tuners:_ltvTuners,guides:_ltvGuides,load_all_tuners:_ltvLoadAll})});
     const d=await r.json();
     if(d.status==='saved'){toast('Live TV saved — configuring media server automatically...');loadLiveTvConfig();}
@@ -3382,7 +3448,7 @@ async function uploadOidcConfig(input){
     const text=await file.text();
     const json=JSON.parse(text);
     /* Send to server for provider detection + field extraction */
-    const r=await apiFetch('/api/auth/parse-oidc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(json)});
+    const r=await apiFetch('/api/auth/parse-oidc',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(json)});
     const d=await r.json();
     if(d.error){
       if(statusEl)statusEl.innerHTML='<p style="color:var(--err);font-size:.8em;margin:4px 0">'+d.error+'</p>';
@@ -3441,7 +3507,7 @@ async function saveAuthConfig(){
     perService[sel.dataset.svc]=sel.value;
   });
   try{
-    const r=await apiFetch('/api/auth/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,oidc_provider:oidcProvider,oidc_config:oidcConfig,per_service:perService})});
+    const r=await apiFetch('/api/auth/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({mode,oidc_provider:oidcProvider,oidc_config:oidcConfig,per_service:perService})});
     const d=await r.json();
     if(d.error)toast('Error: '+d.error,true);
     else toast('Auth settings saved'+(d.changed?' ('+d.changed.length+' changes)':''));
@@ -3526,7 +3592,7 @@ function renderJobNode(node,depth){
 async function triggerJob(name){
   toast('Running '+name+'...');
   try{
-    const r=await apiFetch('/actions/'+encodeURIComponent(name),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const r=await apiFetch('/actions/'+encodeURIComponent(name),{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
     const d=await r.json();
     if(d.status==='accepted')toast(name+' queued (priority '+d.priority+')');
     else toast(d.error||'Failed',true);

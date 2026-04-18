@@ -79,6 +79,28 @@ class JellyfinApiProviderTests(unittest.TestCase):
         p = self._provider(client=client)
         self.assertEqual(p.list_users(), [])
 
+    def test_revoke_sessions_kills_only_this_users_sessions(self):
+        client = _mock_http({
+            ("GET", "/Sessions"): (200, [
+                {"Id": "s1", "UserId": "user-abc"},
+                {"Id": "s2", "UserId": "other"},
+                {"Id": "s3", "UserId": "user-abc"},
+            ], ""),
+            ("DELETE", "/Sessions/s1"): (204, None, ""),
+            ("DELETE", "/Sessions/s3"): (204, None, ""),
+        })
+        p = self._provider(client=client)
+        p.revoke_sessions("user-abc")
+        deletes = [c.args[1] for c in client.request.call_args_list
+                    if c.kwargs.get("method") == "DELETE"]
+        self.assertEqual(set(deletes), {"/Sessions/s1", "/Sessions/s3"})
+
+    def test_revoke_sessions_tolerates_list_failure(self):
+        client = MagicMock()
+        client.request.side_effect = RuntimeError("net down")
+        p = self._provider(client=client)
+        p.revoke_sessions("user-abc")  # must not raise
+
 
 if __name__ == "__main__":
     unittest.main()

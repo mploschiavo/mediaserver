@@ -178,3 +178,13 @@ class AutheliaFileProvider:
 
     def set_groups(self, external_id: str, groups: list[str]) -> None:
         self.update_user(external_id, groups=groups)
+
+    def revoke_sessions(self, external_id: str) -> None:
+        """No-op for the file backend.
+
+        Authelia file-auth sessions live in its own session DB (cookie
+        TTL). When a user is deleted from users_database.yml their cookie
+        becomes useless on the next request anyway because the user no
+        longer exists. Nothing to do here.
+        """
+        del external_id

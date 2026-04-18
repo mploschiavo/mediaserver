@@ -23,3 +23,13 @@ providers:
       api_key:
         env: JELLYFIN_API_KEY
         default: ""
+  - id: jellyseerr
+    module: media_stack.services.apps.jellyseerr.user_provider
+    class: JellyseerrApiProvider
+    args:
+      base_url:
+        env: JELLYSEERR_URL
+        default: "http://jellyseerr:5055"
+      api_key:
+        env: JELLYSEERR_API_KEY
+        default: ""

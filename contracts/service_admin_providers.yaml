@@ -1,0 +1,19 @@
+# Single-admin services — no user directory, just one shared credential
+# the controller uses for API access. Admins (users with
+# role.propagate_to_service_admins = true) have their password changes
+# pushed to every service listed here.
+#
+# Adding a service = add an id here. Existing api/services/admin.py
+# already knows how to reset each service's password via its own
+# app-layer admin_ops or registry-defined password endpoint.
+
+version: 1
+providers:
+  - id: qbittorrent
+  - id: sonarr
+  - id: radarr
+  - id: lidarr
+  - id: readarr
+  - id: bazarr
+  - id: prowlarr
+  - id: sabnzbd

@@ -8,6 +8,9 @@ roles:
     name: Super Admin
     description: Full control of the stack, user management, and all services.
     sso_groups: [admins]
+    # Password changes propagate to every ServiceAdminProvider (qBit, Arrs,
+    # Bazarr, etc.) and the same credential authenticates the controller UI.
+    propagate_to_service_admins: true
     provider_payloads:
       jellyfin:
         IsAdministrator: true
@@ -65,7 +68,11 @@ roles:
       jellyfin:
         IsAdministrator: false
         EnableAllFolders: false
-        EnabledFolders: []
+        # Human-friendly library names; the Jellyfin provider resolves
+        # these to IDs via /Library/MediaFolders at apply time. Unknown
+        # names are dropped (partial restriction is preferred over
+        # blocking the whole role change).
+        EnabledFolderNames: ["Kids", "Family"]
         EnableRemoteAccess: false
         MaxActiveSessions: 2
         MaxParentalRating: 7

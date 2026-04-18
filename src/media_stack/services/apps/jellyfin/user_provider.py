@@ -7,6 +7,7 @@ etc. are set via this provider's policy payload.
 
 from __future__ import annotations
 
+import logging
 from http import HTTPStatus
 from typing import Any
 
@@ -16,6 +17,8 @@ from media_stack.core.auth.users.provider import (
     ProviderHealth,
 )
 from media_stack.core.http import HttpClient
+
+_log = logging.getLogger("media_stack")
 
 _OK_STATUSES = (HTTPStatus.OK, HTTPStatus.NO_CONTENT)
 _CREATE_STATUSES = (HTTPStatus.OK, HTTPStatus.CREATED)
@@ -96,7 +99,7 @@ class JellyfinApiProvider:
         if not user_id:
             raise JellyfinProviderError("create returned no Id")
         if policy:
-            self._apply_policy(user_id, policy)
+            self._apply_policy(user_id, self._resolve_policy(policy))
         return ExternalUser(
             external_id=user_id, username=username, email="",
             groups=[], extra={"display_name": display_name},
@@ -108,11 +111,54 @@ class JellyfinApiProvider:
                     policy: dict[str, Any] | None = None) -> ExternalUser:
         del email, groups, display_name
         if policy:
-            self._apply_policy(external_id, policy)
+            self._apply_policy(external_id, self._resolve_policy(policy))
         return ExternalUser(
             external_id=external_id, username="", email="",
             groups=[], extra={},
         )
+
+    def _resolve_policy(self, policy: dict[str, Any]) -> dict[str, Any]:
+        """Resolve role-catalog payload into a Jellyfin-ready policy dict.
+
+        The role catalog lets admins declare ``EnabledFolderNames`` (human
+        library names like ``["Kids"]``). This method fetches the live
+        library list and translates names → IDs, populating
+        ``EnabledFolders`` on the outgoing policy. Missing libraries are
+        dropped and logged — we prefer a partial restriction over an
+        error that blocks the whole role change.
+        """
+        names = policy.pop("EnabledFolderNames", None)
+        if not names:
+            return policy
+        folder_ids = self._library_ids_by_name(names)
+        resolved = dict(policy)
+        resolved["EnabledFolders"] = folder_ids
+        resolved.setdefault("EnableAllFolders", False)
+        return resolved
+
+    def _library_ids_by_name(self, names: list[str]) -> list[str]:
+        try:
+            status, body, _ = self._http.request(
+                self._base_url, "/Library/MediaFolders",
+                api_key=self._api_key,
+            )
+        except Exception:  # noqa: BLE001
+            return []
+        if status != HTTPStatus.OK or not isinstance(body, dict):
+            return []
+        items = body.get("Items") or []
+        lookup = {
+            str(item.get("Name", "")).strip().lower(): str(item.get("Id", ""))
+            for item in items
+            if isinstance(item, dict)
+        }
+        ids: list[str] = []
+        for n in names:
+            key = str(n).strip().lower()
+            folder_id = lookup.get(key)
+            if folder_id:
+                ids.append(folder_id)
+        return ids
 
     def delete_user(self, external_id: str) -> None:
         self._require_api_key()
@@ -150,3 +196,37 @@ class JellyfinApiProvider:
     def _require_api_key(self) -> None:
         if not self._api_key:
             raise JellyfinProviderError("API key not set")
+
+    def revoke_sessions(self, external_id: str) -> None:
+        """Kill every active session belonging to this user.
+
+        Best-effort — if Jellyfin is unreachable or the user no longer
+        exists, we swallow and return. Callers should tolerate that.
+        """
+        if not external_id or not self._api_key:
+            return
+        try:
+            status, body, _ = self._http.request(
+                self._base_url, "/Sessions", api_key=self._api_key,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("[DEBUG] list sessions failed: %s", exc)
+            return
+        if status != HTTPStatus.OK or not isinstance(body, list):
+            return
+        for session in body:
+            if not isinstance(session, dict):
+                continue
+            if str(session.get("UserId", "")) != external_id:
+                continue
+            session_id = str(session.get("Id", ""))
+            if not session_id:
+                continue
+            try:
+                self._http.request(
+                    self._base_url, f"/Sessions/{session_id}",
+                    api_key=self._api_key, method="DELETE",
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("[DEBUG] revoke %s failed: %s", session_id, exc)
+                continue
