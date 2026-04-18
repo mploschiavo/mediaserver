@@ -649,6 +649,7 @@ class TestGetApiKeys(unittest.TestCase):
     @mock.patch.dict(os.environ, {
         "STACK_ADMIN_USERNAME": "admin",
         "STACK_ADMIN_PASSWORD": "media-stack",
+        "CONTROLLER_AUTH": "none",
     })
     def test_keys_returns_discovered_keys(self, mock_discover):
         h = make_handler("GET", "/api/keys")
@@ -664,6 +665,7 @@ class TestGetApiKeys(unittest.TestCase):
     @mock.patch.dict(os.environ, {
         "STACK_ADMIN_USERNAME": "myuser",
         "STACK_ADMIN_PASSWORD": "mypass",
+        "CONTROLLER_AUTH": "none",
     })
     def test_keys_includes_admin_credentials(self, mock_discover):
         h = make_handler("GET", "/api/keys")

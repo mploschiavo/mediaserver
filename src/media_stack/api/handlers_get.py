@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs
 
 from media_stack.core.auth.users.user_service_factory import (
+    build_default_api_token_store,
     build_default_invite_service,
     build_default_service,
 )
@@ -149,7 +150,8 @@ class GetRequestHandler:
         elif path == "/api/users" or path.startswith("/api/users/") \
                 or path in ("/api/roles", "/api/user-providers",
                             "/api/audit-log", "/api/users-reconcile",
-                            "/api/invites", "/api/me", "/metrics"):
+                            "/api/invites", "/api/me", "/metrics",
+                            "/api/tokens"):
             self._handle_user_mgmt(handler, path)
         elif path == "/api/download-client-settings":
             handler._json_response(200, content_svc.get_download_client_settings())
@@ -530,53 +532,10 @@ class GetRequestHandler:
                 handler._json_response(404, {"error": "not found"})
 
     def _handle_user_mgmt(self, handler: ControllerAPIHandler, path: str) -> None:
-        """Dispatch user-management GET endpoints."""
-        ok = HTTPStatus.OK
-        svc = build_default_service()
-        if path == "/api/users":
-            handler._json_response(ok, {"users": svc.list_users()})
-            return
-        if path == "/api/roles":
-            handler._json_response(ok, {"roles": svc.list_roles()})
-            return
-        if path == "/api/user-providers":
-            handler._json_response(ok, {"providers": svc.provider_health()})
-            return
-        if path == "/api/users-reconcile":
-            handler._json_response(ok, {"diffs": svc.reconcile_report()})
-            return
-        if path == "/api/invites":
-            handler._json_response(
-                ok, {"invites": build_default_invite_service().list_pending()},
-            )
-            return
-        if path == "/api/me":
-            handler._json_response(ok, self._build_me_response(handler, svc))
-            return
-        if path == "/metrics":
-            self._emit_metrics(handler, svc)
-            return
-        if path == "/api/audit-log":
-            qs = parse_qs(urlparse(handler.path).query)
-            limit = int(qs.get("limit", ["100"])[0])
-            action_filter = qs.get("action", [""])[0]
-            handler._json_response(ok, {
-                "entries": svc.audit_recent(limit=limit, action_filter=action_filter),
-            })
-            return
-        # /api/users/{id}/sessions
-        parts = path.split("/")
-        if len(parts) >= 5 and parts[4] == "sessions":
-            handler._json_response(ok, {"sessions": svc.list_sessions(parts[3])})
-            return
-        # /api/users/{id}
-        user_id = path.split("/")[-1]
-        user = svc.user_detail(user_id)
-        if user:
-            handler._json_response(ok, user)
-        else:
-            handler._json_response(HTTPStatus.NOT_FOUND,
-                                   {"error": f"user {user_id} not found"})
+        """Dispatch user-management GET endpoints via the helper class."""
+        _user_mgmt_get_helper.dispatch(
+            handler, path, self._build_me_response, self._emit_metrics,
+        )
 
     def _build_me_response(self, handler, svc) -> dict:
         """Return the authenticated user's record (from the basic-auth
@@ -654,6 +613,74 @@ class GetRequestHandler:
     </html>"""
         handler._html_response(200, html)
 
+
+class _UserMgmtGetHelper:
+    """GET-side user-mgmt dispatcher extracted out of GetRequestHandler
+    so that class stays under the methods-per-class ratchet."""
+
+    def dispatch(self, handler, path, me_builder, metrics_emitter) -> None:
+        svc = build_default_service()
+        if self._dispatch_collection(handler, path, svc, me_builder, metrics_emitter):
+            return
+        self._dispatch_singleton(handler, path, svc)
+
+    def _dispatch_collection(self, handler, path, svc, me_builder,
+                             metrics_emitter) -> bool:
+        ok = HTTPStatus.OK
+        if path == "/api/users":
+            handler._json_response(ok, {"users": svc.list_users()})
+            return True
+        if path == "/api/roles":
+            handler._json_response(ok, {"roles": svc.list_roles()})
+            return True
+        if path == "/api/user-providers":
+            handler._json_response(ok, {"providers": svc.provider_health()})
+            return True
+        if path == "/api/users-reconcile":
+            handler._json_response(ok, {"diffs": svc.reconcile_report()})
+            return True
+        if path == "/api/invites":
+            handler._json_response(
+                ok, {"invites": build_default_invite_service().list_pending()},
+            )
+            return True
+        if path == "/api/tokens":
+            tokens = [t.to_dict() for t in build_default_api_token_store().list_all()]
+            handler._json_response(ok, {"tokens": tokens})
+            return True
+        if path == "/api/me":
+            handler._json_response(ok, me_builder(handler, svc))
+            return True
+        if path == "/metrics":
+            metrics_emitter(handler, svc)
+            return True
+        if path == "/api/audit-log":
+            qs = parse_qs(urlparse(handler.path).query)
+            limit = int(qs.get("limit", ["100"])[0])
+            action_filter = qs.get("action", [""])[0]
+            handler._json_response(ok, {
+                "entries": svc.audit_recent(
+                    limit=limit, action_filter=action_filter),
+            })
+            return True
+        return False
+
+    def _dispatch_singleton(self, handler, path, svc) -> None:
+        ok = HTTPStatus.OK
+        parts = path.split("/")
+        if len(parts) >= 5 and parts[4] == "sessions":
+            handler._json_response(ok, {"sessions": svc.list_sessions(parts[3])})
+            return
+        user_id = path.split("/")[-1]
+        user = svc.user_detail(user_id)
+        if user:
+            handler._json_response(ok, user)
+        else:
+            handler._json_response(HTTPStatus.NOT_FOUND,
+                                   {"error": f"user {user_id} not found"})
+
+
+_user_mgmt_get_helper = _UserMgmtGetHelper()
 
 _instance = GetRequestHandler()
 handle = _instance.handle
