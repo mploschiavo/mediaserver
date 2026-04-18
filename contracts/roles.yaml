@@ -1,0 +1,87 @@
+# User role catalog. Provider-neutral — core code never mentions specific
+# backend names. Provider-specific payloads live under provider_payloads
+# keyed by provider id.
+
+version: 1
+roles:
+  superadmin:
+    name: Super Admin
+    description: Full control of the stack, user management, and all services.
+    sso_groups: [admins]
+    provider_payloads:
+      jellyfin:
+        IsAdministrator: true
+        EnableAllFolders: true
+        EnableRemoteAccess: true
+        MaxActiveSessions: 0
+      jellyseerr:
+        permissions: 2           # ADMIN
+        request_quota: {movies: 0, tv: 0}
+  family_admin:
+    name: Family Admin
+    description: Manage household requests and library settings.
+    sso_groups: [family, family_admins]
+    provider_payloads:
+      jellyfin:
+        IsAdministrator: false
+        EnableAllFolders: true
+        EnableRemoteAccess: true
+        MaxActiveSessions: 4
+      jellyseerr:
+        permissions: 256         # MANAGE_REQUESTS
+        request_quota: {movies: 20, tv: 20}
+  adult:
+    name: Adult
+    description: Standard user; full library access, can request content.
+    sso_groups: [family]
+    provider_payloads:
+      jellyfin:
+        IsAdministrator: false
+        EnableAllFolders: true
+        EnableRemoteAccess: true
+        MaxActiveSessions: 3
+      jellyseerr:
+        permissions: 32          # REQUEST
+        request_quota: {movies: 10, tv: 10}
+  teen:
+    name: Teen
+    description: Access to family library with PG-13 ceiling.
+    sso_groups: [family, teens]
+    provider_payloads:
+      jellyfin:
+        IsAdministrator: false
+        EnableAllFolders: true
+        EnableRemoteAccess: false
+        MaxActiveSessions: 2
+        MaxParentalRating: 13
+      jellyseerr:
+        permissions: 0
+        request_quota: {movies: 0, tv: 0}
+  kid:
+    name: Kid
+    description: Kids library only, G/PG rating ceiling.
+    sso_groups: [family, kids]
+    provider_payloads:
+      jellyfin:
+        IsAdministrator: false
+        EnableAllFolders: false
+        EnabledFolders: []
+        EnableRemoteAccess: false
+        MaxActiveSessions: 2
+        MaxParentalRating: 7
+      jellyseerr:
+        permissions: 0
+        request_quota: {movies: 0, tv: 0}
+  guest:
+    name: Guest
+    description: Temporary access; limited streams, cannot request.
+    sso_groups: [guests]
+    provider_payloads:
+      jellyfin:
+        IsAdministrator: false
+        EnableAllFolders: true
+        EnableRemoteAccess: false
+        MaxActiveSessions: 1
+      jellyseerr:
+        permissions: 0
+        request_quota: {movies: 0, tv: 0}

@@ -337,6 +337,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <button onclick="showTab('tab-profile',this)">Config</button>
     <button onclick="showTab('tab-routing',this)">Routing</button>
     <button onclick="showTab('tab-webhooks',this)">Alerts</button>
+    <button onclick="showTab('tab-users',this)">Users</button>
   </div>
 
   <!-- Logs tab -->
@@ -577,6 +578,27 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       </div>
       <div id="alert-rules" style="margin-top:8px"></div>
     </div>
+  </div>
+
+  <!-- Users tab -->
+  <div id="tab-users" class="tab-content">
+    <p style="color:var(--fg2);font-size:.9em;margin:0 0 8px">Manage users across Authelia (auth), Jellyfin (streaming), and Jellyseerr (requests). Roles map to each provider's policy via the role catalog.</p>
+    <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-list',this)">Users</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-roles',this)">Roles</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-audit',this)">Audit Log</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-providers',this)">Providers</button>
+    </div>
+    <div id="users-list" class="subtab active" style="min-height:80px">
+      <div style="margin-bottom:10px">
+        <button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="showAddUserDialog()">Add User</button>
+        <button class="btn-secondary" style="padding:6px 14px;font-size:.85em;margin-left:8px" onclick="loadUserList()">Refresh</button>
+      </div>
+      <div id="user-table"><span style="color:var(--fg3);font-size:.85em">Loading...</span></div>
+    </div>
+    <div id="users-roles" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="users-audit" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="users-providers" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
   </div>
 </div>
 
@@ -1734,6 +1756,135 @@ function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.quer
   else if(id==='cfg-display')_load(loadDisplayConfig);
   else if(id==='cfg-auth')_load(loadAuthConfig);
   else if(id==='lib-indexers')_load(loadIndexers);
+  else if(id==='users-list')_load(loadUserList);
+  else if(id==='users-roles')_load(loadRoleList);
+  else if(id==='users-audit')_load(loadAuditLog);
+  else if(id==='users-providers')_load(loadUserProviders);
+}
+/* Users tab — separate helper that matches showSubTab's contract but uses
+ * the "users-" prefix so we can share the same sub-tab machinery. */
+function showUserSubTab(id,btn){return showSubTab(id,btn);}
+
+async function loadUserList(){
+  const box=document.getElementById('user-table');
+  box.innerHTML=skeletonHTML(4);
+  try{
+    const r=await fetch('/api/users');
+    const j=await r.json();
+    const users=j.users||[];
+    const roles=(await (await fetch('/api/roles')).json()).roles||[];
+    const roleOpts=roles.map(r=>`<option value="${r.slug}">${r.name}</option>`).join('');
+    if(!users.length){box.innerHTML='<p style="color:var(--fg3);font-size:.85em">No users yet. Add the first one.</p>';return;}
+    let h='<table style="width:100%;border-collapse:collapse;font-size:.85em">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left">';
+    h+='<th style="padding:6px 4px">Email</th><th>Username</th><th>Display</th><th>Role</th><th>State</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+    for(const u of users){
+      h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 4px">${u.email}</td><td>${u.username}</td><td>${u.display_name||''}</td>`;
+      h+=`<td><select onchange="setUserRole('${u.id}',this.value)" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);padding:2px 4px;font-size:.85em">${roles.map(r=>`<option value="${r.slug}"${r.slug===u.role_slug?' selected':''}>${r.name}</option>`).join('')}</select></td>`;
+      h+=`<td><span class="state-${u.state}" style="padding:2px 6px;border-radius:3px;background:var(--bg2);font-size:.78em">${u.state}</span></td>`;
+      h+=`<td style="color:var(--fg3);font-size:.78em">${(u.created_at||'').split('T')[0]}</td>`;
+      h+='<td>';
+      h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="resetUserPassword('${u.id}','${u.email.replace(/'/g,"")}')">Reset Pw</button> `;
+      if(u.state==='active')h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="setUserState('${u.id}','suspended')">Suspend</button> `;
+      else if(u.state==='suspended')h+=`<button class="btn-secondary" style="padding:2px 6px;font-size:.78em" onclick="setUserState('${u.id}','active')">Unsuspend</button> `;
+      h+=`<button class="btn-danger" style="padding:2px 6px;font-size:.78em" onclick="deleteUser('${u.id}','${u.email.replace(/'/g,"")}')">Delete</button>`;
+      h+='</td></tr>';
+    }
+    h+='</tbody></table>';
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+
+function showAddUserDialog(){
+  const email=prompt('Email:');if(!email)return;
+  const username=prompt('Username:');if(!username)return;
+  const display_name=prompt('Display name (optional):','')||'';
+  const role_slug=prompt('Role slug (superadmin/family_admin/adult/teen/kid/guest):','adult')||'adult';
+  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email,username,display_name,role_slug})})
+    .then(r=>r.json()).then(j=>{
+      if(j.error){alert('Error: '+j.error);return;}
+      alert(`Created ${j.email}\nTemp password: ${j.generated_password}\nStore it now — it is not recoverable.`);
+      loadUserList();
+    }).catch(e=>alert('Error: '+e));
+}
+
+async function setUserRole(userId,roleSlug){
+  const r=await fetch(`/api/users/${userId}/role`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_slug:roleSlug})});
+  const j=await r.json();
+  if(j.error)alert('Error: '+j.error);else loadUserList();
+}
+
+async function setUserState(userId,state){
+  const r=await fetch(`/api/users/${userId}/state`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state})});
+  const j=await r.json();
+  if(j.error)alert('Error: '+j.error);else loadUserList();
+}
+
+async function resetUserPassword(userId,email){
+  if(!confirm(`Reset password for ${email}? A new password will be generated.`))return;
+  const r=await fetch(`/api/users/${userId}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const j=await r.json();
+  if(j.error){alert('Error: '+j.error);return;}
+  alert(`New password for ${email}:\n\n${j.generated_password}\n\nStore it now — it is not recoverable.`);
+}
+
+async function deleteUser(userId,email){
+  if(!confirm(`Delete ${email}? This removes them from Authelia and Jellyfin.`))return;
+  const r=await fetch(`/api/users/${userId}/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const j=await r.json();
+  if(j.error)alert('Error: '+j.error);else loadUserList();
+}
+
+async function loadRoleList(){
+  const box=document.getElementById('users-roles');
+  try{
+    const j=await (await fetch('/api/roles')).json();
+    const roles=j.roles||[];
+    let h='<p style="color:var(--fg3);font-size:.85em;margin:0 0 10px">Roles are defined in <code>contracts/roles.yaml</code>. Each maps to SSO groups + Jellyfin policy + Jellyseerr permissions.</p>';
+    for(const r of roles){
+      h+=`<div style="border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px">`;
+      h+=`<b>${r.name}</b> <code style="color:var(--fg3);font-size:.8em">${r.slug}</code>`;
+      h+=`<div style="color:var(--fg3);font-size:.82em;margin:4px 0">${r.description||''}</div>`;
+      h+=`<div style="font-size:.8em"><b>SSO groups:</b> ${(r.sso_groups||[]).join(', ')||'—'}</div>`;
+      const jfKeys=Object.keys(r.jellyfin_policy||{});
+      if(jfKeys.length)h+=`<div style="font-size:.8em"><b>Jellyfin policy:</b> ${jfKeys.join(', ')}</div>`;
+      if(r.jellyseerr)h+=`<div style="font-size:.8em"><b>Jellyseerr:</b> permissions=${r.jellyseerr.permissions||0}, quotas=${JSON.stringify(r.jellyseerr.request_quota||{})}</div>`;
+      h+=`</div>`;
+    }
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+
+async function loadAuditLog(){
+  const box=document.getElementById('users-audit');
+  try{
+    const j=await (await fetch('/api/audit-log?limit=50')).json();
+    const entries=j.entries||[];
+    if(!entries.length){box.innerHTML='<p style="color:var(--fg3);font-size:.85em">No audit entries yet.</p>';return;}
+    let h='<table style="width:100%;border-collapse:collapse;font-size:.82em">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left"><th style="padding:6px 4px">When</th><th>Actor</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody>';
+    for(const e of entries.slice().reverse()){
+      h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px">${e.timestamp}</td><td>${e.actor}</td><td><code>${e.action}</code></td><td>${e.target}</td><td>${e.result}</td></tr>`;
+    }
+    h+='</tbody></table>';
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+
+async function loadUserProviders(){
+  const box=document.getElementById('users-providers');
+  try{
+    const j=await (await fetch('/api/user-providers')).json();
+    const providers=j.providers||[];
+    let h='<table style="width:100%;border-collapse:collapse;font-size:.85em">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border);text-align:left"><th style="padding:6px 4px">Provider</th><th>Source of Truth</th><th>Health</th><th>Detail</th></tr></thead><tbody>';
+    for(const p of providers){
+      h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 4px"><b>${p.name}</b></td><td>${p.source_of_truth?'yes':''}</td><td>${p.ok?'<span style="color:var(--ok)">OK</span>':'<span style="color:var(--err)">FAIL</span>'}</td><td style="color:var(--fg3);font-size:.8em">${p.detail||''}</td></tr>`;
+    }
+    h+='</tbody></table>';
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
 }
 
 /* #1 Bandwidth + #2 Error rates */

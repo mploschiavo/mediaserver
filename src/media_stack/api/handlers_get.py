@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import os
 import time
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse, parse_qs
+
+from media_stack.core.auth.users.user_service import build_default_service
 
 from .cache import api_cache
 from .services import health as health_svc
@@ -137,6 +141,9 @@ class GetRequestHandler:
             handler._json_response(200, get_custom_formats(svc_id))
         elif path == "/api/arr-webhooks":
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
+        elif path == "/api/users" or path.startswith("/api/users/") \
+                or path in ("/api/roles", "/api/user-providers", "/api/audit-log"):
+            self._handle_user_mgmt(handler, path)
         elif path == "/api/download-client-settings":
             handler._json_response(200, content_svc.get_download_client_settings())
         elif path == "/api/quality-profiles":
@@ -514,6 +521,35 @@ class GetRequestHandler:
                 })
             else:
                 handler._json_response(404, {"error": "not found"})
+
+    def _handle_user_mgmt(self, handler: ControllerAPIHandler, path: str) -> None:
+        """Dispatch user-management GET endpoints."""
+        ok = HTTPStatus.OK
+        svc = build_default_service()
+        if path == "/api/users":
+            handler._json_response(ok, {"users": svc.list_users()})
+            return
+        if path == "/api/roles":
+            handler._json_response(ok, {"roles": svc.list_roles()})
+            return
+        if path == "/api/user-providers":
+            handler._json_response(ok, {"providers": svc.provider_health()})
+            return
+        if path == "/api/audit-log":
+            qs = parse_qs(urlparse(handler.path).query)
+            limit = int(qs.get("limit", ["100"])[0])
+            action_filter = qs.get("action", [""])[0]
+            handler._json_response(ok, {
+                "entries": svc.audit_recent(limit=limit, action_filter=action_filter),
+            })
+            return
+        user_id = path.split("/")[-1]
+        user = svc.get_user(user_id)
+        if user:
+            handler._json_response(ok, user)
+        else:
+            handler._json_response(HTTPStatus.NOT_FOUND,
+                                   {"error": f"user {user_id} not found"})
 
     @staticmethod
     def _handle_api_docs(handler: ControllerAPIHandler) -> None:
