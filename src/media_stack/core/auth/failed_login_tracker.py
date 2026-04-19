@@ -64,6 +64,20 @@ class FailedLoginTracker:
         with self._lock:
             self._windows.pop(key, None)
 
+    def is_locked(self, key_raw: str, *, now: float | None = None) -> bool:
+        """True when ``key_raw`` has tripped the threshold and is still
+        inside the cooldown window. Used to reject auth attempts from
+        an IP that has already burned through its failure budget,
+        without adding a separate rate limiter.
+        """
+        clock = now if now is not None else time.time()
+        key = (key_raw or "").strip().lower() or "-"
+        with self._lock:
+            w = self._windows.get(key)
+            if w is None or not w.alerted:
+                return False
+            return (clock - w.first_failure_at) <= self.cooldown_seconds
+
     def snapshot(self) -> dict[str, dict]:
         with self._lock:
             return {
