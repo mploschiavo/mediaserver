@@ -667,12 +667,23 @@ class TestGetApiKeys(unittest.TestCase):
         "STACK_ADMIN_PASSWORD": "mypass",
         "CONTROLLER_AUTH": "none",
     })
-    def test_keys_includes_admin_credentials(self, mock_discover):
+    def test_keys_returns_username_but_never_password(self, mock_discover):
+        """Regression: /api/keys used to echo the plaintext admin
+        password. Now it must expose only the username + a boolean
+        flag so a compromised read-scope bearer token can't lift
+        creds for offline use."""
         h = make_handler("GET", "/api/keys")
         h.do_GET()
         body = _get_json_written(h)
         self.assertEqual(body["admin"]["username"], "myuser")
-        self.assertEqual(body["admin"]["password"], "mypass")
+        self.assertTrue(body["admin"]["password_set"])
+        self.assertNotIn("password", body["admin"],
+                         "/api/keys MUST NOT echo the admin password")
+        import json as _json
+        raw = _json.dumps(body)
+        self.assertNotIn("mypass", raw,
+                         "/api/keys response must not contain the password "
+                         "anywhere in the payload")
 
     @mock.patch("media_stack.api.services.health.discover_api_keys",
                 return_value={})

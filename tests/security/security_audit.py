@@ -82,6 +82,11 @@ class SecurityAuditRunner:
     _SECRET_PATTERNS = (
         "password", "secret", "api_key", "bearer ", "-----BEGIN",
     )
+    # Endpoints that historically leaked admin creds; the audit probes
+    # these authenticated and asserts no password pattern appears in
+    # the response body. Callers add to target.sensitive_paths for the
+    # generic check; this list is for extra-strict scrutiny.
+    _CREDENTIAL_ENDPOINTS = ("/api/keys",)
 
     def __init__(self, target: AuditTarget,
                  timeout: float = _DEFAULT_TIMEOUT) -> None:
@@ -114,6 +119,7 @@ class SecurityAuditRunner:
         self._check_body_size_cap()
         self._check_webhook_ssrf_block()
         self._check_no_secret_in_error_bodies()
+        self._check_credential_endpoints_no_password_echo()
         self._check_trailing_slash_canonicalization()
         return list(self._results)
 
@@ -376,6 +382,32 @@ class SecurityAuditRunner:
             "no_secret_in_errors",
             "pass" if not hits else "fail",
             "leaked: " + ", ".join(hits) if hits else "clean",
+        )
+
+    def _check_credential_endpoints_no_password_echo(self) -> None:
+        """Probe well-known creds endpoints with valid auth and assert
+        no password-ish value is echoed. Historically /api/keys
+        returned the plaintext admin password; we guard against the
+        regression here.
+        """
+        if not self._has_admin_creds():
+            self._skip("credential_endpoints_no_echo", "no admin creds")
+            return
+        pw = self.target.admin_pass
+        leaks: list[str] = []
+        for path in self._CREDENTIAL_ENDPOINTS:
+            resp = self._request("GET", path, auth=self._basic_auth_header())
+            if resp.status != 200:
+                continue  # endpoint doesn't exist on this target
+            body_l = resp.body.lower()
+            if pw and pw.lower() in body_l:
+                leaks.append(f"{path}: plaintext admin password found")
+            if '"password":' in body_l:
+                leaks.append(f"{path}: field 'password' present in body")
+        self._record(
+            "credential_endpoints_no_echo",
+            "pass" if not leaks else "fail",
+            "; ".join(leaks) or "no credential echo detected",
         )
 
     def _check_trailing_slash_canonicalization(self) -> None:
