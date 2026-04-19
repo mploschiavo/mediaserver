@@ -27,12 +27,20 @@ def build_ext_authz_filter(
     It sends each request to the auth provider for verification before forwarding.
     """
     path_prefix = ext_authz.path_prefix
-    # For Authelia /api/verify, add rd= parameter so unauthenticated
-    # requests get 302 redirect instead of bare 401.
-    if auth_portal_url and "/api/verify" in path_prefix:
-        from urllib.parse import quote
-        separator = "&" if "?" in path_prefix else "?"
-        path_prefix = f"{path_prefix}{separator}rd={quote(auth_portal_url, safe=':/')}"
+    # NOTE: the previous implementation here appended `&rd=<portal-url>`
+    # to path_prefix to nudge Authelia into returning 302-to-login on
+    # unauthenticated requests. That was a mistake: Envoy's ext_authz
+    # filter APPENDS the user's original request path to path_prefix
+    # before sending to Authelia, so a user GET /app produced an authz
+    # URL of `/api/verify?rd=https://auth.example/app` — Authelia
+    # echoed `https://auth.example/app` as the login destination and
+    # broke the whole login flow.
+    #
+    # Authelia /api/verify derives the redirect target from the
+    # X-Forwarded-* headers Envoy already sends (via the Lua filter).
+    # Its `authelia_url` config tells it where its own portal lives.
+    # No `rd=` query parameter is needed — Authelia's 302 Location
+    # header already points at the portal. Keep path_prefix minimal.
 
     return {
         "name": EXT_AUTHZ_FILTER_NAME,
