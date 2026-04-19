@@ -903,28 +903,63 @@ class PostRequestHandler:
         return True
 
     def _check_csrf(self, handler) -> bool:
-        """CSRF enforcement — smart default.
+        """CSRF enforcement — smart default + Origin/Referer cross-check.
 
         Requests that include a session cookie are assumed to come from a
         browser and must present a matching X-CSRF-Token header. Requests
         without a cookie are API clients using basic-auth from a script;
         they're not CSRF-vulnerable and are allowed through unless
         CSRF_ENFORCE=1 forces strict mode.
+
+        When a browser request is subject to CSRF, we ALSO verify the
+        Origin (or falling back to Referer) header is same-origin. This
+        defends against a subclass of token-theft attacks — an attacker
+        who steals a token still needs to forge requests from the same
+        origin as the dashboard, which same-origin policy prevents.
         """
         if _CSRF_MODE == "0":
             return True
         headers = getattr(handler, "headers", None)
         if headers is None:
-            return True  # can't evaluate CSRF; let upstream auth gate decide
+            return True
         try:
             cookie_header = headers.get("Cookie", "")
             csrf_header = headers.get(_csrf.header_name, "")
+            origin = headers.get("Origin", "") or ""
+            referer = headers.get("Referer", "") or ""
+            host = headers.get("Host", "") or ""
         except AttributeError:
             return True
         has_cookie = isinstance(cookie_header, str) and bool(cookie_header.strip())
-        if _CSRF_ENFORCE or has_cookie:
-            return _csrf.verify(cookie_header=cookie_header,
-                                header_value=csrf_header)
+        if not (_CSRF_ENFORCE or has_cookie):
+            return True
+        if not _csrf.verify(cookie_header=cookie_header,
+                             header_value=csrf_header):
+            return False
+        return self._origin_matches_host(origin, referer, host)
+
+    def _origin_matches_host(self, origin: str, referer: str, host: str) -> bool:
+        """Defense-in-depth: reject POSTs whose Origin/Referer doesn't
+        match the Host header. Missing Origin/Referer is tolerated so
+        older browsers + server-to-server clients still work; it's the
+        stolen-token case we're trying to block.
+        """
+        if not host:
+            return True
+        for candidate in (origin, referer):
+            if not candidate:
+                continue
+            try:
+                parsed = urlparse(candidate)
+            except ValueError:
+                return False
+            netloc = parsed.netloc or ""
+            if not netloc:
+                return False
+            # Strip :port from both sides so http://host:9100 vs
+            # Host: host:9100 compare cleanly.
+            if netloc.split(":")[0].lower() != host.split(":")[0].lower():
+                return False
         return True
 
     def _user_create(self, svc, body: dict, actor: str) -> dict:

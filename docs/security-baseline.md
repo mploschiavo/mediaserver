@@ -32,7 +32,7 @@ at the service. The runner is **pure HTTP** — it imports no stack code
 and can audit third-party apps (Jellyfin, Sonarr, Radarr, etc.) the
 same way.
 
-## Checks (18 at baseline)
+## Checks (19 at baseline)
 
 Every service is measured against these. A service declares which
 paths are public / sensitive / mutating, and the runner probes each.
@@ -54,6 +54,7 @@ paths are public / sensitive / mutating, and the runner probes each.
 | # | Check | Meaning | Critical? |
 |---|---|---|---|
 | 8 | `csrf_blocks_cookie_no_token` | Cookie-bearing POST without a matching `X-CSRF-Token` returns 401/403. Catches missing CSRF on mutating endpoints. | **yes** |
+| 8b | `cross_origin_mutation_rejected` | A cookie-bearing POST with a cross-origin `Origin` header is rejected even with a valid CSRF token. Defense-in-depth against token theft. | **yes** |
 
 ### Response hygiene
 
