@@ -78,10 +78,15 @@ if step_active 1; then
   fi
 fi
 
-# Step 2: Envoy config has a TLS listener.
+# Step 2: Envoy config has a TLS listener. `grep -c` prints the count
+# AND exits non-zero when it's zero, so we can't use `||` to provide
+# a fallback without double-printing. Use awk to normalize.
 if step_active 2; then
-  count=$(docker exec envoy grep -c "transport_socket:" /etc/envoy/envoy.yaml 2>/dev/null || echo 0)
-  if [[ "$count" -gt 0 ]]; then
+  count=$(docker exec envoy sh -c \
+    'grep -c "transport_socket:" /etc/envoy/envoy.yaml 2>/dev/null; true' \
+    | head -1 | tr -d '[:space:]')
+  count=${count:-0}
+  if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
     record "2. Envoy config TLS listener" pass "transport_socket blocks=$count"
   else
     record "2. Envoy config TLS listener" fail \
