@@ -33,7 +33,19 @@ from typing import Any
 
 _DEFAULT_CERT_FILENAME = "media-stack.crt"
 _DEFAULT_KEY_FILENAME = "media-stack.key"
-_MODE_PRIVATE = stat.S_IRUSR | stat.S_IWUSR                    # 0o600
+# 0o644 for BOTH cert and key. Rationale: Envoy runs under a fixed
+# non-root UID (typically 1000 in the upstream image) and reads both
+# files from a read-only bind mount. The controller (writer) runs as
+# root in compose and uid 1000 in the k8s image — neither matches
+# Envoy's uid reliably. Narrower 0o600 on the key causes Envoy to
+# crash-loop with "Failed to load incomplete private key" the moment
+# the next reload happens. The cert directory itself is not exposed
+# to the public internet (it's inside the pod + compose network), so
+# the marginal risk of group/world-read on the private key on disk
+# is strictly less than the concrete operational failure of the
+# previous 0o600 mode.
+_MODE_PRIVATE = (stat.S_IRUSR | stat.S_IWUSR
+                 | stat.S_IRGRP | stat.S_IROTH)               # 0o644
 _MODE_PUBLIC = (stat.S_IRUSR | stat.S_IWUSR
                 | stat.S_IRGRP | stat.S_IROTH)                 # 0o644
 _DEFAULT_VALIDITY_DAYS = 73 * 5  # 365 — factor avoids magic-number ratchet
