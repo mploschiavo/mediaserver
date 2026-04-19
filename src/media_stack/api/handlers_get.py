@@ -401,13 +401,25 @@ class GetRequestHandler:
 
     @staticmethod
     def _handle_keys(handler: ControllerAPIHandler) -> None:
-        """Return all discovered API keys and admin credentials."""
+        """Return discovered per-service API keys + admin USERNAME only.
+
+        The admin password is intentionally NOT returned. Previously this
+        endpoint echoed the plaintext ``STACK_ADMIN_PASSWORD`` to any
+        authenticated caller, which effectively meant a single
+        compromised read-scope bearer token handed over the whole
+        controller. Password rotation goes through the user-management
+        UI (Settings \u2192 Users \u2192 admin \u2192 Reset password) which never
+        surfaces the plaintext to any observer.
+        """
         keys = health_svc.discover_api_keys()
         admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-        admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+        admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "")
         handler._json_response(200, {
             "keys": keys,
-            "admin": {"username": admin_user, "password": admin_pass},
+            "admin": {
+                "username": admin_user,
+                "password_set": bool(admin_pass),
+            },
             "count": len(keys),
         })
 

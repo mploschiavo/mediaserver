@@ -1497,7 +1497,7 @@ async function showExportKeys(){
     if(d.admin){
       rows+='<tr><td colspan="2" style="padding:8px 8px 4px;font-weight:700;border-top:1px solid var(--border)">Admin Credentials</td></tr>';
       rows+='<tr><td style="padding:4px 8px">Username</td><td style="padding:4px 8px"><code style="user-select:all">'+d.admin.username+'</code></td></tr>';
-      rows+='<tr><td style="padding:4px 8px">Password</td><td style="padding:4px 8px"><code style="user-select:all">'+d.admin.password+'</code></td></tr>';
+      rows+='<tr><td style="padding:4px 8px">Password</td><td style="padding:4px 8px"><span style="color:var(--fg3)">'+(d.admin.password_set?'\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (hidden \u2014 Settings \u2192 Users \u2192 admin \u2192 Reset)':'<em>not set</em>')+'</span></td></tr>';
     }
     const html='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box" style="max-width:600px"><h3>API Keys &amp; Credentials</h3>'
       +'<p style="font-size:.82em;color:var(--fg2)">'+Object.keys(d.keys||{}).length+' keys discovered</p>'
@@ -1512,7 +1512,7 @@ function copyKeysToClipboard(){
   const d=window._lastKeysPayload;if(!d)return;
   let lines=[];
   for(const [id,key] of Object.entries(d.keys||{}))lines.push(id.toUpperCase()+'_API_KEY='+key);
-  if(d.admin){lines.push('STACK_ADMIN_USERNAME='+d.admin.username);lines.push('STACK_ADMIN_PASSWORD='+d.admin.password);}
+  if(d.admin){lines.push('STACK_ADMIN_USERNAME='+d.admin.username);lines.push('# STACK_ADMIN_PASSWORD intentionally omitted \u2014 the controller no longer echoes plaintext passwords. Reset via Settings \u2192 Users \u2192 admin.');}
   navigator.clipboard.writeText(lines.join('\n')).then(()=>toast('Keys copied to clipboard')).catch(()=>toast('Copy failed',true));
 }
 

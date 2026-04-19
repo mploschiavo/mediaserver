@@ -121,6 +121,9 @@ class ControllerSecurityBaseline(unittest.TestCase):
     def test_no_secret_in_error_bodies(self):
         self._assert_pass("no_secret_in_errors")
 
+    def test_credential_endpoints_no_password_echo(self):
+        self._assert_pass("credential_endpoints_no_echo")
+
     def test_trailing_slash_canonicalization(self):
         self._assert_pass("trailing_slash_canonical")
 
