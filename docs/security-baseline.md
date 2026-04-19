@@ -78,8 +78,12 @@ paths are public / sensitive / mutating, and the runner probes each.
 
 ### Beyond the baseline (not yet coded, tracked as TODOs)
 
-- `ip_lockout_on_brute_force` — bursts of failed logins from a single IP trigger cooldown.
-- `origin_header_check` — POST with a cross-origin `Origin` header is rejected.
+- `ip_lockout_on_brute_force` — **IMPLEMENTED**, covered by
+  [tests/unit/test_ip_lockout.py](../tests/unit/test_ip_lockout.py)
+  rather than the live baseline (a live test would lock the audit
+  runner's own IP out of the whole suite). 20 failed-auth attempts
+  within 5 minutes from one IP → 15-minute 429 lockout.
+- `origin_header_check` — **IMPLEMENTED** as check 8b.
 - `content_type_enforcement` — `/api/*` POSTs with `Content-Type` ≠ `application/json` are rejected.
 - `audit_log_covers_mutation` — every successful mutation writes an audit entry (requires read access to the audit log, done via `/api/audit-log`).
 - `tls_enforced` — if `X-Forwarded-Proto=http` via trusted proxy, the service redirects or refuses.

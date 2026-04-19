@@ -35,6 +35,22 @@ except ImportError:
     _build_sched_reconciler = None
     _build_token_store = None
 
+from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
+
+# Per-IP lockout: after _IP_LOCKOUT_THRESHOLD failures within
+# _IP_LOCKOUT_WINDOW seconds, the IP is rejected outright for
+# _IP_LOCKOUT_COOLDOWN. Keyed by source IP, so credential-stuffing
+# across many usernames still trips the lock. Independent from the
+# per-account tracker used by BasicAuthVerifier.
+_IP_LOCKOUT_THRESHOLD = 20
+_IP_LOCKOUT_WINDOW = 5 * 60
+_IP_LOCKOUT_COOLDOWN = 15 * 60
+_ip_failure_tracker = FailedLoginTracker(
+    threshold=_IP_LOCKOUT_THRESHOLD,
+    window_seconds=_IP_LOCKOUT_WINDOW,
+    cooldown_seconds=_IP_LOCKOUT_COOLDOWN,
+)
+
 
 _H_CONTENT_LENGTH = "Content-Length"
 # Cap request body at 1 MiB. Bulk CSV imports and config uploads stay
@@ -349,17 +365,15 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     def _check_auth(self) -> bool:
         """Check authentication (trusted proxy, bearer token, or basic auth).
 
-        Tried in order:
-          1. Trusted-proxy auth — when CONTROLLER_TRUSTED_PROXY_CIDRS is
-             set and the request IP is inside one of those CIDRs, honor
-             Authelia's Remote-User header. This is what lets the same
-             dashboard work behind an Authelia-protected gateway without
-             prompting for basic auth on top.
+        Order:
+          0. IP-lockout check — an IP that's burned through its failure
+             budget is rejected 429 immediately, no auth path tried.
+          1. Trusted-proxy — Remote-User from an allowlisted CIDR wins.
           2. Bearer token — programmatic clients.
           3. Basic auth — browser + curl.
 
-        All three paths are rejected when CONTROLLER_AUTH is ``none`` or
-        the request hits a public endpoint; that's handled up front.
+        Auth is skipped for public endpoints and when CONTROLLER_AUTH
+        resolves to ``none``.
         """
         path = self.path.split("?")[0]
         if _auth_policy.is_public(self, path):
@@ -368,8 +382,13 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         password = os.environ.get("STACK_ADMIN_PASSWORD", "")
         if _auth_policy.decision(self, path, password) == "allow":
             return True
-        # Trusted-proxy runs FIRST so Authelia-fronted requests don't
-        # double-prompt for basic auth.
+        client_ip = _trusted_proxy_auth._client_ip(self)
+        if client_ip and _ip_failure_tracker.is_locked(client_ip):
+            self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+            self.send_header("Content-Type", "application/json")
+            self.send_header(_H_CONTENT_LENGTH, "0")
+            self.end_headers()
+            return False
         if _trusted_proxy_auth.identity(self):
             return True
         if not password:
@@ -382,6 +401,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 return True
         elif _verify_basic_auth(auth_header, username, password):
             return True
+        if client_ip:
+            _ip_failure_tracker.register_failure(client_ip)
         _auth_policy.send_401(self)
         return False
 
