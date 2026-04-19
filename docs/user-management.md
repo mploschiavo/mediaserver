@@ -119,6 +119,7 @@ live in `contracts/roles.yaml`.
 | Env var | Default | Meaning |
 |---|---|---|
 | `CONTROLLER_AUTH` | `all` when password set, else `none` | `all` = every `/api/*`, `/metrics`, `/logs/*` endpoint requires auth regardless of method. `write` = legacy mode, GETs public except sensitive paths (still gated). `none` = no auth. |
+| `CONTROLLER_OIDC_LOGIN_REDIRECT` | (unset) | URL to 302 browsers to when an unauth'd HTML-accepting GET arrives. Use this to delegate login to Authelia (e.g. `https://auth.media.example.com/?rd=https://controller.media.example.com`). API/JSON clients still get a plain 401. |
 | `CONTROLLER_TRUSTED_PROXY_CIDRS` | (unset) | Comma-separated CIDRs of the proxy tier (e.g. Envoy pod IPs). When set, the controller accepts `Remote-User` (or the header named by `CONTROLLER_TRUSTED_PROXY_HEADER`) as an authenticated identity from requests originating inside those CIDRs — unblocks Authelia forward-auth behind Envoy without double-prompting. Requests from outside the CIDRs that carry the header are silently rejected (no spoofing). |
 | `CONTROLLER_TRUSTED_PROXY_HEADER` | `Remote-User` | Header name containing the upstream-auth identity. Must match what your forward-auth emits. |
 | `CSRF_ENFORCE` | (unset) | `1` = strict CSRF for every request (incl. API clients); `0` = disabled; default = smart (strict for browsers, exempt for API clients without Cookie header) |
@@ -145,6 +146,38 @@ Security property: an attacker on the open internet who sends
 `Remote-User: admin` still hits 401, because their source IP isn't
 in the trusted CIDR list. Verified by the
 `trusted_proxy_spoof_rejected` security-baseline test.
+
+### Three auth paths
+
+| Client | Path | How it looks |
+|---|---|---|
+| Browser (gateway + Authelia) | OIDC via Authelia → Envoy forward-auth sets `Remote-User` → controller trusts via `CONTROLLER_TRUSTED_PROXY_CIDRS`. No basic-auth prompt. | Enter OIDC creds at `auth.media.example.com`, land on dashboard. |
+| Browser (direct / no gateway) | POST `/api/auth/login` with `{username, password}` → Set-Cookie `ms_session=…; HttpOnly; Secure; SameSite=Strict`. Cookie authenticates subsequent requests; revoke via POST `/api/auth/logout`. | Login form posts to `/api/auth/login`, cookie carries the session from there. |
+| Programmatic client | Bearer token minted from `/api/tokens` (POST) — long-lived, revocable, scoped. | `curl -H "Authorization: Bearer <tok>" …` |
+
+Basic auth still works as a break-glass path for curl scripts you
+don't want to mint a token for.
+
+### RBAC: `controller_admin` role flag
+
+Authentication says who you are; `controller_admin` says what you
+can do. Roles with `controller_admin: true` (the default) can call
+every mutating endpoint. Roles with `controller_admin: false` get
+GET-only access — dashboard loads, `/api/me` returns their profile,
+but any POST/PUT/DELETE returns 403.
+
+Shipped settings on `contracts/roles.yaml`:
+
+- `superadmin` → `controller_admin: true`
+- `family_admin`, `adult`, `teen`, `kid`, `guest` → `controller_admin: false`
+
+Change any role's flag via Settings → Users → Roles → Edit, or
+edit `contracts/roles.yaml` directly and reload.
+
+Fallback: if the authenticating user doesn't exist in the local
+store (e.g. the STACK_ADMIN env-var break-glass), mutations are
+allowed. This prevents day-zero lockouts before any user has been
+reconciled into the controller DB.
 
 ### API auth: basic auth vs bearer tokens
 

@@ -82,6 +82,13 @@ class Role:
     # before they can authenticate to the controller UI. Enforced by
     # BasicAuthVerifier when it sees the flag on the matched role.
     require_2fa: bool = False
+    # Controller-API authorization: when true, the role can call every
+    # controller endpoint (mutations included). When false, the role is
+    # read-only — GETs pass, any POST/PUT/DELETE returns 403. This is
+    # the per-endpoint RBAC layer on top of bearer-token scope; scope
+    # gates what a TOKEN can do, controller_admin gates what a USER
+    # can do regardless of which token they minted.
+    controller_admin: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -94,6 +101,7 @@ class Role:
             },
             "propagate_to_service_admins": self.propagate_to_service_admins,
             "require_2fa": self.require_2fa,
+            "controller_admin": self.controller_admin,
         }
 
     @classmethod
@@ -112,6 +120,7 @@ class Role:
                 data.get("propagate_to_service_admins", False),
             ),
             require_2fa=bool(data.get("require_2fa", False)),
+            controller_admin=bool(data.get("controller_admin", True)),
         )
 
 

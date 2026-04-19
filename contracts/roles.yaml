@@ -11,6 +11,8 @@ roles:
     # Password changes propagate to every ServiceAdminProvider (qBit, Arrs,
     # Bazarr, etc.) and the same credential authenticates the controller UI.
     propagate_to_service_admins: true
+    # Full controller-API access (GET + all mutations).
+    controller_admin: true
     provider_payloads:
       jellyfin:
         IsAdministrator: true
@@ -24,6 +26,9 @@ roles:
     name: Family Admin
     description: Manage household requests and library settings.
     sso_groups: [family, family_admins]
+    # Can read controller dashboards + manage users in the household, but
+    # not rotate admin keys / restart services / edit config.
+    controller_admin: false
     provider_payloads:
       jellyfin:
         IsAdministrator: false
@@ -37,6 +42,8 @@ roles:
     name: Adult
     description: Standard user; full library access, can request content.
     sso_groups: [family]
+    # End-user: no controller mutations. Reads are allowed for /api/me etc.
+    controller_admin: false
     provider_payloads:
       jellyfin:
         IsAdministrator: false
@@ -50,6 +57,7 @@ roles:
     name: Teen
     description: Access to family library with PG-13 ceiling.
     sso_groups: [family, teens]
+    controller_admin: false
     provider_payloads:
       jellyfin:
         IsAdministrator: false
@@ -64,6 +72,7 @@ roles:
     name: Kid
     description: Kids library only, G/PG rating ceiling.
     sso_groups: [family, kids]
+    controller_admin: false
     provider_payloads:
       jellyfin:
         IsAdministrator: false
@@ -83,6 +92,7 @@ roles:
     name: Guest
     description: Temporary access; limited streams, cannot request.
     sso_groups: [guests]
+    controller_admin: false
     provider_payloads:
       jellyfin:
         IsAdministrator: false
