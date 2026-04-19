@@ -306,10 +306,12 @@ _handle_logout = _session_login_helper.logout
 class _TlsCertHandler:
     """Install / regenerate the edge TLS certificate used by Envoy.
 
+    After a successful write we automatically trigger an Envoy reload
+    so the new cert takes effect without the operator having to run
+    a separate restart step. The reload is best-effort — its result
+    is returned in the response so the UI can surface any failure.
+
     Both endpoints are mutating + sudo-gated upstream in server.py.
-    Successful writes return the new cert metadata; the caller is
-    expected to trigger an Envoy reload (the dashboard does so via
-    the existing service-restart flow).
     """
 
     def install(self, handler) -> None:
@@ -329,8 +331,9 @@ class _TlsCertHandler:
                 HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
             )
             return
+        reload = self._reload_envoy()
         handler._json_response(HTTPStatus.OK, {
-            "installed": True, **info.to_dict(),
+            "installed": True, "envoy_reload": reload, **info.to_dict(),
         })
 
     def regenerate(self, handler) -> None:
@@ -347,9 +350,21 @@ class _TlsCertHandler:
                 HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
             )
             return
+        reload = self._reload_envoy()
         handler._json_response(HTTPStatus.OK, {
-            "regenerated": True, **info.to_dict(),
+            "regenerated": True, "envoy_reload": reload, **info.to_dict(),
         })
+
+    def _reload_envoy(self) -> dict:
+        """Restart Envoy so the new cert is picked up. Best-effort:
+        failures are returned in the payload rather than rolling back
+        the cert write, since the write was already atomic and the
+        worst case is the operator having to manually restart."""
+        try:
+            return admin_svc.restart_service("envoy")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TLS install: envoy reload failed: %s", exc)
+            return {"status": "error", "detail": str(exc)[:_ERR_LEN]}
 
 
 _tls_handler = _TlsCertHandler()

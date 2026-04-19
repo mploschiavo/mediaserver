@@ -17,6 +17,7 @@ import yaml
 from media_stack.core.auth.api_token_store import ApiTokenStore
 from media_stack.core.auth.basic_auth_verifier import BasicAuthVerifier
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
+from media_stack.core.auth.users.audit_chain_verifier import AuditChainVerifier
 from media_stack.core.auth.users.audit_log import AuditLog
 from media_stack.core.auth.users.invite_service import InviteService
 from media_stack.core.auth.users.invite_store import InviteStore
@@ -131,6 +132,34 @@ class UserServiceFactory:
             alert_fn=_alert,
         )
 
+    def build_audit_chain_verifier(self) -> AuditChainVerifier:
+        """Background thread that periodically verifies the audit log's
+        hash chain. On tamper detection it writes a loud ERROR line and
+        appends an 'audit_chain_tamper' entry so the event is itself
+        chained (before the corruption, at least)."""
+        config_root = Path(self._env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
+        audit_path = config_root / "controller" / "audit.log.jsonl"
+
+        def _alert(detail: str) -> None:
+            try:
+                AuditLog(audit_path).append(
+                    actor="audit-verifier", action="audit_chain_tamper",
+                    target=str(audit_path), result="alert",
+                    detail={"message": detail[:99]},
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Already logged upstream by the verifier; writing to a
+                # corrupt chain is also likely to fail — swallow at DEBUG.
+                import logging as _logging
+                _logging.getLogger("media_stack").debug(
+                    "[DEBUG] audit-chain alert append failed: %s", exc,
+                )
+
+        return AuditChainVerifier(
+            audit_factory=lambda: AuditLog(audit_path),
+            alert_fn=_alert,
+        )
+
     def build_api_token_store(self) -> ApiTokenStore:
         config_root = Path(self._env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
         return ApiTokenStore(config_root / "controller" / "api_tokens.json")
@@ -235,5 +264,6 @@ build_default_service = _default_factory.build
 build_default_auth_verifier = _default_factory.build_auth_verifier
 build_default_invite_service = _default_factory.build_invite_service
 build_default_scheduled_reconciler = _default_factory.build_scheduled_reconciler
+build_default_audit_chain_verifier = _default_factory.build_audit_chain_verifier
 build_default_api_token_store = _default_factory.build_api_token_store
 resolve_default_roles_path = _default_factory.resolve_roles_path
