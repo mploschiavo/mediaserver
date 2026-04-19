@@ -60,6 +60,7 @@ _ip_failure_tracker = FailedLoginTracker(
 
 
 _H_CONTENT_LENGTH = "Content-Length"
+_H_AUTHORIZATION = "Authorization"
 # Cap request body at 1 MiB. Bulk CSV imports and config uploads stay
 # well under this; anything larger is either a mistake or an attack.
 _MAX_BODY_BYTES = 1 * (2 ** 20)
@@ -279,7 +280,7 @@ class _ControllerRBAC:
         remote = _trusted_proxy_auth.identity(handler)
         if remote:
             return remote
-        auth = (handler.headers.get("Authorization", "") if
+        auth = (handler.headers.get(_H_AUTHORIZATION, "") if
                 getattr(handler, "headers", None) else "") or ""
         if auth.startswith("Basic "):
             try:
@@ -321,6 +322,119 @@ class _ControllerRBAC:
 
 
 _controller_rbac = _ControllerRBAC()
+
+
+class _SudoGate:
+    """Re-authentication gate for high-risk endpoints.
+
+    Certain POSTs are dangerous enough that a session cookie or bearer
+    token alone isn't acceptable \u2014 we want proof the human at the
+    keyboard still holds the password. On a matching path, we require
+    an ``X-Sudo-Password`` header whose value verifies against the
+    authenticated user's password (via BasicAuthVerifier). If the
+    request already uses Basic auth, the password is on every request
+    anyway \u2014 we skip the re-check to avoid double-prompting.
+
+    Default sensitive paths:
+      /api/rotate-keys                 rotate admin API keys
+      /api/reset-password              reset service-admin passwords
+      /api/auth/config                 auth mode change
+      /api/users/*/reset-password      per-user password reset
+      /api/users/*/delete              user deletion (_method=DELETE)
+      /api/tokens/revoke-family        burn refresh-token chain
+      /api/envvars                     env var edit (secrets lurk here)
+
+    Opt out or extend via CONTROLLER_SUDO_EXTRA_PATHS (CSV).
+    """
+
+    _DEFAULT_SUDO_PATHS = frozenset({
+        "/api/rotate-keys",
+        "/api/reset-password",
+        "/api/auth/config",
+        "/api/envvars",
+        "/api/tokens/revoke-family",
+    })
+    _DEFAULT_SUDO_PREFIXES = (
+        "/api/users/",  # matches /api/users/{id}/reset-password etc.
+    )
+
+    def __init__(self) -> None:
+        self._env = os.environ
+
+    def requires_sudo(self, handler, path: str) -> bool:
+        if getattr(handler, "command", "") != "POST":
+            return False
+        if path in self._DEFAULT_SUDO_PATHS:
+            return True
+        # Only the destructive per-user endpoints require sudo, not
+        # list/create; match /api/users/{id}/{action} where action is
+        # in a small allowlist.
+        parts = path.split("/")
+        if (len(parts) >= 5 and parts[1] == "api" and parts[2] == "users"
+                and parts[4] in ("reset-password", "delete", "role",
+                                 "revoke-sessions")):
+            return True
+        extra = (self._env.get("CONTROLLER_SUDO_EXTRA_PATHS", "") or "")
+        for chunk in extra.split(","):
+            if chunk.strip() and path == chunk.strip():
+                return True
+        return False
+
+    def allows(self, handler, path: str) -> bool:
+        if not self.requires_sudo(handler, path):
+            return True
+        # If the request already uses Basic auth, the password is
+        # already validated by _check_auth() every time \u2014 that counts
+        # as continuous re-auth, no need for X-Sudo-Password.
+        auth_hdr = ""
+        try:
+            auth_hdr = handler.headers.get(_H_AUTHORIZATION, "") or ""
+        except AttributeError:
+            pass
+        if auth_hdr.startswith("Basic "):
+            return True
+        # Bearer / cookie / trusted-proxy \u2014 require the extra header.
+        sudo_pw = ""
+        try:
+            sudo_pw = (handler.headers.get("X-Sudo-Password", "") or "").strip()
+        except AttributeError:
+            pass
+        if not sudo_pw:
+            return False
+        # Re-auth can succeed under either:
+        #   (a) password matches the identity the request is acting as
+        #       (bearer owner / Remote-User / cookie owner), OR
+        #   (b) password matches the STACK_ADMIN account (root override).
+        # (a) catches the common case "I'm logged in as alice and I
+        # want to delete bob's session"; (b) is a break-glass so an
+        # admin with a bearer under a non-human label ("ci-runner")
+        # can still escalate.
+        candidates: list[str] = []
+        identity = _controller_rbac._identity_of(handler)
+        if identity:
+            candidates.append(identity)
+        admin = self._env.get("STACK_ADMIN_USERNAME", "admin")
+        if admin and admin not in candidates:
+            candidates.append(admin)
+        for user in candidates:
+            if self._credential_matches(user, sudo_pw):
+                return True
+        return False
+
+    def _credential_matches(self, username: str, password: str) -> bool:
+        if _build_auth_verifier is None:
+            fb = self._env.get("STACK_ADMIN_PASSWORD", "")
+            return bool(fb) and password == fb
+        try:
+            return bool(_build_auth_verifier().verify(username, password))
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] sudo verify raised: %s", exc,
+            )
+            return False
+
+
+_sudo_gate = _SudoGate()
 
 
 class _TrustedProxyAuth:
@@ -410,7 +524,7 @@ def _audit_actor_from(handler) -> str:
         logging.getLogger("media_stack").debug(
             "[DEBUG] _audit_actor_from trusted_proxy_auth raised: %s", exc,
         )
-    auth = (handler.headers.get("Authorization", "") if
+    auth = (handler.headers.get(_H_AUTHORIZATION, "") if
             getattr(handler, "headers", None) else "") or ""
     if auth.startswith("Basic "):
         try:
@@ -615,7 +729,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             return True
         if not password:
             return True
-        auth_header = self.headers.get("Authorization", "")
+        auth_header = self.headers.get(_H_AUTHORIZATION, "")
         if auth_header.startswith("Bearer "):
             if _auth_policy.verify_bearer(
                 self, auth_header[len("Bearer "):].strip(),
@@ -710,7 +824,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         body = self._read_json_body()
         overrides = body if body else {}
         # Capture who triggered this action
-        auth_header = self.headers.get("Authorization", "")
+        auth_header = self.headers.get(_H_AUTHORIZATION, "")
         triggered_by = "system"
         if auth_header.startswith("Basic "):
             try:
@@ -875,6 +989,14 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 HTTPStatus.FORBIDDEN,
                 {"error": "role does not permit controller mutations; "
                           "controller_admin=false"},
+            )
+            return
+        sudo_path = self.path.split("?")[0]
+        if not _sudo_gate.allows(self, sudo_path):
+            self._json_response(
+                HTTPStatus.FORBIDDEN,
+                {"error": "sensitive endpoint requires re-authentication; "
+                          "present X-Sudo-Password header with your password"},
             )
             return
         handlers_post.handle(self)

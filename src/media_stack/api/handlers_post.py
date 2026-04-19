@@ -130,6 +130,78 @@ class _WebhookUrlValidator:
 _webhook_url_validator = _WebhookUrlValidator()
 
 
+class _WebhookHmacVerifier:
+    """Verifies GitHub-style ``X-Hub-Signature-256: sha256=<hex>`` on
+    incoming webhooks.
+
+    Behaviour:
+      - ``WEBHOOK_HMAC_SECRET`` unset → pass-through (backward compat).
+      - secret set, header missing  → reject.
+      - secret set, header present  → constant-time compare. Mismatch → reject.
+
+    The verifier consumes the request body once and returns both the
+    parsed JSON AND a boolean for the signature check so the caller
+    can short-circuit before running any side-effects.
+    """
+
+    _HEADER = "X-Hub-Signature-256"
+
+    def __init__(self) -> None:
+        self._env = os.environ
+
+    def verify_and_parse(self, handler) -> tuple[dict, bool]:
+        raw = self._read_raw_body(handler)
+        secret = self._env.get("WEBHOOK_HMAC_SECRET", "").strip()
+        if not secret:
+            # No secret configured — accept all (legacy deployments).
+            return self._parse_json(raw), True
+        signature_ok = self._verify_signature(handler, raw, secret)
+        if not signature_ok:
+            return {}, False
+        return self._parse_json(raw), True
+
+    def _read_raw_body(self, handler) -> bytes:
+        length = int(handler.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            return b""
+        length = min(length, 1 * (2 ** 20))  # cap at 1 MiB like _read_json_body
+        try:
+            return handler.rfile.read(length)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] webhook body read failed: %s", exc,
+            )
+            return b""
+
+    def _verify_signature(self, handler, body: bytes, secret: str) -> bool:
+        import hmac
+        import hashlib
+        header_val = ""
+        try:
+            header_val = handler.headers.get(self._HEADER, "") or ""
+        except AttributeError:
+            return False
+        if not header_val.lower().startswith("sha256="):
+            return False
+        provided = header_val.split("=", 1)[1].strip()
+        expected = hmac.new(
+            secret.encode("utf-8"), body, hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(provided, expected)
+
+    def _parse_json(self, raw: bytes) -> dict:
+        if not raw:
+            return {}
+        try:
+            return _dumps_mod.loads(raw)
+        except (ValueError, TypeError):
+            return {}
+
+
+_webhook_hmac_verifier = _WebhookHmacVerifier()
+_read_body_with_hmac = _webhook_hmac_verifier.verify_and_parse
+
+
 class _SessionLoginHelper:
     """Handles the cookie-login flow.
 
@@ -781,10 +853,18 @@ class PostRequestHandler:
                 handler._json_response(200, content_svc_del.delete_indexer(indexer_id))
                 return
 
-        # POST /webhooks/arr — receives Sonarr/Radarr webhook on download/import
+        # POST /webhooks/arr — receives Sonarr/Radarr webhook on download/import.
         # Triggers Jellyfin library scan so new content appears immediately.
+        # Optional HMAC verification (WEBHOOK_HMAC_SECRET); without it,
+        # anyone who can reach the endpoint can trigger scans.
         if handler.path == "/webhooks/arr":
-            body = handler._read_json_body()
+            body, hmac_ok = _read_body_with_hmac(handler)
+            if not hmac_ok:
+                handler._json_response(
+                    HTTPStatus.FORBIDDEN,
+                    {"error": "webhook signature missing or invalid"},
+                )
+                return
             event = body.get("eventType", "unknown")
             title = ""
             if body.get("movie"):
