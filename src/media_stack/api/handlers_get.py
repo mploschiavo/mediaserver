@@ -160,6 +160,17 @@ class GetRequestHandler:
                     # throughout the POST handlers for consistency.
                     {"error": str(exc)[:99]},
                 )
+        elif path == "/api/audit-log/verify":
+            try:
+                ok, detail = build_default_service()._audit.verify_chain()
+                handler._json_response(HTTPStatus.OK, {
+                    "ok": ok, "detail": detail or "hash chain intact",
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": str(exc)[:99]},
+                )
         elif path == "/api/users" or path.startswith("/api/users/") \
                 or path in ("/api/roles", "/api/user-providers",
                             "/api/audit-log", "/api/users-reconcile",

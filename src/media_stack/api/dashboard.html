@@ -1521,7 +1521,11 @@ async function regenerateTlsCert(){
       headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),'X-Sudo-Password':pw},
       body:JSON.stringify({})});
     const j=await r.json();
-    if(r.ok){_tlsStatus('Regenerated. Restart Envoy to pick up the new cert.','ok');loadTlsCert();}
+    if(r.ok){
+      const rl=j.envoy_reload||{};const rlMsg=rl.status==='ok'?'Envoy reloaded.':('Envoy reload: '+(rl.status||'unknown')+(rl.detail?' ('+rl.detail+')':''));
+      _tlsStatus('Regenerated. '+rlMsg,rl.status==='ok'?'ok':'warn');
+      loadTlsCert();
+    }
     else _tlsStatus('Regenerate failed: '+(j.error||r.status),'err');
   }catch(e){_tlsStatus('Regenerate failed: '+e.message,'err');}
 }
@@ -1538,7 +1542,8 @@ async function installTlsCert(){
       body:JSON.stringify({cert_pem:cert,key_pem:key})});
     const j=await r.json();
     if(r.ok){
-      _tlsStatus('Certificate installed. Restart Envoy to pick it up.','ok');
+      const rl=j.envoy_reload||{};const rlMsg=rl.status==='ok'?'Envoy reloaded.':('Envoy reload: '+(rl.status||'unknown')+(rl.detail?' ('+rl.detail+')':''));
+      _tlsStatus('Certificate installed. '+rlMsg,rl.status==='ok'?'ok':'warn');
       document.getElementById('tls-cert-input').value='';
       document.getElementById('tls-key-input').value='';
       document.getElementById('tls-sudo-pw').value='';
@@ -1548,7 +1553,10 @@ async function installTlsCert(){
 }
 function _tlsStatus(msg,kind){
   const el=document.getElementById('tls-cert-status');if(!el)return;
-  const color=kind==='ok'?'var(--green)':(kind==='err'?'var(--red)':'var(--fg2)');
+  let color='var(--fg2)';
+  if(kind==='ok')color='var(--green)';
+  else if(kind==='err')color='var(--red)';
+  else if(kind==='warn')color='var(--orange,#d97706)';
   el.innerHTML='<span style="color:'+color+'">'+_escHtml(msg)+'</span>';
 }
 async function probeMatrix(){

@@ -30,12 +30,14 @@ try:
         build_default_scheduled_reconciler as _build_sched_reconciler,
         build_default_api_token_store as _build_token_store,
         build_default_service as _build_user_service,
+        build_default_audit_chain_verifier as _build_audit_verifier,
     )
 except ImportError:
     _build_auth_verifier = None
     _build_sched_reconciler = None
     _build_token_store = None
     _build_user_service = None
+    _build_audit_verifier = None
 
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
 from media_stack.api.session_singletons import (
@@ -1041,6 +1043,14 @@ def start_api_server(
         except Exception as exc:  # noqa: BLE001
             logging.getLogger("media_stack").debug(
                 "[DEBUG] scheduled reconcile not started: %s", exc,
+            )
+
+    if _build_audit_verifier is not None:
+        try:
+            _build_audit_verifier().start()
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] audit-chain verifier not started: %s", exc,
             )
 
     # Graceful shutdown on SIGTERM
