@@ -201,7 +201,7 @@ path for programmatic clients:
   rejects expired tokens.
 
 ```bash
-# Mint an admin token with 30-day TTL
+# Mint a long-lived admin token (default kind)
 curl -u admin:$PW -X POST https://controller/api/tokens \
   -H 'X-CSRF-Token: $CSRF' \
   -d '{"name":"ci","scope":"admin","ttl_seconds":2592000}'
@@ -212,6 +212,35 @@ curl -H "Authorization: Bearer 9x_..." https://controller/api/users
 
 # Revoke
 curl -u admin:$PW -X POST https://controller/api/tokens/<id> -d '{}'
+```
+
+**Access + refresh token pair** (rotation pattern, preferred for
+long-running agents):
+
+```bash
+# Mint a pair: short-lived access (15m) + long refresh (30d)
+curl -u admin:$PW -X POST https://controller/api/tokens \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"agent","scope":"admin","kind":"refresh_pair"}'
+# → {"access": {"token":"...", "expires_at":"...15m"},
+#     "refresh":{"token":"...", "expires_at":"...30d",
+#                "family_id":"..."}}
+
+# API calls use the access token; the refresh token will be REJECTED
+# if presented as a bearer (hardening against refresh-as-admin misuse).
+
+# When the access token expires, rotate:
+curl -X POST https://controller/api/tokens/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"refresh_token":"<refresh-plaintext>"}'
+# → a new (access, refresh) pair. Old refresh is revoked in the same
+#   call, so a replay returns an error and the caller should treat that
+#   as a leak signal.
+
+# Compromised? Burn the whole chain in one call.
+curl -u admin:$PW -X POST https://controller/api/tokens/revoke-family \
+  -H 'Content-Type: application/json' \
+  -d '{"family_id":"<family-id-from-mint-response>"}'
 ```
 
 ### Global API hardening

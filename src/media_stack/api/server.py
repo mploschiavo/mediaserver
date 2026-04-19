@@ -100,6 +100,10 @@ class _AuthPolicy:
         # Logout is idempotent and safe to hit without auth.
         if path == "/api/auth/logout" and command == "POST":
             return True
+        # Token refresh carries its own credential (the refresh token),
+        # so no Authorization header is required to present it.
+        if path == "/api/tokens/refresh" and command == "POST":
+            return True
         return False
 
     def decision(self, handler, path: str, password: str) -> str:
