@@ -29,11 +29,13 @@ try:
         build_default_auth_verifier as _build_auth_verifier,
         build_default_scheduled_reconciler as _build_sched_reconciler,
         build_default_api_token_store as _build_token_store,
+        build_default_service as _build_user_service,
     )
 except ImportError:
     _build_auth_verifier = None
     _build_sched_reconciler = None
     _build_token_store = None
+    _build_user_service = None
 
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
 
@@ -259,6 +261,91 @@ class _TrustedProxyAuth:
 _trusted_proxy_auth = _TrustedProxyAuth()
 
 
+def _audit_actor_from(handler) -> str:
+    """Best-effort actor identity for audit entries.
+
+    Tries (in order):
+      - Authelia Remote-User forwarded by a trusted proxy
+      - The username half of a Basic auth header
+      - 'bearer-token' when a Bearer header was presented
+      - 'anonymous' as the final fallback
+    """
+    try:
+        remote = _trusted_proxy_auth.identity(handler)
+        if remote:
+            return remote
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("media_stack").debug(
+            "[DEBUG] _audit_actor_from trusted_proxy_auth raised: %s", exc,
+        )
+    auth = (handler.headers.get("Authorization", "") if
+            getattr(handler, "headers", None) else "") or ""
+    if auth.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth[6:]).decode("utf-8", "replace")
+            return decoded.partition(":")[0] or "anonymous"
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] _audit_actor_from Basic decode failed: %s", exc,
+            )
+            return "anonymous"
+    if auth.startswith("Bearer "):
+        return "bearer-token"
+    return "anonymous"
+
+
+# Paths whose POST traffic we audit. GET is not audited (reads don't
+# change state); the user-mgmt service has its own finer-grained audit
+# that runs in addition to this so detail-rich entries still happen.
+_AUDIT_SKIP_POST_PATHS = frozenset({
+    "/healthz", "/readyz", "/webhooks/arr",
+})
+
+
+def _audit_mutation(handler) -> None:
+    """Emit an audit-log entry for a 2xx mutating POST.
+
+    Runs AFTER the handler returns so the logged result includes the
+    status the business logic chose (400/404/500 mutations aren't
+    audited as successful changes). Falls back silently on any error
+    so a misbehaving audit path can't block a real request.
+    """
+    if _build_user_service is None:
+        return
+    try:
+        status = int(getattr(handler, "_last_status", 0))
+        if not (HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES):
+            return
+        path = (getattr(handler, "path", "") or "").split("?")[0]
+        if path in _AUDIT_SKIP_POST_PATHS:
+            return
+        # User-mgmt endpoints write their own audit entries with more
+        # detail; skip here to avoid duplicate rows.
+        if (path == "/api/users" or path.startswith("/api/users/")
+                or path.startswith("/api/invites")
+                or path.startswith("/api/roles/")
+                or path == "/api/users-bulk-import"
+                or path == "/api/users-reconcile/import"
+                or path == "/api/users-reconcile/unlink"):
+            return
+        svc = _build_user_service()
+        svc._audit.append(
+            actor=_audit_actor_from(handler),
+            action="api_mutation",
+            target=path,
+            result="ok",
+            detail={
+                "method": getattr(handler, "command", "POST"),
+                "status": status,
+                "client": _trusted_proxy_auth._client_ip(handler),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("media_stack").debug(
+            "[DEBUG] _audit_mutation failed: %s", exc,
+        )
+
+
 def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
     """Verify basic-auth. Prefer the store-backed verifier so password
     resets in the UI take effect immediately; fall back to env creds.
@@ -410,6 +497,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
 
     def _json_response(self, status: int, body: dict[str, Any]) -> None:
         payload = json.dumps(body, default=str).encode("utf-8")
+        self._last_status = int(status)
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header(_H_CONTENT_LENGTH, str(len(payload)))
@@ -648,6 +736,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         if not _auth_policy.check_body_size(self):
             return
         handlers_post.handle(self)
+        _audit_mutation(self)
 
 
 # ---------------------------------------------------------------------------
