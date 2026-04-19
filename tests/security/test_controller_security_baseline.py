@@ -65,6 +65,7 @@ class ControllerSecurityBaseline(unittest.TestCase):
                 "/api/users-bulk-import",
             ],
             webhook_post_paths=["/webhooks"],
+            trusted_proxy_header="Remote-User",
         )
         cls.runner = SecurityAuditRunner(cls.target)
         cls.results = cls.runner.run_all()
@@ -123,6 +124,9 @@ class ControllerSecurityBaseline(unittest.TestCase):
 
     def test_credential_endpoints_no_password_echo(self):
         self._assert_pass("credential_endpoints_no_echo")
+
+    def test_trusted_proxy_spoof_rejected(self):
+        self._assert_pass("trusted_proxy_spoof_rejected")
 
     def test_trailing_slash_canonicalization(self):
         self._assert_pass("trailing_slash_canonical")
