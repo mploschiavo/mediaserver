@@ -1,4 +1,13 @@
 ---
+# Minimal Authelia 4.38 bootstrap config. Seeded into
+# /config on first container start when no user-written
+# configuration.yml exists yet. The controller's
+# configure-auth job overwrites this the first time it
+# runs with real secrets and the correct cookie domain
+# from the active profile. The "PLACEHOLDER_*" secret
+# values below are treated as unset by _reuse_existing_secrets
+# so the first regen always generates real ones.
+
 server:
   address: tcp://0.0.0.0:9091
 
@@ -7,11 +16,9 @@ log:
 
 theme: auto
 
-default_redirection_url: http://apps.media-dev.local:18080
-
 identity_validation:
   reset_password:
-    jwt_secret: change-this-jwt-secret-with-32-or-more-characters
+    jwt_secret: PLACEHOLDER_JWT_REPLACE_ON_FIRST_REGEN_XXXXXXXXXXXXXXXXXXXXXXXX
 
 authentication_backend:
   file:
@@ -21,15 +28,15 @@ access_control:
   default_policy: deny
   rules:
     - domain:
-        - "*.local"
+        - "*.media-stack.local"
       policy: one_factor
 
 session:
-  secret: change-this-session-secret-with-32-or-more-characters
+  secret: PLACEHOLDER_SESSION_REPLACE_ON_FIRST_REGEN_XXXXXXXXXXXXXXXXXXXX
   cookies:
-    - domain: local
-      authelia_url: http://authelia.local
-      default_redirection_url: http://apps.media-dev.local:18080
+    - domain: media-stack.local
+      authelia_url: https://auth.media-stack.local
+      default_redirection_url: https://apps.media-stack.local
 
 regulation:
   max_retries: 3
@@ -37,7 +44,7 @@ regulation:
   ban_time: 300
 
 storage:
-  encryption_key: change-this-storage-key-with-32-or-more-characters
+  encryption_key: PLACEHOLDER_STORAGE_REPLACE_ON_FIRST_REGEN_XXXXXXXXXXXXXXXXXXXX
   local:
     path: /config/db.sqlite3
 
