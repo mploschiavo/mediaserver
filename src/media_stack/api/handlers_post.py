@@ -22,6 +22,11 @@ from media_stack.api.session_singletons import (
     session_store as _session_store,
 )
 from media_stack.core.observability.security_counters import security_counters
+
+try:
+    from media_stack.cli.commands import generate_envoy_config_main as _envoy_gen_main
+except ImportError:
+    _envoy_gen_main = None
 from media_stack.api.tls_factory import build_default_tls_service
 from media_stack.core.edge.tls_certificate_service import (
     TlsCertificateServiceError,
@@ -316,6 +321,9 @@ class _TlsCertHandler:
     Both endpoints are mutating + sudo-gated upstream in server.py.
     """
 
+    def __init__(self) -> None:
+        self._env = os.environ
+
     def install(self, handler) -> None:
         body = handler._read_json_body() or {}
         cert_pem = str(body.get("cert_pem", "") or "").strip()
@@ -358,15 +366,45 @@ class _TlsCertHandler:
         })
 
     def _reload_envoy(self) -> dict:
-        """Restart Envoy so the new cert is picked up. Best-effort:
-        failures are returned in the payload rather than rolling back
-        the cert write, since the write was already atomic and the
-        worst case is the operator having to manually restart."""
+        """Regenerate the Envoy config + restart Envoy so the new
+        cert is picked up. Both steps are best-effort.
+
+        The regen step matters: the running Envoy may be holding a
+        stale config generated before the cert existed (plain HTTP
+        listener). Simply restarting Envoy would reload that same
+        stale config. By regenerating first we guarantee the config
+        on disk references the new cert before Envoy re-reads it.
+        """
+        regen_result = self._regenerate_envoy_config()
         try:
-            return admin_svc.restart_service("envoy")
+            restart = admin_svc.restart_service("envoy")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("TLS install: envoy reload failed: %s", exc)
-            return {"status": "error", "detail": str(exc)[:_ERR_LEN]}
+            logger.warning("TLS install: envoy restart failed: %s", exc)
+            restart = {"status": "error",
+                       "detail": str(exc)[:_ERR_LEN]}
+        return {"regen": regen_result, **restart}
+
+    def _regenerate_envoy_config(self) -> str:
+        """Run the compose-path Envoy config generator in-process.
+
+        Only meaningful on deployments that write to the envoy.yaml
+        file Envoy reads (compose). In K8s the config comes from a
+        ConfigMap; we skip gracefully when the runtime indicates K8s.
+        """
+        if _envoy_gen_main is None:
+            return "skipped (generator module unavailable)"
+        if self._env.get("K8S_NAMESPACE", "").strip():
+            return "skipped (k8s runtime; config is ConfigMap-managed)"
+        envoy_yaml_dir = Path(
+            self._env.get("CONFIG_ROOT", "/srv-config")) / "envoy"
+        if not envoy_yaml_dir.is_dir():
+            return "skipped (no envoy config dir mounted)"
+        try:
+            _envoy_gen_main.main([])
+            return "ok"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TLS reload: envoy config regen failed: %s", exc)
+            return f"error: {str(exc)[:_ERR_LEN]}"
 
 
 _tls_handler = _TlsCertHandler()
