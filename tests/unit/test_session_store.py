@@ -73,6 +73,35 @@ class SessionStoreTests(unittest.TestCase):
         self.assertNotEqual(h1, "abc")
         self.assertEqual(len(h1), 64)  # sha256 hex
 
+    def test_idle_timeout_kills_inactive_session(self):
+        s = SessionStore(default_ttl_seconds=8 * 60 * 60,
+                         idle_ttl_seconds=60)
+        _, plain = s.create(owner_username="grace", now=100.0)
+        # 50s of inactivity — still alive.
+        self.assertIsNotNone(s.get(plain, now=150.0))
+        # After that get(), last_used_at became 150. Another 50s later
+        # we're at 200, still within the 60s window from 150 → alive.
+        self.assertIsNotNone(s.get(plain, now=200.0))
+        # Now jump 120s past the last use — session exceeds idle TTL.
+        self.assertIsNone(s.get(plain, now=321.0))
+
+    def test_active_session_slides_idle_window(self):
+        s = SessionStore(idle_ttl_seconds=60)
+        _, plain = s.create(owner_username="helen", now=100.0)
+        # Keep using it inside the 60s window, forever.
+        for t in range(130, 1000, 50):
+            self.assertIsNotNone(s.get(plain, now=float(t)))
+
+    def test_idle_disabled_when_zero(self):
+        """When idle_ttl_seconds=0, inactivity never kills the
+        session — only the absolute TTL does."""
+        s = SessionStore(default_ttl_seconds=3600, idle_ttl_seconds=0)
+        _, plain = s.create(owner_username="ivy", now=100.0)
+        # 3500s of inactivity, still within absolute TTL.
+        self.assertIsNotNone(s.get(plain, now=3600.0))
+        # Past absolute TTL, dies regardless of idle config.
+        self.assertIsNone(s.get(plain, now=3800.0))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,7 @@ class UserMgmtMetricsRenderer:
         provider_health: list[dict[str, Any]],
         audit_recent: list[dict[str, Any]],
         drift_summary: dict[str, dict[str, int]] | None = None,
+        security_counts: dict[str, int] | None = None,
     ) -> str:
         lines: list[str] = []
         self._render_users(users, lines)
@@ -28,6 +29,8 @@ class UserMgmtMetricsRenderer:
         if drift_summary:
             self._render_drift(drift_summary, lines)
         self._render_audit(audit_recent, lines)
+        if security_counts:
+            self._render_security_counters(security_counts, lines)
         return "\n".join(lines) + "\n"
 
     def _render_users(self, users, lines):
@@ -87,6 +90,17 @@ class UserMgmtMetricsRenderer:
         for action, count in sorted(action_counts.items()):
             lines.append(
                 f'media_stack_audit_actions_total{{action="{self._escape(action)}"}} {count}'
+            )
+
+    def _render_security_counters(self, counts, lines):
+        lines.extend([
+            "# HELP media_stack_security_event_total "
+            "Controller-side security rejections by event type",
+            "# TYPE media_stack_security_event_total counter",
+        ])
+        for event, n in sorted(counts.items()):
+            lines.append(
+                f'media_stack_security_event_total{{event="{self._escape(event)}"}} {n}'
             )
 
     def _escape(self, s: str) -> str:

@@ -22,6 +22,7 @@ from media_stack.core.auth.users.user_service_factory import (
     build_default_service,
 )
 from media_stack.core.auth.users.metrics import render_metrics
+from media_stack.core.observability.security_counters import security_counters
 
 from .cache import api_cache
 from .services import health as health_svc
@@ -607,6 +608,7 @@ class GetRequestHandler:
             roles=svc.list_roles(),
             provider_health=svc.provider_health(),
             audit_recent=svc.audit_recent(limit=5 * 100),
+            security_counts=security_counters.snapshot(),
         ).encode("utf-8")
         handler.send_response(HTTPStatus.OK)
         handler.send_header("Content-Type", "text/plain; version=0.0.4")

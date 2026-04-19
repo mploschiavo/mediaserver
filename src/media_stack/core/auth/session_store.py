@@ -31,16 +31,29 @@ class Session:
     owner_username: str
     created_at: float
     expires_at: float  # absolute seconds since epoch; 0 = never expires
+    last_used_at: float = 0.0
 
 
 class SessionStore:
-    """In-memory session table with lazy expiry + bounded growth."""
+    """In-memory session table with lazy expiry + idle timeout.
+
+    Two TTLs stack:
+      - ``default_ttl_seconds`` caps the ABSOLUTE session lifetime
+        (8h by default). No matter how active a user is, the session
+        dies at this horizon. Re-login required.
+      - ``idle_ttl_seconds`` caps INACTIVITY. On every ``get()`` we
+        update ``last_used_at``; if now - last_used_at exceeds this
+        window, the session is treated as expired. Default 30 min.
+        Set to 0 to disable idle timeout.
+    """
 
     def __init__(self, *, default_ttl_seconds: int = 8 * 60 * 60,
+                 idle_ttl_seconds: int = 30 * 60,
                  absolute_cap: int = 100 * 100) -> None:
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}  # keyed by token_hash
         self._default_ttl = max(60, int(default_ttl_seconds))
+        self._idle_ttl = max(0, int(idle_ttl_seconds))
         self._cap = max(100, int(absolute_cap))
 
     def hash_token(self, plaintext: str) -> str:
@@ -60,6 +73,7 @@ class SessionStore:
             owner_username=owner_username,
             created_at=ts,
             expires_at=ts + ttl,
+            last_used_at=ts,
         )
         with self._lock:
             self._evict_expired(ts)
@@ -83,6 +97,12 @@ class SessionStore:
             if sess.expires_at and sess.expires_at <= ts:
                 self._sessions.pop(needle, None)
                 return None
+            if (self._idle_ttl and sess.last_used_at
+                    and (ts - sess.last_used_at) > self._idle_ttl):
+                # Session has been idle past the cutoff — kill it.
+                self._sessions.pop(needle, None)
+                return None
+            sess.last_used_at = ts
             return sess
 
     def revoke(self, plaintext: str) -> bool:

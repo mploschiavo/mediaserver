@@ -40,6 +40,7 @@ except ImportError:
     _build_audit_verifier = None
 
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
+from media_stack.core.observability.security_counters import security_counters
 from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME as _SESSION_COOKIE_NAME,
     session_cookie_reader,
@@ -478,16 +479,22 @@ class _TrustedProxyAuth:
         header = (self._env.get("CONTROLLER_TRUSTED_PROXY_HEADER", "")
                   .strip() or _DEFAULT_TRUSTED_PROXY_HEADER)
         client_ip = self._client_ip(handler)
-        if not client_ip or not self._in_any_cidr(client_ip, cidrs_raw):
-            return None
         headers = getattr(handler, "headers", None)
-        if headers is None:
+        header_value = ""
+        if headers is not None:
+            try:
+                header_value = (headers.get(header, "") or "").strip()
+            except AttributeError:
+                header_value = ""
+        trusted = bool(client_ip) and self._in_any_cidr(client_ip, cidrs_raw)
+        if not trusted:
+            # Someone set the identity header but they're not in the
+            # trusted CIDR. Record it — this is either a misconfig
+            # (new proxy IP) or a spoofing attempt.
+            if header_value:
+                security_counters.incr("trusted_proxy_spoof")
             return None
-        try:
-            user = (headers.get(header, "") or "").strip()
-        except AttributeError:
-            return None
-        return user or None
+        return header_value or None
 
     def _client_ip(self, handler) -> str:
         addr = getattr(handler, "client_address", None)
@@ -727,6 +734,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             return True
         client_ip = _trusted_proxy_auth._client_ip(self)
         if client_ip and _ip_failure_tracker.is_locked(client_ip):
+            security_counters.incr("ip_lockout_trip")
             self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
             self.send_header("Content-Type", "application/json")
             self.send_header(_H_CONTENT_LENGTH, "0")
@@ -749,6 +757,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             return True
         if client_ip:
             _ip_failure_tracker.register_failure(client_ip)
+        security_counters.incr("auth_fail")
         _auth_policy.send_401(self)
         return False
 
@@ -1003,6 +1012,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             return
         sudo_path = self.path.split("?")[0]
         if not _sudo_gate.allows(self, sudo_path):
+            security_counters.incr("sudo_fail")
             self._json_response(
                 HTTPStatus.FORBIDDEN,
                 {"error": "sensitive endpoint requires re-authentication; "
