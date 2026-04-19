@@ -47,7 +47,18 @@ modes:
       cluster_name: ext_authz_authelia
       host: authelia
       port: 9091
-      path_prefix: /api/verify?authz_path=
+      # Authelia's /api/authz/forward-auth endpoint:
+      #   - Reads X-Forwarded-* headers (set by the Lua filter upstream)
+      #   - Returns 302 with Location: <authelia_url>/?rd=<original>
+      #     automatically from `authelia_url` config. No rd= query
+      #     needed in this request — and that matters because Envoy
+      #     APPENDS the user's original path to path_prefix before
+      #     sending, which would corrupt an rd= value glued on here.
+      #   - Earlier switch to /api/verify was done for POST support,
+      #     but /api/verify needs `rd=` to get 302 behavior, and the
+      #     path-append bug broke the portal URL. forward-auth gives
+      #     us both 302-to-login and a clean portal URL.
+      path_prefix: /api/authz/forward-auth?authz_path=
       # Headers forwarded from Authelia to upstream services
       response_headers_to_add:
         - Remote-User
