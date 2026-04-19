@@ -82,8 +82,17 @@ class SecurityAuditRunner:
     _DEFAULT_TIMEOUT = 5.0
     _RATE_LIMIT_BURST = 60
     _BODY_SIZE_PROBE_MIB = 2
+    # Patterns that indicate an ACTUAL secret value in a response body.
+    # The plain word "password" alone is not enough (stock 401 messages
+    # say "wrong password"); we look for a JSON field carrying a value,
+    # or a key-material prefix.
     _SECRET_PATTERNS = (
-        "password", "secret", "api_key", "bearer ", "-----BEGIN",
+        r'"password"\s*:\s*"[^"]+"',      # {"password":"..."}
+        r'"api[_-]?key"\s*:\s*"[^"]+"',
+        r'"secret"\s*:\s*"[^"]+"',
+        r'"token"\s*:\s*"[A-Za-z0-9_\-\.]{16,}"',
+        r'-----BEGIN [A-Z ]+ KEY-----',   # PEM key material
+        r'authorization\s*:\s*bearer\s+[A-Za-z0-9_\-\.]{16,}',
     )
     # Endpoints that historically leaked admin creds; the audit probes
     # these authenticated and asserts no password pattern appears in
@@ -406,9 +415,13 @@ class SecurityAuditRunner:
         if not self.target.sensitive_paths:
             self._skip("no_secret_in_errors", "no sensitive path")
             return
+        import re
         resp = self._request("GET", self.target.sensitive_paths[0])
         body_l = resp.body.lower()
-        hits = [p for p in self._SECRET_PATTERNS if p in body_l]
+        hits: list[str] = []
+        for pat in self._SECRET_PATTERNS:
+            if re.search(pat, body_l):
+                hits.append(pat)
         self._record(
             "no_secret_in_errors",
             "pass" if not hits else "fail",
