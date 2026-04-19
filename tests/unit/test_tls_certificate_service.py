@@ -54,8 +54,10 @@ class TlsCertificateServiceTests(unittest.TestCase):
         self.assertIn("media-stack", info.subject.lower())
         self.assertTrue(self.svc.cert_path.is_file())
         self.assertTrue(self.svc.key_path.is_file())
-        # Key must be mode 0o600 (rw- --- ---)
-        self.assertEqual(self.svc.key_path.stat().st_mode & 0o777, 0o600)
+        # Key is written 0o644 so Envoy (uid 1000, read-only mount)
+        # can read it regardless of which uid the controller runs as.
+        # See module-level _MODE_PRIVATE note in tls_certificate_service.
+        self.assertEqual(self.svc.key_path.stat().st_mode & 0o777, 0o644)
 
     def test_install_accepts_matched_pair(self):
         cert_pem, key_pem = self._gen_sample_pair()
