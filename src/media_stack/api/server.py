@@ -38,6 +38,11 @@ except ImportError:
     _build_user_service = None
 
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
+from media_stack.api.session_singletons import (
+    SESSION_COOKIE_NAME as _SESSION_COOKIE_NAME,
+    session_cookie_reader,
+    session_store as _session_store,
+)
 
 # Per-IP lockout: after _IP_LOCKOUT_THRESHOLD failures within
 # _IP_LOCKOUT_WINDOW seconds, the IP is rejected outright for
@@ -78,15 +83,27 @@ class _AuthPolicy:
 
     _PUBLIC_PATHS = frozenset({"/healthz", "/readyz", "/webhooks/arr"})
 
+    def __init__(self) -> None:
+        self._env = os.environ
+
     def is_public(self, handler, path: str) -> bool:
         if path in self._PUBLIC_PATHS:
             return True
-        if path == "/api/invites/accept" and handler.command == "POST":
+        command = getattr(handler, "command", "")
+        if path == "/api/invites/accept" and command == "POST":
+            return True
+        # Login endpoint MUST be public — otherwise users have no way
+        # to obtain a session cookie. It has its own rate limit + CSRF
+        # exemption (see handlers_post._CSRF_EXEMPT_POST_PATHS).
+        if path == "/api/auth/login" and command == "POST":
+            return True
+        # Logout is idempotent and safe to hit without auth.
+        if path == "/api/auth/logout" and command == "POST":
             return True
         return False
 
     def decision(self, handler, path: str, password: str) -> str:
-        auth_mode = os.environ.get("CONTROLLER_AUTH", "").strip().lower()
+        auth_mode = self._env.get("CONTROLLER_AUTH", "").strip().lower()
         if not auth_mode:
             auth_mode = "all" if password else "none"
         if auth_mode == "none":
@@ -99,6 +116,9 @@ class _AuthPolicy:
         if auth_mode == "write" and handler.command == "GET" and not is_sensitive:
             return "allow"
         return "require"
+
+    def verify_session_cookie(self, handler) -> str:
+        return session_cookie_reader.username_for_handler(handler)
 
     def verify_bearer(self, handler, plaintext: str) -> bool:
         if _build_token_store is None or not plaintext:
@@ -117,12 +137,43 @@ class _AuthPolicy:
         return True
 
     def send_401(self, handler) -> None:
-        handler.send_response(401)
+        """Emit an unauthenticated response.
+
+        If CONTROLLER_OIDC_LOGIN_REDIRECT is set AND the request is an
+        HTML-accepting GET (a browser navigating to the dashboard), we
+        send a 302 to the OIDC login endpoint instead of a bare 401.
+        Non-GET requests and API clients (Accept: application/json,
+        non-HTML) still get the 401 so scripts behave predictably.
+        """
+        login_url = self._env.get("CONTROLLER_OIDC_LOGIN_REDIRECT", "").strip()
+        if login_url and self._is_browser_navigation(handler):
+            handler.send_response(HTTPStatus.FOUND)
+            handler.send_header("Location", login_url)
+            handler.send_header(_H_CONTENT_LENGTH, "0")
+            handler.end_headers()
+            return
+        handler.send_response(HTTPStatus.UNAUTHORIZED)
         handler.send_header(
             "WWW-Authenticate", 'Basic realm="Media Stack Controller"',
         )
         handler.send_header(_H_CONTENT_LENGTH, "0")
         handler.end_headers()
+
+    def _is_browser_navigation(self, handler) -> bool:
+        """True for GET requests whose Accept header prefers HTML.
+        API clients (curl/fetch with Accept: application/json) fail this
+        check so they still see a proper 401 rather than a confusing
+        302 that leads nowhere they can follow."""
+        if getattr(handler, "command", "") != "GET":
+            return False
+        headers = getattr(handler, "headers", None)
+        if headers is None:
+            return False
+        try:
+            accept = (headers.get("Accept", "") or "").lower()
+        except AttributeError:
+            return False
+        return "text/html" in accept
 
     def canonicalize_path(self, handler) -> None:
         raw = getattr(handler, "path", None)
@@ -189,6 +240,83 @@ class _AuthPolicy:
 
 
 _auth_policy = _AuthPolicy()
+
+
+class _ControllerRBAC:
+    """Per-user authorization check on top of authentication.
+
+    Even when auth passes (basic, bearer, or trusted-proxy), the
+    authenticated identity's role is consulted. If the role's
+    ``controller_admin`` flag is False, POST/PUT/DELETE mutations are
+    refused with 403; GETs pass so read-only users can still load the
+    dashboard and see their own profile.
+
+    Fallback: if no local user matches the authenticated username (for
+    example, the env-var STACK_ADMIN fallback or a brand-new user who
+    isn't yet reconciled), the request is treated as admin — otherwise
+    we'd lock the admin out on day zero before any user store exists.
+    """
+
+    _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+    def allows(self, handler) -> bool:
+        command = getattr(handler, "command", "GET")
+        if command not in self._MUTATING_METHODS:
+            return True  # reads aren't gated by controller_admin
+        identity = self._identity_of(handler)
+        if not identity:
+            return True  # no identity resolved (no auth context) — upstream already gated
+        role = self._role_for_identity(identity)
+        if role is None:
+            return True  # unknown user — assume admin rather than lock out
+        return bool(getattr(role, "controller_admin", True))
+
+    def _identity_of(self, handler) -> str:
+        remote = _trusted_proxy_auth.identity(handler)
+        if remote:
+            return remote
+        auth = (handler.headers.get("Authorization", "") if
+                getattr(handler, "headers", None) else "") or ""
+        if auth.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth[6:]).decode(
+                    "utf-8", "replace")
+                return decoded.partition(":")[0]
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("media_stack").debug(
+                    "[DEBUG] _identity_of Basic decode: %s", exc,
+                )
+                return ""
+        if auth.startswith("Bearer "):
+            try:
+                tok = _build_token_store().verify(
+                    auth[len("Bearer "):].strip(),
+                ) if _build_token_store else None
+                return tok.owner_username if tok else ""
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("media_stack").debug(
+                    "[DEBUG] _identity_of Bearer verify: %s", exc,
+                )
+                return ""
+        return ""
+
+    def _role_for_identity(self, username: str):
+        if _build_user_service is None:
+            return None
+        try:
+            svc = _build_user_service()
+            user = svc._store.get_by_username(username)
+            if user is None:
+                return None
+            return svc._roles.get(user.role_slug)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] role lookup for %s: %s", username, exc,
+            )
+            return None
+
+
+_controller_rbac = _ControllerRBAC()
 
 
 class _TrustedProxyAuth:
@@ -478,6 +606,9 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             return False
         if _trusted_proxy_auth.identity(self):
             return True
+        # Session cookie — preferred path for browsers after a POST /api/auth/login.
+        if _auth_policy.verify_session_cookie(self):
+            return True
         if not password:
             return True
         auth_header = self.headers.get("Authorization", "")
@@ -734,6 +865,13 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         if not self._check_auth():
             return
         if not _auth_policy.check_body_size(self):
+            return
+        if not _controller_rbac.allows(self):
+            self._json_response(
+                HTTPStatus.FORBIDDEN,
+                {"error": "role does not permit controller mutations; "
+                          "controller_admin=false"},
+            )
             return
         handlers_post.handle(self)
         _audit_mutation(self)

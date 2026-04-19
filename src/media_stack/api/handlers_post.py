@@ -6,7 +6,9 @@ first argument so it can call response helpers and access ``self.state``.
 
 from __future__ import annotations
 
+import base64
 import ipaddress
+import json as _dumps_mod
 import logging
 import os
 import socket
@@ -15,6 +17,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from media_stack.api.session_singletons import (
+    SESSION_COOKIE_NAME,
+    session_store as _session_store,
+)
+
+_dumps = _dumps_mod.dumps
+
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.auth.rate_limiter import RateLimiter
 from media_stack.core.auth.users.models import UserState
@@ -22,6 +31,7 @@ from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditor
 from media_stack.core.auth.users.user_service import UserServiceError
 from media_stack.core.auth.users.user_service_factory import (
     build_default_api_token_store,
+    build_default_auth_verifier,
     build_default_invite_service,
     build_default_service,
     resolve_default_roles_path,
@@ -120,6 +130,100 @@ class _WebhookUrlValidator:
 _webhook_url_validator = _WebhookUrlValidator()
 
 
+class _SessionLoginHelper:
+    """Handles the cookie-login flow.
+
+    POST /api/auth/login takes {"username": ..., "password": ...} and,
+    on a valid credential (via BasicAuthVerifier), mints an opaque
+    session token. The token is returned as a Set-Cookie header
+    (``ms_session=...; HttpOnly; Secure; SameSite=Strict; Path=/``).
+
+    POST /api/auth/logout reads the ms_session cookie and revokes it.
+    """
+
+    def __init__(self) -> None:
+        self._env = os.environ
+
+    def login(self, handler) -> None:
+        body = handler._read_json_body() or {}
+        username = str(body.get("username", "")).strip()
+        password = str(body.get("password", ""))
+        if not username or not password:
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "username and password required"},
+            )
+            return
+        if not self._verify_credentials(username, password):
+            handler._json_response(
+                HTTPStatus.UNAUTHORIZED,
+                {"error": "invalid credentials"},
+            )
+            return
+        _sess, plaintext = _session_store.create(owner_username=username)
+        self._send_cookie_response(handler, plaintext, expires=False)
+
+    def logout(self, handler) -> None:
+        cookie_raw = ""
+        headers = getattr(handler, "headers", None)
+        if headers is not None:
+            try:
+                cookie_raw = headers.get("Cookie", "") or ""
+            except AttributeError:
+                cookie_raw = ""
+        for chunk in cookie_raw.split(";"):
+            k, _, v = chunk.strip().partition("=")
+            if k == SESSION_COOKIE_NAME and v:
+                _session_store.revoke(v.strip())
+        self._send_cookie_response(handler, "", expires=True)
+
+    def _verify_credentials(self, username: str, password: str) -> bool:
+        """Check the username/password against the controller user store
+        (store-backed first, then env-var fallback). Returns True on a
+        successful match."""
+        try:
+            verifier = build_default_auth_verifier()
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] _verify_credentials: verifier build: %s", exc,
+            )
+            verifier = None
+        if verifier is not None:
+            try:
+                if verifier.verify(username, password):
+                    return True
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("media_stack").debug(
+                    "[DEBUG] _verify_credentials: verify raised: %s", exc,
+                )
+        fb_user = self._env.get("STACK_ADMIN_USERNAME", "admin")
+        fb_pass = self._env.get("STACK_ADMIN_PASSWORD", "")
+        return bool(fb_pass) and username == fb_user and password == fb_pass
+
+    def _send_cookie_response(self, handler, plaintext: str, *,
+                              expires: bool) -> None:
+        if expires:
+            cookie = (f"{SESSION_COOKIE_NAME}=; HttpOnly; Secure; "
+                      "SameSite=Strict; Path=/; Max-Age=0")
+            body_obj = {"logged_out": True}
+        else:
+            cookie = (f"{SESSION_COOKIE_NAME}={plaintext}; HttpOnly; "
+                      "Secure; SameSite=Strict; Path=/")
+            body_obj = {"session": "established"}
+        payload = _dumps(body_obj).encode()
+        handler.send_response(HTTPStatus.OK)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(payload)))
+        handler.send_header("Set-Cookie", cookie)
+        handler.end_headers()
+        handler.wfile.write(payload)
+
+
+_session_login_helper = _SessionLoginHelper()
+_handle_login = _session_login_helper.login
+_handle_logout = _session_login_helper.logout
+
+
 # ---------------------------------------------------------------------------
 # Known actions
 # ---------------------------------------------------------------------------
@@ -149,7 +253,7 @@ class _UserMgmtPostHelper:
     _ALLOWED_ROLE_FIELDS = frozenset({
         "name", "description", "sso_groups",
         "propagate_to_service_admins", "require_2fa",
-        "provider_payloads",
+        "controller_admin", "provider_payloads",
     })
 
     def token_create(self, body: dict, actor: str) -> dict:
@@ -282,6 +386,11 @@ class PostRequestHandler:
         # Arr webhook is from trusted internal services with a shared
         # secret elsewhere; it has no Cookie header and doesn't need CSRF.
         "/webhooks/arr",
+        # Login establishes the session; before it runs there's no
+        # cookie to compare against, so CSRF can't apply.
+        "/api/auth/login",
+        # Logout is idempotent (just revokes the cookie); same reason.
+        "/api/auth/logout",
     })
 
     def handle(self, handler: ControllerAPIHandler) -> None:  # noqa: C901
@@ -292,6 +401,15 @@ class PostRequestHandler:
         # /api/reset-password, /api/restart/*, /actions/*, /config,
         # /webhooks, and everything else — not just user-mgmt.
         if not self._global_preflight(handler):
+            return
+
+        # POST /api/auth/login — mint a session cookie
+        if handler.path == "/api/auth/login":
+            _handle_login(handler)
+            return
+        # POST /api/auth/logout — revoke the session cookie
+        if handler.path == "/api/auth/logout":
+            _handle_logout(handler)
             return
 
         # POST /run -- backward-compatible alias

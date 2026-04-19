@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs
 
+from media_stack.api.session_singletons import session_cookie_reader
 from media_stack.core.auth.users.user_service_factory import (
     build_default_api_token_store,
     build_default_invite_service,
@@ -550,16 +551,17 @@ class GetRequestHandler:
         )
 
     def _build_me_response(self, handler, svc) -> dict:
-        """Return the authenticated user's record (from the basic-auth
-        Authorization header). Anonymous / unresolvable callers get {}."""
-        auth_header = handler.headers.get("Authorization", "")
-        username = ""
-        if auth_header.startswith("Basic "):
-            try:
-                decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
-                username, _, _ = decoded.partition(":")
-            except Exception:  # noqa: BLE001
-                username = ""
+        """Return the authenticated user's record. Tries session cookie,
+        then Basic auth. Anonymous callers get {authenticated: False}."""
+        username = session_cookie_reader.username_for_handler(handler) or ""
+        if not username:
+            auth_header = handler.headers.get("Authorization", "")
+            if auth_header.startswith("Basic "):
+                try:
+                    decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+                    username, _, _ = decoded.partition(":")
+                except Exception:  # noqa: BLE001
+                    username = ""
         if not username:
             return {"authenticated": False}
         detail: dict = {"authenticated": True, "username": username}

@@ -29,7 +29,7 @@ LOOSE_FUNCTIONS_RATCHET = 73
 # DI migration ratchets
 STATIC_METHOD_RATCHET = 420       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 139  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 384  # os.environ in methods — should be config injection
+OS_ENVIRON_IN_METHODS_RATCHET = 383  # os.environ in methods — should be config injection
 
 # Code quality ratchets
 METHODS_OVER_50_LINES_RATCHET = 232       # long methods — extract sub-methods
@@ -45,7 +45,7 @@ PRINT_STATEMENTS_RATCHET = 235      # should use logging/runtime_platform.log
 FILES_OVER_400_LINES_RATCHET = 45   # large files — split into modules
 HARDCODED_URLS_RATCHET = 172        # URLs should come from contracts/config
 DUPLICATE_STRINGS_5PLUS_RATCHET = 91  # extract to constants or config
-MAGIC_NUMBERS_OVER_100_RATCHET = 858  # extract to named constants
+MAGIC_NUMBERS_OVER_100_RATCHET = 857  # extract to named constants
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0
