@@ -95,12 +95,12 @@ paths are public / sensitive / mutating, and the runner probes each.
 | Service | passing | failing | skipped | Notes |
 |---|---:|---:|---:|---|
 | Controller (:9100) | 16 | 0 | 2 | Live baseline green. Bearer-token mint checks skipped until the live-token suite lands. |
-| Jellyfin (:8096) | 4 | 0 | 3 | Hardening headers expected to come from Envoy upstream, not Jellyfin itself. |
-| Jellyseerr (:5055) | TBD | | | per-service suite TODO |
-| Sonarr (:8989) | TBD | | | per-service suite TODO |
-| Radarr (:7878) | TBD | | | per-service suite TODO |
-| Prowlarr (:9696) | TBD | | | per-service suite TODO |
-| Bazarr (:6767) | TBD | | | per-service suite TODO |
+| Jellyfin (:8096) | 4 | 0 | 3 | Hardening headers expected from Envoy upstream. |
+| Jellyseerr (:5055) | 3 | 0 | 1 | Same: Envoy emits hardening headers. |
+| Sonarr (:8989) | 3 | 0 | 1 | Servarr family; shared harness via `servarr_baseline.py`. |
+| Radarr (:7878) | 3 | 0 | 1 | Same. |
+| Prowlarr (:9696) | 3 | 0 | 1 | Uses `/api/v1/` (older API version). |
+| Bazarr (:6767) | 2 | 0 | 1 | Behind `/app/bazarr` path prefix in our deploy. |
 
 Each row will render from the test output once the per-service suites
 are filled in.
