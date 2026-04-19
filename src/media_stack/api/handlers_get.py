@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import time
 from http import HTTPStatus
 from pathlib import Path
@@ -150,6 +151,17 @@ class GetRequestHandler:
             handler._json_response(200, get_custom_formats(svc_id))
         elif path == "/api/arr-webhooks":
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
+        elif path == "/api/gateway-hostnames":
+            try:
+                handler._json_response(
+                    HTTPStatus.OK,
+                    {"hostnames": _gateway_hostname_probe.read()},
+                )
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": str(exc)[:99]},
+                )
         elif path == "/api/tls/certificate":
             try:
                 info = build_default_tls_service().describe().to_dict()
@@ -720,6 +732,52 @@ class _UserMgmtGetHelper:
 
 
 _user_mgmt_get_helper = _UserMgmtGetHelper()
+
+class _GatewayHostnameProbe:
+    """Extract the list of hostnames Envoy is serving from its
+    generated config. Used by the Routing tab to render a /etc/hosts
+    snippet that includes non-service vhosts (Authelia portal,
+    controller sub-host, etc.) alongside the per-service entries."""
+
+    _HOST_RE = re.compile(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+")
+
+    def __init__(self) -> None:
+        self._env = os.environ
+
+    def read(self) -> list[str]:
+        cfg_path = self._locate_envoy_yaml()
+        if cfg_path is None:
+            return []
+        try:
+            text = cfg_path.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        # vhost domains live under `domains:` blocks; a cheap regex
+        # over the whole file is sufficient because Envoy only lists
+        # hostnames under that key, and bogus matches (e.g. image
+        # pins) are filtered out by the domain-suffix check below.
+        domain_suffix = self._env.get(
+            "GATEWAY_DOMAIN_SUFFIX", ".media-stack.local",
+        )
+        hostnames: set[str] = set()
+        for match in self._HOST_RE.finditer(text):
+            host = match.group(0)
+            if host.endswith(domain_suffix):
+                hostnames.add(host)
+        return sorted(hostnames)
+
+    def _locate_envoy_yaml(self) -> Path | None:
+        for candidate in (
+            Path(self._env.get("CONFIG_ROOT", "/srv-config"))
+            / "envoy" / "envoy.yaml",
+            Path("/etc/envoy/envoy.yaml"),
+        ):
+            if candidate.is_file():
+                return candidate
+        return None
+
+
+_gateway_hostname_probe = _GatewayHostnameProbe()
 
 _instance = GetRequestHandler()
 handle = _instance.handle
