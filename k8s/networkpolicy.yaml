@@ -1,0 +1,337 @@
+# Kubernetes NetworkPolicy hardening for the media-stack namespace.
+#
+# Applied as a set, these policies enforce a zero-trust-style layout:
+#
+#   External traffic ──▶  Envoy (edge)  ──▶  Controller / Authelia / Apps
+#                                            │
+#                                            ├─▶ Controller may reach every app
+#                                            ├─▶ Arr apps may reach qBit/SABnzbd/Prowlarr
+#                                            ├─▶ Jellyseerr may reach Jellyfin + Arrs
+#                                            └─▶ Bazarr may reach Sonarr/Radarr
+#
+# Prerequisites:
+#   - CNI with NetworkPolicy support (Calico, Cilium, microk8s-cilium,
+#     kube-ovn, etc.). Flannel alone ignores these rules.
+#   - kube-system pods labeled as usual; kube-dns service on port 53.
+#
+# Rollout note: a broken NetworkPolicy can black-hole a live stack.
+# Apply to a staging cluster first, confirm all pods stay Ready, and
+# verify `CONTROLLER_URL/healthz` from the outside still works.
+# To disable without removing the file, set `policyTypes: []` on the
+# deny-all policy at the top.
+
+---
+# 1. Default deny-all for Ingress AND Egress. Every other policy in
+#    this file adds back specific allow rules. A pod that matches no
+#    policy ends up reachable / reaching nothing.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: media-stack
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 2. Allow DNS egress for every pod (UDP 53 + TCP 53 to kube-dns).
+#    Without this the default-deny above would break every other rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: media-stack
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 3. Envoy (edge): accept ingress from anywhere on 8080/8443, and
+#    egress to every app + Authelia + controller for forward-auth.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-ingress
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: envoy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from: []  # any source
+      ports:
+        - port: 8080
+        - port: 8443
+        - port: 80
+        - port: 443
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-egress
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: envoy
+  policyTypes:
+    - Egress
+  egress:
+    # In-namespace egress to any pod (any app, controller, Authelia).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: media-stack
+    # External HTTPS/HTTP (for CDN proxies or upstream redirects).
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+
+---
+# 4. Controller: accepts ingress from Envoy ONLY (so direct pod-IP
+#    attacks from other pods are blocked). Egress allowed to every
+#    app + Authelia + external HTTPS for contract downloads.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: controller-ingress
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: media-stack-controller
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: envoy
+      ports:
+        - port: 9100
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: controller-egress
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: media-stack-controller
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: media-stack
+    # External HTTPS for TRASHguides / custom-format pulls.
+    - ports:
+        - protocol: TCP
+          port: 443
+
+---
+# 5. Authelia: Envoy ext_authz only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: authelia-ingress
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: authelia
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: envoy
+      ports:
+        - port: 9091
+
+---
+# 6. Apps tier: accept ingress from Envoy + controller. Everything else
+#    (pod-to-pod lateral movement) is blocked.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apps-ingress-envoy-and-controller
+  namespace: media-stack
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - jellyfin
+          - jellyseerr
+          - plex
+          - homepage
+          - maintainerr
+          - tautulli
+          - bazarr
+          - sonarr
+          - radarr
+          - lidarr
+          - readarr
+          - prowlarr
+          - qbittorrent
+          - sabnzbd
+          - flaresolverr
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: envoy
+        - podSelector:
+            matchLabels:
+              app: media-stack-controller
+
+---
+# 7. Inter-app dependencies. Each policy is additive — apps already
+#    accept Envoy/controller; this appends peer-service sources.
+
+# Jellyseerr → Jellyfin
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jellyfin-ingress-from-seerr
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: jellyfin
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: jellyseerr
+
+---
+# Jellyseerr + Bazarr → Sonarr / Radarr / Lidarr / Readarr
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arr-ingress-from-peers
+  namespace: media-stack
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [sonarr, radarr, lidarr, readarr]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: jellyseerr
+        - podSelector:
+            matchLabels:
+              app: bazarr
+        - podSelector:
+            matchLabels:
+              app: prowlarr
+
+---
+# Sonarr/Radarr/Lidarr/Readarr → qBittorrent + SABnzbd + Prowlarr
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: downloaders-ingress-from-arrs
+  namespace: media-stack
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [qbittorrent, sabnzbd, prowlarr]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [sonarr, radarr, lidarr, readarr]
+
+---
+# 8. Egress for apps: external HTTPS (metadata providers, usenet
+#    indexers, tracker lookups) + in-namespace DNS already granted.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apps-egress-external-https
+  namespace: media-stack
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - jellyfin
+          - jellyseerr
+          - plex
+          - homepage
+          - maintainerr
+          - tautulli
+          - bazarr
+          - sonarr
+          - radarr
+          - lidarr
+          - readarr
+          - prowlarr
+          - qbittorrent
+          - sabnzbd
+          - flaresolverr
+  policyTypes:
+    - Egress
+  egress:
+    # In-namespace peers (covered by individual-app ingress rules above
+    # but required on the egress side too).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: media-stack
+    # External HTTP/HTTPS for indexers, trackers, metadata fetches.
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    # SABnzbd & qBittorrent need outbound to usenet/tracker ports.
+    - ports:
+        - protocol: TCP
+          port: 563   # NNTP over TLS
+        - protocol: TCP
+          port: 119   # NNTP

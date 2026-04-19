@@ -76,6 +76,16 @@ paths are public / sensitive / mutating, and the runner probes each.
 | 15 | `webhook_ssrf_block` | Registering a private-IP webhook URL is rejected. Blocks SSRF via webhook registration. | **yes** |
 | 16 | `trailing_slash_canonicalization` | Adding/removing a trailing slash doesn't bypass auth. Catches middleware-only checks that miss the canonical path. | yes |
 
+### Infrastructure-layer hardening
+
+- **K8s NetworkPolicy** — [k8s/networkpolicy.yaml](../k8s/networkpolicy.yaml).
+  12 policies enforce a tier-isolated layout: default-deny-all +
+  allow-DNS + Envoy-as-only-edge + controller-receives-only-from-Envoy
+  + apps-only-from-Envoy-or-controller + per-service inter-app rules.
+  Opt in by applying the `power-user` kustomize profile (or adding
+  `networkpolicy.yaml` to your own kustomization). Requires a CNI
+  with NetworkPolicy support (Calico / Cilium / microk8s-cilium).
+
 ### Beyond the baseline (not yet coded, tracked as TODOs)
 
 - `ip_lockout_on_brute_force` — **IMPLEMENTED**, covered by

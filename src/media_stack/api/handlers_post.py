@@ -257,21 +257,71 @@ class _UserMgmtPostHelper:
     })
 
     def token_create(self, body: dict, actor: str) -> dict:
+        """Mint an API token.
+
+        Two modes:
+          - default ``kind=long_lived`` → one token, optional TTL.
+          - ``kind=refresh_pair`` → mints an access+refresh pair with a
+            shared family_id. Both plaintexts are returned once;
+            subsequent requests use the access token, and the refresh
+            exchanges at POST /api/tokens/refresh for a rotated pair.
+        """
         store = build_default_api_token_store()
+        owner = (str(body.get("owner_username", actor)).strip() or actor)
+        name = str(body.get("name", "")).strip() or "api-token"
+        scope = str(body.get("scope", "admin")).strip() or "admin"
+        kind = str(body.get("kind", "long_lived")).strip()
+        if kind == "refresh_pair":
+            (access, a_plain), (refresh, r_plain) = store.mint_pair(
+                owner_username=owner, name=name, scope=scope,
+            )
+            return {
+                "access": {**access.to_dict(), "token": a_plain},
+                "refresh": {**refresh.to_dict(), "token": r_plain},
+            }
         ttl_seconds = int(body.get("ttl_seconds", 0) or 0)
         token, plaintext = store.create(
-            owner_username=str(body.get("owner_username", actor)).strip() or actor,
-            name=str(body.get("name", "")).strip() or "api-token",
-            scope=str(body.get("scope", "admin")).strip() or "admin",
+            owner_username=owner, name=name, scope=scope,
             ttl_seconds=max(0, ttl_seconds),
         )
-        # Plaintext is returned ONCE — never persisted, never logged.
+        # Plaintext returned ONCE — never persisted, never logged.
         return {**token.to_dict(), "token": plaintext}
+
+    def token_refresh(self, body: dict, actor: str) -> dict:
+        """Exchange a refresh token for a rotated (access, refresh)
+        pair. The old refresh is revoked in the same step — a replay
+        of the old refresh returns an error (and the caller should
+        treat that as a leak signal).
+        """
+        store = build_default_api_token_store()
+        refresh_plain = str(body.get("refresh_token", "")).strip()
+        if not refresh_plain:
+            raise UserServiceError("refresh_token required")
+        result = store.rotate(refresh_plain)
+        if result is None:
+            raise UserServiceError(
+                "refresh token invalid, expired, or already rotated; "
+                "sign in again",
+            )
+        (access, a_plain), (new_refresh, r_plain) = result
+        return {
+            "access": {**access.to_dict(), "token": a_plain},
+            "refresh": {**new_refresh.to_dict(), "token": r_plain},
+        }
 
     def token_revoke(self, path: str, actor: str) -> dict:
         token_id = path.rsplit("/", 1)[-1]
         ok = build_default_api_token_store().revoke(token_id)
         return {"token_id": token_id, "revoked": ok, "actor": actor}
+
+    def token_family_revoke(self, body: dict, actor: str) -> dict:
+        """Revoke every live token sharing the given family_id."""
+        family_id = str(body.get("family_id", "")).strip()
+        if not family_id:
+            raise UserServiceError("family_id required")
+        killed = build_default_api_token_store().revoke_family(family_id)
+        return {"family_id": family_id, "revoked_count": killed,
+                "actor": actor}
 
     def invite_create(self, body: dict, actor: str) -> dict:
         inv_svc = build_default_invite_service()
@@ -391,6 +441,9 @@ class PostRequestHandler:
         "/api/auth/login",
         # Logout is idempotent (just revokes the cookie); same reason.
         "/api/auth/logout",
+        # Refresh token itself is the credential; programmatic clients
+        # won't have a Cookie header to CSRF against.
+        "/api/tokens/refresh",
     })
 
     def handle(self, handler: ControllerAPIHandler) -> None:  # noqa: C901
@@ -999,6 +1052,10 @@ class PostRequestHandler:
             return _user_mgmt_helper.role_update(path, body, actor)
         if path == "/api/tokens":
             return _user_mgmt_helper.token_create(body, actor)
+        if path == "/api/tokens/refresh":
+            return _user_mgmt_helper.token_refresh(body, actor)
+        if path == "/api/tokens/revoke-family":
+            return _user_mgmt_helper.token_family_revoke(body, actor)
         if path.startswith("/api/tokens/"):
             return _user_mgmt_helper.token_revoke(path, actor)
         if path == "/api/users":

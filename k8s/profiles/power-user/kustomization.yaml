@@ -7,6 +7,10 @@ resources:
   - ../../storage-pvc.yaml
   - ../../core.yaml
   - ../../optional.yaml
+  - ../../envoy.yaml
+  - ../../controller.yaml
+  - ../../auth-authelia.yaml
+  - ../../networkpolicy.yaml   # zero-trust tier isolation (opt-in)
   - ../../ingress-traefik.yaml
   - ../../unpackerr.yaml
   - ../../scale-policy.yaml
