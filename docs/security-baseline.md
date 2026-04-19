@@ -1,5 +1,10 @@
 # Security baseline
 
+<!-- Baseline audit for every HTTP service in the stack. Codified as
+     executable tests under tests/security/. -->
+
+
+
 The security baseline every service in the stack is measured against.
 It's codified as executable tests under [tests/security/](../tests/security/)
 so the state of each service can be reported as a pass/fail matrix and
@@ -27,7 +32,7 @@ at the service. The runner is **pure HTTP** — it imports no stack code
 and can audit third-party apps (Jellyfin, Sonarr, Radarr, etc.) the
 same way.
 
-## Checks (16 at baseline)
+## Checks (18 at baseline)
 
 Every service is measured against these. A service declares which
 paths are public / sensitive / mutating, and the runner probes each.
@@ -58,6 +63,8 @@ paths are public / sensitive / mutating, and the runner probes each.
 | 10 | `hsts_value` | HSTS includes a `max-age` ≥ `31536000` and `includeSubDomains`. | yes |
 | 11 | `csp_default_src` | CSP defines `default-src` and `frame-ancestors`. Prevents framing + cross-origin asset injection. | yes |
 | 12 | `no_secret_in_errors` | 401/400 bodies don't contain obvious password/API-key/bearer-token patterns. Catches accidental echo. | **yes** |
+| 12b | `credential_endpoints_no_echo` | `/api/keys` (and similar admin-creds endpoints) never echo the plaintext password even when called authenticated. Regression guard for a real past bug. | **yes** |
+| 12c | `trusted_proxy_spoof_rejected` | Setting `Remote-User` (or the configured proxy identity header) from an IP NOT in the trusted-proxy CIDR list does **not** authenticate the request. Catches misconfigured forward-auth. | **yes** |
 
 ### Abuse prevention
 

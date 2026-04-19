@@ -56,6 +56,9 @@ class AuditTarget:
     sensitive_paths: list[str] = field(default_factory=list)
     mutating_paths: list[str] = field(default_factory=list)
     webhook_post_paths: list[str] = field(default_factory=list)
+    # Header the service uses for trusted-proxy forward-auth (if any).
+    # When empty, the trusted-proxy spoof check is skipped.
+    trusted_proxy_header: str = ""
     verify_tls: bool = True
 
 
@@ -120,6 +123,7 @@ class SecurityAuditRunner:
         self._check_webhook_ssrf_block()
         self._check_no_secret_in_error_bodies()
         self._check_credential_endpoints_no_password_echo()
+        self._check_trusted_proxy_spoof_rejected()
         self._check_trailing_slash_canonicalization()
         return list(self._results)
 
@@ -408,6 +412,30 @@ class SecurityAuditRunner:
             "credential_endpoints_no_echo",
             "pass" if not leaks else "fail",
             "; ".join(leaks) or "no credential echo detected",
+        )
+
+    def _check_trusted_proxy_spoof_rejected(self) -> None:
+        """Spoofing the trusted-proxy identity header from an un-trusted
+        source MUST NOT authenticate the request.
+
+        The audit is run from outside the trusted-proxy CIDR (test harness
+        talks to localhost / the service directly), so setting the header
+        should be silently ignored. If the spoof works, the service is
+        honoring the header from any IP — a severe trust boundary bug.
+        """
+        header = self.target.trusted_proxy_header
+        if not header or not self.target.sensitive_paths:
+            self._skip("trusted_proxy_spoof_rejected",
+                       "no trusted_proxy_header configured")
+            return
+        path = self.target.sensitive_paths[0]
+        resp = self._request(
+            "GET", path, extra_headers={header: "admin"},
+        )
+        self._record(
+            "trusted_proxy_spoof_rejected",
+            "pass" if resp.status == 401 else "fail",
+            f"HTTP {resp.status}",
         )
 
     def _check_trailing_slash_canonicalization(self) -> None:

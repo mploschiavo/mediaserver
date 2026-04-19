@@ -41,6 +41,14 @@ _H_CONTENT_LENGTH = "Content-Length"
 # well under this; anything larger is either a mistake or an attack.
 _MAX_BODY_BYTES = 1 * (2 ** 20)
 
+# Forward-auth integration. When Envoy fronts the controller with an
+# Authelia ext_authz filter, Authelia sets Remote-User (and friends)
+# on the upstream request. The controller accepts that identity only
+# if the request came from a CIDR listed in CONTROLLER_TRUSTED_PROXY_CIDRS.
+# Without a trusted-proxy configuration, these headers are ignored so
+# an attacker can't spoof Remote-User by setting the header themselves.
+_DEFAULT_TRUSTED_PROXY_HEADER = "Remote-User"
+
 
 class _AuthPolicy:
     """Encapsulates the auth decision + bearer-token verification.
@@ -165,6 +173,76 @@ class _AuthPolicy:
 _auth_policy = _AuthPolicy()
 
 
+class _TrustedProxyAuth:
+    """Accept an upstream-auth'd identity (e.g. from Authelia via
+    Envoy ext_authz) only when the request arrives from a configured
+    trusted proxy CIDR.
+
+    Env vars:
+      CONTROLLER_TRUSTED_PROXY_CIDRS  — comma-separated CIDRs (v4 or v6)
+                                        of the proxy tier (Envoy pod IPs,
+                                        Tailscale net, etc.). Empty =
+                                        trusted-proxy auth disabled.
+      CONTROLLER_TRUSTED_PROXY_HEADER — header that carries the identity.
+                                        Defaults to ``Remote-User``.
+
+    An identity-carrying header coming from an IP OUTSIDE the trusted
+    CIDR list is IGNORED — we never blindly trust user-supplied
+    Remote-User headers.
+    """
+
+    def __init__(self) -> None:
+        # Bind the env dict once so each identity() call reads via
+        # self._env.get(...) rather than os.environ.get(...). Same dict
+        # object — test mock.patch.dict(os.environ) still takes effect.
+        self._env = os.environ
+
+    def identity(self, handler) -> str | None:
+        cidrs_raw = self._env.get("CONTROLLER_TRUSTED_PROXY_CIDRS", "").strip()
+        if not cidrs_raw:
+            return None  # trusted-proxy auth not configured
+        header = (self._env.get("CONTROLLER_TRUSTED_PROXY_HEADER", "")
+                  .strip() or _DEFAULT_TRUSTED_PROXY_HEADER)
+        client_ip = self._client_ip(handler)
+        if not client_ip or not self._in_any_cidr(client_ip, cidrs_raw):
+            return None
+        headers = getattr(handler, "headers", None)
+        if headers is None:
+            return None
+        try:
+            user = (headers.get(header, "") or "").strip()
+        except AttributeError:
+            return None
+        return user or None
+
+    def _client_ip(self, handler) -> str:
+        addr = getattr(handler, "client_address", None)
+        if isinstance(addr, tuple) and addr:
+            return str(addr[0])
+        return ""
+
+    def _in_any_cidr(self, ip_str: str, cidrs_raw: str) -> bool:
+        import ipaddress
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        for chunk in cidrs_raw.split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            try:
+                net = ipaddress.ip_network(chunk, strict=False)
+            except ValueError:
+                continue
+            if ip in net:
+                return True
+        return False
+
+
+_trusted_proxy_auth = _TrustedProxyAuth()
+
+
 def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
     """Verify basic-auth. Prefer the store-backed verifier so password
     resets in the UI take effect immediately; fall back to env creds.
@@ -269,12 +347,19 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     # --- Auth ---
 
     def _check_auth(self) -> bool:
-        """Check authentication (bearer token or basic auth).
+        """Check authentication (trusted proxy, bearer token, or basic auth).
 
-        Policy logic lives in module-level _auth_policy so this class
-        stays under the methods-per-class ratchet. Bearer tokens are
-        preferred for programmatic clients; basic auth works for
-        browser/curl. Bearer scope is 'admin' (full) or 'read' (GET only).
+        Tried in order:
+          1. Trusted-proxy auth — when CONTROLLER_TRUSTED_PROXY_CIDRS is
+             set and the request IP is inside one of those CIDRs, honor
+             Authelia's Remote-User header. This is what lets the same
+             dashboard work behind an Authelia-protected gateway without
+             prompting for basic auth on top.
+          2. Bearer token — programmatic clients.
+          3. Basic auth — browser + curl.
+
+        All three paths are rejected when CONTROLLER_AUTH is ``none`` or
+        the request hits a public endpoint; that's handled up front.
         """
         path = self.path.split("?")[0]
         if _auth_policy.is_public(self, path):
@@ -282,6 +367,10 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         password = os.environ.get("STACK_ADMIN_PASSWORD", "")
         if _auth_policy.decision(self, path, password) == "allow":
+            return True
+        # Trusted-proxy runs FIRST so Authelia-fronted requests don't
+        # double-prompt for basic auth.
+        if _trusted_proxy_auth.identity(self):
             return True
         if not password:
             return True

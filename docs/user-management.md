@@ -119,10 +119,32 @@ live in `contracts/roles.yaml`.
 | Env var | Default | Meaning |
 |---|---|---|
 | `CONTROLLER_AUTH` | `all` when password set, else `none` | `all` = every `/api/*`, `/metrics`, `/logs/*` endpoint requires auth regardless of method. `write` = legacy mode, GETs public except sensitive paths (still gated). `none` = no auth. |
+| `CONTROLLER_TRUSTED_PROXY_CIDRS` | (unset) | Comma-separated CIDRs of the proxy tier (e.g. Envoy pod IPs). When set, the controller accepts `Remote-User` (or the header named by `CONTROLLER_TRUSTED_PROXY_HEADER`) as an authenticated identity from requests originating inside those CIDRs — unblocks Authelia forward-auth behind Envoy without double-prompting. Requests from outside the CIDRs that carry the header are silently rejected (no spoofing). |
+| `CONTROLLER_TRUSTED_PROXY_HEADER` | `Remote-User` | Header name containing the upstream-auth identity. Must match what your forward-auth emits. |
 | `CSRF_ENFORCE` | (unset) | `1` = strict CSRF for every request (incl. API clients); `0` = disabled; default = smart (strict for browsers, exempt for API clients without Cookie header) |
 | `STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD` | env | Fallback basic-auth principal when the controller user store isn't populated. |
 | `RECONCILE_INTERVAL_SEC` | `3600` | Background reconcile cadence |
 | `AUTHELIA_USERS_DB` | derived | Path to Authelia `users_database.yml` for basic-auth fallback |
+
+### Authelia forward-auth integration
+
+When the controller sits behind Envoy with Authelia ext_authz,
+you'll get a **double-prompt** (Authelia asks for the OIDC login,
+Envoy forwards the request to the controller, the controller asks
+for basic auth again). To fix, wire trusted-proxy:
+
+1. Set `CONTROLLER_TRUSTED_PROXY_CIDRS` to the CIDR containing your
+   Envoy pod IPs (in K8s, that's typically the pod-network CIDR; in
+   compose, the docker bridge subnet).
+2. In Envoy's ext_authz config, make sure Authelia's `Remote-User`
+   response header is copied onto the upstream request.
+3. That's it — the controller now trusts Remote-User from Envoy and
+   only asks for basic auth on direct (non-proxied) access.
+
+Security property: an attacker on the open internet who sends
+`Remote-User: admin` still hits 401, because their source IP isn't
+in the trusted CIDR list. Verified by the
+`trusted_proxy_spoof_rejected` security-baseline test.
 
 ### API auth: basic auth vs bearer tokens
 
