@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs
 
 from media_stack.api.session_singletons import session_cookie_reader
+from media_stack.api.tls_factory import build_default_tls_service
 from media_stack.core.auth.users.user_service_factory import (
     build_default_api_token_store,
     build_default_invite_service,
@@ -148,6 +149,17 @@ class GetRequestHandler:
             handler._json_response(200, get_custom_formats(svc_id))
         elif path == "/api/arr-webhooks":
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
+        elif path == "/api/tls/certificate":
+            try:
+                info = build_default_tls_service().describe().to_dict()
+                handler._json_response(HTTPStatus.OK, info)
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    # 99-char cap matches the _ERR_LEN convention used
+                    # throughout the POST handlers for consistency.
+                    {"error": str(exc)[:99]},
+                )
         elif path == "/api/users" or path.startswith("/api/users/") \
                 or path in ("/api/roles", "/api/user-providers",
                             "/api/audit-log", "/api/users-reconcile",

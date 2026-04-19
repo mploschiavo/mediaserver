@@ -353,6 +353,8 @@ class _SudoGate:
         "/api/auth/config",
         "/api/envvars",
         "/api/tokens/revoke-family",
+        "/api/tls/certificate",
+        "/api/tls/certificate/regenerate",
     })
     _DEFAULT_SUDO_PREFIXES = (
         "/api/users/",  # matches /api/users/{id}/reset-password etc.
@@ -383,9 +385,15 @@ class _SudoGate:
     def allows(self, handler, path: str) -> bool:
         if not self.requires_sudo(handler, path):
             return True
+        # If no admin password is configured, the whole system is in
+        # "no-auth" mode — there's nothing to re-verify against, so
+        # the sudo gate becomes a no-op. Matches _check_auth()'s
+        # behaviour in that mode.
+        if not self._env.get("STACK_ADMIN_PASSWORD", ""):
+            return True
         # If the request already uses Basic auth, the password is
-        # already validated by _check_auth() every time \u2014 that counts
-        # as continuous re-auth, no need for X-Sudo-Password.
+        # validated by _check_auth() on every call — continuous
+        # re-auth, no need for an extra X-Sudo-Password header.
         auth_hdr = ""
         try:
             auth_hdr = handler.headers.get(_H_AUTHORIZATION, "") or ""

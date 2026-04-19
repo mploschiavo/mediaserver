@@ -39,6 +39,16 @@ class _FakeVerifier:
 
 class SudoGateTests(unittest.TestCase):
     def setUp(self):
+        # Sudo gate is a no-op when STACK_ADMIN_PASSWORD is unset — the
+        # "no-auth" mode. These tests exercise the gated path, so we
+        # need a configured admin password for the duration.
+        self._patch = mock.patch.dict(
+            "os.environ",
+            {"STACK_ADMIN_PASSWORD": "pw-for-gate-tests"},
+            clear=False,
+        )
+        self._patch.start()
+        self.addCleanup(self._patch.stop)
         self.gate = srv._SudoGate()
 
     def test_non_sensitive_path_always_allowed(self):

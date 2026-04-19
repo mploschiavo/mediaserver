@@ -409,6 +409,28 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-primary" style="padding:5px 12px;font-size:.82em" onclick="probeMatrix()">Test All Paths</button>
     </div>
     <div id="dns-matrix"></div>
+
+    <!-- TLS certificate management -->
+    <details style="margin-top:18px" id="tls-cert-details">
+      <summary style="color:var(--fg2);font-size:.88em;cursor:pointer;font-weight:600">TLS certificate (edge)</summary>
+      <div id="tls-cert-info" style="margin:10px 0;padding:10px;border-radius:6px;background:var(--bg4);font-size:.85em;font-family:monospace;line-height:1.6">Loading…</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="btn-secondary" style="padding:5px 12px;font-size:.82em" onclick="loadTlsCert()">Refresh</button>
+        <button class="btn-secondary" style="padding:5px 12px;font-size:.82em" onclick="regenerateTlsCert()">Regenerate self-signed</button>
+      </div>
+      <div style="color:var(--fg2);font-size:.85em;margin-bottom:6px">Install a custom cert (PEM). Both blobs are validated server-side before writing; a mismatch is rejected with no partial state.</div>
+      <label style="color:var(--fg2);font-size:.85em;display:block;margin:6px 0">Certificate chain (fullchain.pem)
+        <textarea id="tls-cert-input" rows="6" placeholder="-----BEGIN CERTIFICATE-----&#10;…" style="width:100%;padding:6px;font-family:monospace;font-size:.78em;background:var(--bg4);color:var(--fg);border:1px solid var(--border);border-radius:4px"></textarea>
+      </label>
+      <label style="color:var(--fg2);font-size:.85em;display:block;margin:6px 0">Private key (privkey.pem)
+        <textarea id="tls-key-input" rows="6" placeholder="-----BEGIN PRIVATE KEY-----&#10;…" style="width:100%;padding:6px;font-family:monospace;font-size:.78em;background:var(--bg4);color:var(--fg);border:1px solid var(--border);border-radius:4px"></textarea>
+      </label>
+      <label style="color:var(--fg2);font-size:.85em;display:block;margin:6px 0">Sudo password (re-authentication required for cert install)
+        <input type="password" id="tls-sudo-pw" style="width:100%;padding:6px;background:var(--bg4);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+      </label>
+      <button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="installTlsCert()">Install certificate</button>
+      <div id="tls-cert-status" style="margin-top:8px;font-size:.85em"></div>
+    </details>
   </div>
 
   <!-- Ops tab -->
@@ -1473,6 +1495,62 @@ function renderMatrix(){
   h+='</tbody></table>';document.getElementById('dns-matrix').innerHTML=h;
 }
 async function probeUrl(url,timeout){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout||4000);try{await window.fetch(url,{mode:'no-cors',cache:'no-store',signal:c.signal});clearTimeout(t);return 'ok';}catch(e){clearTimeout(t);return 'error';}}
+
+/* TLS certificate management (Routing tab → Ops panel) */
+async function loadTlsCert(){
+  const box=document.getElementById('tls-cert-info');if(!box)return;
+  box.textContent='Loading…';
+  try{
+    const r=await fetch('/api/tls/certificate');const j=await r.json();
+    if(!j.present){box.innerHTML='<em>No certificate installed.</em> Click <b>Regenerate self-signed</b> to create one.';return;}
+    const expiry=j.not_after||'—';
+    const sans=(j.sans||[]).join(', ')||'—';
+    box.innerHTML='<div><b>Subject:</b> '+_escHtml(j.subject||'—')+'</div>'
+      +'<div><b>Issuer:</b> '+_escHtml(j.issuer||'—')+'</div>'
+      +'<div><b>Valid:</b> '+_escHtml(j.not_before||'—')+' → '+_escHtml(expiry)+'</div>'
+      +'<div><b>SANs:</b> '+_escHtml(sans)+'</div>'
+      +'<div style="color:var(--fg3);margin-top:4px"><b>SHA-256:</b> '+_escHtml((j.fingerprint_sha256||'').slice(0,80))+'…</div>';
+  }catch(e){box.textContent='Load failed: '+e.message;}
+}
+async function regenerateTlsCert(){
+  const pw=document.getElementById('tls-sudo-pw').value;
+  if(!pw){_tlsStatus('Sudo password required','err');return;}
+  _tlsStatus('Regenerating…','info');
+  try{
+    const r=await fetch('/api/tls/certificate/regenerate',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),'X-Sudo-Password':pw},
+      body:JSON.stringify({})});
+    const j=await r.json();
+    if(r.ok){_tlsStatus('Regenerated. Restart Envoy to pick up the new cert.','ok');loadTlsCert();}
+    else _tlsStatus('Regenerate failed: '+(j.error||r.status),'err');
+  }catch(e){_tlsStatus('Regenerate failed: '+e.message,'err');}
+}
+async function installTlsCert(){
+  const cert=document.getElementById('tls-cert-input').value.trim();
+  const key=document.getElementById('tls-key-input').value.trim();
+  const pw=document.getElementById('tls-sudo-pw').value;
+  if(!cert||!key){_tlsStatus('Cert + key required','err');return;}
+  if(!pw){_tlsStatus('Sudo password required','err');return;}
+  _tlsStatus('Validating and installing…','info');
+  try{
+    const r=await fetch('/api/tls/certificate',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),'X-Sudo-Password':pw},
+      body:JSON.stringify({cert_pem:cert,key_pem:key})});
+    const j=await r.json();
+    if(r.ok){
+      _tlsStatus('Certificate installed. Restart Envoy to pick it up.','ok');
+      document.getElementById('tls-cert-input').value='';
+      document.getElementById('tls-key-input').value='';
+      document.getElementById('tls-sudo-pw').value='';
+      loadTlsCert();
+    }else _tlsStatus('Install failed: '+(j.error||r.status),'err');
+  }catch(e){_tlsStatus('Install failed: '+e.message,'err');}
+}
+function _tlsStatus(msg,kind){
+  const el=document.getElementById('tls-cert-status');if(!el)return;
+  const color=kind==='ok'?'var(--green)':(kind==='err'?'var(--red)':'var(--fg2)');
+  el.innerHTML='<span style="color:'+color+'">'+_escHtml(msg)+'</span>';
+}
 async function probeMatrix(){
   toast('Testing all access paths...');showLoading();const tasks=[];
   for(const s of SVCS){const urls=getAccessUrls(s);matrixState[s.id+'_loc']='warn';matrixState[s.id+'_gw']='warn';matrixState[s.id+'_sub']='warn';matrixState[s.id+'_dir']='warn';
@@ -4145,7 +4223,7 @@ async function onTabShow(tabId){
   showLoading();
   try{
     if(tabId==='tab-content'){await loadLibraries();}
-    else if(tabId==='tab-routing'){await loadRoutingConfig();}
+    else if(tabId==='tab-routing'){await loadRoutingConfig();loadTlsCert();}
     else if(tabId==='tab-ops'){/* ops-actions is static, no load needed */}
     else if(tabId==='tab-profile'){await loadDisplayConfig();}
     else if(tabId==='tab-users'){await loadUserList();}  /* auto-load users on first tab click */

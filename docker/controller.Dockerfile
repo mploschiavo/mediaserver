@@ -19,7 +19,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/media-stack
 
-RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
+RUN apk add --no-cache openssl \
+    && apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
     && pip install --no-cache-dir argon2-cffi bcrypt docker kubernetes pyyaml requests \
     && apk del .build-deps
 

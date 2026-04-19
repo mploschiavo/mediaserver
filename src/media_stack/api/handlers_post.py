@@ -21,6 +21,10 @@ from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME,
     session_store as _session_store,
 )
+from media_stack.api.tls_factory import build_default_tls_service
+from media_stack.core.edge.tls_certificate_service import (
+    TlsCertificateServiceError,
+)
 
 _dumps = _dumps_mod.dumps
 
@@ -150,11 +154,14 @@ class _WebhookHmacVerifier:
         self._env = os.environ
 
     def verify_and_parse(self, handler) -> tuple[dict, bool]:
-        raw = self._read_raw_body(handler)
         secret = self._env.get("WEBHOOK_HMAC_SECRET", "").strip()
         if not secret:
-            # No secret configured — accept all (legacy deployments).
-            return self._parse_json(raw), True
+            # No secret configured — fall through to the handler's normal
+            # JSON-body reader. This preserves backward compatibility with
+            # tests/scripts that mock _read_json_body(), and avoids
+            # touching rfile unless HMAC is actually required.
+            return handler._read_json_body() or {}, True
+        raw = self._read_raw_body(handler)
         signature_ok = self._verify_signature(handler, raw, secret)
         if not signature_ok:
             return {}, False
@@ -294,6 +301,58 @@ class _SessionLoginHelper:
 _session_login_helper = _SessionLoginHelper()
 _handle_login = _session_login_helper.login
 _handle_logout = _session_login_helper.logout
+
+
+class _TlsCertHandler:
+    """Install / regenerate the edge TLS certificate used by Envoy.
+
+    Both endpoints are mutating + sudo-gated upstream in server.py.
+    Successful writes return the new cert metadata; the caller is
+    expected to trigger an Envoy reload (the dashboard does so via
+    the existing service-restart flow).
+    """
+
+    def install(self, handler) -> None:
+        body = handler._read_json_body() or {}
+        cert_pem = str(body.get("cert_pem", "") or "").strip()
+        key_pem = str(body.get("key_pem", "") or "").strip()
+        if not cert_pem or not key_pem:
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "cert_pem and key_pem required"},
+            )
+            return
+        try:
+            info = build_default_tls_service().install(cert_pem, key_pem)
+        except TlsCertificateServiceError as exc:
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
+            )
+            return
+        handler._json_response(HTTPStatus.OK, {
+            "installed": True, **info.to_dict(),
+        })
+
+    def regenerate(self, handler) -> None:
+        body = handler._read_json_body() or {}
+        hostnames = body.get("hostnames") or None
+        days = int(body.get("days", 0) or 73 * 5)  # default 365
+        try:
+            info = build_default_tls_service().regenerate(
+                hostnames=hostnames if isinstance(hostnames, list) else None,
+                days=days,
+            )
+        except TlsCertificateServiceError as exc:
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
+            )
+            return
+        handler._json_response(HTTPStatus.OK, {
+            "regenerated": True, **info.to_dict(),
+        })
+
+
+_tls_handler = _TlsCertHandler()
 
 
 # ---------------------------------------------------------------------------
@@ -535,6 +594,14 @@ class PostRequestHandler:
         # POST /api/auth/logout — revoke the session cookie
         if handler.path == "/api/auth/logout":
             _handle_logout(handler)
+            return
+        # POST /api/tls/certificate — install a PEM cert+key bundle
+        if handler.path == "/api/tls/certificate":
+            _tls_handler.install(handler)
+            return
+        # POST /api/tls/certificate/regenerate — self-signed refresh
+        if handler.path == "/api/tls/certificate/regenerate":
+            _tls_handler.regenerate(handler)
             return
 
         # POST /run -- backward-compatible alias

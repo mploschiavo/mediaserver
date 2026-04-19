@@ -31,6 +31,16 @@ class _FakeHandler:
             **(extra_headers or {}),
         })
         self.rfile = io.BytesIO(body)
+        self._body_bytes = body
+
+    def _read_json_body(self):
+        """Mirrors ControllerAPIHandler._read_json_body for the no-secret
+        fall-through path in _WebhookHmacVerifier.verify_and_parse."""
+        import json as _json
+        try:
+            return _json.loads(self._body_bytes)
+        except (ValueError, TypeError):
+            return {}
 
 
 SECRET = "super-secret-hmac-key"
