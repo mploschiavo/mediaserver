@@ -118,6 +118,7 @@ class SecurityAuditRunner:
         self._check_bearer_token_read_blocks_mutation()
         self._check_revoked_bearer_rejected()
         self._check_csrf_blocks_cookie_request_without_token()
+        self._check_cross_origin_mutation_rejected()
         self._check_rate_limit_triggers()
         self._check_body_size_cap()
         self._check_webhook_ssrf_block()
@@ -307,6 +308,32 @@ class SecurityAuditRunner:
         )
         self._record(
             "csrf_blocks_cookie_no_token",
+            "pass" if resp.status in (401, 403) else "fail",
+            f"HTTP {resp.status}",
+        )
+
+    def _check_cross_origin_mutation_rejected(self) -> None:
+        """A POST with a Cookie header AND a cross-origin Origin must
+        be rejected even if the attacker somehow has a valid CSRF
+        token (double-submit defeat). Stolen-token defense-in-depth.
+        """
+        if not self.target.mutating_paths or not self._has_admin_creds():
+            self._skip("cross_origin_mutation_rejected",
+                       "no mutating path or creds")
+            return
+        path = self.target.mutating_paths[0]
+        resp = self._request(
+            "POST", path, body=b"{}",
+            auth=self._basic_auth_header(),
+            content_type="application/json",
+            extra_headers={
+                "Cookie": "media_stack_csrf=probe",
+                "X-CSRF-Token": "probe",
+                "Origin": "https://attacker.example",
+            },
+        )
+        self._record(
+            "cross_origin_mutation_rejected",
             "pass" if resp.status in (401, 403) else "fail",
             f"HTTP {resp.status}",
         )

@@ -107,6 +107,9 @@ class ControllerSecurityBaseline(unittest.TestCase):
     def test_csrf_blocks_cookie_request_without_token(self):
         self._assert_pass("csrf_blocks_cookie_no_token")
 
+    def test_cross_origin_mutation_rejected(self):
+        self._assert_pass("cross_origin_mutation_rejected")
+
     def test_rate_limit_triggers(self):
         self._assert_pass("rate_limit_triggers")
 
