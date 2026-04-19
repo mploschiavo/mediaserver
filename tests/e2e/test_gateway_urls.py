@@ -262,5 +262,52 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
+class HostnameResolutionTests(unittest.TestCase):
+    """Catches the /etc/hosts drift that breaks browser follow-through
+    even when Envoy is serving all the right vhosts internally.
+
+    If Envoy serves `auth.media-stack.local` but the operator's
+    /etc/hosts only has `authelia.media-stack.local`, the login
+    redirect lands on NXDOMAIN in the browser — despite every
+    controller-side check passing. This test reads the live Envoy
+    vhost list and asserts each hostname resolves on the host
+    running the tests.
+
+    Skips cleanly when the Envoy container isn't reachable.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import subprocess
+        try:
+            raw = subprocess.check_output(
+                ["docker", "exec", "envoy", "grep", "-oE",
+                 r"[a-z0-9-]+\.media-stack\.local", "/etc/envoy/envoy.yaml"],
+                text=True, stderr=subprocess.DEVNULL, timeout=5,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+                FileNotFoundError):
+            raise unittest.SkipTest("envoy container unreachable")
+        cls.hostnames = sorted(set(raw.splitlines()))
+        if not cls.hostnames:
+            raise unittest.SkipTest("no hostnames found in envoy config")
+
+    def test_every_envoy_hostname_resolves(self):
+        import socket
+        unresolved: list[str] = []
+        for host in self.hostnames:
+            try:
+                socket.gethostbyname(host)
+            except socket.gaierror:
+                unresolved.append(host)
+        self.assertFalse(
+            unresolved,
+            "Envoy serves these hostnames but they don't resolve on this "
+            "machine — browser redirects will fail with NXDOMAIN. Run "
+            "`bin/sync-etc-hosts.sh --apply`. Missing: "
+            + ", ".join(unresolved),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

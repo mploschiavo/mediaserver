@@ -1467,7 +1467,20 @@ function buildDns(){
   const ip=getHostIp();const rc=_routingCfg;
   const gwHost=rc.gateway_host||'apps.media-stack.local';
   const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
-  document.getElementById('dns-entries').textContent=ip+'  '+gwHost+' '+SVCS.map(s=>s.id+'.'+sub+'.'+dom).join(' ');
+  // Start with gateway host + all service hostnames.
+  const hosts=[gwHost].concat(SVCS.map(s=>s.id+'.'+sub+'.'+dom));
+  // If /api/gateway-hostnames is reachable, use its authoritative list
+  // (derived from the live Envoy vhost config). This catches
+  // non-service vhosts like auth.<sub>.<dom> that Authelia uses for
+  // its login portal, plus any future vhosts the stack grows into.
+  fetch('/api/gateway-hostnames').then(r=>r.ok?r.json():null).then(j=>{
+    if(j&&Array.isArray(j.hostnames)&&j.hostnames.length){
+      const merged=Array.from(new Set(hosts.concat(j.hostnames)));
+      document.getElementById('dns-entries').textContent=ip+'  '+merged.join(' ');
+      renderMatrix();
+    }
+  }).catch(()=>{/* fall back to static list already rendered */});
+  document.getElementById('dns-entries').textContent=ip+'  '+hosts.join(' ');
   renderMatrix();
 }
 function getAccessUrls(s){
