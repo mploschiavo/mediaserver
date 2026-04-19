@@ -15,6 +15,7 @@ import signal
 import threading
 import time
 import urllib.request
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -36,6 +37,9 @@ except ImportError:
 
 
 _H_CONTENT_LENGTH = "Content-Length"
+# Cap request body at 1 MiB. Bulk CSV imports and config uploads stay
+# well under this; anything larger is either a mistake or an attack.
+_MAX_BODY_BYTES = 1 * (2 ** 20)
 
 
 class _AuthPolicy:
@@ -93,6 +97,43 @@ class _AuthPolicy:
         )
         handler.send_header(_H_CONTENT_LENGTH, "0")
         handler.end_headers()
+
+    def canonicalize_path(self, handler) -> None:
+        raw = getattr(handler, "path", None)
+        if not isinstance(raw, str):
+            return
+        qmark = raw.find("?")
+        path = raw if qmark < 0 else raw[:qmark]
+        query = "" if qmark < 0 else raw[qmark:]
+        if (path.startswith("/api/") and len(path) > len("/api/")
+                and path.endswith("/")):
+            handler.path = path.rstrip("/") + query
+
+    def check_body_size(self, handler) -> bool:
+        headers = getattr(handler, "headers", None)
+        if headers is None:
+            return True  # tests with mocked handlers skip the cap
+        try:
+            raw = headers.get(_H_CONTENT_LENGTH, "") or ""
+        except AttributeError:
+            return True
+        try:
+            length = int(raw) if raw else 0
+        except ValueError:
+            length = 0
+        if length <= _MAX_BODY_BYTES:
+            return True
+        body = json.dumps({
+            "error": f"request body too large ({length} bytes); "
+                     f"max {_MAX_BODY_BYTES}",
+        }).encode()
+        handler.send_response(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header(_H_CONTENT_LENGTH, str(len(body)))
+        self.emit_security_headers(handler)
+        handler.end_headers()
+        handler.wfile.write(body)
+        return False
 
     def emit_security_headers(self, handler) -> None:
         """Send hardening headers on every response.
@@ -289,6 +330,8 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get(_H_CONTENT_LENGTH, 0))
         if length <= 0:
             return {}
+        # Defensive: clamp to the cap even if do_POST preflight was bypassed.
+        length = min(length, _MAX_BODY_BYTES)
         try:
             return json.loads(self.rfile.read(length))
         except (json.JSONDecodeError, ValueError) as exc:
@@ -479,6 +522,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     # =======================================================================
 
     def do_GET(self) -> None:  # noqa: N802
+        _auth_policy.canonicalize_path(self)
         if not self._check_auth():
             return
         handlers_get.handle(self)
@@ -488,7 +532,10 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     # =======================================================================
 
     def do_POST(self) -> None:  # noqa: N802
+        _auth_policy.canonicalize_path(self)
         if not self._check_auth():
+            return
+        if not _auth_policy.check_body_size(self):
             return
         handlers_post.handle(self)
 
