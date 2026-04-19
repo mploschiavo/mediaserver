@@ -21,6 +21,7 @@ from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME,
     session_store as _session_store,
 )
+from media_stack.core.observability.security_counters import security_counters
 from media_stack.api.tls_factory import build_default_tls_service
 from media_stack.core.edge.tls_certificate_service import (
     TlsCertificateServiceError,
@@ -164,6 +165,7 @@ class _WebhookHmacVerifier:
         raw = self._read_raw_body(handler)
         signature_ok = self._verify_signature(handler, raw, secret)
         if not signature_ok:
+            security_counters.incr("hmac_fail")
             return {}, False
         return self._parse_json(raw), True
 
@@ -1165,6 +1167,7 @@ class PostRequestHandler:
         if handler.path in self._CSRF_EXEMPT_POST_PATHS:
             return True
         if not self._check_csrf(handler):
+            security_counters.incr("csrf_fail")
             handler._json_response(
                 HTTPStatus.FORBIDDEN,
                 {"error": "CSRF token missing or invalid"},
@@ -1273,7 +1276,10 @@ class PostRequestHandler:
         if not _csrf.verify(cookie_header=cookie_header,
                              header_value=csrf_header):
             return False
-        return self._origin_matches_host(origin, referer, host)
+        if not self._origin_matches_host(origin, referer, host):
+            security_counters.incr("origin_reject")
+            return False
+        return True
 
     def _origin_matches_host(self, origin: str, referer: str, host: str) -> bool:
         """Defense-in-depth: reject POSTs whose Origin/Referer doesn't
