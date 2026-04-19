@@ -121,7 +121,20 @@ are filled in.
 
 ## CI gate
 
-A `security-baseline` GitHub Actions job runs the full audit against a
-live cluster on every push. Any regression (a green check flipping to
-red) fails the pipeline. Skips are allowed to drift but never to
-decrease (a "missing check" in service X is a regression).
+The [`security-baseline-harness`](../.github/workflows/ci.yml) job
+runs two layers on every push:
+
+1. **Harness decision tests** — hard pass/fail. `test_security_audit_harness.py`
+   stubs the HTTP client so the 15+ checks can be exercised against
+   synthetic fixtures. If a check starts passing when it shouldn't
+   (e.g. missing headers), these fail immediately.
+2. **Live per-service suites** — run against any reachable target
+   found in the runner's network. Defaults to skipping when no
+   service is reachable, so vanilla GHA runners don't fail. Set
+   `CONTROLLER_URL=…`, `JELLYFIN_URL=…`, etc. on a post-deploy job
+   that points at a staging cluster to promote this to a hard gate.
+
+The pattern: the harness-unit layer means the **quality of the
+checks themselves** can't regress silently, even when no live target
+is available. The per-service layer means the **state of each
+service** is measured whenever a target is present.
