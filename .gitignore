@@ -16,3 +16,4 @@ docker/data/
 docker/media/
 .gitignore
 .claude/worktrees/
+.claude/scheduled_tasks.lock
