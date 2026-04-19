@@ -27,7 +27,7 @@ MODULES_WITHOUT_CLASS_RATCHET = 2
 LOOSE_FUNCTIONS_RATCHET = 73
 
 # DI migration ratchets
-STATIC_METHOD_RATCHET = 420       # @staticmethod — should be instance methods with DI
+STATIC_METHOD_RATCHET = 419       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 139  # _instance = Foo() — should use DI container
 OS_ENVIRON_IN_METHODS_RATCHET = 383  # os.environ in methods — should be config injection
 

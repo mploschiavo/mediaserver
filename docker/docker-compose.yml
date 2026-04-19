@@ -183,7 +183,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.66}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.67}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -198,7 +198,11 @@ services:
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT:-./config}:/runtime-config:rw
       - ../contracts:/contracts:ro
-      - ./config/certs:/certs:ro
+      # RW so the generator can mint a self-signed cert the first time
+      # the stack comes up (see _resolve_or_mint_certs in
+      # core/platforms/compose/edge/providers/envoy/dynamic_config.py).
+      # envoy itself still mounts this read-only below.
+      - ./config/certs:/certs:rw
     restart: "no"
 
   envoy:
@@ -610,7 +614,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.66}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.67}
     container_name: media-stack-controller
     command:
       - python3

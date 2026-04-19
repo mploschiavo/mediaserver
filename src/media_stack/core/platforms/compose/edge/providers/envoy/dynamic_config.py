@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import copy
+import os
 import re
+
+from media_stack.core.edge.tls_certificate_service import (
+    TlsCertificateService as _TlsCertificateService,
+)
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -543,22 +548,18 @@ class EnvoyDynamicConfigService:
             ignored_redirect_middleware_count=ignored_redirect_middleware_count,
         )
 
-    @staticmethod
-    def _inject_tls_if_available(payload: dict[str, Any]) -> None:
-        """Add TLS transport socket to the main listener if cert files exist.
+    def _inject_tls_if_available(self, payload: dict[str, Any]) -> None:
+        """Add TLS transport socket to the main listener.
 
         Compose deployments mount certs at /certs/. K8s uses ingress TLS
         termination so certs won't be present and Envoy runs plain HTTP.
+
+        If a cert dir is mounted but empty on the compose path, we
+        auto-mint a self-signed cert on the spot so the generator never
+        silently produces a plain-HTTP listener (which was the root
+        cause of a real apps-host TLS regression).
         """
-        cert_paths = [
-            ("/certs/media-stack.crt", "/certs/media-stack.key"),
-            ("/etc/envoy/certs/media-stack.crt", "/etc/envoy/certs/media-stack.key"),
-        ]
-        cert_path = key_path = None
-        for c, k in cert_paths:
-            if Path(c).exists() and Path(k).exists():
-                cert_path, key_path = c, k
-                break
+        cert_path, key_path = self._resolve_or_mint_certs()
         if not cert_path:
             return
 
@@ -585,6 +586,52 @@ class EnvoyDynamicConfigService:
             },
         }
         main_listener["name"] = "listener_https"
+
+    _CERT_CANDIDATE_PATHS: tuple[tuple[str, str], ...] = (
+        ("/certs/media-stack.crt", "/certs/media-stack.key"),
+        ("/etc/envoy/certs/media-stack.crt",
+         "/etc/envoy/certs/media-stack.key"),
+    )
+
+    def _resolve_or_mint_certs(self) -> tuple[str | None, str | None]:
+        """Return (cert_path, key_path) for the compose Envoy listener.
+
+        Resolution order:
+          1. First cert+key pair that already exists on disk.
+          2. If none exist but a writable candidate DIR is present,
+             mint a self-signed pair into it and return that.
+          3. Otherwise (K8s: no cert dir mounted), return (None, None)
+             so the caller falls back to plain HTTP (K8s terminates
+             TLS upstream).
+        """
+        for c, k in self._CERT_CANDIDATE_PATHS:
+            if Path(c).exists() and Path(k).exists():
+                return c, k
+        for c, k in self._CERT_CANDIDATE_PATHS:
+            minted = self._try_mint_cert(Path(c), Path(k))
+            if minted:
+                return c, k
+        return None, None
+
+    def _try_mint_cert(self, cert_file: Path, key_file: Path) -> bool:
+        """Try to mint a self-signed cert at (cert_file, key_file).
+        Returns True on success. Failures are logged at DEBUG — the
+        caller will try the next candidate path."""
+        cert_dir = cert_file.parent
+        if not (cert_dir.exists() and os.access(cert_dir, os.W_OK)):
+            return False
+        try:
+            svc = _TlsCertificateService(
+                cert_dir=cert_dir, cert_name=cert_file.name,
+                key_name=key_file.name,
+            )
+            svc.regenerate()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] compose cert mint failed at %s: %s", cert_dir, exc,
+            )
+            return False
 
     def _apply_auth_to_virtual_hosts(
         self,
