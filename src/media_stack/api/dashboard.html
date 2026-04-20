@@ -136,11 +136,19 @@ header .switch input:checked+.slider:before{transform:translateX(16px)}
 .tab-bar button{background:transparent;color:var(--fg3);border:none;padding:8px 14px;font-size:.85em;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
 .tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}.tab-bar button:hover{color:var(--fg)}
 .tab-content{display:none;min-height:60vh}.tab-content.active{display:block;animation:fadeIn .15s ease}
-.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .15s ease}
-.confirm-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%}
+.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .15s ease}
+.confirm-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:fadeIn .18s ease}
 .confirm-box h3{margin:0 0 8px;color:var(--fg);font-size:1.1em}
-.confirm-box p{color:var(--fg2);font-size:.9em;margin:0 0 16px;line-height:1.5}
-.confirm-box .actions{justify-content:flex-end}
+.confirm-box p{color:var(--fg2);font-size:.9em;margin:0 0 16px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.confirm-box .actions{justify-content:flex-end;display:flex;gap:8px}
+.confirm-box .field{margin:8px 0 16px}
+.confirm-box .field label{display:block;color:var(--fg2);font-size:.82em;margin-bottom:6px}
+.confirm-box .field input{width:100%;padding:8px 10px;font:inherit;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:6px}
+.confirm-box .field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 30%,transparent)}
+.confirm-box .reveal{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:8px 0 16px;font-family:ui-monospace,Menlo,monospace;font-size:.95em;word-break:break-all;user-select:all}
+.confirm-box .reveal code{flex:1;color:var(--accent)}
+.confirm-box .hint{font-size:.78em;color:var(--fg3);margin-top:-6px;margin-bottom:12px}
+.confirm-box .danger-icon{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--err);margin-right:6px;vertical-align:middle}
 .welcome{text-align:center;padding:20px 0}
 .welcome h3{color:var(--accent);margin:0 0 8px;font-size:1.1em}
 .welcome p{color:var(--fg2);font-size:.9em;margin:4px 0;line-height:1.5}
@@ -612,6 +620,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-audit',this)">Audit Log</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-providers',this)">Providers</button>
       <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-me',this)">My Profile</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="showUserSubTab('users-policy',this);loadPasswordPolicy()">Password Policy</button>
     </div>
     <div id="users-list" class="subtab active" style="min-height:80px">
       <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -630,6 +639,36 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <div id="users-audit" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="users-providers" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
     <div id="users-me" class="subtab" style="display:none"><span style="color:var(--fg3);font-size:.85em">Select this tab to load data</span></div>
+    <div id="users-policy" class="subtab" style="display:none">
+      <div style="max-width:560px">
+        <h3 style="margin:0 0 4px;font-size:1.02em">Password policy</h3>
+        <p style="color:var(--fg2);font-size:.85em;margin:0 0 16px">
+          Applies to new accounts and manual password resets. Changes take effect for the next reset or user created after saving.
+        </p>
+        <div id="pp-loading" style="color:var(--fg3);font-size:.85em">Loading...</div>
+        <form id="pp-form" style="display:none;flex-direction:column;gap:14px" onsubmit="event.preventDefault();savePasswordPolicy();">
+          <div>
+            <label style="display:block;color:var(--fg2);font-size:.82em;margin-bottom:6px">Minimum length <span id="pp-min_length-range" style="color:var(--fg3);font-size:.9em"></span></label>
+            <input id="pp-min_length" type="number" style="width:140px;padding:8px 10px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:6px">
+            <div style="color:var(--fg3);font-size:.78em;margin-top:4px">12 or more is recommended.</div>
+          </div>
+          <div>
+            <label style="display:block;color:var(--fg2);font-size:.82em;margin-bottom:6px">Character classes required <span id="pp-require_classes-range" style="color:var(--fg3);font-size:.9em"></span></label>
+            <input id="pp-require_classes" type="number" style="width:140px;padding:8px 10px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:6px">
+            <div style="color:var(--fg3);font-size:.78em;margin-top:4px">Out of: lowercase, uppercase, digit, symbol. 3+ recommended.</div>
+          </div>
+          <div>
+            <label style="display:block;color:var(--fg2);font-size:.82em;margin-bottom:6px">Password history (no reuse) <span id="pp-history_len-range" style="color:var(--fg3);font-size:.9em"></span></label>
+            <input id="pp-history_len" type="number" style="width:140px;padding:8px 10px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:6px">
+            <div style="color:var(--fg3);font-size:.78em;margin-top:4px">Prevents reusing a recent password on reset. Set to 0 to allow any password.</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="btn-primary" type="submit" style="padding:8px 16px;font-size:.9em">Save policy</button>
+            <button class="btn-secondary" type="button" style="padding:8px 16px;font-size:.9em" onclick="loadPasswordPolicy()">Reset to saved</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -675,12 +714,35 @@ async function loadAuthIdentity(){
     badge.style.display='flex';
   }catch(e){}
 }
-function authLogout(){
-  // Redirect to Authelia/Authentik logout endpoint
+async function authLogout(){
+  // Two logout paths depending on how the user got in:
+  //   1) Dashboard is behind Authelia (apps.<base>) — redirect to
+  //      Authelia's /logout which kills the SSO session for every
+  //      service under the portal. An earlier build used the wrong
+  //      NOT an Authelia endpoint and 404s.
+  //   2) User is on localhost:9100 or another direct host with no
+  //      Authelia — call /api/auth/logout on the controller to kill
+  //      the session cookie, then reload to land on the login page.
   const loc=window.location;
-  const base=loc.protocol+'//auth.'+loc.hostname.split('.').slice(1).join('.')+
-    (loc.port&&loc.port!=='80'&&loc.port!=='443'?':'+loc.port:'');
-  window.location.href=base+'/api/authz/logout?rd='+encodeURIComponent(loc.origin+'/');
+  // Best-effort kill the controller session cookie regardless of path
+  // so the ms_session cookie can't outlive an Authelia sign-out.
+  try{
+    await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',
+      headers:{'X-CSRF-Token':mediaStackCsrfToken()}});
+  }catch(e){}
+  const host=loc.hostname||'';
+  const parts=host.split('.');
+  const behindGateway=host!=='localhost'&&host!=='127.0.0.1'&&parts.length>=2;
+  if(behindGateway){
+    const authHost='auth.'+parts.slice(1).join('.');
+    const portPart=(loc.port&&loc.port!=='80'&&loc.port!=='443')?':'+loc.port:'';
+    window.location.href=loc.protocol+'//'+authHost+portPart+
+      '/logout?rd='+encodeURIComponent(loc.origin+'/');
+  }else{
+    // Direct-access deployment: reload to trigger the in-page login
+    // form served by the controller's send_401.
+    window.location.href='/';
+  }
 }
 let logRaw=[],logSeq=0,evtSource=null,statusData=null,logAutoScroll=true;
 let logFilter='all',sseAlive=false,svcSort='default',svcVersions={},prevPhase='idle';
@@ -795,6 +857,149 @@ function showTab(id,btn){
 
 /* Toast + Sound */
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className=err?'err':'';t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
+
+/* ------------------------------------------------------------------
+ * msUI — modern in-app modal replacements for window.alert/confirm/prompt
+ * ------------------------------------------------------------------
+ * Standard: NEVER call window.alert, window.confirm, or window.prompt
+ * from dashboard code. Use msUI.notify / .confirm / .prompt / .reveal
+ * instead. Enforced by tests/unit/test_codebase_class_structure.py
+ * (NO_BROWSER_DIALOGS_RATCHET).
+ *
+ * Every entry point returns a Promise — callers use `await` so the
+ * code reads top-to-bottom like the old synchronous dialogs did.
+ * ESC closes (returns null/false), ENTER confirms inside inputs,
+ * focus is trapped inside the modal while open.
+ */
+window.msUI=(function(){
+  const root=()=>document.getElementById('confirm-root');
+  const _esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function _open(innerHtml,{onKey,autoFocusSel}={}){
+    return new Promise(resolve=>{
+      const wrap=document.createElement('div');
+      wrap.className='confirm-overlay';
+      wrap.innerHTML=innerHtml;
+      function close(val){
+        document.removeEventListener('keydown',keyHandler);
+        wrap.remove();resolve(val);
+      }
+      function keyHandler(e){
+        if(e.key==='Escape'){e.preventDefault();close(onKey?.escape??null);}
+        else if(onKey?.enter&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();onKey.enter(close);}
+      }
+      wrap.addEventListener('click',e=>{if(e.target===wrap)close(onKey?.escape??null);});
+      wrap.__close=close;
+      (root()||document.body).appendChild(wrap);
+      document.addEventListener('keydown',keyHandler);
+      // Autofocus the first primary input / button.
+      requestAnimationFrame(()=>{
+        const el=wrap.querySelector(autoFocusSel||'input,button.btn-primary,button.btn-danger');
+        if(el)el.focus();
+      });
+    });
+  }
+  async function notify({title,body,variant,copyText,okLabel}={}){
+    const copyBtn=copyText?
+      `<button class="btn-secondary" type="button" data-msui-copy>${_esc('Copy')}</button>`:'';
+    const bodyHtml=body?`<p>${_esc(body)}</p>`:'';
+    const revealHtml=copyText?
+      `<div class="reveal"><code>${_esc(copyText)}</code></div>`:'';
+    const isErr=variant==='error';
+    const titleHtml=isErr?
+      `<span class="danger-icon"></span>${_esc(title||'Error')}`:_esc(title||'');
+    const html=`<div class="confirm-box"><h3>${titleHtml}</h3>${bodyHtml}${revealHtml}<div class="actions">${copyBtn}<button class="btn-primary" data-msui-ok type="button">${_esc(okLabel||'OK')}</button></div></div>`;
+    return _open(html,{onKey:{escape:true,enter:cl=>cl(true)}}).then(function inner(){
+      return new Promise(resolve=>{
+        // handlers are attached AFTER _open inserts the DOM
+      });
+    }).catch(()=>true);
+  }
+  // Simpler implementation: re-use _open fully.
+  async function _modal(renderHtml,handlers){
+    const h=await _open(renderHtml,handlers);
+    return h;
+  }
+  async function notifyV2({title,body,variant,copyText,okLabel}={}){
+    const hasCopy=!!copyText;
+    const isErr=variant==='error';
+    const titleHtml=isErr?
+      `<span class="danger-icon"></span>${_esc(title||'Error')}`:_esc(title||'');
+    const bodyHtml=body?`<p>${_esc(body)}</p>`:'';
+    const revealHtml=hasCopy?
+      `<div class="reveal"><code>${_esc(copyText)}</code></div>
+       <div class="hint">This value is shown once. Save it now.</div>`:'';
+    const copyBtn=hasCopy?
+      `<button class="btn-secondary" type="button" id="msui-copy">Copy</button>`:'';
+    const html=`<div class="confirm-box">
+      <h3>${titleHtml}</h3>${bodyHtml}${revealHtml}
+      <div class="actions">${copyBtn}
+        <button class="btn-primary" id="msui-ok" type="button">${_esc(okLabel||'OK')}</button>
+      </div></div>`;
+    const p=_open(html,{onKey:{escape:true,enter:cl=>cl(true)}});
+    // Attach DOM handlers on next frame
+    requestAnimationFrame(()=>{
+      const ok=document.getElementById('msui-ok');
+      if(ok)ok.onclick=()=>{const o=document.querySelector('.confirm-overlay');if(o)o.__close(true);};
+      const cp=document.getElementById('msui-copy');
+      if(cp)cp.onclick=async()=>{
+        try{await navigator.clipboard.writeText(copyText);cp.textContent='Copied!';setTimeout(()=>{cp.textContent='Copy';},1500);}
+        catch(e){toast('Copy failed',true);}
+      };
+    });
+    return p;
+  }
+  async function confirmDlg({title,body,confirmLabel,cancelLabel,danger}={}){
+    const cls=danger?'btn-danger':'btn-primary';
+    const titleHtml=danger?`<span class="danger-icon"></span>${_esc(title||'Confirm')}`:_esc(title||'Confirm');
+    const html=`<div class="confirm-box">
+      <h3>${titleHtml}</h3>
+      ${body?`<p>${_esc(body)}</p>`:''}
+      <div class="actions">
+        <button class="btn-secondary" id="msui-cancel" type="button">${_esc(cancelLabel||'Cancel')}</button>
+        <button class="${cls}" id="msui-confirm" type="button">${_esc(confirmLabel||'Confirm')}</button>
+      </div></div>`;
+    const p=_open(html,{onKey:{escape:false,enter:cl=>cl(true)},autoFocusSel:`#msui-confirm`});
+    requestAnimationFrame(()=>{
+      const c=document.getElementById('msui-confirm');
+      const x=document.getElementById('msui-cancel');
+      if(c)c.onclick=()=>{const o=document.querySelector('.confirm-overlay');if(o)o.__close(true);};
+      if(x)x.onclick=()=>{const o=document.querySelector('.confirm-overlay');if(o)o.__close(false);};
+    });
+    return p;
+  }
+  async function promptDlg({title,body,label,placeholder,type,confirmLabel,defaultValue,hint}={}){
+    const t=type==='password'?'password':'text';
+    const html=`<div class="confirm-box">
+      <h3>${_esc(title||'Enter value')}</h3>
+      ${body?`<p>${_esc(body)}</p>`:''}
+      <div class="field">
+        ${label?`<label for="msui-input">${_esc(label)}</label>`:''}
+        <input id="msui-input" type="${t}" placeholder="${_esc(placeholder||'')}" value="${_esc(defaultValue||'')}" autocomplete="${t==='password'?'new-password':'off'}">
+      </div>
+      ${hint?`<div class="hint">${_esc(hint)}</div>`:''}
+      <div class="actions">
+        <button class="btn-secondary" id="msui-cancel" type="button">Cancel</button>
+        <button class="btn-primary" id="msui-confirm" type="button">${_esc(confirmLabel||'OK')}</button>
+      </div></div>`;
+    const p=_open(html,{autoFocusSel:'#msui-input',onKey:{enter:cl=>{
+      const v=document.getElementById('msui-input')?.value??'';cl(v);
+    }}});
+    requestAnimationFrame(()=>{
+      const c=document.getElementById('msui-confirm');
+      const x=document.getElementById('msui-cancel');
+      const inp=document.getElementById('msui-input');
+      if(c)c.onclick=()=>{const o=document.querySelector('.confirm-overlay');if(o)o.__close(inp?.value??'');};
+      if(x)x.onclick=()=>{const o=document.querySelector('.confirm-overlay');if(o)o.__close(null);};
+    });
+    return p;
+  }
+  return {
+    notify:notifyV2,
+    confirm:confirmDlg,
+    prompt:promptDlg,
+    reveal:(args)=>notifyV2({...args,variant:'success'}),
+  };
+})();
 /* Action button helper: shows spinner, disables button, runs async fn, toasts result */
 async function actionBtn(btn,fn,successMsg){
   if(!btn)return;
@@ -1485,14 +1690,20 @@ function buildDns(){
 }
 function getAccessUrls(s){
   const ip=getHostIp();const rc=_routingCfg;
-  const gwPort=rc.gateway_port||80;const portSuffix=gwPort===80?'':':'+gwPort;
+  const gwPort=rc.gateway_port||80;
+  // Infer scheme: explicit routing.scheme wins; otherwise 443 implies https.
+  // Without this, the matrix shows http:// while Envoy redirects to https://,
+  // which makes every "probe" fail when launched from an https:// dashboard.
+  const scheme=(rc.scheme||'').toLowerCase()==='https'||gwPort===443?'https':
+               ((rc.scheme||'').toLowerCase()==='http'?'http':'http');
+  const portSuffix=(gwPort===80||gwPort===443)?'':':'+gwPort;
   const gwHost=rc.gateway_host||'apps.media-stack.local';
   const prefix=rc.app_path_prefix||'/app';
   const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
   return{
-    gateway:'http://'+gwHost+portSuffix+prefix+'/'+s.id+'/',
-    localhost:'http://localhost'+portSuffix+prefix+'/'+s.id+'/',
-    subdomain:'http://'+s.id+'.'+sub+'.'+dom+portSuffix+'/',
+    gateway:scheme+'://'+gwHost+portSuffix+prefix+'/'+s.id+'/',
+    localhost:scheme+'://localhost'+portSuffix+prefix+'/'+s.id+'/',
+    subdomain:scheme+'://'+s.id+'.'+sub+'.'+dom+portSuffix+'/',
     direct:'http://'+ip+':'+s.port+'/'
   };
 }
@@ -1573,14 +1784,43 @@ function _tlsStatus(msg,kind){
   el.innerHTML='<span style="color:'+color+'">'+_escHtml(msg)+'</span>';
 }
 async function probeMatrix(){
-  toast('Testing all access paths...');showLoading();const tasks=[];
-  for(const s of SVCS){const urls=getAccessUrls(s);matrixState[s.id+'_loc']='warn';matrixState[s.id+'_gw']='warn';matrixState[s.id+'_sub']='warn';matrixState[s.id+'_dir']='warn';
-    tasks.push(probeUrl(urls.localhost).then(r=>{matrixState[s.id+'_loc']=r;renderMatrix();}));
-    tasks.push(probeUrl(urls.gateway).then(r=>{matrixState[s.id+'_gw']=r;renderMatrix();}));
-    tasks.push(probeUrl(urls.subdomain).then(r=>{matrixState[s.id+'_sub']=r;renderMatrix();}));
-    tasks.push(probeUrl(urls.direct).then(r=>{matrixState[s.id+'_dir']=r;renderMatrix();}));}
-  renderMatrix();await Promise.all(tasks);
-  hideLoading();const ok=Object.values(matrixState).filter(v=>v==='ok').length;toast(ok+'/'+(SVCS.length*4)+' paths reachable');
+  // Delegate to the controller — running the probes in-browser fails
+  // under mixed content (https dashboard → http URLs) and under the
+  // self-signed-cert rejection that breaks fetch() silently. The server
+  // runs the exact same URL strings from inside the compose network,
+  // so results match what an end user with /etc/hosts + TLS-trust sees.
+  toast('Testing all access paths...');showLoading();
+  for(const s of SVCS){
+    matrixState[s.id+'_loc']='warn';matrixState[s.id+'_gw']='warn';
+    matrixState[s.id+'_sub']='warn';matrixState[s.id+'_dir']='warn';
+  }
+  renderMatrix();
+  try{
+    const r=await apiFetch('/api/routing-probe');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const KMAP={localhost:'_loc',gateway:'_gw',subdomain:'_sub',direct:'_dir'};
+    let ok=0,total=0;
+    for(const s of SVCS){
+      const row=d.services&&d.services[s.id];
+      if(!row){
+        for(const k of Object.values(KMAP))matrixState[s.id+k]='error';
+        continue;
+      }
+      for(const [kind,suffix] of Object.entries(KMAP)){
+        const cell=row[kind];total++;
+        if(cell&&cell.ok){matrixState[s.id+suffix]='ok';ok++;}
+        else matrixState[s.id+suffix]='error';
+      }
+    }
+    renderMatrix();
+    toast(ok+'/'+total+' paths reachable');
+  }catch(e){
+    for(const s of SVCS){
+      for(const k of ['_loc','_gw','_sub','_dir'])matrixState[s.id+k]='error';
+    }
+    renderMatrix();toast('Probe failed: '+e.message,true);
+  }finally{hideLoading();}
 }
 function copyDns(){navigator.clipboard.writeText(document.getElementById('dns-entries').textContent).then(()=>toast('Copied!')).catch(()=>toast('Copy failed',true));}
 
@@ -1595,7 +1835,7 @@ async function showExportKeys(){
     }
     if(d.admin){
       rows+='<tr><td colspan="2" style="padding:8px 8px 4px;font-weight:700;border-top:1px solid var(--border)">Admin Credentials</td></tr>';
-      rows+='<tr><td style="padding:4px 8px">Username</td><td style="padding:4px 8px"><code style="user-select:all">'+d.admin.username+'</code></td></tr>';
+      rows+='<tr><td style="padding:4px 8px">Username</td><td style="padding:4px 8px"><code style="user-select:all">'+_escHtml(d.admin.username)+'</code></td></tr>';
       rows+='<tr><td style="padding:4px 8px">Password</td><td style="padding:4px 8px"><span style="color:var(--fg3)">'+(d.admin.password_set?'\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (hidden \u2014 Settings \u2192 Users \u2192 admin \u2192 Reset)':'<em>not set</em>')+'</span></td></tr>';
     }
     const html='<div class="confirm-overlay" onclick="if(event.target===this)this.remove()"><div class="confirm-box" style="max-width:600px"><h3>API Keys &amp; Credentials</h3>'
@@ -1962,32 +2202,58 @@ function selectedUserIds(){
 
 async function bulkDeleteUsers(){
   const ids=selectedUserIds();if(!ids.length)return;
-  if(!confirm(`Delete ${ids.length} user(s)? They'll be removed from Authelia + Jellyfin.`))return;
+  const ok=await msUI.confirm({
+    title:'Delete users',
+    body:`Delete ${ids.length} user(s)? They'll be removed from Authelia and Jellyfin. This cannot be undone.`,
+    confirmLabel:'Delete',
+    danger:true,
+  });
+  if(!ok)return;
+  const sudo=await _promptSudoIfNeeded();if(sudo===null)return;
   const errors=[];
   for(const id of ids){
     try{
-      const r=await fetch(`/api/users/${id}/delete`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
-      const j=await r.json();
+      const r=await fetch(`/api/users/${id}/delete`,{method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),
+                 ...(sudo?{'X-Sudo-Password':sudo}:{})},
+        body:'{}'});
+      let j={};try{j=await r.json();}catch(e){errors.push(`${id.substring(0,8)}: HTTP ${r.status}`);continue;}
       if(j.error)errors.push(`${id.substring(0,8)}: ${j.error}`);
-    }catch(e){errors.push(`${id.substring(0,8)}: ${e}`);}
+    }catch(e){errors.push(`${id.substring(0,8)}: ${e.message||e}`);}
   }
-  if(errors.length)alert(`Completed with errors:\n${errors.join('\n')}`);
+  if(errors.length){
+    await msUI.notify({title:'Completed with errors',variant:'error',body:errors.join('\n')});
+  }
   loadUserList();
 }
 
 async function bulkResetPassword(){
   const ids=selectedUserIds();if(!ids.length)return;
-  if(!confirm(`Reset password for ${ids.length} user(s)? A new random password will be generated for each.`))return;
+  const ok=await msUI.confirm({
+    title:'Reset passwords',
+    body:`Reset password for ${ids.length} user(s)? A new random password will be generated for each. Users will need the new password to sign in.`,
+    confirmLabel:'Reset passwords',
+    danger:true,
+  });
+  if(!ok)return;
+  const sudo=await _promptSudoIfNeeded();if(sudo===null)return;
   const results=[];
   for(const id of ids){
     try{
-      const r=await fetch(`/api/users/${id}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
-      const j=await r.json();
+      const r=await fetch(`/api/users/${id}/reset-password`,{method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),
+                 ...(sudo?{'X-Sudo-Password':sudo}:{})},
+        body:'{}'});
+      let j={};try{j=await r.json();}catch(e){results.push(`${id.substring(0,8)}: request failed (HTTP ${r.status})`);continue;}
       if(j.error)results.push(`${id.substring(0,8)}: ERROR — ${j.error}`);
       else results.push(`${id.substring(0,8)}: ${j.generated_password}`);
-    }catch(e){results.push(`${id.substring(0,8)}: ${e}`);}
+    }catch(e){results.push(`${id.substring(0,8)}: ${e.message||e}`);}
   }
-  alert(`New passwords (store them NOW — not recoverable):\n\n${results.join('\n')}`);
+  await msUI.reveal({
+    title:'New passwords',
+    body:'Save these now. Passwords are shown only once and cannot be retrieved later.',
+    copyText:results.join('\n'),
+  });
   loadUserList();
 }
 
@@ -2018,7 +2284,17 @@ async function loadUserList(){
       h+=`data-email="${u.email||''}" data-username="${u.username||''}" data-display="${u.display_name||''}" `;
       h+=`data-role="${u.role_slug||''}" data-state="${u.state||''}" data-created="${u.created_at||''}">`;
       h+=`<td style="padding:6px 4px"><input type="checkbox" class="row-check" data-user-id="${u.id}" onclick="updateBulkButtons()"></td>`;
-      h+=`<td>${u.email||''}</td><td>${u.username||''}</td><td>${u.display_name||''}</td>`;
+      // Seed-source badge: admin rows that still sit on the
+      // bootstrap env password get a yellow chip so operators can
+      // see at a glance that a rotation is pending. Disappears
+      // when reset_password flips source=rotated.
+      let usernameCell=u.username||'';
+      const src=(u.source||'').toLowerCase();
+      if(src==='env-seed'||src==='env-legacy'){
+        const label=(src==='env-legacy')?'Legacy seed':'Seed (env)';
+        usernameCell+=` <span title="Still using STACK_ADMIN_PASSWORD. Rotate to close the env fallback." style="margin-left:6px;padding:1px 6px;border-radius:3px;background:var(--warn,#c9a227);color:#000;font-size:.72em;font-weight:600">${label}</span>`;
+      }
+      h+=`<td>${u.email||''}</td><td>${usernameCell}</td><td>${u.display_name||''}</td>`;
       h+=`<td><select onchange="setUserRole('${u.id}',this.value)" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);padding:2px 4px;font-size:.85em">${roles.map(r=>`<option value="${r.slug}"${r.slug===u.role_slug?' selected':''}>${r.name}</option>`).join('')}</select></td>`;
       h+=`<td><span class="state-${u.state}" style="padding:2px 6px;border-radius:3px;background:var(--bg2);font-size:.78em">${u.state}</span></td>`;
       h+=`<td style="color:var(--fg3);font-size:.78em">${(u.created_at||'').split('T')[0]}</td>`;
@@ -2070,8 +2346,12 @@ async function showAddUserDialog(){
     const r=await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(payload)});
     const j=await r.json();
     closeConfirm();
-    if(j.error){alert('Error: '+j.error);return;}
-    alert(`Created ${j.email}\nPassword: ${j.generated_password}\nStore it now — not recoverable.`);
+    if(j.error){await msUI.notify({title:'Create user failed',variant:'error',body:j.error});return;}
+    await msUI.reveal({
+      title:`Created ${j.email}`,
+      body:'Copy the password now. It is not shown again.',
+      copyText:j.generated_password,
+    });
     loadUserList();
   });
   // password strength meter
@@ -2193,8 +2473,44 @@ async function loadMyProfile(){
     if(j.id)h+=`<button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="loadMySessions('${j.id}')">View My Sessions</button>`;
     h+='</div>';
     h+='<div id="my-sessions-view" style="margin-top:12px"></div>';
+    h+='<div id="access-urls-view" style="margin-top:18px"></div>';
     box.innerHTML=h;
+    loadAccessUrls();
   }catch(e){box.innerHTML=`<span style="color:var(--err)">Error: ${e}</span>`;}
+}
+
+/* Surface the clickable URLs a user can reach each service with,
+ * so operators who didn't set DNS or /etc/hosts can still get
+ * into Jellyfin and the controller. See api/services/access_urls.py
+ * for where these come from. */
+async function loadAccessUrls(){
+  const box=document.getElementById('access-urls-view');
+  if(!box)return;
+  try{
+    const j=await (await apiFetch('/api/access-urls')).json();
+    const section=(title,entries,summary)=>{
+      if(!entries||!entries.length)return '';
+      let s=`<div style="margin-top:10px"><strong style="font-size:.9em">${_escHtml(title)}</strong>`;
+      if(summary)s+=`<div style="color:var(--fg3);font-size:.78em;margin-top:2px">${_escHtml(summary)}</div>`;
+      s+='<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:.85em">';
+      for(const u of entries){
+        const label=u.needs_dns?' (needs DNS or /etc/hosts)':'';
+        const color=u.needs_dns?'var(--fg3)':'var(--fg)';
+        s+=`<div style="display:flex;align-items:center;gap:8px">
+          <a href="${_escHtml(u.url)}" target="_blank" rel="noopener" style="color:${color};font-family:monospace">${_escHtml(u.url)}</a>
+          <span style="color:var(--fg3);font-size:.78em">${_escHtml(label)}</span>
+        </div>`;
+      }
+      s+='</div></div>';
+      return s;
+    };
+    let h='<h3 style="margin:0 0 8px">Access URLs</h3>';
+    h+='<p style="color:var(--fg3);font-size:.82em;margin:0 0 6px">Use a direct-IP URL if you haven\u2019t set DNS or /etc/hosts. The gateway URLs only work once name resolution is set up.</p>';
+    h+=section('Controller',j.controller,'The dashboard you\u2019re looking at.');
+    h+=section('Jellyfin',j.jellyfin,'Media server.');
+    h+=section('Gateway',j.gateway,'Shared entry point for every app.');
+    box.innerHTML=h;
+  }catch(e){box.innerHTML=`<span style="color:var(--err);font-size:.82em">Could not load access URLs: ${_escHtml(String(e))}</span>`;}
 }
 async function loadMySessions(userId){
   const box=document.getElementById('my-sessions-view');
@@ -2267,18 +2583,149 @@ async function setUserState(userId,state){
 }
 
 async function resetUserPassword(userId,email){
-  if(!confirm(`Reset password for ${email}? A new password will be generated.`))return;
-  const r=await fetch(`/api/users/${userId}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({})});
-  const j=await r.json();
-  if(j.error){alert('Error: '+j.error);return;}
-  alert(`New password for ${email}:\n\n${j.generated_password}\n\nStore it now — it is not recoverable.`);
+  // Pull the current policy so the prompt tells the admin what the
+  // password must look like — saves a round trip where the server
+  // rejects a too-weak password after the fact.
+  let policyHint='';
+  try{
+    const r=await apiFetch('/api/password-policy');
+    if(r.ok){
+      const d=await r.json();const p=d.policy||{};
+      const classNames={1:'1 type',2:'2 types',3:'3 types',4:'all 4 types'};
+      const parts=[];
+      if(p.min_length)parts.push(`at least ${p.min_length} characters`);
+      if(p.require_classes)parts.push(`${classNames[p.require_classes]||p.require_classes+' types'} of characters (lowercase, uppercase, digit, symbol)`);
+      if(p.history_len)parts.push(`must not repeat the last ${p.history_len} passwords`);
+      if(parts.length)policyHint='Requirements: '+parts.join('; ')+'.';
+    }
+  }catch(e){}
+  const choice=await msUI.prompt({
+    title:`Reset password for ${email}`,
+    body:'Type a password to set it manually, or leave blank to auto-generate a strong one.',
+    label:'New password',
+    placeholder:'(leave blank to auto-generate)',
+    type:'password',
+    confirmLabel:'Reset password',
+    hint:policyHint||'The password is shown once after reset. Store it now.',
+  });
+  if(choice===null)return; // cancelled
+  const manual=(choice||'').trim();
+  const pwSudo=await _promptSudoIfNeeded();if(pwSudo===null)return;
+  const r=await fetch(`/api/users/${userId}/reset-password`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),
+             ...(pwSudo?{'X-Sudo-Password':pwSudo}:{})},
+    body:JSON.stringify(manual?{password:manual}:{}),
+  });
+  let j={};
+  try{j=await r.json();}
+  catch(e){await msUI.notify({title:'Request failed',variant:'error',
+    body:`The server couldn't complete the request (HTTP ${r.status}). Please try again in a moment.`});return;}
+  if(j.error){await msUI.notify({title:'Reset failed',variant:'error',body:j.error});return;}
+  const pw=j.generated_password||manual;
+  await msUI.reveal({
+    title:`Password set for ${email}`,
+    body:'This password is shown once. Save it now — it cannot be recovered.',
+    copyText:pw,
+  });
+}
+
+// Prompt for sudo password once per session for destructive user ops.
+// The controller's sudo-gate requires X-Sudo-Password for session-cookie
+// / Authelia-forwarded requests (Basic auth is already continuous re-auth).
+let _mediaStackSudoCache='';
+async function _promptSudoIfNeeded(){
+  if(_mediaStackSudoCache)return _mediaStackSudoCache;
+  const v=await msUI.prompt({
+    title:'Confirm sensitive action',
+    body:'Please re-enter your password to confirm this action.',
+    label:'Your password',
+    type:'password',
+    confirmLabel:'Confirm',
+  });
+  if(v===null)return null;
+  _mediaStackSudoCache=v;
+  setTimeout(()=>{_mediaStackSudoCache='';},5*60*1000);
+  return v;
 }
 
 async function deleteUser(userId,email){
-  if(!confirm(`Delete ${email}? This removes them from Authelia and Jellyfin.`))return;
-  const r=await fetch(`/api/users/${userId}/delete`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({})});
-  const j=await r.json();
-  if(j.error)alert('Error: '+j.error);else loadUserList();
+  const ok=await msUI.confirm({
+    title:'Delete user',
+    body:`Delete ${email}? This removes them from Authelia and Jellyfin. This cannot be undone.`,
+    confirmLabel:'Delete user',
+    danger:true,
+  });
+  if(!ok)return;
+  const sudo=await _promptSudoIfNeeded();if(sudo===null)return;
+  const r=await fetch(`/api/users/${userId}/delete`,{method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),
+             ...(sudo?{'X-Sudo-Password':sudo}:{})},
+    body:JSON.stringify({})});
+  let j={};try{j=await r.json();}catch(e){await msUI.notify({title:'Request failed',variant:'error',body:`HTTP ${r.status}`});return;}
+  if(j.error)await msUI.notify({title:'Error',variant:'error',body:j.error});else loadUserList();
+}
+
+/* Password policy editor (Users tab → Password Policy) */
+let _ppBounds={};
+async function loadPasswordPolicy(){
+  const loading=document.getElementById('pp-loading');
+  const form=document.getElementById('pp-form');
+  if(!loading||!form)return;
+  loading.style.display='block';form.style.display='none';
+  try{
+    const r=await apiFetch('/api/password-policy');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const pol=d.policy||{};_ppBounds=d.bounds||{};
+    for(const k of ['min_length','require_classes','history_len']){
+      const el=document.getElementById('pp-'+k);
+      const rangeEl=document.getElementById('pp-'+k+'-range');
+      if(el)el.value=pol[k]??'';
+      const b=_ppBounds[k];
+      if(el&&b){el.min=b.floor;el.max=b.ceiling;}
+      if(rangeEl&&b)rangeEl.textContent=`(${b.floor}–${b.ceiling}, default ${b.default})`;
+    }
+    form.style.display='flex';loading.style.display='none';
+  }catch(e){
+    loading.textContent='Failed to load: '+(e.message||e);
+  }
+}
+
+async function savePasswordPolicy(){
+  const payload={};
+  for(const k of ['min_length','require_classes','history_len']){
+    const el=document.getElementById('pp-'+k);
+    if(el&&el.value!=='')payload[k]=parseInt(el.value,10);
+  }
+  const sudo=await _promptSudoIfNeeded();if(sudo===null)return;
+  const r=await apiFetch('/api/password-policy',{
+    method:'POST',
+    headers:{'Content-Type':'application/json',
+             'X-CSRF-Token':mediaStackCsrfToken(),
+             'X-Sudo-Password':sudo},
+    body:JSON.stringify(payload),
+  });
+  let j={};
+  try{j=await r.json();}
+  catch(e){await msUI.notify({title:'Save failed',variant:'error',body:`HTTP ${r.status} — response was not JSON`});return;}
+  if(!r.ok||j.error){
+    await msUI.notify({title:'Save failed',variant:'error',body:j.error||`HTTP ${r.status}`});
+    return;
+  }
+  const stored=j.policy||{};
+  const clamped=[];
+  for(const k of ['min_length','require_classes','history_len']){
+    const sent=payload[k],got=stored[k];
+    if(sent!==undefined&&sent!==got)clamped.push(`${k}: ${sent} → ${got}`);
+  }
+  await msUI.notify({
+    title:'Policy saved',
+    body:clamped.length?
+      'Saved. Some values were adjusted to stay within the allowed range:\n\n'+clamped.join('\n'):
+      'Policy updated. New rules apply to the next account created or password reset.',
+  });
+  loadPasswordPolicy();
 }
 
 async function loadRoleList(){
@@ -2389,8 +2836,8 @@ async function loadUserProviders(){
         anyDrift=true;
         const eid=(o.external_id||'').replace(/'/g,"");
         h+=`<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82em">`;
-        h+=`<span>Orphan: <b>${o.username||o.external_id}</b> ${o.email?'('+o.email+')':''}</span>`;
-        h+=`<span style="color:var(--fg3)">groups: ${(o.groups||[]).join(', ')||'\u2014'}</span>`;
+        h+=`<span>Orphan: <b>${_escHtml(o.username||o.external_id)}</b> ${o.email?'('+_escHtml(o.email)+')':''}</span>`;
+        h+=`<span style="color:var(--fg3)">groups: ${_escHtml((o.groups||[]).join(', ')||'\u2014')}</span>`;
         h+=`<select id="role-${d.provider}-${eid}" style="background:var(--bg2);color:var(--fg);border:1px solid var(--border);padding:2px 4px">${roleOpts}</select>`;
         h+=`<button class="btn-primary" style="padding:2px 8px" onclick="importOrphan('${d.provider}','${eid}')">Import</button>`;
         h+=`</div>`;
@@ -3827,11 +4274,11 @@ function _renderAuthForm(el){
   h+='<label style="font-size:.85em;color:var(--fg3);display:block;margin-bottom:4px">Auth Mode</label>';
   h+='<select id="auth-mode" onchange="onAuthModeChange()" style="width:100%;padding:8px;background:var(--bg1);color:var(--fg1);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">';
   for(const m of _authModes){
-    h+='<option value="'+m.key+'"'+(m.key===mode?' selected':'')+'>'+m.display_name+'</option>';
+    h+='<option value="'+_escHtml(m.key)+'"'+(m.key===mode?' selected':'')+'>'+_escHtml(m.display_name)+'</option>';
   }
   h+='</select>';
   const modeSpec=_authModes.find(m=>m.key===mode);
-  if(modeSpec)h+='<p id="auth-mode-desc" style="font-size:.8em;color:var(--fg3);margin:0 0 16px">'+modeSpec.description+'</p>';
+  if(modeSpec)h+='<p id="auth-mode-desc" style="font-size:.8em;color:var(--fg3);margin:0 0 16px">'+_escHtml(modeSpec.description)+'</p>';
 
   // OIDC provider (only visible for authelia/authentik modes)
   const showOidc=modeSpec&&modeSpec.gateway_auth;
@@ -3840,7 +4287,7 @@ function _renderAuthForm(el){
   h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">';
   h+='<select id="auth-oidc" onchange="onOidcProviderChange()" style="flex:1;padding:8px;background:var(--bg1);color:var(--fg1);border:1px solid var(--border);border-radius:6px">';
   for(const p of _authOidcProviders){
-    h+='<option value="'+p.key+'"'+(p.key===oidc?' selected':'')+'>'+p.display_name+'</option>';
+    h+='<option value="'+_escHtml(p.key)+'"'+(p.key===oidc?' selected':'')+'>'+_escHtml(p.display_name)+'</option>';
   }
   h+='</select>';
   h+='<label style="padding:7px 14px;background:var(--bg3);color:var(--fg2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.85em;white-space:nowrap">';
@@ -4295,8 +4742,97 @@ document.addEventListener('keydown',function(e){
 /* Interval management — track IDs for cleanup */
 const _intervals=[];
 
+/* Admin rotation gate — blocks the UI when signed-in admin is still
+ * sitting on the bootstrap env password (STACK_ADMIN_PASSWORD). The
+ * modal forces a personal password rotation; the env fallback is
+ * disabled server-side as soon as the rotation commits. */
+async function _enforceAdminRotation(){
+  let me;
+  try{me=await (await apiFetch('/api/me')).json();}catch(e){return;}
+  if(!me||!me.authenticated||!me.needs_rotation||!me.id)return;
+  const sourceLabel=(me.source==='env-legacy')?
+    'the existing admin password (STACK_ADMIN_PASSWORD)':
+    'the bootstrap password (STACK_ADMIN_PASSWORD)';
+  const html=`<div class="confirm-box" style="max-width:480px">
+    <h3>Set your admin password</h3>
+    <p style="color:var(--fg3);font-size:.88em;margin:0 0 10px">
+      You signed in with ${sourceLabel}. Before you can use the dashboard,
+      set a personal password. The env password will stop working the
+      moment you commit this change.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:.88em">
+      <label>Current password
+        <input type="password" id="rot-cur" style="width:100%" autocomplete="current-password">
+      </label>
+      <label>New password
+        <input type="password" id="rot-new" style="width:100%" autocomplete="new-password">
+      </label>
+      <label>Confirm new password
+        <input type="password" id="rot-new2" style="width:100%" autocomplete="new-password">
+      </label>
+      <div id="rot-err" style="color:var(--err);font-size:.82em;min-height:1em"></div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="rot-go" type="button">Rotate password</button>
+    </div>
+  </div>`;
+  const wrap=document.createElement('div');
+  wrap.className='confirm-overlay';
+  wrap.innerHTML=html;
+  // Trap ESC — the gate is non-dismissable.
+  const trap=(e)=>{if(e.key==='Escape')e.preventDefault();};
+  document.addEventListener('keydown',trap,true);
+  (document.getElementById('confirm-root')||document.body).appendChild(wrap);
+  const cur=wrap.querySelector('#rot-cur');
+  const nw=wrap.querySelector('#rot-new');
+  const nw2=wrap.querySelector('#rot-new2');
+  const err=wrap.querySelector('#rot-err');
+  const go=wrap.querySelector('#rot-go');
+  requestAnimationFrame(()=>{cur&&cur.focus();});
+  go.addEventListener('click',async()=>{
+    err.textContent='';
+    if(!cur.value||!nw.value){err.textContent='All fields are required.';return;}
+    if(nw.value!==nw2.value){err.textContent='New passwords do not match.';return;}
+    go.disabled=true;
+    try{
+      const r=await apiFetch(`/api/users/${me.id}/reset-password`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json',
+                 'X-CSRF-Token':mediaStackCsrfToken(),
+                 'X-Sudo-Password':cur.value},
+        body:JSON.stringify({password:nw.value}),
+      });
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||j.error){
+        // A 403 from the sudo gate almost always means the current
+        // password didn't match. Translate the backend's generic
+        // "sensitive endpoint requires re-authentication" into
+        // something the user can act on immediately.
+        const raw=j.error||`HTTP ${r.status}`;
+        const sudoFailed=r.status===403&&/sensitive endpoint|X-Sudo-Password/i.test(raw);
+        if(sudoFailed){
+          err.textContent='Current password is incorrect.';
+          cur.value='';cur.focus();
+        } else {
+          err.textContent=raw;
+        }
+        go.disabled=false;return;
+      }
+    }catch(e){err.textContent=String(e);go.disabled=false;return;}
+    document.removeEventListener('keydown',trap,true);
+    wrap.remove();
+    await msUI.notify({title:'Password rotated',
+      body:'Sign in again with your new password.',
+      variant:'success',okLabel:'Continue'});
+    try{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',
+      headers:{'X-CSRF-Token':mediaStackCsrfToken()}});}catch(e){}
+    window.location.reload();
+  });
+}
+
 /* Init */
 loadServicesFromAPI().then(()=>{
+_enforceAdminRotation();
 load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE();loadRoutingConfig();buildQuickLinks();loadLibraries();loadAuthIdentity();
 // Populate service log picker
 (function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;

@@ -178,6 +178,52 @@ class UserServiceTests(unittest.TestCase):
             self.assertEqual(result["providers"]["jellyfin"], "ok")
             self.assertTrue(result["generated_password"])
 
+    def test_reset_password_flips_env_seed_source_to_rotated(self):
+        """Closes the env backdoor: once the admin rotates, the
+        source field transitions to 'rotated' and BasicAuthVerifier
+        stops honoring STACK_ADMIN_PASSWORD. Without this, 'reset
+        my password' silently leaves the env password still valid."""
+        with tempfile.TemporaryDirectory() as tmp:
+            svc = self._svc(tmp, [_fake_source_of_truth()])
+            created = svc.create_user(email="a@x", username="a",
+                                       display_name="A", role_slug="adult")
+            # Mark the user as env-seeded to simulate an admin-bootstrap row.
+            svc._store.update(created["id"], source="env-seed")
+            svc.reset_password(created["id"])
+            user = svc._store.get(created["id"])
+            self.assertEqual(
+                user.source, "rotated",
+                "reset_password did not transition source=env-seed "
+                "to 'rotated' — env fallback stays open.",
+            )
+
+    def test_reset_password_also_flips_env_legacy_source(self):
+        """Upgrade path: admin was linked from Authelia with
+        source=env-legacy. Rotation must still close the backdoor."""
+        with tempfile.TemporaryDirectory() as tmp:
+            svc = self._svc(tmp, [_fake_source_of_truth()])
+            created = svc.create_user(email="a@x", username="a",
+                                       display_name="A", role_slug="adult")
+            svc._store.update(created["id"], source="env-legacy")
+            svc.reset_password(created["id"])
+            self.assertEqual(
+                svc._store.get(created["id"]).source, "rotated",
+            )
+
+    def test_reset_password_leaves_non_bootstrap_source_alone(self):
+        """Regular users created via invite must not have their source
+        overwritten on password reset — only bootstrap-source users
+        transition."""
+        with tempfile.TemporaryDirectory() as tmp:
+            svc = self._svc(tmp, [_fake_source_of_truth()])
+            created = svc.create_user(email="a@x", username="a",
+                                       display_name="A", role_slug="adult")
+            svc._store.update(created["id"], source="invite")
+            svc.reset_password(created["id"])
+            self.assertEqual(
+                svc._store.get(created["id"]).source, "invite",
+            )
+
     def test_set_state_marks_suspended(self):
         with tempfile.TemporaryDirectory() as tmp:
             svc = self._svc(tmp, [_fake_source_of_truth()])

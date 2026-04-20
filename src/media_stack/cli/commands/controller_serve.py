@@ -8,8 +8,14 @@ import os
 import queue
 import threading
 import traceback
+from pathlib import Path as _Path
+
+import yaml as _yaml
 
 import media_stack.services.runtime_platform as runtime_platform
+from media_stack.core.auth.configure_auth_job import (
+    configure_auth as _CONFIGURE_AUTH_FN,
+)
 
 from media_stack.cli.commands.controller_dispatch import (
     _dispatch_action,
@@ -68,6 +74,79 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
     except Exception as exc:
         logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
         pass  # Service not ready yet — skip validation
+
+
+class _BootCtxShim:
+    """Minimal ctx object for the configure-auth job — same attributes
+    the dispatcher would assemble, without pulling in the whole
+    action pipeline just to run one sync step at boot."""
+
+    def __init__(self, profile: dict, config_root: str, admin_username: str) -> None:
+        self.profile = profile
+        self.config_root = config_root
+        self.admin_username = admin_username
+
+
+def _run_boot_configure_auth(state: object) -> None:
+    """Write the Authelia config before the API server opens.
+
+    When profile.auth.provider is authelia(+oidc), the Authelia
+    container is waiting on the controller's health endpoint and
+    will start immediately once it returns 200. If it reads
+    placeholder secrets from the bootstrap defaults it encrypts
+    db.sqlite3 with those placeholders, and the real secrets that
+    configure-auth later emits become unable to decrypt the data.
+    Running configure-auth here makes the first Authelia boot use
+    real secrets on its very first write, closing that window."""
+    del state  # reserved for future hooks; not needed to read profile
+    env = dict(os.environ)
+    try:
+        profile = _load_boot_profile(env)
+        auth_cfg = profile.get("auth") or {}
+        provider = str(auth_cfg.get("provider", "") or "").strip().lower()
+        if provider not in ("authelia", "authelia+oidc"):
+            return
+        ctx = _BootCtxShim(
+            profile=profile,
+            config_root=env.get("CONFIG_ROOT", "/srv-config"),
+            admin_username=env.get("STACK_ADMIN_USERNAME", "admin"),
+        )
+        result = _CONFIGURE_AUTH_FN(ctx)
+        if result.get("error"):
+            runtime_platform.log(
+                f"[WARN] boot configure-auth: {result['error']}",
+            )
+        else:
+            runtime_platform.log(
+                "[OK] boot configure-auth: Authelia config "
+                "sealed before API server opened",
+            )
+    except Exception as exc:  # noqa: BLE001
+        runtime_platform.log(
+            f"[WARN] boot configure-auth raised: {exc}",
+        )
+
+
+def _load_boot_profile(env: dict) -> dict:
+    """Best-effort profile load for the boot configure-auth step.
+
+    Reads BOOTSTRAP_PROFILE_FILE from the passed env dict so the
+    env is sampled exactly once at boot and the method stays off
+    os.environ (the class-structure ratchet)."""
+    pf = str(env.get("BOOTSTRAP_PROFILE_FILE", "")).strip()
+    if not pf:
+        return {}
+    path = _Path(pf)
+    if not path.is_file():
+        return {}
+    try:
+        data = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # noqa: BLE001
+        runtime_platform.log(
+            f"[DEBUG] boot configure-auth: profile load failed: {exc}",
+        )
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _run_serve(args: argparse.Namespace) -> None:
@@ -147,6 +226,18 @@ def _run_serve(args: argparse.Namespace) -> None:
 
     state = ControllerState()
     state.load_persisted_config()
+
+    # Run configure-auth SYNCHRONOUSLY before the API server comes up.
+    # The Authelia container is waiting on the controller's health
+    # probe; it must not start with a placeholder encryption_key
+    # because Authelia would encrypt db.sqlite3 with that placeholder,
+    # and when configure-auth later swapped it for a real key the
+    # existing rows would become undecryptable (the recurring
+    # crashloop we kept hitting). Fail-open: if anything here goes
+    # wrong we log and proceed — the API server still starts and
+    # configure-auth will be retried on the first bootstrap action.
+    _run_boot_configure_auth(state)
+
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
     action_queue: queue.PriorityQueue[tuple[int, int, str, dict]] = queue.PriorityQueue()
     action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))

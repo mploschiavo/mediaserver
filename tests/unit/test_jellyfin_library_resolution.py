@@ -22,8 +22,11 @@ from media_stack.services.apps.jellyfin.user_provider import (  # noqa: E402
 
 
 def _http(responses: dict) -> MagicMock:
+    # Strip ?api_key=... before lookup — the provider now authenticates
+    # via query param (Jellyfin 10.11 rejects the X-Api-Key header).
     def _req(base, path, api_key=None, method="GET", payload=None, **_kw):
-        return responses.get((method, path), (404, None, ""))
+        bare = str(path).split("?", 1)[0]
+        return responses.get((method, bare), (404, None, ""))
     c = MagicMock()
     c.request.side_effect = _req
     return c
@@ -51,9 +54,11 @@ class LibraryNameResolutionTests(unittest.TestCase):
             "EnabledFolderNames": ["Kids", "Family"],
             "MaxParentalRating": 7,
         })
+        # Path now includes ?api_key=... — strip before matching
         policy_call = [c for c in client.request.call_args_list
                         if c.kwargs.get("method") == "POST"
-                        and c.args[1] == "/Users/u1/Policy"][0]
+                        and str(c.args[1]).split("?", 1)[0]
+                                == "/Users/u1/Policy"][0]
         applied = policy_call.kwargs["payload"]
         self.assertNotIn("EnabledFolderNames", applied)
         self.assertEqual(set(applied["EnabledFolders"]),

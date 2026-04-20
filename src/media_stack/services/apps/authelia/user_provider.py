@@ -83,6 +83,13 @@ class AutheliaFileProvider:
                 extra={
                     _DISPLAYNAME_KEY: entry.get(_DISPLAYNAME_KEY, ""),
                     "disabled": bool(entry.get("disabled", False)),
+                    # Never leak the hash itself — just a boolean
+                    # so the admin-bootstrap flow can decide whether
+                    # to seed a password when linking a row that
+                    # was created without one (fresh-install path).
+                    "has_password": bool(
+                        str(entry.get("password", "") or "").strip(),
+                    ),
                 },
             ))
         return results

@@ -16,7 +16,13 @@ from typing import Any
 
 import yaml
 
+from media_stack.core.auth.authelia_oidc_crypto import (
+    OidcClientDef,
+    OidcCrypto,
+)
 from media_stack.core.auth.gateway_policy import GatewayAuthPolicy
+
+__all__ = ["AutheliaConfigGenerator", "AutheliaConfigOptions", "OidcClientDef"]
 
 
 _HTTP_PORT = 80
@@ -41,13 +47,25 @@ class AutheliaConfigOptions:
     jwt_secret: str = ""
     session_secret: str = ""
     storage_encryption_key: str = ""
+    # Authelia 4.38 OIDC identity-provider state. hmac_secret signs
+    # access/refresh tokens, rsa_private_key_pem signs id tokens.
+    # Both MUST persist across regens — rotating hmac_secret logs
+    # out every OIDC session, rotating the RSA key invalidates
+    # every id token in flight. See _reuse_existing_secrets.
+    oidc_hmac_secret: str = ""
+    oidc_rsa_private_key_pem: str = ""
+    # Per-client registrations. Plain-text shared secrets are
+    # pbkdf2-hashed before they land in configuration.yml.
+    oidc_clients: list[OidcClientDef] = field(default_factory=list)
 
 
 class AutheliaConfigGenerator:
     """Generates Authelia configuration files."""
 
-    def __init__(self, options: AutheliaConfigOptions) -> None:
+    def __init__(self, options: AutheliaConfigOptions,
+                 crypto: OidcCrypto | None = None) -> None:
         self._opts = options
+        self._crypto = crypto or OidcCrypto()
 
     def _ensure_secrets(self) -> None:
         """Generate random secrets if not provided."""
@@ -57,6 +75,10 @@ class AutheliaConfigGenerator:
             self._opts.session_secret = secrets.token_hex(32)
         if not self._opts.storage_encryption_key:
             self._opts.storage_encryption_key = secrets.token_hex(32)
+        if not self._opts.oidc_hmac_secret:
+            self._opts.oidc_hmac_secret = secrets.token_hex(32)
+        if not self._opts.oidc_rsa_private_key_pem:
+            self._opts.oidc_rsa_private_key_pem = self._crypto.generate_rsa_pem()
 
     def _reuse_existing_secrets(self, output_dir: Path) -> None:
         """Pull jwt/session/storage secrets out of an existing
@@ -100,6 +122,29 @@ class AutheliaConfigGenerator:
                  .get("reset_password") or {}).get("jwt_secret"))
             if prev:
                 self._opts.jwt_secret = prev
+        self._reuse_oidc_secrets(data)
+
+    def _reuse_oidc_secrets(self, data: dict) -> None:
+        """Pull OIDC hmac + RSA signing key out of an existing
+        configuration.yml. Kept separate so ``_reuse_existing_secrets``
+        stays under the methods-over-50-lines ratchet."""
+        oidc = (data.get("identity_providers") or {}).get("oidc") or {}
+        if not self._opts.oidc_hmac_secret:
+            prev = self._real_secret(oidc.get("hmac_secret"))
+            if prev:
+                self._opts.oidc_hmac_secret = prev
+        if self._opts.oidc_rsa_private_key_pem:
+            return
+        # jwks is a list of key entries; keep the first one marked
+        # as use=sig. Preserving the PEM verbatim means every
+        # id_token issued with the old key stays valid.
+        for entry in oidc.get("jwks") or []:
+            if not isinstance(entry, dict):
+                continue
+            pem = str(entry.get("key") or "").strip()
+            if pem.startswith("-----BEGIN"):
+                self._opts.oidc_rsa_private_key_pem = pem + "\n"
+                return
 
     def _real_secret(self, value: Any) -> str:
         """Return value only if it's a real secret — empty string
@@ -160,21 +205,15 @@ class AutheliaConfigGenerator:
         }
 
     def _build_oidc_config(self) -> dict[str, Any] | None:
-        """OIDC client-app configuration is intentionally omitted here.
-
-        Authelia 4.38 reworked the OIDC client schema — keys like
-        ``implementation``, ``authorization_endpoint``, and
-        ``token_endpoint`` no longer exist on client entries, and the
-        provider block now requires a ``jwks`` section. The legacy
-        generator produced a 4.37-era payload that fails strict 4.38
-        validation and prevents Authelia from starting at all, which
-        takes the whole gateway login flow down.
-
-        Returning None here leaves Authelia running as a file-auth
-        identity provider without an OIDC upstream. The downstream
-        jellyseerr-OIDC integration needs to be rebuilt against the
-        4.38 schema in a follow-up change."""
-        return None
+        """Delegate to OidcCrypto.build_oidc_block — see that method
+        for the 4.38 schema detail. Lives here only as a thin
+        wrapper so the generator doesn't reach into its crypto
+        helper from inside generate_configuration."""
+        return self._crypto.build_oidc_block(
+            hmac_secret=self._opts.oidc_hmac_secret,
+            rsa_pem=self._opts.oidc_rsa_private_key_pem,
+            clients=list(self._opts.oidc_clients or []),
+        )
 
     def generate_configuration(self) -> dict[str, Any]:
         """Generate the complete Authelia configuration.yml content."""
@@ -190,23 +229,26 @@ class AutheliaConfigGenerator:
             if self._opts.gateway_port and self._opts.gateway_port not in _DEFAULT_PORTS
             else ""
         )
-        authelia_url = (
-            f"{scheme}://auth.{self._opts.stack_subdomain}."
-            f"{self._opts.base_domain}{port_suffix}"
-        )
-        gateway_url = f"{scheme}://{self._opts.gateway_host}{port_suffix}"
-        # Cookie domain must have at least one dot in Authelia 4.38.
-        # Callers pass either a bare TLD ("local") + stack_subdomain
-        # ("media-stack") or a fully-qualified base ("media-stack.local")
-        # whose first label already IS the stack subdomain. Detect and
-        # avoid doubling up as "media-stack.media-stack.local".
+        # Derive cookie scope + Authelia portal URL from the base
+        # domain + stack subdomain. Two topologies:
+        # - Nested (compose): sub="media-stack", base="local" →
+        #   cookie=media-stack.local, authelia=auth.media-stack.local
+        # - Flat (K8s flat): sub="", base="iomio.io" →
+        #   cookie=iomio.io, authelia=auth.iomio.io
+        # Authelia 4.38 rejects cookie domains without a dot and
+        # rejects default_redirection_url outside the cookie scope,
+        # so these shapes must stay aligned.
         base = self._opts.base_domain or "local"
         sub = self._opts.stack_subdomain or ""
         already_qualified = "." in base and (not sub or base.split(".", 1)[0] == sub)
         if already_qualified or not sub:
             cookie_domain = base
+            authelia_host = f"auth.{base}"
         else:
             cookie_domain = f"{sub}.{base}"
+            authelia_host = f"auth.{sub}.{base}"
+        authelia_url = f"{scheme}://{authelia_host}{port_suffix}"
+        gateway_url = f"{scheme}://{self._opts.gateway_host}{port_suffix}"
 
         config: dict[str, Any] = {
             "server": {
@@ -227,6 +269,14 @@ class AutheliaConfigGenerator:
             "authentication_backend": {
                 "file": {
                     "path": "/config/users_database.yml",
+                    # watch: true lets Authelia pick up user-db
+                    # edits without a container restart. When a
+                    # controller user is created via the dashboard
+                    # the write lands in users_database.yml; with
+                    # watch off, Authelia keeps serving the version
+                    # it loaded at boot and every new user shows
+                    # "user not found" until someone restarts.
+                    "watch": True,
                 },
             },
             "access_control": self._build_access_control(),

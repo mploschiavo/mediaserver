@@ -3,6 +3,22 @@
 # By default, PVCs use your cluster's default StorageClass.
 # Optional per-claim override:
 #   storageClassName: <your-storage-class>
+#
+# Controller state (users.json, audit log, api_tokens.json,
+# password-policy.yaml). Without this PVC the controller-managed
+# user store is ephemeral — every pod restart wipes every user
+# added via the dashboard AND the audit chain starts over.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-controller
+  namespace: media-stack
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

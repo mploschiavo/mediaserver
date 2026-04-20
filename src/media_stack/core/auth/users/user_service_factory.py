@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from media_stack.core.auth.admin_bootstrap import AdminBootstrap
 from media_stack.core.auth.api_token_store import ApiTokenStore
 from media_stack.core.auth.basic_auth_verifier import BasicAuthVerifier
 from media_stack.core.auth.failed_login_tracker import FailedLoginTracker
@@ -25,6 +26,9 @@ from media_stack.core.auth.users.legacy_service_admin_adapter import (
     LegacyServiceAdminAdapter,
 )
 from media_stack.core.auth.users.password_policy import PasswordPolicy
+from media_stack.api.services.password_policy_config import (
+    PasswordPolicyConfig as _PasswordPolicyConfig,
+)
 from media_stack.core.auth.users.provider import UserProvider
 from media_stack.core.auth.users.role_catalog import RoleCatalog
 from media_stack.core.auth.users.role_policy_mapper import RolePolicyMapper
@@ -74,11 +78,75 @@ class UserServiceFactory:
         audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
         providers = self._load_providers(providers_path, env, config_root)
         service_admins = self._load_service_admins(admins_path)
-        return UserService(
+        # Admin-configurable password policy (edited from the Users
+        # tab in the dashboard). Falls back to class defaults when the
+        # file doesn't exist, so a fresh install enforces a strong
+        # default policy out of the box.
+        policy = _PasswordPolicyConfig(config_root).build_policy()
+        service = UserService(
             store=store, role_catalog=catalog, mapper=RolePolicyMapper(),
             providers=providers, audit=audit,
             service_admins=service_admins,
+            password_policy=policy,
         )
+        # Seed admin from env if the store is empty. Idempotent —
+        # once a superadmin exists this is a no-op. Kept behind a
+        # try/except so a seed failure can't block every other
+        # UserService client (e.g. the user-list endpoint), EXCEPT
+        # for the weak-password refusal: that's fatal by design on
+        # internet_exposed deploys and must propagate.
+        internet_exposed = str(
+            env.get("INTERNET_EXPOSED", "")
+        ).strip().lower() in ("1", "true", "yes", "on")
+        try:
+            result = AdminBootstrap(env=env).run(
+                service, internet_exposed=internet_exposed,
+            )
+            self._log_bootstrap_state(result)
+        except AdminBootstrap.WeakPasswordError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            import logging as _logging
+            _logging.getLogger("media_stack").warning(
+                "[WARN] admin-bootstrap failed on build: %s", exc,
+            )
+        return service
+
+    def _log_bootstrap_state(self, result: dict) -> None:
+        """Emit a single, machine-greppable boot line naming the
+        bootstrap state so operators can confirm at a glance which
+        path fired. See project memory 'Admin bootstrap redesign'."""
+        import logging as _logging
+        log = _logging.getLogger("media_stack")
+        action = result.get("action", "")
+        source = result.get("source", "")
+        reason = result.get("reason", "")
+        message, level = self._bootstrap_log_line(result, action, source, reason)
+        if not message:
+            return
+        (log.warning if level == "warn" else log.info)(message)
+
+    def _bootstrap_log_line(
+        self, result: dict, action: str, source: str, reason: str,
+    ) -> tuple[str, str]:
+        """Resolve action → (message, severity). Flat dispatch so the
+        enclosing logger method stays under the deeply-nested ratchet."""
+        if action == "seeded":
+            return f"[OK] admin_bootstrap: seeded from env (source={source})", "info"
+        if action == "linked":
+            suffix = " + password seeded" if result.get("password_seeded") else ""
+            return (f"[OK] admin_bootstrap: linked existing provider "
+                    f"admin (source={source}{suffix})", "info")
+        if action == "skipped" and reason == "existing_superadmin":
+            return ("[OK] admin_bootstrap: existing superadmin in "
+                    "store; env fallback gated on source", "info")
+        if action == "skipped" and reason == "no_credential":
+            return ("[WARN] admin_bootstrap: no STACK_ADMIN_PASSWORD "
+                    "set and store is empty; no one can log in yet", "warn")
+        if action == "error":
+            return (f"[WARN] admin_bootstrap: error: "
+                    f"{result.get('error', '')[:99]}", "warn")
+        return "", "info"
 
     def build_scheduled_reconciler(self) -> ScheduledReconciler:
         interval = int(self._env.get("RECONCILE_INTERVAL_SEC", 60 * 60))

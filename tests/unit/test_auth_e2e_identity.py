@@ -346,12 +346,26 @@ class TestAutheliaConfigConsistency(unittest.TestCase):
         self.assertEqual(cookie_domain, "media-stack.local")
 
     def test_authelia_url_includes_port(self) -> None:
-        """Non-standard port should be included in authelia_url."""
+        """Non-standard port should be included in authelia_url.
+
+        authelia_url must share the same scope as cookie_domain — when
+        base="media-stack.local" is already qualified with sub "media-stack",
+        cookie_domain is "media-stack.local" and authelia_host is
+        "auth.media-stack.local" (flat). Emitting the nested form
+        "auth.media-stack.media-stack.local" causes Authelia to reject
+        the redirect with "domain does not share cookie scope" — which
+        is the 2026-04-20 K8s login-loop incident this test now pins.
+        """
         gen = AutheliaConfigGenerator(self._options(gateway_port=8880))
         config = gen.generate_configuration()
         authelia_url = config["session"]["cookies"][0]["authelia_url"]
         self.assertIn(":8880", authelia_url)
-        self.assertIn("auth.media-stack.media-stack.local", authelia_url)
+        self.assertIn("auth.media-stack.local", authelia_url)
+        self.assertNotIn(
+            "auth.media-stack.media-stack.local", authelia_url,
+            "authelia_url must use flat form when base is already "
+            "qualified with sub — nested form breaks cookie scope.",
+        )
 
     def test_authelia_url_no_port_on_80(self) -> None:
         """Port 80 should be omitted from authelia_url."""

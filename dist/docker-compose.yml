@@ -1,13 +1,20 @@
-# Media Automation Stack — Docker Compose Single-File Deploy
+# Media Automation Stack — Docker Compose Single-File Deploy (distribution snapshot)
 #
-# Deploy:   docker compose up -d
-# Status:   docker compose ps
+# Deploy:   docker compose -f docker-compose.yml up -d
+# Status:   docker compose -f docker-compose.yml ps
 # Dashboard: http://localhost:9100
-# Teardown: docker compose down -v
+# Teardown: docker compose -f docker-compose.yml down -v
 #
-# Prerequisites: Docker Engine 24+ with Compose V2
-# More info: https://github.com/mploschiavo/mediaserver
-
+# Prerequisites: Docker Engine 24+ with Compose V2.
+#
+# NOTE: This file expects to run from a repo checkout. Bind mounts reference
+# ../config, ../contracts, ../examples. If you are using this file standalone,
+# clone the repo and run from the docker/ directory instead:
+#   git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver/docker
+#   docker compose up -d
+#
+# Regenerate this file after editing docker/docker-compose.yml:
+#   bin/regen-dist.sh
 name: ${COMPOSE_PROJECT_NAME:-media-stack}
 # Image references are digest-pinned as of 2026-03-28.
 #
@@ -20,13 +27,6 @@ name: ${COMPOSE_PROJECT_NAME:-media-stack}
 # Storage paths default to ./config, ./media, ./data relative to this file.
 # Override via .env or shell: CONFIG_ROOT=/srv/media-stack/config
 
-# Default log rotation — prevents container logs from filling disk.
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "10"
-
 x-arr-env: &arr-env
   PUID: ${PUID:-1000}
   PGID: ${PGID:-1000}
@@ -38,9 +38,8 @@ x-media-vols: &media-vols
   - ${DATA_ROOT:-./data}/usenet:/data/usenet
 
 services:
-  # Init service: create config/data directories with correct ownership before
-  # other services start. Docker creates bind-mount host dirs as root, but most
-  # services run as UID 1000. This one-shot container fixes that.
+  # Init service: create config/data directories with correct ownership.
+  # Docker creates bind-mount host dirs as root, but services run as UID 1000.
   init-permissions:
     image: alpine:3.20
     container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-init-permissions
@@ -77,13 +76,12 @@ services:
       - --entrypoints.web.address=:80
       - --ping=true
     ports:
-      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTP_PORT:-80}:8880"
       - "${TRAEFIK_DASHBOARD_PORT:-8088}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${CONFIG_ROOT:-./config}/traefik/dynamic:/etc/traefik/dynamic:ro
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
       interval: 10s
@@ -91,9 +89,19 @@ services:
       retries: 5
 
   authelia:
-    image: authelia/authelia:4.39
+    image: authelia/authelia:4.38
     container_name: authelia
     profiles: ["auth-authelia"]
+    # Wait until the controller is healthy before starting. The
+    # controller runs configure-auth synchronously at boot (before
+    # the /readyz health probe returns ok), so by the time Authelia
+    # starts, /config/configuration.yml already has REAL secrets —
+    # never the PLACEHOLDER_* sentinels. Without this ordering,
+    # Authelia would encrypt db.sqlite3 with placeholder secrets
+    # and every subsequent configure-auth run would brick startup.
+    depends_on:
+      media-stack-controller:
+        condition: service_healthy
     command:
       - sh
       - -c
@@ -109,8 +117,8 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       - ${CONFIG_ROOT:-./config}/authelia:/config
+      - ../config/defaults/compose/auth/authelia:/defaults:ro
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
       interval: 10s
@@ -135,7 +143,6 @@ services:
     volumes:
       - ${DATA_ROOT:-./data}/authentik/postgresql:/var/lib/postgresql/data
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test:
         - CMD-SHELL
@@ -143,7 +150,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 20s
 
   authentik:
     image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2-rc1}
@@ -164,7 +171,6 @@ services:
       - ${CONFIG_ROOT:-./config}/authentik/data:/data
       - ${CONFIG_ROOT:-./config}/authentik/custom-templates:/templates
     restart: unless-stopped
-    logging: *default-logging
     shm_size: 512mb
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9000/-/health/live/"]
@@ -201,11 +207,10 @@ services:
       - ${CONFIG_ROOT:-./config}/authentik/certs:/certs
       - ${CONFIG_ROOT:-./config}/authentik/custom-templates:/templates
     restart: unless-stopped
-    logging: *default-logging
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.1}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.94}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -213,11 +218,18 @@ services:
     environment:
       COMPOSE_FILE: /compose/docker-compose.yml
       CONFIG_ROOT: /runtime-config
-      BOOTSTRAP_PROFILE_FILE: ${BOOTSTRAP_PROFILE_FILE:-/opt/media-stack/contracts/media-stack.profile.yaml}
-      BOOTSTRAP_CONFIG_FILE: /opt/media-stack/contracts/media-stack.config.json
+      BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
+      BOOTSTRAP_CONFIG_FILE: /contracts/media-stack.config.json
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
+      - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT:-./config}:/runtime-config:rw
+      - ../contracts:/contracts:ro
+      # RW so the generator can mint a self-signed cert the first time
+      # the stack comes up (see _resolve_or_mint_certs in
+      # core/platforms/compose/edge/providers/envoy/dynamic_config.py).
+      # envoy itself still mounts this read-only below.
+      - ./config/certs:/certs:rw
     restart: "no"
 
   envoy:
@@ -234,12 +246,13 @@ services:
       - --log-level
       - info
     ports:
-      - "${TRAEFIK_HTTP_PORT:-80}:80"
-      # - "${ENVOY_ADMIN_PORT:-9901}:9901"  # Uncomment for Envoy admin debug access
+      - "${TRAEFIK_HTTP_PORT:-443}:8880"
+      - "80:8080"
+      - "${ENVOY_ADMIN_PORT:-9901}:9901"
     volumes:
       - ${CONFIG_ROOT:-./config}/envoy:/etc/envoy:ro
+      - ${CONFIG_ROOT:-./config}/certs:/certs:ro
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
       interval: 10s
@@ -260,10 +273,9 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # ports:  # Uncomment below to expose on host
-      # - "${HOMEPAGE_PORT:-3000}:3000"
+    ports:
+      - "${HOMEPAGE_PORT:-3000}:3000"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
       interval: 10s
@@ -295,12 +307,11 @@ services:
     ports:
       - "${JELLYFIN_PORT:-8096}:8096"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8096/health"]
       interval: 10s
-      timeout: 5s
-      retries: 15
+      timeout: 10s
+      retries: 10
       start_period: 10s
     labels:
       - traefik.enable=true
@@ -308,17 +319,20 @@ services:
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
 
   jellyseerr:
-    image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+    image: fallenbagel/jellyseerr:preview-OIDC
     container_name: jellyseerr
+    extra_hosts:
+      - "auth.media-stack.local:host-gateway"
+      - "apps.media-stack.local:host-gateway"
     environment:
       TZ: ${TZ:-UTC}
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
       BASE_URL: ${JELLYSEERR_BASE_PATH:-}
     volumes:
       - ${CONFIG_ROOT:-./config}/jellyseerr:/app/config
-    # ports:  # Uncomment below to expose on host
-      # - "${JELLYSEERR_PORT:-5055}:5055"
+    ports:
+      - "${JELLYSEERR_PORT:-5055}:5055"
     restart: unless-stopped
-    logging: *default-logging
     depends_on:
       jellyfin:
         condition: service_started
@@ -338,10 +352,9 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/prowlarr:/config
-    # ports:  # Uncomment below to expose on host
-      # - "${PROWLARR_PORT:-9696}:9696"
+    ports:
+      - "${PROWLARR_PORT:-9696}:9696"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9696/ping"]
       interval: 10s
@@ -365,11 +378,10 @@ services:
       - ${CONFIG_ROOT:-./config}/qbittorrent:/config
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
     ports:
-      # - "${QBITTORRENT_PUBLISHED_PORT:-8080}:8080"  # Uncomment for direct qBit WebUI access
+      - "${QBITTORRENT_PUBLISHED_PORT:-8080}:8080"
       - "6881:6881"
       - "6881:6881/udp"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
       interval: 10s
@@ -389,10 +401,9 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    # ports:  # Uncomment below to expose on host
-      # - "${SONARR_PORT:-8989}:8989"
+    ports:
+      - "${SONARR_PORT:-8989}:8989"
     restart: unless-stopped
-    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8989/ping"]
@@ -413,10 +424,9 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    # ports:  # Uncomment below to expose on host
-      # - "${RADARR_PORT:-7878}:7878"
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
     restart: unless-stopped
-    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7878/ping"]
@@ -437,10 +447,9 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    # ports:  # Uncomment below to expose on host
-      # - "${LIDARR_PORT:-8686}:8686"
+    ports:
+      - "${LIDARR_PORT:-8686}:8686"
     restart: unless-stopped
-    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8686/ping"]
@@ -461,10 +470,9 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    # ports:  # Uncomment below to expose on host
-      # - "${READARR_PORT:-8787}:8787"
+    ports:
+      - "${READARR_PORT:-8787}:8787"
     restart: unless-stopped
-    logging: *default-logging
     depends_on: [qbittorrent, prowlarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8787/ping"]
@@ -477,16 +485,15 @@ services:
       - traefik.http.services.readarr.loadbalancer.server.port=8787
 
   bazarr:
-    image: lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e
+    image: lscr.io/linuxserver/bazarr:1.5.6
     container_name: bazarr
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/bazarr:/config
       - ${MEDIA_ROOT:-./media}/media:/media
-    # ports:  # Uncomment below to expose on host
-      # - "${BAZARR_PORT:-6767}:6767"
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
     restart: unless-stopped
-    logging: *default-logging
     depends_on: [sonarr, radarr]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:6767"]
@@ -509,22 +516,19 @@ services:
       - ${DATA_ROOT:-./data}/torrents:/data/torrents
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
     restart: unless-stopped
-    logging: *default-logging
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f unpackerr || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
     depends_on: [sonarr, radarr, lidarr, readarr]
 
-  # recyclarr: uncomment when ready to use Recyclarr for quality profile sync.
-  # See: https://recyclarr.dev
-  # recyclarr:
-  #   image: ghcr.io/recyclarr/recyclarr:latest
-  #   container_name: recyclarr
-  #   volumes:
-  #     - ${CONFIG_ROOT:-./config}/recyclarr:/config
-  #   restart: unless-stopped
+  recyclarr:
+    image: hashicorp/http-echo:1.0.0
+    container_name: recyclarr
+    command:
+      - "-text=Recyclarr stub endpoint. Enable and configure a real Recyclarr runtime when ready."
+      - "-listen=:80"
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.recyclarr.rule=Host(`recyclarr.local`)
+      - traefik.http.services.recyclarr.loadbalancer.server.port=80
 
   maintainerr:
     image: ghcr.io/maintainerr/maintainerr:3.3.0
@@ -539,10 +543,9 @@ services:
       BASE_PATH: ${MAINTAINERR_BASE_PATH:-/app/maintainerr}
     volumes:
       - ${CONFIG_ROOT:-./config}/maintainerr:/opt/data
-    # ports:  # Uncomment below to expose on host
-      # - "${MAINTAINERR_PORT:-6246}:6246"
+    ports:
+      - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6246${MAINTAINERR_BASE_PATH:-/app/maintainerr}/api/settings || wget -qO- http://127.0.0.1:6246/"]
       interval: 10s
@@ -560,10 +563,9 @@ services:
     volumes:
       - ${CONFIG_ROOT:-./config}/sabnzbd:/config
       - ${DATA_ROOT:-./data}/usenet:/data/usenet
-    # ports:  # Uncomment below to expose on host
-      # - "${SABNZBD_PORT:-8085}:8080"
+    ports:
+      - "${SABNZBD_PORT:-8085}:8080"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
       interval: 10s
@@ -589,7 +591,6 @@ services:
       - ${MEDIA_ROOT:-./media}/media:/media
       - ${DATA_ROOT:-./data}/transcode:/transcode
     restart: unless-stopped
-    logging: *default-logging
 
   tautulli:
     image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
@@ -597,10 +598,9 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-./config}/tautulli:/config
-    # ports:  # Uncomment below to expose on host
-      # - "${TAUTULLI_PORT:-8181}:8181"
+    ports:
+      - "${TAUTULLI_PORT:-8181}:8181"
     restart: unless-stopped
-    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/"]
       interval: 10s
@@ -617,15 +617,9 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       LOG_LEVEL: info
-    # ports:  # Uncomment below to expose on host
-      # - "${FLARESOLVERR_PORT:-8191}:8191"
+    ports:
+      - "${FLARESOLVERR_PORT:-8191}:8191"
     restart: unless-stopped
-    logging: *default-logging
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8191/"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
     labels:
       - traefik.enable=true
       - traefik.http.routers.flaresolverr.rule=Host(`flaresolverr.local`)
@@ -645,31 +639,44 @@ services:
       - ${DATA_ROOT:-./data}/transcode:/cache
       - ${MEDIA_ROOT:-./media}/media:/media
     restart: unless-stopped
-    logging: *default-logging
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.1}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.94}
     container_name: media-stack-controller
     command:
       - python3
       - /opt/media-stack/bin/controller.py
       - --serve
       - --config
-      - /opt/media-stack/contracts/media-stack.config.json
+      - /contracts/media-stack.config.json
       - --config-root
       - /srv-config
       - --wait-timeout
       - "600"
     environment:
-      BOOTSTRAP_PROFILE_FILE: ${BOOTSTRAP_PROFILE_FILE:-/opt/media-stack/contracts/media-stack.profile.yaml}
-      BOOTSTRAP_CONFIG_FILE: /opt/media-stack/contracts/media-stack.config.json
+      BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
+      BOOTSTRAP_CONFIG_FILE: /contracts/media-stack.config.json
       BOOTSTRAP_API_PORT: "9100"
       FULLY_PRECONFIGURED: "1"
       BOOTSTRAP_WAIT_INTERVAL_SECONDS: "3"
       BOOTSTRAP_WAIT_HEARTBEAT_SECONDS: "15"
       AUTO_INDEXER_HEARTBEAT_EVERY: "25"
       STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
-      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
+      # Default is intentionally trivial (admin/admin). The controller's
+      # admin-bootstrap flow seeds this into the user store and the
+      # dashboard forces a rotation on first login (source=env-seed/
+      # env-legacy → blocking modal). The env password stops working
+      # the moment rotation commits, so the weak default lives for
+      # exactly one sign-in. See project memory
+      # "Admin bootstrap redesign".
+      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-admin}"
+      # Trust Remote-User when Envoy (inside the compose network) forwards
+      # an Authelia-authenticated request. Without this, users who log in
+      # through the gateway get a SECOND basic-auth prompt when visiting
+      # /app/media-stack-controller/ because the controller can't tell
+      # that upstream auth already happened.
+      CONTROLLER_TRUSTED_PROXY_CIDRS: "${CONTROLLER_TRUSTED_PROXY_CIDRS:-172.21.0.0/16}"
+      CONTROLLER_TRUSTED_PROXY_HEADER: "${CONTROLLER_TRUSTED_PROXY_HEADER:-Remote-User}"
       SONARR_API_KEY: "${SONARR_API_KEY:-}"
       RADARR_API_KEY: "${RADARR_API_KEY:-}"
       LIDARR_API_KEY: "${LIDARR_API_KEY:-}"
@@ -680,8 +687,19 @@ services:
       SABNZBD_API_KEY: "${SABNZBD_API_KEY:-}"
       TAUTULLI_API_KEY: "${TAUTULLI_API_KEY:-}"
     volumes:
+      - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:rw
+      - ../contracts:/contracts:ro
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
       - /var/run/docker.sock:/var/run/docker.sock
+      # MUST match the envoy-config-init mount. The controller also
+      # runs the Envoy config generator in-process (on /api/routing,
+      # /api/auth-config, TLS cert installs, and startup hooks). Without
+      # this mount, the generator can't find the cert, returns (None,
+      # None) from _resolve_or_mint_certs, and silently emits a plain-
+      # HTTP envoy.yaml — which overwrites the working TLS config and
+      # breaks HTTPS on :443 until envoy-config-init is rerun by hand.
+      # This was a recurring regression before the mount was added.
+      - ./config/certs:/certs:rw
     depends_on:
       init-permissions:
         condition: service_completed_successfully
@@ -694,7 +712,6 @@ services:
       retries: 60
       start_period: 10s
     restart: unless-stopped
-    logging: *default-logging
     stop_grace_period: 10s
     labels:
       - traefik.enable=true

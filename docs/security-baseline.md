@@ -78,6 +78,19 @@ paths are public / sensitive / mutating, and the runner probes each.
 
 ### Infrastructure-layer hardening
 
+- **Edge TLS** — Envoy terminates TLS on 443 with a self-signed cert
+  auto-minted on first boot (see `_resolve_or_mint_certs` in
+  [compose/edge/providers/envoy/dynamic_config.py](../src/media_stack/core/platforms/compose/edge/providers/envoy/dynamic_config.py)).
+  Port 80 redirects to 443. The legacy port 8880 serves plain HTTP and
+  is used only by internal probes; Authelia 4.38+ cookies require
+  HTTPS.
+- **Admin bootstrap is seed-only** —
+  `STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD` are a one-time seed
+  used to create the initial admin user. On first login the dashboard
+  forces a rotation and the env value is never consulted again. Rotated
+  credentials live in `${CONFIG_ROOT}/controller/users.json` on a
+  dedicated PVC (K8s: `media-stack-config-controller`) so they survive
+  pod restart and rotation.
 - **K8s NetworkPolicy** — [k8s/networkpolicy.yaml](../k8s/networkpolicy.yaml).
   12 policies enforce a tier-isolated layout: default-deny-all +
   allow-DNS + Envoy-as-only-edge + controller-receives-only-from-Envoy

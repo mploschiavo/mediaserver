@@ -48,13 +48,27 @@ class JellyfinApiProvider:
         self._api_key = api_key
         self._http = http_client or HttpClient()
 
+    def _req(
+        self, path: str, *, method: str = "GET",
+        payload: Any = None,
+    ) -> tuple[int, Any, str]:
+        """Jellyfin authenticates against ``api_key`` as a query
+        parameter, NOT the generic ``X-Api-Key`` header the shared
+        HttpClient uses (10.11+ rejects that header with 401). Every
+        outbound request for this provider goes through this helper
+        so the auth shape is consistent."""
+        sep = "&" if "?" in path else "?"
+        path_with_key = f"{path}{sep}api_key={self._api_key}"
+        return self._http.request(
+            self._base_url, path_with_key,
+            method=method, payload=payload,
+        )
+
     def health_check(self) -> ProviderHealth:
         if not self._api_key:
             return ProviderHealth(ok=False, detail="API key not set")
         try:
-            status, _, _ = self._http.request(
-                self._base_url, "/System/Info", api_key=self._api_key,
-            )
+            status, _, _ = self._req("/System/Info")
         except Exception as exc:  # noqa: BLE001
             return ProviderHealth(ok=False, detail=str(exc)[:_ERR_DETAIL_LEN])
         return ProviderHealth(ok=HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES,
@@ -64,9 +78,7 @@ class JellyfinApiProvider:
         if not self._api_key:
             return []
         try:
-            status, users, _ = self._http.request(
-                self._base_url, "/Users", api_key=self._api_key,
-            )
+            status, users, _ = self._req("/Users")
         except Exception:  # noqa: BLE001
             return []
         if status != HTTPStatus.OK or not isinstance(users, list):
@@ -87,9 +99,8 @@ class JellyfinApiProvider:
                     policy: dict[str, Any] | None = None) -> ExternalUser:
         del email, groups
         self._require_api_key()
-        status, body, text = self._http.request(
-            self._base_url, "/Users/New",
-            api_key=self._api_key, method="POST",
+        status, body, text = self._req(
+            "/Users/New", method="POST",
             payload={"Name": username, "Password": password},
         )
         if status not in _CREATE_STATUSES or not isinstance(body, dict):
@@ -139,10 +150,7 @@ class JellyfinApiProvider:
 
     def _library_ids_by_name(self, names: list[str]) -> list[str]:
         try:
-            status, body, _ = self._http.request(
-                self._base_url, "/Library/MediaFolders",
-                api_key=self._api_key,
-            )
+            status, body, _ = self._req("/Library/MediaFolders")
         except Exception:  # noqa: BLE001
             return []
         if status != HTTPStatus.OK or not isinstance(body, dict):
@@ -163,9 +171,8 @@ class JellyfinApiProvider:
 
     def delete_user(self, external_id: str) -> None:
         self._require_api_key()
-        status, _, text = self._http.request(
-            self._base_url, f"/Users/{external_id}",
-            api_key=self._api_key, method="DELETE",
+        status, _, text = self._req(
+            f"/Users/{external_id}", method="DELETE",
         )
         if status not in _DELETE_STATUSES:
             raise JellyfinProviderError(
@@ -174,9 +181,8 @@ class JellyfinApiProvider:
 
     def set_password(self, external_id: str, password: str) -> None:
         self._require_api_key()
-        status, _, text = self._http.request(
-            self._base_url, f"/Users/{external_id}/Password",
-            api_key=self._api_key, method="POST",
+        status, _, text = self._req(
+            f"/Users/{external_id}/Password", method="POST",
             payload={"NewPw": password, "ResetPassword": False},
         )
         if status not in _OK_STATUSES:
@@ -185,9 +191,8 @@ class JellyfinApiProvider:
             )
 
     def _apply_policy(self, external_id: str, policy: dict[str, Any]) -> None:
-        status, _, text = self._http.request(
-            self._base_url, f"/Users/{external_id}/Policy",
-            api_key=self._api_key, method="POST", payload=policy,
+        status, _, text = self._req(
+            f"/Users/{external_id}/Policy", method="POST", payload=policy,
         )
         if status not in _OK_STATUSES:
             raise JellyfinProviderError(

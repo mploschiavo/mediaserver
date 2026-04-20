@@ -47,18 +47,26 @@ modes:
       cluster_name: ext_authz_authelia
       host: authelia
       port: 9091
-      # Authelia's /api/authz/forward-auth endpoint:
-      #   - Reads X-Forwarded-* headers (set by the Lua filter upstream)
-      #   - Returns 302 with Location: <authelia_url>/?rd=<original>
-      #     automatically from `authelia_url` config. No rd= query
-      #     needed in this request — and that matters because Envoy
-      #     APPENDS the user's original path to path_prefix before
-      #     sending, which would corrupt an rd= value glued on here.
-      #   - Earlier switch to /api/verify was done for POST support,
-      #     but /api/verify needs `rd=` to get 302 behavior, and the
-      #     path-append bug broke the portal URL. forward-auth gives
-      #     us both 302-to-login and a clean portal URL.
-      path_prefix: /api/authz/forward-auth?authz_path=
+      # Authelia's /api/verify endpoint:
+      #   - Accepts ALL HTTP methods (GET, POST, PUT, DELETE, PATCH, etc).
+      #     /api/authz/forward-auth rejects non-safe methods with 405 —
+      #     dashboard POSTs (reset-password, delete-user, etc.) fail.
+      #   - Returns 302/303 with Location: <rd>?rd=<original> when `rd`
+      #     is present in the query string. Without `rd`, it returns 401
+      #     (no redirect), which breaks the browser login flow.
+      #   - `authz_path` is appended by Envoy ext_authz (path_prefix
+      #     semantics) but Authelia ignores unknown query params, so the
+      #     trailing path goes into a harmless parameter.
+      #
+      # Path construction order matters: Envoy appends the original
+      # request URI AFTER path_prefix verbatim. Putting `authz_path=`
+      # last keeps earlier query params intact. build_ext_authz_filter
+      # injects the deployment-specific `rd=<portal>` param BEFORE
+      # authz_path at render time, using the profile's auth_portal_url.
+      # The earlier /api/authz/forward-auth endpoint was used to
+      # sidestep rd-append corruption, but its GET-only restriction is
+      # worse — it breaks every POST from the dashboard.
+      path_prefix: /api/verify?authz_path=
       # Headers forwarded from Authelia to upstream services
       response_headers_to_add:
         - Remote-User

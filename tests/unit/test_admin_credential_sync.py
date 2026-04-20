@@ -104,5 +104,40 @@ class ResolveAdminHashTests(unittest.TestCase):
         self.assertEqual(result, "$argon2id$OPERATOR_OVERRIDE")
 
 
+class DefaultsFileContentTests(unittest.TestCase):
+    """Regression guard: the /defaults/users_database.yml seed file
+    MUST NOT ship with a hashed password. If it does, the seed-only
+    rule in _resolve_admin_hash preserves that hash on first regen,
+    every fresh install ends up with a well-known credential, and
+    STACK_ADMIN_PASSWORD is silently ignored — which is exactly the
+    failure mode the admin bootstrap redesign is closing.
+
+    The test reads the file at repo path, not through any runtime
+    code path, because it's the static content of the file we care
+    about."""
+
+    def test_defaults_users_database_has_no_password(self):
+        from pathlib import Path
+        import yaml
+        repo_root = Path(__file__).resolve().parents[2]
+        path = repo_root / (
+            "config/defaults/compose/auth/authelia/users_database.yml"
+        )
+        self.assertTrue(path.is_file(),
+                        f"defaults file missing at {path}")
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        users = (data.get("users") or {})
+        for username, entry in users.items():
+            if not isinstance(entry, dict):
+                continue
+            self.assertNotIn(
+                "password", entry,
+                f"{username!r} in the defaults users_database.yml "
+                f"has a hashed password. Strip it — the controller's "
+                f"configure-auth job seeds a real hash from "
+                f"STACK_ADMIN_PASSWORD on first run.",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

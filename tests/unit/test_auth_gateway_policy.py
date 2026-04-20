@@ -406,11 +406,26 @@ class TestAutheliaConfigGeneration(unittest.TestCase):
         self.assertIn("session", config)
         self.assertIn("storage", config)
 
-    def test_session_domain_matches_base(self) -> None:
-        gen = AutheliaConfigGenerator(self._options(base_domain="example.com"))
+    def test_session_domain_combines_subdomain_and_base(self) -> None:
+        """When base_domain is a bare suffix (e.g. 'example.com'),
+        Authelia 4.38 rejects a single-label domain like 'local'. The
+        generator composes ``<stack_subdomain>.<base_domain>`` so the
+        cookie has at least one dot AND scopes SSO to the stack."""
+        gen = AutheliaConfigGenerator(self._options(
+            base_domain="example.com", stack_subdomain="media"))
         config = gen.generate_configuration()
         cookies = config["session"]["cookies"]
-        self.assertEqual(cookies[0]["domain"], "example.com")
+        self.assertEqual(cookies[0]["domain"], "media.example.com")
+
+    def test_session_domain_skips_duplicate_subdomain(self) -> None:
+        """If base_domain already starts with stack_subdomain (e.g.
+        'media.example.com' + subdomain 'media'), the generator MUST
+        NOT produce 'media.media.example.com'."""
+        gen = AutheliaConfigGenerator(self._options(
+            base_domain="media.example.com", stack_subdomain="media"))
+        config = gen.generate_configuration()
+        cookies = config["session"]["cookies"]
+        self.assertEqual(cookies[0]["domain"], "media.example.com")
 
     def test_internet_exposed_uses_two_factor(self) -> None:
         gen = AutheliaConfigGenerator(self._options(internet_exposed=True))
@@ -443,20 +458,35 @@ class TestAutheliaConfigGeneration(unittest.TestCase):
             bypass_domains.extend(r.get("domain", []))
         self.assertTrue(any("jellyfin" in d for d in bypass_domains))
 
-    def test_oidc_config_included_when_set(self) -> None:
-        gen = AutheliaConfigGenerator(self._options(
-            oidc_provider="google",
-            oidc_config={
-                "client_id": "test-client",
-                "client_secret": "test-secret",
-                "discovery_url": "https://accounts.google.com/.well-known/openid-configuration",
-            },
-        ))
+    def test_oidc_block_omitted_when_no_clients(self) -> None:
+        """Authelia 4.38 OIDC is now live (see authelia_oidc_crypto
+        and configure_auth_job._build_oidc_clients). When no
+        downstream apps are registered we still skip the block:
+        an identity provider with zero clients advertises endpoints
+        that nothing can use, and file-auth-only is the right mode
+        for minimal deployments."""
+        from media_stack.core.auth.authelia_config_generator import (
+            OidcClientDef,
+        )
+        gen = AutheliaConfigGenerator(self._options(oidc_clients=[]))
         config = gen.generate_configuration()
-        self.assertIn("identity_providers", config)
-        oidc = config["identity_providers"]["oidc"]
+        self.assertNotIn("identity_providers", config)
+
+        gen_with = AutheliaConfigGenerator(self._options(oidc_clients=[
+            OidcClientDef(
+                client_id="jellyseerr", client_name="Jellyseerr",
+                client_secret="shared",
+                redirect_uris=["https://jellyseerr.example.com/cb"],
+            ),
+        ]))
+        config_with = gen_with.generate_configuration()
+        self.assertIn("identity_providers", config_with,
+                      "OIDC block missing even with a client registered")
+        oidc = config_with["identity_providers"]["oidc"]
+        self.assertTrue(oidc["hmac_secret"])
+        self.assertTrue(oidc["jwks"])
         self.assertEqual(len(oidc["clients"]), 1)
-        self.assertEqual(oidc["clients"][0]["client_id"], "test-client")
+        self.assertEqual(oidc["clients"][0]["client_id"], "jellyseerr")
 
     def test_no_oidc_for_local_provider(self) -> None:
         gen = AutheliaConfigGenerator(self._options(oidc_provider="local"))

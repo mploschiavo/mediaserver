@@ -2,6 +2,12 @@
 
 This directory stores reproducible runtime artifacts captured from a live namespace.
 
+> **Freshness** — the PNGs currently checked in predate the home-screen
+> redesign, user-management UI, TLS enablement, and admin-bootstrap
+> rotation flow. Recapture against a fresh deploy before using these
+> as marketing/docs material. Use `bin/run-playwright-screenshots.sh`
+> below; it logs in first so shots reflect authenticated dashboards.
+
 ## Folder Structure
 
 - `docs/screenshots/apps/`

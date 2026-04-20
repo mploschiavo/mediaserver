@@ -432,9 +432,9 @@ Build and push to local registry:
 bash bin/build-controller-image.sh
 ```
 
-Override image for one run:
+Override image for one run (use a concrete tag — see [CHANGELOG.md](CHANGELOG.md) for the current release):
 ```bash
-BOOTSTRAP_RUNNER_IMAGE=harbor.iomio.io/library/media-stack-controller:latest \
+BOOTSTRAP_RUNNER_IMAGE=harbor.iomio.io/library/media-stack-controller:v1.0.94 \
   bash bin/bootstrap-all.sh
 ```
 

@@ -89,23 +89,44 @@ class UserStore:
             return self._load().get(user_id)
 
     def get_by_email(self, email: str) -> User | None:
+        """Return the ACTIVE user with this email. Prefer active over
+        soft-deleted when duplicates exist — same tie-breaker as
+        get_by_username so logins via email can't hit a dead row."""
         target = email.strip().lower()
         with self._lock:
-            for u in self._load().values():
-                if u.email.strip().lower() == target:
-                    return u
-        return None
+            candidates = [
+                u for u in self._load().values()
+                if u.email.strip().lower() == target
+            ]
+        if not candidates:
+            return None
+        for u in candidates:
+            if u.state.value == "active":
+                return u
+        return candidates[0]
 
     def get_by_username(self, username: str) -> User | None:
+        """Return the ACTIVE user with this username. If multiple
+        records share the same username (a recreated-after-delete
+        scenario — original row is soft-deleted, new row is active),
+        return the active one, not the first match. Without this
+        tie-breaker the login verifier reads the deleted row's
+        empty provider_refs and rejects every credential."""
         target = username.strip().lower()
         with self._lock:
-            for u in self._load().values():
-                if u.username.strip().lower() == target:
-                    return u
-        return None
+            candidates = [
+                u for u in self._load().values()
+                if u.username.strip().lower() == target
+            ]
+        if not candidates:
+            return None
+        for u in candidates:
+            if u.state.value == "active":
+                return u
+        return candidates[0]
 
     def create(self, email: str, username: str, display_name: str, role_slug: str,
-               state: UserState = UserState.ACTIVE) -> User:
+               state: UserState = UserState.ACTIVE, source: str = "") -> User:
         now = self._now_iso()
         user = User(
             id=str(uuid.uuid4()),
@@ -116,6 +137,7 @@ class UserStore:
             role_slug=role_slug,
             created_at=now,
             updated_at=now,
+            source=source,
         )
         with self._lock:
             users = self._load()
@@ -132,7 +154,8 @@ class UserStore:
 
     def update(self, user_id: str, **fields: Any) -> User:
         allowed = {"email", "username", "display_name", "state", "role_slug",
-                   "last_login_at", "provider_refs", "password_history"}
+                   "last_login_at", "provider_refs", "password_history",
+                   "source"}
         with self._lock:
             users = self._load()
             user = users.get(user_id)

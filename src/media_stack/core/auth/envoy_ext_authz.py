@@ -9,6 +9,7 @@ Generates the Envoy configuration fragments needed to wire ext_authz:
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote as _quote
 
 from media_stack.core.auth.gateway_policy import ExtAuthzConfig, GatewayAuthPolicy
 
@@ -17,30 +18,42 @@ from media_stack.core.auth.gateway_policy import ExtAuthzConfig, GatewayAuthPoli
 EXT_AUTHZ_FILTER_NAME = "envoy.filters.http.ext_authz"
 
 
+def _prefix_with_rd(raw_prefix: str, auth_portal_url: str) -> str:
+    """If the contract's path_prefix is the authz-path form AND a portal
+    URL is known, inject ``rd=<encoded portal>&`` right after the ``?``.
+
+    For non-authz-path prefixes (e.g. Authentik's /outpost.goauthentik.io
+    path), return unchanged — they don't use an `rd` param."""
+    if not raw_prefix or "authz_path=" not in raw_prefix or not auth_portal_url:
+        return raw_prefix
+    if "rd=" in raw_prefix:
+        return raw_prefix  # already parameterized (profile override)
+    head, sep, tail = raw_prefix.partition("?")
+    if not sep:
+        return raw_prefix
+    rd_param = "rd=" + _quote(auth_portal_url, safe="")
+    return f"{head}?{rd_param}&{tail}"
+
+
 def build_ext_authz_filter(
     ext_authz: ExtAuthzConfig,
     auth_portal_url: str = "",
 ) -> dict[str, Any]:
     """Build the Envoy ext_authz HTTP filter configuration.
 
-    This filter is inserted into the HTTP filter chain BEFORE the router filter.
-    It sends each request to the auth provider for verification before forwarding.
+    Inserted into the HTTP filter chain BEFORE the router filter. Each
+    request is sent to the auth provider for verification.
+
+    Path prefix assembly (for Authelia's /api/verify):
+      The contract provides ``path_prefix`` ending in ``authz_path=``.
+      Envoy appends the user's request path verbatim after the prefix.
+      To get Authelia to emit a 302 with Location:<portal>?rd=<original>
+      on unauthenticated requests, we inject ``rd=<encoded portal>&``
+      BEFORE ``authz_path=``. Order matters: ``authz_path`` must stay
+      last so the appended path lands in a harmless query parameter
+      and doesn't corrupt ``rd``.
     """
-    path_prefix = ext_authz.path_prefix
-    # NOTE: the previous implementation here appended `&rd=<portal-url>`
-    # to path_prefix to nudge Authelia into returning 302-to-login on
-    # unauthenticated requests. That was a mistake: Envoy's ext_authz
-    # filter APPENDS the user's original request path to path_prefix
-    # before sending to Authelia, so a user GET /app produced an authz
-    # URL of `/api/verify?rd=https://auth.example/app` — Authelia
-    # echoed `https://auth.example/app` as the login destination and
-    # broke the whole login flow.
-    #
-    # Authelia /api/verify derives the redirect target from the
-    # X-Forwarded-* headers Envoy already sends (via the Lua filter).
-    # Its `authelia_url` config tells it where its own portal lives.
-    # No `rd=` query parameter is needed — Authelia's 302 Location
-    # header already points at the portal. Keep path_prefix minimal.
+    path_prefix = _prefix_with_rd(ext_authz.path_prefix, auth_portal_url)
 
     return {
         "name": EXT_AUTHZ_FILTER_NAME,

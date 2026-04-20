@@ -1,0 +1,41 @@
+# Services surfaced in the dashboard's Access URLs panel.
+# Edit this file to add / remove entries; no code change needed.
+#
+# Each entry:
+#   slug: service identifier (must match services.yaml id when
+#         the service also has a gateway virtual host)
+#   direct_port: host-exposed port for no-DNS access. Omit if the
+#                service is only reachable via the gateway.
+#   gateway_subdomain: if set, emit a https://<subdomain>.<gw>/ URL
+#   gateway_path: if set, emit a https://apps.<gw>/<path>/ URL
+#   label: human-readable bucket name in the dashboard UI
+#
+# Buckets controller and gateway are always rendered; additional
+# services show up under their own label.
+
+version: 1
+
+buckets:
+  - slug: controller
+    label: Controller
+    summary: The dashboard you're looking at.
+    direct_port: 9100
+    scheme: http
+
+  - slug: jellyfin
+    label: Jellyfin
+    summary: Media server.
+    direct_port: 8096
+    scheme: http
+    gateway_subdomain: jellyfin
+    gateway_path: app/jellyfin
+
+  - slug: gateway
+    label: Gateway
+    summary: Shared entry point for every app.
+    scheme: https
+    apps_host_direct_ip: true
+
+  - slug: authelia
+    label: Authelia
+    gateway_subdomain: auth

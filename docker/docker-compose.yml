@@ -75,6 +75,16 @@ services:
     image: authelia/authelia:4.38
     container_name: authelia
     profiles: ["auth-authelia"]
+    # Wait until the controller is healthy before starting. The
+    # controller runs configure-auth synchronously at boot (before
+    # the /readyz health probe returns ok), so by the time Authelia
+    # starts, /config/configuration.yml already has REAL secrets —
+    # never the PLACEHOLDER_* sentinels. Without this ordering,
+    # Authelia would encrypt db.sqlite3 with placeholder secrets
+    # and every subsequent configure-auth run would brick startup.
+    depends_on:
+      media-stack-controller:
+        condition: service_healthy
     command:
       - sh
       - -c
@@ -183,7 +193,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.69}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.94}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -614,7 +624,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.69}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.94}
     container_name: media-stack-controller
     command:
       - python3
@@ -635,7 +645,21 @@ services:
       BOOTSTRAP_WAIT_HEARTBEAT_SECONDS: "15"
       AUTO_INDEXER_HEARTBEAT_EVERY: "25"
       STACK_ADMIN_USERNAME: "${STACK_ADMIN_USERNAME:-admin}"
-      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-media-stack}"
+      # Default is intentionally trivial (admin/admin). The controller's
+      # admin-bootstrap flow seeds this into the user store and the
+      # dashboard forces a rotation on first login (source=env-seed/
+      # env-legacy → blocking modal). The env password stops working
+      # the moment rotation commits, so the weak default lives for
+      # exactly one sign-in. See project memory
+      # "Admin bootstrap redesign".
+      STACK_ADMIN_PASSWORD: "${STACK_ADMIN_PASSWORD:-admin}"
+      # Trust Remote-User when Envoy (inside the compose network) forwards
+      # an Authelia-authenticated request. Without this, users who log in
+      # through the gateway get a SECOND basic-auth prompt when visiting
+      # /app/media-stack-controller/ because the controller can't tell
+      # that upstream auth already happened.
+      CONTROLLER_TRUSTED_PROXY_CIDRS: "${CONTROLLER_TRUSTED_PROXY_CIDRS:-172.21.0.0/16}"
+      CONTROLLER_TRUSTED_PROXY_HEADER: "${CONTROLLER_TRUSTED_PROXY_HEADER:-Remote-User}"
       SONARR_API_KEY: "${SONARR_API_KEY:-}"
       RADARR_API_KEY: "${RADARR_API_KEY:-}"
       LIDARR_API_KEY: "${LIDARR_API_KEY:-}"
@@ -650,6 +674,15 @@ services:
       - ../contracts:/contracts:ro
       - ${CONFIG_ROOT:-./config}:/srv-config:rw
       - /var/run/docker.sock:/var/run/docker.sock
+      # MUST match the envoy-config-init mount. The controller also
+      # runs the Envoy config generator in-process (on /api/routing,
+      # /api/auth-config, TLS cert installs, and startup hooks). Without
+      # this mount, the generator can't find the cert, returns (None,
+      # None) from _resolve_or_mint_certs, and silently emits a plain-
+      # HTTP envoy.yaml — which overwrites the working TLS config and
+      # breaks HTTPS on :443 until envoy-config-init is rerun by hand.
+      # This was a recurring regression before the mount was added.
+      - ./config/certs:/certs:rw
     depends_on:
       init-permissions:
         condition: service_completed_successfully

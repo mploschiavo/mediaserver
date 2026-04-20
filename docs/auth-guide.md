@@ -1,5 +1,15 @@
 # Authentication Guide
 
+## Admin Bootstrap
+
+The stack ships with a single **seed** admin credential (`admin`/`admin` by default). Treat it as a one-time key to open the door — not a permanent account.
+
+On first successful login, the dashboard forces a password rotation. After rotation, the seed value is no longer accepted; the persisted credential in `users.json` is authoritative.
+
+Override the seed value before first boot via `STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD` (Compose: `.env`; K8s: `media-stack-secrets`). Once rotation has occurred, changing these env vars has no effect.
+
+Break-glass recovery (lost admin password): stop the controller, delete `${CONFIG_ROOT}/controller/users.json`, restart. The seed credential becomes valid again for one login.
+
 ## Auth Modes
 
 | Mode | Gateway Auth | Controller Auth | Use Case |
@@ -53,6 +63,23 @@ auth:
     jellyfin: native       # TV/mobile apps can't do OIDC redirects
     jellyseerr: protected  # web-only UI — SSO works fine
 ```
+
+## TLS and Envoy Gateway
+
+Envoy terminates TLS on port **443** with a self-signed certificate auto-minted on first boot (see `_resolve_or_mint_certs` in the compose dynamic-config generator). Port **80** redirects to 443. The legacy port **8880** is plain HTTP and intended only for local probe/testing — browsers should use `https://...`.
+
+Authelia 4.38+ requires HTTPS for session cookies. The stack's `session.cookies[].authelia_url` is always emitted as an `https://` URL that shares cookie scope with `apps.<domain>` (same registrable domain).
+
+## Domain Topology (Nested vs Flat)
+
+The stack supports two domain layouts. The generator picks automatically based on your profile.
+
+| Layout | Base | Sub | Gateway | Authelia |
+|---|---|---|---|---|
+| Nested (Compose default) | `media-stack.local` | `media-stack` | `apps.media-stack.local` | `auth.media-stack.local` |
+| Flat (K8s default) | `iomio.io` | *(empty)* | `m.iomio.io` | `auth.iomio.io` |
+
+When `routing.base_domain` is set on the profile and the gateway hostname sits directly under it, the stack uses the flat form. Mixing the two (e.g. `auth.media-stack.media-stack.local`) breaks cookie scope and produces an infinite login-redirect loop — the configuration generator guards against this.
 
 ## DNS Setup
 
@@ -124,13 +151,13 @@ When Authelia is active, these URLs are in play:
 
 | URL | Purpose |
 |---|---|
-| `http://apps.media-stack.local:8880/` | Gateway entry point (Envoy) |
-| `http://auth.media-stack.local:8880/` | Authelia login portal |
-| `http://auth.media-stack.local:8880/api/authz/forward-auth` | Envoy ext_authz verification endpoint |
-| `http://auth.media-stack.local:8880/api/oidc/callback` | OIDC redirect callback (registered at IdP) |
-| `http://auth.media-stack.local:8880/api/authz/logout` | Logout endpoint |
+| `https://apps.media-stack.local/` | Gateway entry point (Envoy, TLS) |
+| `https://auth.media-stack.local/` | Authelia login portal |
+| `https://auth.media-stack.local/api/authz/forward-auth` | Envoy ext_authz verification endpoint |
+| `https://auth.media-stack.local/api/oidc/callback` | OIDC redirect callback (registered at IdP) |
+| `https://auth.media-stack.local/api/authz/logout` | Logout endpoint |
 
-> The port (`8880`) matches your Envoy gateway port. If you bind Envoy to port 80, omit the port.
+> URLs are rendered with `https://` and the Envoy HTTPS port (default 443). The legacy HTTP port `8880` is still accepted for local testing but Authelia 4.38+ sessions only work over HTTPS.
 
 ## Registering the OIDC Redirect URI
 
@@ -142,11 +169,11 @@ When using an external IdP (Google, Auth0, etc.), you must register the **redire
 2. Select your OAuth 2.0 Client ID (or create one)
 3. Under **Authorized redirect URIs**, add:
    ```
-   http://auth.media-stack.local:8880/api/oidc/callback
+   https://auth.media-stack.local/api/oidc/callback
    ```
 4. Under **Authorized JavaScript origins**, add:
    ```
-   http://auth.media-stack.local:8880
+   https://auth.media-stack.local
    ```
 5. Save
 
@@ -157,16 +184,16 @@ When using an external IdP (Google, Auth0, etc.), you must register the **redire
 1. Go to your Auth0 Dashboard → Applications → your app
 2. Under **Allowed Callback URLs**, add:
    ```
-   http://auth.media-stack.local:8880/api/oidc/callback
+   https://auth.media-stack.local/api/oidc/callback
    ```
 3. Under **Allowed Logout URLs**, add:
    ```
-   http://apps.media-stack.local:8880/
+   https://apps.media-stack.local/
    ```
 
 ### Other Providers
 
-The pattern is the same for all providers — register `http://auth.media-stack.local:8880/api/oidc/callback` as the allowed redirect/callback URI in your IdP's application settings.
+The pattern is the same for all providers — register `https://auth.media-stack.local/api/oidc/callback` as the allowed redirect/callback URI in your IdP's application settings.
 
 ## Testing Locally (No Public Internet Required)
 
@@ -216,7 +243,7 @@ users:
 ./deploy-compose.sh
 ```
 
-**5. Open the dashboard** — navigate to `http://apps.media-stack.local:8880/`
+**5. Open the dashboard** — navigate to `https://apps.media-stack.local/` (accept the self-signed cert on first load)
 
 - Envoy sends the request to Authelia for verification via ext_authz
 - Authelia redirects unauthenticated users to the login portal
@@ -226,7 +253,7 @@ users:
 **6. Verify identity** — check the user badge in the top-right corner of the dashboard. It shows the authenticated username. You can also call the API directly:
 
 ```bash
-curl -s http://apps.media-stack.local:8880/api/auth/identity \
+curl -sk https://apps.media-stack.local/api/auth/identity \
   -H "Cookie: authelia_session=<your-cookie>"
 ```
 

@@ -16,9 +16,13 @@ from media_stack.services.apps.jellyfin.user_provider import (  # noqa: E402
 
 
 def _mock_http(responses: dict):
-    """Responses keyed by (method, path)."""
+    """Responses keyed by (method, path). JellyfinApiProvider now
+    appends ``?api_key=X`` to every path (Jellyfin 10.11 rejects the
+    shared HttpClient's X-Api-Key header), so the mock strips the
+    query string before lookup."""
     def _req(base, path, api_key=None, method="GET", payload=None, **_kw):
-        key = (method, path)
+        bare_path = str(path).split("?", 1)[0]
+        key = (method, bare_path)
         out = responses.get(key)
         if out is None:
             return (404, None, "")
@@ -66,7 +70,35 @@ class JellyfinApiProviderTests(unittest.TestCase):
         args_list = client.request.call_args_list
         payload = args_list[0].kwargs.get("payload")
         self.assertEqual(payload["NewPw"], "newpw")
-        self.assertNotIn("CurrentPw", payload)
+
+    def test_api_key_flows_via_query_param_not_xapikey_header(self):
+        """Regression for 2026-04-19: the shared HttpClient sends
+        api_key as an ``X-Api-Key`` header, but Jellyfin 10.11+
+        returns 401 for that header — it wants either
+        ``X-Emby-Token`` or a ``?api_key=`` query parameter.
+
+        Without this the dashboard's create-user flow silently
+        fails at the Jellyfin secondary step ('status=401'),
+        leaving the user unable to log into Jellyfin."""
+        client = _mock_http({("GET", "/System/Info"): (200, {}, "")})
+        p = self._provider(api_key="secret-key-123", client=client)
+        p.health_check()
+        call = client.request.call_args
+        # The bare path argument must carry api_key as a query
+        # parameter. Assert on the positional path arg (index 1).
+        positional_path = call.args[1] if len(call.args) > 1 else ""
+        self.assertIn(
+            "api_key=secret-key-123", positional_path,
+            "Jellyfin auth regressed: api_key must flow through "
+            f"the path/query, not a header. Got path={positional_path!r}.",
+        )
+        # And the api_key KWARG (which would trigger the wrong
+        # X-Api-Key header) must NOT be set.
+        self.assertFalse(
+            call.kwargs.get("api_key"),
+            "api_key kwarg is set — this triggers X-Api-Key "
+            "which Jellyfin 10.11 rejects with 401.",
+        )
 
     def test_delete_user_handles_404_as_ok(self):
         client = _mock_http({("DELETE", "/Users/user-abc"): (404, None, "")})

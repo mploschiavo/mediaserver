@@ -603,14 +603,33 @@ class EnvoyDynamicConfigService:
           3. Otherwise (K8s: no cert dir mounted), return (None, None)
              so the caller falls back to plain HTTP (K8s terminates
              TLS upstream).
+
+        Logs every probe so regressions can be traced back to exactly
+        which path failed and why — see the TLS-regression playbook.
         """
+        log = logging.getLogger("media_stack.envoy.tls_resolve")
         for c, k in self._CERT_CANDIDATE_PATHS:
-            if Path(c).exists() and Path(k).exists():
+            cert_there = Path(c).exists()
+            key_there = Path(k).exists()
+            log.info("tls-probe pair=%s cert_exists=%s key_exists=%s",
+                     c, cert_there, key_there)
+            if cert_there and key_there:
                 return c, k
         for c, k in self._CERT_CANDIDATE_PATHS:
-            minted = self._try_mint_cert(Path(c), Path(k))
-            if minted:
+            cert_dir = Path(c).parent
+            dir_exists = cert_dir.exists()
+            writable = dir_exists and os.access(cert_dir, os.W_OK)
+            log.info("tls-mint dir=%s exists=%s writable=%s",
+                     cert_dir, dir_exists, writable)
+            if self._try_mint_cert(Path(c), Path(k)):
+                log.info("tls-mint-ok pair=%s", c)
                 return c, k
+        log.error(
+            "tls-resolve-fail tried=%s — generator will emit plain HTTP. "
+            "On compose this silently breaks HTTPS on :443. Fix: mount "
+            "the cert dir (:rw) into the calling container.",
+            [c for c, _ in self._CERT_CANDIDATE_PATHS],
+        )
         return None, None
 
     def _try_mint_cert(self, cert_file: Path, key_file: Path) -> bool:

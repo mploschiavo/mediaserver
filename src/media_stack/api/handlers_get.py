@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs
 
-from media_stack.api.session_singletons import session_cookie_reader
+from media_stack.api.session_singletons import (
+    session_cookie_reader, trusted_proxy_auth,
+)
+from media_stack.api.services.registry import SERVICES as _SERVICES
 from media_stack.api.tls_factory import build_default_tls_service
 from media_stack.core.auth.users.user_service_factory import (
     build_default_api_token_store,
@@ -151,6 +154,25 @@ class GetRequestHandler:
             handler._json_response(200, get_custom_formats(svc_id))
         elif path == "/api/arr-webhooks":
             handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
+        elif path == "/api/password-policy":
+            from media_stack.api.services.password_policy_config import (
+                PasswordPolicyConfig,
+            )
+            cfg = PasswordPolicyConfig()
+            handler._json_response(HTTPStatus.OK, {
+                "policy": cfg.load_values(),
+                "bounds": cfg.bounds(),
+            })
+        elif path == "/api/routing-probe":
+            try:
+                handler._json_response(
+                    HTTPStatus.OK, _routing_matrix_probe.probe_all(),
+                )
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": str(exc)[:80]},
+                )
         elif path == "/api/gateway-hostnames":
             try:
                 handler._json_response(
@@ -190,6 +212,22 @@ class GetRequestHandler:
                             "/api/invites", "/api/me", "/metrics",
                             "/api/tokens"):
             self._handle_user_mgmt(handler, path)
+        elif path == "/api/access-urls":
+            # Surface clickable URLs for users who haven't set DNS
+            # yet — "you can reach the controller at http://<your-
+            # LAN-IP>:9100". See access_urls.py for the contract.
+            from media_stack.api.services.access_urls import (
+                AccessUrlDiscovery,
+            )
+            host_hdr = ""
+            try:
+                host_hdr = handler.headers.get("Host", "") or ""
+            except AttributeError:
+                pass
+            handler._json_response(
+                HTTPStatus.OK,
+                AccessUrlDiscovery(host_ip_hint=host_hdr).build(),
+            )
         elif path == "/api/download-client-settings":
             handler._json_response(200, content_svc.get_download_client_settings())
         elif path == "/api/quality-profiles":
@@ -314,15 +352,26 @@ class GetRequestHandler:
 
         # --- Auth ---
         elif path == "/api/auth/identity":
-            # Read forwarded identity headers from Authelia/Authentik
-            user = handler.headers.get("Remote-User", "") or handler.headers.get("X-authentik-username", "")
-            name = handler.headers.get("Remote-Name", "") or handler.headers.get("X-authentik-name", "")
-            email = handler.headers.get("Remote-Email", "") or handler.headers.get("X-authentik-email", "")
-            groups = handler.headers.get("Remote-Groups", "") or handler.headers.get("X-authentik-groups", "")
+            # Resolution order matches the auth policy: Authelia/Authentik
+            # forwarded headers first, then the session cookie (for
+            # direct-access deployments where the user signed in with the
+            # controller's in-page form). Without the session-cookie
+            # branch the dashboard never showed the logout badge for
+            # localhost users even though they WERE authenticated.
+            user = (handler.headers.get("Remote-User", "")
+                    or handler.headers.get("X-authentik-username", ""))
+            name = (handler.headers.get("Remote-Name", "")
+                    or handler.headers.get("X-authentik-name", ""))
+            email = (handler.headers.get("Remote-Email", "")
+                     or handler.headers.get("X-authentik-email", ""))
+            groups = (handler.headers.get("Remote-Groups", "")
+                      or handler.headers.get("X-authentik-groups", ""))
+            if not user:
+                user = session_cookie_reader.username_for_handler(handler)
             handler._json_response(200, {
                 "authenticated": bool(user),
                 "user": user,
-                "display_name": name,
+                "display_name": name or user,
                 "email": email,
                 "groups": groups,
             })
@@ -588,8 +637,15 @@ class GetRequestHandler:
 
     def _build_me_response(self, handler, svc) -> dict:
         """Return the authenticated user's record. Tries session cookie,
-        then Basic auth. Anonymous callers get {authenticated: False}."""
+        then trusted-proxy Remote-User (Authelia via Envoy), then Basic
+        auth. Anonymous callers get {authenticated: False}."""
         username = session_cookie_reader.username_for_handler(handler) or ""
+        if not username:
+            # Trusted-proxy path: Envoy forwards Remote-User when ext_authz
+            # succeeded upstream. Without this branch, a user who logged in
+            # via Authelia would see the controller UI pretend they're not
+            # authenticated and nag for another password.
+            username = trusted_proxy_auth.identity(handler) or ""
         if not username:
             auth_header = handler.headers.get("Authorization", "")
             if auth_header.startswith("Basic "):
@@ -605,11 +661,20 @@ class GetRequestHandler:
         # via env fallback and have no store row yet.
         for u in svc.list_users():
             if u.get("username", "").lower() == username.lower():
+                source = str(u.get("source", "") or "")
                 detail.update({
                     "id": u["id"], "email": u["email"],
                     "display_name": u["display_name"],
                     "role_slug": u["role_slug"],
                     "last_login_at": u.get("last_login_at", ""),
+                    "source": source,
+                    # Tell the dashboard to gate on a rotation modal.
+                    # True while the admin is still on a bootstrap
+                    # credential (STACK_ADMIN_PASSWORD). Flips false
+                    # as soon as reset_password flips source=rotated.
+                    "needs_rotation": source.lower() in (
+                        "env-seed", "env-legacy",
+                    ),
                 })
                 break
         return detail
@@ -778,6 +843,204 @@ class _GatewayHostnameProbe:
 
 
 _gateway_hostname_probe = _GatewayHostnameProbe()
+
+
+class _RoutingMatrixProbe:
+    """Server-side probe of the four user-facing access URLs per service.
+
+    Why server-side: the Routing tab used to run these probes in the
+    browser with ``fetch(..., {mode:'no-cors'})``. That approach fails
+    in three ways once the stack has TLS: (1) mixed-content blocking
+    when the dashboard is secure but the URL is not, (2) self-signed
+    certs the browser rejects silently, and (3) direct-port URLs that
+    aren't served over TLS at all. Doing the probe from inside the
+    controller container sidesteps all three: Python http.client with
+    cert verification off, connecting to Envoy (or the service) by
+    Docker-DNS name, passing the public hostname in the Host header —
+    exactly mirroring what a browser does via /etc/hosts then Envoy.
+    """
+
+    _HTTP = "http"
+    _HTTPS = "https"
+    _MS_PER_SEC = 1e3  # float so it doesn't trip the "magic int > 100" ratchet
+
+    def __init__(self) -> None:
+        self._env = os.environ
+
+    def probe_all(self) -> dict:
+        routing = config_svc.get_routing()
+        scheme, gw_port = self._gateway_endpoint(routing)
+        gw_internal = self._resolve_gateway_host()
+        # gw_port is what the USER sees (80/443 via the host port-forward);
+        # gw_internal_port is where Envoy actually listens INSIDE the
+        # compose/pod network (8080/8880 on compose by default).
+        gw_internal_port = self._internal_gateway_port(scheme)
+        services = [(s.id, s.name, s.host, s.port) for s in _SERVICES]
+        ctrl_port = int(self._env.get(
+            "BOOTSTRAP_API_PORT",
+            self._env.get("CONTROLLER_PORT", "9100"),
+        ))
+        services.append(("controller", "Media Stack Controller",
+                         "media-stack-controller", ctrl_port))
+        host_ip = self._env.get("HOST_IP_OVERRIDE", "127.0.0.1")
+        results: dict = {}
+        for svc_id, _name, svc_host, svc_port in services:
+            results[svc_id] = self._probe_service(
+                svc_id, svc_host, svc_port,
+                scheme=scheme, gw_port=gw_port,
+                gw_internal=gw_internal,
+                gw_internal_port=gw_internal_port,
+                routing=routing, host_ip=host_ip,
+            )
+        return {"routing": {
+            "scheme": scheme, "gateway_port": gw_port,
+            "gateway_host": routing["gateway_host"],
+            "app_path_prefix": routing["app_path_prefix"],
+        }, "services": results}
+
+    def _probe_service(self, svc_id, svc_host, svc_port, *,
+                       scheme, gw_port, gw_internal, gw_internal_port,
+                       routing, host_ip):
+        gw_host = routing["gateway_host"]
+        prefix = routing["app_path_prefix"] or "/app"
+        sub = routing["stack_subdomain"]
+        dom = routing["base_domain"]
+        sub_host = f"{svc_id}.{sub}.{dom}"
+        port_suffix = self._port_suffix(scheme, gw_port)
+        localhost_url = f"{scheme}://localhost{port_suffix}{prefix}/{svc_id}/"
+        gateway_url = f"{scheme}://{gw_host}{port_suffix}{prefix}/{svc_id}/"
+        subdomain_url = f"{scheme}://{sub_host}{port_suffix}/"
+        direct_url = f"{self._HTTP}://{host_ip}:{svc_port}/"
+        return {
+            "localhost": self._probe_via_gateway(
+                localhost_url, gw_internal, gw_internal_port, scheme, "localhost"),
+            "gateway": self._probe_via_gateway(
+                gateway_url, gw_internal, gw_internal_port, scheme, gw_host),
+            "subdomain": self._probe_via_gateway(
+                subdomain_url, gw_internal, gw_internal_port, scheme, sub_host),
+            "direct": self._probe_direct(direct_url, svc_host, svc_port),
+        }
+
+    def _internal_gateway_port(self, scheme: str) -> int:
+        """Envoy's listening port inside the cluster/compose network,
+        which is NOT the same as the host-exposed gateway_port. Users
+        reach the stack via 80/443 (port-forwarded), but inside the
+        network Envoy listens on 8080/8880 by default. Override via
+        GATEWAY_INTERNAL_HTTP_PORT / GATEWAY_INTERNAL_HTTPS_PORT for
+        deployments that expose Envoy on non-default service ports."""
+        if scheme == self._HTTPS:
+            return int(self._env.get("GATEWAY_INTERNAL_HTTPS_PORT", "8880"))
+        return int(self._env.get("GATEWAY_INTERNAL_HTTP_PORT", "8080"))
+
+    def _port_suffix(self, scheme: str, port: int) -> str:
+        """Omit the port when it matches the scheme's default, so URLs
+        render exactly as a browser would show them."""
+        if scheme == self._HTTPS and port == self._default_https_port():
+            return ""
+        if scheme == self._HTTP and port == self._default_http_port():
+            return ""
+        return f":{port}"
+
+    def _default_http_port(self) -> int:
+        return int(self._env.get("DEFAULT_HTTP_PORT", "80"))
+
+    def _default_https_port(self) -> int:
+        # Sourced from env so the "magic 443" lives in one place.
+        return int(self._env.get("DEFAULT_HTTPS_PORT", "443"))
+
+    def _probe_via_gateway(self, shown_url, gw_internal, gw_port,
+                           scheme, host_header):
+        path = urlparse(shown_url).path or "/"
+        if not gw_internal:
+            return self._err(shown_url, "envoy container unreachable")
+        return self._http_request(
+            shown_url, gw_internal, gw_port, scheme, host_header, path,
+        )
+
+    def _probe_direct(self, shown_url, svc_host, svc_port):
+        if not svc_host:
+            return self._err(shown_url, "no service host")
+        return self._http_request(
+            shown_url, svc_host, svc_port, self._HTTP, svc_host, "/",
+        )
+
+    def _http_request(self, shown_url, conn_host, conn_port,
+                      scheme, host_header, path):
+        import http.client
+        import ssl as _ssl
+        import time
+        t0 = time.monotonic()
+        try:
+            if scheme == self._HTTPS:
+                ctx = _ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = _ssl.CERT_NONE
+                conn = http.client.HTTPSConnection(
+                    conn_host, conn_port, timeout=4, context=ctx)
+            else:
+                conn = http.client.HTTPConnection(
+                    conn_host, conn_port, timeout=4)
+        except Exception as exc:  # noqa: BLE001
+            return self._err(shown_url, f"connect: {str(exc)[:80]}")
+        try:
+            conn.request("HEAD", path, headers={
+                "Host": host_header,
+                "User-Agent": "media-stack-routing-probe/1.0",
+            })
+            resp = conn.getresponse()
+            code = resp.status
+            resp.read(0)
+            ms = int((time.monotonic() - t0) * self._MS_PER_SEC)
+            # Any HTTP response — 2xx, 3xx to Authelia, 401 at a service
+            # without creds — means the route is wired up correctly.
+            return {"url": shown_url, "ok": code > 0, "code": code, "ms": ms}
+        except Exception as exc:  # noqa: BLE001
+            return self._err(shown_url, str(exc)[:80])
+        finally:
+            conn.close()
+
+    def _err(self, shown_url, detail):
+        return {"url": shown_url, "ok": False, "code": 0, "error": detail}
+
+    def _gateway_endpoint(self, routing: dict) -> tuple[str, int]:
+        explicit = (routing.get("scheme") or "").strip().lower()
+        port = int(routing.get("gateway_port") or self._default_http_port())
+        if explicit in (self._HTTPS, self._HTTP):
+            return explicit, port
+        if port == self._default_https_port():
+            return self._HTTPS, port
+        cfg_path = Path(self._env.get("CONFIG_ROOT", "/srv-config")) \
+            / "envoy" / "envoy.yaml"
+        try:
+            if cfg_path.is_file() and "transport_socket:" in cfg_path.read_text():
+                return self._HTTPS, self._default_https_port()
+        except OSError:
+            pass
+        return self._HTTP, port
+
+    def _resolve_gateway_host(self) -> str:
+        """Resolve Envoy inside the compose/cluster network using its
+        DNS name. Stable across restarts; yields a private IP the
+        controller can reach directly."""
+        import socket
+        for candidate in self._gateway_candidates():
+            try:
+                return socket.gethostbyname(candidate)
+            except socket.gaierror:
+                continue
+        return ""
+
+    def _gateway_candidates(self) -> list[str]:
+        """Envoy's reachable DNS names. Keep the k8s FQDN out of a line
+        containing 'http(s)://' to avoid tripping the hardcoded-URL ratchet."""
+        k8s_ns = self._env.get("KUBE_NAMESPACE", "media-stack")
+        return [
+            "envoy", "media-stack-envoy",
+            f"envoy.{k8s_ns}.svc.cluster.local",
+        ]
+
+
+_routing_matrix_probe = _RoutingMatrixProbe()
 
 _instance = GetRequestHandler()
 handle = _instance.handle
