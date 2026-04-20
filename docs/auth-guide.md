@@ -8,7 +8,30 @@ On first successful login, the dashboard forces a password rotation. After rotat
 
 Override the seed value before first boot via `STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD` (Compose: `.env`; K8s: `media-stack-secrets`). Once rotation has occurred, changing these env vars has no effect.
 
-Break-glass recovery (lost admin password): stop the controller, delete `${CONFIG_ROOT}/controller/users.json`, restart. The seed credential becomes valid again for one login.
+### Break-glass recovery (lost admin password)
+
+Use the `reset-admin` CLI from inside the controller pod. It writes the new
+hash into Authelia's `users_database.yml`, upserts the controller's own
+`users.json` row with `source=rotated`, and audit-logs the reset — no
+restart or file surgery required.
+
+```bash
+# K8s
+kubectl -n media-stack exec -it deploy/media-stack-controller -- \
+    bin/reset-admin.sh --username admin --prompt
+
+# Compose
+docker exec -it media-stack-controller \
+    bin/reset-admin.sh --username admin --prompt
+```
+
+Flags: `--password <literal>` (unsafe in shared shells), `--prompt`
+(no-echo TTY prompt), or `--password-stdin` (read from stdin, pair
+with a secret manager).
+
+If the controller pod itself won't start, fall back to the manual path:
+stop the controller, delete `${CONFIG_ROOT}/controller/users.json`,
+restart. The seed credential becomes valid again for one login.
 
 ## Auth Modes
 

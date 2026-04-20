@@ -61,7 +61,7 @@ spec:
       - name: harbor-pull
       containers:
         - name: controller
-          image: harbor.iomio.io/library/media-stack-controller:v1.0.94
+          image: harbor.iomio.io/library/media-stack-controller:v1.0.95
           imagePullPolicy: Always
           env:
             - name: SABNZBD_API_KEY
