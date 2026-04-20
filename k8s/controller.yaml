@@ -61,7 +61,7 @@ spec:
       - name: harbor-pull
       containers:
         - name: controller
-          image: harbor.iomio.io/library/media-stack-controller:v1.0.69
+          image: harbor.iomio.io/library/media-stack-controller:v1.0.94
           imagePullPolicy: Always
           env:
             - name: SABNZBD_API_KEY
@@ -106,6 +106,17 @@ spec:
                   name: media-stack-secrets
                   key: STACK_ADMIN_PASSWORD
                   optional: true
+            # Trust Remote-User when Envoy (inside the cluster) forwards an
+            # Authelia-authenticated request. Matches the pod CIDR used by
+            # microk8s / kubeadm; override via the secret for other CNIs.
+            - name: CONTROLLER_TRUSTED_PROXY_CIDRS
+              valueFrom:
+                secretKeyRef:
+                  name: media-stack-secrets
+                  key: CONTROLLER_TRUSTED_PROXY_CIDRS
+                  optional: true
+            - name: CONTROLLER_TRUSTED_PROXY_HEADER
+              value: "Remote-User"
             - name: SONARR_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -220,6 +231,23 @@ spec:
               mountPath: /srv-config/jellyfin-auto-collections
             - name: cfg-envoy
               mountPath: /srv-config/envoy
+            # Parity with compose: the controller must have write
+            # access to Authelia's config volume so
+            # _run_boot_configure_auth writes a real configuration.yml
+            # the Authelia pod picks up. Without this mount, the
+            # controller writes to container-local disk that
+            # Authelia never sees, and Authelia starts with only
+            # whatever the ConfigMap seeded (no OIDC block → SSO
+            # broken).
+            - name: cfg-authelia
+              mountPath: /srv-config/authelia
+            # Controller's own state: users.json, audit.log.jsonl,
+            # api_tokens.json, password-policy.yaml. Without a
+            # PVC here everything the dashboard's user-management
+            # writes is ephemeral — every pod restart wipes users,
+            # audit chain, rotated passwords, API tokens.
+            - name: cfg-controller
+              mountPath: /srv-config/controller
             - name: stack-torrents
               mountPath: /srv-stack/data/torrents
             - name: stack-usenet
@@ -274,6 +302,12 @@ spec:
         - name: cfg-envoy
           persistentVolumeClaim:
             claimName: media-stack-config-envoy
+        - name: cfg-authelia
+          persistentVolumeClaim:
+            claimName: media-stack-config-authelia
+        - name: cfg-controller
+          persistentVolumeClaim:
+            claimName: media-stack-config-controller
         - name: stack-torrents
           persistentVolumeClaim:
             claimName: media-stack-data-torrents

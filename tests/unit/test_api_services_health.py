@@ -344,8 +344,16 @@ class TestProbeServices(unittest.TestCase):
         self.assertIn("total", result)
         svc = result["services"].get("sonarr", {})
         self.assertEqual(svc.get("status"), "ok")
-        self.assertEqual(result["healthy"], 1)
-        self.assertGreaterEqual(result["total"], 1)
+        # controller is injected as status=ok by probe_services so
+        # the dashboard doesn't show Media Stack Controller as
+        # "Pending" forever — count it alongside sonarr.
+        self.assertEqual(result["healthy"], 2)
+        self.assertGreaterEqual(result["total"], 2)
+        self.assertEqual(
+            result["services"].get("controller", {}).get("status"), "ok",
+            "probe_services must synthesize a controller entry so "
+            "the dashboard service row stops rendering 'Pending'.",
+        )
 
     @patch.object(health_mod, "SERVICE_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/health"),

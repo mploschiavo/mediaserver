@@ -186,10 +186,18 @@ class AuthConfigService:
                 if mode_spec.gateway_auth:
                     # SSO active → use ProfileConfig.effective_app_auth_method
                     # which returns External (trust reverse proxy).
+                    # CRITICAL: use a distinct variable here; reusing
+                    # `profile` would shadow the dict we write below,
+                    # leaving a non-serializable ProfileConfig object
+                    # as the write target — yaml.dump produces a
+                    # Python-tag payload that fails safe_load on
+                    # every subsequent read. Caught by the auth-mode
+                    # round-trip test in
+                    # tests/unit/test_auth_mode_round_trip.py.
                     try:
                         from media_stack.services.profile_config import get_profile_config
-                        profile = get_profile_config()
-                        app_auth["method"] = profile.effective_app_auth_method
+                        pconfig = get_profile_config()
+                        app_auth["method"] = pconfig.effective_app_auth_method
                     except Exception:
                         app_auth["method"] = "External"
                     app_auth["required"] = "DisabledForLocalAddresses"
@@ -246,13 +254,26 @@ class AuthConfigService:
         except Exception as exc:
             return {"error": f"Failed to write profile: {str(exc)[:120]}"}
 
-        # Trigger Envoy reconfig to apply auth changes
+        # Trigger downstream regen. Without configure-auth, Authelia
+        # never gets its config file rewritten — the stored mode says
+        # "authelia" but the container has no user-database entries
+        # and can't authenticate anyone. Without envoy-config, the
+        # gateway's ext_authz filter points at the old provider.
         if action_trigger:
-            mode_changed = any(c.startswith("mode") or c.startswith("per_service") for c in changed)
-            app_auth_changed = any(c.startswith("app_auth") for c in changed)
+            mode_changed = any(
+                c.startswith("mode") or c.startswith("per_service")
+                for c in changed)
+            app_auth_changed = any(
+                c.startswith("app_auth") for c in changed)
+            oidc_changed = any(
+                c.startswith("oidc") for c in changed)
             if mode_changed:
                 action_trigger("envoy-config", {})
-            # Re-run app auth bootstrap to apply method=None or method=Forms on arr apps
+                action_trigger("configure-auth", {})
+            elif oidc_changed:
+                # OIDC-only edit (client_id/secret) — Authelia needs a
+                # config rewrite but Envoy's wiring is unchanged.
+                action_trigger("configure-auth", {})
             if app_auth_changed:
                 action_trigger("bootstrap", {})
 

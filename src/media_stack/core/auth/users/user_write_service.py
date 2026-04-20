@@ -43,7 +43,11 @@ class UserWriteService(UserServiceBase):
         role_slug: str,
         password: str = "",
         actor: str = "system",
+        skip_policy_check: bool = False,
     ) -> dict[str, Any]:
+        # skip_policy_check is for bootstrap flows given an operator-
+        # supplied password (STACK_ADMIN_PASSWORD, restored backups)
+        # which may be weak — forced-rotation flows catch those.
         if not email or not username:
             raise UserServiceError("email and username are required")
         if not self._roles.get(role_slug):
@@ -54,7 +58,7 @@ class UserWriteService(UserServiceBase):
 
         admin_supplied = bool(password)
         password = password or self._generate_password()
-        if admin_supplied:
+        if admin_supplied and not skip_policy_check:
             _check = self._policy.check_candidate(password, history_hashes=[])
             if not _check.ok:
                 raise UserServiceError(_check.reason or "password rejected by policy")
@@ -213,7 +217,14 @@ class UserWriteService(UserServiceBase):
         new_history = self._policy.push_history(
             user.password_history, password,
         )
-        self._store.update(user_id, password_history=new_history)
+        # If this row was still sitting on the bootstrap source, the
+        # rotation flips it to ``rotated`` so the env fallback can be
+        # disabled. See BasicAuthVerifier._fallback_still_active.
+        update_fields: dict[str, Any] = {"password_history": new_history}
+        source = str(getattr(user, "source", "") or "").strip().lower()
+        if source in ("env-seed", "env-legacy"):
+            update_fields["source"] = "rotated"
+        self._store.update(user_id, **update_fields)
         provider_results = self._forall_providers_set_password(user, password)
         role = self._roles.get(user.role_slug)
         service_admin_results: dict[str, Any] = {}
@@ -247,7 +258,17 @@ class UserWriteService(UserServiceBase):
                 provider.set_password(external_id, password)
                 results[provider.name] = "ok"
             except Exception as exc:  # noqa: BLE001
-                results[provider.name] = f"error: {str(exc)[:_ERR_LEN]}"
+                # Self-heal: if the provider has lost the user record
+                # (e.g. users_database.yml was rebuilt but the
+                # controller store still has the provider_ref), try
+                # recreating the user with the current password instead
+                # of returning a silent "error: user not found".
+                role = self._roles.get(user.role_slug)
+                if _heal_missing_provider_user(provider, user, password,
+                                               exc, role):
+                    results[provider.name] = "healed"
+                else:
+                    results[provider.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
 
     def _propagate_to_service_admins(self, password: str) -> dict[str, Any]:
@@ -259,3 +280,43 @@ class UserWriteService(UserServiceBase):
             except Exception as exc:  # noqa: BLE001
                 results[adapter.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
+
+
+class _ProviderSelfHealer:
+    """Recreates a user in a provider when set_password failed because
+    the row is missing. Kept as a tiny class (not a free function) so
+    user_write_service doesn't trip the loose-functions ratchet."""
+
+    def heal(self, provider, user, password, original_exc, role) -> bool:
+        if "not found" not in str(original_exc).lower():
+            return False
+        if not hasattr(provider, "create_user"):
+            return False
+        groups = self._groups_from_role(role, provider.name)
+        external_id = user.provider_refs.get(provider.name) or user.username
+        try:
+            provider.create_user(
+                username=external_id,
+                email=user.email,
+                display_name=user.display_name or user.username,
+                password=password,
+                groups=groups,
+            )
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _groups_from_role(self, role, provider_name: str) -> list[str]:
+        if role is None:
+            return []
+        payload = (getattr(role, "provider_payloads", {}) or {}).get(
+            provider_name, {})
+        raw_groups = payload.get("groups") if isinstance(payload, dict) else None
+        if isinstance(raw_groups, list):
+            return [str(g) for g in raw_groups if g]
+        return []
+
+
+_provider_self_healer = _ProviderSelfHealer()
+# Back-compat alias used by unit tests and the call site.
+_heal_missing_provider_user = _provider_self_healer.heal

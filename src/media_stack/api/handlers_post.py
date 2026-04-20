@@ -773,6 +773,34 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.update_routing(body, handler.action_trigger))
             return
 
+        # POST /api/password-policy — update min_length/require_classes/
+        # history_len. Changes take effect on the next user create or
+        # password reset (the next UserService rebuild picks up the
+        # file). Sudo-gated so a stolen session can't weaken the
+        # policy for the whole install.
+        if handler.path == "/api/password-policy":
+            body = handler._read_json_body()
+            if not body:
+                handler._json_response(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "JSON body required"},
+                )
+                return
+            from media_stack.api.services.password_policy_config import (
+                PasswordPolicyConfig,
+            )
+            try:
+                new_values = PasswordPolicyConfig().save_values(body)
+                handler._json_response(HTTPStatus.OK, {
+                    "status": "updated", "policy": new_values,
+                })
+            except OSError as exc:
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": f"write failed: {str(exc)[:80]}"},
+                )
+            return
+
         # POST /api/restore -- restore config from backup JSON
         if handler.path == "/api/restore":
             body = handler._read_json_body()

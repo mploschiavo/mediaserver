@@ -10,14 +10,20 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
-
 import yaml
 from argon2 import PasswordHasher
 
 import media_stack.services.runtime_platform as runtime_platform
+from media_stack.core.auth.authelia_oidc_crypto import OidcClientDef
 
 
 class ConfigureAuthJob:
+
+    def __init__(self, env: dict[str, str] | None = None) -> None:
+        # Sample os.environ once at construction so runtime methods
+        # stay off it (class-structure ratchet). Tests pass a fake
+        # env dict to point the OIDC-clients loader at a fixture.
+        self._env = dict(env) if env is not None else dict(os.environ)
 
     @staticmethod
     def _resolve_output_dir(ctx: Any) -> Path:
@@ -70,9 +76,12 @@ class ConfigureAuthJob:
             output_dir, admin_username,
         )
         admin_hash = self._resolve_admin_hash(auth_cfg, existing_admin_pw)
+        base_domain, stack_subdomain = self._resolve_domain_pair(
+            ingress, routing,
+        )
         return options_cls(
-            base_domain=str(ingress.get("domain") or "local"),
-            stack_subdomain=str(ingress.get("subdomain") or "media-stack"),
+            base_domain=base_domain,
+            stack_subdomain=stack_subdomain,
             gateway_host=str(routing.get("gateway_host") or "apps.media-stack.local"),
             gateway_port=int(routing.get("gateway_port") or 80),
             internet_exposed=bool(profile.get("internet_exposed", False)),
@@ -81,7 +90,136 @@ class ConfigureAuthJob:
             admin_email=str(auth_cfg.get("admin_email") or "admin@local"),
             oidc_provider=str(auth_cfg.get("oidc_provider") or "local"),
             oidc_config=dict(auth_cfg.get("oidc_config") or {}),
+            oidc_clients=self._build_oidc_clients(profile, auth_cfg),
         )
+
+    def _resolve_domain_pair(
+        self, ingress: dict, routing: dict,
+    ) -> tuple[str, str]:
+        """Derive (base_domain, stack_subdomain) for Authelia's cookie
+        scope. Supports two profile layouts:
+
+        Nested (compose default): ``ingress.domain=local``,
+        ``ingress.subdomain=media-stack`` → apps served at
+        ``<svc>.media-stack.local``, Authelia at
+        ``auth.media-stack.local``. Returns ("local", "media-stack").
+
+        Flat (K8s): ``routing.base_domain=iomio.io``,
+        ``routing.gateway_host=m.iomio.io`` → apps served at
+        ``<svc>.iomio.io``, Authelia at ``auth.iomio.io``. Returns
+        ("iomio.io", "") — empty sub signals the flat form to the
+        downstream Authelia URL / cookie builders.
+
+        Priority:
+          1. ingress.domain explicit → base=ingress.domain,
+             sub=ingress.subdomain (may be empty).
+          2. routing.base_domain explicit → flat topology: base=that
+             domain, sub="".
+          3. Last resort: parse gateway_host.
+        """
+        explicit_base = str(ingress.get("domain") or "").strip()
+        explicit_sub = str(ingress.get("subdomain") or "").strip()
+        if explicit_base:
+            return explicit_base, explicit_sub
+        routing_base = str(routing.get("base_domain") or "").strip()
+        if routing_base:
+            # Flat topology — the K8s-style profile. sub="" signals
+            # downstream "use base directly as cookie domain and
+            # auth.<base> as the portal host."
+            return routing_base, explicit_sub
+        gateway = str(routing.get("gateway_host") or "").strip().lower()
+        if gateway and "." in gateway:
+            first, _, rest = gateway.partition(".")
+            if rest:
+                return rest, first
+        return "local", "media-stack"
+
+    def _build_oidc_clients(
+        self, profile: dict, auth_cfg: dict,
+    ) -> list[Any]:
+        """Return Authelia OIDC client registrations. Clients are
+        declared in ``contracts/auth/oidc_clients.yaml`` so adding a
+        new downstream SSO app doesn't require platform code
+        changes. Extras under ``auth.oidc_clients`` are appended for
+        profile-specific overrides."""
+        clients: list[Any] = [
+            OidcClientDef(
+                client_id=spec["client_id"],
+                client_name=spec.get("client_name", spec["client_id"]),
+                client_secret=spec["client_secret"],
+                redirect_uris=[self._expand_uri(u, profile)
+                               for u in spec.get("redirect_uris", [])],
+                scopes=list(spec.get("scopes")
+                            or ["openid", "email", "profile", "groups"]),
+            )
+            for spec in self._load_oidc_client_contract()
+        ]
+        clients.extend(self._extra_oidc_clients(auth_cfg, OidcClientDef))
+        return clients
+
+    def _load_oidc_client_contract(self) -> list[dict]:
+        """Load the downstream-OIDC-client registry. The contract
+        path is discoverable from the repo root; an env override
+        (``AUTH_OIDC_CLIENTS_CONTRACT``) lets tests point at a
+        fixture without touching the real file."""
+        override = str(self._env.get("AUTH_OIDC_CLIENTS_CONTRACT", "")).strip()
+        candidates: list[Path] = []
+        if override:
+            candidates.append(Path(override))
+        here = Path(__file__).resolve()
+        for parent in here.parents:
+            candidate = parent / "contracts" / "auth" / "oidc_clients.yaml"
+            if candidate.is_file():
+                candidates.append(candidate)
+                break
+        candidates.append(Path("/srv-app/contracts/auth/oidc_clients.yaml"))
+        for path in candidates:
+            if not path.is_file():
+                continue
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            rows = data.get("clients") or []
+            return [r for r in rows if isinstance(r, dict)
+                    and r.get("client_id") and r.get("client_secret")]
+        return []
+
+    def _expand_uri(self, template: str, profile: dict) -> str:
+        """Replace {base}/{sub}/{gateway} placeholders with values
+        from the profile's ingress + routing sections."""
+        ingress = profile.get("ingress") or {}
+        routing = profile.get("routing") or {}
+        base = str(ingress.get("domain") or "local")
+        sub = str(ingress.get("subdomain") or "media-stack")
+        gateway = str(routing.get("gateway_host") or (
+            f"apps.{sub}.{base}" if sub else f"apps.{base}"
+        ))
+        return (str(template)
+                .replace("{base}", base)
+                .replace("{sub}", sub)
+                .replace("{gateway}", gateway))
+
+    def _extra_oidc_clients(
+        self, auth_cfg: dict, client_cls: type[OidcClientDef],
+    ) -> list[Any]:
+        out: list[Any] = []
+        default_scopes = ["openid", "email", "profile", "groups"]
+        for extra in (auth_cfg.get("oidc_clients") or []):
+            if not isinstance(extra, dict):
+                continue
+            if not extra.get("client_id") or not extra.get("client_secret"):
+                continue
+            out.append(client_cls(
+                client_id=str(extra["client_id"]),
+                client_name=str(extra.get("client_name", extra["client_id"])),
+                client_secret=str(extra["client_secret"]),
+                redirect_uris=[str(u) for u in
+                               (extra.get("redirect_uris") or [])],
+                scopes=[str(s) for s in (extra.get("scopes") or [])]
+                       or default_scopes,
+            ))
+        return out
 
 
     def _read_existing_admin_password(

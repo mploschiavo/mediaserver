@@ -85,8 +85,8 @@ class RenderArchitectureDiagramsCommand:
 _instance = RenderArchitectureDiagramsCommand()
 parse_args = _instance.parse_args
 main = _instance.main
+_render_with_mmdc = _instance._render_with_mmdc
+_render_with_kroki = _instance._render_with_kroki
 
 if __name__ == "__main__":
     raise SystemExit(main())
-_render_with_mmdc = _instance._render_with_mmdc
-_render_with_kroki = _instance._render_with_kroki

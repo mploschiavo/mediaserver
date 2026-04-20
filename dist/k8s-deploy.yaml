@@ -1,3 +1,15 @@
+# Media Automation Stack — Kubernetes Single-File Deploy
+#
+# Deploy:   kubectl apply -f k8s-deploy.yaml
+# Status:   kubectl get pods -n media-stack
+# Dashboard: kubectl port-forward -n media-stack svc/media-stack-controller 9100:9100
+# Teardown: kubectl delete -f k8s-deploy.yaml
+#
+# Prerequisites: Kubernetes 1.25+ with a default StorageClass
+# More info: https://github.com/mploschiavo/mediaserver
+#
+# Generated from k8s/ manifests (kubectl kustomize k8s/).
+# Do NOT hand-edit — regenerate with `bin/regen-dist.sh`.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -54,6 +66,55 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: media-stack-controller
+  namespace: media-stack
+---
+apiVersion: v1
+data:
+  configuration.yml: |
+    server:
+      address: tcp://0.0.0.0:9091
+    log:
+      level: info
+    theme: auto
+    identity_validation:
+      reset_password:
+        jwt_secret: PLACEHOLDER_JWT_REPLACE_ON_FIRST_REGEN_XXXXXXXXXXXXXXXXXXXXXXXX
+    authentication_backend:
+      file:
+        path: /config/users_database.yml
+    access_control:
+      default_policy: deny
+      rules:
+        - domain: ["*.media-stack.local"]
+          policy: one_factor
+    session:
+      secret: PLACEHOLDER_SESSION_REPLACE_ON_FIRST_REGEN_XXXXXXXXXXXXXXXXXXXX
+      cookies:
+        - domain: media-stack.local
+          authelia_url: https://auth.media-stack.local
+          default_redirection_url: https://apps.media-stack.local
+    regulation:
+      max_retries: 3
+      find_time: 120
+      ban_time: 300
+    storage:
+      encryption_key: PLACEHOLDER_STORAGE_REPLACE_ON_FIRST_REGEN_XXXXXXXXXXXXXXXXXXXX
+      local:
+        path: /config/db.sqlite3
+    notifier:
+      filesystem:
+        filename: /config/notification.txt
+  users_database.yml: |
+    users:
+      admin:
+        disabled: false
+        displayname: Media Stack Admin
+        email: admin@local
+        groups:
+          - admins
+kind: ConfigMap
+metadata:
+  name: authelia-config
   namespace: media-stack
 ---
 apiVersion: v1
@@ -236,10 +297,22 @@ stringData:
   READARR_API_KEY: ""
   SABNZBD_API_KEY: ""
   SONARR_API_KEY: ""
-  STACK_ADMIN_PASSWORD: media-stack
+  STACK_ADMIN_PASSWORD: admin
   STACK_ADMIN_USERNAME: admin
   TAUTULLI_API_KEY: ""
 type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authelia
+  namespace: media-stack
+spec:
+  ports:
+  - port: 9091
+    targetPort: 9091
+  selector:
+    app: authelia
 ---
 apiVersion: v1
 kind: Service
@@ -473,6 +546,18 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  name: media-stack-config-authelia
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
   name: media-stack-config-bazarr
   namespace: media-stack
 spec:
@@ -481,6 +566,18 @@ spec:
   resources:
     requests:
       storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-controller
+  namespace: media-stack
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -709,6 +806,78 @@ spec:
   resources:
     requests:
       storage: 2Ti
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authelia
+  namespace: media-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authelia
+  template:
+    metadata:
+      labels:
+        app: authelia
+    spec:
+      containers:
+      - args:
+        - --config
+        - /config/configuration.yml
+        image: authelia/authelia:4.38
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 9091
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        name: authelia
+        ports:
+        - containerPort: 9091
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 9091
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /config
+          name: config
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          if [ ! -f /config/configuration.yml ]; then
+            cp /cm/configuration.yml /config/configuration.yml
+          fi
+          if [ ! -f /config/users_database.yml ]; then
+            cp /cm/users_database.yml /config/users_database.yml
+          fi
+        image: busybox:1.36
+        name: init-config
+        volumeMounts:
+        - mountPath: /cm
+          name: configmap
+          readOnly: true
+        - mountPath: /config
+          name: config
+      volumes:
+      - configMap:
+          name: authelia-config
+        name: configmap
+      - name: config
+        persistentVolumeClaim:
+          claimName: media-stack-config-authelia
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -1100,7 +1269,10 @@ spec:
         app: jellyseerr
     spec:
       containers:
-      - image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764
+      - env:
+        - name: NODE_TLS_REJECT_UNAUTHORIZED
+          value: "0"
+        image: fallenbagel/jellyseerr:preview-OIDC
         livenessProbe:
           httpGet:
             path: /api/v1/status
@@ -1132,6 +1304,11 @@ spec:
         volumeMounts:
         - mountPath: /app/config
           name: config
+      hostAliases:
+      - hostnames:
+        - auth.iomio.io
+        - m.iomio.io
+        ip: 192.168.1.60
       volumes:
       - name: config
         persistentVolumeClaim:
@@ -1366,6 +1543,14 @@ spec:
               key: STACK_ADMIN_PASSWORD
               name: media-stack-secrets
               optional: true
+        - name: CONTROLLER_TRUSTED_PROXY_CIDRS
+          valueFrom:
+            secretKeyRef:
+              key: CONTROLLER_TRUSTED_PROXY_CIDRS
+              name: media-stack-secrets
+              optional: true
+        - name: CONTROLLER_TRUSTED_PROXY_HEADER
+          value: Remote-User
         - name: SONARR_API_KEY
           valueFrom:
             secretKeyRef:
@@ -1416,7 +1601,7 @@ spec:
           value: /profile/profile.yaml
         - name: BOOTSTRAP_CONFIG_FILE
           value: /controller-config/config.json
-        image: harbor.iomio.io/library/media-stack-controller:v1.0.6
+        image: harbor.iomio.io/library/media-stack-controller:v1.0.94
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1473,6 +1658,10 @@ spec:
           name: cfg-jellyfin-auto-collections
         - mountPath: /srv-config/envoy
           name: cfg-envoy
+        - mountPath: /srv-config/authelia
+          name: cfg-authelia
+        - mountPath: /srv-config/controller
+          name: cfg-controller
         - mountPath: /srv-stack/data/torrents
           name: stack-torrents
         - mountPath: /srv-stack/data/usenet
@@ -1530,6 +1719,12 @@ spec:
       - name: cfg-envoy
         persistentVolumeClaim:
           claimName: media-stack-config-envoy
+      - name: cfg-authelia
+        persistentVolumeClaim:
+          claimName: media-stack-config-authelia
+      - name: cfg-controller
+        persistentVolumeClaim:
+          claimName: media-stack-config-controller
       - name: stack-torrents
         persistentVolumeClaim:
           claimName: media-stack-data-torrents
@@ -2270,7 +2465,7 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.6
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.94
             imagePullPolicy: IfNotPresent
             name: controller-reconcile
             volumeMounts:
@@ -2411,7 +2606,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.6
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.94
             imagePullPolicy: IfNotPresent
             name: jellyfin-prewarm
             volumeMounts:
@@ -2511,7 +2706,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.6
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.94
             imagePullPolicy: IfNotPresent
             name: media-hygiene
             volumeMounts:
@@ -2717,6 +2912,26 @@ metadata:
 spec:
   ingressClassName: public
   rules:
+  - host: m.iomio.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: envoy
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  - host: auth.iomio.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: authelia
+            port:
+              number: 9091
+        path: /
+        pathType: Prefix
   - host: jf.iomio.io
     http:
       paths:
@@ -2880,4 +3095,6 @@ spec:
   tls:
   - hosts:
     - jf.iomio.io
+    - m.iomio.io
+    - auth.iomio.io
     secretName: iomio-tls

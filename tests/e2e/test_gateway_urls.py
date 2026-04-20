@@ -50,6 +50,11 @@ class UrlCase:
     # expected" (e.g. 200 responses).
     expected_location_re: str | None
     description: str
+    method: str = "GET"
+    # When set, the response body must parse as JSON (for /api/* POSTs
+    # that must return JSON even when auth fails — text/plain "405"
+    # leaked through once and broke the dashboard).
+    require_json_body: bool = False
 
 
 # -----------------------------------------------------------------------------
@@ -116,6 +121,65 @@ URL_MATRIX: tuple[UrlCase, ...] = (
             "this surprised the team once already."
         ),
     ),
+    # -------------------------------------------------------------------
+    # POST-method regression guards.
+    # On 2026-04-19 a dashboard password reset hit Envoy's ext_authz,
+    # which forwarded the POST to Authelia's /api/authz/forward-auth.
+    # That endpoint rejects non-safe methods with 405 text/plain, which
+    # Envoy propagated to the browser. The dashboard's fetch().json()
+    # choked on "405 Method Not Allowed" at character 4 and the user
+    # could not reset a password. The matrix below catches every
+    # mutating HTTP method on the user-mgmt paths.
+    # -------------------------------------------------------------------
+    UrlCase(
+        path="/api/users/deadbeef-dead-dead-dead-deadbeefdead/reset-password",
+        method="POST",
+        expected_status=303,
+        expected_location_re=(
+            r"^https://auth\.media-stack\.local/\?rd="
+        ),
+        description=(
+            "Unauthenticated POST must redirect to Authelia — not 405. "
+            "Regression guard for /api/authz/forward-auth (GET-only) "
+            "accidentally being put back on the ext_authz path."
+        ),
+    ),
+    UrlCase(
+        path="/api/users/deadbeef-dead-dead-dead-deadbeefdead/delete",
+        method="POST",
+        expected_status=303,
+        expected_location_re=(
+            r"^https://auth\.media-stack\.local/\?rd="
+        ),
+        description=(
+            "Delete-user POST must redirect cleanly through Authelia. "
+            "Same 405-leak class as reset-password."
+        ),
+    ),
+    UrlCase(
+        path="/api/tokens",
+        method="POST",
+        expected_status=303,
+        expected_location_re=(
+            r"^https://auth\.media-stack\.local/\?rd="
+        ),
+        description=(
+            "Token mint is a POST under /api/ — must also redirect to "
+            "Authelia rather than 405 out through ext_authz."
+        ),
+    ),
+    UrlCase(
+        path="/api/rotate-keys",
+        method="POST",
+        expected_status=303,
+        expected_location_re=(
+            r"^https://auth\.media-stack\.local/\?rd="
+        ),
+        description=(
+            "POST /api/rotate-keys (sensitive admin op) must flow "
+            "through ext_authz redirect, not 405."
+        ),
+    ),
 )
 
 
@@ -168,7 +232,7 @@ class GatewayUrlMatrixTests(unittest.TestCase):
                 "GATEWAY_URL/GATEWAY_RESOLVE.",
             )
 
-    def _request(self, path: str) -> tuple[int, dict]:
+    def _request(self, path: str, method: str = "GET") -> tuple[int, dict, bytes]:
         """Low-level HTTPS request that honors GATEWAY_RESOLVE without
         relying on urllib (which mangles the Host header when you
         mix resolve-overrides with Request.add_header)."""
@@ -186,32 +250,43 @@ class GatewayUrlMatrixTests(unittest.TestCase):
             port = int(host_port[1]) if len(host_port) > 1 else 443
             conn = http.client.HTTPSConnection(host, port, context=ctx, timeout=5)
         try:
-            # Match a browser navigation: Accept header matters because
-            # Authelia (and many API gateways) gate 302-vs-401 on whether
-            # the client wants HTML or not. `*/*` mirrors curl's default
-            # and is the common "browser or broad client" signal.
-            conn.request("GET", path, headers={
+            body = b"{}" if method in ("POST", "PUT", "PATCH") else None
+            headers = {
                 "Host": hostname,
                 "Accept": "text/html,*/*",
                 "User-Agent": "gateway-url-matrix/1.0",
-            })
+            }
+            if body is not None:
+                headers["Content-Type"] = "application/json"
+                headers["Content-Length"] = str(len(body))
+            conn.request(method, path, body=body, headers=headers)
             resp = conn.getresponse()
-            headers = dict(resp.getheaders())
-            resp.read()
-            return resp.status, headers
+            hdrs = dict(resp.getheaders())
+            raw = resp.read()
+            return resp.status, hdrs, raw
         finally:
             conn.close()
 
     def _check(self, case: UrlCase) -> None:
-        status, headers = self._request(case.path)
+        status, headers, body = self._request(case.path, method=case.method)
         self.assertEqual(
             status, case.expected_status,
-            f"{case.path}: {case.description}",
+            f"{case.method} {case.path}: got HTTP {status}. {case.description}\n"
+            f"  body={body[:120]!r}",
         )
+        if case.require_json_body:
+            import json as _json
+            try:
+                _json.loads(body.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError) as exc:
+                self.fail(
+                    f"{case.method} {case.path}: body is not JSON "
+                    f"({exc}). body={body[:120]!r}. {case.description}",
+                )
         if case.expected_location_re is None:
             self.assertNotIn(
                 "location", {k.lower() for k in headers},
-                f"{case.path}: expected no Location header",
+                f"{case.method} {case.path}: expected no Location header",
             )
             return
         location = ""
@@ -221,7 +296,7 @@ class GatewayUrlMatrixTests(unittest.TestCase):
                 break
         self.assertTrue(
             re.match(case.expected_location_re, location),
-            f"{case.path}: Location {location!r} does not match "
+            f"{case.method} {case.path}: Location {location!r} does not match "
             f"{case.expected_location_re!r}\n  ({case.description})",
         )
 
@@ -230,9 +305,9 @@ class GatewayUrlMatrixTests(unittest.TestCase):
 # individually instead of as a single aggregated error.
 def _attach_row_tests(row_iter: Iterable[UrlCase]) -> None:
     for case in row_iter:
-        method_name = "test_url_" + re.sub(r"[^a-zA-Z0-9]+", "_",
-                                            case.path.strip("/")) or "test_url_root"
-        method_name = method_name.rstrip("_") or "test_url_root"
+        verb = case.method.lower()
+        slug = re.sub(r"[^a-zA-Z0-9]+", "_", case.path.strip("/")) or "root"
+        method_name = f"test_{verb}_{slug}".rstrip("_")
         # Ensure uniqueness if multiple rows share a normalized name.
         suffix = 1
         base_name = method_name

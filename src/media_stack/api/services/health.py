@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -230,6 +231,17 @@ class HealthService:
         for svc in SERVICES:
             if svc.id not in results:
                 results[svc.id] = {"status": "disabled", "auth": "n/a", "ms": 0}
+        # Synthesize a "controller" entry the /api/services endpoint
+        # injects but SERVICES doesn't know about. Without this the
+        # dashboard's services table shows the Media Stack Controller
+        # row as "Pending" forever — there's never a probe result for
+        # it because it isn't in the registry. We're the code serving
+        # this request, so by definition the controller is "ok".
+        if "controller" not in results:
+            results["controller"] = {
+                "status": "ok", "auth": "n/a", "ms": 0,
+                "code": HTTPStatus.OK,
+            }
 
         healthy = sum(1 for v in results.values() if v.get("status") == "ok")
         total = len(results)

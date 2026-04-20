@@ -1,0 +1,41 @@
+# Downstream OIDC clients Authelia advertises on
+# /.well-known/openid-configuration so SSO apps (Jellyseerr
+# today, others later) can authenticate users against Authelia.
+#
+# Each entry gets written into identity_providers.oidc.clients
+# in the Authelia configuration.yml. The client_secret listed
+# here is the cleartext shared secret; the generator writes a
+# pbkdf2-sha512 hash of it into Authelia's config. Downstream
+# apps keep the cleartext in their own settings.json.
+#
+# Placeholders in redirect_uris:
+#   {base}     → profile.ingress.domain (e.g. "local")
+#   {sub}      → profile.ingress.subdomain (e.g. "media-stack")
+#   {gateway}  → profile.routing.gateway_host (e.g. "apps.media-stack.local")
+#
+# Adding a new OIDC app = add a new entry here; no Python
+# changes needed. The platform code stays service-agnostic.
+
+version: 1
+
+clients:
+  - client_id: jellyseerr
+    client_name: Jellyseerr
+    # Cleartext shared secret — also set in Jellyseerr's
+    # settings.json oidc.providers[0].clientSecret. Keep them
+    # in sync or the token exchange will 401.
+    client_secret: jellyseerr-oidc-secret
+    # Every plausible URL a browser might use to hit Jellyseerr.
+    # We register all of them so the flow works regardless of
+    # which entry point the operator points their users at.
+    redirect_uris:
+      - https://jellyseerr.{sub}.{base}/login?provider=authelia&callback=true
+      - https://jellyseerr.{sub}.{base}/api/v1/auth/oidc-callback
+      - https://{gateway}/app/jellyseerr/login?provider=authelia&callback=true
+      - https://{gateway}/app/jellyseerr/api/v1/auth/oidc-callback
+      - https://{gateway}/login?provider=authelia&callback=true
+    scopes:
+      - openid
+      - email
+      - profile
+      - groups

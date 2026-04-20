@@ -34,13 +34,7 @@ import logging
 
 
 
-
-
-
-
 # _DEFAULT_SERVICE_PORTS is initialized after the class definition (needs _build_default_service_ports)
-
-
 
 
 class GenerateEnvoyConfigCommand:
@@ -278,6 +272,16 @@ class GenerateEnvoyConfigCommand:
         output_path = envoy_dir / "envoy.yaml"
 
         import yaml
+        from media_stack.core.platforms.compose.edge.providers.envoy.tls_regression_guard import (
+            TlsRegressionGuard,
+        )
+
+        # Refuse to silently downgrade the listener from TLS to plain
+        # HTTP. See tls_regression_guard.py for the full story.
+        if TlsRegressionGuard().would_lose_tls(output_path, payload):
+            if (os.getenv("ENVOY_FORCE_PLAIN_HTTP", "") or "").strip() != "1":
+                self._log_tls_regression(output_path)
+                sys.exit(2)
 
         with open(output_path, "w") as f:
             yaml.dump(payload, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
@@ -285,6 +289,24 @@ class GenerateEnvoyConfigCommand:
         print(
             f"[OK] Envoy config written to {output_path} "
             f"(routes={render_result.route_count}, clusters={render_result.cluster_count})"
+        )
+
+    def _log_tls_regression(self, output_path: Path) -> None:
+        """Emit a loud, actionable error when a write would silently
+        lose TLS. Captures caller context so ops can trace the bug to
+        a specific container/code path."""
+        import socket
+        logging.getLogger("media_stack.envoy.tls_guard").error(
+            "Refusing to write %s: existing config has TLS but new "
+            "config does not. host=%s pid=%d caller_container=%s "
+            "certs_mount_exists=%s cert_files=%s. Fix the cert-mount "
+            "in the container running this generator, or set "
+            "ENVOY_FORCE_PLAIN_HTTP=1 for a deliberate downgrade.",
+            output_path, socket.gethostname(), os.getpid(),
+            os.getenv("HOSTNAME", "?"),
+            Path("/certs").is_dir(), sorted(
+                p.name for p in Path("/certs").glob("*")
+            ) if Path("/certs").is_dir() else [],
         )
 
 

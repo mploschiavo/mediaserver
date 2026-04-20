@@ -27,6 +27,14 @@ class User:
     last_login_at: str = ""
     provider_refs: dict[str, str] = field(default_factory=dict)
     password_history: list[str] = field(default_factory=list)
+    # Where the credential originated. Used by the admin-bootstrap flow
+    # to distinguish a seed-from-env account (still carries the default
+    # env password) from a rotated one. Values: "" (normal user),
+    # "env-seed" (just seeded from STACK_ADMIN_PASSWORD, needs rotation),
+    # "env-legacy" (seeded during upgrade migration), "rotated" (admin
+    # has changed the password through the UI at least once), "invite"
+    # (created via invite flow).
+    source: str = ""
 
     def to_dict(self, include_sensitive: bool = False) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -40,6 +48,7 @@ class User:
             "updated_at": self.updated_at,
             "last_login_at": self.last_login_at,
             "provider_refs": dict(self.provider_refs),
+            "source": self.source,
         }
         if include_sensitive:
             out["password_history"] = list(self.password_history)
@@ -59,6 +68,7 @@ class User:
             last_login_at=str(data.get("last_login_at", "")),
             provider_refs=dict(data.get("provider_refs", {})),
             password_history=list(data.get("password_history", [])),
+            source=str(data.get("source", "")),
         )
 
 

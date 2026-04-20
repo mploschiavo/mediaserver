@@ -21,6 +21,14 @@ service:
   password_api_path: /api/v1/config/host
   preserve_path_prefix: true
 plugin:
+  # Preflight — Envoy keeps the /app/readarr prefix on forwarded
+  # requests, so the app must be told to serve from that base.
+  # Shared handler across the *arr family; iterates internally
+  # and is idempotent.
+  preflight_handler:
+    name: readarr
+    handler: media_stack.services.apps.servarr.http_preflight:run_preflight
+    optional: true
   technology: readarr
   aliases:
   - rdr

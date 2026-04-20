@@ -27,6 +27,10 @@ class AuditLog:
         self._max_size_bytes = max(_MIN_ROTATION_BYTES, int(max_size_bytes))
         self._keep_archives = max(1, int(keep_archives))
         self._lock = threading.Lock()
+        # Cache of the last entry's hash. None = uncomputed; "" =
+        # file empty. Without this cache, append() was O(n) and the
+        # chain was O(n^2) — a 10k-entry log took >60s to extend.
+        self._last_hash_cache: str | None = None
 
     def _now_iso(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -35,7 +39,18 @@ class AuditLog:
         return json.dumps(entry, sort_keys=True, separators=(",", ":"))
 
     def _last_hash(self) -> str:
+        """Return the hash of the last written entry.
+
+        Uses a cached value populated on first read. Without this,
+        ``append()`` was O(n) per call (full-file scan to find the
+        prior hash), making the hash chain O(n^2) over n entries
+        — a 10k-entry audit log took >60s just to re-append. The
+        cache is invalidated on rotation (handled in _rotate_if_needed)
+        so it never drifts from the live tail of the file."""
+        if self._last_hash_cache is not None:
+            return self._last_hash_cache
         if not self._path.is_file():
+            self._last_hash_cache = ""
             return ""
         last = ""
         with self._path.open("r", encoding="utf-8") as f:
@@ -50,6 +65,7 @@ class AuditLog:
                 h = row.get("hash") or ""
                 if h:
                     last = h
+        self._last_hash_cache = last
         return last
 
     def append(self, actor: str, action: str, target: str, result: str = "ok",
@@ -77,6 +93,9 @@ class AuditLog:
                 f.write(self._canonical(entry.to_dict()) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+            # Update the cached last-hash so the next append is O(1)
+            # instead of re-scanning the file.
+            self._last_hash_cache = entry.hash
             self._rotate_if_needed()
         return entry
 
@@ -95,6 +114,9 @@ class AuditLog:
             self._path.rename(archive)
         except OSError:
             return
+        # Cache belonged to the now-archived file; the next append
+        # starts a fresh chain in an empty file.
+        self._last_hash_cache = ""
         # Prune older archives
         archives = sorted(
             self._path.parent.glob(f"{self._path.name}.*"),

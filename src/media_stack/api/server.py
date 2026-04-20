@@ -45,7 +45,70 @@ from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME as _SESSION_COOKIE_NAME,
     session_cookie_reader,
     session_store as _session_store,
+    trusted_proxy_auth as _trusted_proxy_auth,
 )
+from media_stack.api.login_page import LOGIN_HTML as _LOGIN_HTML
+from media_stack.core.auth.csrf import CsrfProtector as _CsrfProtector
+
+_csrf_issuer = _CsrfProtector()
+
+
+_LOOPBACK_IPS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _is_private_or_loopback(client_ip: str) -> bool:
+    """True when the IP is loopback OR an RFC 1918 private range.
+
+    The IP lockout exists to slow internet-origin brute-force. Every
+    'private' origin — the dev's loopback, the docker bridge gateway
+    (browser→localhost:9100 shows up as 172.21.0.1 inside the
+    container), same-LAN clients — is categorically NOT a brute-force
+    threat model. Locking them out turns routine dev/LAN use into a
+    'dashboard is 429' paper cut. Internet-facing deployments sit
+    behind a reverse proxy that rewrites X-Forwarded-For; the lockout
+    is still effective against real attackers there."""
+    if not client_ip or client_ip in _LOOPBACK_IPS:
+        return True
+    try:
+        import ipaddress
+        ip = ipaddress.ip_address(client_ip)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        return False
+
+
+def _should_reject_for_ip_lockout(client_ip: str) -> bool:
+    """True when the tracker says this IP is locked AND the IP isn't
+    a loopback/private address."""
+    if _is_private_or_loopback(client_ip):
+        return False
+    return _ip_failure_tracker.is_locked(client_ip)
+
+
+def _issue_csrf_if_missing(handler) -> None:
+    """Free-standing Set-Cookie emitter for the double-submit CSRF
+    token. Called from _json_response / _html_response on GETs. Not a
+    method on ControllerAPIHandler to keep its method count under the
+    class-size ratchet. See CsrfProtector for cookie name / format."""
+    if getattr(handler, "command", "") != "GET":
+        return
+    try:
+        cookie_header = handler.headers.get("Cookie", "") if getattr(
+            handler, "headers", None) else ""
+    except AttributeError:
+        cookie_header = ""
+    if _csrf_issuer.extract_cookie(cookie_header):
+        return
+    xfp = ""
+    try:
+        xfp = (handler.headers.get("X-Forwarded-Proto", "") or "").strip().lower()
+    except AttributeError:
+        pass
+    token = _csrf_issuer.issue_token()
+    handler.send_header(
+        "Set-Cookie",
+        _csrf_issuer.build_set_cookie(token, secure=xfp == "https"),
+    )
 
 # Per-IP lockout: after _IP_LOCKOUT_THRESHOLD failures within
 # _IP_LOCKOUT_WINDOW seconds, the IP is rejected outright for
@@ -68,13 +131,12 @@ _H_AUTHORIZATION = "Authorization"
 # well under this; anything larger is either a mistake or an attack.
 _MAX_BODY_BYTES = 1 * (2 ** 20)
 
-# Forward-auth integration. When Envoy fronts the controller with an
-# Authelia ext_authz filter, Authelia sets Remote-User (and friends)
-# on the upstream request. The controller accepts that identity only
-# if the request came from a CIDR listed in CONTROLLER_TRUSTED_PROXY_CIDRS.
-# Without a trusted-proxy configuration, these headers are ignored so
-# an attacker can't spoof Remote-User by setting the header themselves.
-_DEFAULT_TRUSTED_PROXY_HEADER = "Remote-User"
+# Forward-auth integration: the trusted_proxy_auth singleton (imported
+# below from session_singletons) accepts Remote-User from Authelia via
+# Envoy ext_authz, but only when the request came from a CIDR listed
+# in CONTROLLER_TRUSTED_PROXY_CIDRS. Without a trusted-proxy config,
+# these headers are ignored so an attacker can't spoof identity by
+# setting the header themselves.
 
 
 class _AuthPolicy:
@@ -147,18 +209,26 @@ class _AuthPolicy:
     def send_401(self, handler) -> None:
         """Emit an unauthenticated response.
 
-        If CONTROLLER_OIDC_LOGIN_REDIRECT is set AND the request is an
-        HTML-accepting GET (a browser navigating to the dashboard), we
-        send a 302 to the OIDC login endpoint instead of a bare 401.
-        Non-GET requests and API clients (Accept: application/json,
-        non-HTML) still get the 401 so scripts behave predictably.
+        For browsers we NEVER return WWW-Authenticate: Basic — that
+        triggers the ugly native credential popup. Instead we either
+        (a) 302 to an upstream OIDC login when CONTROLLER_OIDC_LOGIN_REDIRECT
+        is set, or (b) render a styled in-page login form that POSTs
+        to /api/auth/login and cookies the response.
+
+        Scripts and API clients (Accept: application/json, non-HTML,
+        non-GET) still get a 401 with WWW-Authenticate so curl and
+        other tooling behave predictably.
         """
+        is_browser = self._is_browser_navigation(handler)
         login_url = self._env.get("CONTROLLER_OIDC_LOGIN_REDIRECT", "").strip()
-        if login_url and self._is_browser_navigation(handler):
+        if is_browser and login_url:
             handler.send_response(HTTPStatus.FOUND)
             handler.send_header("Location", login_url)
             handler.send_header(_H_CONTENT_LENGTH, "0")
             handler.end_headers()
+            return
+        if is_browser:
+            self._send_login_page(handler)
             return
         handler.send_response(HTTPStatus.UNAUTHORIZED)
         handler.send_header(
@@ -166,6 +236,29 @@ class _AuthPolicy:
         )
         handler.send_header(_H_CONTENT_LENGTH, "0")
         handler.end_headers()
+
+    def _send_login_page(self, handler) -> None:
+        """Render a minimal styled login form. Submits to /api/auth/login
+        which sets the session cookie; on success the browser reloads
+        into the dashboard.
+
+        Also emits the CSRF cookie — the login form itself doesn't use
+        it, but once the user is signed in and hits any dashboard POST,
+        the cookie must already be present or the POST 403s with
+        ``CSRF token missing or invalid``. Setting it here makes the
+        cookie available across the login transition."""
+        rd = getattr(handler, "path", "/") or "/"
+        html = _LOGIN_HTML.replace("__RD__", rd)
+        payload = html.encode("utf-8")
+        handler.send_response(HTTPStatus.UNAUTHORIZED)
+        handler.send_header("Content-Type", "text/html; charset=utf-8")
+        handler.send_header(_H_CONTENT_LENGTH, str(len(payload)))
+        # Don't send WWW-Authenticate here — it forces the browser's
+        # native credential dialog and our form goes unused.
+        self.emit_security_headers(handler)
+        _issue_csrf_if_missing(handler)
+        handler.end_headers()
+        handler.wfile.write(payload)
 
     def _is_browser_navigation(self, handler) -> bool:
         """True for GET requests whose Accept header prefers HTML.
@@ -229,7 +322,14 @@ class _AuthPolicy:
         """
         handler.send_header("X-Content-Type-Options", "nosniff")
         handler.send_header("X-Frame-Options", "DENY")
-        handler.send_header("Referrer-Policy", "no-referrer")
+        # Envoy's apex vhost relies on Referer to route same-origin
+        # fetches from /app/<svc>/ back to the right upstream. A strict
+        # "no-referrer" policy silently misroutes them to the catch-all
+        # (jellyfin), which 405s POST JSON calls → browser sees a
+        # "position 4" JSON parse error. "same-origin" keeps Referer on
+        # same-origin requests (where routing needs it) and strips it
+        # on cross-origin (where leakage matters).
+        handler.send_header("Referrer-Policy", "same-origin")
         handler.send_header("Permissions-Policy",
                            "geolocation=(), camera=(), microphone=()")
         handler.send_header(
@@ -358,6 +458,10 @@ class _SudoGate:
         "/api/tokens/revoke-family",
         "/api/tls/certificate",
         "/api/tls/certificate/regenerate",
+        # Weakening the password policy is a privilege-escalation
+        # vector (admin could lower min_length to 4 then create a
+        # trivially-guessable account). Require re-auth.
+        "/api/password-policy",
     })
     _DEFAULT_SUDO_PREFIXES = (
         "/api/users/",  # matches /api/users/{id}/reset-password etc.
@@ -446,82 +550,6 @@ class _SudoGate:
 
 
 _sudo_gate = _SudoGate()
-
-
-class _TrustedProxyAuth:
-    """Accept an upstream-auth'd identity (e.g. from Authelia via
-    Envoy ext_authz) only when the request arrives from a configured
-    trusted proxy CIDR.
-
-    Env vars:
-      CONTROLLER_TRUSTED_PROXY_CIDRS  — comma-separated CIDRs (v4 or v6)
-                                        of the proxy tier (Envoy pod IPs,
-                                        Tailscale net, etc.). Empty =
-                                        trusted-proxy auth disabled.
-      CONTROLLER_TRUSTED_PROXY_HEADER — header that carries the identity.
-                                        Defaults to ``Remote-User``.
-
-    An identity-carrying header coming from an IP OUTSIDE the trusted
-    CIDR list is IGNORED — we never blindly trust user-supplied
-    Remote-User headers.
-    """
-
-    def __init__(self) -> None:
-        # Bind the env dict once so each identity() call reads via
-        # self._env.get(...) rather than os.environ.get(...). Same dict
-        # object — test mock.patch.dict(os.environ) still takes effect.
-        self._env = os.environ
-
-    def identity(self, handler) -> str | None:
-        cidrs_raw = self._env.get("CONTROLLER_TRUSTED_PROXY_CIDRS", "").strip()
-        if not cidrs_raw:
-            return None  # trusted-proxy auth not configured
-        header = (self._env.get("CONTROLLER_TRUSTED_PROXY_HEADER", "")
-                  .strip() or _DEFAULT_TRUSTED_PROXY_HEADER)
-        client_ip = self._client_ip(handler)
-        headers = getattr(handler, "headers", None)
-        header_value = ""
-        if headers is not None:
-            try:
-                header_value = (headers.get(header, "") or "").strip()
-            except AttributeError:
-                header_value = ""
-        trusted = bool(client_ip) and self._in_any_cidr(client_ip, cidrs_raw)
-        if not trusted:
-            # Someone set the identity header but they're not in the
-            # trusted CIDR. Record it — this is either a misconfig
-            # (new proxy IP) or a spoofing attempt.
-            if header_value:
-                security_counters.incr("trusted_proxy_spoof")
-            return None
-        return header_value or None
-
-    def _client_ip(self, handler) -> str:
-        addr = getattr(handler, "client_address", None)
-        if isinstance(addr, tuple) and addr:
-            return str(addr[0])
-        return ""
-
-    def _in_any_cidr(self, ip_str: str, cidrs_raw: str) -> bool:
-        import ipaddress
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            return False
-        for chunk in cidrs_raw.split(","):
-            chunk = chunk.strip()
-            if not chunk:
-                continue
-            try:
-                net = ipaddress.ip_network(chunk, strict=False)
-            except ValueError:
-                continue
-            if ip in net:
-                return True
-        return False
-
-
-_trusted_proxy_auth = _TrustedProxyAuth()
 
 
 def _audit_actor_from(handler) -> str:
@@ -733,7 +761,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         if _auth_policy.decision(self, path, password) == "allow":
             return True
         client_ip = _trusted_proxy_auth._client_ip(self)
-        if client_ip and _ip_failure_tracker.is_locked(client_ip):
+        if _should_reject_for_ip_lockout(client_ip):
             security_counters.incr("ip_lockout_trip")
             self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
             self.send_header("Content-Type", "application/json")
@@ -770,6 +798,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header(_H_CONTENT_LENGTH, str(len(payload)))
         _auth_policy.emit_security_headers(self)
+        _issue_csrf_if_missing(self)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -779,6 +808,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header(_H_CONTENT_LENGTH, str(len(payload)))
         _auth_policy.emit_security_headers(self)
+        _issue_csrf_if_missing(self)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -928,6 +958,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             ("/api/cleanup-preview", "Guardrail cleanup preview"),
             ("/api/env", "Runtime environment"),
             ("/api/routing", "Routing configuration"),
+            ("/api/routing-probe", "Probe all user-facing URLs per service"),
             ("/api/profile", "Bootstrap profile"),
             ("/api/envvars", "Stack environment variables"),
             ("/api/manifests", "Deployment manifests"),
