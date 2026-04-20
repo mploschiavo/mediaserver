@@ -774,7 +774,12 @@ async function loadServicesFromAPI(){
   ];
   SVC_MAP=Object.fromEntries(SVCS.map(s=>[s.id,s]));
 }
-const SVC_HEALTH={},SVC_AUTH={},SVC_LOGIN={},SVC_MS={},SVC_AGE={};
+const SVC_HEALTH={},SVC_AUTH={},SVC_LOGIN={},SVC_MS={},SVC_AGE={},SVC_POLICY={};
+// Active auth mode (none/basic/authelia/authentik). The services
+// table's Auth column branches on this: native probe result when
+// direct auth (none/basic), SSO policy (protected/native/public)
+// when gateway SSO is active. Populated by loadAuthSummary().
+let _authMode='none';
 let expanded=null;
 const matrixState={};
 
@@ -1236,12 +1241,24 @@ function renderServices(pf){
     else if(pfOk){dotCls='ok';statusText='Running';okCount++;}
     else{pendCount++;}
 
-    let authText='—',authCls='';
+    let authText='—',authCls='',authTitle='';
     if(hlth!=='disabled'){
-      if(auth==='ok'){authText='OK';authCls='ok';}
-      else if(auth==='unauthorized'){authText='Fail';authCls='warn';}
-      else if(auth==='no_key'){authText='No Key';authCls='idle';}
-      else if(auth==='n/a'){authText='N/A';}
+      if(_authMode==='authelia'||_authMode==='authentik'){
+        // SSO active: probing native auth returns noise (ext_authz
+        // intercepts before the service sees us). Show the SSO
+        // policy instead — that's what determines whether the user
+        // hits a login screen at the gateway.
+        const pol=SVC_POLICY[s.id]||'';
+        if(pol==='protected'){authText='SSO';authCls='ok';authTitle='Gateway enforces '+_authMode+' sign-in before reaching this service.';}
+        else if(pol==='native'){authText='Native';authCls='idle';authTitle='Service handles its own login — SSO is bypassed (typical for device clients like Jellyfin).';}
+        else if(pol==='public'){authText='Public';authCls='idle';authTitle='No authentication required.';}
+        else{authText='—';authTitle='Policy unresolved for this service.';}
+      }else{
+        if(auth==='ok'){authText='OK';authCls='ok';}
+        else if(auth==='unauthorized'){authText='Fail';authCls='warn';}
+        else if(auth==='no_key'){authText='No Key';authCls='idle';}
+        else if(auth==='n/a'){authText='N/A';}
+      }
     }
 
     const login=SVC_LOGIN[s.id];
@@ -1257,7 +1274,7 @@ function renderServices(pf){
     html+='<td><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"></td>';
     html+='<td style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+sparkHtml(s.id)+'</td>';
     html+='<td class="'+dotCls+'">'+statusText+'</td>';
-    html+='<td class="'+authCls+'">'+authText+'</td>';
+    html+='<td class="'+authCls+'"'+(authTitle?(' title="'+authTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+authText+'</td>';
     html+='<td class="'+loginCls+'">'+loginText+'</td>';
     html+='<td style="font-family:monospace;font-size:.82em">'+(ms?ms+'ms':'—')+'</td>';
     html+='<td style="font-size:.78em;color:var(--fg3)">'+(ver||'—')+'</td>';
@@ -1316,6 +1333,21 @@ async function revalidateCredentials(svcId){
       if(statusData)renderServices(statusData.preflight_results||{});
     }else{toast('Credential check failed (HTTP '+r.status+')',true);}
   }catch(e){toast(e.toString(),true);}
+}
+
+/* Auth summary — populates _authMode + SVC_POLICY so the services
+   table's Auth column can switch between native probe and SSO
+   policy. Cheap (two tiny GETs), so it's safe to call on boot +
+   every few health cycles. */
+async function loadAuthSummary(){
+  try{
+    const [cfgR,polR]=await Promise.all([
+      apiFetch('/api/auth/config'),apiFetch('/api/auth/service-policies'),
+    ]);
+    if(cfgR.ok){const cfg=await cfgR.json();_authMode=String(cfg.mode||'none').toLowerCase();}
+    if(polR.ok){const d=await polR.json();for(const row of (d.services||[])){if(row.service_id&&row.policy)SVC_POLICY[row.service_id]=row.policy;}}
+    if(statusData)renderServices(statusData.preflight_results||{});
+  }catch(e){}
 }
 
 /* Health probes + sparkline history */
@@ -4840,7 +4872,12 @@ load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE(
   for(const s of SVCS){sel.innerHTML+='<option value="'+s.id+'">'+s.name+'</option>';}
 })();
 setTimeout(probeServices,2000);
+loadAuthSummary();
 _intervals.push(setInterval(()=>{probeServices().then(()=>{recordSLA();checkAlerts();checkRemediation();});},dashSettings.healthInterval));
+// Auth mode changes rarely (operator toggling in settings). Refresh
+// on a slow cadence so the services table picks up a mode change
+// without needing a full page reload.
+_intervals.push(setInterval(loadAuthSummary,60000));
 setTimeout(()=>{loadVersions();loadStats();loadDisk();loadDownloads();loadEnv();loadRecent();loadProfile();loadImageUpdates();loadDriftIndicator();},3000);
 // Lazy: indexers, libraries, etc. load when their tab is opened
 _intervals.push(setInterval(()=>{loadStats();loadDisk();loadDownloads();
