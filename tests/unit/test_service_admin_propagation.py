@@ -90,6 +90,19 @@ class PropagationTests(unittest.TestCase):
             service_admins=service_admins,
         ), store
 
+    def _wait_for_call(self, mock_obj, timeout=2.0):
+        """Service-admin propagation now runs in a background
+        thread so the user's reset-password request can return as
+        soon as Authelia is sync'd. Tests need to wait for the
+        thread before asserting on the propagation."""
+        import time as _t
+        deadline = _t.monotonic() + timeout
+        while _t.monotonic() < deadline:
+            if mock_obj.called:
+                return
+            _t.sleep(0.02)
+        raise AssertionError("propagation never happened within timeout")
+
     def test_superadmin_password_propagates_to_service_admins(self):
         with tempfile.TemporaryDirectory() as tmp:
             qbit = MagicMock(); qbit.name = "qbittorrent"
@@ -106,10 +119,14 @@ class PropagationTests(unittest.TestCase):
             sonarr.set_admin_password.reset_mock()
             result = svc.reset_password(admin["id"], password="New-Str0ng_Pw!2026")
 
+            self._wait_for_call(qbit.set_admin_password)
+            self._wait_for_call(sonarr.set_admin_password)
             qbit.set_admin_password.assert_called_once_with("New-Str0ng_Pw!2026")
             sonarr.set_admin_password.assert_called_once_with("New-Str0ng_Pw!2026")
-            self.assertEqual(result["service_admins"]["qbittorrent"], "ok")
-            self.assertEqual(result["service_admins"]["sonarr"], "ok")
+            # The synchronous response no longer carries per-admin
+            # results; instead it signals that propagation is in
+            # flight. Background failures land in the audit log.
+            self.assertEqual(result["service_admins"], "scheduled_async")
 
     def test_regular_user_password_does_not_propagate(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,6 +139,11 @@ class PropagationTests(unittest.TestCase):
             qbit.set_admin_password.reset_mock()
             result = svc.reset_password(adult["id"], password="New-Str0ng_Pw!2026")
 
+            # No propagation scheduled at all — the role doesn't
+            # call for it. Give the would-be background thread a
+            # moment to (not) fire.
+            import time as _t
+            _t.sleep(0.1)
             qbit.set_admin_password.assert_not_called()
             self.assertEqual(result["service_admins"], {})
 
@@ -137,9 +159,28 @@ class PropagationTests(unittest.TestCase):
                 role_slug="superadmin",
             )
             result = svc.reset_password(admin["id"], password="New-Str0ng_Pw!2026")
+            # The background thread captures the qbit failure and
+            # writes a ``reset_password.bg`` audit entry. Wait for
+            # both adapters to be called, then check the audit log.
+            self._wait_for_call(qbit.set_admin_password)
+            self._wait_for_call(sonarr.set_admin_password)
+            # Sync response signals async — no per-admin detail.
+            self.assertEqual(result["service_admins"], "scheduled_async")
+            # Wait for the background audit row.
+            import time as _t
+            for _ in range(50):
+                bg_rows = [
+                    e for e in svc.audit_recent()
+                    if e["action"] == "reset_password.bg"
+                ]
+                if bg_rows:
+                    break
+                _t.sleep(0.02)
+            self.assertTrue(bg_rows, "reset_password.bg audit row missing")
+            detail = bg_rows[-1]["detail"]
             self.assertIn("qbit down",
-                          result["service_admins"]["qbittorrent"])
-            self.assertEqual(result["service_admins"]["sonarr"], "ok")
+                          detail["service_admins"]["qbittorrent"])
+            self.assertEqual(detail["service_admins"]["sonarr"], "ok")
 
     def test_audit_log_records_service_admin_propagation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -151,12 +192,16 @@ class PropagationTests(unittest.TestCase):
                 role_slug="superadmin",
             )
             svc.reset_password(admin["id"], password="New-Str0ng_Pw!2026")
+            self._wait_for_call(qbit.set_admin_password)
             recent = svc.audit_recent()
             reset_entry = next(e for e in reversed(recent)
                                 if e["action"] == "reset_password")
+            # The sync row carries a status flag, not the per-
+            # admin detail (that's in reset_password.bg only on
+            # failure; success keeps the audit log compact).
             self.assertIn("service_admins", reset_entry["detail"])
             self.assertEqual(
-                reset_entry["detail"]["service_admins"]["qbittorrent"], "ok",
+                reset_entry["detail"]["service_admins"], "scheduled_async",
             )
 
 

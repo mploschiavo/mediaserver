@@ -244,6 +244,12 @@ class Job:
     - ``requires``: list of PREREQS names that must be True before running
     - ``sub_jobs``: child jobs that run after this job's handler succeeds
     - Sub-jobs inherit no prereqs from parents — each declares its own
+    - ``max_attempts``: how many prereq-satisfaction rounds JobRunner
+      will make before giving up on deferred sub-jobs. Defaults to 3
+      for leaf jobs; tree-roots (e.g. ``bootstrap``) need a higher
+      value because there are many cross-cutting prereqs to satisfy
+      across phases. Read from ``plugin.jobs.<name>.max_attempts``
+      in the contract YAML.
     - N-level nesting: sub-jobs can have sub-jobs
     """
 
@@ -252,11 +258,13 @@ class Job:
         name: str,
         handler: Callable[["JobContext"], dict[str, Any] | None],
         requires: list[str] | None = None,
+        max_attempts: int | None = None,
     ):
         self.name = name
         self.handler = handler
         self.requires = requires or []
         self.sub_jobs: list["Job"] = []
+        self.max_attempts = max_attempts
 
     def add_sub_job(self, job: "Job") -> "Job":
         """Add a child job. Returns self for chaining."""
@@ -717,6 +725,13 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
                     "phase": job_def.get("phase", "default"),
                     "priority": int(job_def.get("priority", 50)),
                     "requires": list(job_def.get("requires", [])),
+                    # ``max_attempts`` is optional. ``None`` means
+                    # "use the framework default" (currently 3).
+                    "max_attempts": (
+                        int(job_def["max_attempts"])
+                        if "max_attempts" in job_def
+                        else None
+                    ),
                     "service": svc_id,
                 })
         except Exception as exc:
@@ -725,6 +740,83 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
 
     _DISCOVERED_JOBS_CACHE = sorted(jobs, key=lambda j: (j["phase"], j["priority"]))
     return _DISCOVERED_JOBS_CACHE
+
+
+_DISCOVERED_ALIASES_CACHE: dict[str, str] | None = None
+
+
+def discover_job_aliases() -> dict[str, str]:
+    """Walk every service contract for a ``plugin.job_aliases`` map
+    and return the merged ``alias -> canonical`` dict.
+
+    Aliases are job metadata, not dispatch code. Putting them in
+    the YAML keeps the dispatch a single ``run_job(name)`` call:
+    when the dashboard hits ``/actions/reconcile``, ``run_job``
+    resolves the alias to ``bootstrap`` and walks the same tree
+    everything else does. New aliases ship by editing one YAML
+    file — the kind of change a third-party developer can make
+    without touching any Python.
+
+    First-write-wins on collisions, with a debug log. The cache
+    matches the discover_jobs_from_contracts cache lifecycle so
+    tests can clear both with ``_DISCOVERED_*_CACHE = None``."""
+    global _DISCOVERED_ALIASES_CACHE
+    if _DISCOVERED_ALIASES_CACHE is not None:
+        return _DISCOVERED_ALIASES_CACHE
+    svc_dir = _find_contracts_dir()
+    if not svc_dir:
+        _DISCOVERED_ALIASES_CACHE = {}
+        return _DISCOVERED_ALIASES_CACHE
+
+    aliases: dict[str, str] = {}
+    for svc_yaml in sorted(svc_dir.glob("*.yaml")):
+        if svc_yaml.name.startswith("_"):
+            continue
+        try:
+            svc_data = yaml.safe_load(svc_yaml.read_text()) or {}
+            plugin = svc_data.get("plugin", {})
+            raw = plugin.get("job_aliases", {})
+            if not isinstance(raw, dict):
+                continue
+            for alias, canonical in raw.items():
+                if not isinstance(alias, str) or not isinstance(canonical, str):
+                    continue
+                if alias in aliases and aliases[alias] != canonical:
+                    runtime_platform.log(
+                        f"[DEBUG] job alias collision for {alias!r}: "
+                        f"{aliases[alias]!r} (kept) vs {canonical!r} "
+                        f"(from {svc_yaml.name})"
+                    )
+                    continue
+                aliases[alias] = canonical
+        except Exception as exc:
+            runtime_platform.log(
+                f"[DEBUG] Failed to discover aliases from "
+                f"{svc_yaml.name}: {exc}"
+            )
+            continue
+
+    _DISCOVERED_ALIASES_CACHE = aliases
+    return aliases
+
+
+def resolve_alias(name: str) -> str:
+    """Return the canonical job name for ``name``. Falls through
+    when ``name`` isn't an alias — so callers can always invoke
+    this safely. Resolves transitively in case a future alias
+    points at another alias (capped at 8 hops to avoid loops)."""
+    aliases = discover_job_aliases()
+    seen: set[str] = set()
+    current = name
+    for _ in range(8):
+        if current in seen:
+            return current  # cycle guard
+        seen.add(current)
+        nxt = aliases.get(current)
+        if nxt is None or nxt == current:
+            return current
+        current = nxt
+    return current
 
 
 def build_job_framework() -> Job:
@@ -740,15 +832,24 @@ def build_job_framework() -> Job:
     Remove a service → its jobs disappear.
     """
     discovered = discover_jobs_from_contracts()
-    root = Job("bootstrap", _noop)
+    # The synthesized ``bootstrap`` root walks every per-app phase
+    # under it; cross-cutting prereq satisfaction (e.g. discovering
+    # an API key that ten downstream jobs depend on) takes more
+    # rounds than a leaf job's default of 3. 30 is empirically
+    # plenty — the previous hardcoded ``max_wait=180`` in dispatch
+    # was wishful padding.
+    root = Job("bootstrap", _noop, max_attempts=30)
 
     # Group by phase
     phases: dict[str, list[dict[str, Any]]] = {}
     for j in discovered:
         phases.setdefault(j["phase"], []).append(j)
 
-    # Phase ordering
-    phase_order = ["media_server", "download_clients", "default", "post"]
+    # Phase ordering. ``pre_bootstrap`` runs first because the
+    # legacy adapter-hooks pipeline that lives there discovers API
+    # keys that every per-app phase job needs as a prereq.
+    phase_order = ["pre_bootstrap", "media_server", "download_clients",
+                   "default", "post"]
     for phase_name in phase_order:
         phase_jobs = phases.pop(phase_name, [])
         if not phase_jobs:
@@ -776,7 +877,11 @@ def build_job_framework() -> Job:
             except Exception:
                 runtime_platform.log(f"[WARN] Cannot resolve handler for job {j['name']}: {handler_path}")
                 continue
-            phase_job.add_sub_job(Job(j["name"], handler, requires=j.get("requires", [])))
+            phase_job.add_sub_job(Job(
+                j["name"], handler,
+                requires=j.get("requires", []),
+                max_attempts=j.get("max_attempts"),
+            ))
         root.add_sub_job(phase_job)
 
     # Any remaining phases
@@ -786,7 +891,11 @@ def build_job_framework() -> Job:
             try:
                 raw_fn = _resolve_handler(j["handler"])
                 handler = _make_handler_wrapper(raw_fn, j["service"])
-                phase_job.add_sub_job(Job(j["name"], handler, requires=j.get("requires", [])))
+                phase_job.add_sub_job(Job(
+                    j["name"], handler,
+                    requires=j.get("requires", []),
+                    max_attempts=j.get("max_attempts"),
+                ))
             except Exception as exc:
                 runtime_platform.log(f"[WARN] Cannot resolve handler for remaining-phase job {j['name']}: {exc}")
                 continue
@@ -812,20 +921,30 @@ def get_job_registry() -> dict[str, Callable[[JobContext], dict[str, Any]]]:
     return registry
 
 
-def run_job(job_name: str, max_wait: int = 30) -> dict[str, Any]:
-    """Run a single job by name. Uses JobRunner for prereq waiting."""
-    # Look up the job from the bootstrap tree to get its prereqs
+_DEFAULT_JOB_MAX_ATTEMPTS = 3
+
+
+def run_job(job_name: str) -> dict[str, Any]:
+    """Run a single job by name. Uses JobRunner for prereq waiting.
+
+    Resolves contract-declared aliases first (so callers can pass
+    user-facing names like ``reconcile`` and reach the canonical
+    job ``bootstrap``), then reads ``max_attempts`` from the
+    resolved Job instance — the contract is the source of truth.
+    No more ``run_job(name, max_wait=180)`` callers; if a job
+    needs special timing it declares it in YAML."""
+    job_name = resolve_alias(job_name)
     root = build_job_framework()
     job = _find_job_in_tree(root, job_name)
     if not job:
-        # Fall back to registry (no prereqs)
         registry = get_job_registry()
         handler = registry.get(job_name)
         if not handler:
             return {"error": f"Unknown job: {job_name}", "known": sorted(registry.keys())}
         job = Job(job_name, handler)
     ctx = JobContext()
-    return JobRunner(job, ctx, max_wait=max_wait).run()
+    attempts = job.max_attempts if job.max_attempts is not None else _DEFAULT_JOB_MAX_ATTEMPTS
+    return JobRunner(job, ctx, max_attempts=attempts).run()
 
 
 def run_all_media_server_jobs(max_wait: int = 180) -> dict[str, Any]:

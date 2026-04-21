@@ -62,23 +62,7 @@ def _dispatch_action(
     state: object,
 ) -> None:
     """Route an action to the appropriate handler."""
-    from media_stack.cli.commands.action_handlers import (
-        action_bootstrap, action_post_setup, action_discover_indexers,
-        action_restart_apps, action_push_indexers, action_envoy_config,
-        action_reconcile, action_validate_credentials,
-    )
-    from media_stack.cli.commands.controller_handlers import (
-        _load_handler_specs,
-        _run_handler_specs,
-        _run_preflights,
-        _run_post_bootstrap,
-    )
-    from media_stack.cli.commands.controller_runner import (
-        _build_runner,
-    )
-    from media_stack.cli.commands.controller_k8s import (
-        _persist_preflight_keys_to_secret,
-    )
+    from media_stack.cli.commands.job_framework import run_job
 
     _apply_overrides(overrides)
     runtime_platform.log(f"[DEBUG] Action dispatch: name={action_name}, overrides={overrides}, "
@@ -86,35 +70,17 @@ def _dispatch_action(
                          f"profile={os.environ.get('BOOTSTRAP_PROFILE_FILE','?')}")
     runtime_platform.log(f"[ACTION] {action_name}: starting (overrides={overrides})")
 
-    if action_name == "bootstrap":
-        action_bootstrap(args, state, _run_preflights, _persist_preflight_keys_to_secret, _build_runner)
-    elif action_name == "post-setup":
-        action_post_setup(args, state, _build_runner, _run_post_bootstrap)
-    elif action_name == "discover-indexers":
-        action_discover_indexers(args, _build_runner)
-    elif action_name == "restart-apps":
-        action_restart_apps(args, state, _load_handler_specs, _run_handler_specs)
-    elif action_name == "push-indexers":
-        action_push_indexers(args, _build_runner)
-    elif action_name == "envoy-config":
-        action_envoy_config(args)
-    elif action_name == "validate-credentials":
-        action_validate_credentials()
-    elif action_name == "reconcile":
-        action_reconcile(args, _build_runner)
-    elif action_name == "configure-media-server":
-        # Composite job: all media server sub-jobs
-        from media_stack.cli.commands.job_framework import run_all_media_server_jobs
-        result = run_all_media_server_jobs()
-        if result.get("status") == "error":
-            raise RuntimeError(result.get("error", "Media server configuration failed"))
-    elif action_name.startswith("configure-"):
-        # Individual small jobs from the job registry
-        from media_stack.cli.commands.job_framework import run_job
-        result = run_job(action_name)
-        if result.get("error"):
-            raise RuntimeError(result["error"])
-    else:
+    # Single dispatch path. Every action is a contract-declared
+    # job (or an alias that resolves to one — see
+    # ``contracts/services/core.yaml``'s ``job_aliases`` map).
+    # ``run_job`` resolves the alias, walks the tree, enforces
+    # prereqs, and runs the handler. A ratchet test
+    # (``test_no_action_special_cases``) keeps this function from
+    # accruing per-action elif branches again.
+    result = run_job(action_name)
+    if not result:
         raise ValueError(f"Unknown action: {action_name}")
+    if result.get("error"):
+        raise RuntimeError(result["error"])
 
     runtime_platform.log(f"[ACTION] {action_name}: complete")

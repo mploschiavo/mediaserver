@@ -414,11 +414,25 @@ _tls_handler = _TlsCertHandler()
 # Known actions
 # ---------------------------------------------------------------------------
 
-# Core actions (not from contracts)
+# Core actions that aren't declared in any contract.
+#
+# Six actions used to live here too — post-setup, discover-indexers,
+# restart-apps, push-indexers, envoy-config, validate-credentials —
+# but they were migrated to the job framework so they appear in the
+# Job tree alongside per-app jobs. They're now declared in
+# ``contracts/services/core.yaml`` and discovered via
+# ``discover_jobs_from_contracts``; ``_build_known_actions`` merges
+# both sources, so they remain valid ``/actions/{name}`` targets.
+#
+# The three left here are orchestration entry points without a
+# meaningful "phase" — declaring them as jobs would be busywork:
+#   - bootstrap: the root of the tree (parent of every other job)
+#   - configure-media-server: composite that runs every media-server
+#     leaf job; parented in the tree as a phase group
+#   - reconcile: re-runs the entire bootstrap pipeline; effectively
+#     an alias for "bootstrap" with the cancel flag cleared
 _CORE_ACTIONS = {
-    "bootstrap", "post-setup", "discover-indexers", "restart-apps",
-    "push-indexers", "envoy-config", "reconcile", "validate-credentials",
-    "configure-media-server",
+    "bootstrap", "reconcile", "configure-media-server",
 }
 
 
@@ -829,6 +843,22 @@ class PostRequestHandler:
         # POST /api/snapshot -- take a config snapshot now
         if handler.path == "/api/snapshot":
             handler._json_response(200, ops_svc.take_snapshot())
+            return
+
+        # POST /api/auto-heal/run -- run a heal cycle right now
+        if handler.path == "/api/auto-heal/run":
+            from .services import auto_heal as autoheal_svc
+            handler._json_response(200, autoheal_svc.run_cycle())
+            return
+
+        # POST /api/auto-heal/enabled -- toggle on/off
+        if handler.path == "/api/auto-heal/enabled":
+            from .services import auto_heal as autoheal_svc
+            body = handler._read_json_body() or {}
+            handler._json_response(
+                200,
+                autoheal_svc.set_enabled(bool(body.get("enabled", True))),
+            )
             return
 
         # POST /api/guardrails
@@ -1407,12 +1437,25 @@ class PostRequestHandler:
 
     @staticmethod
     def _build_known_actions() -> frozenset[str]:
-        """Build KNOWN_ACTIONS from core actions + contract-discovered jobs."""
+        """Build KNOWN_ACTIONS from core actions + contract-discovered
+        jobs + their declared aliases.
+
+        Aliases are first-class accept-list entries: ``POST
+        /actions/reconcile`` returns 202, run_job resolves the
+        alias to ``bootstrap`` and walks the same tree. Without
+        this merge, hitting the alias would 404 even though it's
+        declared in the contract.
+        """
         actions = set(_CORE_ACTIONS)
         try:
-            from media_stack.cli.commands.job_framework import discover_jobs_from_contracts
+            from media_stack.cli.commands.job_framework import (
+                discover_jobs_from_contracts,
+                discover_job_aliases,
+            )
             for job in discover_jobs_from_contracts():
                 actions.add(job["name"])
+            for alias in discover_job_aliases():
+                actions.add(alias)
         except Exception as exc:
             logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
             pass

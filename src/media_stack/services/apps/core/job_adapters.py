@@ -1,0 +1,192 @@
+"""JobContext adapters for the six core actions migrated from the
+``_CORE_ACTIONS`` table into the job framework.
+
+Each adapter is a thin wrapper that:
+
+1. Constructs the legacy-style ``args``/``state``/``build_runner``
+   collaborators that the original ``action_*`` handler expects.
+2. Calls into the existing handler in
+   ``media_stack.cli.commands.action_handlers``.
+3. Returns ``{}`` (or a small status dict) to satisfy the job
+   framework's ``Callable[[JobContext], dict]`` contract.
+
+The legacy handlers stay where they are — the dispatch path used
+by ``POST /actions/{name}`` still routes through them. This file
+just wraps them for the alternate ``run_job(name)`` invocation
+path used by the Job tree's "Run" button.
+
+If a handler ever needs to do more than the legacy version
+(e.g., richer status reporting), adapt it here rather than in the
+legacy handler — the legacy code is still load-bearing for many
+shell scripts and CI flows."""
+
+from __future__ import annotations
+
+import argparse
+import os
+from typing import Any
+
+from media_stack.cli.commands.job_framework import JobContext
+
+
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+
+
+def _default_args(ctx: JobContext) -> argparse.Namespace:
+    """Build a minimal argparse.Namespace for the legacy handlers
+    that take ``args``. The legacy ``_build_runner`` reads:
+    ``config``, ``mode``, ``config_root``, ``wait_timeout``,
+    ``auto_prowlarr_indexers``, ``env``. All come from env vars
+    when absent; we mirror what the controller's CLI parser does.
+
+    ``mode`` defaults to ``full`` — the only value that runs the
+    complete pipeline. The previous default of ``compose`` was a
+    bug from when this adapter assumed mode meant deploy-target;
+    ``BootstrapMode`` is actually the pipeline-shape selector
+    (full | media-server-prewarm | media-server-home-rails |
+    media-hygiene). Without this fix every reconcile crashed
+    with ``Unsupported bootstrap mode: compose``."""
+    return argparse.Namespace(
+        config=os.environ.get("BOOTSTRAP_CONFIG_FILE", ""),
+        mode=os.environ.get("BOOTSTRAP_MODE", "full"),
+        config_root=ctx.config_root,
+        wait_timeout=ctx.wait_timeout,
+        auto_prowlarr_indexers=False,
+        env=os.environ.get("BOOTSTRAP_ENV", "prod"),
+    )
+
+
+def _stub_state() -> Any:
+    """Return a minimal state object compatible with the legacy
+    handlers. The handlers we wrap here only call ``state.update_*``
+    methods on it for telemetry; if those calls are no-ops we don't
+    lose anything important."""
+
+    class _Stub:
+        def update_config(self, _data: dict) -> dict:
+            return {}
+
+        def __getattr__(self, _name: str):
+            return _noop
+
+    def _noop(*_a: Any, **_kw: Any) -> None:
+        return None
+
+    return _Stub()
+
+
+# ----------------------------------------------------------------------
+# Adapters
+# ----------------------------------------------------------------------
+
+
+def envoy_config(ctx: JobContext) -> dict:
+    """Regenerate Envoy routing config + restart envoy."""
+    from media_stack.cli.commands.action_handlers import action_envoy_config
+    action_envoy_config(_default_args(ctx))
+    return {"action": "envoy-config"}
+
+
+def validate_credentials(ctx: JobContext) -> dict:
+    """Probe service admin credentials and auto-sync passwords for
+    services that fail."""
+    from media_stack.cli.commands.action_handlers import (
+        action_validate_credentials,
+    )
+    action_validate_credentials()
+    return {"action": "validate-credentials"}
+
+
+def restart_apps(ctx: JobContext) -> dict:
+    """Restart all apps to pick up config changes."""
+    from media_stack.cli.commands.action_handlers import action_restart_apps
+    from media_stack.cli.commands.controller_handlers import (
+        _load_handler_specs, _run_handler_specs,
+    )
+    action_restart_apps(
+        _default_args(ctx), _stub_state(),
+        _load_handler_specs, _run_handler_specs,
+    )
+    return {"action": "restart-apps"}
+
+
+def discover_indexers(ctx: JobContext) -> dict:
+    """Run auto-indexer discovery (indexer phase only)."""
+    from media_stack.cli.commands.action_handlers import (
+        action_discover_indexers,
+    )
+    from media_stack.cli.commands.controller_runner import _build_runner
+    action_discover_indexers(_default_args(ctx), _build_runner)
+    return {"action": "discover-indexers"}
+
+
+def push_indexers(ctx: JobContext) -> dict:
+    """Trigger indexer-manager ApplicationIndexerSync."""
+    from media_stack.cli.commands.action_handlers import action_push_indexers
+    from media_stack.cli.commands.controller_runner import _build_runner
+    action_push_indexers(_default_args(ctx), _build_runner)
+    return {"action": "push-indexers"}
+
+
+def post_setup(ctx: JobContext) -> dict:
+    """Deferred post-bootstrap: media-server tuning, hygiene, app
+    restarts."""
+    from media_stack.cli.commands.action_handlers import action_post_setup
+    from media_stack.cli.commands.controller_runner import _build_runner
+    from media_stack.cli.commands.controller_handlers import (
+        _run_post_bootstrap,
+    )
+    action_post_setup(
+        _default_args(ctx), _stub_state(),
+        _build_runner, _run_post_bootstrap,
+    )
+    return {"action": "post-setup"}
+
+
+def discover_api_keys(ctx: JobContext) -> dict:
+    """Run every container preflight handler (per-app probe +
+    API-key discovery + key persistence to env/secret).
+
+    Preflights are idempotent — they probe each app, harvest its
+    API key from disk or HTTP, and update the env. Running them
+    every bootstrap (and every reconcile) catches drift introduced
+    by a manual key rotation in a service's UI without making the
+    operator remember to "re-bootstrap from scratch".
+
+    This used to live inline in ``action_bootstrap`` and was
+    skippable via ``BOOTSTRAP_RUN_PREFLIGHTS=0`` (used by the old
+    ``reconcile`` action). Folding it into the job framework
+    removes the env-var dispatch hack — every code path that wants
+    a fresh tree walk now goes through the same ``run_job("bootstrap")``.
+    """
+    from media_stack.cli.commands.controller_handlers import _run_preflights
+    from media_stack.cli.commands.controller_k8s import (
+        _persist_preflight_keys_to_secret,
+    )
+    args = _default_args(ctx)
+    state = _stub_state()
+    _run_preflights(state, args)
+    _persist_preflight_keys_to_secret(state)
+    return {"action": "discover-api-keys"}
+
+
+def run_legacy_pipeline(ctx: JobContext) -> dict:
+    """Run the legacy adapter-hooks pipeline (``runner.run``).
+
+    The legacy runner is what installs/configures every app via
+    the older adapter_hooks contract. The newer per-service jobs
+    (configure-libraries, configure-indexers, etc.) cover the same
+    surface but the legacy runner is still load-bearing: removing
+    it would silently drop work for any service that hasn't been
+    fully migrated to a contract job.
+
+    This used to be the second half of ``action_bootstrap``'s
+    inline orchestration. As a contract job it slots into the
+    pre_bootstrap phase right after ``discover-api-keys``, so per-
+    app phase jobs find runtime state populated."""
+    from media_stack.cli.commands.controller_runner import _build_runner
+    runner, runtime_state = _build_runner(_default_args(ctx))
+    runner.run(runtime_state)
+    return {"action": "run-legacy-pipeline"}

@@ -176,7 +176,20 @@ static_resources:
                                 if string.sub(normalized, 1, 1) ~= "/" then
                                   normalized = "/" .. normalized
                                 end
-                                if string.sub(normalized, 1, string.len(prefix)) ~= prefix then
+                                -- The prefix-injection is meant to rescue
+                                -- RELATIVE redirects from upstream apps that
+                                -- don't know their own gateway prefix (an app
+                                -- under /app/jellyfin redirecting to /Login
+                                -- should become /app/jellyfin/Login).
+                                -- Absolute paths pointing at ANOTHER service
+                                -- prefix (/app/media-stack-controller when the
+                                -- request hit /app/controller) must NOT be
+                                -- prepended — that produces the 301-loop where
+                                -- every redirect appends the prefix again.
+                                -- 2026-04-21: /app/controller → /app/media-stack-controller
+                                -- looped infinitely because of this case.
+                                local already_app_prefixed = string.sub(normalized, 1, 5) == "/app/"
+                                if not already_app_prefixed and string.sub(normalized, 1, string.len(prefix)) ~= prefix then
                                   handle:headers():replace("location", prefix .. normalized)
                                 end
                               end

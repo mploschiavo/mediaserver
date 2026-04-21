@@ -14,6 +14,9 @@ package-lock.json
 docker/config/
 docker/data/
 docker/media/
+dist/config/
+dist/data/
+dist/media/
 .gitignore
 .claude/worktrees/
 .claude/scheduled_tasks.lock

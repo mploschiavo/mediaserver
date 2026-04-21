@@ -1,0 +1,64 @@
+{
+  "clientId": "REDACTED-CLIENT-ID",
+  "vapidPrivate": "REDACTED_VAPID_PRIVATE",
+  "vapidPublic": "REDACTED_VAPID_PUBLIC",
+  "main": {
+    "apiKey": "REDACTED_API_KEY_BASE64",
+    "applicationTitle": "Jellyseerr",
+    "applicationUrl": "",
+    "cacheImages": false,
+    "defaultPermissions": 32,
+    "defaultQuotas": {
+      "movie": {},
+      "tv": {}
+    },
+    "hideAvailable": false,
+    "hideBlacklisted": false,
+    "localLogin": true,
+    "mediaServerLogin": false,
+    "oidcLogin": false,
+    "newPlexLogin": false,
+    "discoverRegion": "",
+    "streamingRegion": "",
+    "originalLanguage": "",
+    "blacklistedTags": "",
+    "blacklistedTagsLimit": 50,
+    "mediaServerType": 2,
+    "partialRequestsEnabled": true,
+    "enableSpecialEpisodes": false,
+    "locale": "en",
+    "youtubeUrl": ""
+  },
+  "plex": {
+    "name": "",
+    "ip": "",
+    "port": 32400,
+    "useSsl": false,
+    "libraries": [],
+    "webAppUrl": ""
+  },
+  "jellyfin": {
+    "ip": "jellyfin",
+    "port": 8096,
+    "useSsl": false,
+    "libraries": [],
+    "serverId": "",
+    "name": "",
+    "externalHostname": ""
+  },
+  "tautulli": {},
+  "radarr": [],
+  "sonarr": [],
+  "public": {
+    "initialized": false
+  },
+  "notifications": {
+    "agents": {
+      "email": {
+        "enabled": false,
+        "types": 3,
+        "options": {}
+      }
+    }
+  }
+}

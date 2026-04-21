@@ -245,6 +245,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 }
 </style></head><body>
 <div class="loading-bar" id="loadingBar" style="display:none"><div class="bar"></div></div>
+<!-- Composite health stories: top-of-page banner. Empty until /api/health/stories returns critical/warn rows. -->
+<div id="healthStories" style="display:none"></div>
 <header>
   <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span><span class="conn-dot dead" id="sse-dot" title="Log stream disconnected"></span></h1>
   <div class="links">
@@ -326,7 +328,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <label style="display:flex;align-items:center;gap:4px;font-size:.75em;color:var(--fg3);white-space:nowrap;cursor:pointer"><input type="checkbox" id="hideDisabledCb" checked onchange="hideDisabled=this.checked;renderServices(statusData?statusData.preflight_results:{})"> Hide Disabled</label>
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="selectAllSvcs()">Select All</button>
     <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="batchRestart()">Restart Selected</button>
-    <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="revalidateCredentials()">Check All Logins</button>
+    <button class="btn-secondary" style="padding:3px 8px;font-size:.75em" onclick="recheckAllHealth()" title="Re-probe HTTP health, native logins, config-file integrity, and crashloops for every service.">Re-check Health</button>
   </div>
   <div id="services-list"></div>
   <!-- Service management tips — runtime-aware -->
@@ -774,7 +776,9 @@ async function loadServicesFromAPI(){
   ];
   SVC_MAP=Object.fromEntries(SVCS.map(s=>[s.id,s]));
 }
-const SVC_HEALTH={},SVC_AUTH={},SVC_LOGIN={},SVC_MS={},SVC_AGE={},SVC_POLICY={};
+const SVC_HEALTH={},SVC_AUTH={},SVC_LOGIN={},SVC_MS={},SVC_AGE={},SVC_POLICY={},SVC_INTEGRITY={};
+/* Profile-driven technology choices. Populated by loadTechBindings() once /api/profile resolves. The wizard / Connect-Your-TV step picks the actual deployed media server from this map instead of guessing by SVCS array order — without it, an installed-but-unbound emby.yaml can shadow the chosen jellyfin in a Find() lookup. */
+let _techBindings={};
 // Active auth mode (none/basic/authelia/authentik). The services
 // table's Auth column branches on this: native probe result when
 // direct auth (none/basic), SSO policy (protected/native/public)
@@ -783,32 +787,15 @@ let _authMode='none';
 let expanded=null;
 const matrixState={};
 
-/* Action display names — user-facing labels for internal action IDs */
-const ACTION_LABELS={
+/* Action labels are derived from the action ID. The job tree shows the same names so nothing in the dashboard talks about an operation by a name that doesn't exist in the contract. The few overrides below are kept for IDs whose humanised slug ("Bootstrap", "Reconcile") is too terse to be useful at the top of the dashboard. */
+const ACTION_LABEL_OVERRIDES={
   'bootstrap':'Setup All Services',
-  'configure-media-server':'Configure Jellyfin',
-  'configure-libraries':'Add Media Libraries',
-  'configure-livetv':'Setup Live TV & EPG',
-  'configure-plugins':'Install Plugins',
-  'configure-playback':'Apply Playback Settings',
-  'configure-home-screen':'Arrange Home Screen',
-  'configure-collections':'Organize Collections',
-  'configure-categories':'Set Download Categories',
-  'configure-arr-clients':'Attach Download Clients',
-  'configure-indexers':'Sync Indexers to Apps',
-  'configure-auth':'Configure SSO Auth',
-  'configure-auto-scan':'Enable Auto-Scan on Import',
-  'configure-jellyseerr':'Connect Jellyseerr',
-  'refresh-media':'Refresh Media & Artwork',
-  'post-setup':'Apply Passwords & Restart Services',
-  'envoy-config':'Update Proxy Routes',
-  'validate-credentials':'Verify Logins',
-  'discover-indexers':'Scan for Indexers',
-  'push-indexers':'Sync Indexers to Apps',
   'reconcile':'Reconcile All Config',
-  'restart-apps':'Restart All Services',
 };
-function actionLabel(name){return ACTION_LABELS[name]||name.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+function actionLabel(name){
+  if(ACTION_LABEL_OVERRIDES[name])return ACTION_LABEL_OVERRIDES[name];
+  return name.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+}
 
 /* Read the CSRF cookie so mutating requests can echo it in X-CSRF-Token.
  * Empty string when CSRF is disabled server-side — the header is still
@@ -1228,7 +1215,7 @@ function renderServices(pf){
   let html='',okCount=0,errCount=0,pendCount=0;
 
   html+='<table class="idx-table" id="svc-table"><thead><tr>';
-  html+='<th style="width:30px"></th><th>Service</th><th>Status</th><th>Auth</th><th>Login</th><th>Latency</th><th>Version</th><th>Age</th><th>Category</th><th style="width:60px">Actions</th>';
+  html+='<th style="width:30px"></th><th>Service</th><th title="Last 12 health probes — green=ok, red=down">Trend</th><th>Status</th><th>Auth</th><th>Login</th><th title="On-disk config file integrity (parses cleanly)">Config</th><th>Latency</th><th>Version</th><th>Age</th><th>Category</th><th style="width:60px">Actions</th>';
   html+='</tr></thead><tbody>';
 
   for(const s of allSvcs){
@@ -1262,9 +1249,15 @@ function renderServices(pf){
     }
 
     const login=SVC_LOGIN[s.id];
-    let loginText='—',loginCls='';
+    let loginText='—',loginCls='',loginTitle='';
     if(hlth!=='disabled'){
-      if(login==='ok'){loginText='OK';loginCls='ok';}
+      /* Under SSO the gateway authenticates upstream, so a native-login probe is meaningless noise — turning it off prevents the column showing red "Error" when sign-in actually works through Authelia/Authentik. */
+      const ssoActive=(_authMode==='authelia'||_authMode==='authentik');
+      const pol=SVC_POLICY[s.id]||'';
+      if(ssoActive && (pol==='protected'||pol==='public')){
+        loginText='SSO';loginCls='idle';
+        loginTitle='Sign-in is handled by '+_authMode+' at the gateway. Native login probe is disabled.';
+      } else if(login==='ok'){loginText='OK';loginCls='ok';}
       else if(login==='fail'){loginText='Fail';loginCls='warn';}
       else if(login==='error'){loginText='Error';loginCls='error';}
       else if(login==='n/a'){loginText='N/A';}
@@ -1272,10 +1265,23 @@ function renderServices(pf){
 
     html+='<tr style="cursor:pointer" onclick="toggleSvc(\''+s.id+'\')">';
     html+='<td><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"></td>';
-    html+='<td style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+sparkHtml(s.id)+'</td>';
+    html+='<td style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+'</td>';
+    /* Sparkline lives in its own column now — keeps the Service name from being a moving target as new probes arrive. */
+    html+='<td style="white-space:nowrap">'+sparkHtml(s.id)+'</td>';
     html+='<td class="'+dotCls+'">'+statusText+'</td>';
     html+='<td class="'+authCls+'"'+(authTitle?(' title="'+authTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+authText+'</td>';
-    html+='<td class="'+loginCls+'">'+loginText+'</td>';
+    html+='<td class="'+loginCls+'"'+(loginTitle?(' title="'+loginTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+loginText+'</td>';
+    /* Config integrity badge — small dot + status. Tooltip names the failing file + parser error. */
+    const ci=SVC_INTEGRITY[s.id];
+    let ciCls='',ciText='—',ciTitle='';
+    if(ci){
+      if(ci.status==='ok'){ciCls='ok';ciText='OK';ciTitle='Config file parses cleanly: '+(ci.file||'');}
+      else if(ci.status==='corrupt'){ciCls='error';ciText='Corrupt';ciTitle=(ci.file||'')+'\n'+(ci.reason||'');}
+      else if(ci.status==='missing'){ciCls='idle';ciText='Missing';ciTitle=(ci.file||'')+'\nNot present yet (pre-bootstrap?)';}
+      else if(ci.status==='skipped'){ciText='—';ciTitle='Format not validated';}
+      else{ciText='—';ciTitle=ci.reason||'';}
+    }
+    html+='<td class="'+ciCls+'"'+(ciTitle?(' title="'+ciTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+ciText+'</td>';
     html+='<td style="font-family:monospace;font-size:.82em">'+(ms?ms+'ms':'—')+'</td>';
     html+='<td style="font-size:.78em;color:var(--fg3)">'+(ver||'—')+'</td>';
     const age=SVC_AGE[s.id];
@@ -1289,7 +1295,7 @@ function renderServices(pf){
     // Expandable detail row
     const isExp=expanded===s.id;
     html+='<tr class="svc-detail" id="detail-'+s.id+'" style="display:'+(isExp?'table-row':'none')+'">';
-    html+='<td></td><td colspan="9" style="padding:6px 10px;font-size:.85em;color:var(--fg2)">';
+    html+='<td></td><td colspan="11" style="padding:6px 10px;font-size:.85em;color:var(--fg2)">';
     html+=s.desc+' · Port '+s.port;
     const sUrl=getSvcUrl(s.id);
     html+=' · <a href="'+sUrl+'" target="_blank" style="color:var(--blue)">Open</a>';
@@ -1317,6 +1323,16 @@ function toggleSvc(id){
 async function restartService(name){
   toast('Restarting '+name+'...');
   try{const r=await apiFetch('/api/restart/'+name,{method:'POST'});const d=await r.json();toast(d.status==='restarted'?name+' restarted':'Restart failed: '+(d.error||''),d.status!=='restarted');}catch(e){toast(e.toString(),true);}
+}
+
+/* "Re-check Health" — wider than just credentials. Triggers HTTP health, integrity, crashloop, story refresh in parallel and shows a toast summarising the result. */
+async function recheckAllHealth(){
+  toast('Re-checking all services...');
+  try{
+    /* probeServices() already fetches /api/health, /api/health/config-integrity and /api/health/stories. */
+    await Promise.all([probeServices(), revalidateCredentials()]);
+    toast('Health re-check complete');
+  }catch(e){toast('Re-check failed: '+e,true);}
 }
 
 /* Credential revalidation */
@@ -1356,7 +1372,31 @@ async function probeServices(){
     SVC_HEALTH[k]=v.status;if(v.ms!==undefined)SVC_MS[k]=v.ms;if(v.auth)SVC_AUTH[k]=v.auth;if(v.login)SVC_LOGIN[k]=v.login;
     if(!healthHistory[k])healthHistory[k]=[];healthHistory[k].push(v.status);if(healthHistory[k].length>12)healthHistory[k].shift();
   }}}catch(e){}
+  /* Config integrity is its own endpoint — slow disk reads shouldn't block /api/health. */
+  try{const ri=await apiFetch('/api/health/config-integrity');if(ri.ok){const di=await ri.json();for(const[k,v]of Object.entries(di.services||{})){SVC_INTEGRITY[k]=v;}}}catch(e){}
+  /* Composite stories — translate per-service signals into user-facing impact statements. */
+  try{const rs=await apiFetch('/api/health/stories');if(rs.ok){const ds=await rs.json();renderHealthStories(ds.stories||[]);}}catch(e){}
   if(statusData)renderServices(statusData.preflight_results||{});
+}
+function renderHealthStories(stories){
+  const el=document.getElementById('healthStories');if(!el)return;
+  /* Show only critical+warn at the top — ok stories live in the services table already. */
+  const banner=stories.filter(s=>s.severity==='critical'||s.severity==='warn'||s.severity==='info');
+  if(!banner.length){el.style.display='none';el.innerHTML='';return;}
+  el.style.display='block';
+  el.style.cssText='display:block;margin:0 12px 8px;';
+  let h='';
+  for(const s of banner){
+    const bg=s.severity==='critical'?'#5b1d1d':s.severity==='warn'?'#5b4a1d':'#1d3b5b';
+    const fg=s.severity==='critical'?'#ffb3b3':s.severity==='warn'?'#ffe3a8':'#b3d9ff';
+    const icon=s.severity==='critical'?'!':s.severity==='warn'?'!':'i';
+    h+='<div role="alert" style="background:'+bg+';color:'+fg+';padding:10px 14px;border-radius:6px;margin-top:6px;display:flex;align-items:flex-start;gap:10px;font-size:.9em">';
+    h+='<span style="font-weight:700;font-size:1.1em;line-height:1">'+icon+'</span>';
+    h+='<div style="flex:1"><div style="font-weight:600;margin-bottom:2px">'+_escHtml(s.headline||'')+'</div>';
+    if(s.next_action){h+='<div style="opacity:.85;font-size:.88em">'+_escHtml(s.next_action)+'</div>';}
+    h+='</div></div>';
+  }
+  el.innerHTML=h;
 }
 
 /* Versions */
@@ -1642,7 +1682,12 @@ async function loadProfile(){
   try{const r=await apiFetch('/api/profile');if(r.ok){const d=await r.json();
     if(d.error){document.getElementById('profile-view').innerHTML='<span style="color:var(--fg3)">'+d.error+'</span>';return;}
     const content=d.profile?JSON.stringify(d.profile,null,2):(d.profile_raw||'');
-    document.getElementById('profile-view').innerHTML='<div style="font-size:.82em;color:var(--fg3);margin-bottom:6px">'+d.file+'</div><pre class="profile-pre">'+content.replace(/</g,'&lt;')+'</pre>';}}catch(e){}
+    /* Cache technology bindings so the post-setup wizard names the right media server / request manager / indexer instead of guessing by service-list iteration order. */
+    if(d.profile&&d.profile.technology_bindings){_techBindings=d.profile.technology_bindings;}
+    document.getElementById('profile-view').innerHTML='<div style="font-size:.82em;color:var(--fg3);margin-bottom:6px">'+d.file+'</div><pre class="profile-pre">'+content.replace(/</g,'&lt;')+'</pre>';
+    /* Re-render the wizard if it's already on screen — the bindings just landed and the wizard's media-server name was probably stale. */
+    if(typeof renderWizardSteps==='function'){try{renderWizardSteps();}catch(e){}}
+  }}catch(e){}
 }
 
 /* Env banner */
@@ -1700,12 +1745,16 @@ function renderRoutingPanel(){
     '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Path Prefix</td><td style="padding:6px;font-family:monospace">'+rc.app_path_prefix+'</td></tr>'+
     '<tr><td style="padding:6px;color:var(--fg2);font-weight:600">Strategy</td><td style="padding:6px;font-family:monospace">'+rc.strategy+'</td></tr></table>';
 }
+function _enabledSvcs(){
+  /* SVCS is the full registry (every service the controller knows about). The routing/DNS panels should only mention services the user actually enabled — otherwise the host file gets cluttered with names that resolve to a service that isn't running, which leads to "why does prowlarr.media-stack.local time out?" support tickets. Treat SVC_HEALTH==='disabled' as the canonical "not enabled" signal; the controller already populates that for every service in the profile. */
+  return SVCS.filter(s=>s.port>0 && SVC_HEALTH[s.id]!=='disabled');
+}
 function buildDns(){
   const ip=getHostIp();const rc=_routingCfg;
   const gwHost=rc.gateway_host||'apps.media-stack.local';
   const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
-  // Start with gateway host + all service hostnames.
-  const hosts=[gwHost].concat(SVCS.map(s=>s.id+'.'+sub+'.'+dom));
+  // Start with gateway host + enabled service hostnames only.
+  const hosts=[gwHost].concat(_enabledSvcs().map(s=>s.id+'.'+sub+'.'+dom));
   // If /api/gateway-hostnames is reachable, use its authoritative list
   // (derived from the live Envoy vhost config). This catches
   // non-service vhosts like auth.<sub>.<dom> that Authelia uses for
@@ -1741,7 +1790,8 @@ function getAccessUrls(s){
 }
 function renderMatrix(){
   let h='<table class="matrix-table"><thead><tr><th>Service</th><th>Localhost (/app/...)</th><th>Gateway</th><th>Subdomain</th><th>Direct (:port)</th></tr></thead><tbody>';
-  for(const s of SVCS){const urls=getAccessUrls(s);
+  /* Routing matrix only lists enabled services — same rationale as buildDns(). */
+  for(const s of _enabledSvcs()){const urls=getAccessUrls(s);
     const ls=matrixState[s.id+'_loc']||'idle';const gs=matrixState[s.id+'_gw']||'idle';const ss=matrixState[s.id+'_sub']||'idle';const ds=matrixState[s.id+'_dir']||'idle';
     h+='<tr><td class="svc-name">'+s.name+'</td>';
     h+='<td><div class="matrix-cell"><span class="dot '+ls+'"></span><a href="'+urls.localhost+'" target="_blank">'+urls.localhost.replace('http://','')+'</a></div></td>';
@@ -2643,6 +2693,8 @@ async function resetUserPassword(userId,email){
   if(choice===null)return; // cancelled
   const manual=(choice||'').trim();
   const pwSudo=await _promptSudoIfNeeded();if(pwSudo===null)return;
+  /* Surface the in-flight argon2 hashing chain (~600-1700ms) so the user knows their click registered. toast() is non-blocking; it auto-clears in 4s, well after the request completes. */
+  toast('Resetting password\u2026 (1-2s)');
   const r=await fetch(`/api/users/${userId}/reset-password`,{
     method:'POST',
     headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken(),
@@ -3642,24 +3694,29 @@ function showSettings(){
   h+='<div class="settings-row"><span>Stats refresh (ms)</span><input type="number" id="set-stats" value="'+dashSettings.statsInterval+'" style="width:80px;padding:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);border-radius:4px"></div>';
   h+='<div style="padding:8px 0;border-bottom:1px solid var(--border);color:var(--fg3);font-weight:700;font-size:.82em;text-transform:uppercase;letter-spacing:.04em">Admin Credentials</div>';
   h+='<div class="settings-row"><span>Username</span><span style="font-family:monospace" id="set-admin-user">Loading...</span></div>';
-  h+='<div class="settings-row"><span>Password</span><span style="font-family:monospace"><button class="btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="revealPassword(this)">Show</button></span></div>';
+  /* "Show" used to dump STACK_ADMIN_PASSWORD verbatim — that env var is a one-time seed after v1.0.94, not the live credential, so the value was misleading at best and a leak at worst. The link below opens the proper rotation flow. */
+  h+='<div class="settings-row"><span>Password</span><span><a href="#" onclick="closeSettings();showTab(\'config\');setTimeout(()=>{const u=document.getElementById(\'change-pw-link\');if(u)u.click();},80);return false;" style="color:var(--blue);font-size:.85em">Change password</a></span></div>';
   h+='<div style="padding:8px 0;border-bottom:1px solid var(--border);color:var(--fg3);font-weight:700;font-size:.82em;text-transform:uppercase;letter-spacing:.04em">Dashboard</div>';
   h+='<div class="settings-row"><span>Auto-remediation</span><label class="switch"><input type="checkbox" id="set-remediation" '+(remediation.enabled?'checked':'')+'><span class="slider"></span></label></div>';
   h+='<div class="settings-row"><span>Remediation threshold</span><input type="number" id="set-rem-threshold" value="'+remediation.threshold+'" style="width:60px;padding:4px;border:1px solid var(--border);background:var(--bg4);color:var(--fg);border-radius:4px"></div>';
   h+='<div class="actions" style="margin-top:12px"><button class="btn-secondary" onclick="closeSettings()">Cancel</button> <button class="btn-primary" onclick="applySettings()">Save</button> <button class="btn-secondary" onclick="exportDashState()">Export State</button> <button class="btn-secondary" onclick="importDashState()">Import State</button></div>';
   h+='</div></div>';
   document.getElementById('settings-root').innerHTML=h;
+  /* Load the username NOW (modal is in DOM). The previous code ran on page load when this element did not exist yet, so it always read the placeholder forever. Source the name from the authenticated session, not the env var (which can be stale after rotation). */
+  loadSettingsAdminUsername();
 }
 function closeSettings(){document.getElementById('settings-root').innerHTML='';}
-async function revealPassword(btn){
-  try{const r=await apiFetch('/api/envvars');const d=await r.json();
-    const pw=d.STACK_ADMIN_PASSWORD||'(not set)';const user=d.STACK_ADMIN_USERNAME||'admin';
-    btn.parentElement.innerHTML='<code style="user-select:all">'+pw+'</code>';
-    const uel=document.getElementById('set-admin-user');if(uel)uel.textContent=user;
-  }catch(e){btn.textContent='Error';}
+async function loadSettingsAdminUsername(){
+  const uel=document.getElementById('set-admin-user');if(!uel)return;
+  try{
+    /* Prefer /api/auth/identity — that's the actually-signed-in user. Fall back to /api/keys which returns the configured admin username (sanitised — no password). */
+    const r=await apiFetch('/api/auth/identity');
+    if(r.ok){const d=await r.json();if(d.user){uel.textContent=d.user;return;}}
+    const rk=await apiFetch('/api/keys');
+    if(rk.ok){const dk=await rk.json();uel.textContent=(dk.admin&&dk.admin.username)||'admin';return;}
+    uel.textContent='admin';
+  }catch(e){uel.textContent='admin';}
 }
-// Load admin username on settings open
-setTimeout(async()=>{const uel=document.getElementById('set-admin-user');if(!uel)return;try{const r=await apiFetch('/api/envvars');const d=await r.json();uel.textContent=d.STACK_ADMIN_USERNAME||'admin';}catch(e){}},100);
 function applySettings(){
   dashSettings.refreshInterval=parseInt(document.getElementById('set-refresh').value)||4000;
   dashSettings.healthInterval=parseInt(document.getElementById('set-health').value)||30000;
@@ -3718,20 +3775,72 @@ function renderWizardSteps(){
 
   let h='<div style="margin-bottom:12px;color:var(--ok);font-weight:600">Your media stack is configured and running.</div>';
 
-  // Step 1: Access your services
-  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">1. Access Your Services</div>';
-  h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0">';
-  for(const s of SVCS){
-    if(!s.port)continue;
-    const url=baseUrl+prefix+'/'+s.id;
-    h+='<a href="'+_escHtml(url)+'" target="_blank" class="btn-secondary" style="padding:4px 10px;font-size:.82em;text-decoration:none">'+_escHtml(s.name)+'</a>';
-  }
-  h+='</div>';
-  if(directMedia)h+='<div style="font-size:.82em;color:var(--fg3)">Media server direct: <a href="'+_escHtml(directMedia)+'" target="_blank" style="color:var(--blue)">'+_escHtml(directMedia)+'</a></div>';
+  /* Resolve the deployed media-server name from the profile's technology_bindings, NOT by guessing through SVCS — the registry contains every contract we ship (jellyfin, plex, emby) regardless of which the user actually deployed, so a Find() over the registry returns whichever happens to be first in array order. The user reported "Connect to Emby" copy on a Jellyfin-only stack because emby.yaml exists in the registry but isn't bound. */
+  const mediaId=(_techBindings&&_techBindings.media_server)||'jellyfin';
+  const mediaSvc=SVC_MAP[mediaId];
+  const mediaName=mediaSvc?mediaSvc.name:mediaId.charAt(0).toUpperCase()+mediaId.slice(1);
+
+  /* Step counter — drives every section's numbering so optional/conditional steps don't leave gaps. The two HTTPS-only and Setup-non-admin-user steps both render conditionally; without this counter the numbers would jump. */
+  let step=1;
+  const httpsActive=(location.protocol==='https:');
+
+  // Step 1: Setup a non-admin user (recommended). Reusing the
+  // bootstrap admin for daily streaming/requesting is the same
+  // anti-pattern as logging into your home PC as root: any web
+  // app that gets compromised inherits admin's full permission
+  // set on every service. Direct users to the Users tab where
+  // create-user + role assignment lives.
+  h+='<div class="action-group" style="margin-bottom:10px;border-left:3px solid var(--accent);padding-left:10px">';
+  h+='<div class="action-group-title">'+(step++)+'. Set Up a Non-Admin User <span style="color:var(--fg3);font-weight:400;font-size:.85em">(Recommended)</span></div>';
+  h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">The <code>admin</code> account exists for managing the stack — adding indexers, rotating keys, changing routing. For day-to-day use (watching, requesting), create a regular user. If that account is ever phished or a browser extension goes rogue, the blast radius is limited to that user&apos;s libraries instead of every admin surface in the stack.</p>';
+  /* showTab() switches the panel but deliberately suppresses scroll-jump; from a wizard step rendered halfway down the page the user otherwise sees nothing change. Scroll the tab into view explicitly so the click does what its label says. */
+  h+='<div style="margin:8px 0"><a href="#" onclick="showTab(\'tab-users\',document.querySelector(\'header button[onclick*=tab-users]\'));requestAnimationFrame(()=>document.getElementById(\'tab-users\').scrollIntoView({behavior:\'smooth\',block:\'start\'}));return false;" class="btn-primary" style="padding:6px 14px;font-size:.85em;text-decoration:none">Open Users tab</a></div>';
+  h+='<div style="font-size:.78em;color:var(--fg3)">Create with role <code>adult</code> (or <code>family</code> for restricted libraries). Sign in with the new account on '+_escHtml(mediaName)+' / Jellyseerr — admin stays parked for stack admin tasks.</div>';
   h+='</div>';
 
-  // Step 2: DNS / Host file setup
-  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">2. Set Up DNS (Optional)</div>';
+  // Access your services — only the user-facing apps (media server + request UI). Indexers, the *arrs, downloaders, and ops tools are admin surface and live in the services table.
+  const userFacingIds=['jellyfin','plex','emby','jellyseerr','overseerr','homepage'];
+  const userFacing=SVCS.filter(s=>s.port&&userFacingIds.includes(s.id)&&SVC_HEALTH[s.id]!=='disabled');
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Access Your Services</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0">';
+  if(userFacing.length===0){
+    h+='<span style="color:var(--fg3);font-size:.85em">No user-facing apps enabled — see the services table below.</span>';
+  } else {
+    for(const s of userFacing){
+      const url=baseUrl+prefix+'/'+s.id;
+      h+='<a href="'+_escHtml(url)+'" target="_blank" class="btn-secondary" style="padding:4px 10px;font-size:.82em;text-decoration:none">'+_escHtml(s.name)+'</a>';
+    }
+  }
+  h+='</div>';
+  if(directMedia)h+='<div style="font-size:.82em;color:var(--fg3)">'+_escHtml(mediaName)+' direct: <a href="'+_escHtml(directMedia)+'" target="_blank" style="color:var(--blue)">'+_escHtml(directMedia)+'</a></div>';
+  h+='</div>';
+
+  // Step 2 (HTTPS only): Trust the self-signed CA so the browser stops warning. Pinned to a real download endpoint so users do not have to dig the cert out of the filesystem.
+  if(httpsActive){
+    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Trust the Stack Certificate (Recommended)</div>';
+    h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">Your stack uses a self-signed HTTPS certificate. Browsers will warn on every visit until you trust it once. After trusting, the warnings disappear and SSO sign-in works smoothly.</p>';
+    h+='<div style="margin:8px 0"><a href="/api/tls/certificate/download" download="media-stack-ca.pem" class="btn-primary" style="padding:6px 14px;font-size:.85em;text-decoration:none">Download certificate</a></div>';
+    h+='<details style="margin-top:6px;font-size:.85em"><summary style="cursor:pointer;color:var(--fg2);font-weight:600">Per-device install instructions</summary>';
+    h+='<div style="margin-top:6px;color:var(--fg2);line-height:1.7">';
+    h+='<div style="margin-top:4px"><b>macOS:</b> double-click the file. Keychain Access opens. Set <i>Trust</i> &rarr; <i>When using this certificate</i> &rarr; <b>Always Trust</b>. Restart the browser.</div>';
+    h+='<div style="margin-top:4px"><b>Windows:</b> double-click the file &rarr; <i>Install Certificate</i> &rarr; <i>Local Machine</i> &rarr; <i>Place all certificates in the following store</i> &rarr; <b>Trusted Root Certification Authorities</b>. Restart the browser.</div>';
+    h+='<div style="margin-top:4px"><b>Linux (system-wide):</b> <code>sudo cp media-stack-ca.pem /usr/local/share/ca-certificates/media-stack.crt &amp;&amp; sudo update-ca-certificates</code></div>';
+    h+='<div style="margin-top:4px"><b>Firefox (any OS):</b> Settings &rarr; Privacy &amp; Security &rarr; Certificates &rarr; <i>View Certificates</i> &rarr; <i>Authorities</i> tab &rarr; <b>Import</b>, then check <i>Trust this CA to identify websites</i>.</div>';
+    h+='<div style="margin-top:4px"><b>iOS / iPadOS:</b> AirDrop or email the file to the device. Install the profile in Settings, then enable in <i>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</i>.</div>';
+    h+='<div style="margin-top:4px;color:var(--fg3);font-size:.92em">Sharing the cert publicly is safe — it is the public half. The private key stays in the stack.</div>';
+    h+='</div></details>';
+    /* Internet-exposure disclaimer — the self-signed cert is fine for a LAN-only stack but every external visitor would have to trust it, which is both annoying and a bad security-UX habit (users learn to click through cert warnings). Direct them to the upload endpoint when they're ready with a real cert (Let\'s Encrypt, ZeroSSL, commercial). */
+    h+='<details style="margin-top:8px;font-size:.85em;border-top:1px solid var(--border);padding-top:8px"><summary style="cursor:pointer;color:var(--fg2);font-weight:600">Exposing this stack on the internet? Use a real certificate</summary>';
+    h+='<div style="margin-top:6px;color:var(--fg2);line-height:1.7">';
+    h+='<p style="margin:0 0 6px">A self-signed cert is fine on a LAN where you control every device, but don\'t use it for internet-facing access — every visitor would get a browser warning, and training anyone (including yourself) to click through those warnings is how phishing kits get a foothold.</p>';
+    h+='<p style="margin:0 0 6px">For internet exposure, issue a real certificate for your domain (Let\'s Encrypt, ZeroSSL, or any commercial CA) and upload it via <a href="#" onclick="showTab(\'tab-routing\',document.querySelector(\'header button[onclick*=tab-routing]\'));requestAnimationFrame(()=>document.getElementById(\'tls-cert-details\')?.scrollIntoView({behavior:\'smooth\',block:\'start\'}));return false;" style="color:var(--blue)">Routing &rarr; TLS Certificate</a>. Paste the PEM cert + private key bundle; Envoy picks up the new cert without a restart.</p>';
+    h+='<p style="margin:0;color:var(--fg3);font-size:.92em">Also: if you\'re exposing this publicly, set <code>profile.internet_exposed: true</code>. That disables the STACK_ADMIN_PASSWORD env seed fallback, enforces the weak-password blocklist, and fails boot on well-known defaults. Home-LAN installs don\'t need any of that.</p>';
+    h+='</div></details>';
+    h+='</div>';
+  }
+
+  // Step 3: DNS / Host file setup
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Set Up DNS (Optional)</div>';
   h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">To access services by name, add this to your hosts file or local DNS:</p>';
   h+='<pre class="profile-pre" style="font-size:.82em">';
   h+=_escHtml(location.hostname)+' '+_escHtml(gwHost)+'\n';
@@ -3740,30 +3849,37 @@ function renderWizardSteps(){
   h+='<div style="font-size:.78em;color:var(--fg3)">On Windows: <code>C:\\Windows\\System32\\drivers\\etc\\hosts</code> · On Mac/Linux: <code>/etc/hosts</code></div>';
   h+='</div>';
 
-  // Step 3: Start watching
-  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">3. Start Watching</div>';
+  // Start Watching — request flow is optional; watching isn't.
+  // Auto-downloads is a config toggle the user has to flip on
+  // (it's off by default so a fresh install doesn't hammer
+  // indexers before any libraries exist).
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Start Watching</div>';
   h+='<ol style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
-  h+='<li>Open <b>Jellyseerr</b> (or your request manager) to search and request movies/shows</li>';
+  h+='<li><span style="color:var(--fg3);font-size:.85em;font-weight:600">Optional</span> — open <b>Jellyseerr</b> to search and request movies/shows (your family can also request from their own accounts)</li>';
+  h+='<li><span style="color:var(--fg3);font-size:.85em;font-weight:600">Optional</span> — turn on <b>Auto-Downloads</b>. In the Actions panel the toggle starts as <code>off</code>; switch it to <code>on</code> so indexer hits get queued automatically.</li>';
   h+='<li>Downloads start automatically via your torrent/usenet clients</li>';
-  h+='<li>Open your <b>media server</b> to watch — it picks up new media automatically</li>';
-  h+='<li>Install the media server app on your TV, phone, or streaming device</li>';
+  h+='<li>Open <b>'+_escHtml(mediaName)+'</b> in a browser to watch — it picks up new media automatically. For TV / mobile playback, see the next step.</li>';
   h+='</ol></div>';
 
-  // Step 4: Connect your TV
-  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">4. Connect Your TV / Devices</div>';
+  // Connect your TV
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Connect Your TV / Devices</div>';
   h+='<ol style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
-  h+='<li>Install the media server app (available on Smart TVs, Roku, Fire TV, Apple TV, iOS, Android)</li>';
-  h+='<li>Enter the server address: <code>'+_escHtml(directMedia||baseUrl+prefix+'/jellyfin')+'</code></li>';
-  h+='<li>Sign in with username <code>admin</code> and your stack password</li>';
+  h+='<li>Install the <b>'+_escHtml(mediaName)+'</b> app (available on Smart TVs, Roku, Fire TV, Apple TV, iOS, Android)</li>';
+  h+='<li>Enter the server address: <code>'+_escHtml(directMedia||baseUrl+prefix+'/'+mediaId)+'</code></li>';
+  h+='<li>Sign in with the <b>non-admin user</b> you created above (or <code>admin</code> if you skipped that step — but switch to a regular user when you can)</li>';
   h+='</ol></div>';
 
-  // Step 5: Troubleshooting
-  h+='<div class="action-group"><div class="action-group-title">5. Not Working?</div>';
+  // Troubleshooting
+  h+='<div class="action-group"><div class="action-group-title">'+(step++)+'. Not Working?</div>';
   h+='<ul style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
   h+='<li><b>Services show "pending"</b> — wait 2-3 minutes for bootstrap to finish, then refresh</li>';
-  h+='<li><b>Can\'t access by hostname</b> — check DNS/hosts file setup in step 2 above</li>';
+  h+='<li><b>Can\'t access by hostname</b> — check the DNS / hosts file step above</li>';
   h+='<li><b>Downloads not starting</b> — go to Content > Indexers and click "Discover Indexers"</li>';
   h+='<li><b>Login fails</b> — click "Validate Credentials" in the Actions panel to auto-sync passwords</li>';
+  /* The certificate troubleshooting line only makes sense when the cert-trust step actually rendered above (i.e., the page is on HTTPS). On HTTP stacks the link would dangle. */
+  if(httpsActive){
+    h+='<li><b>Browser keeps warning about the certificate</b> — install the cert from the "Trust the Stack Certificate" step above. After trusting once, Sign-in stops looping at the SSO portal.</li>';
+  }
   h+='<li><b>Media not appearing</b> — go to Config > Libraries to verify your media folder paths</li>';
   h+='</ul></div>';
 
@@ -4821,11 +4937,22 @@ async function _enforceAdminRotation(){
   const err=wrap.querySelector('#rot-err');
   const go=wrap.querySelector('#rot-go');
   requestAnimationFrame(()=>{cur&&cur.focus();});
+  /* Argon2 hashing chain (sudo verify + history check + new-pw hash + Authelia provider write) takes ~600-1700ms. Without visible progress the button looks broken — the disabled state alone is too subtle. Show a spinner + label change so the user knows the click registered. */
+  const _origLabel=go.textContent;
+  function _setBusy(busy){
+    if(busy){
+      go.disabled=true;
+      go.innerHTML='<span class="ms-spinner" style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;margin-right:6px;animation:spin .7s linear infinite"></span>Rotating password\u2026';
+    } else {
+      go.disabled=false;
+      go.textContent=_origLabel;
+    }
+  }
   go.addEventListener('click',async()=>{
     err.textContent='';
     if(!cur.value||!nw.value){err.textContent='All fields are required.';return;}
     if(nw.value!==nw2.value){err.textContent='New passwords do not match.';return;}
-    go.disabled=true;
+    _setBusy(true);
     try{
       const r=await apiFetch(`/api/users/${me.id}/reset-password`,{
         method:'POST',
@@ -4848,9 +4975,9 @@ async function _enforceAdminRotation(){
         } else {
           err.textContent=raw;
         }
-        go.disabled=false;return;
+        _setBusy(false);return;
       }
-    }catch(e){err.textContent=String(e);go.disabled=false;return;}
+    }catch(e){err.textContent=String(e);_setBusy(false);return;}
     document.removeEventListener('keydown',trap,true);
     wrap.remove();
     await msUI.notify({title:'Password rotated',

@@ -28,9 +28,17 @@ routing:
   media_server_service_names:
   - jellyfin
   - jellyfin-nvidia
+# SSO is OFF by default — even on the "full" profile. Authentik
+# isn't implemented in this codebase; Authelia is, but enabling
+# it requires deploying the auth-authelia kustomize overlay and
+# flipping this section to ``provider: authelia / enabled: true``.
+# Without that opt-in, Envoy's ext_authz filter calls a
+# non-existent upstream and every gateway request fails closed.
+# Same shape as media-compose-full.yaml; keep them aligned.
 auth:
-  enabled: true
-  provider: authentik
+  enabled: false
+  provider: none
+  mode: none
 chaos:
   enabled: false
   duration_minutes: 5

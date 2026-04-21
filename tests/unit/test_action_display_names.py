@@ -1,8 +1,20 @@
-"""Every action must have a meaningful display name in the dashboard.
+"""Every action must have a meaningful display name.
 
-Actions show up in the Activity table and Gantt chart. Raw internal names
-like 'post-setup' or 'configure-media-server' are not user-friendly.
-"""
+After the action→job migration, the rule is: the dashboard's
+``actionLabel(name)`` function returns either a small override
+(for IDs whose humanised slug is too terse, like ``bootstrap`` →
+"Setup All Services") OR a title-cased humanisation of the slug
+itself (e.g., ``configure-libraries`` → "Configure Libraries").
+
+This test pins three properties:
+
+1. Every action visible in the dashboard's headline buttons + Job
+   tree + Recent Activity has a non-empty label.
+2. The override table is short — adding cute renames per-action
+   would diverge the Recent Activity log from the Job tree (the
+   pre-migration bug).
+3. The dashboard renders via ``actionLabel(name)``, never raw
+   ``a.name``."""
 
 import re
 import unittest
@@ -12,21 +24,35 @@ ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD = ROOT / "src" / "media_stack" / "api" / "dashboard.html"
 
 
-def _extract_action_labels() -> dict[str, str]:
-    """Parse ACTION_LABELS map from dashboard.html JavaScript."""
+def _extract_label_overrides() -> dict[str, str]:
+    """Parse the small ``ACTION_LABEL_OVERRIDES`` table from
+    dashboard.html. The previous, much larger ``ACTION_LABELS``
+    table was deleted in the action→job unification."""
     text = DASHBOARD.read_text(encoding="utf-8")
-    match = re.search(r"const ACTION_LABELS=\{([^}]+)\}", text, re.DOTALL)
+    match = re.search(
+        r"const ACTION_LABEL_OVERRIDES\s*=\s*\{([^}]+)\}",
+        text, re.DOTALL,
+    )
     if not match:
         return {}
     block = match.group(1)
-    labels = {}
-    for m in re.finditer(r"'([^']+)'\s*:\s*'([^']+)'", block):
-        labels[m.group(1)] = m.group(2)
-    return labels
+    return {
+        m.group(1): m.group(2)
+        for m in re.finditer(r"'([^']+)'\s*:\s*'([^']+)'", block)
+    }
+
+
+def _humanise(action_id: str) -> str:
+    """Mirror of dashboard.html's ``actionLabel`` fallback —
+    title-case the slug with hyphens as spaces."""
+    return action_id.replace("-", " ").title()
+
+
+def _action_label(action_id: str, overrides: dict[str, str]) -> str:
+    return overrides.get(action_id) or _humanise(action_id)
 
 
 def _get_known_actions() -> set[str]:
-    """Get all action names from the server ACTION_PRIORITY map."""
     try:
         from media_stack.api.server import ACTION_PRIORITY
         return set(ACTION_PRIORITY.keys())
@@ -35,66 +61,58 @@ def _get_known_actions() -> set[str]:
 
 
 def _get_contract_job_names() -> set[str]:
-    """Get job names discovered from service contracts."""
     try:
-        from media_stack.cli.commands.job_framework import discover_jobs_from_contracts
+        from media_stack.cli.commands.job_framework import (
+            discover_jobs_from_contracts,
+        )
         return {j["name"] for j in discover_jobs_from_contracts()}
     except Exception:
         return set()
 
 
 class TestActionDisplayNames(unittest.TestCase):
-    """Every action visible to users must have a meaningful display label."""
 
-    def test_all_priority_actions_have_labels(self):
-        labels = _extract_action_labels()
-        actions = _get_known_actions()
-        missing = actions - set(labels.keys())
-        self.assertFalse(
-            missing,
-            f"Actions in ACTION_PRIORITY without display labels in dashboard:\n"
-            + "\n".join(f"  - {a}" for a in sorted(missing))
-            + "\n\nAdd to ACTION_LABELS in dashboard.html",
+    def test_every_known_action_resolves_to_a_label(self) -> None:
+        """The override table is intentionally tiny; the
+        humanised-slug fallback must give every action a label."""
+        overrides = _extract_label_overrides()
+        actions = _get_known_actions() | _get_contract_job_names()
+        for action_id in sorted(actions):
+            label = _action_label(action_id, overrides)
+            self.assertTrue(
+                label and len(label) >= 4,
+                f"actionLabel({action_id!r}) returned {label!r}; "
+                "every action must resolve to a non-empty, "
+                ">=4-char string.",
+            )
+
+    def test_overrides_are_shorter_than_pre_migration(self) -> None:
+        """The pre-migration ``ACTION_LABELS`` table had ~22 cute
+        renames that diverged from the job tree (the user-visible
+        bug we just fixed). The replacement override table should
+        stay tiny — only IDs whose humanised slug is too terse to
+        be useful at the top of the dashboard."""
+        overrides = _extract_label_overrides()
+        self.assertLessEqual(
+            len(overrides), 5,
+            f"ACTION_LABEL_OVERRIDES has {len(overrides)} entries; "
+            "keep it small. Add a contract job and let "
+            "actionLabel() humanise the slug instead of paving "
+            "over it with a custom name.",
         )
 
-    def test_all_contract_jobs_have_labels(self):
-        labels = _extract_action_labels()
-        jobs = _get_contract_job_names()
-        missing = jobs - set(labels.keys())
-        self.assertFalse(
-            missing,
-            f"Contract jobs without display labels in dashboard:\n"
-            + "\n".join(f"  - {j}" for j in sorted(missing))
-            + "\n\nAdd to ACTION_LABELS in dashboard.html",
-        )
-
-    def test_labels_are_meaningful(self):
-        """Labels should not just be title-cased versions of the action ID."""
-        labels = _extract_action_labels()
-        bad = []
-        for action_id, label in labels.items():
-            # Title-cased with hyphens replaced = not meaningful
-            trivial = action_id.replace("-", " ").title()
-            if label == trivial:
-                bad.append(f"{action_id}: '{label}' is just title-cased ID")
-            # Too short
-            if len(label) < 8:
-                bad.append(f"{action_id}: '{label}' is too short to be descriptive")
-        self.assertFalse(
-            bad,
-            f"Labels that are not meaningful:\n"
-            + "\n".join(f"  - {b}" for b in bad),
-        )
-
-    def test_dashboard_uses_action_label_function(self):
-        """The dashboard must use actionLabel() not raw a.name for display."""
+    def test_dashboard_uses_action_label_function(self) -> None:
+        """Pin: the dashboard must call ``actionLabel(name)``
+        rather than rendering the raw slug. Otherwise the override
+        + humanise pipeline doesn't get a chance to run."""
         text = DASHBOARD.read_text(encoding="utf-8")
-        # Find places where a.name is rendered directly (not via actionLabel)
-        # Allow a.name in onclick handlers (filterLogsToAction) but not in display text
-        raw_renders = re.findall(r">\s*'\s*\+\s*a\.name\s*\+\s*'", text)
+        raw_renders = re.findall(
+            r">\s*'\s*\+\s*a\.name\s*\+\s*'", text,
+        )
         self.assertFalse(
             raw_renders,
-            f"Dashboard renders raw a.name {len(raw_renders)} time(s) instead of actionLabel(a.name)",
+            f"Dashboard renders raw a.name {len(raw_renders)} "
+            "time(s) instead of actionLabel(a.name)",
         )
 
 

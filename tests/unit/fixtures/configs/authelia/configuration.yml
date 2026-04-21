@@ -1,0 +1,59 @@
+# Captured from a healthy Authelia 4.38 install on the compose stack
+# (post-fix, with media-stack.local cookie domain). Sanitised: every
+# secret has been replaced with a fixed-length REDACTED placeholder.
+#
+# Why this file is in the fixtures dir even though Authelia is profile-
+# gated and might not be installed: the integrity probe still validates
+# Authelia's configuration.yml when present (see _INFRA_CONFIGS in
+# config_integrity.py), and the semantic validator (cookie domain
+# shape, portal URL under cookie scope, no double-dots in
+# access_control rules) needs realistic input to exercise.
+
+server:
+  address: tcp://0.0.0.0:9091
+
+log:
+  level: info
+
+theme: auto
+
+identity_validation:
+  reset_password:
+    jwt_secret: REDACTED_JWT_SECRET
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+    watch: true
+
+access_control:
+  default_policy: two_factor
+  rules:
+  - domain:
+    - '*.media-stack.local'
+    networks:
+    - 192.168.0.0/16
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    policy: one_factor
+
+session:
+  secret: REDACTED_SESSION_SECRET
+  cookies:
+  - domain: media-stack.local
+    authelia_url: https://auth.media-stack.local
+    default_redirection_url: https://apps.media-stack.local
+
+regulation:
+  max_retries: 3
+  find_time: 120
+  ban_time: 300
+
+storage:
+  encryption_key: REDACTED_STORAGE_ENCRYPTION_KEY
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /config/notification.txt

@@ -176,11 +176,42 @@ class DiagnosticsService:
                 "pre_restore_count": len(pre_restore), "note": "Restart services to apply restored configs"}
 
     def get_envvars(self) -> dict[str, str]:
+        """Return a sanitised view of the controller's env vars.
+
+        Secret values (anything ending in PASSWORD/SECRET/TOKEN/KEY,
+        plus a small explicit set of known credential vars) are
+        masked rather than included verbatim. Before the
+        admin-bootstrap redesign, ``STACK_ADMIN_PASSWORD`` was the
+        live admin credential and the dashboard happily echoed it
+        here. After the redesign that env var is a one-time seed
+        only; surfacing it (a) leaks the seed to anyone with read
+        access and (b) misleads the user into thinking the seed is
+        still the live password after they've rotated it. Mask it
+        unconditionally — UIs that want to know "is a seed set?"
+        can check ``password_set`` on ``/api/keys``.
+        """
         from ..registry import SERVICES as _env_svcs
         _platform = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
         _svc = {e.api_key_env.split("_")[0] + "_" for e in _env_svcs if e.api_key_env}
         relevant_prefixes = set(_platform) | _svc
-        return {k: v for k, v in sorted(os.environ.items()) if any(k.startswith(p) for p in relevant_prefixes)}
+        secret_suffixes = ("PASSWORD", "SECRET", "TOKEN", "KEY", "_API_KEY")
+        secret_exact = {
+            "STACK_ADMIN_PASSWORD",
+            "AUTHELIA_JWT_SECRET",
+            "AUTHELIA_SESSION_SECRET",
+            "AUTHELIA_STORAGE_ENCRYPTION_KEY",
+        }
+
+        def _mask(name: str, value: str) -> str:
+            if name in secret_exact or name.endswith(secret_suffixes):
+                return "***" if value else ""
+            return value
+
+        return {
+            k: _mask(k, v)
+            for k, v in sorted(os.environ.items())
+            if any(k.startswith(p) for p in relevant_prefixes)
+        }
 
     def set_envvar(self, key: str, value: str) -> dict[str, Any]:
         os.environ[key] = value

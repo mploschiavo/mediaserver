@@ -123,10 +123,16 @@ class ConfigureAuthJob:
             return explicit_base, explicit_sub
         routing_base = str(routing.get("base_domain") or "").strip()
         if routing_base:
-            # Flat topology — the K8s-style profile. sub="" signals
-            # downstream "use base directly as cookie domain and
-            # auth.<base> as the portal host."
-            return routing_base, explicit_sub
+            # The compose profile keeps the stack subdomain under
+            # ``routing.stack_subdomain`` (alongside ``base_domain``);
+            # only the K8s-flat layout omits it. Reading
+            # ``ingress.subdomain`` exclusively here used to drop the
+            # subdomain on the floor, leaving Authelia with a bare
+            # ``cookie_domain="local"`` — which Authelia 4.38 rejects
+            # ("must have at least a single period"), crashlooping
+            # the whole SSO stack.
+            routing_sub = str(routing.get("stack_subdomain") or "").strip()
+            return routing_base, routing_sub or explicit_sub
         gateway = str(routing.get("gateway_host") or "").strip().lower()
         if gateway and "." in gateway:
             first, _, rest = gateway.partition(".")

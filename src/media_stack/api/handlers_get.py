@@ -126,6 +126,24 @@ class GetRequestHandler:
             handler._json_response(200, health_svc.get_health_history())
         elif path == "/api/credentials":
             handler._json_response(200, health_svc.probe_credentials())
+        elif path == "/api/health/config-integrity":
+            from .services import config_integrity as integrity_svc
+            handler._json_response(200, {
+                "services": integrity_svc.check_all(),
+                "checked_at": time.time(),
+            })
+        elif path == "/api/health/crashloops":
+            from .services import crashloop as crashloop_svc
+            handler._json_response(200, {
+                "services": crashloop_svc.check_all(),
+                "checked_at": time.time(),
+            })
+        elif path == "/api/auto-heal":
+            from .services import auto_heal as autoheal_svc
+            handler._json_response(200, autoheal_svc.status())
+        elif path == "/api/health/stories":
+            from .services import health_stories as stories_svc
+            handler._json_response(200, stories_svc.compose_live())
 
         # --- Content ---
         elif path == "/api/versions":
@@ -193,6 +211,34 @@ class GetRequestHandler:
                     HTTPStatus.INTERNAL_SERVER_ERROR,
                     # 99-char cap matches the _ERR_LEN convention used
                     # throughout the POST handlers for consistency.
+                    {"error": str(exc)[:99]},
+                )
+        elif path == "/api/tls/certificate/download":
+            # Browser-friendly download of the public cert PEM, so a
+            # user can one-click "trust this CA" from the post-bootstrap
+            # wizard without having to find the file on disk. Only the
+            # cert is returned — never the private key.
+            try:
+                cert_path = build_default_tls_service().cert_path
+                if not cert_path.is_file():
+                    handler._json_response(
+                        HTTPStatus.NOT_FOUND,
+                        {"error": "no certificate installed"},
+                    )
+                else:
+                    pem = cert_path.read_bytes()
+                    handler._raw_response(
+                        HTTPStatus.OK,
+                        "application/x-pem-file",
+                        pem,
+                        {
+                            "Content-Disposition":
+                                'attachment; filename="media-stack-ca.pem"',
+                        },
+                    )
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
                     {"error": str(exc)[:99]},
                 )
         elif path == "/api/audit-log/verify":

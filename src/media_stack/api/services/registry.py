@@ -226,6 +226,53 @@ def get_active_service_ids() -> set[str]:
     return {s.id for s in SERVICES if not s.profiles}
 
 
+def _active_compose_profiles(env: dict[str, str] | None = None) -> set[str]:
+    """Parse the comma-separated ``COMPOSE_PROFILES`` env var into
+    a set. Used to decide whether a profile-gated service should
+    be considered enabled at runtime."""
+    src = env if env is not None else os.environ
+    raw = str(src.get("COMPOSE_PROFILES", "") or "")
+    return {p.strip() for p in raw.split(",") if p.strip()}
+
+
+def is_service_enabled(
+    svc: ServiceDef, env: dict[str, str] | None = None,
+) -> bool:
+    """Return True iff ``svc`` should be considered enabled.
+
+    Rule: a service is enabled when either
+      - its ``profiles`` list is empty (no compose-profile gate;
+        runs on any deploy), OR
+      - at least one of its declared profiles appears in the
+        active ``COMPOSE_PROFILES`` env var.
+
+    The original anti-pattern this replaces: the homepage renderer
+    used a hardcoded ``DEFAULT_HOSTS`` list that included every
+    service the registry could declare (Authelia, Authentik, Plex,
+    nvidia-only ones), so users got broken tiles for things they
+    never deployed. (See docs/ratchet log: "homepage shows tiles
+    for services not installed".)
+
+    This is a coarse filter — it doesn't know whether the actual
+    container is running or healthy, only whether the deploy
+    *should* have spun it up. Runtime-state-driven filtering
+    (asking Docker/K8s "does the container exist?") is option (a)
+    on the auto-heal backlog. (b) catches the everyday case
+    cheaply without the platform-SDK plumbing."""
+    if not svc.profiles:
+        return True
+    active = _active_compose_profiles(env)
+    return any(p in active for p in svc.profiles)
+
+
+def get_enabled_services(
+    env: dict[str, str] | None = None,
+) -> list[ServiceDef]:
+    """Filtered SERVICES list — drops profile-gated services that
+    aren't enabled by the active deploy."""
+    return [s for s in SERVICES if is_service_enabled(s, env)]
+
+
 def get_scalable_services() -> list[ServiceDef]:
     """Services that participate in scale policy (replicas managed by deploy)."""
     return [s for s in SERVICES if s.scalable]

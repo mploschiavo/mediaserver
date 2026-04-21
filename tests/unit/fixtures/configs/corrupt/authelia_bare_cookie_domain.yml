@@ -1,0 +1,15 @@
+# Parses as YAML, but the semantic validator rejects it: cookie
+# domain "local" has no period (Authelia 4.38 rejects this — the
+# 2026-04-20 production crashloop). access_control.rules also has
+# the "*..local" double-dot artifact from a buggy generator.
+session:
+  cookies:
+  - domain: local
+    authelia_url: https://auth.local
+    default_redirection_url: https://apps.media-stack.local
+
+access_control:
+  rules:
+  - domain:
+    - '*..local'
+    policy: one_factor
