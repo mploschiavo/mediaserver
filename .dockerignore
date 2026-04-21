@@ -11,3 +11,13 @@ node_modules
 *.egg-info
 .mypy_cache
 .ruff_cache
+
+# Runtime state — these directories balloon the build context to 30GB+ and
+# serve no purpose at build time. docker/{config,data} and dist/{config,data}
+# are bind-mount targets populated by running containers.
+dist/config
+dist/data
+dist/media
+docker/config
+docker/data
+docker/media
