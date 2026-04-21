@@ -42,6 +42,14 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .err{background:rgba(248,113,113,.12);border:1px solid var(--err);color:var(--err);border-radius:8px;padding:10px 12px;font-size:.85em;display:none}
 .err.shown{display:block}
 .hint{color:var(--fg3);font-size:.78em;text-align:center;margin-top:16px}
+.hint a{color:var(--accent);text-decoration:none;cursor:pointer}
+.hint a:hover{text-decoration:underline}
+.reset-help{display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:12px;font-size:.82em;line-height:1.5;color:var(--fg2);text-align:left}
+.reset-help.shown{display:block}
+.reset-help p{margin:0 0 8px}
+.reset-help p:last-child{margin:0}
+.reset-help code{display:block;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;color:var(--accent);margin:6px 0;word-break:break-all}
+.reset-help .why{color:var(--fg3);font-size:.85em}
 </style>
 </head>
 <body>
@@ -54,13 +62,21 @@ button:disabled{opacity:.6;cursor:not-allowed}
       <div><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>
       <button id="go" type="submit">Sign in</button>
     </form>
-    <div class="hint">Forgot your password? Contact your administrator.</div>
+    <div class="hint"><a id="forgot" href="#" role="button">Forgot your password?</a></div>
+    <div class="reset-help" id="resetHelp" aria-live="polite">
+      <p><strong>Reset from the host that runs the stack.</strong> Open a terminal on that machine and run:</p>
+      <code>bin/reset-admin.sh</code>
+      <p>The script prints a one-time password and forces you to pick a new one on next sign-in.</p>
+      <p class="why">Web-based reset is disabled on purpose &mdash; a "forgot password" form with no prior trust would be a backdoor into every stack on the internet.</p>
+    </div>
   </div>
 </div>
 <script>
 (function(){
   var rd="__RD__";
   var f=document.getElementById("f"),b=document.getElementById("go"),e=document.getElementById("err");
+  var fg=document.getElementById("forgot"),help=document.getElementById("resetHelp");
+  if(fg){fg.addEventListener("click",function(ev){ev.preventDefault();help.classList.toggle("shown");fg.textContent=help.classList.contains("shown")?"Hide":"Forgot your password?";});}
   function showErr(msg){e.textContent=msg;e.classList.add("shown");}
   f.addEventListener("submit",async function(ev){
     ev.preventDefault();

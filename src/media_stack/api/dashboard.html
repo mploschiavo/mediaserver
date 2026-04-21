@@ -188,6 +188,8 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 @keyframes loadSlide{0%{margin-left:-30%}100%{margin-left:100%}}
 .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:14px;margin:6px 0}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes jobPulse{0%,100%{box-shadow:0 0 0 0 rgba(250,204,21,.55)}50%{box-shadow:0 0 0 4px rgba(250,204,21,0)}}
+.job-running{display:inline-block;background:rgba(250,204,21,.15);color:var(--warn,#facc15);border:1px solid rgba(250,204,21,.4);padding:1px 8px;margin-left:6px;border-radius:10px;font-size:.72em;font-weight:600;font-family:inherit;animation:jobPulse 1.6s ease-out infinite;vertical-align:middle;white-space:nowrap}
 .mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:8px 16px;z-index:45;gap:6px;justify-content:center;flex-wrap:wrap}
 /* Tablet */
 @media(max-width:900px){
@@ -233,6 +235,26 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   .subtab{min-height:80px!important}
   .btn-secondary.active{font-size:.75em}
   .btn-primary,.btn-danger,.btn-secondary{min-height:44px;padding:8px 14px}
+}
+/* Services table: switch from horizontal-scroll grid to stacked cards
+   on phone widths. Each row becomes a card whose cells list as
+   "label: value" via data-label pseudo-elements. */
+@media(max-width:600px){
+  #svc-table thead{display:none}
+  #svc-table,#svc-table tbody,#svc-table tr,#svc-table td{display:block;width:100%}
+  #svc-table tr{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:0 0 8px}
+  #svc-table tr.svc-detail{background:var(--bg3);margin-top:-6px;border-top:0;border-top-left-radius:0;border-top-right-radius:0;padding:4px 10px 8px}
+  #svc-table td{border:0;padding:4px 0;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.88em;min-height:32px}
+  #svc-table td:empty{display:none}
+  #svc-table td::before{content:attr(data-label);color:var(--fg3);font-size:.72em;font-weight:600;text-transform:uppercase;letter-spacing:.04em;flex:0 0 auto}
+  #svc-table td:first-child{display:none}                       /* checkbox column hidden; batch-select stays available on tablet+ */
+  #svc-table td[data-label="Service"]{font-size:1.02em;font-weight:700;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:4px}
+  #svc-table td[data-label="Service"]::before{display:none}
+  #svc-table td[data-label="Trend"]::before{flex:0 0 auto}
+  #svc-table td.svc-mobile-actions{justify-content:flex-end;padding-top:8px;margin-top:4px;border-top:1px solid var(--border)}
+  #svc-table td.svc-mobile-actions::before{display:none}
+  #svc-table td[colspan]{display:block;padding:6px 0}
+  #svc-table td[colspan]::before{display:none}
 }
 /* Small phone */
 @media(max-width:400px){
@@ -1265,12 +1287,12 @@ function renderServices(pf){
 
     html+='<tr style="cursor:pointer" onclick="toggleSvc(\''+s.id+'\')">';
     html+='<td><input type="checkbox" class="svc-cb" data-svc="'+s.id+'" onclick="event.stopPropagation();toggleBatchSvc(\''+s.id+'\',this)"></td>';
-    html+='<td style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+'</td>';
+    html+='<td data-label="Service" style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+'</td>';
     /* Sparkline lives in its own column now — keeps the Service name from being a moving target as new probes arrive. */
-    html+='<td style="white-space:nowrap">'+sparkHtml(s.id)+'</td>';
-    html+='<td class="'+dotCls+'">'+statusText+'</td>';
-    html+='<td class="'+authCls+'"'+(authTitle?(' title="'+authTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+authText+'</td>';
-    html+='<td class="'+loginCls+'"'+(loginTitle?(' title="'+loginTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+loginText+'</td>';
+    html+='<td data-label="Trend" style="white-space:nowrap">'+sparkHtml(s.id)+'</td>';
+    html+='<td data-label="Status" class="'+dotCls+'">'+statusText+'</td>';
+    html+='<td data-label="Auth" class="'+authCls+'"'+(authTitle?(' title="'+authTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+authText+'</td>';
+    html+='<td data-label="Login" class="'+loginCls+'"'+(loginTitle?(' title="'+loginTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+loginText+'</td>';
     /* Config integrity badge — small dot + status. Tooltip names the failing file + parser error. */
     const ci=SVC_INTEGRITY[s.id];
     let ciCls='',ciText='—',ciTitle='';
@@ -1281,15 +1303,15 @@ function renderServices(pf){
       else if(ci.status==='skipped'){ciText='—';ciTitle='Format not validated';}
       else{ciText='—';ciTitle=ci.reason||'';}
     }
-    html+='<td class="'+ciCls+'"'+(ciTitle?(' title="'+ciTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+ciText+'</td>';
-    html+='<td style="font-family:monospace;font-size:.82em">'+(ms?ms+'ms':'—')+'</td>';
-    html+='<td style="font-size:.78em;color:var(--fg3)">'+(ver||'—')+'</td>';
+    html+='<td data-label="Config" class="'+ciCls+'"'+(ciTitle?(' title="'+ciTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+ciText+'</td>';
+    html+='<td data-label="Latency" style="font-family:monospace;font-size:.82em">'+(ms?ms+'ms':'—')+'</td>';
+    html+='<td data-label="Version" style="font-size:.78em;color:var(--fg3)">'+(ver||'—')+'</td>';
     const age=SVC_AGE[s.id];
     let ageText='—',ageCls='';
     if(typeof age==='number'&&age>=0){ageText=age+'d';ageCls=age>30?'error':age>14?'warn':'ok';}
-    html+='<td class="'+ageCls+'" style="font-size:.78em;font-family:monospace">'+ageText+'</td>';
-    html+='<td style="font-size:.78em;color:var(--fg3)">'+s.cat+'</td>';
-    html+='<td><button class="btn-secondary" style="padding:2px 6px;font-size:.68em" onclick="event.stopPropagation();viewSvcLogs(\''+s.id+'\')">Logs</button></td>';
+    html+='<td data-label="Age" class="'+ageCls+'" style="font-size:.78em;font-family:monospace">'+ageText+'</td>';
+    html+='<td data-label="Category" style="font-size:.78em;color:var(--fg3)">'+s.cat+'</td>';
+    html+='<td class="svc-mobile-actions"><button class="btn-secondary" style="padding:2px 6px;font-size:.68em" onclick="event.stopPropagation();viewSvcLogs(\''+s.id+'\')">Logs</button></td>';
     html+='</tr>';
 
     // Expandable detail row
@@ -4617,7 +4639,7 @@ async function loadJobTree(){
     // Job tree
     h+='<div class="action-group" style="margin-bottom:12px"><div class="action-group-title">Job Tree ('+d.count+' jobs from contracts)</div>';
     h+='<div style="font-family:monospace;font-size:.85em;line-height:1.8;padding:4px 0">';
-    h+=renderJobNode(d.tree,0);
+    h+=renderJobNode(d.tree,0,cur);
     h+='</div></div>';
     // Execution history
     const hist=d.history||[];
@@ -4649,19 +4671,28 @@ async function loadJobTree(){
     }
     h+='</div>';
     el.innerHTML=h;
-    // Auto-refresh while action is running
-    if(cur&&cur.name){setTimeout(()=>{const tab=document.getElementById('cfg-jobs');if(tab&&tab.style.display!=='none')loadJobTree();},5000);}
+    // Auto-refresh while action is running — 2s while live so the
+    // elapsed-time badge on the current node updates visibly (key
+    // signal that long jobs like discover-indexers aren't stalled).
+    if(cur&&cur.name){setTimeout(()=>{const tab=document.getElementById('cfg-jobs');if(tab&&tab.style.display!=='none')loadJobTree();},2000);}
   }catch(e){el.innerHTML='Error: '+e;}
 }
-function renderJobNode(node,depth){
+function renderJobNode(node,depth,running){
   const indent='&nbsp;'.repeat(depth*4);
   const prefix=depth>0?'├── ':'';
   const reqBadges=(node.requires||[]).map(r=>'<span style="background:var(--bg4);color:var(--fg3);padding:1px 5px;border-radius:3px;font-size:.72em;margin-left:4px">'+_escHtml(r)+'</span>').join('');
   const hasSubs=node.sub_jobs&&node.sub_jobs.length>0;
   const icon=hasSubs?'&#128194;':'&#9881;';
   const runBtn='<button class="btn-secondary" style="padding:1px 6px;font-size:.7em;margin-left:6px" onclick="triggerJob(\''+_escHtml(node.name)+'\')">'+(hasSubs?'Run All':'Run')+'</button>';
-  let h=indent+prefix+icon+' <strong>'+_escHtml(node.name)+'</strong>'+reqBadges+runBtn+'<br>';
-  for(const sub of(node.sub_jobs||[])){h+=renderJobNode(sub,depth+1);}
+  /* Running badge: visible on the matching node so a long-running job
+     (e.g. discover-indexers, ~14 min) doesn't look like a hang. */
+  let runBadge='';
+  if(running&&running.name===node.name){
+    const el=Math.max(0,running.elapsed_seconds||0);
+    runBadge=' <span class="job-running" title="Started '+new Date(running.started_at||Date.now()).toLocaleTimeString()+'">&#9210; running '+relTime(el)+'</span>';
+  }
+  let h=indent+prefix+icon+' <strong>'+_escHtml(node.name)+'</strong>'+runBadge+reqBadges+runBtn+'<br>';
+  for(const sub of(node.sub_jobs||[])){h+=renderJobNode(sub,depth+1,running);}
   return h;
 }
 async function triggerJob(name){
