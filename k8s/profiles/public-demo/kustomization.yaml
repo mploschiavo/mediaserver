@@ -12,6 +12,6 @@ resources:
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.1
+    newTag: v1.0.97
 patches:
   - path: demo-scale-patch.yaml
