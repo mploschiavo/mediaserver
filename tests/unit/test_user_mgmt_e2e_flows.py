@@ -186,11 +186,19 @@ class ReconcileAdminEndToEndTests(unittest.TestCase):
             # Reset admin password — propagates everywhere
             result = svc.reset_password(admin_id, password="S3cure_Admin-Pass!")
             self.assertEqual(result["providers"]["authelia"], "ok")
-            self.assertEqual(result["service_admins"]["qbittorrent"], "ok")
-            self.assertEqual(result["service_admins"]["sonarr"], "ok")
+            # Service-admin propagation is now async; the response
+            # returns ``"scheduled_async"`` and the actual HTTP
+            # calls happen on a background daemon thread.
+            self.assertEqual(result["service_admins"], "scheduled_async")
+            import time as _t
+            deadline = _t.monotonic() + 2.0
+            while _t.monotonic() < deadline:
+                if qbit.set_admin_password.called and sonarr.set_admin_password.called:
+                    break
+                _t.sleep(0.02)
             qbit.set_admin_password.assert_called_once_with("S3cure_Admin-Pass!")
             sonarr.set_admin_password.assert_called_once_with("S3cure_Admin-Pass!")
-            # Authelia record has the new password
+            # Authelia record has the new password (sync path)
             self.assertEqual(authelia._users["admin"]["password"], "S3cure_Admin-Pass!")
 
 

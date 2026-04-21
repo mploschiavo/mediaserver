@@ -1,0 +1,125 @@
+# =============================================================================
+# Core Operations — bootstrap-pipeline jobs that aren't tied to a single app.
+# =============================================================================
+#
+# Before this file existed, six operations (envoy-config,
+# validate-credentials, post-setup, restart-apps, discover-indexers,
+# push-indexers) were declared as "actions" in a separate hardcoded
+# table at handlers_post.py:_CORE_ACTIONS. They had no place in the
+# job DAG, no prereqs, no phase ordering — they appeared in Recent
+# Activity but never in the Job tree, which made the same operations
+# look like two unrelated lists to users.
+#
+# This contract migrates them to first-class jobs so they show up
+# in the Job tree alongside per-app jobs (configure-libraries,
+# configure-indexers, etc.) and benefit from the prereq DAG. Each
+# job's handler is a thin adapter in
+# ``media_stack.services.apps.core.job_adapters`` that calls the
+# existing legacy ``action_*`` function — no behaviour change, just
+# unified registration.
+#
+# This is NOT a "service" in the dashboard sense. The id ``core``
+# is reserved; nothing renders it on the services page. The service
+# block exists only because the discovery loader requires it.
+# =============================================================================
+
+service:
+  id: core
+  name: Core Operations
+  desc: Bootstrap-pipeline operations that aren't tied to a single app
+  category: infrastructure
+  host: ""
+  port: 0
+  web_ui: false
+  scalable: false
+
+plugin:
+  technology: core
+  # Alias map: ``alias_name: canonical_job_name``. The dispatch
+  # resolves an alias to its canonical job before looking it up in
+  # the tree. Lets us preserve user-facing labels (the dashboard's
+  # "Reconcile" button) without per-action code in the dispatch.
+  # Adding an alias is a YAML edit, not a code change — that's the
+  # whole point of putting this in the contract.
+  job_aliases:
+    # ``reconcile`` is what users (and the dashboard) call a
+    # whole-tree re-run. Mechanically identical to ``bootstrap``;
+    # the distinct name keeps the "fix drift on a running stack"
+    # mental model out of the synonym for "first-time setup".
+    reconcile: bootstrap
+
+  jobs:
+
+    # ---------------------------------------------------------------
+    # pre_bootstrap phase — runs FIRST so per-app jobs find state
+    # populated. Replaces the inline preflights+runner.run that used
+    # to live in action_bootstrap; without this job the dispatch
+    # couldn't be unified through run_job().
+    # ---------------------------------------------------------------
+
+    discover-api-keys:
+      handler: media_stack.services.apps.core.job_adapters:discover_api_keys
+      phase: pre_bootstrap
+      priority: 10
+      requires: []
+
+    run-legacy-pipeline:
+      handler: media_stack.services.apps.core.job_adapters:run_legacy_pipeline
+      phase: pre_bootstrap
+      priority: 20
+      requires: []
+
+    # ---------------------------------------------------------------
+    # download_clients phase — sit alongside configure-indexers
+    # ---------------------------------------------------------------
+
+    discover-indexers:
+      handler: media_stack.services.apps.core.job_adapters:discover_indexers
+      phase: download_clients
+      priority: 30
+      requires: []
+
+    push-indexers:
+      handler: media_stack.services.apps.core.job_adapters:push_indexers
+      phase: download_clients
+      priority: 40
+      requires: []
+
+    # ---------------------------------------------------------------
+    # default phase — gateway / routing setup
+    # ---------------------------------------------------------------
+
+    envoy-config:
+      handler: media_stack.services.apps.core.job_adapters:envoy_config
+      phase: default
+      priority: 20
+      requires: []
+
+    # ---------------------------------------------------------------
+    # post phase — runs after services are configured
+    # ---------------------------------------------------------------
+
+    validate-credentials:
+      handler: media_stack.services.apps.core.job_adapters:validate_credentials
+      phase: post
+      priority: 60
+      # Without an API key for the media server we can't probe its
+      # /Users/AuthenticateByName endpoint — that's the canonical
+      # "did the controller's admin password actually take?" signal.
+      requires: [media_server_api_key]
+
+    post-setup:
+      handler: media_stack.services.apps.core.job_adapters:post_setup
+      phase: post
+      priority: 70
+      # Post-setup tunes the media server (libraries, hardware
+      # transcoding hints) and pushes the stack-admin password to
+      # service admins. Both depend on the media server being
+      # reachable.
+      requires: [media_server_api_key, media_server_reachable]
+
+    restart-apps:
+      handler: media_stack.services.apps.core.job_adapters:restart_apps
+      phase: post
+      priority: 80
+      requires: []

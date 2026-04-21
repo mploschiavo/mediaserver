@@ -225,25 +225,99 @@ class UserWriteService(UserServiceBase):
         if source in ("env-seed", "env-legacy"):
             update_fields["source"] = "rotated"
         self._store.update(user_id, **update_fields)
+        # Provider propagation is on the synchronous path because the
+        # source-of-truth provider (Authelia) is what actually
+        # authenticates the user's next sign-in. If we returned before
+        # Authelia was updated, the user would log out, try to sign in
+        # with their new password, and fail.
         provider_results = self._forall_providers_set_password(user, password)
+        # Service-admin propagation (Sonarr/Radarr/qBittorrent/etc.) is
+        # downstream replica work — slow HTTP calls that don't gate
+        # the user's next sign-in. Run them in a daemon thread so the
+        # response goes back as soon as Authelia is sync'd.
+        # Errors from the background path land in the audit log when
+        # they happen, not in this response.
         role = self._roles.get(user.role_slug)
-        service_admin_results: dict[str, Any] = {}
-        if role is not None and role.propagate_to_service_admins:
-            service_admin_results = self._propagate_to_service_admins(password)
+        propagated_in_background = bool(
+            role is not None and role.propagate_to_service_admins
+        )
+        if propagated_in_background:
+            self._propagate_to_service_admins_async(
+                password, user_id=user_id, user_email=user.email,
+                actor=actor,
+            )
         self._audit.append(
             actor=actor, action="reset_password", target=user.email, result="ok",
             detail={
                 "user_id": user_id,
                 "providers": provider_results,
-                "service_admins": service_admin_results,
+                "service_admins": (
+                    "scheduled_async" if propagated_in_background else "n/a"
+                ),
             },
         )
         return {
             "user_id": user_id,
             "generated_password": password,
             "providers": provider_results,
-            "service_admins": service_admin_results,
+            "service_admins": (
+                "scheduled_async" if propagated_in_background else {}
+            ),
         }
+
+    def _propagate_to_service_admins_async(
+        self, password: str, *,
+        user_id: str, user_email: str, actor: str,
+    ) -> None:
+        """Run the service-admin propagation off-request. Errors are
+        captured in an audit-log entry (``action='reset_password.bg'``)
+        so the user / operator can see what happened without blocking
+        the response."""
+        import threading
+
+        def _run() -> None:
+            try:
+                results = self._propagate_to_service_admins(password)
+                failed = [
+                    name for name, status in (results or {}).items()
+                    if isinstance(status, str) and status.startswith("error:")
+                ]
+                # Only audit the background result if there's something
+                # meaningful to record — every successful rotation
+                # creates one entry already on the sync path.
+                if failed:
+                    self._audit.append(
+                        actor=actor, action="reset_password.bg",
+                        target=user_email, result="partial",
+                        detail={
+                            "user_id": user_id,
+                            "service_admins": results,
+                            "failed": failed,
+                        },
+                    )
+                else:
+                    _log.debug(
+                        "[DEBUG] reset_password.bg: service-admins ok for %s",
+                        user_email,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning(
+                    "reset_password.bg: %s service-admin propagation raised: %s",
+                    user_email, exc,
+                )
+                try:
+                    self._audit.append(
+                        actor=actor, action="reset_password.bg",
+                        target=user_email, result="error",
+                        detail={"user_id": user_id, "error": str(exc)[:_ERR_LEN]},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+        threading.Thread(
+            target=_run, daemon=True,
+            name=f"svc-admin-propagate-{user_id[:8]}",
+        ).start()
 
     def _forall_providers_set_password(self, user, password):
         results: dict[str, Any] = {}

@@ -43,6 +43,39 @@ class HomepageService:
         if not hosts:
             hosts = list(self.default_hosts)
 
+        # Filter to services that BOTH (a) the registry knows about
+        # and (b) are enabled in the active deploy. Two failure
+        # modes this catches:
+        #   1. Profile-gated services (Authelia, Authentik, Plex)
+        #      whose compose profile isn't active.
+        #   2. Stub/placeholder hosts that exist in DEFAULT_HOSTS
+        #      but have no contract entry (e.g. recyclarr ships as
+        #      a `hashicorp/http-echo` stub in dist/docker-compose.yml
+        #      saying "Enable and configure a real Recyclarr runtime
+        #      when ready" — definitely shouldn't get a homepage
+        #      tile).
+        # Hostnames like ``authelia.local`` map to service id
+        # ``authelia``; we look up by that first label. A separate
+        # ratchet (``test_homepage_default_hosts_in_registry``) keeps
+        # DEFAULT_HOSTS aligned with the registry so an addition
+        # there doesn't silently disappear from the tile list.
+        try:
+            from media_stack.api.services.registry import (
+                SERVICE_MAP, is_service_enabled,
+            )
+            filtered: list[str] = []
+            for h in hosts:
+                svc_id = h.split(".", 1)[0]
+                svc = SERVICE_MAP.get(svc_id)
+                if svc is not None and is_service_enabled(svc):
+                    filtered.append(h)
+            hosts = filtered
+        except Exception as exc:
+            # Registry import shouldn't fail in production; if it
+            # does (broken contracts dir, etc.) fall back to the
+            # unfiltered list rather than break homepage rendering.
+            self.log(f"[WARN] Homepage host filter skipped: {exc}")
+
         onboarding_cfg = homepage_cfg.get("device_onboarding")
         if not isinstance(onboarding_cfg, dict):
             onboarding_cfg = {}

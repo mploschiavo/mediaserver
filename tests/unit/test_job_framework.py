@@ -101,13 +101,36 @@ class TestJobContext(unittest.TestCase):
 class TestJobRegistry(unittest.TestCase):
     def test_registry_has_expected_jobs(self):
         registry = get_job_registry()
-        expected = {"configure-libraries", "configure-livetv", "configure-plugins",
-                    "configure-playback", "configure-home-screen",
-                    "configure-collections", "refresh-media",
-                    "configure-categories", "configure-jellyseerr",
-                    "configure-arr-clients", "configure-indexers",
-                    "configure-auth", "configure-auto-scan"}
-        self.assertEqual(set(registry.keys()), expected)
+        # The registry must include every per-app job. After the
+        # action→job migration it also includes the eight migrated
+        # core jobs (envoy-config, validate-credentials, post-setup,
+        # restart-apps, discover-indexers, push-indexers,
+        # discover-api-keys, run-legacy-pipeline). Use subset
+        # semantics so adding new contract jobs doesn't break this.
+        per_app = {
+            "configure-libraries", "configure-livetv",
+            "configure-plugins", "configure-playback",
+            "configure-home-screen", "configure-collections",
+            "refresh-media", "configure-categories",
+            "configure-jellyseerr", "configure-arr-clients",
+            "configure-indexers", "configure-auth",
+            "configure-auto-scan",
+        }
+        core_migrated = {
+            "envoy-config", "validate-credentials", "post-setup",
+            "restart-apps", "discover-indexers", "push-indexers",
+            "discover-api-keys", "run-legacy-pipeline",
+        }
+        self.assertTrue(
+            per_app.issubset(set(registry.keys())),
+            f"per-app jobs missing from registry: "
+            f"{per_app - set(registry.keys())}",
+        )
+        self.assertTrue(
+            core_migrated.issubset(set(registry.keys())),
+            f"core-migrated jobs missing from registry: "
+            f"{core_migrated - set(registry.keys())}",
+        )
 
     def test_all_handlers_callable(self):
         for name, handler in get_job_registry().items():

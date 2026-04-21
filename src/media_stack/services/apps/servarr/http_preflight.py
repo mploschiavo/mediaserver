@@ -16,7 +16,6 @@ the first-boot value and the API call makes it stick.
 from __future__ import annotations
 
 import os
-import re
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -24,6 +23,13 @@ from urllib.parse import urlunparse
 
 import requests
 import logging
+
+from media_stack.core.config_io import (
+    ConfigParseError,
+    atomic_write_xml,
+    read_and_parse_xml,
+    set_or_create_child,
+)
 
 _CONFIG_HOST_PATH = "/config/host"
 _PUT_OK_STATUSES = (HTTPStatus.OK, HTTPStatus.ACCEPTED)
@@ -83,36 +89,44 @@ class ServarrHttpPreflight:
             if not config_path.exists():
                 continue
 
-            text = config_path.read_text(encoding="utf-8", errors="replace")
-            original = text
+            try:
+                tree = read_and_parse_xml(config_path)
+            except ConfigParseError as exc:
+                # Refusing to round-trip a corrupt file. The auto-heal
+                # job snapshots last-known-good copies and will restore
+                # this file on its next sweep; until then bootstrap
+                # skips it rather than amplifying the damage.
+                info(f"ARR preflight: {app_name} config unparseable ({exc}); "
+                     "skipping — auto-heal will restore.")
+                continue
 
-            # Dismiss the setup wizard and set urlBase for path-prefix routing.
-            # AuthenticationMethod=Forms + DisabledForLocalAddresses allows
-            # API access from pod IPs without credentials.
-            text = re.sub(
-                r"<AuthenticationMethod>[^<]*</AuthenticationMethod>",
-                "<AuthenticationMethod>Forms</AuthenticationMethod>",
-                text,
+            root_el = tree.getroot()
+            changed = False
+            changed |= set_or_create_child(
+                root_el, "AuthenticationMethod", "Forms",
             )
-            text = re.sub(
-                r"<AuthenticationRequired>[^<]*</AuthenticationRequired>",
-                "<AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>",
-                text,
+            changed |= set_or_create_child(
+                root_el,
+                "AuthenticationRequired",
+                "DisabledForLocalAddresses",
             )
-            # Set UrlBase for path-prefix routing (/app/<service>).
-            desired_url_base = f"/app/{app_name}"
-            current_url_base = re.search(r"<UrlBase>([^<]*)</UrlBase>", text)
-            if current_url_base and current_url_base.group(1) != desired_url_base:
-                text = re.sub(
-                    r"<UrlBase>[^<]*</UrlBase>",
-                    f"<UrlBase>{desired_url_base}</UrlBase>",
-                    text,
-                )
+            changed |= set_or_create_child(
+                root_el, "UrlBase", f"/app/{app_name}",
+            )
 
-            if text != original:
-                config_path.write_text(text, encoding="utf-8")
-                patched.append(app_name)
-                info(f"ARR preflight: patched {app_name} AuthenticationRequired=DisabledForLocalAddresses")
+            if not changed:
+                continue
+
+            try:
+                atomic_write_xml(config_path, tree)
+            except ConfigParseError as exc:
+                # The atomic writer rolled back from the .bak; we just
+                # need to skip this app and keep the bootstrap moving.
+                info(f"ARR preflight: {app_name} write+verify failed "
+                     f"({exc}); rolled back.")
+                continue
+            patched.append(app_name)
+            info(f"ARR preflight: patched {app_name} AuthenticationRequired=DisabledForLocalAddresses")
 
         if patched:
             import time

@@ -1,0 +1,6 @@
+<Config>
+  <BindAddress>*</BindAddress>
+  <Port>9696</Port>
+  <UrlBase>/app/prowlarr</UrlBase>
+</Config>sm>
+</Config>

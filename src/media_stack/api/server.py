@@ -552,6 +552,37 @@ class _SudoGate:
 _sudo_gate = _SudoGate()
 
 
+def _start_auto_heal_loop() -> None:
+    """Spawn a daemon thread that runs the auto-heal cycle on an
+    interval. The default is 60s — fast enough to catch crashloops
+    before the user notices, infrequent enough that the disk reads
+    don't show up in iostat. Override with
+    ``CONTROLLER_AUTO_HEAL_INTERVAL_SECONDS``."""
+    try:
+        interval = max(15, int(os.environ.get(
+            "CONTROLLER_AUTO_HEAL_INTERVAL_SECONDS", "60",
+        )))
+    except ValueError:
+        interval = 60
+
+    def _loop() -> None:
+        # Lazy import so a broken auto-heal module doesn't take the
+        # whole server down on boot.
+        from .services import auto_heal as autoheal_svc
+        while True:
+            try:
+                autoheal_svc.run_cycle()
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("media_stack").debug(
+                    "[DEBUG] auto-heal cycle raised: %s", exc,
+                )
+            time.sleep(interval)
+
+    threading.Thread(
+        target=_loop, daemon=True, name="auto-heal-loop",
+    ).start()
+
+
 def _audit_actor_from(handler) -> str:
     """Best-effort actor identity for audit entries.
 
@@ -1093,6 +1124,22 @@ def start_api_server(
             logging.getLogger("media_stack").debug(
                 "[DEBUG] audit-chain verifier not started: %s", exc,
             )
+
+    # Auto-heal loop: snapshot healthy configs, restore corrupt ones,
+    # restart pods. Disabled with CONTROLLER_AUTO_HEAL_ENABLED=false.
+    _start_auto_heal_loop()
+
+    # Pre-warm the argon2 backend, audit-chain hash cache, user
+    # service singleton — anything heavy enough to make the FIRST
+    # password rotation feel slow. Runs in a daemon thread so a
+    # cold disk doesn't gate /healthz returning ok.
+    try:
+        from .services import prewarm as _prewarm_svc
+        _prewarm_svc.run_in_background()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("media_stack").debug(
+            "[DEBUG] pre-warm not started: %s", exc,
+        )
 
     # Graceful shutdown on SIGTERM
     def _shutdown(signum: int, frame: Any) -> None:

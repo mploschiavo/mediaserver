@@ -5,6 +5,19 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Tuple
 from urllib import parse
 
+# Hosts the homepage dashboard renders tiles for by default. Each
+# entry MUST have a ``contracts/services/<id>.yaml`` so the
+# enabled-filter (HomepageService.ensure_services_config) can look
+# it up; the ratchet test
+# ``test_homepage_default_hosts_in_registry`` enforces this.
+#
+# Removed from this list (history note):
+# - ``recyclarr.local`` (2026-04-21): the dist compose ships
+#   recyclarr as a `hashicorp/http-echo` stub; no contract; no
+#   real service to launch.
+# - ``media-stack-controller.local`` (2026-04-21): no contract;
+#   the controller's own dashboard is the launching surface, so a
+#   tile linking back to itself is pure noise.
 DEFAULT_HOSTS = [
     "traefik.local",
     "envoy.local",
@@ -22,8 +35,6 @@ DEFAULT_HOSTS = [
     "maintainerr.local",
     "tautulli.local",
     "flaresolverr.local",
-    "recyclarr.local",
-    "media-stack-controller.local",
     "authelia.local",
     "authentik.local",
 ]

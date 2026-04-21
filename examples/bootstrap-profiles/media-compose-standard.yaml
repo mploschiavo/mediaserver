@@ -1,43 +1,26 @@
+# Per-service native auth: Forms login on the *arr family etc.
+# Disabled for local-network addresses so the controller's API
+# calls work without bouncing through a login form.
 app_auth:
   enabled: true
   method: Forms
   required: DisabledForLocalAddresses
+
+# Gateway-level auth (SSO via Authelia/Authentik) is OFF in the
+# default profile because the dist compose file gates Authelia
+# behind the ``auth-authelia`` profile. Setting ``mode: authelia``
+# here while Authelia isn't running causes Envoy's ext_authz
+# filter to call a non-existent upstream and fail closed → every
+# gateway request 403's. (2026-04-21 production incident.)
+#
+# To enable SSO:
+#   1. Bring up Authelia: ``docker compose --profile auth-authelia up -d authelia``
+#   2. Flip ``auth.enabled``/``provider``/``mode`` here to authelia
+#   3. Reconcile the controller — Envoy regenerates with ext_authz
 auth:
-  enabled: true
-  middleware: authelia@docker
-  mode: authelia
-  oidc_config:
-    client_id: 338059854510-cndqa5sdc27r9656ukvbds11ttvgae9p.apps.googleusercontent.com
-    client_secret: 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
-  oidc_provider: google
-  per_service:
-    authelia: public
-    authentik: public
-    bazarr: protected
-    emby: native
-    envoy: public
-    flaresolverr: protected
-    grabit: protected
-    homepage: protected
-    jdownloader: protected
-    jellyfin: native
-    jellyseerr: native
-    lidarr: protected
-    maintainerr: protected
-    media-stack-controller: protected
-    mythtv: native
-    nzbget: protected
-    plex: native
-    prowlarr: protected
-    qbittorrent: protected
-    radarr: protected
-    readarr: protected
-    sabnzbd: protected
-    sonarr: protected
-    tautulli: protected
-    traefik: public
-    unpackerr: protected
-  provider: authelia
+  enabled: false
+  provider: none
+  mode: none
 bootstrap:
   apply_initial_preferences: true
   preconfigure_api_keys: true
