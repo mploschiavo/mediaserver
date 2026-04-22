@@ -365,26 +365,15 @@ class LogLevelDiscipline(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B — locale / encoding
+# B — locale / encoding (strict: zero unguarded file I/O)
 # ---------------------------------------------------------------------------
 class FileIOExplicitEncoding(unittest.TestCase):
-    """Every ``.read_text()`` / ``.write_text()`` call must
-    specify ``encoding="utf-8"`` (or another explicit value).
-    Default is the system locale → silent breakage on hosts
-    where locale != UTF-8 (legacy embedded systems, fresh
-    Alpine without locales installed, Docker Desktop on
-    Windows mounting a UTF-16 file).
+    """Every ``.read_text()`` / ``.write_text()`` must specify
+    ``encoding="utf-8"``. The default is the system locale →
+    silent breakage on hosts where locale isn't UTF-8."""
 
-    Bound by a count cap rather than zero — there are too many
-    legacy call sites to fix in one shot. Cap drops over time."""
-
-    _MAX_UNGUARDED_FILE_IO = 50
-
-    def test_unguarded_file_io_count_below_cap(self) -> None:
+    def test_no_unguarded_file_io(self) -> None:
         unguarded: list[str] = []
-        # Pattern: ``.read_text()`` or ``.read_text(...)`` where
-        # the call's args don't include ``encoding=``.
-        # Simple AST walk catches the common shapes.
         for path in SRC.rglob("*.py"):
             if "__pycache__" in str(path):
                 continue
@@ -406,75 +395,53 @@ class FileIOExplicitEncoding(unittest.TestCase):
                     f"{path.relative_to(ROOT)}:{node.lineno}: "
                     f".{node.func.attr}() without encoding=",
                 )
-        # Soft cap so we ratchet down over time without breaking
-        # the build on the first run with the existing baseline.
-        if len(unguarded) > self._MAX_UNGUARDED_FILE_IO:
-            self.fail(
-                f"Unguarded file I/O calls: {len(unguarded)} "
-                f"(cap {self._MAX_UNGUARDED_FILE_IO}). Add "
-                f"``encoding=\"utf-8\"`` to new sites OR drop the "
-                f"cap as you fix existing ones.\n  - "
-                + "\n  - ".join(unguarded[:30])
-                + ("\n  ..." if len(unguarded) > 30 else ""),
-            )
+        self.assertFalse(
+            unguarded,
+            f"Unguarded file I/O ({len(unguarded)} sites) — every "
+            f".read_text/.write_text needs explicit "
+            f"encoding=\"utf-8\".\n  - "
+            + "\n  - ".join(unguarded[:30])
+            + ("\n  ..." if len(unguarded) > 30 else ""),
+        )
 
 
 # ---------------------------------------------------------------------------
-# F — time-of-day correctness
+# F — time-of-day correctness (strict: zero naive datetime.now())
 # ---------------------------------------------------------------------------
 class TimezoneAwareness(unittest.TestCase):
-    """``datetime.now()`` returns a naive datetime in the host's
-    local timezone. Naive datetimes silently break across
-    daylight-saving boundaries, between hosts in different
-    zones, and at year-2038 / leap-day edges. Use
-    ``datetime.now(timezone.utc)`` everywhere or
-    ``datetime.utcnow()`` (deprecated but tz-naive UTC).
+    """``datetime.now()`` returns a naive datetime in host-local
+    time. Naive datetimes silently break across DST, between
+    hosts in different zones, and at leap-day edges. Use
+    ``datetime.now(timezone.utc)`` everywhere."""
 
-    Soft-capped — legacy call sites get fixed over time."""
-
-    _MAX_NAIVE_NOW = 30
-
-    def test_naive_datetime_now_count_below_cap(self) -> None:
+    def test_no_naive_datetime_now(self) -> None:
         bad: list[str] = []
         for path in SRC.rglob("*.py"):
             if "__pycache__" in str(path):
                 continue
             text = path.read_text(encoding="utf-8")
-            # ``datetime.now()`` with NO args = naive local-time.
-            # ``datetime.now(timezone.utc)`` = OK.
-            # Heuristic: bare ``datetime.now()`` with empty parens.
             for m in re.finditer(r"\bdatetime\.now\(\s*\)", text):
                 bad.append(f"{path.relative_to(ROOT)}: bare datetime.now()")
-        if len(bad) > self._MAX_NAIVE_NOW:
-            self.fail(
-                f"Naive datetime.now() calls: {len(bad)} "
-                f"(cap {self._MAX_NAIVE_NOW}). Use "
-                f"``datetime.now(timezone.utc)`` for new code.\n  - "
-                + "\n  - ".join(bad[:20]),
-            )
+        self.assertFalse(
+            bad,
+            f"Bare datetime.now() calls ({len(bad)} sites) — use "
+            f"datetime.now(timezone.utc) or datetime.now(tz=...) "
+            f"to make the timezone explicit.\n  - "
+            + "\n  - ".join(bad[:20]),
+        )
 
 
 # ---------------------------------------------------------------------------
-# K — silent-failure count
+# K — silent-failure count (strict: zero ``except: pass``)
 # ---------------------------------------------------------------------------
 class SilentFailureCount(unittest.TestCase):
-    """``except Exception: pass`` and bare ``except: pass`` swallow
-    real bugs into the void. The project backlog already names
-    this as a target (176→0). This ratchet sets a cap that
-    drops as the count comes down — new ones can't be added
-    without explicitly raising the cap."""
+    """``except Exception: pass`` and bare ``except: pass``
+    swallow real bugs. The project backlog has 176→0 as the
+    target. Strict ratchet — every removal needs a logged
+    warning or proper propagation."""
 
-    _MAX_SILENT_FAILURES = 200
-
-    def test_silent_failure_count_below_cap(self) -> None:
-        count = 0
+    def test_no_silent_exception_handlers(self) -> None:
         examples: list[str] = []
-        # Patterns:
-        #   except: pass
-        #   except Exception: pass
-        #   except (X, Y): pass
-        # All on a single try/except where the body is JUST pass
-        # or a debug log + pass.
         pattern = re.compile(
             r"except[^:]*:\s*\n\s*(?:logging\.[^\n]*\n\s*)?pass\b",
         )
@@ -483,19 +450,16 @@ class SilentFailureCount(unittest.TestCase):
                 continue
             text = path.read_text(encoding="utf-8")
             for m in pattern.finditer(text):
-                count += 1
-                if len(examples) < 20:
-                    examples.append(f"{path.relative_to(ROOT)}: {m.group(0)[:60]}")
-        if count > self._MAX_SILENT_FAILURES:
-            self.fail(
-                f"Silent failure handlers: {count} "
-                f"(cap {self._MAX_SILENT_FAILURES}). Each "
-                f"``except: pass`` hides a future debugging "
-                f"nightmare. Replace with logged warnings or "
-                f"propagate; drop the cap as you do.\n  - "
-                + "\n  - ".join(examples[:10])
-                + ("\n  ..." if count > 10 else ""),
-            )
+                examples.append(f"{path.relative_to(ROOT)}: {m.group(0)[:60]}")
+        self.assertFalse(
+            examples,
+            f"Silent failure handlers ({len(examples)} sites) — "
+            f"each ``except: pass`` hides a future debugging "
+            f"nightmare. Replace with logged warning or proper "
+            f"propagation.\n  - "
+            + "\n  - ".join(examples[:10])
+            + ("\n  ..." if len(examples) > 10 else ""),
+        )
 
 
 if __name__ == "__main__":

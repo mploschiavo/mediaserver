@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -68,8 +70,7 @@ class CatalogLoaderService:
                 if key not in existing_keys:
                     apps_section.setdefault("keys", []).append(key)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
     
         deployment_aliases = _normalize_alias_dict(
             payload.get("deployment_aliases"),

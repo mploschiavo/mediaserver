@@ -30,4 +30,4 @@ resources:
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.116
+    newTag: v1.0.117

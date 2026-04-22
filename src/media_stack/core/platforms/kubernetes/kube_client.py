@@ -15,6 +15,8 @@ All public names remain importable from this module for backward compatibility.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import logging
 import os
 from dataclasses import dataclass, field
@@ -126,8 +128,7 @@ class KubernetesClient(ManifestsMixin, QueryMixin, WorkloadsMixin):
 
                     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
         api_client = k8s_client.ApiClient(configuration=configuration)
         self._k8s_client = k8s_client

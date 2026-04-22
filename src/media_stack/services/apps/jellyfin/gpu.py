@@ -6,6 +6,8 @@ parsing and container inspection in the app layer.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 import re
 import time
@@ -42,8 +44,7 @@ class JellyfinGpu:
             if runtime == "nvidia":
                 result["jellyfin_has_gpu"] = True
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
         jf_system = Path(config_root) / "jellyfin" / "config" / "system.xml"
@@ -59,8 +60,7 @@ class JellyfinGpu:
                 if m:
                     result["jellyfin_hw_type"] = m.group(1)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         return result
 

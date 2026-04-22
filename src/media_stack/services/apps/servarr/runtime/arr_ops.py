@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from pathlib import Path
 
 from media_stack.services.runtime_platform import (
@@ -104,7 +106,7 @@ class ServarrArrOps:
                 )
                 break
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
 
         if metadata_id is None:

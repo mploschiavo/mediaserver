@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import json
 from dataclasses import dataclass
@@ -63,7 +65,7 @@ class RebuildSecretPreservationService:
             try:
                 decoded = base64.b64decode(encoded).decode("utf-8")
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
             if decoded:
                 restored[key] = decoded

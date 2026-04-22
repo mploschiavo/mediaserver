@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import importlib
 import inspect
 import json
@@ -272,8 +274,7 @@ class ComposeBootstrapService:
             try:
                 Path(handle.name).unlink()
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             raise
 
     @staticmethod
@@ -397,8 +398,7 @@ class ComposeBootstrapService:
                         if ip:
                             return f"http://{ip}:{port}"
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
             _time.sleep(1)
         return f"http://{container_name}:{port}"
 
@@ -426,12 +426,11 @@ class ComposeBootstrapService:
                         f"Compose bootstrap failed: {error_msg}"
                     )
             except _error.URLError:
-                pass  # Container not ready yet.
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             except RuntimeError:
                 raise
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             time.sleep(3)
 
         # Timeout — try to get status one more time.
@@ -563,8 +562,7 @@ class ComposeBootstrapService:
                 try:
                     container.stop(timeout=10)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
             logs = self._container_logs(container) if container is not None else ""
             raise RuntimeError(
                 "Compose bootstrap timed out "
@@ -575,5 +573,4 @@ class ComposeBootstrapService:
             try:
                 runtime_cfg_file.unlink()
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)

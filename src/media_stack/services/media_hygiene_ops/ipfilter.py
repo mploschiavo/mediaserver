@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import time
@@ -87,7 +89,7 @@ class IpFilterService:
             try:
                 mirror.parent.mkdir(parents=True, exist_ok=True)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
         state_file = Path(state_path)
         state_file.parent.mkdir(parents=True, exist_ok=True)

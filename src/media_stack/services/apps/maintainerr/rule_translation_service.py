@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import re
 from dataclasses import dataclass
@@ -436,7 +438,7 @@ class MaintainerrRuleTranslationService:
                         if isinstance(parsed, dict):
                             clause_source = parsed
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        log_swallowed(exc)
                         continue
 
             copied = json.loads(json.dumps(clause_source))

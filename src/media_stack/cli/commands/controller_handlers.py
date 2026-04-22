@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import argparse
 import importlib
 import json
@@ -60,11 +62,9 @@ def _load_handler_specs(key: str) -> list[dict]:
                                 specs.append(handler)
                                 seen_names.add(name)
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
     # 2. Load from config.json (backward compat, fills gaps)
     config_path = _resolve_config_path()
@@ -77,8 +77,7 @@ def _load_handler_specs(key: str) -> list[dict]:
                     specs.append(spec)
                     seen_names.add(name)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
     return specs
 
@@ -166,8 +165,8 @@ def _run_handler_specs(
             try:
                 future.result()
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass  # Errors already recorded in state by _exec_spec
+                # Errors already recorded in state by _exec_spec.
+                log_swallowed(exc)
 
 
 def _resolve_handler(spec: str):

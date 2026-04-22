@@ -7,6 +7,8 @@ Route handling lives in api/handlers_get.py and api/handlers_post.py.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import json
 import logging
@@ -103,7 +105,7 @@ def _issue_csrf_if_missing(handler) -> None:
     try:
         xfp = (handler.headers.get("X-Forwarded-Proto", "") or "").strip().lower()
     except AttributeError:
-        pass
+        logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
     token = _csrf_issuer.issue_token()
     handler.send_header(
         "Set-Cookie",
@@ -505,7 +507,7 @@ class _SudoGate:
         try:
             auth_hdr = handler.headers.get(_H_AUTHORIZATION, "") or ""
         except AttributeError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         if auth_hdr.startswith("Basic "):
             return True
         # Bearer / cookie / trusted-proxy \u2014 require the extra header.
@@ -513,7 +515,7 @@ class _SudoGate:
         try:
             sudo_pw = (handler.headers.get("X-Sudo-Password", "") or "").strip()
         except AttributeError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         if not sudo_pw:
             return False
         # Re-auth can succeed under either:
@@ -727,8 +729,7 @@ def _build_action_priority() -> dict[str, int]:
             base = _PHASE_BASE.get(job["phase"], 55)
             priorities.setdefault(job["name"], base + job.get("priority", 50) // 10)
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass
+        log_swallowed(exc)
     return priorities
 
 ACTION_PRIORITY: dict[str, int] = _build_action_priority()
@@ -883,7 +884,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                     try:
                         after_seq = int(part.split("=", 1)[1])
                     except ValueError:
-                        pass
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
         try:
             while True:
@@ -896,7 +897,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 self.state.wait_for_log(timeout=30.0)
         except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
     # --- Action dispatch ---
 

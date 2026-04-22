@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import json
 import os
@@ -97,16 +99,14 @@ class PortForward:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             try:
                 self.proc.wait(timeout=5)
             except Exception:
                 try:
                     os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
     def ensure_alive(self) -> None:
         if self.proc and self.proc.poll() is not None:
@@ -115,13 +115,11 @@ class PortForward:
             try:
                 out = self.proc.stdout.read() if self.proc.stdout else ""
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             try:
                 err = self.proc.stderr.read() if self.proc.stderr else ""
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             raise RuntimeError(
                 f"kubectl port-forward exited early (code={self.proc.returncode}). stdout={out} stderr={err}"
             )

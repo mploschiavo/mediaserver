@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import io
 import re
 from typing import Any, Callable
@@ -121,7 +123,7 @@ class JellyfinLiveTvSourceOps:
             try:
                 m3u_text = read_text_from_source(source_url, config_root, 90)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
 
             for line in m3u_text.splitlines():

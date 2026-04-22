@@ -1,6 +1,8 @@
 """Media server library configuration."""
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from typing import Any
 
 import yaml
@@ -32,11 +34,10 @@ class LibraryConfigService:
             svc_dir = _find_services_dir()
             svc_yaml = (svc_dir / f"{ms_id}.yaml") if svc_dir and ms_id else None
             if svc_yaml and svc_yaml.is_file():
-                svc_cfg = yaml.safe_load(svc_yaml.read_text()) or {}
+                svc_cfg = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
                 libs = svc_cfg.get("defaults", {}).get("libraries", {}).get("libraries", [])
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return {"libraries": libs, "source": "defaults" if libs else "not_configured", "media_server": ms_id}
 
     def update_libraries(self, libraries: list[dict[str, Any]]) -> dict[str, Any]:

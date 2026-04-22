@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from media_stack.api.services.registry import service_internal_url
 
 
 class ProwlarrProxyOps:
@@ -20,7 +21,7 @@ class ProwlarrProxyOps:
         should treat that as "not available" and skip attachment."""
         cfg = dict(flaresolverr_cfg or {})
         proxy_name = str(cfg.get("proxy_name") or "FlareSolverr").strip() or "FlareSolverr"
-        host = str(cfg.get("url") or "http://flaresolverr:8191").strip()
+        host = str(cfg.get("url") or service_internal_url("flaresolverr")).strip()
         if not host:
             raise RuntimeError("Prowlarr: FlareSolverr URL must be non-empty.")
         host = host.rstrip("/") + "/"

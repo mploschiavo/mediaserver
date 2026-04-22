@@ -6,6 +6,8 @@ first argument so it can call response helpers and access ``self.state``.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import os
 import re
@@ -276,7 +278,7 @@ class GetRequestHandler:
             try:
                 host_hdr = handler.headers.get("Host", "") or ""
             except AttributeError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             handler._json_response(
                 HTTPStatus.OK,
                 AccessUrlDiscovery(host_ip_hint=host_hdr).build(),
@@ -523,8 +525,7 @@ class GetRequestHandler:
                     "description": f"Gateway root ({gw_host})",
                 })
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         ctrl_port = int(os.environ.get("CONTROLLER_PORT", "9100"))
         servers.append({
             "url": f"http://localhost:{ctrl_port}",
@@ -640,7 +641,7 @@ class GetRequestHandler:
         try:
             after_seq = int(params.get("after_seq", "0"))
         except ValueError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         action = params.get("action", "")
         entries = handler.state.get_logs_since(after_seq, action=action)
         handler._json_response(200, {
@@ -661,7 +662,7 @@ class GetRequestHandler:
                     try:
                         lines = min(500, int(part.split("=", 1)[1]))
                     except ValueError:
-                        pass
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         handler._json_response(200, ops_svc.get_service_logs(svc, lines))
 
     @staticmethod
@@ -1099,10 +1100,10 @@ class _RoutingMatrixProbe:
         cfg_path = Path(self._env.get("CONFIG_ROOT", "/srv-config")) \
             / "envoy" / "envoy.yaml"
         try:
-            if cfg_path.is_file() and "transport_socket:" in cfg_path.read_text():
+            if cfg_path.is_file() and "transport_socket:" in cfg_path.read_text(encoding="utf-8"):
                 return self._HTTPS, self._default_https_port()
         except OSError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         return self._HTTP, port
 
     def _resolve_gateway_host(self) -> str:

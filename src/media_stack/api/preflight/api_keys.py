@@ -6,6 +6,8 @@ names or paths. To add a new service, update registry.py only.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from pathlib import Path
 from typing import Any
 
@@ -104,8 +106,7 @@ class ApiKeyPreflightService:
                     discovered["JELLYFIN_USER_ID"] = str(row[0]).strip()
                     info(f"API key discovered: JELLYFIN_USER_ID from jellyfin/data/jellyfin.db")
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         info(f"API key discovery: {len(discovered)} keys found")
         return discovered

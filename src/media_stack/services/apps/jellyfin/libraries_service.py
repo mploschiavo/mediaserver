@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse
+from media_stack.api.services.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -230,7 +231,7 @@ class JellyfinLibrariesService:
         if not d.bool_cfg(libraries_cfg, "enabled", False):
             return
 
-        jellyfin_url = d.normalize_url(libraries_cfg.get("url", "http://jellyfin:8096"))
+        jellyfin_url = d.normalize_url(libraries_cfg.get("url", service_internal_url("jellyfin")))
         d.wait_for_service("Jellyfin", jellyfin_url, "/System/Info/Public", wait_timeout)
 
         jellyfin_api_key = d.resolve_api_key(libraries_cfg, config_root)

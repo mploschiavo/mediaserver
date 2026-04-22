@@ -7,6 +7,8 @@ them via Docker SDK (compose) or K8s pod delete (kubernetes).
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 import time
 from typing import Any
@@ -60,8 +62,7 @@ class RestartAppsService:
                             info(f"App restart: {app_name} ready")
                             break
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
                     time.sleep(5)
 
         return {}
@@ -88,8 +89,7 @@ class RestartAppsService:
             info(f"App restart: {app_name} (Docker)")
             return
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         try:
             from kubernetes import client, config
     

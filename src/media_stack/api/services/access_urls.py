@@ -202,7 +202,7 @@ class AccessUrlDiscovery:
             try:
                 s.close()
             except OSError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
     def _load_buckets(self) -> list[_Bucket]:
         path = self._contract_path()

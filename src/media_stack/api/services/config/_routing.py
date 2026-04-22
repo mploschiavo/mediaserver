@@ -1,6 +1,8 @@
 """Profile and network routing configuration."""
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -55,8 +57,7 @@ class RoutingConfigService:
                     profile = yaml.safe_load(f) or {}
                 routing = dict(profile.get("routing") or {})
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
         overrides_path = config_root / ".controller" / "routing-overrides.yaml"
         if overrides_path.is_file():
@@ -64,8 +65,7 @@ class RoutingConfigService:
                 overrides = yaml.safe_load(overrides_path.read_text(encoding="utf-8")) or {}
                 routing.update(overrides.get("routing") or {})
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         return {
             "base_domain": str(routing.get("base_domain", "local")),
             "stack_subdomain": str(routing.get("stack_subdomain", "media-stack")),
@@ -123,7 +123,7 @@ class RoutingConfigService:
                 with open(profile_path, "w") as f:
                     yaml.dump(profile, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
             except OSError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             if action_trigger:
                 action_trigger("envoy-config", {})
             return {"status": "updated", "persisted_to": str(overrides_path), "changed": changed, "routing": routing}

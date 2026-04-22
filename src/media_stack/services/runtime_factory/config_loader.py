@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 from pathlib import Path
@@ -43,8 +45,7 @@ class ControllerConfigLoader:
                         if isinstance(data, dict):
                             defaults.update(data)
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
                 break
 
         # 2. Load from contracts/services/*.yaml (per-service defaults)
@@ -69,8 +70,7 @@ class ControllerConfigLoader:
                             if svc_id not in defaults:
                                 defaults[svc_id] = svc_defaults
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
                 break
 
         return defaults
@@ -102,8 +102,7 @@ class ControllerConfigLoader:
                         if platform:
                             break
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
 
         if not platform:
             return loaded
@@ -126,8 +125,7 @@ class ControllerConfigLoader:
                         loaded = dict(loaded)
                         loaded["adapter_hooks"] = merged
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
                 break
         return loaded
 
@@ -182,8 +180,7 @@ class ControllerConfigLoader:
                                 loaded[cfg_key] = value
                         break
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
 
         # Merge platform-specific adapter hooks from YAML (e.g. adapter-hooks.k8s.yaml)
         loaded = self._merge_platform_adapter_hooks(loaded, config_file.parent)

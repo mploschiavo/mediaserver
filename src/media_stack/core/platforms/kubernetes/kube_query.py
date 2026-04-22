@@ -6,6 +6,8 @@ by kube_client.py.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 from typing import Any
 
@@ -299,8 +301,7 @@ class QueryMixin:
                 )
                 pods = [p for p in (payload.items or []) if p.status and p.status.phase == "Running"]
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             if not pods:
                 return self._error_result(
                     args, f"No running pods found for selector '{label_selector}'", returncode=1

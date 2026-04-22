@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import re
@@ -128,8 +130,7 @@ class ControllerSecretPrimingService:
                     if apps:
                         return apps
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # 2. Derive from per-service YAML registry (category=automation)
         try:
@@ -138,8 +139,7 @@ class ControllerSecretPrimingService:
             if apps:
                 return apps
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         raise ConfigError(
             "Could not resolve API-key app list: "

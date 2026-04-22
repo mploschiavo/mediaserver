@@ -11,6 +11,8 @@ this module.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import logging
 import os
 from dataclasses import dataclass, field
@@ -222,6 +224,17 @@ def get_service(service_id: str) -> ServiceDef | None:
     return SERVICE_MAP.get(service_id)
 
 
+def service_internal_url(service_id: str) -> str:
+    """Cluster-internal URL for ``service_id`` from the registry.
+    Single source of truth for the ``http://<service>:<port>``
+    pattern; raises ``KeyError`` if unknown.
+    """
+    svc = SERVICE_MAP.get(service_id)
+    if not svc or not svc.host or not svc.port:
+        raise KeyError(f"unknown service: {service_id}")
+    return f"http://{svc.host}:{svc.port}"
+
+
 def get_services_with_api_keys() -> list[ServiceDef]:
     """Services that have API keys (for rotation/discovery)."""
     return [s for s in SERVICES if s.api_key_env]
@@ -377,6 +390,5 @@ def read_api_key_via_http(service_id: str) -> str:
         if m and m.group(1).strip():
             return m.group(1).strip()
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass
+        log_swallowed(exc)
     return ""

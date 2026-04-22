@@ -6,6 +6,8 @@ priority order. Caches health check results to avoid re-probing.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import time
@@ -48,7 +50,7 @@ class EpgProviderService:
             self._provider_cache = {}
             return self._provider_cache
         import yaml
-        self._provider_cache = yaml.safe_load(path.read_text()) or {}
+        self._provider_cache = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return self._provider_cache
 
     @staticmethod
@@ -73,11 +75,10 @@ class EpgProviderService:
         path = self._health_cache_path()
         if path.is_file():
             try:
-                self._health_cache = json.loads(path.read_text())
+                self._health_cache = json.loads(path.read_text(encoding="utf-8"))
                 return self._health_cache
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         self._health_cache = {}
         return self._health_cache
 
@@ -86,10 +87,9 @@ class EpgProviderService:
         try:
             path = self._health_cache_path()
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(cache, indent=2))
+            path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
     @staticmethod
     def _probe_url(url: str, timeout: int = 10) -> bool:

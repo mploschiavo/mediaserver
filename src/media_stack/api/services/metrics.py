@@ -8,6 +8,7 @@ import urllib.request
 from typing import Any
 
 from .health import probe_services
+from media_stack.api.services.registry import service_internal_url
 
 
 class MetricsService:
@@ -47,7 +48,7 @@ class MetricsService:
     def get_envoy_stats(self) -> dict[str, Any]:
         """Fetch Envoy proxy traffic statistics."""
         try:
-            req = urllib.request.Request("http://envoy:9901/stats?format=json")
+            req = urllib.request.Request(service_internal_url("envoy") + "/stats?format=json")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read())
             stats = data.get("stats", [])

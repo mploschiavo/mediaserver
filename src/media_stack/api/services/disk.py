@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 from pathlib import Path
@@ -45,8 +47,7 @@ class DiskService:
                                 if len(parts) >= 3 and parts[1] == str(path) or str(path).startswith(parts[1] + "/"):
                                     fstype = parts[2]
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
                     entry: dict[str, Any] = {
                         "path": str(path),
                         "total_bytes": usage.total,
@@ -91,7 +92,7 @@ class DiskService:
                         if f.is_file():
                             size += f.stat().st_size
                 except PermissionError:
-                    pass
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
                 breakdown.append({
                     "name": entry.name,
                     "path": str(entry),
@@ -192,8 +193,7 @@ class DiskService:
                 },
             }
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return guardrails
 
     def update_guardrails(self, updates: dict[str, Any]) -> dict[str, Any]:

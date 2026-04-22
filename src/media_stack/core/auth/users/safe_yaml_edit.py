@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import yaml
+import logging
 
 
 class SafeYamlEditError(RuntimeError):
@@ -54,7 +55,7 @@ class SafeYamlEditor:
                 try:
                     fcntl.flock(lock_fh, fcntl.LOCK_UN)
                 except OSError:
-                    pass
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
     def _do_edit(self, mutator: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
         current = self._read_current()

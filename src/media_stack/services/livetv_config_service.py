@@ -10,6 +10,8 @@ framework thin and service-specific logic in service modules.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import hashlib
 import re
 from typing import Any
@@ -102,8 +104,7 @@ class LiveTvConfigEnrichmentService:
                     if resolved:
                         guide["path"] = resolved
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
             path = guide.get("path", "")
             if not self._url_looks_valid(path):

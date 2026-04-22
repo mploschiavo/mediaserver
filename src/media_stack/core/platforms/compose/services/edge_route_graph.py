@@ -6,6 +6,8 @@ structures from the active compose provider label spec.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from dataclasses import dataclass
 from typing import Any
 
@@ -182,7 +184,7 @@ class ComposeEdgeRouteGraphService:
                     try:
                         service_ports[logical_service_name] = int(raw_port)
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        log_swallowed(exc)
                         continue
                 raw_scheme = str(fields.get("loadbalancer.server.scheme") or "").strip().lower()
                 if raw_scheme:

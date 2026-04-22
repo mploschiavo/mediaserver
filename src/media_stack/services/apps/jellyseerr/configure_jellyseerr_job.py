@@ -15,6 +15,7 @@ import media_stack.services.runtime_platform as runtime_platform
 from media_stack.services.apps.jellyseerr.local_admin_ops import ensure_local_admin_user
 from media_stack.services.apps.jellyseerr.orchestrator_ops import configure
 from media_stack.services.apps.jellyseerr.runtime_ops import _jellyseerr_service
+from media_stack.api.services.registry import service_internal_url
 
 
 class JellyseerrConfigureJob:
@@ -24,7 +25,7 @@ class JellyseerrConfigureJob:
         """Discover Jellyfin libraries via Jellyseerr API, enable them, write to settings.json."""
         from media_stack.adapters.http_client import http_request
 
-        base = "http://jellyseerr:5055"
+        base = service_internal_url("jellyseerr")
 
         # GET available libraries from Jellyfin (via Jellyseerr proxy)
         status, libs, body = http_request(
@@ -47,10 +48,10 @@ class JellyseerrConfigureJob:
             runtime_platform.log("[WARN] Jellyseerr: settings.json not found, skipping library sync")
             return
 
-        settings = json.loads(settings_path.read_text())
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
         jf = settings.setdefault("jellyfin", {})
         jf["libraries"] = libs
-        settings_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2) + "\n")
+        settings_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         runtime_platform.log(f"[OK] Jellyseerr: wrote {len(libs)} enabled libraries to settings.json")
 
     @staticmethod

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import threading
@@ -34,8 +36,7 @@ class ProwlarrReputationOps:
                 if isinstance(loaded, dict):
                     return loaded
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         return {"schema": 1, "indexers": {}}
 
     def save_reputation_state(self, service, path: Path, state: dict[str, Any]) -> bool:

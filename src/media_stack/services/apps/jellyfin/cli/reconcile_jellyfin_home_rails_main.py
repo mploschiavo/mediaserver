@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import argparse
 import copy
 import json
@@ -110,7 +112,7 @@ class ReconcileJellyfinHomeRailsMain:
                     if 200 <= resp.status < 500:
                         return True
             except (error.URLError, TimeoutError):
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             time.sleep(1)
         return False
 
@@ -177,8 +179,7 @@ class ReconcileJellyfinHomeRailsMain:
                     ]:
                         print(line, file=sys.stderr)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
                 return 1
 
             _info("Reconciling Jellyfin home rails via bootstrap logic")
@@ -213,8 +214,7 @@ class ReconcileJellyfinHomeRailsMain:
             try:
                 pf_log_path.unlink(missing_ok=True)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         if args.force_enable:
             _info("Done (forced enable). Hard-refresh Jellyfin and re-open Collections.")

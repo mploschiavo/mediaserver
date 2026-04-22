@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import argparse
 import os
 import socket
@@ -32,8 +34,7 @@ def _first_host_ip() -> str:
             if value and not value.startswith("127."):
                 return value
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass
+        log_swallowed(exc)
     return ""
 
 

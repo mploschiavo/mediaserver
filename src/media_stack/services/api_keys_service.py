@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import time
@@ -85,8 +87,7 @@ class ApiKeysService:
             if svc and svc.api_key_config:
                 rel_path = svc.api_key_config
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         candidate_paths = [root / rel_path for root in self.candidate_config_roots(config_root)]
         start = time.time()
@@ -115,8 +116,7 @@ class ApiKeysService:
                 if key:
                     return key
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
             # Also try HTTP early (every 10s) — service may be up even
             # when config file isn't visible to the controller.
@@ -131,8 +131,7 @@ class ApiKeysService:
                         self.log(f"[OK] {app_name}: recovered API key via HTTP")
                         return http_key
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
             # Also check alt config roots
             for cfg_path in candidate_paths:
@@ -178,8 +177,7 @@ class ApiKeysService:
                 self.log(f"[OK] {app_name}: recovered API key via HTTP")
                 return http_key
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         raise RuntimeError(
             f"Unable to read API key for {app_name} after {int(time.time() - start)}s "

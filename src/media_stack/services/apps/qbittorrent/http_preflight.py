@@ -8,6 +8,8 @@ Replaces the compose_preflight.py docker-exec-based approach. Uses:
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import configparser
 import re
 import time
@@ -16,6 +18,8 @@ from typing import Any
 
 import requests
 import logging
+
+from media_stack.api.services.registry import service_internal_url
 
 
 class QbittorrentHttpPreflight:
@@ -29,7 +33,7 @@ class QbittorrentHttpPreflight:
                 if resp.status_code in (200, 403):
                     return True
             except requests.ConnectionError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             time.sleep(3)
         return False
 
@@ -220,8 +224,7 @@ class QbittorrentHttpPreflight:
             container.restart(timeout=15)
             return
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         # Try K8s pod delete (Deployment will recreate).
         try:
             from kubernetes import client, config
@@ -243,9 +246,9 @@ class QbittorrentHttpPreflight:
         except Exception as exc:
             raise RuntimeError(f"Failed to restart {container_name}: {exc}") from exc
 
-    def run_preflight(self, 
+    def run_preflight(self,
         *,
-        qbit_url: str = "http://qbittorrent:8080",
+        qbit_url: str | None = None,
         admin_username: str = "admin",
         admin_password: str = "media-dev",
         config_root: str = "/srv-config",
@@ -258,6 +261,8 @@ class QbittorrentHttpPreflight:
 
         Returns empty dict (no env vars to propagate).
         """
+        if qbit_url is None:
+            qbit_url = service_internal_url("qbittorrent")
 
         def info(msg: str) -> None:
             if log:

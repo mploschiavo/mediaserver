@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from media_stack.api.services.registry import service_internal_url
 
 
 class JellyseerrApiOps:
@@ -112,7 +113,7 @@ class JellyseerrApiOps:
                 "Jellyseerr: jellyfin.configure=true but Jellyfin API key could not be resolved."
             )
 
-        jellyfin_url = jellyfin_cfg.get("url", "http://jellyfin:8096")
+        jellyfin_url = jellyfin_cfg.get("url", service_internal_url("jellyfin"))
         parsed = svc.parse_service_url(jellyfin_url, 8096)
         payload = {
             "ip": parsed["hostname"],

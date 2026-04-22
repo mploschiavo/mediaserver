@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from dataclasses import dataclass
 from typing import Any
 
@@ -154,8 +156,7 @@ class DockerClient:
             container.reload()
         except Exception as exc:
             # Best effort reload. Continue with last known attrs.
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         attrs = dict(getattr(container, "attrs", {}) or {})
         state = dict(attrs.get("State") or {})
         image_cfg = dict(attrs.get("Config") or {})

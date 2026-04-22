@@ -12,6 +12,7 @@ from .api_ops import (
 )
 from .file_ops import configure_via_settings_file
 from .local_admin_ops import ensure_local_admin_user
+from media_stack.api.services.registry import service_internal_url
 
 
 class JellyseerrOrchestratorOps:
@@ -36,7 +37,7 @@ class JellyseerrOrchestratorOps:
         if not svc.bool_cfg(jelly_cfg, "enabled", False):
             return
 
-        jellyseerr_url = svc.normalize_url(jelly_cfg.get("url", "http://jellyseerr:5055"))
+        jellyseerr_url = svc.normalize_url(jelly_cfg.get("url", service_internal_url("jellyseerr")))
         app_auth = cfg.get("app_auth") if isinstance(cfg.get("app_auth"), dict) else {}
         path_base = (
             (app_auth.get("path_prefix_url_base_by_app") or {}).get("jellyseerr")

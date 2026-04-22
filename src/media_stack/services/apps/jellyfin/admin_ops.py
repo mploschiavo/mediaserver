@@ -5,6 +5,8 @@ Moved from api/services/admin.py to keep service-specific logic in the app layer
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import urllib.request
@@ -38,8 +40,7 @@ class JellyfinAdminOps:
                 if policy.get("IsAdministrator"):
                     return u.get("Id", "")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return ""
 
     def reset_password(
@@ -77,7 +78,7 @@ class JellyfinAdminOps:
                 urllib.request.urlopen(req, timeout=10)
                 return True, ""
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
 
         # Hard reset fallback (Jellyfin 10.9+)
@@ -141,7 +142,7 @@ class JellyfinAdminOps:
                     restart_msg = "Service restarted."
                     break
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    log_swallowed(exc)
                     continue
             else:
                 restart_msg = "Service restarting (health check pending)."

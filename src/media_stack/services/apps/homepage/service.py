@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+import logging
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 CoerceListFn = Callable[[Any], list[Any]]
@@ -95,7 +96,7 @@ class HomepageService:
                     "scheme": profile.routing.resolved_scheme,
                 }
             except Exception:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         gateway_host = str(routing_cfg.get("gateway_host", "")).strip()
         gateway_port = str(routing_cfg.get("gateway_port", "")).strip()
         app_path_prefix = str(routing_cfg.get("app_path_prefix", "/app")).strip()

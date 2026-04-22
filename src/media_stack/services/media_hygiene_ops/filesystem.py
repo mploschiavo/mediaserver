@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 import time
 from collections import defaultdict
@@ -91,7 +93,7 @@ class FilesystemHygieneService:
             except FileNotFoundError:
                 continue
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
     
             age_hours = max(0.0, (now_ts - float(st.st_mtime)) / 3600.0)
@@ -102,16 +104,14 @@ class FilesystemHygieneService:
                         file_path.unlink()
                         removed_zero += 1
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
                     continue
                 if suffix in temp_extensions:
                     try:
                         file_path.unlink()
                         removed_temp += 1
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
                     continue
     
             if dedupe_enabled and int(st.st_size) >= dedupe_min_size:
@@ -138,7 +138,7 @@ class FilesystemHygieneService:
                         deletions_left -= 1
                         ops.log(f"[OK] Media hygiene: removed duplicate file {dup_path}")
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        log_swallowed(exc)
                         continue
     
         if remove_empty_dirs:
@@ -157,7 +157,7 @@ class FilesystemHygieneService:
                         p.rmdir()
                         removed_empty += 1
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                        log_swallowed(exc)
                         continue
     
         summary = {

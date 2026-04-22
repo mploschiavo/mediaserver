@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import json
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from typing import Any, Callable
 from urllib import error, request
 
 from media_stack.services.apps.download_clients.config_models import DownloadClientConfig
+from media_stack.api.services.registry import service_internal_url
 import logging
 
 LogFn = Callable[[str], None]
@@ -65,8 +68,7 @@ class TransmissionService:
             try:
                 args["seedRatioLimit"] = float(preferences.get("max_ratio"))
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         if "max_seeding_time_enabled" in preferences:
             args["seedIdleLimited"] = bool(preferences.get("max_seeding_time_enabled"))
         if "max_seeding_time" in preferences:
@@ -117,7 +119,7 @@ class TransmissionService:
     ) -> None:
         del create_category_fn
         config = DownloadClientConfig.from_dict(qbit_cfg)
-        transmission_url = self.normalize_url(config.url or "http://transmission:9091")
+        transmission_url = self.normalize_url(config.url or service_internal_url("transmission"))
         login = login_fn or self.login
         opener = login(transmission_url, qb_username, qb_password)
         setup_storage = setup_storage_defaults_fn or self.setup_storage_defaults

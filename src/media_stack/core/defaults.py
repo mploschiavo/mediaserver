@@ -7,6 +7,8 @@ and can be overridden at runtime via the BOOTSTRAP_RUNNER_IMAGE env var.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 from pathlib import Path
 
@@ -37,8 +39,7 @@ class DefaultsService:
                     if registry and name:
                         return f"{registry}/{name}:{tag}"
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         return "harbor.iomio.io/library/media-stack-controller:latest"
 
     @staticmethod

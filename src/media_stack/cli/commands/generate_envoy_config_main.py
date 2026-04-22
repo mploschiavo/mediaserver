@@ -25,6 +25,8 @@ Optional env vars:
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import sys
@@ -101,8 +103,7 @@ class GenerateEnvoyConfigCommand:
                 from media_stack.api.services.registry import get_preserve_path_prefix_services
                 preserve_names = tuple(s.id for s in get_preserve_path_prefix_services())
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         media_server_names = _csv(os.environ.get("MEDIA_SERVER_SERVICES", ""))
         if not media_server_names:
@@ -129,8 +130,7 @@ class GenerateEnvoyConfigCommand:
                 from media_stack.api.services.registry import get_web_ui_services
                 redirect_names = tuple(s.id for s in get_web_ui_services())
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # Load compose label specs from provider builtins, overlay config.json if present
         from media_stack.core.edge.provider_registry import compose_label_specs_by_provider
@@ -222,7 +222,7 @@ class GenerateEnvoyConfigCommand:
                 from media_stack.api.services.registry import SERVICES as _reg_svcs
                 svc_list = [(s.id, s.category) for s in _reg_svcs]
             except Exception:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             svc_list.append(("media-stack-controller", "infrastructure"))
             auth_policy = auth_contract.resolve_policy(auth_cfg, svc_list)
             if auth_policy.ext_authz:
@@ -263,8 +263,7 @@ class GenerateEnvoyConfigCommand:
                     addr = listeners[0].get("address", {}).get("socket_address", {})
                     addr["port_value"] = listener_port
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # Write output.
         envoy_dir = config_root / "envoy"

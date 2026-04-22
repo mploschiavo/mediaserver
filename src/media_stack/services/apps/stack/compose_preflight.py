@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from pathlib import Path
 from typing import Any, Callable
 import logging
@@ -73,8 +75,7 @@ class StackComposePreflight:
             raw_client.images.pull(helper_image)
         except Exception as exc:
             # Continue when the helper image is already present/offline.
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         try:
             raw_client.containers.run(
                 image=helper_image,
@@ -105,8 +106,7 @@ class StackComposePreflight:
                 directory.chmod(mode)
             except Exception as exc:
                 # Keep preflight non-fatal when chmod is restricted by host FS policy.
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         return total, created
 
     @staticmethod
@@ -130,8 +130,7 @@ class StackComposePreflight:
             try:
                 directory.chmod(0o775)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
             try:
                 st = directory.stat()

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import argparse
 import datetime as dt
 import os
@@ -26,7 +28,7 @@ class WatchInstallConfig:
 
 
 def _ts() -> str:
-    return dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
 def _info(message: str) -> None:
@@ -99,8 +101,7 @@ def _pod_readiness_summary(pods_table: str) -> tuple[int, int]:
                 if int(ready) != int(total):
                     not_ready += 1
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         if status in {"CrashLoopBackOff", "Error", "ImagePullBackOff", "RunContainerError"}:
             unhealthy += 1
     return not_ready, unhealthy
@@ -121,7 +122,7 @@ def _deployment_pending_summary(deploy_table: str) -> int:
             if ready != desired:
                 pending += 1
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            log_swallowed(exc)
             continue
     return pending
 

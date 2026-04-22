@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import re
 from dataclasses import dataclass, field
@@ -216,8 +218,7 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
                     if platform:
                         break
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
     if not platform:
         return payload
 
@@ -242,8 +243,7 @@ def _merge_platform_adapter_hooks(payload: dict[str, Any], config_dir: Path) -> 
                     payload = dict(payload)
                     payload["adapter_hooks"] = merged
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             break
     return payload
 
@@ -375,11 +375,9 @@ def resolve_runner_phase_script(
                             if result:
                                 return result
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass
+        log_swallowed(exc)
 
     # 2. Fall back to config.json runner_phase_scripts
     hooks = _adapter_hooks(cfg)
@@ -658,8 +656,7 @@ def _resolve_scale_policy_lists(
             )
             return managed_apps, scale_to_zero
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass
+        log_swallowed(exc)
 
     raise ConfigError(
         "Could not resolve scale policy: no adapter_hooks.scale_policy.apps "
