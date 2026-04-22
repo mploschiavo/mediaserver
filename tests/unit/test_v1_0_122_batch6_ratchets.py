@@ -512,5 +512,70 @@ class FixCommitsTouchRatchets(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L8 — Prowlarr ApplicationIndexerMapping staleness
+# ---------------------------------------------------------------------------
+class ProwlarrApplicationMappingReset(unittest.TestCase):
+    """Prowlarr tracks what it has already pushed to each *arr in
+    its ``ApplicationIndexerMapping`` DB table. In ``addOnly`` sync
+    mode (the v1.0.110 Fix C default), Prowlarr SKIPS any
+    indexer-to-app pair that already appears in the mapping table.
+
+    Failure mode: if the *arr's actual DB is wiped (fresh install,
+    restore-from-empty-backup, ``down -v`` without ``down -v`` on
+    Prowlarr too), Prowlarr's mapping table still claims "synced"
+    and refuses to re-push. The *arr ends up with 0 indexers
+    despite Prowlarr's "sync successful" reports, which is exactly
+    the state the v1.0.124-era deploy was stuck in.
+
+    The controller's bootstrap runner must either:
+      a) reconcile Prowlarr's mappings against each *arr's actual
+         indexer list on startup (delete orphaned mapping rows), OR
+      b) expose a "force resync" button / job that clears the
+         mapping table and retriggers ApplicationIndexerSync.
+
+    Marker: the controller codebase must either reference the
+    ``ApplicationIndexerMapping`` table by name OR call a
+    dedicated ``reset_prowlarr_app_mappings()`` helper. Starting
+    with only the marker; the full reconciliation is a follow-up
+    commit."""
+
+    def test_controller_acknowledges_application_mapping_reconciliation(self) -> None:
+        # Search the whole source tree for a mention that proves
+        # somebody thought about this failure mode. Either:
+        #   - the table name ApplicationIndexerMapping appears in a
+        #     comment, handler, or job-adapter
+        #   - a named helper reset_prowlarr_app_mappings exists
+        marker_found = False
+        for path in SRC.rglob("*.py"):
+            if "__pycache__" in str(path):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if "ApplicationIndexerMapping" in text:
+                marker_found = True
+                break
+            if "reset_prowlarr_app_mappings" in text:
+                marker_found = True
+                break
+        self.assertTrue(
+            marker_found,
+            "No code path acknowledges Prowlarr's "
+            "ApplicationIndexerMapping staleness failure mode. "
+            "Sonarr/Radarr/Lidarr/Readarr can show 0 indexers "
+            "while Prowlarr's mapping table claims 'synced' — "
+            "addOnly syncLevel refuses to re-push. Add either:\n"
+            "  * a comment/handler referencing "
+            "``ApplicationIndexerMapping`` by name in the indexer "
+            "reconciliation path, OR\n"
+            "  * a ``reset_prowlarr_app_mappings()`` helper that "
+            "DELETEs the table and retriggers "
+            "ApplicationIndexerSync when the *arr's actual indexer "
+            "count is 0.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

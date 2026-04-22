@@ -245,6 +245,65 @@ def tag_indexers_for_apps(ctx: JobContext) -> dict:
     return {"action": "tag-indexers-for-apps", "summary": summary}
 
 
+def reset_prowlarr_app_mappings(ctx: JobContext) -> dict:
+    """Reconcile Prowlarr's ``ApplicationIndexerMapping`` table
+    against each *arr's actual indexer list.
+
+    Failure mode this fixes:
+    Prowlarr tracks "what I've already pushed to each *arr" in a
+    SQLite table called ``ApplicationIndexerMapping``. In
+    ``addOnly`` syncLevel mode (the v1.0.110 Fix C default),
+    Prowlarr SKIPS any indexer-to-app pair already in this table,
+    even if the *arr's actual DB has been wiped. Result: the *arr
+    sits at 0 indexers while Prowlarr's "sync ok" log claims
+    everything is fine. (Discovered v1.0.124 in live diagnosis.)
+
+    Reconciliation: for each *arr, if its actual indexer count is 0
+    but Prowlarr has mappings for it, DELETE those mapping rows so
+    the next ApplicationIndexerSync pushes fresh.
+
+    Implemented as a thin SQLite-based reset because the Prowlarr
+    REST API has no "reset mappings" endpoint. The table is purely
+    Prowlarr's bookkeeping; deleting rows is safe and idempotent.
+    """
+    import sqlite3 as _sql
+    from pathlib import Path as _P
+    config_root = _P(ctx.config_root if hasattr(ctx, "config_root") else "/srv-config")
+    prowlarr_db = config_root / "prowlarr" / "prowlarr.db"
+    if not prowlarr_db.is_file():
+        return {"action": "reset-prowlarr-app-mappings", "skipped": True,
+                "reason": f"prowlarr.db not found at {prowlarr_db}"}
+    cleared: dict[str, int] = {}
+    try:
+        conn = _sql.connect(str(prowlarr_db))
+        try:
+            for app in ("Sonarr", "Radarr", "Lidarr", "Readarr"):
+                arr_url = ctx.service_url(app.lower())
+                arr_key = ctx.api_key(app.lower())
+                if not arr_url or not arr_key:
+                    continue
+                # Get the *arr's actual indexer count.
+                http = _make_servarr_http_request()
+                ver_path = "/api/v1/indexer" if app in ("Lidarr", "Readarr") else "/api/v3/indexer"
+                status, body, _ = http(arr_url, ver_path, api_key=arr_key)
+                actual = len(body) if status == 200 and isinstance(body, list) else None
+                if actual is None or actual > 0:
+                    continue  # *arr not reachable, or already has indexers
+                # *arr has 0 — clear Prowlarr's mappings for it.
+                cur = conn.execute(
+                    "DELETE FROM ApplicationIndexerMapping WHERE AppId IN "
+                    "(SELECT Id FROM Applications WHERE Name = ?)", (app,),
+                )
+                cleared[app] = cur.rowcount
+            conn.commit()
+        finally:
+            conn.close()
+    except _sql.Error as exc:
+        return {"action": "reset-prowlarr-app-mappings",
+                "error": f"sqlite: {exc}"}
+    return {"action": "reset-prowlarr-app-mappings", "cleared": cleared}
+
+
 def push_indexers(ctx: JobContext) -> dict:
     """Trigger indexer-manager ApplicationIndexerSync."""
     from media_stack.cli.commands.action_handlers import action_push_indexers
