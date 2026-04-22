@@ -428,6 +428,8 @@ class TestEnsureApplication(unittest.TestCase):
         self.assertEqual(field_map["apiKey"], "appkey123")
 
     def test_payload_sync_level(self):
+        # v1.0.110 Fix C: syncLevel is "addOnly", not "fullSync".
+        # fullSync caused indexer churn — see application_ops.py:125-134.
         svc = self._svc()
         svc.http_request.side_effect = [
             (200, [self._schema()], ""),
@@ -437,7 +439,7 @@ class TestEnsureApplication(unittest.TestCase):
         ensure_application(svc, "http://prowlarr", "pkey", "Sonarr", "Sonarr",
                            "http://sonarr:8989", "skey")
         create_call = svc.http_request.call_args_list[2]
-        self.assertEqual(create_call[1]["payload"]["syncLevel"], "fullSync")
+        self.assertEqual(create_call[1]["payload"]["syncLevel"], "addOnly")
 
     def test_schema_resolution_called(self):
         svc = self._svc()
@@ -485,11 +487,18 @@ class TestTriggerSync(unittest.TestCase):
         self.assertIn("failed to trigger ApplicationIndexerSync", str(ctx.exception))
 
     def test_sync_sends_correct_payload(self):
+        # forceSync=true is intentional — without it, an *arr that
+        # lost its indexers (e.g. via 400 rejection) won't get them
+        # back until something marks the app dirty. See
+        # application_ops.py:202-220 for the full reasoning.
         svc = self._svc()
         svc.http_request.return_value = (200, {}, "")
         trigger_sync(svc, "http://prowlarr", "key")
         call_args = svc.http_request.call_args
-        self.assertEqual(call_args[1]["payload"], {"name": "ApplicationIndexerSync"})
+        self.assertEqual(
+            call_args[1]["payload"],
+            {"name": "ApplicationIndexerSync", "forceSync": True},
+        )
 
     def test_sync_uses_post(self):
         svc = self._svc()

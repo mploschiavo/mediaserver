@@ -5058,15 +5058,21 @@ async function _enforceAdminRotation(){
   let me;
   try{me=await (await apiFetch('/api/me')).json();}catch(e){return;}
   if(!me||!me.authenticated||!me.needs_rotation||!me.id)return;
+  // "Ask me later" sets a per-tab session flag so the modal stays
+  // dismissed for the rest of this browser session. Backend still
+  // tracks the user as needs_rotation; the next sign-in shows it
+  // again. Keeps the prompt visible without blocking on every page
+  // load.
+  if(sessionStorage.getItem('ms-rotation-deferred')==='1')return;
   const sourceLabel=(me.source==='env-legacy')?
     'the existing admin password (STACK_ADMIN_PASSWORD)':
     'the bootstrap password (STACK_ADMIN_PASSWORD)';
   const html=`<div class="confirm-box" style="max-width:480px">
     <h3>Set your admin password</h3>
     <p style="color:var(--fg3);font-size:.88em;margin:0 0 10px">
-      You signed in with ${sourceLabel}. Before you can use the dashboard,
-      set a personal password. The env password will stop working the
-      moment you commit this change.
+      You signed in with ${sourceLabel}. Set a personal password to
+      replace it &mdash; the env password stops working the moment
+      you commit. You can defer this until your next sign-in.
     </p>
     <div style="display:flex;flex-direction:column;gap:8px;font-size:.88em">
       <label>Current password
@@ -5081,14 +5087,23 @@ async function _enforceAdminRotation(){
       <div id="rot-err" style="color:var(--err);font-size:.82em;min-height:1em"></div>
     </div>
     <div class="actions">
+      <button class="btn-secondary" id="rot-later" type="button">Ask me later</button>
       <button class="btn-primary" id="rot-go" type="button">Rotate password</button>
     </div>
   </div>`;
   const wrap=document.createElement('div');
   wrap.className='confirm-overlay';
   wrap.innerHTML=html;
-  // Trap ESC — the gate is non-dismissable.
-  const trap=(e)=>{if(e.key==='Escape')e.preventDefault();};
+  // ESC dismisses with the same "ask me later" semantics — the
+  // modal is no longer hard-blocking now that "Ask me later"
+  // exists.
+  const trap=(e)=>{
+    if(e.key==='Escape'){
+      sessionStorage.setItem('ms-rotation-deferred','1');
+      document.removeEventListener('keydown',trap,true);
+      wrap.remove();
+    }
+  };
   document.addEventListener('keydown',trap,true);
   (document.getElementById('confirm-root')||document.body).appendChild(wrap);
   const cur=wrap.querySelector('#rot-cur');
@@ -5096,6 +5111,12 @@ async function _enforceAdminRotation(){
   const nw2=wrap.querySelector('#rot-new2');
   const err=wrap.querySelector('#rot-err');
   const go=wrap.querySelector('#rot-go');
+  const later=wrap.querySelector('#rot-later');
+  later.addEventListener('click',()=>{
+    sessionStorage.setItem('ms-rotation-deferred','1');
+    document.removeEventListener('keydown',trap,true);
+    wrap.remove();
+  });
   requestAnimationFrame(()=>{cur&&cur.focus();});
   /* Argon2 hashing chain (sudo verify + history check + new-pw hash + Authelia provider write) takes ~600-1700ms. Without visible progress the button looks broken — the disabled state alone is too subtle. Show a spinner + label change so the user knows the click registered. */
   const _origLabel=go.textContent;
