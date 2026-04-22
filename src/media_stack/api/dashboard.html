@@ -400,8 +400,10 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
         <option value="">+ Add Service Logs</option>
       </select>
       <span id="activeSvcLogs" style="display:flex;gap:4px;flex-wrap:wrap"></span>
-      <span style="margin-left:auto;display:flex;align-items:center;gap:4px">
-        <span id="tailIndicator" class="conn-dot live" title="Auto-tailing" style="width:6px;height:6px"></span>
+      <span id="tailToggle" style="margin-left:auto;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;padding:2px 6px;border-radius:3px"
+            onclick="logAutoScroll=!logAutoScroll;updateScrollBtn();try{localStorage.setItem('ms-tail-pinned',logAutoScroll?'1':'0');}catch(e){}"
+            title="Click to pin/unpin auto-scroll. Pinned ON by default.">
+        <span id="tailIndicator" class="conn-dot live" style="width:6px;height:6px"></span>
         <span style="color:var(--fg3);font-size:.72em" id="tailLabel">Tailing</span>
       </span>
     </div>
@@ -787,7 +789,9 @@ async function authLogout(){
     window.location.href='/';
   }
 }
-let logRaw=[],logSeq=0,evtSource=null,statusData=null,logAutoScroll=true;
+let logRaw=[],logSeq=0,evtSource=null,statusData=null;
+// Tail pinned ON by default; remember the user's choice across reloads.
+let logAutoScroll=(()=>{try{const v=localStorage.getItem('ms-tail-pinned');return v===null?true:v==='1';}catch(e){return true;}})();
 let logFilter='all',sseAlive=false,svcSort='default',svcVersions={},prevPhase='idle';
 let hideDisabled=true;
 const healthHistory={};
@@ -1366,12 +1370,29 @@ function renderServices(pf){
   for(const s of allSvcs){
     const hlth=SVC_HEALTH[s.id],ms=SVC_MS[s.id],auth=SVC_AUTH[s.id],ver=svcVersions[s.id]||'';
     const pfEntry=pf?pf[s.id]:null,pfOk=pfEntry&&pfEntry.status==='ok';
-    let dotCls='idle',statusText='Pending';
+    let dotCls='idle',statusText='Pending',statusTitle='';
     if(hlth==='disabled'){dotCls='idle';statusText='Not enabled';pendCount++;}
     else if(hlth==='ok'){dotCls='ok';statusText='Running';okCount++;}
     else if(hlth==='error'){dotCls='error';statusText='Down';errCount++;}
     else if(pfOk){dotCls='ok';statusText='Running';okCount++;}
     else{pendCount++;}
+    // SABnzbd is shipped OFF-by-default — Usenet requires the user
+    // to plug in their own usenet provider credentials, which the
+    // stack can't infer or auto-fetch. When SAB shows "Down" but
+    // usenet is intentionally off (toggle in System Actions), the
+    // bare "Down" reads like a fault and triggers bug reports.
+    // Soften it to "Needs usenet provider" so the user knows it's
+    // a configuration step, not a broken service.
+    if(s.id==='sabnzbd' && (statusText==='Down'||statusText==='Pending')){
+      statusText='Needs usenet provider';
+      dotCls='idle';
+      statusTitle='SABnzbd is shipped off until you add a usenet '
+              +'provider in its UI (Settings → Servers). Without '
+              +'credentials it can\'t do anything — *arr grabs '
+              +'route to qBittorrent automatically. Toggle '
+              +'\u201cUsenet (SABnzbd)\u201d on once you\'ve added '
+              +'a provider.';
+    }
 
     let authText='—',authCls='',authTitle='';
     if(hlth!=='disabled'){
@@ -1413,7 +1434,7 @@ function renderServices(pf){
     html+='<td data-label="Service" style="font-weight:600"><span class="dot '+dotCls+'" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'+s.name+'</td>';
     /* Sparkline lives in its own column now — keeps the Service name from being a moving target as new probes arrive. */
     html+='<td data-label="Trend" style="white-space:nowrap">'+sparkHtml(s.id)+'</td>';
-    html+='<td data-label="Status" class="'+dotCls+'">'+statusText+'</td>';
+    html+='<td data-label="Status" class="'+dotCls+'"'+(statusTitle?(' title="'+statusTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+statusText+'</td>';
     html+='<td data-label="Auth" class="'+authCls+'"'+(authTitle?(' title="'+authTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+authText+'</td>';
     html+='<td data-label="Login" class="'+loginCls+'"'+(loginTitle?(' title="'+loginTitle.replace(/"/g,'&quot;')+'"'):'')+'>'+loginText+'</td>';
     /* Config integrity badge — small dot + status. Tooltip names the failing file + parser error. */
