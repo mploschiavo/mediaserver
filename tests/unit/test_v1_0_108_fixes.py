@@ -175,5 +175,62 @@ class DiscoverIndexersRetryScopeIsLeakProof(unittest.TestCase):
         os.environ.pop("MEDIA_STACK_HTTP_RETRY_ATTEMPTS", None)
 
 
+class FlaresolverrProxyIdFallbackChain(unittest.TestCase):
+    """v1.0.108 04:27 incident: ``ensure_flaresolverr_proxy``
+    succeeded (proxy WAS created in Prowlarr) but returned
+    ``None`` because Prowlarr's PUT response body was empty/{}.
+    Caller saw ``no FlareSolverr proxy configured`` for every
+    CF-protected indexer in the same bootstrap.
+
+    Fix: resolve proxy_id from response → payload → current → API
+    re-list, in that priority order. This test pins the
+    response=empty-dict case (the actual incident shape)."""
+
+    def _make_svc(self, http_responses):
+        svc = _mock.MagicMock()
+        svc.http_request.side_effect = http_responses
+        svc.field_map = lambda fields: {f["name"]: f.get("value")
+                                         for f in (fields or [])}
+        svc.field_list = lambda fmap: [
+            {"name": k, "value": v} for k, v in fmap.items()
+        ]
+        svc.log = _mock.MagicMock()
+        return svc
+
+    def test_update_path_with_empty_dict_response_returns_id(self):
+        """The actual 04:27 incident shape: PUT returns ``{}`` ->
+        old code resolved id from {} -> None -> downstream sees
+        'no FlareSolverr proxy configured'."""
+        from media_stack.services.apps.prowlarr.proxy_ops import (
+            ensure_flaresolverr_proxy,
+        )
+        existing_proxy = {
+            "implementation": "FlareSolverr",
+            "name": "FlareSolverr", "id": 7,
+        }
+        schema = {
+            "implementation": "FlareSolverr",
+            "configContract": "FlareSolverrSettings",
+            "fields": [
+                {"name": "host", "value": "http://flaresolverr:8191/"},
+                {"name": "requestTimeout", "value": 60},
+            ],
+        }
+        svc = self._make_svc([
+            (200, [schema], ""),                # GET schema
+            (200, [existing_proxy], ""),        # GET existing — found
+            (200, {}, ""),                      # PUT update — empty {}
+            (200, {}, ""),                      # POST /test
+        ])
+        result = ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
+        self.assertEqual(
+            result, 7,
+            "ensure_flaresolverr_proxy returned None when PUT "
+            "response was empty — proxy_id fallback to current.id "
+            "broken. Downstream CF-retry path will be disabled "
+            "even though the proxy is registered.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

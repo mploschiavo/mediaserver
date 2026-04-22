@@ -116,11 +116,41 @@ class ProwlarrProxyOps:
             resolved_proxy = response_data if isinstance(response_data, dict) else dict(payload)
             service.log(f"[OK] Prowlarr: created FlareSolverr proxy '{proxy_name}' ({host})")
 
-        proxy_id = resolved_proxy.get("id") if isinstance(resolved_proxy, dict) else None
-        try:
-            proxy_id_int = int(proxy_id) if proxy_id is not None else None
-        except (TypeError, ValueError):
-            proxy_id_int = None
+        # Resolve proxy_id from response → payload → current, in
+        # that order. Prowlarr's PUT/POST sometimes returns an empty
+        # body or ``{}``; without the fallback chain, callers see a
+        # successful "updated FlareSolverr proxy" log followed by
+        # ``no FlareSolverr proxy configured`` rejections on every
+        # CF-protected indexer in the same bootstrap. (v1.0.108
+        # 04:27:32-38 incident.)
+        def _coerce_int(v):
+            try:
+                return int(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+        proxy_id_int = None
+        if isinstance(resolved_proxy, dict):
+            proxy_id_int = _coerce_int(resolved_proxy.get("id"))
+        if proxy_id_int is None:
+            proxy_id_int = _coerce_int(payload.get("id"))
+        if proxy_id_int is None and current:
+            proxy_id_int = _coerce_int(current.get("id"))
+        if proxy_id_int is None:
+            # Last resort: re-list and find by implementation/name.
+            st, plist, _ = service.http_request(
+                prowlarr_url, "/api/v1/indexerProxy",
+                api_key=prowlarr_key,
+            )
+            if st == 200 and isinstance(plist, list):
+                match = next(
+                    (p for p in plist
+                     if p.get("implementation") == "FlareSolverr"
+                     or str(p.get("name") or "").strip().lower()
+                     == proxy_name.lower()),
+                    None,
+                )
+                if match:
+                    proxy_id_int = _coerce_int(match.get("id"))
 
         if not test_connection:
             return proxy_id_int
