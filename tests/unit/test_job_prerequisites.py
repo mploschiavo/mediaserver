@@ -88,7 +88,14 @@ class TestPrereqRegistry(unittest.TestCase):
             self.assertTrue(callable(fn), f"PREREQS['{name}'] is not callable")
 
     def test_expected_prereqs_exist(self):
-        expected = {"media_server_id", "media_server_api_key", "media_server_reachable"}
+        expected = {
+            "media_server_id",
+            "media_server_api_key",
+            "media_server_reachable",
+            # Added v1.0.100 — gates validate-credentials so it
+            # doesn't fire while *arr services are still warming up.
+            "arr_apps_reachable",
+        }
         self.assertEqual(set(PREREQS.keys()), expected)
 
     def test_every_job_prereq_exists_in_registry(self):

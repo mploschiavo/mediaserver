@@ -106,7 +106,12 @@ plugin:
       # Without an API key for the media server we can't probe its
       # /Users/AuthenticateByName endpoint — that's the canonical
       # "did the controller's admin password actually take?" signal.
-      requires: [media_server_api_key]
+      # ``arr_apps_reachable`` waits for the *arr family to be
+      # responding before we run credential probes against them;
+      # otherwise the cosmetic "5/7 credential checks did not pass"
+      # warning fires on every fresh install while services are
+      # still warming up.
+      requires: [media_server_api_key, arr_apps_reachable]
 
     post-setup:
       handler: media_stack.services.apps.core.job_adapters:post_setup

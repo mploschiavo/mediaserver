@@ -90,12 +90,13 @@ class ProwlarrAutoIndexersMain:
             for item in str(os.getenv("AUTO_INDEXER_EXCLUDE_NAME_TOKENS", "")).split(",")
             if item.strip()
         ]
-        default_excludes = [
-            "the pirate bay",
-            "limetorrents",
-            "torrentgalaxyclone",
-        ]
-        exclude_name_tokens = list(dict.fromkeys(cli_excludes + env_excludes + default_excludes))
+        # Exclude tokens come from --exclude-name-token (CLI) and
+        # AUTO_INDEXER_EXCLUDE_NAME_TOKENS (env). No hardcoded
+        # defaults: opinionated source-code denylists made the
+        # indexer set look mysteriously different from Prowlarr's
+        # own preset list. Operators who want specific names
+        # excluded can set the env var or pass the flag.
+        exclude_name_tokens = list(dict.fromkeys(cli_excludes + env_excludes))
 
         if not namespace:
             raise ConfigError("namespace must be non-empty")
