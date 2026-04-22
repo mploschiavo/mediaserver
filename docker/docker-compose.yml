@@ -209,7 +209,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.111}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.112}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -521,7 +521,7 @@ services:
   # service tile + DNS host could resolve before a real Recyclarr
   # runtime was wired in. The placeholder did nothing and surfaced
   # as a confusing "Recyclarr stub endpoint" string in browsers
-  # that hit it. Removed in v1.0.111. To bring Recyclarr back, add
+  # that hit it. Removed in v1.0.112. To bring Recyclarr back, add
   # a service block using ghcr.io/recyclarr/recyclarr (cron-based)
   # and re-enable the homepage tile via the bootstrap profile.
 
@@ -636,7 +636,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.111}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.112}
     container_name: media-stack-controller
     command:
       - python3

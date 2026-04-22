@@ -4,7 +4,13 @@ service:
   desc: Usenet client
   category: downloads
   host: sabnzbd
+  # In-container SAB listens on 8080; the host republishes it as
+  # 8085 because qBittorrent already owns 8080 on the host.
+  # ``port`` drives controller→SAB probes (inside the compose net).
+  # ``published_port`` drives the dashboard's browser-direct link
+  # (http://<host>:<published_port>/).
   port: 8080
+  published_port: 8085
   health_path: /
   auth_path: /api
   auth_mode: query:apikey

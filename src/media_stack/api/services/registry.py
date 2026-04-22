@@ -32,6 +32,14 @@ class ServiceDef:
     category: str = "management"
     host: str = ""
     port: int = 0
+    # Host-published port, when different from the container's internal
+    # ``port``. qBittorrent already claims 8080 at the host, so SABnzbd
+    # has to remap to 8085 externally while still serving on 8080 inside.
+    # Defaults to 0 meaning "same as ``port``" — most services are
+    # symmetric.  The dashboard builds browser-side "direct" URLs using
+    # this when set, falling back to ``port`` otherwise.  The controller
+    # still uses ``port`` for in-network probes.
+    published_port: int = 0
     health_path: str = "/"
     auth_path: str = ""
     auth_mode: str = "X-Api-Key"
