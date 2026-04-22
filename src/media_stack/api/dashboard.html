@@ -1215,9 +1215,17 @@ function getSvcUrl(svcId){
   const s=SVC_MAP[svcId];return 'http://'+location.hostname+':'+(s?s.port:80)+'/';
 }
 
-/* Quick Links */
+/* Quick Links — only enabled services. Mirrors the homepage-tile
+   filter: a service is "enabled" when its registry entry is
+   present AND its health state isn't ``disabled``. Pre-bootstrap
+   probes haven't run, so SVC_HEALTH may be empty — in that
+   transient case we show everything (operator wants to see
+   what's loading), and the next render() pass after probes
+   completes hides any disabled ones. */
 function buildQuickLinks(){
   let h='';for(const s of SVCS){
+    if(!s.port)continue;                            /* placeholder/no-UI services */
+    if(SVC_HEALTH[s.id]==='disabled')continue;      /* explicitly disabled */
     h+='<a href="'+getSvcUrl(s.id)+'" target="_blank" title="Open '+s.name+'">'+s.name+'</a>';
   }
   document.getElementById('quick-links').innerHTML=h;
@@ -1476,6 +1484,7 @@ async function probeServices(){
   /* Composite stories — translate per-service signals into user-facing impact statements. */
   try{const rs=await apiFetch('/api/health/stories');if(rs.ok){const ds=await rs.json();renderHealthStories(ds.stories||[]);}}catch(e){}
   if(statusData)renderServices(statusData.preflight_results||{});
+  buildQuickLinks();   /* SVC_HEALTH just changed — rebuild the ribbon to drop newly-disabled services */
 }
 function renderHealthStories(stories){
   const el=document.getElementById('healthStories');if(!el)return;

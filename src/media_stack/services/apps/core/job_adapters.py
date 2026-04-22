@@ -141,6 +141,70 @@ def discover_indexers(ctx: JobContext) -> dict:
             _os.environ["MEDIA_STACK_HTTP_RETRY_ATTEMPTS"] = prev
 
 
+def tag_indexers_for_apps(ctx: JobContext) -> dict:
+    """Probe each Prowlarr indexer per *arr app, then tag both
+    indexers and Prowlarr's app entries so ApplicationIndexerSync
+    only pushes indexers that actually return results for that
+    app's content type. Stops the "Radarr stays at 0 indexers
+    even though Prowlarr has 33 movie-capable ones" failure mode
+    where many anime/TV indexers claim movie capability but probe
+    empty for movies, and Radarr rejects them on add."""
+    from media_stack.services.apps.prowlarr.indexer_app_match import (
+        apply_indexer_app_tags,
+    )
+    import json as _json
+    import urllib.request as _ur
+    import urllib.error as _ue
+
+    def _http_request(base_url: str, path: str, *, api_key: str = "",
+                      method: str = "GET", payload=None,
+                      timeout: int = 30):
+        url = base_url.rstrip("/") + path
+        body = None
+        headers = {"Accept": "application/json"}
+        if api_key:
+            headers["X-Api-Key"] = api_key
+        if payload is not None:
+            body = _json.dumps(payload).encode()
+            headers["Content-Type"] = "application/json"
+        req = _ur.Request(url, data=body, method=method, headers=headers)
+        try:
+            with _ur.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+                try:
+                    parsed = _json.loads(raw)
+                except Exception:
+                    parsed = raw
+                return r.status, parsed, raw
+        except _ue.HTTPError as exc:
+            try:
+                parsed = _json.loads(exc.read())
+            except Exception:
+                parsed = ""
+            return exc.code, parsed, str(parsed)[:300]
+        except Exception as exc:
+            return 599, None, str(exc)[:300]
+
+    def _log(msg: str) -> None:
+        from media_stack.cli.commands.controller_runner import (
+            runtime_platform,
+        )
+        runtime_platform.log(msg)
+
+    prowlarr_url = ctx.service_url("prowlarr")
+    prowlarr_key = ctx.api_key("prowlarr")
+    if not prowlarr_url or not prowlarr_key:
+        _log("[WARN] tag-indexers-for-apps: Prowlarr unreachable, skipping")
+        return {"action": "tag-indexers-for-apps", "skipped": True}
+    summary = apply_indexer_app_tags(
+        prowlarr_url=prowlarr_url,
+        prowlarr_api_key=prowlarr_key,
+        http_request=_http_request,
+        log=_log,
+    )
+    return {"action": "tag-indexers-for-apps", "summary": summary}
+
+
 def push_indexers(ctx: JobContext) -> dict:
     """Trigger indexer-manager ApplicationIndexerSync."""
     from media_stack.cli.commands.action_handlers import action_push_indexers

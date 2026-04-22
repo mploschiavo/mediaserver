@@ -140,6 +140,26 @@ class ProwlarrReputationOps:
                 )
             )
         )
+        # FIX A (v1.0.110): on initial discovery, score failures but
+        # DO NOT quarantine+disable the indexer in Prowlarr. The
+        # disable propagates through ApplicationIndexerSync as a
+        # delete from each *arr's DB; *arr re-adds with a NEW id on
+        # the next sync; *arr's RSS-cached releases reference the
+        # OLD id; grab fails with "IndexerDefinition with ID N does
+        # not exist". The reputation system's quarantine is only
+        # safe AFTER the stack has stabilized (steady-state probes,
+        # not the burst of 629 candidates during discovery).
+        # Detect "initial discovery" by checking if the reputation
+        # state file is empty / fresh.
+        is_initial_discovery = not reputation_state_path.exists() or (
+            not load_reputation_state(reputation_state_path).get("indexers")
+        )
+        quarantine_during_discovery = bool(
+            reputation_cfg.get("quarantine_during_discovery", False)
+        )
+        quarantine_propagates = (
+            (not is_initial_discovery) or quarantine_during_discovery
+        )
         quarantine_threshold = int(reputation_cfg.get("quarantine_score_threshold", -10))
         quarantine_failures = int(reputation_cfg.get("quarantine_failure_threshold", 3))
         quarantine_ttl_hours = int(reputation_cfg.get("quarantine_ttl_hours", 72))
@@ -197,6 +217,15 @@ class ProwlarrReputationOps:
             rep["quarantined_at_epoch"] = now_epoch
             quarantined_now += 1
             service.log(f"[WARN] Auto indexer: quarantined {name} (score={score}, failures={failures})")
+            # Only propagate the disable to Prowlarr (which then
+            # propagates as a delete to each *arr) when we're past
+            # initial discovery — see "FIX A" note above.
+            if not quarantine_propagates:
+                service.log(
+                    f"[INFO] Auto indexer: keeping {name} in Prowlarr "
+                    "(initial-discovery quarantine; reputation-only)"
+                )
+                return
             existing_item = existing_by_key.get(reputation_key(str(impl), str(name)))
             if existing_item and bool(existing_item.get("enable", True)):
                 if set_indexer_enabled(

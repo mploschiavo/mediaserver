@@ -122,7 +122,16 @@ class ProwlarrApplicationOps:
             "enable": True,
             "fields": service.field_list(values),
             "tags": [],
-            "syncLevel": "fullSync",
+            # FIX C (v1.0.110): "addOnly" not "fullSync".
+            # ``fullSync`` makes Prowlarr ALSO REMOVE indexers from
+            # *arr that aren't in Prowlarr — so a transient
+            # quarantine/disable in Prowlarr's reputation system
+            # propagates as a delete in Sonarr/Radarr/etc., orphaning
+            # any RSS-cached releases that reference the deleted
+            # indexer ID. ``addOnly`` only adds; deletes stay opt-in
+            # via the *arr UI. Stable indexer IDs = stable release
+            # cache = grabs actually succeed.
+            "syncLevel": "addOnly",
         }
 
         def put_or_post(method: str, path: str, body: dict[str, Any]):
@@ -191,19 +200,26 @@ class ProwlarrApplicationOps:
         raise RuntimeError(f"Prowlarr: failed creating app {app_name} (HTTP {status}): {body}")
 
     def trigger_sync(self, service, prowlarr_url: str, prowlarr_key: str) -> None:
+        # ``forceSync=true`` makes Prowlarr push EVERY indexer to
+        # every registered app, even if Prowlarr's internal sync
+        # state thinks they're already in sync. Without it, an app
+        # that lost its indexers (e.g. Radarr deleted them on a 400
+        # rejection) won't get them back until something marks the
+        # app as "dirty" — which usually never happens.
         status, _, body = service.http_request(
             prowlarr_url,
             "/api/v1/command",
             api_key=prowlarr_key,
             method="POST",
-            payload={"name": "ApplicationIndexerSync"},
+            payload={"name": "ApplicationIndexerSync", "forceSync": True},
         )
         if status in (200, 201, 202):
-            service.log("[OK] Prowlarr: triggered ApplicationIndexerSync")
+            service.log("[OK] Prowlarr: triggered ApplicationIndexerSync (forceSync=true)")
             return
         raise RuntimeError(
             f"Prowlarr: failed to trigger ApplicationIndexerSync (HTTP {status}): {body}"
         )
+
 
 
 _instance = ProwlarrApplicationOps()

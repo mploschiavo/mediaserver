@@ -79,6 +79,15 @@ plugin:
       priority: 30
       requires: []
 
+    tag-indexers-for-apps:
+      handler: media_stack.services.apps.core.job_adapters:tag_indexers_for_apps
+      phase: download_clients
+      # Runs AFTER discover-indexers (so Prowlarr has indexers to
+      # tag) and BEFORE push-indexers (so the
+      # ApplicationIndexerSync only pushes tag-matched indexers).
+      priority: 35
+      requires: []
+
     push-indexers:
       handler: media_stack.services.apps.core.job_adapters:push_indexers
       phase: download_clients
