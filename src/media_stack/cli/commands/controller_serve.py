@@ -10,6 +10,19 @@ import threading
 import traceback
 from pathlib import Path as _Path
 
+# Use spawn (not fork) for action subprocesses. The controller has
+# ~6 threads at startup (HTTP server, audit verifier, snapshot
+# timer, scheduled reconciler, user-reconcile, audit-verify); on
+# Linux the multiprocessing default is fork(), which inherits all
+# of those threads' locks as permanently held in the child. The
+# first time the child tries to acquire any of those locks (the
+# logging module's internal lock fires on the very first log call)
+# the subprocess deadlocks with no useful message. Symptom:
+# ``[ACTION] bootstrap: starting`` logs, then dead silence for the
+# entire timeout window. Spawn creates a fresh interpreter, no
+# inherited locks. (2026-04-22 incident.)
+_MP_CTX = multiprocessing.get_context("spawn")
+
 import yaml as _yaml
 
 import media_stack.services.runtime_platform as runtime_platform
@@ -338,7 +351,7 @@ def _run_serve(args: argparse.Namespace) -> None:
         action_name: str,
         overrides: dict,
         args_dict: dict,
-        log_queue: multiprocessing.Queue,
+        log_queue: _MP_CTX.Queue,
     ) -> None:
         """Run one action in a subprocess. Logs go to log_queue."""
         import argparse as _ap
@@ -415,10 +428,10 @@ def _run_serve(args: argparse.Namespace) -> None:
             )
 
             # Run action in subprocess — separate GIL, API stays responsive
-            log_q: multiprocessing.Queue = multiprocessing.Queue()
+            log_q: _MP_CTX.Queue = _MP_CTX.Queue()
             runtime_platform.log(f"[DEBUG] Spawning subprocess for action={action_name}, "
                                  f"pid=parent:{os.getpid()}")
-            worker = multiprocessing.Process(
+            worker = _MP_CTX.Process(
                 target=_action_worker,
                 args=(action_name, dict(overrides), _args_dict, log_q),
                 daemon=True,
@@ -427,10 +440,18 @@ def _run_serve(args: argparse.Namespace) -> None:
             runtime_platform.log(f"[DEBUG] Subprocess started: pid={worker.pid}")
 
             # Drain log queue while worker runs; check for cancellation.
+            # Plus: enforce the timeout, and emit a heartbeat every
+            # 60s so the dashboard + log reader sees the action is
+            # still alive (rather than guessing).
             error_msg = None
             cancelled = False
+            timed_out = False
+            import time as _time_mod
+            t_started = _time_mod.monotonic()
+            t_last_heartbeat = t_started
+            timeout_seconds = max(1, int(overrides.get("timeout") or action_timeout))
             while worker.is_alive() or not log_q.empty():
-                # Check cancel request — kill subprocess immediately.
+                # Cancel: hard-kill subprocess.
                 if not cancelled and state.is_cancelled:
                     cancelled = True
                     runtime_platform.log(f"[ACTION] {action_name}: cancelling (killing pid={worker.pid})")
@@ -440,6 +461,32 @@ def _run_serve(args: argparse.Namespace) -> None:
                         worker.kill()
                         worker.join(timeout=2)
                     break
+                # Timeout: hard-kill subprocess. Was previously
+                # informational only — bootstrap could spin past
+                # ``timeout_seconds`` indefinitely (the 18-min
+                # fork-deadlock incident).
+                elapsed = _time_mod.monotonic() - t_started
+                if not timed_out and elapsed > timeout_seconds:
+                    timed_out = True
+                    runtime_platform.log(
+                        f"[ACTION] {action_name}: TIMED OUT after "
+                        f"{elapsed:.0f}s (limit {timeout_seconds}s) — "
+                        f"killing pid={worker.pid}"
+                    )
+                    worker.terminate()
+                    worker.join(timeout=3)
+                    if worker.is_alive():
+                        worker.kill()
+                        worker.join(timeout=2)
+                    error_msg = f"timed out after {elapsed:.0f}s (limit {timeout_seconds}s)"
+                    break
+                # Heartbeat: every 60s of subprocess silence.
+                if elapsed - (t_last_heartbeat - t_started) > 60:
+                    t_last_heartbeat = _time_mod.monotonic()
+                    runtime_platform.log(
+                        f"[ACTION] {action_name}: still running "
+                        f"({elapsed:.0f}s elapsed, timeout {timeout_seconds}s)"
+                    )
                 try:
                     msg_type, msg_data = log_q.get(timeout=0.5)
                     if msg_type == "log":

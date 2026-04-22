@@ -725,8 +725,19 @@ class GetRequestHandler:
                     # True while the admin is still on a bootstrap
                     # credential (STACK_ADMIN_PASSWORD). Flips false
                     # as soon as reset_password flips source=rotated.
-                    "needs_rotation": source.lower() in (
-                        "env-seed", "env-legacy",
+                    #
+                    # Escape hatch for fresh-install testing: setting
+                    # ``STACK_ADMIN_SKIP_FORCED_ROTATION=1`` on the
+                    # controller container suppresses the gate so a
+                    # tester rotating through ``compose down -v && up``
+                    # doesn't have to reset the password every time.
+                    # NEVER set this on a stack exposed to the
+                    # internet — the env-seed credential is well-known.
+                    "needs_rotation": (
+                        source.lower() in ("env-seed", "env-legacy")
+                        and os.environ.get(
+                            "STACK_ADMIN_SKIP_FORCED_ROTATION", ""
+                        ).strip().lower() not in ("1", "true", "yes", "on")
                     ),
                 })
                 break
