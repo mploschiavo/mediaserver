@@ -15,6 +15,27 @@ DIST_DIR="${REPO_ROOT}/dist"
 
 mkdir -p "${DIST_DIR}"
 
+# --- Pre-flight: image-version parity ---
+# Catches the bug class where someone bumps VERSION but a sed in
+# their release script misses some manifest, leaving stale image
+# refs that would deploy an OLD controller. The
+# ``ControllerImageVersionParity`` ratchet (Batch 4, v1.0.119)
+# scans every YAML for ``media-stack-controller:vX.Y.Z`` refs and
+# fails if any disagree with the canonical VERSION file.
+#
+# Skipped if pytest isn't available — the check still runs in CI.
+if [ -z "${SKIP_VERSION_CHECK:-}" ] && command -v python3 >/dev/null && \
+   python3 -c "import pytest" 2>/dev/null; then
+  echo "==> Pre-flight: image-version parity..."
+  if ! python3 -m pytest -q --no-header \
+        "${REPO_ROOT}/tests/unit/test_v1_0_119_batch4_ratchets.py::ControllerImageVersionParity" \
+        2>&1 | tail -3; then
+    echo "ERROR: image refs disagree with VERSION file."
+    echo "Set SKIP_VERSION_CHECK=1 to bypass (not recommended)."
+    exit 1
+  fi
+fi
+
 echo "Regenerating dist/docker-compose.yml..."
 {
     cat <<'EOF'
