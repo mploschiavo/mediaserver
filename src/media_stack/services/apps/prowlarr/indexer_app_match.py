@@ -344,16 +344,61 @@ def apply_indexer_app_tags(
         iid = idx.get("id")
         if iid is None:
             continue
-        # Skip usenet indexers when SAB isn't available — tagging
-        # them for *arrs that only have qBit configured forces
-        # Sonarr/Radarr to try downloading NZBs via a torrent
-        # client and crash on the binary mismatch.
+        # Usenet indexers are useless without a usenet download
+        # client. SAB is the only one we ship; when it's
+        # unreachable, ACTIVELY UNTAG any usenet indexer that
+        # carries our sync-* tags so Prowlarr stops pushing them
+        # to *arrs. Without the un-tag step, indexers tagged
+        # under a previous code revision stay tagged forever and
+        # the *arr keeps grabbing NZBs into its torrent client
+        # (the v1.0.130 skip-on-tag fix prevented NEW tagging
+        # but didn't repair the old state). Self-healing on every
+        # tag run.
         if idx.get("protocol") == "usenet" and not sab_reachable:
-            log(
-                f"[INFO] indexer-app-match: skipping usenet "
-                f"indexer '{idx.get('name','?')}' (SAB not "
-                f"reachable — no usenet download client)"
-            )
+            current_tags = list(idx.get("tags") or [])
+            sync_tag_id_set_for_purge = set()
+            # Re-fetch tag ids defensively in case tag_ids was
+            # not yet populated (e.g. a tag-ensure failed earlier).
+            try:
+                _st, _tags_list, _ = http_request(
+                    prowlarr_url, "/api/v1/tag",
+                    api_key=prowlarr_api_key,
+                )
+                if _st == 200 and isinstance(_tags_list, list):
+                    sync_tag_id_set_for_purge = {
+                        int(t["id"]) for t in _tags_list
+                        if str(t.get("label", "")).startswith("sync-")
+                        and t.get("id") is not None
+                    }
+            except Exception:
+                sync_tag_id_set_for_purge = set(tag_ids.values())
+            stripped = [t for t in current_tags if t not in sync_tag_id_set_for_purge]
+            if sorted(stripped) != sorted(current_tags):
+                body = dict(idx)
+                body["tags"] = stripped
+                _st, _, _ = http_request(
+                    prowlarr_url, f"/api/v1/indexer/{iid}",
+                    api_key=prowlarr_api_key,
+                    method="PUT", payload=body,
+                )
+                if _st in (200, 201, 202):
+                    log(
+                        f"[OK] indexer-app-match: untagged usenet "
+                        f"indexer '{idx.get('name','?')}' (SAB not "
+                        f"reachable)"
+                    )
+                else:
+                    log(
+                        f"[WARN] indexer-app-match: failed to untag "
+                        f"usenet indexer '{idx.get('name','?')}' "
+                        f"(HTTP {_st})"
+                    )
+            else:
+                log(
+                    f"[INFO] indexer-app-match: skipping usenet "
+                    f"indexer '{idx.get('name','?')}' (SAB not "
+                    f"reachable — no usenet download client)"
+                )
             continue
         cache_key_prefix = f"{iid}:"
         had_cache = any(

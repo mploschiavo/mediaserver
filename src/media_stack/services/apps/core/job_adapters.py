@@ -312,6 +312,49 @@ def push_indexers(ctx: JobContext) -> dict:
     return {"action": "push-indexers"}
 
 
+def run_media_hygiene(ctx: JobContext) -> dict:
+    """Auto-cleanup pass: prunes stalled / errored / orphaned
+    downloads from qBit + the *arr queues. Bounded to 25 deletes
+    per run.
+
+    Auto-fired hourly by the controller's scheduler so end users
+    never need to log into qBit to clean up — the user's only
+    interaction with the stack should be Jellyfin.
+    """
+    from media_stack.services.apps.servarr.runtime.hygiene_ops import (
+        run_media_hygiene as _hygiene,
+    )
+    cfg = ctx.cfg or {}
+    arr_apps = []
+    app_keys: dict[str, str] = {}
+    for name in ("sonarr", "radarr", "lidarr", "readarr"):
+        url = ctx.service_url(name)
+        key = ctx.api_key(name)
+        if not url or not key:
+            continue
+        arr_apps.append({
+            "name": name.capitalize(),
+            "implementation": name.capitalize(),
+            "url": url,
+        })
+        app_keys[name.capitalize()] = key
+    qbit_cfg = (cfg.get("qbittorrent") or cfg.get("download_clients", {}).get("qbittorrent")
+                or {})
+    try:
+        result = _hygiene(
+            cfg=cfg,
+            config_root=ctx.config_root,
+            arr_apps=arr_apps,
+            app_keys=app_keys,
+            qbit_cfg=qbit_cfg,
+            qb_username=str(qbit_cfg.get("username") or "admin"),
+            qb_password=str(qbit_cfg.get("password") or ""),
+        ) or {}
+    except Exception as exc:
+        return {"action": "run-media-hygiene", "error": str(exc)[:200]}
+    return {"action": "run-media-hygiene", "summary": result}
+
+
 def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
     """Patch each *arr's runtime quality settings to release-friendly
     defaults. Without this, the *arr family ships defaults that

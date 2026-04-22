@@ -801,5 +801,128 @@ class UsenetIndexersSkippedWhenSabUnavailable(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L14 — automatic media-hygiene scheduling (compose+k8s parity)
+# ---------------------------------------------------------------------------
+class AutomaticMediaHygieneScheduling(unittest.TestCase):
+    """End users should never need to log into qBit to clean up
+    stalled / orphan downloads. The controller MUST:
+
+      1. Have a ``run-media-hygiene`` job in the contract
+         (otherwise the dispatcher won't route).
+      2. Have an adapter in ``core.job_adapters``.
+      3. Run a scheduler dispatch loop that fires recurring
+         actions (the SchedulerService had ``get_due_actions``
+         but no caller until v1.0.132).
+      4. Seed ``run-media-hygiene`` with an interval ≤ 1h on
+         first start, so compose deploys get the same automatic
+         cleanup as k8s (which already had a 6h CronJob).
+
+    Aggressive defaults in ``_guardrail_config.py``: stalled >4h,
+    age >36h, eta >6h, dl<64KB/s with progress<0.98."""
+
+    def test_contract_registers_run_media_hygiene_job(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        if not path.is_file():
+            self.skipTest("core.yaml not present")
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = ((doc.get("plugin") or {}).get("jobs") or {})
+        self.assertIn(
+            "run-media-hygiene", jobs,
+            "core.yaml dropped the run-media-hygiene job — without "
+            "this entry the scheduler tick can't dispatch it and "
+            "qBit downloads pile up indefinitely.",
+        )
+        self.assertEqual(
+            jobs["run-media-hygiene"].get("handler"),
+            "media_stack.services.apps.core.job_adapters:run_media_hygiene",
+            "run-media-hygiene handler path drifted",
+        )
+
+    def test_job_adapter_exists(self) -> None:
+        sys.path.insert(0, str(SRC.parent.parent))
+        from media_stack.services.apps.core import job_adapters
+        self.assertTrue(
+            hasattr(job_adapters, "run_media_hygiene"),
+            "core.job_adapters lost the run_media_hygiene wrapper",
+        )
+
+    def test_controller_seeds_default_schedule(self) -> None:
+        path = SRC / "cli" / "commands" / "controller_serve.py"
+        if not path.is_file():
+            self.skipTest("controller_serve.py not present")
+        text = path.read_text(encoding="utf-8")
+        # The seed call must reference the action name + a sane
+        # interval (≤ 3600s = 1h).
+        self.assertIn(
+            'add_schedule(',
+            text,
+            "controller_serve.py no longer seeds default schedules",
+        )
+        self.assertIn(
+            '"run-media-hygiene"',
+            text,
+            "controller_serve.py no longer seeds run-media-hygiene",
+        )
+        self.assertRegex(
+            text,
+            r"interval_seconds\s*=\s*(?:60|120|180|300|600|900|1200|1800|3600)\b",
+            "Default media-hygiene schedule interval > 1h. End "
+            "users shouldn't have stalled downloads accumulating "
+            "for hours; aggressive cleanup is the whole point.",
+        )
+
+    def test_scheduler_dispatch_loop_wired(self) -> None:
+        path = SRC / "cli" / "commands" / "controller_serve.py"
+        if not path.is_file():
+            self.skipTest("controller_serve.py not present")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            "get_due_actions",
+            text,
+            "controller_serve.py no longer calls "
+            "scheduler.get_due_actions — added schedules will "
+            "sit on disk forever and never fire.",
+        )
+        self.assertIn(
+            'name="scheduler-dispatch"',
+            text,
+            "scheduler-dispatch background thread not started — "
+            "default cleanup never runs.",
+        )
+
+    def test_aggressive_hygiene_defaults(self) -> None:
+        """Defaults in ``_guardrail_config.py`` must be aggressive
+        enough that a typical home stack doesn't accumulate
+        weeks-old stalled downloads. The conservative defaults
+        (24h stalled, 168h age, 14d eta) shipped before v1.0.132
+        let queues bloat indefinitely on small disks."""
+        path = SRC / "services/media_hygiene_ops/_guardrail_config.py"
+        if not path.is_file():
+            self.skipTest("_guardrail_config.py not present")
+        text = path.read_text(encoding="utf-8")
+        # max_stalled_hours default — must be ≤ 12h.
+        m = re.search(r'max_stalled_hours.*?,\s*(\d+(?:\.\d+)?)', text)
+        self.assertIsNotNone(m, "max_stalled_hours default missing")
+        self.assertLessEqual(
+            float(m.group(1)), 12.0,
+            f"stale_max_stalled_hours default {m.group(1)}h is too "
+            f"lax. Aggressive cleanup means torrents stuck >12h "
+            f"get pruned without operator intervention.",
+        )
+        m = re.search(r'max_age_hours.*?,\s*(\d+(?:\.\d+)?)', text)
+        self.assertIsNotNone(m, "max_age_hours default missing")
+        self.assertLessEqual(
+            float(m.group(1)), 72.0,
+            f"stale_max_age_hours default {m.group(1)}h > 3 days. "
+            f"Without aggressive auto-prune, the queue accumulates "
+            f"and end users have to log into qBit to clean up.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
