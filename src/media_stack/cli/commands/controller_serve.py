@@ -314,7 +314,13 @@ def _run_serve(args: argparse.Namespace) -> None:
 
     port = int(args.api_port or os.environ.get("BOOTSTRAP_API_PORT", "9100"))
     action_queue: queue.PriorityQueue[tuple[int, int, str, dict]] = queue.PriorityQueue()
-    action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "600"))
+    # 1800s = 30 min. discover-indexers alone runs ~14 min on a
+    # fresh install (per-indexer Cardigann probes against ~70
+    # indexers, 8-way parallel). Plus jellyfin preflight + library
+    # configure + post-setup. The previous 600s default killed the
+    # bootstrap mid-DAG every time. Override via env if you have
+    # a slower link or more indexers.
+    action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "1800"))
     max_retries = int(os.environ.get("BOOTSTRAP_ACTION_MAX_RETRIES", "0"))
     _queue_seq = 0
 
