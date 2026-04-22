@@ -22,18 +22,31 @@ class ArrIndexerSyncService:
 
     @staticmethod
     def _arr_indexer_name(entry: dict[str, Any]) -> str:
+        # Prowlarr appends " (Prowlarr)" to the indexer name when
+        # adding it to a *arr (so the operator can tell at a glance
+        # which indexers are Prowlarr-managed). The Prowlarr-side
+        # indexer record uses the bare name. To compare them for
+        # the stale-reconciliation check, strip the suffix here so
+        # *arr "AnimeTosho (Prowlarr)" matches Prowlarr "AnimeTosho".
+        # Without this strip, every reconcile classifies every
+        # Prowlarr-pushed indexer as "stale" and DELETES them all,
+        # immediately undoing the push. (Discovered v1.0.127.)
         name = str(entry.get("name") or "").strip()
-        if name:
-            return name
-        fields = entry.get("fields") or []
-        if isinstance(fields, list):
-            for field in fields:
-                if not isinstance(field, dict):
-                    continue
-                field_name = str(field.get("name") or "").strip().lower()
-                if field_name in {"indexername", "name"}:
-                    return str(field.get("value") or "").strip()
-        return ""
+        if not name:
+            fields = entry.get("fields") or []
+            if isinstance(fields, list):
+                for field in fields:
+                    if not isinstance(field, dict):
+                        continue
+                    field_name = str(field.get("name") or "").strip().lower()
+                    if field_name in {"indexername", "name"}:
+                        name = str(field.get("value") or "").strip()
+                        break
+        # Trim the Prowlarr-managed suffix (case-insensitive) so the
+        # name matches Prowlarr's source-of-truth naming.
+        if name.lower().endswith(" (prowlarr)"):
+            name = name[: -len(" (prowlarr)")].strip()
+        return name
 
     @staticmethod
     def _is_prowlarr_managed(entry: dict[str, Any], prowlarr_host: str) -> bool:

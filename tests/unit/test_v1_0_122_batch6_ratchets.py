@@ -680,5 +680,45 @@ class RegenDistInvokesVersionParity(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L11 — *arr indexer-name comparison strips Prowlarr suffix
+# ---------------------------------------------------------------------------
+class ArrIndexerNameStripsProwlarrSuffix(unittest.TestCase):
+    """When comparing *arr indexer names against Prowlarr's
+    source-of-truth list (the v1.0.110 stale-reconciliation
+    pipeline in indexer_sync_service.reconcile()), the *arr name
+    MUST strip the trailing ``" (Prowlarr)"`` suffix. Prowlarr
+    appends this suffix when adding an indexer to a *arr; the
+    Prowlarr-side record uses the bare name. Without the strip,
+    every reconcile classifies every Prowlarr-managed indexer as
+    "stale" and DELETEs it from the *arr, immediately undoing the
+    push. (Discovered v1.0.127 — Sonarr/Radarr would lose all
+    indexers seconds after every successful push.)"""
+
+    def test_arr_indexer_name_strips_prowlarr_suffix(self) -> None:
+        sys.path.insert(0, str(SRC.parent.parent))
+        from media_stack.services.apps.prowlarr.indexer_sync_service import (
+            ArrIndexerSyncService,
+        )
+        # Direct unit test of the helper (no http_request needed).
+        # ``_arr_indexer_name`` is a @staticmethod, callable on the class.
+        cases = [
+            # (input dict, expected stripped name)
+            ({"name": "AnimeTosho (Prowlarr)"}, "AnimeTosho"),
+            ({"name": "AnimeTosho (prowlarr)"}, "AnimeTosho"),  # case-insensitive
+            ({"name": "AnimeTosho"}, "AnimeTosho"),  # no-op when no suffix
+            ({"name": "Some Index (Prowlarr) "}, "Some Index"),
+        ]
+        for input_dict, expected in cases:
+            got = ArrIndexerSyncService._arr_indexer_name(input_dict)
+            self.assertEqual(
+                got, expected,
+                f"_arr_indexer_name({input_dict!r}) expected "
+                f"{expected!r}, got {got!r}. Without this strip, "
+                f"reconcile() will treat every Prowlarr-managed "
+                f"*arr indexer as stale and DELETE it.",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
