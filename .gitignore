@@ -23,3 +23,7 @@ dist/media/
 dist/VERSION
 .env
 config/
+data/
+media/
+dist/data/
+dist/media/
