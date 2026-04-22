@@ -2307,6 +2307,14 @@ function loadSvcLogFromPicker(){
 async function _fetchSvcLogs(svcId){
   _activeSvcLogs.add(svcId);
   _renderActiveSvcBadges();
+  // Adding a service via the picker MUST flip the source to
+  // "controller + added services" mode. Without this, the filter
+  // at the bottom of applyLogFilter() strips every entry whose
+  // action is in _activeSvcLogs (the original semantic — "show
+  // ONLY controller, hide added services" — was upside down).
+  // Now: clicking Controller hides everything else; adding a
+  // service shows controller + that service.
+  if(_logSource==='controller')_logSource='all';
   toast('Loading '+svcId+' logs...');
   try{
     const r=await apiFetch('/api/logs/'+svcId+'?lines=200');const d=await r.json();

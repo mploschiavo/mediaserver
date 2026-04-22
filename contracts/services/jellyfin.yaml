@@ -59,6 +59,13 @@ plugin:
       phase: media_server
       priority: 20
       requires: [media_server_reachable, media_server_api_key]
+      # Adds tuner + EPG and triggers Jellyfin's channel-refresh
+      # task. The channel scan probes every entry in the M3U
+      # (~1000+ entries on iptv-org-us-epg) one by one — minutes
+      # of network I/O. Non-blocking so the rest of bootstrap
+      # finishes and the user can hit the dashboard while
+      # Jellyfin populates channels in the background.
+      non_blocking: true
     configure-plugins:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_plugins
       phase: media_server

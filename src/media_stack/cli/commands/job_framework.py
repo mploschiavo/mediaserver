@@ -16,6 +16,7 @@ from __future__ import annotations
 from media_stack.core.logging_utils import log_swallowed
 import importlib
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -260,12 +261,21 @@ class Job:
         handler: Callable[["JobContext"], dict[str, Any] | None],
         requires: list[str] | None = None,
         max_attempts: int | None = None,
+        non_blocking: bool = False,
     ):
         self.name = name
         self.handler = handler
         self.requires = requires or []
         self.sub_jobs: list["Job"] = []
         self.max_attempts = max_attempts
+        # When True, JobRunner spawns the handler in a daemon thread
+        # and immediately moves on to the next job WITHOUT WAITING
+        # for this one to finish. Use for long-running jobs (indexer
+        # discovery, EPG channel scan) that don't gate the rest of
+        # bootstrap — the dashboard becomes usable in seconds while
+        # these continue concurrently. Result lands in job-history
+        # whenever the thread finishes.
+        self.non_blocking = bool(non_blocking)
 
     def add_sub_job(self, job: "Job") -> "Job":
         """Add a child job. Returns self for chaining."""
@@ -404,6 +414,44 @@ class JobRunner:
                     self.results[job.name] = {"status": "cancelled", "elapsed": 0}
                     self.completed.add(job.name)
                     continue
+                # Non-blocking jobs (indexer discovery, EPG channel
+                # scan) run in a daemon thread. Mark them complete
+                # IMMEDIATELY so the runner moves on; the thread
+                # writes the real result back into self.results when
+                # it finishes (overwriting the placeholder). This
+                # lets the dashboard become usable in seconds while
+                # the slow probes continue concurrently.
+                if getattr(job, "non_blocking", False):
+                    self.results[job.name] = {
+                        "status": "running_in_background", "elapsed": 0,
+                    }
+                    self.completed.add(job.name)
+
+                    def _run_async(j=job):
+                        _t = time.time()
+                        try:
+                            r = j.run(self.ctx) or {}
+                        except Exception as exc:
+                            r = {"status": "error", "error": str(exc)[:200]}
+                        r["elapsed"] = round(time.time() - _t, 1)
+                        # Overwrite placeholder with real result.
+                        self.results[j.name] = r
+                        runtime_platform.log(
+                            f"[JOB] {j.name}: "
+                            f"{r.get('status','?')} ({r['elapsed']}s) "
+                            f"— non-blocking finished"
+                        )
+                    threading.Thread(
+                        target=_run_async, daemon=True,
+                        name=f"job-async-{job.name}",
+                    ).start()
+                    runtime_platform.log(
+                        f"[JOB] {job.name}: started (non-blocking) "
+                        f"— {len(self.completed)}/{len(all_jobs)} done, "
+                        f"{sum(1 for j in all_jobs if j.name not in self.completed)} remaining"
+                    )
+                    continue
+
                 _t_job = time.time()
                 result = job.run(self.ctx)
                 _job_elapsed = round(time.time() - _t_job, 1)
@@ -796,6 +844,13 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
                         if "max_attempts" in job_def
                         else None
                     ),
+                    # ``non_blocking: true`` makes the runner spawn
+                    # the job in a daemon thread and immediately move
+                    # on to the next job without waiting. Use for
+                    # slow probes (indexer discovery, EPG channel
+                    # scan) so the dashboard becomes usable before
+                    # they complete. Default false = blocking.
+                    "non_blocking": bool(job_def.get("non_blocking", False)),
                     "service": svc_id,
                 })
         except Exception as exc:
@@ -945,6 +1000,7 @@ def build_job_framework() -> Job:
                 j["name"], handler,
                 requires=j.get("requires", []),
                 max_attempts=j.get("max_attempts"),
+                non_blocking=j.get("non_blocking", False),
             ))
         root.add_sub_job(phase_job)
 
@@ -959,6 +1015,7 @@ def build_job_framework() -> Job:
                     j["name"], handler,
                     requires=j.get("requires", []),
                     max_attempts=j.get("max_attempts"),
+                    non_blocking=j.get("non_blocking", False),
                 ))
             except Exception as exc:
                 runtime_platform.log(f"[WARN] Cannot resolve handler for remaining-phase job {j['name']}: {exc}")

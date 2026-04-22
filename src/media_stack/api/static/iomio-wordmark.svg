@@ -6,7 +6,6 @@
       <stop offset="1" stop-color="#FF6B6B"/>
     </linearGradient>
   </defs>
-  <rect width="388" height="104" rx="22" fill="#09111E"/>
   <g fill="url(#iograd)">
     <rect x="22" y="22" width="14" height="60" rx="7"/>
     <circle cx="29" cy="14" r="7"/>

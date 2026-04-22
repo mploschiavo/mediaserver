@@ -78,15 +78,22 @@ plugin:
       phase: download_clients
       priority: 30
       requires: []
+      # Probes ~70 candidate trackers through CloudFlare /
+      # Flaresolverr, ~8-14 minutes cold. Runs in a daemon thread
+      # so the rest of bootstrap completes and the dashboard is
+      # usable while this churns. Result lands in job-history when
+      # finished.
+      non_blocking: true
 
     tag-indexers-for-apps:
       handler: media_stack.services.apps.core.job_adapters:tag_indexers_for_apps
       phase: download_clients
-      # Runs AFTER discover-indexers (so Prowlarr has indexers to
-      # tag) and BEFORE push-indexers (so the
-      # ApplicationIndexerSync only pushes tag-matched indexers).
+      # Probes each discovered indexer × each *arr app to classify
+      # by content type. Another slow one — 70 indexers × 4 apps
+      # per cold run. Non-blocking so it doesn't gate dashboard.
       priority: 35
       requires: []
+      non_blocking: true
 
     reset-prowlarr-app-mappings:
       handler: media_stack.services.apps.core.job_adapters:reset_prowlarr_app_mappings
