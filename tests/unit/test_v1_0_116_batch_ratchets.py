@@ -148,6 +148,9 @@ class ComposePublishedPortUniqueness(unittest.TestCase):
 # #18 — healthcheck timing sanity
 # ---------------------------------------------------------------------------
 class ComposeHealthcheckTiming(unittest.TestCase):
+    """Bug class #18: ``timeout > interval`` causes overlapping
+    healthcheck attempts; ``retries × interval > startup_period``
+    means the container is killed before its grace period ends."""
 
     def test_interval_at_least_equal_to_timeout(self) -> None:
         """``timeout`` is the per-attempt limit; ``interval`` is
@@ -238,6 +241,10 @@ class GitTagVersionParity(unittest.TestCase):
 # #5 — contract job ↔ handler presence parity
 # ---------------------------------------------------------------------------
 class ContractJobHandlerParity(unittest.TestCase):
+    """Bug class #5: every contract-declared job must reference a
+    Python ``module:function`` handler that imports cleanly and
+    has the named attribute. A typo in the contract YAML would
+    otherwise fail at job-dispatch time, deep into bootstrap."""
 
     def test_every_contract_job_has_importable_handler(self) -> None:
         try:
