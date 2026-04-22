@@ -340,10 +340,17 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
 
     def test_create_response_non_dict_uses_payload(self):
         svc = self._svc()
+        # Sequence (v1.0.109+): GET schema, GET existing (none),
+        # POST create with non-dict response, GET re-list (the
+        # proxy_id fallback chain's last resort when response/payload/
+        # current all lack an id — CREATE path has no current;
+        # payload doesn't carry id until POST returns it), POST /test.
         svc.http_request.side_effect = [
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, "not a dict", ""),
+            (200, [{"implementation": "FlareSolverr",
+                    "name": "FlareSolverr", "id": 99}], ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
