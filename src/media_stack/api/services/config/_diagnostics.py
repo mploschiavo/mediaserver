@@ -408,9 +408,42 @@ class DiagnosticsService:
             log_swallowed(exc)
         ltv = _ltv.get_livetv_sources()
         if ltv.get("source") == "not_configured":
-            drifts.append({"area": "live_tv", "key": "tuners",
-                "expected": "at least 1 tuner configured", "actual": "none",
-                "note": "Go to Config > Live TV to add IPTV sources"})
+            # Profile/app_config don't show tuners — but check the
+            # runtime livetv-tuners directory the controller writes
+            # to (e.g. /srv-config/livetv-tuners/*.m3u). Jellyfin's
+            # configure-livetv job adds tuners to Jellyfin directly
+            # AND drops the m3u/xmltv files there, so a populated
+            # directory is the source-of-truth signal that Live TV
+            # IS configured even when the profile YAML doesn't list
+            # tuners explicitly. Without this check, the drift
+            # report fires on every clean install where the user
+            # added tuners through the dashboard. (v1.0.128.)
+            import os as _os
+            from pathlib import Path as _P
+            cfg_root = _P(_os.environ.get("CONFIG_ROOT", "/srv-config"))
+            # Materialized tuner files live under
+            # <config_root>/<media-server-id>/livetv-tuners/.
+            # Walk all per-app livetv-tuners dirs so the check works
+            # whether the media server is jellyfin / plex / emby /
+            # mythtv (each gets its own subdir per the registry id).
+            has_runtime_tuners = False
+            try:
+                for sub in cfg_root.iterdir():
+                    tuners_dir = sub / "livetv-tuners"
+                    if not tuners_dir.is_dir():
+                        continue
+                    if any(
+                        f.suffix.lower() in (".m3u", ".m3u8")
+                        for f in tuners_dir.iterdir() if f.is_file()
+                    ):
+                        has_runtime_tuners = True
+                        break
+            except (OSError, PermissionError) as exc:
+                log_swallowed(exc)
+            if not has_runtime_tuners:
+                drifts.append({"area": "live_tv", "key": "tuners",
+                    "expected": "at least 1 tuner configured", "actual": "none",
+                    "note": "Go to Config > Live TV to add IPTV sources"})
         libs = _libs.get_libraries()
         if not libs.get("libraries"):
             drifts.append({"area": "libraries", "key": "media_libraries",

@@ -309,11 +309,51 @@ def apply_indexer_app_tags(
     if status != 200 or not isinstance(indexers, list):
         return {"error": f"failed to list indexers (HTTP {status})"}
 
+    # Which download-client protocols are actually available?
+    # If SABnzbd is off (usenet disabled), usenet-only indexers
+    # must NOT be tagged — Sonarr/Radarr would try to grab the
+    # NZB, hand it to their only download client (qBit), which
+    # reads the NZB bytes as a torrent and crashes with
+    # ``MonoTorrent.TorrentException: Invalid torrent file``.
+    # Every grab attempt then fills the *arr queue with
+    # ``downloadClientUnavailable`` and qBit stays at zero.
+    # (v1.0.130 — 7th bug in the qBit-not-downloading chain.)
+    _arr_status, _arr_proxies, _ = http_request(
+        prowlarr_url, "/api/v1/applications", api_key=prowlarr_api_key,
+    )
+    # Query Prowlarr's download client list: Prowlarr proxies DLs
+    # to the *arrs; it's enough to know whether any *arr has at
+    # least one torrent + usenet client respectively by checking
+    # the indexer's protocol against our local SAB-enabled flag.
+    # Simpler heuristic: SAB is the only usenet client we ship.
+    # If the SABnzbd service is unreachable OR explicitly off,
+    # usenet indexers can't produce grabs.
+    sab_reachable = False
+    try:
+        _s, _b, _ = http_request(
+            "http://sabnzbd:8080", "/sabnzbd/api?mode=version",
+            api_key="",
+        )
+        sab_reachable = (_s == 200)
+    except Exception:
+        sab_reachable = False
+
     cache_hits = 0
     classified = 0
     for idx in indexers:
         iid = idx.get("id")
         if iid is None:
+            continue
+        # Skip usenet indexers when SAB isn't available — tagging
+        # them for *arrs that only have qBit configured forces
+        # Sonarr/Radarr to try downloading NZBs via a torrent
+        # client and crash on the binary mismatch.
+        if idx.get("protocol") == "usenet" and not sab_reachable:
+            log(
+                f"[INFO] indexer-app-match: skipping usenet "
+                f"indexer '{idx.get('name','?')}' (SAB not "
+                f"reachable — no usenet download client)"
+            )
             continue
         cache_key_prefix = f"{iid}:"
         had_cache = any(

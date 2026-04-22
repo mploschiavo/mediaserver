@@ -41,6 +41,34 @@ class ProwlarrProxyOps:
                     tags.append(int(text))
                 except ValueError:
                     continue
+        # Auto-attach to every sync-* tag so FlareSolverr applies to
+        # every indexer the controller pushes to a *arr. Without
+        # tags, Prowlarr never invokes FlareSolverr, and any
+        # CloudFlare-protected indexer (Knaben, ThePirateBay,
+        # TorrentDownload, Uindex, etc.) returns the CloudFlare
+        # challenge HTML to Sonarr/Radarr, which then can't parse
+        # it as a .torrent ("MonoTorrent.TorrentException: Invalid
+        # torrent file"). End-user symptom: Sonarr queue fills with
+        # ``downloadClientUnavailable`` and qBit stays at 0
+        # downloads. (v1.0.130 — discovered in live diagnosis.)
+        if not tags:
+            try:
+                _status, _tags, _body = service.http_request(
+                    prowlarr_url, "/api/v1/tag", api_key=prowlarr_key,
+                )
+                if _status == 200 and isinstance(_tags, list):
+                    for t in _tags:
+                        label = str(t.get("label", "")).strip().lower()
+                        if label.startswith("sync-") and t.get("id") is not None:
+                            try:
+                                tags.append(int(t["id"]))
+                            except (TypeError, ValueError):
+                                pass
+            except Exception:
+                # Tag lookup is best-effort. If it fails, the proxy
+                # ships with empty tags (current behaviour) — no
+                # regression vs v1.0.129.
+                tags = []
         test_connection = bool(cfg.get("test_connection", True))
 
         status, schema_list, body = service.http_request(

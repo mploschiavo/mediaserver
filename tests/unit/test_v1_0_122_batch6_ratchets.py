@@ -720,5 +720,86 @@ class ArrIndexerNameStripsProwlarrSuffix(unittest.TestCase):
             )
 
 
+# ---------------------------------------------------------------------------
+# L12 — FlareSolverr proxy auto-tags with sync-* so it attaches to indexers
+# ---------------------------------------------------------------------------
+class FlareSolverrProxyAutoTagsSyncIndexers(unittest.TestCase):
+    """Prowlarr only routes an indexer through a proxy when the
+    indexer's tags overlap with the proxy's tags. ``FlareSolverr``
+    shipped with empty tags by default → attached to NOTHING →
+    every CloudFlare-protected indexer (Knaben, The Pirate Bay,
+    TorrentDownload, Uindex, etc.) returned the CF challenge HTML
+    to Sonarr/Radarr, which then crashed on ``Invalid torrent file``
+    and the *arr queue filled with ``downloadClientUnavailable``.
+
+    The fix in ``proxy_ops.ensure_flaresolverr_proxy`` auto-fetches
+    every ``sync-*`` tag from Prowlarr when the operator hasn't
+    pinned tags via cfg, so FlareSolverr applies to every indexer
+    the controller pushes to a *arr. Pin the auto-fetch behavior
+    so it can't silently regress.
+
+    Discovered v1.0.130 — final piece of the qBit-not-downloading
+    chain that ran v1.0.121 → v1.0.130."""
+
+    def test_proxy_ops_auto_attaches_sync_tags(self) -> None:
+        path = SRC / "services/apps/prowlarr/proxy_ops.py"
+        if not path.is_file():
+            self.skipTest("proxy_ops.py not present")
+        text = path.read_text(encoding="utf-8")
+        # Auto-tag block must be present.
+        self.assertIn(
+            "/api/v1/tag",
+            text,
+            "proxy_ops.ensure_flaresolverr_proxy no longer queries "
+            "Prowlarr's tag list to auto-attach. Without this, the "
+            "proxy ships with empty tags and Prowlarr never invokes "
+            "FlareSolverr — every CloudFlare-protected indexer "
+            "returns HTML to *arrs and qBit stays at 0 downloads.",
+        )
+        self.assertIn(
+            'startswith("sync-")',
+            text,
+            "proxy_ops no longer filters tags by the 'sync-' prefix. "
+            "Other tags (operator-defined manual tags) shouldn't "
+            "drag the proxy's attachment scope.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L13 — usenet indexers not tagged when no usenet download client is reachable
+# ---------------------------------------------------------------------------
+class UsenetIndexersSkippedWhenSabUnavailable(unittest.TestCase):
+    """When SABnzbd (our only usenet download client) is off or
+    unreachable, ``tag-indexers-for-apps`` must SKIP usenet
+    indexers. Otherwise Sonarr/Radarr grab NZBs and hand them to
+    their torrent client (qBit), which reads the bytes as a
+    torrent and crashes with
+    ``MonoTorrent.TorrentException: Invalid torrent file``. The
+    *arr queue fills with ``downloadClientUnavailable`` and qBit
+    stays at 0 downloads. (v1.0.130 — 7th and final bug in the
+    qBit-not-downloading chain.)"""
+
+    def test_usenet_indexer_gated_on_sab_reachability(self) -> None:
+        path = SRC / "services/apps/prowlarr/indexer_app_match.py"
+        if not path.is_file():
+            self.skipTest("indexer_app_match not present")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            'idx.get("protocol") == "usenet"',
+            text,
+            "apply_indexer_app_tags no longer checks the indexer "
+            "protocol — usenet indexers will get tagged even when "
+            "SAB is off, and *arrs will crash on NZB bytes as "
+            "torrent.",
+        )
+        self.assertIn(
+            "sab_reachable",
+            text,
+            "Protocol gating must consult SAB's reachability. If "
+            "SAB is reachable it's fine to tag usenet indexers; "
+            "if not, skip them with a clear [INFO] log line.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
