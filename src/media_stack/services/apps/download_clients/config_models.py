@@ -292,10 +292,17 @@ class TechnologyBindingsConfig:
         data: dict[str, Any] | None,
     ) -> "TechnologyBindingsConfig":
         src = dict(data or {})
+        # ``default_request_manager`` was previously dropped here —
+        # any profile YAML setting (e.g., to override the
+        # jellyseerr default with overseerr) was silently ignored
+        # at runtime. Caught by the dataclass-parser-coverage
+        # ratchet, fixed in v1.0.115.
+        default_rm = str(src.get("default_request_manager", "jellyseerr")).strip().lower()
         return cls(
             torrent_client=str(src.get("torrent_client", "")).strip().lower(),
             usenet_client=str(src.get("usenet_client", "")).strip().lower(),
             media_server=str(src.get("media_server", "")).strip().lower(),
             request_manager=str(src.get("request_manager", "")).strip().lower(),
+            default_request_manager=default_rm or "jellyseerr",
             raw=src,
         )
