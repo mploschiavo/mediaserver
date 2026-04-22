@@ -117,6 +117,14 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         category=str(entry.get("category", "management")),
         host=str(entry.get("host", entry["id"])),
         port=int(entry.get("port", 0)),
+        # ``published_port`` defaults to 0 (= same as ``port``).  When
+        # the contract sets a different value (only SABnzbd at the
+        # moment, internal 8080 / published 8085 because qBittorrent
+        # owns 8080 on the host), the dashboard's direct-link URL
+        # builder consults this.  Without parsing it here the YAML
+        # value gets dropped and ``/api/services`` returns
+        # ``published_port == port`` regardless of the contract.
+        published_port=int(entry.get("published_port", 0) or 0),
         health_path=str(entry.get("health_path", "/")),
         auth_path=str(entry.get("auth_path", "")),
         auth_mode=str(entry.get("auth_mode", "X-Api-Key")),
