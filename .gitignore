@@ -21,3 +21,5 @@ dist/media/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 dist/VERSION
+.env
+config/

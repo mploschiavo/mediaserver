@@ -29,6 +29,73 @@ from typing import Any
 from media_stack.cli.commands.job_framework import JobContext
 
 
+def _make_servarr_http_request():
+    """Build an HTTP-request callable that survives URL-base
+    prefix redirects.
+
+    Prowlarr / Sonarr / Radarr / Lidarr / Readarr all run behind a
+    URL-base prefix (e.g. ``/app/prowlarr/``). GETs without the
+    prefix are quietly accepted, but POST/PUT/DELETE return a 307
+    redirect to the prefixed URL — and Python's ``urllib`` drops
+    the POST body on a 307, so the retargeted request arrives with
+    no payload and the *arr 400s.
+
+    This wrapper disables urllib's auto-redirect, then manually
+    re-issues each redirect (up to 4 hops) with the original
+    method + body intact. Returns ``(status, parsed_body, raw)``.
+    """
+    import json as _json
+    import urllib.error as _ue
+    import urllib.request as _ur
+    from urllib.parse import urljoin as _urljoin
+
+    class _NoRedirect(_ur.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+            return None
+
+    opener = _ur.build_opener(_NoRedirect())
+
+    def _http_request(base_url: str, path: str, *, api_key: str = "",
+                      method: str = "GET", payload=None,
+                      timeout: int = 30):
+        body = None
+        headers = {"Accept": "application/json"}
+        if api_key:
+            headers["X-Api-Key"] = api_key
+        if payload is not None:
+            body = _json.dumps(payload).encode()
+            headers["Content-Type"] = "application/json"
+        current_url = base_url.rstrip("/") + path
+        for _hop in range(4):
+            req = _ur.Request(
+                current_url, data=body, method=method, headers=headers,
+            )
+            try:
+                with opener.open(req, timeout=timeout) as r:
+                    raw = r.read()
+                    try:
+                        parsed = _json.loads(raw)
+                    except Exception:
+                        parsed = raw
+                    return r.status, parsed, raw
+            except _ue.HTTPError as exc:
+                if exc.code in (301, 302, 303, 307, 308):
+                    target = exc.headers.get("Location")
+                    if target:
+                        current_url = _urljoin(current_url, target)
+                        continue
+                try:
+                    parsed = _json.loads(exc.read())
+                except Exception:
+                    parsed = ""
+                return exc.code, parsed, str(parsed)[:300]
+            except Exception as exc:
+                return 599, None, str(exc)[:300]
+        return 599, None, f"too many redirects from {base_url}{path}"
+
+    return _http_request
+
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -156,34 +223,7 @@ def tag_indexers_for_apps(ctx: JobContext) -> dict:
     import urllib.request as _ur
     import urllib.error as _ue
 
-    def _http_request(base_url: str, path: str, *, api_key: str = "",
-                      method: str = "GET", payload=None,
-                      timeout: int = 30):
-        url = base_url.rstrip("/") + path
-        body = None
-        headers = {"Accept": "application/json"}
-        if api_key:
-            headers["X-Api-Key"] = api_key
-        if payload is not None:
-            body = _json.dumps(payload).encode()
-            headers["Content-Type"] = "application/json"
-        req = _ur.Request(url, data=body, method=method, headers=headers)
-        try:
-            with _ur.urlopen(req, timeout=timeout) as r:
-                raw = r.read()
-                try:
-                    parsed = _json.loads(raw)
-                except Exception:
-                    parsed = raw
-                return r.status, parsed, raw
-        except _ue.HTTPError as exc:
-            try:
-                parsed = _json.loads(exc.read())
-            except Exception:
-                parsed = ""
-            return exc.code, parsed, str(parsed)[:300]
-        except Exception as exc:
-            return 599, None, str(exc)[:300]
+    _http_request = _make_servarr_http_request()
 
     def _log(msg: str) -> None:
         from media_stack.cli.commands.controller_runner import (
@@ -240,30 +280,7 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
     import urllib.request as _ur
     import urllib.error as _ue
 
-    def _http_request(base_url: str, path: str, *, api_key: str = "",
-                      method: str = "GET", payload=None,
-                      timeout: int = 15):
-        url = base_url.rstrip("/") + path
-        body = None
-        headers = {"Accept": "application/json"}
-        if api_key:
-            headers["X-Api-Key"] = api_key
-        if payload is not None:
-            body = _json.dumps(payload).encode()
-            headers["Content-Type"] = "application/json"
-        req = _ur.Request(url, data=body, method=method, headers=headers)
-        try:
-            with _ur.urlopen(req, timeout=timeout) as r:
-                raw = r.read()
-                try: parsed = _json.loads(raw)
-                except Exception: parsed = raw
-                return r.status, parsed, raw
-        except _ue.HTTPError as exc:
-            try: parsed = _json.loads(exc.read())
-            except Exception: parsed = ""
-            return exc.code, parsed, str(parsed)[:300]
-        except Exception as exc:
-            return 599, None, str(exc)[:300]
+    _http_request = _make_servarr_http_request()
 
     def _log(msg: str) -> None:
         from media_stack.cli.commands.controller_runner import (
