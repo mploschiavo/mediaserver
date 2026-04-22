@@ -6,21 +6,20 @@ app_auth:
   method: Forms
   required: DisabledForLocalAddresses
 
-# Gateway-level auth (SSO via Authelia/Authentik) is OFF in the
-# default profile because the dist compose file gates Authelia
-# behind the ``auth-authelia`` profile. Setting ``mode: authelia``
-# here while Authelia isn't running causes Envoy's ext_authz
-# filter to call a non-existent upstream and fail closed → every
-# gateway request 403's. (2026-04-21 production incident.)
+# Gateway-level SSO via Authelia is ON by default. The compose
+# file ships Authelia unconditionally (no ``--profile`` needed),
+# and Authelia's access_control rule lets RFC 1918 / loopback
+# clients through with ``policy: bypass`` — so a couch + iPad on
+# the home LAN never sees a sign-in screen. Anything from outside
+# those ranges hits the one_factor / two_factor rules.
 #
-# To enable SSO:
-#   1. Bring up Authelia: ``docker compose --profile auth-authelia up -d authelia``
-#   2. Flip ``auth.enabled``/``provider``/``mode`` here to authelia
-#   3. Reconcile the controller — Envoy regenerates with ext_authz
+# To turn SSO off entirely, flip ``enabled: false`` here AND set
+# ``--profile no-authelia`` on compose (or remove the service);
+# leaving them out of sync caused the 2026-04-21 403 incident.
 auth:
-  enabled: false
-  provider: none
-  mode: none
+  enabled: true
+  provider: authelia
+  mode: authelia
 bootstrap:
   apply_initial_preferences: true
   preconfigure_api_keys: true
