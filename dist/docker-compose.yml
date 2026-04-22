@@ -52,6 +52,18 @@ services:
           /cfg/readarr /cfg/prowlarr /cfg/bazarr /cfg/sabnzbd /cfg/qbittorrent \
           /cfg/maintainerr /cfg/tautulli /cfg/homepage /cfg/envoy /cfg/unpackerr \
           /data/torrents /data/usenet /data/transcode \
+          /data/torrents/incomplete \
+          /data/torrents/completed \
+          /data/torrents/completed/tv \
+          /data/torrents/completed/movies \
+          /data/torrents/completed/music \
+          /data/torrents/completed/books \
+          /data/usenet/incomplete \
+          /data/usenet/completed \
+          /data/usenet/completed/tv \
+          /data/usenet/completed/movies \
+          /data/usenet/completed/music \
+          /data/usenet/completed/books \
           /media/media /media/media/movies /media/media/tv /media/media/music /media/media/books; do
           mkdir -p "$$d"
         done
@@ -214,7 +226,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.102}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.103}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -526,7 +538,7 @@ services:
   # service tile + DNS host could resolve before a real Recyclarr
   # runtime was wired in. The placeholder did nothing and surfaced
   # as a confusing "Recyclarr stub endpoint" string in browsers
-  # that hit it. Removed in v1.0.102. To bring Recyclarr back, add
+  # that hit it. Removed in v1.0.103. To bring Recyclarr back, add
   # a service block using ghcr.io/recyclarr/recyclarr (cron-based)
   # and re-enable the homepage tile via the bootstrap profile.
 
@@ -641,7 +653,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.102}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.103}
     container_name: media-stack-controller
     command:
       - python3
