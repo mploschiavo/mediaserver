@@ -130,6 +130,74 @@ def push_indexers(ctx: JobContext) -> dict:
     return {"action": "push-indexers"}
 
 
+def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
+    """Patch each *arr's runtime quality settings to release-friendly
+    defaults. Without this, the *arr family ships defaults that
+    reject most real-world torrent formats — Radarr's
+    ``language=Original`` rejects English releases for movies TMDB
+    mislabels as foreign-language; Lidarr's MP3-tuned per-quality
+    size caps reject any FLAC album over ~300 MB; Readarr's eBook
+    profile excludes loosely-tagged formats. This is the smallest
+    set of patches that makes a fresh install actually grab content."""
+    from media_stack.services.apps.servarr.arr_runtime_defaults import (
+        apply_arr_runtime_defaults as _apply,
+    )
+    cfg = ctx.cfg
+    arr_apps = cfg.get("arr_apps") or []
+    if not isinstance(arr_apps, list):
+        arr_apps = []
+    app_keys = {
+        name: ctx.api_key(name)
+        for name in ("sonarr", "radarr", "lidarr", "readarr")
+        if ctx.api_key(name)
+    }
+    # Lazy http_request: re-use the same shape the rest of the
+    # *arr ops use — small synchronous urllib wrapper.
+    import json as _json
+    import urllib.request as _ur
+    import urllib.error as _ue
+
+    def _http_request(base_url: str, path: str, *, api_key: str = "",
+                      method: str = "GET", payload=None,
+                      timeout: int = 15):
+        url = base_url.rstrip("/") + path
+        body = None
+        headers = {"Accept": "application/json"}
+        if api_key:
+            headers["X-Api-Key"] = api_key
+        if payload is not None:
+            body = _json.dumps(payload).encode()
+            headers["Content-Type"] = "application/json"
+        req = _ur.Request(url, data=body, method=method, headers=headers)
+        try:
+            with _ur.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+                try: parsed = _json.loads(raw)
+                except Exception: parsed = raw
+                return r.status, parsed, raw
+        except _ue.HTTPError as exc:
+            try: parsed = _json.loads(exc.read())
+            except Exception: parsed = ""
+            return exc.code, parsed, str(parsed)[:300]
+        except Exception as exc:
+            return 599, None, str(exc)[:300]
+
+    def _log(msg: str) -> None:
+        from media_stack.cli.commands.controller_runner import (
+            runtime_platform,
+        )
+        runtime_platform.log(msg)
+
+    summary = _apply(
+        arr_apps=arr_apps,
+        app_keys=app_keys,
+        service_url=ctx.service_url,
+        http_request=_http_request,
+        log=_log,
+    )
+    return {"action": "apply-arr-runtime-defaults", "updated": summary}
+
+
 def post_setup(ctx: JobContext) -> dict:
     """Deferred post-bootstrap: media-server tuning, hygiene, app
     restarts."""

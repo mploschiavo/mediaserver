@@ -99,6 +99,14 @@ plugin:
     # post phase — runs after services are configured
     # ---------------------------------------------------------------
 
+    apply-arr-runtime-defaults:
+      handler: media_stack.services.apps.core.job_adapters:apply_arr_runtime_defaults
+      phase: post
+      # Runs BEFORE validate-credentials so the patches affect any
+      # subsequent search/grab decisions in this same bootstrap run.
+      priority: 55
+      requires: [arr_apps_reachable]
+
     validate-credentials:
       handler: media_stack.services.apps.core.job_adapters:validate_credentials
       phase: post
