@@ -271,14 +271,31 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
         )
         runtime_platform.log(msg)
 
+    # Usenet-enabled gate reads ``download_clients.sabnzbd.configure_arr_clients``
+    # from the cfg. When false (the default as of v1.0.111), each
+    # *arr's SAB download client gets enable=false and the delay
+    # profile flips to preferredProtocol=torrent so qBittorrent
+    # grabs fire immediately. When the operator flips this back to
+    # true via the dashboard toggle + reconcile, the *arrs are
+    # reconciled back to usenet-preferred.
+    dcs_cfg = cfg.get("download_clients") or {}
+    sab_cfg = dcs_cfg.get("sabnzbd") if isinstance(dcs_cfg, dict) else {}
+    usenet_enabled = bool(
+        isinstance(sab_cfg, dict) and sab_cfg.get("configure_arr_clients", False)
+    )
     summary = _apply(
         arr_apps=arr_apps,
         app_keys=app_keys,
         service_url=ctx.service_url,
         http_request=_http_request,
         log=_log,
+        usenet_enabled=usenet_enabled,
     )
-    return {"action": "apply-arr-runtime-defaults", "updated": summary}
+    return {
+        "action": "apply-arr-runtime-defaults",
+        "updated": summary,
+        "usenet_enabled": usenet_enabled,
+    }
 
 
 def post_setup(ctx: JobContext) -> dict:
