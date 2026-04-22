@@ -207,6 +207,81 @@ def patch_readarr_allow_unknown_text(
     return updated
 
 
+def patch_arr_usenet_enabled(
+    *,
+    arr_url: str,
+    api_ver: str,
+    api_key: str,
+    usenet_enabled: bool,
+    http_request: Callable,
+    log: Callable[[str], None],
+) -> int:
+    """Reconcile an *arr app's usenet configuration to the
+    controller's ``download_clients.sabnzbd.configure_arr_clients``
+    flag.
+
+    When usenet is disabled:
+      - Set every Sabnzbd download-client row to ``enable: false``.
+      - Update delay profile(s) to ``preferredProtocol: torrent``
+        so qBittorrent grabs fire immediately instead of waiting
+        for a usenet client that will never succeed.
+
+    When usenet is enabled:
+      - Re-enable any disabled Sabnzbd client rows.
+      - Set delay profile to ``preferredProtocol: usenet`` (the
+        *arr out-of-box default).
+
+    Idempotent; returns the count of rows updated."""
+    updated = 0
+    # 1. Download clients
+    st, dcs, body = http_request(
+        arr_url, f"/api/{api_ver}/downloadclient", api_key=api_key,
+    )
+    if st == 200 and isinstance(dcs, list):
+        for dc in dcs:
+            if (dc.get("implementation") or "").lower() != "sabnzbd":
+                continue
+            desired_enable = bool(usenet_enabled)
+            if bool(dc.get("enable", False)) == desired_enable:
+                continue
+            dc["enable"] = desired_enable
+            dcid = dc.get("id")
+            st2, _, _ = http_request(
+                arr_url, f"/api/{api_ver}/downloadclient/{dcid}",
+                api_key=api_key, method="PUT", payload=dc,
+            )
+            if st2 in (200, 201, 202):
+                updated += 1
+                log(
+                    f"[OK] *arr runtime-defaults: SABnzbd download "
+                    f"client {'enabled' if desired_enable else 'disabled'}"
+                )
+
+    # 2. Delay profile
+    st, profiles, _ = http_request(
+        arr_url, f"/api/{api_ver}/delayprofile", api_key=api_key,
+    )
+    if st == 200 and isinstance(profiles, list):
+        desired_proto = "usenet" if usenet_enabled else "torrent"
+        for prof in profiles:
+            if str(prof.get("preferredProtocol") or "") == desired_proto:
+                continue
+            prev = prof.get("preferredProtocol")
+            prof["preferredProtocol"] = desired_proto
+            pid = prof.get("id")
+            st2, _, _ = http_request(
+                arr_url, f"/api/{api_ver}/delayprofile/{pid}",
+                api_key=api_key, method="PUT", payload=prof,
+            )
+            if st2 in (200, 201, 202):
+                updated += 1
+                log(
+                    f"[OK] *arr runtime-defaults: delay profile "
+                    f"preferredProtocol {prev} -> {desired_proto}"
+                )
+    return updated
+
+
 def apply_arr_runtime_defaults(
     *,
     arr_apps: list[dict],
@@ -214,6 +289,7 @@ def apply_arr_runtime_defaults(
     service_url: Callable[[str], str],
     http_request: Callable,
     log: Callable[[str], None],
+    usenet_enabled: bool | None = None,
 ) -> dict[str, int]:
     """Per-app dispatch.  Returns ``{app_name: updates_applied}``.
 
@@ -222,6 +298,28 @@ def apply_arr_runtime_defaults(
     Readarr disabled) are silently skipped."""
     summary: dict[str, int] = {}
     by_impl = {(a.get("implementation") or "").lower(): a for a in arr_apps}
+
+    # Usenet-enabled gate: reconcile SAB download-client + delay
+    # profile in every *arr to match the controller cfg. Applies
+    # to all four *arr types.
+    if usenet_enabled is not None:
+        for impl, api_ver in (
+            ("sonarr", "v3"), ("radarr", "v3"),
+            ("lidarr", "v1"), ("readarr", "v1"),
+        ):
+            if impl not in by_impl or impl not in app_keys:
+                continue
+            try:
+                patch_arr_usenet_enabled(
+                    arr_url=service_url(impl),
+                    api_ver=api_ver,
+                    api_key=app_keys[impl],
+                    usenet_enabled=bool(usenet_enabled),
+                    http_request=http_request,
+                    log=log,
+                )
+            except Exception as exc:
+                log(f"[WARN] {impl} usenet-enabled reconcile: {exc}")
 
     if "radarr" in by_impl and "radarr" in app_keys:
         try:

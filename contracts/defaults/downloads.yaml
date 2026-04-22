@@ -126,7 +126,18 @@ download_clients:
     implementation: Sabnzbd
     name: SABnzbd
     url_base: /app/sabnzbd
-    configure_arr_clients: true
+    # OFF by default — SABnzbd needs working usenet provider
+    # credentials to do anything useful, and most home installs
+    # don't have them. When this is true and the user has no
+    # provider, *arr submits grabs to SABnzbd, SABnzbd silently
+    # accepts them, the download fails, and qBittorrent never
+    # gets a chance because the *arr delay profile prefers usenet
+    # (preferredProtocol=usenet, torrentDelay=0).
+    # Flip to true after configuring a usenet provider in
+    # SABnzbd's UI; the controller will then register SABnzbd
+    # as a download client in each *arr and switch the delay
+    # profile back to "prefer usenet".
+    configure_arr_clients: false
     set_categories_in_sab: true
     incomplete_dir: /data/usenet/incomplete
     complete_dir: /data/usenet/completed

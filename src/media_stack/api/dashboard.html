@@ -349,6 +349,11 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       <span id="autoLabel" style="font-size:.82em;font-weight:600">Auto-Downloads</span>
     </div>
     <span style="border-left:1px solid var(--border);height:20px"></span>
+    <div style="display:flex;align-items:center;gap:8px" title="Enable once SABnzbd has working usenet provider credentials. When off, grabs route to qBittorrent immediately.">
+      <label class="switch" style="width:34px;height:18px"><input type="checkbox" id="usenetToggle" onchange="toggleUsenet(this.checked)"><span class="slider" style="border-radius:9px"></span></label>
+      <span id="usenetLabel" style="font-size:.82em;font-weight:600">Usenet (SABnzbd)</span>
+    </div>
+    <span style="border-left:1px solid var(--border);height:20px"></span>
     <button class="btn-primary" style="padding:4px 12px;font-size:.82em" onclick="actionBtn(this,scanNow,'Library scan triggered')">Scan Library</button>
     <button class="btn-secondary" style="padding:4px 10px;font-size:.78em" onclick="confirmAction('discover-indexers','Scan for Indexers','Scans Prowlarr presets. Takes 1-2 min.')" title="(I)">Scan Indexers</button>
   </div>
@@ -1139,6 +1144,25 @@ async function toggleAuto(on){
     setTimeout(()=>doAction('reconcile'),500);
   }catch(e){toast(_safeErrText(e),true);}
 }
+/* Usenet (SABnzbd) toggle — flips
+   ``download_clients.sabnzbd.configure_arr_clients`` in the
+   runtime config. On reconcile, apply-arr-runtime-defaults syncs
+   each *arr's SAB download-client enable flag AND the delay
+   profile (preferredProtocol=usenet when on, =torrent when off)
+   so qBit grabs fire immediately while usenet is off.
+   Default off — SABnzbd needs working provider credentials which
+   most home installs don't have. Flip on AFTER configuring a
+   provider in SABnzbd's UI. */
+async function toggleUsenet(on){
+  try{
+    await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},
+      body:JSON.stringify({download_clients:{sabnzbd:{configure_arr_clients:on}}})});
+    const lbl=document.getElementById('usenetLabel');
+    if(lbl)lbl.innerHTML='Usenet (SABnzbd): <b>'+(on?'on':'off')+'</b>';
+    toast('Usenet '+(on?'enabled — reconciling *arr clients...':'disabled — reconciling *arr clients, qBit now gets grabs...'));
+    setTimeout(()=>doAction('reconcile'),500);
+  }catch(e){toast(_safeErrText(e),true);}
+}
 
 function relTime(sec){if(!sec&&sec!==0)return '?';sec=Math.round(sec);if(sec<60)return sec+'s';if(sec<3600)return Math.floor(sec/60)+'m '+sec%60+'s';return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';}
 function fmtBytes(b){if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;let v=b;while(v>=1024&&i<u.length-1){v/=1024;i++;}return v.toFixed(i>1?1:0)+' '+u[i];}
@@ -1276,6 +1300,12 @@ async function load(){
     const cfg=d.runtime_config||{},autoOn=cfg.auto_download_content===true||cfg.auto_download_content==='1';
     document.getElementById('autoToggle').checked=autoOn;
     document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(autoOn?'on':'off')+'</b>';
+    /* Usenet toggle state — cfg.download_clients.sabnzbd.configure_arr_clients.
+       Default false until the operator flips it on after setting up
+       a provider in the SABnzbd UI. */
+    const sabCfg=((cfg.download_clients||{}).sabnzbd)||{},usenetOn=sabCfg.configure_arr_clients===true||sabCfg.configure_arr_clients==='1';
+    const usenetToggle=document.getElementById('usenetToggle');
+    if(usenetToggle){usenetToggle.checked=usenetOn;document.getElementById('usenetLabel').innerHTML='Usenet (SABnzbd): <b>'+(usenetOn?'on':'off')+'</b>';}
     renderServices(d.preflight_results||{});
 
     const hist=(d.action_history||[]).slice().reverse().slice(0,10);

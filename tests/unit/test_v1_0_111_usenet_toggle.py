@@ -1,0 +1,147 @@
+"""Ratchets for v1.0.111: usenet off by default + UI toggle.
+
+Fresh installs without a usenet provider end up with SABnzbd
+silently eating every grab while qBittorrent sits empty (the
+*arr delay profile prefers usenet; SAB accepts the NZB; the
+actual download fails on provider-auth; torrents never get a
+chance). User sees "qBit has nothing to download" even though
+everything looks configured.
+
+Fix: ``download_clients.sabnzbd.configure_arr_clients`` defaults
+to ``false``. Dashboard adds a "Usenet (SABnzbd)" toggle next to
+Auto-Downloads. Flipping it on reconciles each *arr:
+
+  - Sabnzbd download-client rows: enable=true
+  - Delay profile preferredProtocol: usenet
+
+Flipping it off:
+  - Sabnzbd download-client rows: enable=false
+  - Delay profile preferredProtocol: torrent (so qBit grabs fire
+    immediately, no 0-delay-timeout wait-for-usenet)
+"""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+
+class SabnzbdOffByDefault(unittest.TestCase):
+
+    def test_contract_default_is_false(self) -> None:
+        import yaml
+        text = (ROOT / "contracts/defaults/downloads.yaml").read_text(encoding="utf-8")
+        data = yaml.safe_load(text) or {}
+        sab = (data.get("download_clients") or {}).get("sabnzbd") or {}
+        self.assertFalse(
+            bool(sab.get("configure_arr_clients", True)),
+            "SABnzbd configure_arr_clients should default to false; "
+            "with it true, fresh installs route every grab to a "
+            "usenet client that doesn't have provider credentials "
+            "and qBittorrent never sees a request.",
+        )
+
+
+class PatchArrUsenetEnabledReconciler(unittest.TestCase):
+
+    def setUp(self) -> None:
+        from media_stack.services.apps.servarr import arr_runtime_defaults
+        self.mod = arr_runtime_defaults
+
+    def _run(self, *, usenet_enabled, initial_dc_enable, initial_proto):
+        put_calls = []
+        dc = {"id": 1, "implementation": "Sabnzbd",
+              "enable": initial_dc_enable, "name": "SABnzbd"}
+        dp = {"id": 1, "preferredProtocol": initial_proto,
+              "usenetDelay": 0, "torrentDelay": 0}
+
+        def http(base, path, *, api_key="", method="GET",
+                 payload=None, timeout=15):
+            if path == "/api/v3/downloadclient" and method == "GET":
+                return 200, [dc], b""
+            if path == "/api/v3/delayprofile" and method == "GET":
+                return 200, [dp], b""
+            if method == "PUT":
+                put_calls.append((path, payload))
+                return 202, {}, b""
+            return 404, None, b""
+
+        captured = []
+        self.mod.patch_arr_usenet_enabled(
+            arr_url="http://sonarr:8989",
+            api_ver="v3",
+            api_key="K",
+            usenet_enabled=usenet_enabled,
+            http_request=http,
+            log=captured.append,
+        )
+        return put_calls, captured
+
+    def test_disabling_usenet_flips_sab_client_and_delay_profile(self) -> None:
+        puts, logs = self._run(
+            usenet_enabled=False,
+            initial_dc_enable=True,
+            initial_proto="usenet",
+        )
+        # Must have updated both the SAB client and the delay profile.
+        dc_put = next((p for p in puts if "/downloadclient/" in p[0]), None)
+        dp_put = next((p for p in puts if "/delayprofile/" in p[0]), None)
+        self.assertIsNotNone(dc_put, "SAB client not updated")
+        self.assertIsNotNone(dp_put, "Delay profile not updated")
+        self.assertFalse(dc_put[1]["enable"],
+                         "SAB client should be disabled")
+        self.assertEqual(dp_put[1]["preferredProtocol"], "torrent",
+                         "Delay profile should prefer torrent when usenet off")
+
+    def test_enabling_usenet_restores_sab_and_switches_back_to_usenet(self) -> None:
+        puts, _ = self._run(
+            usenet_enabled=True,
+            initial_dc_enable=False,
+            initial_proto="torrent",
+        )
+        dc_put = next((p for p in puts if "/downloadclient/" in p[0]), None)
+        dp_put = next((p for p in puts if "/delayprofile/" in p[0]), None)
+        self.assertIsNotNone(dc_put)
+        self.assertIsNotNone(dp_put)
+        self.assertTrue(dc_put[1]["enable"])
+        self.assertEqual(dp_put[1]["preferredProtocol"], "usenet")
+
+    def test_idempotent_when_already_in_desired_state(self) -> None:
+        puts, _ = self._run(
+            usenet_enabled=False,
+            initial_dc_enable=False,
+            initial_proto="torrent",
+        )
+        # Already off + already torrent → no PUTs.
+        self.assertEqual(puts, [])
+
+
+class DashboardToggle(unittest.TestCase):
+
+    def test_ui_has_usenet_toggle(self) -> None:
+        html = (ROOT / "src/media_stack/api/dashboard.html").read_text(encoding="utf-8")
+        self.assertIn('id="usenetToggle"', html,
+                      "usenetToggle checkbox missing from dashboard")
+        self.assertIn("async function toggleUsenet(", html,
+                      "toggleUsenet handler missing")
+        # Toggle POSTs download_clients.sabnzbd.configure_arr_clients.
+        self.assertIn(
+            "download_clients:{sabnzbd:{configure_arr_clients:on}}", html,
+            "toggleUsenet POST body doesn't flip the right cfg key.",
+        )
+
+    def test_load_wires_toggle_state(self) -> None:
+        html = (ROOT / "src/media_stack/api/dashboard.html").read_text(encoding="utf-8")
+        # load() must read the runtime config and update the toggle.
+        self.assertIn(
+            "sabCfg.configure_arr_clients", html,
+            "load() doesn't read SABnzbd toggle state from cfg",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
