@@ -278,7 +278,7 @@ class OpsService:
             try:
                 nvidia = subprocess.run(
                     ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True, text=True, timeout=5, check=False,
                 )
                 if nvidia.returncode == 0:
                     for line in nvidia.stdout.strip().splitlines():
@@ -454,7 +454,7 @@ class OpsService:
         """Detect NFS/CIFS/local mounts relevant to media storage."""
         mounts: list[dict[str, str]] = []
         try:
-            result = subprocess.run(["mount"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["mount"], capture_output=True, text=True, timeout=5, check=False)
             for line in result.stdout.splitlines():
                 parts = line.split()
                 if len(parts) >= 5:

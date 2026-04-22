@@ -11,6 +11,11 @@ node_modules
 *.egg-info
 .mypy_cache
 .ruff_cache
+.venv
+venv
+.claude
+backups
+*.log
 
 # Runtime state — these directories balloon the build context to 30GB+ and
 # serve no purpose at build time. docker/{config,data} and dist/{config,data}

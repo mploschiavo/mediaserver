@@ -5,7 +5,7 @@ service:
   category: management
   host: tautulli
   port: 8181
-  health_path: /
+  health_path: /status
   auth_path: /api/v2
   auth_mode: query:apikey
   api_key_env: TAUTULLI_API_KEY
