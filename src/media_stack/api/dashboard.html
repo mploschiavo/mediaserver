@@ -1236,7 +1236,14 @@ function getSvcUrl(svcId){
   // If accessed directly on controller port, use gateway nodeport if known
   if(envData&&envData.gateway_nodeport)return location.protocol+'//'+location.hostname+':'+envData.gateway_nodeport+'/app/'+svcId+'/';
   // Last resort: use current host with service port
-  const s=SVC_MAP[svcId];return 'http://'+location.hostname+':'+(s?s.port:80)+'/';
+  const s=SVC_MAP[svcId];
+  /* Prefer published_port (host-side) over port (container-internal).
+     Most services are symmetric — for SABnzbd they differ: internal
+     8080, published 8085 (qBit owns 8080 on the host).  If the
+     server didn't send published_port (older controller), fall
+     back to port. */
+  const p=s?(s.published_port||s.port):80;
+  return 'http://'+location.hostname+':'+p+'/';
 }
 
 /* Quick Links — only enabled services. Mirrors the homepage-tile

@@ -143,5 +143,50 @@ class DashboardToggle(unittest.TestCase):
         )
 
 
+class PublishedPortForAsymmetricServices(unittest.TestCase):
+    """Services where the host-published port differs from the
+    container's internal port. SABnzbd is the only default case:
+    internal 8080 (published 8085, because qBittorrent already
+    owns 8080 on the host). Direct-URL browsers need the 8085 port
+    or the link 404s."""
+
+    def test_servicedef_has_published_port_field(self) -> None:
+        from media_stack.api.services.registry import ServiceDef
+        sd = ServiceDef(id="x", name="x", port=8080, published_port=8085)
+        self.assertEqual(sd.published_port, 8085)
+        # Defaults to 0 when unset — callers use ``port`` as fallback.
+        sd2 = ServiceDef(id="y", name="y", port=8989)
+        self.assertEqual(sd2.published_port, 0)
+
+    def test_sabnzbd_contract_sets_published_port_8085(self) -> None:
+        import yaml
+        text = (ROOT / "contracts/services/sabnzbd.yaml").read_text(encoding="utf-8")
+        data = yaml.safe_load(text) or {}
+        svc = data.get("service") or {}
+        self.assertEqual(svc.get("port"), 8080,
+                         "SABnzbd's in-container port must stay 8080")
+        self.assertEqual(svc.get("published_port"), 8085,
+                         "SABnzbd's host-side publication port must "
+                         "be 8085 — anything else breaks the direct "
+                         "link from the dashboard.")
+
+    def test_services_api_surfaces_published_port(self) -> None:
+        text = (ROOT / "src/media_stack/api/handlers_get.py").read_text(encoding="utf-8")
+        self.assertIn(
+            '"published_port":', text,
+            "/api/services no longer surfaces published_port — "
+            "dashboard falls back to port and builds broken SAB links.",
+        )
+
+    def test_dashboard_prefers_published_port_in_direct_url(self) -> None:
+        html = (ROOT / "src/media_stack/api/dashboard.html").read_text(encoding="utf-8")
+        # getSvcUrl must consult published_port with fallback to port.
+        self.assertIn(
+            "s.published_port||s.port", html,
+            "getSvcUrl no longer prefers published_port — "
+            "SABnzbd's ribbon/services-table link reverts to :8080.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

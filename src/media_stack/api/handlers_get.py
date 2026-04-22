@@ -565,16 +565,25 @@ class GetRequestHandler:
     @staticmethod
     def _handle_services(handler: ControllerAPIHandler) -> None:
         from media_stack.api.services.registry import SERVICES
+        # ``published_port`` surfaces the host-side port when it
+        # differs from the container's internal ``port``.  The
+        # dashboard uses it to build browser-direct links.  For
+        # services with symmetric ports (sonarr 8989, etc.) the
+        # dashboard falls back to ``port``; SABnzbd is the current
+        # asymmetric case (internal 8080, published 8085 because
+        # qBittorrent owns 8080 externally).
         svc_list = [
             {"id": s.id, "name": s.name, "desc": s.desc, "category": s.category,
-             "host": s.host, "port": s.port}
+             "host": s.host, "port": s.port,
+             "published_port": (s.published_port or s.port)}
             for s in SERVICES
         ]
         ctrl_port = int(os.environ.get("BOOTSTRAP_API_PORT", os.environ.get("CONTROLLER_PORT", "9100")))
         svc_list.append({
             "id": "controller", "name": "Media Stack Controller",
             "desc": "Orchestration API and dashboard",
-            "category": "infrastructure", "host": "media-stack-controller", "port": ctrl_port,
+            "category": "infrastructure", "host": "media-stack-controller",
+            "port": ctrl_port, "published_port": ctrl_port,
             "health_path": "/healthz",
         })
         handler._json_response(200, svc_list)
@@ -939,18 +948,26 @@ class _RoutingMatrixProbe:
         # gw_internal_port is where Envoy actually listens INSIDE the
         # compose/pod network (8080/8880 on compose by default).
         gw_internal_port = self._internal_gateway_port(scheme)
-        services = [(s.id, s.name, s.host, s.port) for s in _SERVICES]
+        # Tuple is (id, name, host, port_for_internal_probe, port_for_direct_url).
+        # Direct-URL port prefers ``published_port`` (host-side); the
+        # in-cluster probe still uses ``port`` (container-internal)
+        # because the routing probe runs inside the compose network.
+        services = [
+            (s.id, s.name, s.host, s.port, (s.published_port or s.port))
+            for s in _SERVICES
+        ]
         ctrl_port = int(self._env.get(
             "BOOTSTRAP_API_PORT",
             self._env.get("CONTROLLER_PORT", "9100"),
         ))
         services.append(("controller", "Media Stack Controller",
-                         "media-stack-controller", ctrl_port))
+                         "media-stack-controller", ctrl_port, ctrl_port))
         host_ip = self._env.get("HOST_IP_OVERRIDE", "127.0.0.1")
         results: dict = {}
-        for svc_id, _name, svc_host, svc_port in services:
+        for svc_id, _name, svc_host, svc_port, svc_direct_port in services:
             results[svc_id] = self._probe_service(
                 svc_id, svc_host, svc_port,
+                direct_port=svc_direct_port,
                 scheme=scheme, gw_port=gw_port,
                 gw_internal=gw_internal,
                 gw_internal_port=gw_internal_port,
@@ -964,7 +981,7 @@ class _RoutingMatrixProbe:
 
     def _probe_service(self, svc_id, svc_host, svc_port, *,
                        scheme, gw_port, gw_internal, gw_internal_port,
-                       routing, host_ip):
+                       routing, host_ip, direct_port=None):
         gw_host = routing["gateway_host"]
         prefix = routing["app_path_prefix"] or "/app"
         sub = routing["stack_subdomain"]
@@ -974,7 +991,13 @@ class _RoutingMatrixProbe:
         localhost_url = f"{scheme}://localhost{port_suffix}{prefix}/{svc_id}/"
         gateway_url = f"{scheme}://{gw_host}{port_suffix}{prefix}/{svc_id}/"
         subdomain_url = f"{scheme}://{sub_host}{port_suffix}/"
-        direct_url = f"{self._HTTP}://{host_ip}:{svc_port}/"
+        # ``direct_port`` (host-side) defaults to ``svc_port``
+        # (container-internal) for services with symmetric ports;
+        # SABnzbd is the asymmetric case (internal 8080, published
+        # 8085).  The browser-visible direct URL MUST use the
+        # published port or the link 404s.
+        display_port = direct_port if direct_port is not None else svc_port
+        direct_url = f"{self._HTTP}://{host_ip}:{display_port}/"
         return {
             "localhost": self._probe_via_gateway(
                 localhost_url, gw_internal, gw_internal_port, scheme, "localhost"),
