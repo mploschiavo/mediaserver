@@ -114,6 +114,18 @@ plugin:
       priority: 40
       requires: []
 
+    run-media-hygiene:
+      handler: media_stack.services.apps.core.job_adapters:run_media_hygiene
+      phase: post
+      # Cleanup pass: prunes stalled, errored, and orphaned downloads
+      # from qBit + the *arr queues. Aggressive defaults (v1.0.132):
+      # stalled >4h, age >36h, eta >6h, dl<64KB/s with progress<0.98.
+      # Bounded at 25 deletes per run for safety. Auto-fired hourly
+      # by the controller's scheduler so end users never need to
+      # log into qBit to clean up.
+      priority: 90
+      requires: []
+
     # ---------------------------------------------------------------
     # default phase — gateway / routing setup
     # ---------------------------------------------------------------

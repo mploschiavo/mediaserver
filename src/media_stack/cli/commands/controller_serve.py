@@ -387,6 +387,72 @@ def _run_serve(args: argparse.Namespace) -> None:
         snap_thread = threading.Thread(target=_snapshot_timer, daemon=True, name="config-snapshots")
         snap_thread.start()
 
+    # ------------------------------------------------------------------
+    # Scheduler dispatch loop — fires recurring actions (e.g. hourly
+    # media-hygiene). Seeds default schedules on first start so the
+    # compose deploy gets the same automatic cleanup the k8s
+    # CronJobs already provide. Without this loop, actions added via
+    # SchedulerService.add_schedule() were stored to disk but never
+    # actually fired (the loop existed in spec but had no caller).
+    # The end goal is that users never need to log into qBit/*arr/etc.
+    # to clean up; the controller maintains the queue itself.
+    # ------------------------------------------------------------------
+    def _scheduler_loop() -> None:
+        import time as _t
+        from media_stack.api.services import scheduler as _sched
+        # Seed defaults on first start (idempotent — checks for an
+        # existing entry before adding).
+        try:
+            existing = {s.get("action") for s in _sched.get_schedules().get("schedules") or []}
+            # Hourly stalled/orphan torrent cleanup. The aggressive
+            # defaults in _guardrail_config.py only apply when a run
+            # actually fires; without this seed, nothing fires on
+            # compose.
+            if "run-media-hygiene" not in existing:
+                _sched.add_schedule(
+                    action="run-media-hygiene",
+                    interval_seconds=3600,  # 1h — was 6h on k8s CronJob
+                    label="Auto-cleanup stalled / orphaned downloads (hourly)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default 'run-media-hygiene' "
+                    "(every 1h)"
+                )
+        except Exception as exc:
+            runtime_platform.log(
+                f"[WARN] Scheduler seed failed: {exc}"
+            )
+        # Tick loop. Wakes every 60s, fires anything due. Keeps the
+        # cadence simple — finer granularity than 1m is overkill for
+        # cleanup work.
+        _t.sleep(120)  # Let bootstrap finish before first tick
+        while True:
+            try:
+                due = _sched.get_due_actions()
+                for entry in due:
+                    action = entry.get("action") or ""
+                    if not action:
+                        continue
+                    runtime_platform.log(
+                        f"[INFO] Scheduler: firing '{action}' "
+                        f"(every {entry.get('interval_seconds')}s)"
+                    )
+                    try:
+                        action_trigger(action, {"_triggered_by": "scheduler"})
+                    except Exception as exc:
+                        runtime_platform.log(
+                            f"[WARN] Scheduler dispatch '{action}' failed: {exc}"
+                        )
+            except Exception as exc:
+                runtime_platform.log(
+                    f"[WARN] Scheduler tick failed: {exc}"
+                )
+            _t.sleep(60)
+    sched_thread = threading.Thread(
+        target=_scheduler_loop, daemon=True, name="scheduler-dispatch",
+    )
+    sched_thread.start()
+
     auto_run = args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
     if auto_run:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
