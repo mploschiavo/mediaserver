@@ -1,0 +1,253 @@
+"""Ratchets for the v1.0.100 fix bundle.
+
+Pins each fix so that someone refactoring later doesn't silently
+revert one of them.
+
+  1. Flaresolverr proxy_id flows into auto-add: ``proxyId`` is in
+     the indexer-payload allow-list AND ``ensure_flaresolverr_proxy``
+     returns the proxy id (so the pipeline can attach it).
+  2. ``validate-credentials`` requires ``arr_apps_reachable`` so it
+     doesn't fire while the *arr family is still warming up
+     (cosmetic "5/7 credential checks did not pass" warning).
+  3. Recyclarr ``hashicorp/http-echo`` placeholder is gone from
+     compose.
+  4. Dashboard has ``_safeErrText`` and uses it from every error
+     catch — no more ``toast(e.toString(), true)`` stack-trace leaks.
+  5. ``/api/stack/update`` is registered (GET handler).
+  6. Auto-indexer worker default bumped 4 → 8 for faster fresh
+     installs.
+  7. Auto-indexer hardcoded denylist is gone.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+import unittest
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore[assignment]
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+
+class FlaresolverrCfRetryWiring(unittest.TestCase):
+
+    def test_proxy_id_in_indexer_payload_allowlist(self) -> None:
+        path = ROOT / "src/media_stack/services/apps/prowlarr/indexer_ops.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            '"proxyId"', text,
+            "proxyId removed from build_indexer_payload allow_keys — "
+            "CloudFlare-protected indexers will fail to add silently.",
+        )
+
+    def test_ensure_proxy_returns_id(self) -> None:
+        path = ROOT / "src/media_stack/services/apps/prowlarr/proxy_ops.py"
+        text = path.read_text(encoding="utf-8")
+        # The function signature should annotate `int | None` return.
+        self.assertRegex(
+            text, r"def ensure_flaresolverr_proxy\([^)]*\) -> int \| None",
+            "ensure_flaresolverr_proxy no longer returns the proxy id "
+            "— callers can't attach it to CF-protected indexers.",
+        )
+
+    def test_pipeline_passes_proxy_id_to_auto_add(self) -> None:
+        path = ROOT / "src/media_stack/services/apps/prowlarr/pipeline_service.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("flaresolverr_proxy_id", text)
+        # The call has nested ``cfg.get(...)`` parens, so a "match
+        # everything up to the closing paren" regex doesn't work.
+        # Find the call site, then check the next ~400 chars
+        # contain ``flaresolverr_proxy_id`` before any other call
+        # opens. Brittle but explicit.
+        idx = text.find("auto_add_tested_indexers(")
+        self.assertGreater(idx, 0, "auto_add_tested_indexers call site missing")
+        window = text[idx:idx + 600]
+        self.assertIn(
+            "flaresolverr_proxy_id", window,
+            "auto_add_tested_indexers call must include "
+            "flaresolverr_proxy_id within its argument list — "
+            "without it CF retries can't be attached.",
+        )
+
+    def test_reputation_ops_has_cf_retry_path(self) -> None:
+        path = ROOT / "src/media_stack/services/apps/prowlarr/reputation_ops.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            "flaresolverr_proxy_id", text,
+            "auto_add_tested_indexers no longer accepts the proxy id "
+            "argument — CF retry won't fire.",
+        )
+        self.assertIn(
+            "_is_cf_block", text,
+            "CloudFlare-detection helper removed; the [SKIP] log "
+            "downgrade and retry path both depend on it.",
+        )
+
+
+class ValidateCredentialsArrPrereqRatchet(unittest.TestCase):
+
+    def setUp(self) -> None:
+        if yaml is None:
+            self.skipTest("PyYAML not installed")
+        self.contract = ROOT / "contracts/services/core.yaml"
+
+    def test_validate_credentials_requires_arr_apps_reachable(self) -> None:
+        text = self.contract.read_text(encoding="utf-8")
+        # Find the validate-credentials block + the next non-empty
+        # ``requires:`` entry. Comments between key and value are
+        # common in this file so use a forgiving pattern.
+        m = re.search(
+            r"validate-credentials:.*?requires:\s*\[([^\]]*)\]",
+            text, re.DOTALL,
+        )
+        self.assertIsNotNone(m, "validate-credentials job missing or malformed")
+        requires = m.group(1)
+        self.assertIn(
+            "arr_apps_reachable", requires,
+            "validate-credentials no longer waits for arr_apps_reachable; "
+            "the cosmetic '5/7 credential checks did not pass' warning "
+            "during fresh-install bootstrap will return.",
+        )
+
+    def test_arr_apps_reachable_prereq_registered(self) -> None:
+        path = ROOT / "src/media_stack/cli/commands/job_framework.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            'register_prereq("arr_apps_reachable"', text,
+            "arr_apps_reachable prereq dropped from registration — "
+            "JobRunner will treat it as 'unknown prereq'.",
+        )
+
+
+class RecyclarrPlaceholderRemoved(unittest.TestCase):
+
+    def test_no_recyclarr_http_echo_in_compose(self) -> None:
+        for name in ("docker/docker-compose.yml", "dist/docker-compose.yml"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            # The placeholder line was: image: hashicorp/http-echo
+            # under a recyclarr: service. If both reappear we're back
+            # to shipping a fake "Recyclarr stub endpoint" container.
+            block = re.search(
+                r"^\s*recyclarr:\s*$\n[^a-z]+image:\s*hashicorp/http-echo",
+                text, re.MULTILINE,
+            )
+            self.assertIsNone(
+                block,
+                f"{name} still defines a recyclarr service backed by "
+                "hashicorp/http-echo — the placeholder is back.",
+            )
+
+
+class DashboardToastSafety(unittest.TestCase):
+
+    def test_safe_err_text_helper_present(self) -> None:
+        path = ROOT / "src/media_stack/api/dashboard.html"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            "function _safeErrText", text,
+            "_safeErrText helper removed — toast leak guard is gone.",
+        )
+
+    def test_no_raw_etostring_in_toast_calls(self) -> None:
+        """toast(e.toString(),...) was the original leak pattern."""
+        path = ROOT / "src/media_stack/api/dashboard.html"
+        text = path.read_text(encoding="utf-8")
+        # Allow `_safeErrText(e)` but not raw `e.toString()` directly
+        # inside a toast(...) call.
+        leaks = re.findall(r"toast\([^)]*?\be\.toString\(\)", text)
+        self.assertFalse(
+            leaks,
+            f"{len(leaks)} toast(...) call(s) still pass e.toString() "
+            "directly — replace with _safeErrText(e).",
+        )
+
+    def test_no_raw_error_message_in_toast_calls(self) -> None:
+        """``toast('Error: '+e.message,true)`` is the other leak shape."""
+        path = ROOT / "src/media_stack/api/dashboard.html"
+        text = path.read_text(encoding="utf-8")
+        leaks = re.findall(
+            r"toast\(\s*'Error:[^']*'\s*\+\s*e\.message", text
+        )
+        self.assertFalse(
+            leaks,
+            f"{len(leaks)} toast(...) call(s) still concatenate "
+            "e.message directly — replace with _safeErrText(e).",
+        )
+
+
+class StackUpdateEndpointsRegistered(unittest.TestCase):
+
+    def test_get_endpoint_in_handlers(self) -> None:
+        path = ROOT / "src/media_stack/api/handlers_get.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            '"/api/stack/update"', text,
+            "GET /api/stack/update endpoint disappeared from handlers_get",
+        )
+        self.assertIn(
+            '"/api/stack/upgrade/"', text,
+            "GET /api/stack/upgrade/{task_id} endpoint disappeared",
+        )
+
+    def test_post_endpoint_in_handlers(self) -> None:
+        path = ROOT / "src/media_stack/api/handlers_post.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            '"/api/stack/upgrade"', text,
+            "POST /api/stack/upgrade endpoint disappeared from handlers_post",
+        )
+
+    def test_stack_upgrade_requires_auth(self) -> None:
+        path = ROOT / "src/media_stack/api/server.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r'_AUTH_REQUIRED_PREFIXES\s*=\s*\([^)]*"/api/stack/"',
+            "/api/stack/ removed from _AUTH_REQUIRED_PREFIXES — "
+            "anyone can now trigger an in-place upgrade.",
+        )
+
+    def test_service_module_callable(self) -> None:
+        from media_stack.api.services import stack_update
+        self.assertTrue(hasattr(stack_update, "check_for_update"))
+        self.assertTrue(hasattr(stack_update, "start_upgrade"))
+        self.assertTrue(hasattr(stack_update, "upgrade_status"))
+
+
+class IndexerWorkerParallelismBumped(unittest.TestCase):
+
+    def test_default_workers_at_least_8(self) -> None:
+        path = ROOT / "src/media_stack/services/apps/prowlarr/reputation_ops.py"
+        text = path.read_text(encoding="utf-8")
+        m = re.search(
+            r'AUTO_INDEXER_PARALLEL_WORKERS",\s*"(\d+)"', text,
+        )
+        self.assertIsNotNone(m, "AUTO_INDEXER_PARALLEL_WORKERS default missing")
+        self.assertGreaterEqual(
+            int(m.group(1)), 8,
+            f"Default worker count {m.group(1)} < 8 — fresh-install "
+            "indexer-discovery time creeps back up.",
+        )
+
+
+class NoHardcodedIndexerDenylist(unittest.TestCase):
+
+    def test_no_default_excludes_in_auto_indexer_cli(self) -> None:
+        path = ROOT / "src/media_stack/services/apps/prowlarr/cli/run_prowlarr_auto_indexers_main.py"
+        text = path.read_text(encoding="utf-8")
+        # The previous list literal is gone.
+        self.assertNotIn(
+            "default_excludes = [", text,
+            "Hardcoded default exclude list is back — opinionated "
+            "name denylists belong in user config, not source.",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

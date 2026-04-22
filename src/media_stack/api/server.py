@@ -744,7 +744,7 @@ _AUTH_REQUIRED_PATHS = frozenset({
     "/api/batch-restart", "/api/profile", "/api/envvars",
     "/api/guardrails", "/webhooks/test", "/config", "/cancel",
 })
-_AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/")
+_AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/", "/api/stack/")
 
 
 # ---------------------------------------------------------------------------

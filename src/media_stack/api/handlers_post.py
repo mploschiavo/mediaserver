@@ -678,6 +678,18 @@ class PostRequestHandler:
             handler._handle_action("bootstrap")
             return
 
+        # POST /api/stack/upgrade — trigger in-place compose upgrade.
+        # Gated behind STACK_UPDATE_ALLOW_INPLACE on the controller
+        # container; without that, the service returns
+        # ``{accepted: false, error: ...}`` with instructions.
+        if handler.path == "/api/stack/upgrade":
+            from .services import stack_update as su_svc
+            body = handler._read_json_body() or {}
+            handler._json_response(
+                200, su_svc.start_upgrade(body.get("target")),
+            )
+            return
+
         # POST /api/restart/{service}
         if handler.path.startswith("/api/restart/"):
             svc = handler.path[len("/api/restart/"):]

@@ -59,6 +59,12 @@ class ProwlarrIndexerOps:
             "tags": indexer_cfg.get("tags", []),
             "fields": service.field_list(values),
         }
+        proxy_id = indexer_cfg.get("proxyId")
+        if proxy_id is not None:
+            try:
+                payload["proxyId"] = int(proxy_id)
+            except (TypeError, ValueError):
+                pass
 
         if current:
             payload["id"] = current.get("id")
@@ -101,6 +107,11 @@ class ProwlarrIndexerOps:
             "enableRss",
             "enableAutomaticSearch",
             "enableInteractiveSearch",
+            # Indexer Proxy (FlareSolverr) attachment. Without this
+            # key in the allow-list, CloudFlare-protected indexers
+            # like 1337x/eztv get added without proxy and every
+            # search returns "blocked by CloudFlare Protection".
+            "proxyId",
         }
         payload = {}
         for key in allowed_keys:

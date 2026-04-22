@@ -287,6 +287,19 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   </div>
 </header>
 <div class="env-banner" id="env-banner" style="display:none"></div>
+<!-- Stack-update banner: shows when /api/stack/update finds a newer
+     image tag in the registry. ``loadUpdateBanner()`` polls on page
+     load + every 5 min. ``stackUpgradeNow()`` triggers the in-place
+     upgrade when STACK_UPDATE_ALLOW_INPLACE is set on the controller. -->
+<div id="stack-update-banner" style="display:none;background:linear-gradient(90deg,#1e3044,#0b2540);border-bottom:1px solid var(--accent);padding:8px 24px;font-size:.86em;align-items:center;gap:14px">
+  <span style="display:inline-flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)"></span><strong id="stack-update-text">Update available</strong></span>
+  <span id="stack-update-detail" style="color:var(--fg2)"></span>
+  <span style="margin-left:auto;display:inline-flex;gap:6px">
+    <a id="stack-update-changelog" href="#" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Changelog &rarr;</a>
+    <button id="stack-update-btn" class="btn-primary" style="padding:4px 12px;font-size:.85em" onclick="stackUpgradeNow()">Update Now</button>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:.85em" onclick="document.getElementById('stack-update-banner').style.display='none'">Dismiss</button>
+  </span>
+</div>
 <div class="quick-links" id="quick-links" style="background:var(--bg2);padding:6px 24px;border-bottom:1px solid var(--border);overflow-x:auto;white-space:nowrap"></div>
 <div class="container">
 
@@ -871,6 +884,70 @@ function showTab(id,btn){
 
 /* Toast + Sound */
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className=err?'err':'';t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
+/* Stack-update banner: poll /api/stack/update on page load + every
+   5 minutes. Shows registry-published version + a changelog link.
+   Hides itself when current==latest. ``Update Now`` is enabled only
+   when the controller reports allow_inplace=true (set
+   STACK_UPDATE_ALLOW_INPLACE=true on the controller container). */
+let _stackUpdateTimer=null,_stackUpgradeTaskId=null,_stackUpgradeTimer=null;
+async function loadUpdateBanner(){
+  try{
+    const r=await apiFetch('/api/stack/update');if(!r.ok)return;
+    const d=await r.json();
+    const banner=document.getElementById('stack-update-banner');
+    if(!d||!d.upgradable){banner.style.display='none';return;}
+    document.getElementById('stack-update-text').textContent='Update available — v'+d.latest;
+    document.getElementById('stack-update-detail').textContent='You\u2019re on v'+d.current+'.';
+    const link=document.getElementById('stack-update-changelog');
+    if(d.release_url){link.href=d.release_url;link.style.display='';}else{link.style.display='none';}
+    const btn=document.getElementById('stack-update-btn');
+    if(d.allow_inplace){btn.style.display='';btn.disabled=false;btn.title='Update the stack in place';}
+    else{btn.style.display='none';
+      const detail=document.getElementById('stack-update-detail');
+      detail.textContent='You\u2019re on v'+d.current+'. To install: SSH to host, run `bash bin/release.sh '+d.latest+' && cd dist && docker compose up -d --force-recreate`.';}
+    banner.style.display='flex';
+  }catch(_){/* registry probe failures are silent — non-critical UI */}
+}
+async function stackUpgradeNow(){
+  if(!confirm('Pull and apply the new controller image now? The dashboard will briefly disconnect while the controller restarts.'))return;
+  const btn=document.getElementById('stack-update-btn');btn.disabled=true;btn.textContent='Starting\u2026';
+  try{
+    const r=await apiFetch('/api/stack/upgrade',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
+    const d=await r.json();
+    if(!d.accepted){toast(d.error||'Upgrade declined',true);btn.disabled=false;btn.textContent='Update Now';return;}
+    _stackUpgradeTaskId=d.task_id;toast('Upgrade dispatched — controller will recycle');
+    btn.textContent='Updating\u2026';
+    if(_stackUpgradeTimer)clearInterval(_stackUpgradeTimer);
+    _stackUpgradeTimer=setInterval(_pollUpgrade,4000);
+  }catch(e){toast('Upgrade failed: '+_safeErrText(e),true);btn.disabled=false;btn.textContent='Update Now';}
+}
+async function _pollUpgrade(){
+  if(!_stackUpgradeTaskId)return;
+  try{
+    const r=await apiFetch('/api/stack/upgrade/'+encodeURIComponent(_stackUpgradeTaskId));
+    if(!r.ok)return;
+    const d=await r.json();
+    if(d.status==='complete'){clearInterval(_stackUpgradeTimer);toast('Updated — reloading\u2026');setTimeout(()=>location.reload(),3500);}
+    else if(d.status==='failed'){clearInterval(_stackUpgradeTimer);toast('Upgrade failed (exit '+d.exit_code+')',true);const btn=document.getElementById('stack-update-btn');btn.disabled=false;btn.textContent='Update Now';}
+  }catch(_){/* controller may be mid-restart — keep polling */}
+}
+/* Extract a short, user-readable message from an Error / response /
+   string. Strips Python tracebacks (lines after "Traceback") and
+   collapses long messages to ≤140 chars. Used by every toast(...)
+   in error catches so we never surface a stack trace to the user. */
+function _safeErrText(e){
+  if(!e)return 'Unexpected error';
+  let s='';
+  if(typeof e==='string')s=e;
+  else if(e&&e.message)s=String(e.message);
+  else{try{s=String(e);}catch(_){s='Unexpected error';}}
+  /* Drop Python traceback dumps and JSON wrapper noise. */
+  const tb=s.indexOf('Traceback (most recent');
+  if(tb>=0)s=s.slice(0,tb).trim();
+  s=s.replace(/\s+/g,' ').trim();
+  if(s.length>140)s=s.slice(0,140).trim()+'\u2026';
+  return s||'Unexpected error';
+}
 
 /* ------------------------------------------------------------------
  * msUI — modern in-app modal replacements for window.alert/confirm/prompt
@@ -1042,7 +1119,7 @@ async function doAction(name){
   toast(name+' starting...');
   try{const r=await apiFetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
     const d=await r.json();if(r.status>=400)toast(d.error||'Failed',true);else{toast(name+' accepted');setTimeout(load,1500);}
-  }catch(e){toast(e.toString(),true);}
+  }catch(e){toast(_safeErrText(e),true);}
   finally{_actionPending=false;hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
 async function cancelAction(){
@@ -1052,7 +1129,7 @@ async function cancelAction(){
     toast('Cancelling '+name+'... (killing subprocess)');
     setTimeout(refreshStatus,1500);
   }else{toast('No action running',true);}
-  }catch(e){toast(e.toString(),true);}
+  }catch(e){toast(_safeErrText(e),true);}
 }
 async function toggleAuto(on){
   try{await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({auto_download_content:on})});
@@ -1060,7 +1137,7 @@ async function toggleAuto(on){
     toast('Auto-downloads '+(on?'enabled — running reconcile to apply...':'disabled — running reconcile to apply...'));
     // Auto-trigger reconcile so the config change takes effect immediately.
     setTimeout(()=>doAction('reconcile'),500);
-  }catch(e){toast(e.toString(),true);}
+  }catch(e){toast(_safeErrText(e),true);}
 }
 
 function relTime(sec){if(!sec&&sec!==0)return '?';sec=Math.round(sec);if(sec<60)return sec+'s';if(sec<3600)return Math.floor(sec/60)+'m '+sec%60+'s';return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';}
@@ -1344,7 +1421,7 @@ function toggleSvc(id){
 /* Per-service restart */
 async function restartService(name){
   toast('Restarting '+name+'...');
-  try{const r=await apiFetch('/api/restart/'+name,{method:'POST'});const d=await r.json();toast(d.status==='restarted'?name+' restarted':'Restart failed: '+(d.error||''),d.status!=='restarted');}catch(e){toast(e.toString(),true);}
+  try{const r=await apiFetch('/api/restart/'+name,{method:'POST'});const d=await r.json();toast(d.status==='restarted'?name+' restarted':'Restart failed: '+(d.error||''),d.status!=='restarted');}catch(e){toast(_safeErrText(e),true);}
 }
 
 /* "Re-check Health" — wider than just credentials. Triggers HTTP health, integrity, crashloop, story refresh in parallel and shows a toast summarising the result. */
@@ -1370,7 +1447,7 @@ async function revalidateCredentials(svcId){
       toast(ok+'/'+total+' credential checks passed',ok<total);
       if(statusData)renderServices(statusData.preflight_results||{});
     }else{toast('Credential check failed (HTTP '+r.status+')',true);}
-  }catch(e){toast(e.toString(),true);}
+  }catch(e){toast(_safeErrText(e),true);}
 }
 
 /* Auth summary — populates _authMode + SVC_POLICY so the services
@@ -1556,7 +1633,7 @@ async function saveGuardrails(){
   try{const r=await apiFetch('/api/guardrails',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.status==='updated'){toast('Guardrails saved: '+d.changed.join(', '));loadDisk();}
-    else{toast(d.error||d.status||'Save failed',true);}}catch(e){toast('Error: '+e.message,true);}
+    else{toast(d.error||d.status||'Save failed',true);}}catch(e){toast('Error: '+_safeErrText(e),true);}
 }
 async function previewCleanup(){
   const el=document.getElementById('cleanup-preview');if(!el)return;
@@ -1982,7 +2059,7 @@ async function rotateKeys(){
       if(d.restarted&&d.restarted.length)msg+=', restarted: '+d.restarted.join(', ');
       if(d.errors&&d.errors.length)msg+=' ('+d.errors.length+' errors)';
       toast(msg);}
-    else{toast(d.error||'Rotation failed',true);}}catch(e){toast('Error: '+e.message,true);}
+    else{toast(d.error||'Rotation failed',true);}}catch(e){toast('Error: '+_safeErrText(e),true);}
   finally{hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
 
@@ -2032,7 +2109,7 @@ async function resetPassword(){
       let msg='Password updated for '+d.services.join(', ');
       if(d.restarted&&d.restarted.length){msg+=', restarted: '+d.restarted.join(', ');}
       toast(msg);
-    }else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+e.message,true);}
+    }else{toast(d.error||'Reset failed',true);}}catch(e){toast('Error: '+_safeErrText(e),true);}
   finally{hideLoading();}
 }
 
@@ -2074,7 +2151,7 @@ async function saveRouting(){
     if(d.status==='updated'){toast('Routing updated: '+d.changed.join(', ')+'. Envoy rebuild queued.');loadRoutingConfig();}
     else if(d.status==='no_changes'){toast('No changes needed');}
     else{toast(d.error||'Update failed',true);loadRoutingConfig();}}
-  catch(e){toast('Error: '+e.message,true);loadRoutingConfig();}
+  catch(e){toast('Error: '+_safeErrText(e),true);loadRoutingConfig();}
   finally{hideLoading();}
 }
 
@@ -2086,13 +2163,13 @@ function loadWebhooks(urls){
   el.innerHTML=h;
 }
 async function addWebhook(){const url=document.getElementById('webhookUrl').value.trim();if(!url){toast('Enter a URL',true);return;}
-  try{const r=await apiFetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({url})});if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}else{const d=await r.json();toast(d.error||'Failed',true);}}catch(e){toast(e.toString(),true);}}
-async function removeWebhook(url){try{await apiFetch('/webhooks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});toast('Removed');load();}catch(e){toast(e.toString(),true);}}
+  try{const r=await apiFetch('/webhooks',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({url})});if(r.ok){document.getElementById('webhookUrl').value='';toast('Webhook added');load();}else{const d=await r.json();toast(d.error||'Failed',true);}}catch(e){toast(_safeErrText(e),true);}}
+async function removeWebhook(url){try{await apiFetch('/webhooks',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});toast('Removed');load();}catch(e){toast(_safeErrText(e),true);}}
 async function testWebhooks(){
   toast('Sending test webhook...');
   try{const r=await apiFetch('/webhooks/test',{method:'POST'});const d=await r.json();
     if(d.tested===0)toast('No webhooks configured',true);
-    else{const ok=d.results.filter(r=>r.status==='ok').length;toast(ok+'/'+d.tested+' webhooks delivered',ok<d.tested);}}catch(e){toast(e.toString(),true);}
+    else{const ok=d.results.filter(r=>r.status==='ok').length;toast(ok+'/'+d.tested+' webhooks delivered',ok<d.tested);}}catch(e){toast(_safeErrText(e),true);}
 }
 
 /* Log filtering + multi-source */
@@ -2139,7 +2216,7 @@ async function _fetchSvcLogs(svcId){
     if(logRaw.length>800)logRaw=logRaw.slice(-500);
     applyLogFilter();
     toast(svcId+': '+(d.lines||[]).length+' lines loaded');
-  }catch(e){toast('Error: '+e.message,true);}
+  }catch(e){toast('Error: '+_safeErrText(e),true);}
 }
 function removeSvcLog(svcId){
   _activeSvcLogs.delete(svcId);
@@ -3205,7 +3282,7 @@ async function saveLibrariesFromContent(){
     if(d.error){toast('Error: '+d.error);return;}
     toast('Libraries saved'+(d.action?' — '+d.action:''));
     loadLibraries();
-  }catch(e){toast('Error: '+e);}
+  }catch(e){toast('Error: '+_safeErrText(e));}
 }
 
 /* #9 Download history */
@@ -3295,7 +3372,7 @@ async function toggleProfileUpgrade(svcId,profileId,enabled){
     const r=await apiFetch('/api/quality-profiles/toggle',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({service:svcId,profile_id:profileId,upgradeAllowed:enabled})});
     const d=await r.json();
     toast(d.error||'Upgrades '+(enabled?'enabled':'disabled'));
-  }catch(e){toast('Error: '+e);}
+  }catch(e){toast('Error: '+_safeErrText(e));}
 }
 
 /* #12 Import / discovery lists — show live arr lists + editable config discovery lists */
@@ -3351,7 +3428,7 @@ async function toggleImportList(svcId,listId,enabled){
     const d=await r.json();
     if(d.error)toast('Error: '+d.error);else toast((enabled?'Enabled':'Disabled')+' list');
     loadImportLists();
-  }catch(e){toast('Error: '+e);}
+  }catch(e){toast('Error: '+_safeErrText(e));}
 }
 async function deleteImportList(svcId,listId,name){
   if(!confirm('Delete list "'+name+'" from '+svcId+'?'))return;
@@ -3606,7 +3683,7 @@ async function takeSnapshot(){
   try{const r=await apiFetch('/api/snapshot',{method:'POST'});const d=await r.json();
     if(d.status==='created'){toast('Snapshot created: '+d.file+' ('+d.configs+' configs)');loadSnapshots();}
     else{toast(d.error||'Snapshot failed',true);}
-  }catch(e){toast('Error: '+e.message,true);}
+  }catch(e){toast('Error: '+_safeErrText(e),true);}
   finally{hideLoading();}
 }
 async function loadSnapshots(){
@@ -3695,7 +3772,7 @@ async function batchRestart(){
   try{const r=await apiFetch('/api/batch-restart',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({services:names})});
     const d=await r.json();toast(d.restarted+'/'+d.total+' restarted');batchSelected.clear();
     document.querySelectorAll('.svc-cb').forEach(cb=>cb.checked=false);
-  }catch(e){toast(e.toString(),true);}
+  }catch(e){toast(_safeErrText(e),true);}
   finally{hideLoading();}
 }
 
@@ -3704,7 +3781,7 @@ async function saveProfile(){
   const ta=document.getElementById('profile-editor');if(!ta)return;
   try{const r=await apiFetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({content:ta.value})});
     const d=await r.json();toast(d.status==='saved'?'Profile saved & reloaded':'Error: '+(d.error||''),d.status!=='saved');
-  }catch(e){toast(e.toString(),true);}
+  }catch(e){toast(_safeErrText(e),true);}
 }
 
 /* #12 Settings panel */
@@ -4290,7 +4367,7 @@ async function saveDisplayConfig(){
     const d=await r.json();
     if(d.error)toast('Error: '+d.error);
     else toast('Display preferences saved'+(d.action?' — '+d.action:''));
-  }catch(e){toast('Error: '+e);}
+  }catch(e){toast('Error: '+_safeErrText(e));}
 }
 
 async function loadLiveTvConfig(){
@@ -5024,6 +5101,7 @@ async function _enforceAdminRotation(){
 loadServicesFromAPI().then(()=>{
 _enforceAdminRotation();
 load();_intervals.push(setInterval(load,dashSettings.refreshInterval));startSSE();loadRoutingConfig();buildQuickLinks();loadLibraries();loadAuthIdentity();
+loadUpdateBanner();_intervals.push(setInterval(loadUpdateBanner,300000));  /* 5-min cadence — registry-cached anyway */
 // Populate service log picker
 (function(){const sel=document.getElementById('svcLogPicker');if(!sel)return;
   sel.innerHTML+='<option value="media-stack-controller">Controller (container)</option>';

@@ -75,12 +75,13 @@ class ProwlarrReputationOps:
         )
         return False
 
-    def auto_add_tested_indexers(self, 
+    def auto_add_tested_indexers(self,
         service,
         prowlarr_url: str,
         prowlarr_key: str,
         exclude_name_tokens: list[str] | None = None,
         reputation_cfg: dict[str, Any] | None = None,
+        flaresolverr_proxy_id: int | None = None,
     ) -> None:
         status, schemas, body = service.http_request(
             prowlarr_url,
@@ -211,8 +212,24 @@ class ProwlarrReputationOps:
             "yes",
             "on",
         )
-        parallel_workers = int(os.environ.get("AUTO_INDEXER_PARALLEL_WORKERS", "4"))
+        # 8 workers cuts a fresh-install indexer-discovery from ~14 min
+        # to ~5 min on the default profile (each worker is mostly
+        # blocked on Prowlarr's per-indexer Cardigann probe; doubling
+        # parallelism roughly halves wall time at no extra CPU cost).
+        parallel_workers = int(os.environ.get("AUTO_INDEXER_PARALLEL_WORKERS", "8"))
         parallel_workers = max(1, parallel_workers)
+        # Counters for CloudFlare-block accounting — let the summary
+        # line (further down) report this without spamming a [FAIL]
+        # per CF-blocked indexer with the embedded JSON body.
+        cf_blocked = 0
+        cf_recovered_via_proxy = 0
+        _cf_pat = ("cloudflare", "captcha", "ddos-guard")
+
+        def _is_cf_block(body_text: str) -> bool:
+            if not body_text:
+                return False
+            lower = str(body_text).lower()
+            return any(pat in lower for pat in _cf_pat)
 
         # Thread-safe counters.
         _stats_lock = threading.Lock()
@@ -231,7 +248,7 @@ class ProwlarrReputationOps:
             """Test and optionally add a single indexer candidate (thread-safe)."""
             nonlocal scanned, attempted, added, skipped_existing, skipped_excluded
             nonlocal skipped_test, failed_create, quarantined_now, skipped_quarantined
-            nonlocal untested_fallback_added
+            nonlocal untested_fallback_added, cf_blocked, cf_recovered_via_proxy
 
             with _stats_lock:
                 scanned += 1
@@ -282,9 +299,37 @@ class ProwlarrReputationOps:
             except Exception as exc:
                 status, body = 599, str(exc)
             used_untested_fallback = False
+            # CloudFlare retry: if the test failed with a CF-block
+            # signature AND we have a FlareSolverr proxy registered,
+            # transparently retry with proxyId attached. This is the
+            # whole reason FlareSolverr is shipped — without this
+            # retry, every CF-protected indexer (1337x, eztv, etc.)
+            # silently never gets added.
+            if (
+                status not in (200, 201, 202)
+                and flaresolverr_proxy_id
+                and _is_cf_block(str(body))
+            ):
+                payload = dict(payload)
+                payload["proxyId"] = flaresolverr_proxy_id
+                try:
+                    status, _, body = service.http_request(
+                        prowlarr_url,
+                        "/api/v1/indexer/test",
+                        api_key=prowlarr_key,
+                        method="POST",
+                        payload=payload,
+                    )
+                except Exception as exc:
+                    status, body = 599, str(exc)
+                if status in (200, 201, 202):
+                    with _stats_lock:
+                        cf_recovered_via_proxy += 1
             if status not in (200, 201, 202):
                 with _stats_lock:
                     skipped_test += 1
+                    if _is_cf_block(str(body)):
+                        cf_blocked += 1
                 if reputation_enabled:
                     rep["score"] = int(rep.get("score") or 0) + test_fail_delta
                     rep["failures"] = int(rep.get("failures") or 0) + 1
@@ -303,10 +348,10 @@ class ProwlarrReputationOps:
                     if log_skip_details:
                         service.log(f"[SKIP] {name}: test failed (HTTP {status})")
                     return
-                service.log(
-                    f"[WARN] Auto indexer: adding untested fallback indexer {name} "
-                    f"(test HTTP {status})"
-                )
+                # Suppressed the per-indexer "[WARN] Auto indexer:
+                # adding untested fallback" line — it fired hundreds
+                # of times during a fresh install and read like errors.
+                # The summary line at the end reports the count.
                 used_untested_fallback = True
 
             try:
@@ -319,6 +364,30 @@ class ProwlarrReputationOps:
                 )
             except Exception as exc:
                 status, body = 599, str(exc)
+            # CF retry on the create call too — sometimes test passes
+            # but the actual indexer-add probes the source again and
+            # gets blocked. Same recovery path: attach proxyId, retry.
+            if (
+                status not in (200, 201, 202)
+                and flaresolverr_proxy_id
+                and not payload.get("proxyId")
+                and _is_cf_block(str(body))
+            ):
+                payload = dict(payload)
+                payload["proxyId"] = flaresolverr_proxy_id
+                try:
+                    status, _, body = service.http_request(
+                        prowlarr_url,
+                        "/api/v1/indexer",
+                        api_key=prowlarr_key,
+                        method="POST",
+                        payload=payload,
+                    )
+                except Exception as exc:
+                    status, body = 599, str(exc)
+                if status in (200, 201, 202):
+                    with _stats_lock:
+                        cf_recovered_via_proxy += 1
             if status in (200, 201, 202):
                 with _stats_lock:
                     existing_keys.add(key)
@@ -340,11 +409,23 @@ class ProwlarrReputationOps:
             else:
                 with _stats_lock:
                     failed_create += 1
+                    if _is_cf_block(str(body)):
+                        cf_blocked += 1
                 if reputation_enabled:
                     rep["score"] = int(rep.get("score") or 0) + create_fail_delta
                     rep["failures"] = int(rep.get("failures") or 0) + 1
                     rep["last_failure_epoch"] = now_epoch
-                service.log(f"[FAIL] {name}: create failed (HTTP {status}) {body}")
+                # Compact log: don't dump the multi-line JSON body for
+                # CF blocks (visually scary, repeated dozens of times
+                # during a fresh install). Other failures still get
+                # the full body for diagnosis.
+                if _is_cf_block(str(body)):
+                    service.log(
+                        f"[SKIP] {name}: CloudFlare-blocked"
+                        + (" (FlareSolverr retry also blocked)" if flaresolverr_proxy_id else " (no FlareSolverr proxy configured)")
+                    )
+                else:
+                    service.log(f"[FAIL] {name}: create failed (HTTP {status}) {body}")
 
             if reputation_enabled:
                 maybe_quarantine(str(impl), str(name), rep)
@@ -397,6 +478,7 @@ class ProwlarrReputationOps:
             f"skipped_existing={skipped_existing}, skipped_excluded={skipped_excluded}, skipped_test={skipped_test}, "
             f"skipped_quarantined={skipped_quarantined}, failed_create={failed_create}, "
             f"untested_fallback_added={untested_fallback_added}, "
+            f"cf_blocked={cf_blocked}, cf_recovered_via_proxy={cf_recovered_via_proxy}, "
             f"quarantined_now={quarantined_now}"
         )
 

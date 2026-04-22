@@ -21,7 +21,7 @@ name: ${COMPOSE_PROJECT_NAME:-media-stack}
 # Usage:
 #   docker compose up -d                          # minimal (core services)
 #   docker compose --profile standard up -d       # standard (+ usenet, subtitles, etc.)
-#   docker compose --profile full up -d           # full (+ lidarr, readarr, recyclarr)
+#   docker compose --profile full up -d           # full (+ lidarr, readarr)
 #
 # All settings come from the profile YAML mounted into init/bootstrap containers.
 # Storage paths default to ./config, ./media, ./data relative to this file.
@@ -214,7 +214,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.99}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.100}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -522,17 +522,13 @@ services:
     restart: unless-stopped
     depends_on: [sonarr, radarr, lidarr, readarr]
 
-  recyclarr:
-    image: hashicorp/http-echo:1.0.0
-    container_name: recyclarr
-    command:
-      - "-text=Recyclarr stub endpoint. Enable and configure a real Recyclarr runtime when ready."
-      - "-listen=:80"
-    restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.recyclarr.rule=Host(`recyclarr.local`)
-      - traefik.http.services.recyclarr.loadbalancer.server.port=80
+  # Recyclarr was previously stubbed via hashicorp/http-echo so the
+  # service tile + DNS host could resolve before a real Recyclarr
+  # runtime was wired in. The placeholder did nothing and surfaced
+  # as a confusing "Recyclarr stub endpoint" string in browsers
+  # that hit it. Removed in v1.0.100. To bring Recyclarr back, add
+  # a service block using ghcr.io/recyclarr/recyclarr (cron-based)
+  # and re-enable the homepage tile via the bootstrap profile.
 
   maintainerr:
     image: ghcr.io/maintainerr/maintainerr:3.3.0
@@ -645,7 +641,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.99}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.100}
     container_name: media-stack-controller
     command:
       - python3

@@ -8,7 +8,7 @@ from typing import Any, Callable
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 NormalizeUrlFn = Callable[[str], str]
 WaitForServiceFn = Callable[[str, str, str, int], None]
-EnsureProxyFn = Callable[[str, str, dict[str, Any]], None]
+EnsureProxyFn = Callable[[str, str, dict[str, Any]], "int | None"]
 
 
 @dataclass
@@ -25,12 +25,16 @@ class ProwlarrFlareSolverrService:
         prowlarr_url: str,
         prowlarr_key: str,
         wait_timeout: int,
-    ) -> None:
+    ) -> int | None:
+        """Returns the Prowlarr indexerProxy ID for the FlareSolverr
+        entry so the caller can attach it to CloudFlare-protected
+        indexers. Returns ``None`` when flaresolverr is disabled or
+        when Prowlarr didn't echo back an id."""
         flaresolverr_cfg = cfg.get("flaresolverr") or {}
         if not isinstance(flaresolverr_cfg, dict):
             raise RuntimeError("flaresolverr config must be an object.")
         if not self.bool_cfg(flaresolverr_cfg, "enabled", False):
-            return
+            return None
 
         flaresolverr_url = self.normalize_url(
             str(flaresolverr_cfg.get("url") or "http://flaresolverr:8191")
@@ -39,4 +43,4 @@ class ProwlarrFlareSolverrService:
 
         payload_cfg = dict(flaresolverr_cfg)
         payload_cfg["url"] = flaresolverr_url
-        self.ensure_proxy(prowlarr_url, prowlarr_key, payload_cfg)
+        return self.ensure_proxy(prowlarr_url, prowlarr_key, payload_cfg)

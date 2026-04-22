@@ -655,9 +655,49 @@ def _prereq_media_server_reachable(ctx: "JobContext") -> bool:
     except Exception:
         return False
 
+def _prereq_arr_apps_reachable(ctx: "JobContext") -> bool:
+    """True when every configured *arr app responds to ``/api/v3/system/status``
+    (or v1 for prowlarr) within a short timeout. Used by
+    ``validate-credentials`` so it doesn't fire while services
+    are still warming up — the previous behaviour produced a
+    cosmetic ``5/7 credential checks did not pass`` warning on
+    every fresh install.
+
+    Returns True when no *arr apps are configured (no preconditions
+    to satisfy) so single-service profiles aren't blocked."""
+    import urllib.request
+    arr_specs = (
+        ("sonarr", "v3"), ("radarr", "v3"), ("lidarr", "v1"),
+        ("readarr", "v1"), ("bazarr", "v1"), ("prowlarr", "v1"),
+    )
+    cfg = ctx.cfg if hasattr(ctx, "cfg") else {}
+    keys = (cfg.get("arr_app_keys") or {}) if isinstance(cfg, dict) else {}
+    checked = 0
+    for name, ver in arr_specs:
+        url_key = f"{name}_url"
+        url = (cfg.get(url_key) if isinstance(cfg, dict) else None) or ""
+        if not url:
+            continue
+        api_key = keys.get(name) if isinstance(keys, dict) else None
+        if not api_key:
+            continue
+        checked += 1
+        req = urllib.request.Request(
+            f"{url.rstrip('/')}/api/{ver}/system/status",
+            headers={"X-Api-Key": api_key},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=3) as r:
+                if r.status != 200:
+                    return False
+        except Exception:
+            return False
+    return True
+
 register_prereq("media_server_id", _prereq_media_server_id)
 register_prereq("media_server_api_key", _prereq_media_server_api_key)
 register_prereq("media_server_reachable", _prereq_media_server_reachable)
+register_prereq("arr_apps_reachable", _prereq_arr_apps_reachable)
 
 
 # ---------------------------------------------------------------------------

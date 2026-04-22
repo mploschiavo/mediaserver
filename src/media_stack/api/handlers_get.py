@@ -141,6 +141,13 @@ class GetRequestHandler:
         elif path == "/api/auto-heal":
             from .services import auto_heal as autoheal_svc
             handler._json_response(200, autoheal_svc.status())
+        elif path == "/api/stack/update":
+            from .services import stack_update as su_svc
+            handler._json_response(200, su_svc.check_for_update())
+        elif path.startswith("/api/stack/upgrade/"):
+            from .services import stack_update as su_svc
+            task_id = path.rsplit("/", 1)[-1]
+            handler._json_response(200, su_svc.upgrade_status(task_id))
         elif path == "/api/health/stories":
             from .services import health_stories as stories_svc
             handler._json_response(200, stories_svc.compose_live())

@@ -7,12 +7,17 @@ from typing import Any
 
 class ProwlarrProxyOps:
 
-    def ensure_flaresolverr_proxy(self, 
+    def ensure_flaresolverr_proxy(self,
         service,
         prowlarr_url: str,
         prowlarr_key: str,
         flaresolverr_cfg: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> int | None:
+        """Returns the Prowlarr indexerProxy ID of the FlareSolverr
+        entry (so callers can attach it to indexers that hit
+        CloudFlare). Returns ``None`` only when the proxy upsert
+        succeeded but Prowlarr didn't echo back an id — caller
+        should treat that as "not available" and skip attachment."""
         cfg = dict(flaresolverr_cfg or {})
         proxy_name = str(cfg.get("proxy_name") or "FlareSolverr").strip() or "FlareSolverr"
         host = str(cfg.get("url") or "http://flaresolverr:8191").strip()
@@ -111,8 +116,14 @@ class ProwlarrProxyOps:
             resolved_proxy = response_data if isinstance(response_data, dict) else dict(payload)
             service.log(f"[OK] Prowlarr: created FlareSolverr proxy '{proxy_name}' ({host})")
 
+        proxy_id = resolved_proxy.get("id") if isinstance(resolved_proxy, dict) else None
+        try:
+            proxy_id_int = int(proxy_id) if proxy_id is not None else None
+        except (TypeError, ValueError):
+            proxy_id_int = None
+
         if not test_connection:
-            return
+            return proxy_id_int
 
         status, _, body = service.http_request(
             prowlarr_url,
@@ -123,7 +134,7 @@ class ProwlarrProxyOps:
         )
         if status in (200, 201, 202):
             service.log("[OK] Prowlarr: FlareSolverr proxy connection test passed")
-            return
+            return proxy_id_int
         raise RuntimeError(f"Prowlarr: FlareSolverr proxy test failed (HTTP {status}): {body}")
 
 

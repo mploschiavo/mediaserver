@@ -7,9 +7,9 @@ from typing import Any, Callable
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
-EnsureFlareSolverrProxyFn = Callable[[dict[str, Any], str, str, int], None]
+EnsureFlareSolverrProxyFn = Callable[[dict[str, Any], str, str, int], "int | None"]
 EnsureIndexerFn = Callable[[str, str, dict[str, Any]], None]
-AutoAddTestedIndexersFn = Callable[[str, str, list[Any], dict[str, Any]], None]
+AutoAddTestedIndexersFn = Callable[[str, str, list[Any], dict[str, Any], "int | None"], None]
 TriggerSyncFn = Callable[[str, str], None]
 SyncArrIndexersFn = Callable[[str, str, list[dict[str, Any]], dict[str, str], bool], None]
 
@@ -57,20 +57,22 @@ class ProwlarrIndexerPipelineService:
         flaresolverr_cfg = cfg.get("flaresolverr") or {}
         if not isinstance(flaresolverr_cfg, dict):
             flaresolverr_cfg = {}
-        self._run_optional(
-            enabled=self.bool_cfg(flaresolverr_cfg, "enabled", False),
-            required=self.bool_cfg(flaresolverr_cfg, "required", False),
-            action=lambda: self.ensure_flaresolverr_proxy(
-                cfg,
-                prowlarr_url,
-                prowlarr_key,
-                wait_timeout,
-            ),
-            warning_message=(
-                "[WARN] Prowlarr FlareSolverr proxy: automation skipped. "
-                "Set flaresolverr.required=true to fail the bootstrap instead."
-            ),
-        )
+        flaresolverr_enabled = self.bool_cfg(flaresolverr_cfg, "enabled", False)
+        flaresolverr_required = self.bool_cfg(flaresolverr_cfg, "required", False)
+        flaresolverr_proxy_id: int | None = None
+        if flaresolverr_enabled:
+            try:
+                flaresolverr_proxy_id = self.ensure_flaresolverr_proxy(
+                    cfg, prowlarr_url, prowlarr_key, wait_timeout,
+                )
+            except Exception as exc:
+                if flaresolverr_required:
+                    raise
+                self.log(
+                    "[WARN] Prowlarr FlareSolverr proxy: automation skipped. "
+                    "Set flaresolverr.required=true to fail the bootstrap "
+                    f"instead. ({exc})"
+                )
 
         indexer_failures = 0
         for indexer in prowlarr_indexers:
@@ -98,6 +100,7 @@ class ProwlarrIndexerPipelineService:
                 prowlarr_key,
                 cfg.get("prowlarr_auto_indexer_exclude_name_tokens", []),
                 cfg.get("prowlarr_indexer_reputation", {}),
+                flaresolverr_proxy_id,
             )
 
         if trigger_sync:
