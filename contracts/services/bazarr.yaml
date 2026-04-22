@@ -5,7 +5,7 @@ service:
   category: automation
   host: bazarr
   port: 6767
-  health_path: /
+  health_path: /api/system/status
   auth_path: /api/system/status
   auth_mode: X-Api-Key
   api_key_env: BAZARR_API_KEY

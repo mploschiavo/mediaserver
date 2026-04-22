@@ -11,7 +11,7 @@ service:
   # (http://<host>:<published_port>/).
   port: 8080
   published_port: 8085
-  health_path: /
+  health_path: /sabnzbd/api?mode=version
   auth_path: /api
   auth_mode: query:apikey
   api_key_env: SABNZBD_API_KEY

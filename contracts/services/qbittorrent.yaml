@@ -5,7 +5,7 @@ service:
   category: downloads
   host: qbittorrent
   port: 8080
-  health_path: /
+  health_path: /api/v2/app/version
   login_mode: form
   login_path: /api/v2/auth/login
 plugin:
