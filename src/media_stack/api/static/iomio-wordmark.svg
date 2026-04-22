@@ -1,0 +1,25 @@
+<svg width="388" height="104" viewBox="0 0 388 104" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="iomio.io logo">
+  <defs>
+    <linearGradient id="iograd" x1="0" y1="0" x2="388" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#33D9B2"/>
+      <stop offset="0.55" stop-color="#FFBE0B"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+  </defs>
+  <rect width="388" height="104" rx="22" fill="#09111E"/>
+  <g fill="url(#iograd)">
+    <rect x="22" y="22" width="14" height="60" rx="7"/>
+    <circle cx="29" cy="14" r="7"/>
+    <circle cx="64" cy="52" r="18"/>
+    <path d="M112 34h12v36h-12z"/>
+    <circle cx="118" cy="24" r="6"/>
+    <circle cx="149" cy="52" r="18"/>
+    <rect x="182" y="22" width="14" height="60" rx="7"/>
+    <circle cx="189" cy="14" r="7"/>
+    <circle cx="224" cy="52" r="18"/>
+    <circle cx="276" cy="52" r="5"/>
+    <rect x="292" y="22" width="14" height="60" rx="7"/>
+    <circle cx="299" cy="14" r="7"/>
+    <circle cx="334" cy="52" r="18"/>
+  </g>
+</svg>

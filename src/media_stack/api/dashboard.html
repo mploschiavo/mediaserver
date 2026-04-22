@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Media Stack Controller</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Brand favicon. Static path is the default; the JS init below
+     swaps both <link rel="icon"> and <title> from /api/branding so
+     a sysadmin can white-label the stack by editing
+     contracts/branding.yaml without touching this file. -->
+<link rel="icon" type="image/svg+xml" id="brand-favicon" href="/api/static/iomio-icon.svg">
 <style>
 *{box-sizing:border-box}
 :root{--bg:#0f1923;--bg2:#162230;--bg3:#1e3044;--bg4:#0b1219;--fg:#e0e0e0;--fg2:#94a3b8;--fg3:#64748b;--border:#1e3044;--ok:#4ade80;--err:#f87171;--warn:#fbbf24;--blue:#3b82f6;--accent:#4ade80}
@@ -270,7 +275,16 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 <!-- Composite health stories: top-of-page banner. Empty until /api/health/stories returns critical/warn rows. -->
 <div id="healthStories" style="display:none"></div>
 <header>
-  <h1>Media Stack Controller <span class="badge idle" id="hbadge">...</span><span class="conn-dot dead" id="sse-dot" title="Log stream disconnected"></span></h1>
+  <h1 id="brand-h1" style="display:flex;align-items:center;gap:10px">
+    <a id="brand-link" href="https://iomio.io" target="_blank" rel="noopener" title="iomio.io"
+       style="display:inline-flex;align-items:center;text-decoration:none">
+      <img id="brand-wordmark" src="/api/static/iomio-wordmark.svg" alt="iomio.io"
+           style="height:34px;width:auto;display:block">
+    </a>
+    <span id="brand-tagline" style="color:var(--fg3);font-size:.7em;font-weight:400;letter-spacing:.04em">Media Stack Controller</span>
+    <span class="badge idle" id="hbadge">...</span>
+    <span class="conn-dot dead" id="sse-dot" title="Log stream disconnected"></span>
+  </h1>
   <div class="links">
     <a href="/api/docs">API</a>
     <label style="display:flex;align-items:center;gap:6px;font-size:.82em;color:var(--fg3);cursor:pointer" title="Play sound on action complete"><label class="switch" style="width:34px;height:18px"><input type="checkbox" id="soundToggle"><span class="slider" style="border-radius:9px"></span></label>Sound</label>
@@ -5241,6 +5255,32 @@ async function _enforceAdminRotation(){
     window.location.reload();
   });
 }
+
+/* Brand bootstrap — fetch /api/branding and apply overrides.
+   Source-of-truth file is contracts/branding.yaml; the API layer
+   merges defaults + YAML so edits take effect on reload without
+   touching this template. */
+async function _applyBranding(){
+  try{
+    const r=await fetch('/api/branding',{credentials:'same-origin'});
+    if(!r.ok)return;
+    const j=await r.json();
+    const b=(j&&j.brand)||{};
+    if(b.name){document.title=`${b.name} \u2014 ${b.tagline||'Media Stack Controller'}`;}
+    const fav=document.getElementById('brand-favicon');
+    if(fav&&b.icon)fav.href=b.icon;
+    const link=document.getElementById('brand-link');
+    if(link){
+      if(b.homepage_url){link.href=b.homepage_url;link.title=b.name||'home';}
+      else{link.removeAttribute('href');link.style.cursor='default';}
+    }
+    const wm=document.getElementById('brand-wordmark');
+    if(wm&&b.wordmark){wm.src=b.wordmark;wm.alt=b.name||'';}
+    const tl=document.getElementById('brand-tagline');
+    if(tl&&b.tagline)tl.textContent=b.tagline;
+  }catch(e){/* keep defaults rendered in HTML */}
+}
+_applyBranding();
 
 /* Init */
 loadServicesFromAPI().then(()=>{

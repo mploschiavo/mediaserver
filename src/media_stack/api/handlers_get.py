@@ -102,6 +102,10 @@ class GetRequestHandler:
         elif path == "/logs/stream":
             handler._sse_response()
 
+        # --- Brand config (white-label friendly) ---
+        elif path == "/api/branding":
+            _handle_branding(handler)
+
         # --- Services (registry) ---
         elif path == "/api/services":
             _handle_services(handler)
@@ -564,6 +568,45 @@ class GetRequestHandler:
         })
 
     @staticmethod
+    def _handle_branding(handler: ControllerAPIHandler) -> None:
+        """Return brand config (name, homepage, asset paths). The
+        dashboard fetches this at load time and renders the
+        header/favicon/splash from it. Source-of-truth file is
+        ``contracts/branding.yaml`` so a sysadmin can white-label
+        the stack without touching code."""
+        # Resolve config file. Honor an explicit override env var
+        # so an operator can drop a custom yaml anywhere on disk.
+        candidates = []
+        env_path = os.environ.get("BRANDING_CONFIG_FILE", "").strip()
+        if env_path:
+            candidates.append(Path(env_path))
+        candidates.extend([
+            Path("/contracts/branding.yaml"),
+            Path(__file__).resolve().parents[3] / "contracts" / "branding.yaml",
+            Path("contracts/branding.yaml"),
+        ])
+        defaults = {
+            "name": "iomio.io",
+            "homepage_url": "https://iomio.io",
+            "tagline": "Media Stack Controller",
+            "wordmark": "/api/static/iomio-wordmark.svg",
+            "icon": "/api/static/iomio-icon.svg",
+            "illustration": "/api/static/iomio-orbit.svg",
+        }
+        loaded = {}
+        for cand in candidates:
+            if cand and cand.is_file():
+                try:
+                    import yaml as _yaml
+                    raw = _yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
+                    loaded = (raw.get("brand") or {}) if isinstance(raw, dict) else {}
+                    break
+                except Exception as exc:
+                    log_swallowed(exc)
+        merged = {**defaults, **{k: v for k, v in loaded.items() if v is not None}}
+        handler._json_response(200, {"brand": merged})
+
+    @staticmethod
     def _handle_services(handler: ControllerAPIHandler) -> None:
         from media_stack.api.services.registry import SERVICES
         # ``published_port`` surfaces the host-side port when it
@@ -682,15 +725,30 @@ class GetRequestHandler:
         filename = path.split("/api/static/", 1)[1]
         if ".." in filename or "/" in filename:
             handler._json_response(400, {"error": "invalid path"})
-        else:
-            static_file = static_dir / filename
-            if static_file.is_file():
-                ct = "text/css" if filename.endswith(".css") else "application/javascript"
-                handler._raw_response(200, ct, static_file.read_bytes(), {
-                    "Cache-Control": "public, max-age=86400",
-                })
-            else:
-                handler._json_response(404, {"error": "not found"})
+            return
+        static_file = static_dir / filename
+        if not static_file.is_file():
+            handler._json_response(404, {"error": "not found"})
+            return
+        # Map suffix → MIME. Branding ships SVG by default; PNG/ICO
+        # are accepted so users can drop in raster overrides.
+        ct_by_ext = {
+            ".css": "text/css",
+            ".js": "application/javascript",
+            ".svg": "image/svg+xml",
+            ".png": "image/png",
+            ".ico": "image/vnd.microsoft.icon",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+        }
+        suffix = static_file.suffix.lower()
+        ct = ct_by_ext.get(suffix, "application/octet-stream")
+        handler._raw_response(200, ct, static_file.read_bytes(), {
+            "Cache-Control": "public, max-age=86400",
+        })
 
     def _handle_user_mgmt(self, handler: ControllerAPIHandler, path: str) -> None:
         """Dispatch user-management GET endpoints via the helper class."""
@@ -1140,6 +1198,7 @@ handle = _instance.handle
 _build_openapi_servers = _instance._build_openapi_servers
 _handle_keys = _instance._handle_keys
 _handle_services = _instance._handle_services
+_handle_branding = _instance._handle_branding
 _handle_services_categories = _instance._handle_services_categories
 _handle_service_api_key = _instance._handle_service_api_key
 _handle_snapshot_diff = _instance._handle_snapshot_diff

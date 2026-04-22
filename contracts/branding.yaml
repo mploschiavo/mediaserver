@@ -1,0 +1,45 @@
+# =============================================================================
+# Brand configuration for the controller dashboard
+# =============================================================================
+#
+# Override any of these to white-label the stack. The dashboard fetches this
+# via GET /api/branding at load time and renders accordingly.
+#
+# To use your own assets, drop SVG/PNG files into
+# ``src/media_stack/api/static/`` (or any path served at ``/api/static/...``)
+# and point ``wordmark`` / ``icon`` / ``illustration`` at them.
+#
+# To swap brand identity entirely, change ``name`` + ``homepage_url`` and the
+# header text, favicon, and "About" link all update in one place.
+# =============================================================================
+
+brand:
+  # Display name shown in <title> and the brand-link tooltip.
+  name: "iomio.io"
+
+  # External homepage. Clicked from the header logo and footer "powered by"
+  # tagline. Set to empty string to render a non-link.
+  homepage_url: "https://iomio.io"
+
+  # One-liner tagline used under the wordmark (header + login splash).
+  tagline: "Media Stack Controller"
+
+  # ---------------------------------------------------------------------------
+  # Asset paths. Resolve from the controller's static directory:
+  #   <repo>/src/media_stack/api/static/
+  # served at  /api/static/<filename>
+  # Use absolute http(s):// URLs to point at an external CDN if you prefer.
+  # ---------------------------------------------------------------------------
+
+  # Horizontal wordmark, used in the dashboard header (top-left).
+  # Recommended aspect ~3.5:1, height ~32-40px.
+  wordmark: "/api/static/iomio-wordmark.svg"
+
+  # Square brand icon, used as <link rel="icon"> + PWA install icon.
+  # Must be square. SVG ideal — modern browsers handle SVG favicons.
+  # Renders down to 16px; keep the design simple.
+  icon: "/api/static/iomio-icon.svg"
+
+  # Hero illustration, used on login splash + 404 + Welcome tile.
+  # Aspect ~1.2:1, larger detail OK.
+  illustration: "/api/static/iomio-orbit.svg"

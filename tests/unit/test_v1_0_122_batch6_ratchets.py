@@ -924,5 +924,84 @@ class AutomaticMediaHygieneScheduling(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L15 — brand identity is config-driven (not hardcoded)
+# ---------------------------------------------------------------------------
+class BrandIsConfigDriven(unittest.TestCase):
+    """The dashboard's logo / favicon / homepage link / tagline
+    must come from ``contracts/branding.yaml`` via
+    ``GET /api/branding``, not be hard-coded in HTML. A sysadmin
+    must be able to white-label the stack by editing one YAML
+    file — no template changes required. (v1.0.133.)"""
+
+    def test_branding_yaml_exists_with_required_keys(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        p = ROOT / "contracts" / "branding.yaml"
+        self.assertTrue(
+            p.is_file(),
+            "contracts/branding.yaml is the brand source-of-truth — "
+            "removing it forces the dashboard to fall back to "
+            "hardcoded defaults and breaks white-labeling.",
+        )
+        doc = _yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        brand = doc.get("brand") or {}
+        for key in ("name", "homepage_url", "tagline",
+                    "wordmark", "icon", "illustration"):
+            self.assertIn(
+                key, brand,
+                f"contracts/branding.yaml lost the '{key}' brand key",
+            )
+
+    def test_branding_endpoint_route_registered(self) -> None:
+        text = (SRC / "api" / "handlers_get.py").read_text(encoding="utf-8")
+        self.assertIn(
+            '"/api/branding"', text,
+            "GET /api/branding route removed from handlers_get.py — "
+            "dashboard can't fetch brand config and falls back to "
+            "the hardcoded defaults baked into dashboard.html.",
+        )
+        self.assertIn(
+            "_handle_branding(handler)", text,
+            "_handle_branding dispatch removed",
+        )
+
+    def test_dashboard_fetches_brand_dynamically(self) -> None:
+        dash = (SRC / "api" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn(
+            "_applyBranding", dash,
+            "dashboard.html no longer fetches /api/branding at boot — "
+            "edits to contracts/branding.yaml won't take effect.",
+        )
+        self.assertIn(
+            "/api/branding", dash,
+            "dashboard.html no longer references /api/branding",
+        )
+        # Favicon link must be id'd so JS can swap it.
+        self.assertIn(
+            'id="brand-favicon"', dash,
+            "dashboard.html lost the brand-favicon id — JS can't "
+            "swap the favicon when an operator edits the YAML.",
+        )
+
+    def test_static_handler_serves_svg_and_other_brand_types(self) -> None:
+        text = (SRC / "api" / "handlers_get.py").read_text(encoding="utf-8")
+        # Static handler must serve SVG + at least PNG so brand
+        # overrides can be raster too.
+        self.assertIn(
+            '"image/svg+xml"', text,
+            "Static handler doesn't claim image/svg+xml — SVG "
+            "favicons/logos served as octet-stream are blocked by "
+            "Chrome / wrongly downloaded by Firefox.",
+        )
+        self.assertIn(
+            '"image/png"', text,
+            "Static handler doesn't claim image/png — operators "
+            "with a PNG logo lose mime negotiation.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
