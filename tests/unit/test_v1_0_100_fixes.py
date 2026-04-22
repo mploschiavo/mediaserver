@@ -285,5 +285,85 @@ class NoHardcodedIndexerDenylist(unittest.TestCase):
         )
 
 
+class AtomicWriteUniqueTempPath(unittest.TestCase):
+    """Pin the per-call unique temp filename in ``atomic_write_xml``.
+
+    The 2026-04-22 incident:
+        [PREFLIGHT] sonarr: failed
+            (No such file: '/srv-config/sonarr/config.xml.new'
+             -> '/srv-config/sonarr/config.xml')
+
+    Root cause: the ARR preflight worker pool (4-way parallel) and
+    other concurrent callers all wrote to the SAME ``.new`` sibling
+    path. T1's ``os.replace`` consumed the file before T2 could
+    rename it. Fix: include PID + nanosecond + monotonic counter
+    in the temp name so concurrent calls never collide."""
+
+    def test_temp_name_includes_pid_and_unique_token(self) -> None:
+        path = ROOT / "src/media_stack/core/config_io.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            "_unique_tmp_path", text,
+            "_unique_tmp_path helper removed — concurrent writes "
+            "will race on the deterministic .new suffix again.",
+        )
+        # The helper must include both pid and a per-call counter.
+        # Locate the function body by finding the def then taking
+        # the next ~600 chars (DOTALL across f-strings + braces).
+        idx = text.find("def _unique_tmp_path")
+        self.assertGreater(idx, 0)
+        body = text[idx:idx + 700]
+        self.assertIn(
+            "os.getpid()", body,
+            "_unique_tmp_path no longer includes pid — racy across "
+            "processes that share a config volume.",
+        )
+        self.assertIn(
+            "time.time_ns()", body,
+            "_unique_tmp_path no longer includes a high-res "
+            "timestamp — racy within a single process under load.",
+        )
+
+    def test_atomic_write_uses_unique_helper_for_both_tmp_and_bak(self) -> None:
+        path = ROOT / "src/media_stack/core/config_io.py"
+        text = path.read_text(encoding="utf-8")
+        self.assertNotIn(
+            'path.with_suffix(path.suffix + ".new")', text,
+            "atomic_write_xml regressed to deterministic .new path "
+            "— concurrent calls will race.",
+        )
+        self.assertNotIn(
+            'path.with_suffix(path.suffix + ".bak")', text,
+            "atomic_write_xml regressed to deterministic .bak path "
+            "— concurrent backup writes can clobber each other.",
+        )
+
+
+class TriggerIndexerSyncDefaultOn(unittest.TestCase):
+    """``trigger_indexer_sync`` must default True so Prowlarr's
+    ``ApplicationIndexerSync`` fires after indexer add. Without it,
+    Sonarr/Radarr/Lidarr/Readarr show 0 indexers and qBittorrent
+    sits empty even with a fully-bootstrapped Prowlarr."""
+
+    def test_dataclass_default_is_true(self) -> None:
+        from media_stack.services.profile_config import BootstrapConfig
+        self.assertTrue(
+            BootstrapConfig().trigger_indexer_sync,
+            "BootstrapConfig.trigger_indexer_sync default flipped "
+            "back to False — Prowlarr won't sync indexers to *arr "
+            "apps after add.",
+        )
+
+    def test_from_dict_default_is_true(self) -> None:
+        from media_stack.services.profile_config import BootstrapConfig
+        # Empty dict should yield default True.
+        cfg = BootstrapConfig.from_dict({})
+        self.assertTrue(
+            cfg.trigger_indexer_sync,
+            "from_dict() default for trigger_indexer_sync flipped "
+            "back to False — empty bootstrap section won't sync.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

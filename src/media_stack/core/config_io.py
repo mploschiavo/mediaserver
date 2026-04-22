@@ -26,9 +26,31 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 from xml.etree import ElementTree as ET
+
+_TMP_COUNTER_LOCK = threading.Lock()
+_TMP_COUNTER = 0
+
+
+def _unique_tmp_path(path: Path, label: str) -> Path:
+    """Build a per-call unique sibling-temp path so concurrent
+    ``atomic_write_xml`` calls on the same destination don't race
+    on a shared ``.new`` file. Without this, the ARR preflight
+    workers (4-way parallel) would step on each other:
+    T1 writes ``.new`` + replaces (consuming ``.new``); T2 tries
+    its own replace and ENOENT-fails because T1 just consumed the
+    file at the same path."""
+    global _TMP_COUNTER
+    with _TMP_COUNTER_LOCK:
+        _TMP_COUNTER += 1
+        n = _TMP_COUNTER
+    return path.with_suffix(
+        f"{path.suffix}.{label}.{os.getpid()}.{int(time.time_ns())}.{n}"
+    )
 
 
 class ConfigParseError(Exception):
@@ -88,10 +110,10 @@ def atomic_write_xml(
     backup_path: Optional[Path] = None
 
     if path.exists():
-        backup_path = path.with_suffix(path.suffix + ".bak")
+        backup_path = _unique_tmp_path(path, "bak")
         shutil.copy2(path, backup_path)
 
-    tmp_path = path.with_suffix(path.suffix + ".new")
+    tmp_path = _unique_tmp_path(path, "new")
     try:
         # ET.write defaults to xml_declaration=False; replicate the
         # bare-Config style the *arr apps write.
