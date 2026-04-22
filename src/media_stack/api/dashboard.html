@@ -1568,11 +1568,27 @@ function goToDriftTab(){
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('#main-tabs button').forEach(b=>b.classList.remove('active'));
   const configTab=document.getElementById('tab-profile');
-  if(configTab)configTab.classList.add('active');
+  if(configTab){configTab.classList.add('active');configTab.style.display='block';}
   // Find and activate the Config button in the tab bar
   document.querySelectorAll('#main-tabs button').forEach(b=>{if(b.textContent.trim()==='Config')b.classList.add('active');});
-  // 2. Show the drift subtab
-  showSubTab('cfg-drift');
+  // 2. Show the drift subtab. showSubTab(id, btn) needs a real
+  // ``btn`` element to find its parent .tab-content. The Drift
+  // subtab button lives in the Config tab's button bar — pick it
+  // up via the inline onclick attribute. (Without this, the
+  // top-level "Config Drift" stat card link silently no-op'd
+  // because btn was undefined and showSubTab threw on
+  // ``btn.closest('.tab-content')``.)
+  const driftBtn=document.querySelector(
+    "#tab-profile button[onclick*=\"showSubTab('cfg-drift'\"]"
+  );
+  if(driftBtn){
+    showSubTab('cfg-drift',driftBtn);
+  } else {
+    // Fallback: render directly into cfg-drift if the button
+    // isn't found for any reason.
+    const sub=document.getElementById('cfg-drift');
+    if(sub){sub.style.display='block';sub.classList.add('active');renderDrift();}
+  }
   // 3. Scroll to it
   const driftView=document.getElementById('cfg-drift');
   if(driftView)driftView.scrollIntoView({behavior:'smooth',block:'start'});
@@ -2345,9 +2361,19 @@ document.addEventListener('DOMContentLoaded',function(){const el=document.getEle
 function downloadLogs(){const t=logRaw.map(e=>e.msg).join('\n');const b=new Blob([t],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='media-stack-logs-'+new Date().toISOString().slice(0,19)+'.txt';a.click();URL.revokeObjectURL(a.href);}
 
 /* Sub-tabs */
-function showSubTab(id,btn){const parent=btn.closest('.tab-content');parent.querySelectorAll('.subtab').forEach(t=>{t.classList.remove('active');t.style.display='none';});
-  const tab=document.getElementById(id);tab.classList.add('active');tab.style.display='block';
-  parent.querySelectorAll('.btn-secondary').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+function showSubTab(id,btn){
+  // Tolerate missing `btn` — earlier versions of this fn threw on
+  // ``btn.closest()`` and any cross-tab navigation that forgot to
+  // pass the button silently no-op'd. Resolve `parent` from the
+  // target subtab's nearest .tab-content ancestor as a fallback.
+  const tab=document.getElementById(id);
+  if(!tab)return;
+  const parent=(btn&&btn.closest)?btn.closest('.tab-content'):tab.closest('.tab-content');
+  if(!parent)return;
+  parent.querySelectorAll('.subtab').forEach(t=>{t.classList.remove('active');t.style.display='none';});
+  tab.classList.add('active');tab.style.display='block';
+  parent.querySelectorAll('.btn-secondary').forEach(b=>b.classList.remove('active'));
+  if(btn&&btn.classList)btn.classList.add('active');
   /* Scroll subtab into view without moving the whole page */
   tab.scrollTop=0;
   // Show skeleton immediately if content is empty/loading text
@@ -4744,6 +4770,19 @@ async function saveAuthConfig(){
 async function loadJobTree(){
   const el=document.getElementById('cfg-jobs');
   if(!el)return;
+  // Preserve user-expanded <details> across the 2s auto-refresh
+  // that fires while an action is running. Without this, opening
+  // an Execution History entry collapses 2 seconds later when the
+  // refresh wipes el.innerHTML.
+  const _openDetailsKeys=new Set();
+  el.querySelectorAll('details[open]').forEach(d=>{
+    const sum=d.querySelector('summary');
+    const key=(sum&&sum.textContent.trim().slice(0,120))||'';
+    if(key)_openDetailsKeys.add(key);
+  });
+  // Also preserve scroll position so the user doesn't get
+  // bounced to the top every 2s.
+  const _scrollY=el.scrollTop||0;
   try{
     const [jobsResp, statusResp] = await Promise.all([apiFetch('/api/jobs'), apiFetch('/status')]);
     if(!jobsResp.ok){el.innerHTML='Failed';return;}
@@ -4800,6 +4839,17 @@ async function loadJobTree(){
     }
     h+='</div>';
     el.innerHTML=h;
+    // Restore previously-open <details> entries so the auto-refresh
+    // doesn't keep collapsing what the user just expanded.
+    if(_openDetailsKeys.size){
+      el.querySelectorAll('details').forEach(d=>{
+        const sum=d.querySelector('summary');
+        const key=(sum&&sum.textContent.trim().slice(0,120))||'';
+        if(_openDetailsKeys.has(key))d.open=true;
+      });
+    }
+    // Restore scroll position.
+    if(_scrollY)el.scrollTop=_scrollY;
     // Auto-refresh while action is running — 2s while live so the
     // elapsed-time badge on the current node updates visibly (key
     // signal that long jobs like discover-indexers aren't stalled).
