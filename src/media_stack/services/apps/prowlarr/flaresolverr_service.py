@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
+from media_stack.api.services.registry import service_internal_url
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 NormalizeUrlFn = Callable[[str], str]
@@ -37,7 +38,7 @@ class ProwlarrFlareSolverrService:
             return None
 
         flaresolverr_url = self.normalize_url(
-            str(flaresolverr_cfg.get("url") or "http://flaresolverr:8191")
+            str(flaresolverr_cfg.get("url") or service_internal_url("flaresolverr"))
         )
         self.wait_for_service("FlareSolverr", flaresolverr_url, "/", wait_timeout)
 

@@ -12,6 +12,8 @@ import time
 from typing import Any
 from urllib import error, request
 
+from media_stack.api.services.registry import service_internal_url
+
 
 class JellyfinHttpPreflight:
 
@@ -55,9 +57,9 @@ class JellyfinHttpPreflight:
             time.sleep(3)
         return False
 
-    def run_preflight(self, 
+    def run_preflight(self,
         *,
-        jellyfin_url: str = "http://jellyfin:8096",
+        jellyfin_url: str | None = None,
         admin_username: str = "admin",
         admin_password: str = "media-dev",
         api_key_name: str = "media-stack-controller",
@@ -70,6 +72,8 @@ class JellyfinHttpPreflight:
         Uses JellyfinBootstrapAuthService for exact parity with compose preflight.
         Returns dict with JELLYFIN_API_KEY and JELLYFIN_USER_ID if successful.
         """
+        if jellyfin_url is None:
+            jellyfin_url = service_internal_url("jellyfin")
 
         def info(msg: str) -> None:
             if log:

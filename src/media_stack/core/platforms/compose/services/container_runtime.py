@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 import stat
 from collections.abc import Callable
@@ -85,7 +87,7 @@ class ComposeContainerRuntimeService:
             try:
                 port_value = int(host_port)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
             if host_ip:
                 out[key] = (host_ip, port_value)
@@ -236,8 +238,7 @@ class ComposeContainerRuntimeService:
             try:
                 out["retries"] = int(raw.get("retries"))
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         return out or None
 
     @staticmethod
@@ -269,7 +270,7 @@ class ComposeContainerRuntimeService:
                 try:
                     parsed_port = int(host_port)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    log_swallowed(exc)
                     continue
                 out.append((service_name, self._normalize_host_ip(host_ip), parsed_port, protocol))
         return out
@@ -361,7 +362,7 @@ class ComposeContainerRuntimeService:
                 try:
                     total += int((base_path / file_name).stat().st_size)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    log_swallowed(exc)
                     continue
         return total
 

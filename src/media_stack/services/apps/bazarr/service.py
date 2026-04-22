@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
+from media_stack.api.services.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -40,7 +41,7 @@ class BazarrService:
         if not self.bool_cfg(bazarr_cfg, "enabled", False):
             return False
 
-        bazarr_url = self.normalize_url(bazarr_cfg.get("url", "http://bazarr:6767"))
+        bazarr_url = self.normalize_url(bazarr_cfg.get("url", service_internal_url("bazarr")))
         self.wait_for_service("Bazarr", bazarr_url, "/", wait_timeout)
 
         sonarr_cfg = self.get_arr_app(arr_apps, "Sonarr")

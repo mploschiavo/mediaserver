@@ -9,6 +9,7 @@ from typing import Any, Callable
 from urllib import parse
 
 from media_stack.adapters.defaults import load_json_default
+from media_stack.api.services.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -370,7 +371,7 @@ class JellyfinHomeRailsService:
         if not rails_enabled and not cleanup_when_disabled:
             return
 
-        jellyfin_url = normalize_url(rails_cfg.get("url", "http://jellyfin:8096"))
+        jellyfin_url = normalize_url(rails_cfg.get("url", service_internal_url("jellyfin")))
         wait_for_service("Jellyfin", jellyfin_url, "/System/Info/Public", wait_timeout)
 
         jellyfin_api_key = resolve_jellyfin_api_key(rails_cfg, config_root)

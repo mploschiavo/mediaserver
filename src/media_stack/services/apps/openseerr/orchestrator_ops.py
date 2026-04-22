@@ -11,6 +11,7 @@ from .api_ops import (
     ensure_sonarr,
 )
 from .file_ops import configure_via_settings_file
+from media_stack.api.services.registry import service_internal_url
 
 
 class OpenSeerrOrchestratorOps:
@@ -46,7 +47,7 @@ class OpenSeerrOrchestratorOps:
             return
 
         default_url = (
-            "http://openseerr:5055" if service_label == "OpenSeerr" else "http://jellyseerr:5055"
+            service_internal_url("openseerr") if service_label == "OpenSeerr" else service_internal_url("jellyseerr")
         )
         jellyseerr_url = svc.normalize_url(jelly_cfg.get("url", default_url))
         svc.wait_for_service(service_label, jellyseerr_url, "/api/v1/status", wait_timeout)

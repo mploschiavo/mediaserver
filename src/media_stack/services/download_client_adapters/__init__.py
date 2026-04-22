@@ -17,6 +17,7 @@ from .jdownloader import JdownloaderDownloadClientAdapter
 from .nzbget import NzbgetDownloadClientAdapter
 from .transmission import TransmissionDownloadClientAdapter
 from .usenet import GenericUsenetDownloadClientAdapter
+import logging
 
 # Lazy-loaded from service contracts via __getattr__ below.
 
@@ -38,7 +39,7 @@ def __getattr__(name: str):
             globals()[name] = cls
             return cls
         except (ImportError, AttributeError):
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

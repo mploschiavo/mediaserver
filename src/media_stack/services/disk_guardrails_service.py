@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 import time
 from dataclasses import dataclass
@@ -205,5 +207,4 @@ class DiskGuardrailsService:
                     "Consider stronger retention rules or larger storage."
                 )
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)

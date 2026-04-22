@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import logging
 import os
@@ -214,7 +216,7 @@ class OpsService:
                     dt = datetime.strptime(age_source.strip()[:19], "%Y-%m-%d %H:%M:%S")
                     days_old = int((now - dt.timestamp()) / 86400)
                 except (ValueError, OSError):
-                    pass
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             r["days_old"] = days_old
             r["stale"] = days_old > 30
             if r["stale"]:
@@ -245,8 +247,7 @@ class OpsService:
                     result["gpus"].append({"type": "nvidia", "name": f"NVIDIA runtime on {c.name}", "container": c.name})
                     result["detected"] = True
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         # Strategy 2: Query host Docker info for GPU-related runtimes
         if not result["detected"]:
@@ -264,8 +265,7 @@ class OpsService:
                     if "gpu" in str(s).lower():
                         result["detected"] = True
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # Strategy 3: Check inside this container (works if GPU is passed through)
         if not result["detected"]:
@@ -288,7 +288,7 @@ class OpsService:
                                                "memory": parts[2] if len(parts) > 2 else ""})
                         result["detected"] = True
             except FileNotFoundError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
         # Detect host platform
         import platform
@@ -321,8 +321,7 @@ class OpsService:
                 if check_fn:
                     result.update(check_fn(client))
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         if result["detected"]:
             gpu = result["gpus"][0]
@@ -337,8 +336,7 @@ class OpsService:
                     if snippet_fn:
                         result["compose_snippet"] = snippet_fn(result["hw_accel_type"])
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
             result["can_auto_configure"] = result.get(f"{ms.id}_has_gpu" if ms else "has_gpu", False)
         return result
 
@@ -390,8 +388,7 @@ class OpsService:
                     text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
                     snapshot[f"{app}/{rel}"] = text
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
         ts = time.strftime("%Y%m%dT%H%M%S")
         out = snapshot_dir / f"snapshot-{ts}.json"
@@ -467,8 +464,7 @@ class OpsService:
                     elif fstype.strip("()").startswith(("nfs", "cifs", "smb")):
                         mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return {
             "mounts": mounts,
             "nfs_available": any(m["fstype"].startswith("nfs") for m in mounts),

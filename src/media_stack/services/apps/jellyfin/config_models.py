@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from media_stack.api.services.registry import service_internal_url
 
 
 @dataclass(frozen=True)
@@ -101,7 +102,7 @@ class JellyfinLiveTvConfig:
             fallback_enable_all_tuners_when_mapping_missing=bool(
                 src.get("fallback_enable_all_tuners_when_mapping_missing", True)
             ),
-            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            url=str(src.get("url", service_internal_url("jellyfin"))).strip(),
             tuners=tuners,
             guides=guides,
             raw=src,
@@ -124,7 +125,7 @@ class JellyfinLibrariesConfig:
         return cls(
             enabled=bool(src.get("enabled", False)),
             required=bool(src.get("required", False)),
-            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            url=str(src.get("url", service_internal_url("jellyfin"))).strip(),
             libraries=libraries,
             tuning=dict(src.get("tuning") or {}),
             raw=src,
@@ -148,7 +149,7 @@ class JellyfinPluginsConfig:
         return cls(
             enabled=bool(src.get("enabled", False)),
             required=bool(src.get("required", False)),
-            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            url=str(src.get("url", service_internal_url("jellyfin"))).strip(),
             repositories=repositories,
             install=install,
             raw=src,
@@ -171,7 +172,7 @@ class JellyfinPlaybackConfig:
         return cls(
             enabled=bool(src.get("enabled", False)),
             required=bool(src.get("required", False)),
-            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            url=str(src.get("url", service_internal_url("jellyfin"))).strip(),
             user_defaults=dict(src.get("user_defaults") or {}),
             server_defaults=dict(src.get("server_defaults") or {}),
             display_preferences=dict(src.get("display_preferences") or {}),
@@ -365,7 +366,7 @@ class JellyfinPrewarmConfig:
         return cls(
             enabled=bool(src.get("enabled", False)),
             required=bool(src.get("required", False)),
-            url=str(src.get("url", "http://jellyfin:8096")).strip(),
+            url=str(src.get("url", service_internal_url("jellyfin"))).strip(),
             refresh_library=bool(src.get("refresh_library", True)),
             refresh_channels=bool(src.get("refresh_channels", True)),
             refresh_guide=bool(src.get("refresh_guide", True)),

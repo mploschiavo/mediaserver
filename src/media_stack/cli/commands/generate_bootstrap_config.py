@@ -12,6 +12,8 @@ runner can execute all configuration steps.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import sys
 from pathlib import Path
@@ -49,11 +51,10 @@ class GenerateBootstrapConfigCommand:
         allowed_keys: set[str] = set()
         if schema_path.is_file():
             try:
-                schema = json.loads(schema_path.read_text())
+                schema = json.loads(schema_path.read_text(encoding="utf-8"))
                 allowed_keys = set(schema.get("allowed_keys", schema.get("properties", {})).keys())
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         if svc_dir.is_dir():
             for svc_yaml in sorted(svc_dir.glob("*.yaml")):
                 if svc_yaml.name.startswith("_"):
@@ -84,8 +85,7 @@ class GenerateBootstrapConfigCommand:
                     else:
                         config[svc_id] = defaults
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
         # 3. Load operation plans AND event handlers as adapter_hooks
         adapter_hooks: dict[str, Any] = {}
@@ -93,12 +93,11 @@ class GenerateBootstrapConfigCommand:
         # Operation plan files
         for plan_file in sorted(src_contracts.glob("*_operation_plans.json")) if src_contracts.is_dir() else []:
             try:
-                plan_data = json.loads(plan_file.read_text())
+                plan_data = json.loads(plan_file.read_text(encoding="utf-8"))
                 if isinstance(plan_data, dict):
                     adapter_hooks.update(plan_data)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         # Event handlers + runner_phase_scripts from service contracts
         runner_phase_scripts: dict[str, str] = {}
         if svc_dir.is_dir():
@@ -122,8 +121,7 @@ class GenerateBootstrapConfigCommand:
                     if isinstance(phase_scripts, dict):
                         runner_phase_scripts.update(phase_scripts)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         if runner_phase_scripts:
             adapter_hooks["runner_phase_scripts"] = runner_phase_scripts
         if adapter_hooks:
@@ -133,15 +131,14 @@ class GenerateBootstrapConfigCommand:
         defaults_json = src_contracts / "app_capability_defaults.json"
         if defaults_json.is_file():
             try:
-                config["app_capability_defaults"] = json.loads(defaults_json.read_text())
+                config["app_capability_defaults"] = json.loads(defaults_json.read_text(encoding="utf-8"))
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # 5. Write output
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(json.dumps(config, indent=2, default=str))
+            output_path.write_text(json.dumps(config, indent=2, default=str), encoding="utf-8")
 
         return config
 

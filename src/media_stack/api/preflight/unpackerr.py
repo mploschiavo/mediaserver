@@ -7,8 +7,11 @@ app config files, then writes an Unpackerr config file and restarts it.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from pathlib import Path
 from typing import Any
+from media_stack.api.services.registry import service_internal_url
 import logging
 
 
@@ -62,7 +65,7 @@ class UnpackerrPreflightService:
         if sonarr_key:
             lines.extend([
                 "[[sonarr]]",
-                '  url = "http://sonarr:8989"',
+                '  url = service_internal_url("sonarr")',
                 f'  api_key = "{sonarr_key}"',
                 '  paths = ["/data/torrents/completed/tv", "/data/usenet/completed/tv"]',
                 "",
@@ -71,7 +74,7 @@ class UnpackerrPreflightService:
         if radarr_key:
             lines.extend([
                 "[[radarr]]",
-                '  url = "http://radarr:7878"',
+                '  url = service_internal_url("radarr")',
                 f'  api_key = "{radarr_key}"',
                 '  paths = ["/data/torrents/completed/movies", "/data/usenet/completed/movies"]',
                 "",
@@ -80,7 +83,7 @@ class UnpackerrPreflightService:
         if lidarr_key:
             lines.extend([
                 "[[lidarr]]",
-                '  url = "http://lidarr:8686"',
+                '  url = service_internal_url("lidarr")',
                 f'  api_key = "{lidarr_key}"',
                 '  paths = ["/data/torrents/completed/music", "/data/usenet/completed/music"]',
                 "",
@@ -89,7 +92,7 @@ class UnpackerrPreflightService:
         if readarr_key:
             lines.extend([
                 "[[readarr]]",
-                '  url = "http://readarr:8787"',
+                '  url = service_internal_url("readarr")',
                 f'  api_key = "{readarr_key}"',
                 '  paths = ["/data/torrents/completed/books", "/data/usenet/completed/books"]',
                 "",
@@ -108,8 +111,7 @@ class UnpackerrPreflightService:
             container.restart(timeout=15)
             restarted = True
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         if not restarted:
             try:
                 from kubernetes import client as k8s_client, config as k8s_config
@@ -127,8 +129,7 @@ class UnpackerrPreflightService:
                     v1.delete_namespaced_pod(name=pod.metadata.name, namespace=namespace)
                 restarted = True
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         if restarted:
             info(f"Unpackerr: restarted {container_name}")
         else:

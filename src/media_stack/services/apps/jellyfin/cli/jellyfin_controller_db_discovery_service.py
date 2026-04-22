@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import os
 import sqlite3
 import tempfile
@@ -103,8 +105,7 @@ class JellyfinControllerDbDiscoveryService:
             try:
                 os.remove(local_db)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
 
 _instance = JellyfinControllerDbDiscoveryService()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import copy
 import os
 import re
@@ -228,8 +230,7 @@ class EnvoyDynamicConfigService:
                         needs_strip = True
                         strip_prefix = path_prefix  # propagate to fallback routes
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
             if needs_strip and path_prefix != "/":
                 regex_rewrite = {

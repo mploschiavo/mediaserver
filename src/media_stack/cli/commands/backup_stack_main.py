@@ -7,7 +7,7 @@ import argparse
 import os
 import shutil
 import tarfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from media_stack.core.exceptions import MediaStackError
@@ -57,7 +57,7 @@ class BackupStackCommand:
         args = self.parse_args(argv)
         kubectl = kube_cmd()
 
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         backup_dir = Path(args.backup_dir).expanduser().resolve()
         bundle_dir = backup_dir / f"media-stack-backup-{timestamp}"
         backup_dir.mkdir(parents=True, exist_ok=True)

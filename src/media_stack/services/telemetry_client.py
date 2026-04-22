@@ -14,6 +14,8 @@ Configuration via environment:
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import platform
@@ -64,14 +66,13 @@ class TelemetryClient:
             return explicit
         id_file = Path(self._config_root()) / ".controller" / "cluster-id"
         if id_file.is_file():
-            return id_file.read_text().strip()
+            return id_file.read_text(encoding="utf-8").strip()
         cid = str(uuid.uuid4())
         try:
             id_file.parent.mkdir(parents=True, exist_ok=True)
-            id_file.write_text(cid)
+            id_file.write_text(cid, encoding="utf-8")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return cid
 
     @staticmethod
@@ -90,16 +91,14 @@ class TelemetryClient:
         try:
             version_file = Path("/opt/media-stack/VERSION")
             if version_file.is_file():
-                info["version"] = version_file.read_text().strip()
+                info["version"] = version_file.read_text(encoding="utf-8").strip()
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         try:
             with open("/proc/uptime") as f:
                 info["uptime_hours"] = round(float(f.read().split()[0]) / 3600, 1)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return info
 
     @staticmethod
@@ -161,14 +160,13 @@ class TelemetryClient:
                     io["tx_gb"] += tx
                     io["containers"] += 1
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    log_swallowed(exc)
                     continue
             io["rx_gb"] = round(io["rx_gb"] / (1024**3), 2)
             io["tx_gb"] = round(io["tx_gb"] / (1024**3), 2)
             return io
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         try:
             with open("/proc/net/dev") as f:
                 for line in f:
@@ -183,8 +181,7 @@ class TelemetryClient:
             io["rx_gb"] = round(io["rx_gb"] / (1024**3), 2)
             io["tx_gb"] = round(io["tx_gb"] / (1024**3), 2)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return io
 
     @staticmethod
@@ -223,8 +220,7 @@ class TelemetryClient:
                 data, _ = _load_profile_yaml()
                 tc_id = data.get("technology_bindings", {}).get("torrent_client", "")
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
             if tc_id:
                 client = docker.from_env()
                 for c in client.containers.list():
@@ -235,8 +231,7 @@ class TelemetryClient:
                         media["torrent_tx_gb"] = round(sum(n.get("tx_bytes", 0) for n in nets.values()) / (1024**3), 2)
                         break
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         try:
             from media_stack.api.services.content import get_downloads
             dl = get_downloads()
@@ -252,17 +247,16 @@ class TelemetryClient:
         """Buffer a failed payload to disk for retry."""
         path = self._buffer_path()
         try:
-            existing = json.loads(path.read_text()) if path.is_file() else []
+            existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
             if not isinstance(existing, list):
                 existing = []
             existing.append(payload)
             if len(existing) > 48:
                 existing = existing[-48:]
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(existing))
+            path.write_text(json.dumps(existing), encoding="utf-8")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
     def _drain_buffer(self, endpoint: str, api_key: str) -> int:
         """Push buffered payloads. Returns count sent."""
@@ -270,7 +264,7 @@ class TelemetryClient:
         if not path.is_file():
             return 0
         try:
-            entries = json.loads(path.read_text())
+            entries = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(entries, list) or not entries:
                 return 0
         except Exception:
@@ -284,12 +278,11 @@ class TelemetryClient:
                 remaining.append(entry)
         try:
             if remaining:
-                path.write_text(json.dumps(remaining))
+                path.write_text(json.dumps(remaining), encoding="utf-8")
             else:
                 path.unlink(missing_ok=True)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return sent
 
     @staticmethod
@@ -462,8 +455,7 @@ class TelemetryClient:
                 try:
                     self.push_telemetry(log=log)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
                 _t.sleep(interval)
 
         t = threading.Thread(target=_loop, daemon=True, name="telemetry")

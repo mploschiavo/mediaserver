@@ -27,6 +27,7 @@ the sixth is a 10-line code change."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, asdict, field
 from typing import Iterable
 
@@ -387,8 +388,11 @@ def compose(
                 heal_events=heal_events,
                 now_ts=ts,
             )
-        except Exception:
+        except Exception as exc:
             # A buggy rule must not take the whole story layer down.
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] story rule failed: %s", exc,
+            )
             continue
         if s is not None:
             stories.append(s)

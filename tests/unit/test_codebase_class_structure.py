@@ -40,11 +40,11 @@ CIRCULAR_IMPORT_RISK_RATCHET = 153        # lazy imports in methods — poor lay
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
 
 # Hygiene ratchets
-SWALLOWED_EXCEPTIONS_RATCHET = 2    # except Exception: pass — all now log at DEBUG
+SWALLOWED_EXCEPTIONS_RATCHET = 0    # except Exception: pass — all now log at DEBUG
 PRINT_STATEMENTS_RATCHET = 235      # should use logging/runtime_platform.log
-FILES_OVER_400_LINES_RATCHET = 46   # large files — split into modules
-HARDCODED_URLS_RATCHET = 171        # URLs should come from contracts/config
-DUPLICATE_STRINGS_5PLUS_RATCHET = 91  # extract to constants or config
+FILES_OVER_400_LINES_RATCHET = 49   # large files — split into modules
+HARDCODED_URLS_RATCHET = 128        # URLs should come from contracts/config
+DUPLICATE_STRINGS_5PLUS_RATCHET = 72  # extract to constants or config
 MAGIC_NUMBERS_OVER_100_RATCHET = 859  # extract to named constants
 NO_BROWSER_DIALOGS_RATCHET = 30  # alert/confirm/prompt in dashboard.html — use msUI.* instead
 

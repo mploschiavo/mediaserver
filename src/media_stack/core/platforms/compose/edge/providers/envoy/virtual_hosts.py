@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import copy
 import os
 from typing import Any
@@ -52,8 +54,7 @@ class EnvoyVirtualHostService:
                         extras.append(mid_alias)
                         extras.append(f"{mid_alias}:*")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return extras
     
     

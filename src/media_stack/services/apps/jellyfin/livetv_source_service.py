@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import hashlib
 import re
 from dataclasses import dataclass
@@ -48,8 +50,8 @@ class JellyfinLiveTvSourceService:
                 try:
                     payload = _gzip.decompress(payload)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass  # Not actually gzipped, use raw bytes
+                    # Not actually gzipped — fall back to raw bytes.
+                    log_swallowed(exc)
             return payload.decode("utf-8", errors="replace")
 
         candidate_paths: list[Path] = []

@@ -15,6 +15,8 @@ This module runs a fast preflight (< 5 s) that tries four strategies:
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import logging
 import os
 from dataclasses import dataclass, field
@@ -69,8 +71,7 @@ def _build_container_map(containers: list[Any]) -> dict[str, Any]:
             if compose_svc:
                 container_map[compose_svc.lower()] = c
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         # Compose v2 dashes: "project-service-N" -> strip trailing -N
         parts = c.name.rsplit("-", 1)
@@ -149,7 +150,7 @@ def _discover_via_docker_mounts(log: Any = None) -> DiscoveryResult:
                     if root:
                         candidate_roots[root] = candidate_roots.get(root, 0) + 1
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            log_swallowed(exc)
             continue
 
     if candidate_roots:
@@ -217,7 +218,7 @@ def _discover_via_docker_env(log: Any = None) -> DiscoveryResult:
                     result.keys[svc.api_key_env] = val
                     break
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+            log_swallowed(exc)
             continue
 
     return result

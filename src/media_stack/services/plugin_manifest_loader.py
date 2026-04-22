@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -200,8 +202,7 @@ def _load_from_service_yamls() -> list[PluginManifest]:
                     source_path=yaml_file,
                 ))
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         break  # Use first directory found
     return manifests
 

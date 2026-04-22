@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import importlib
 import inspect
 import json
@@ -235,11 +237,9 @@ class RunBootstrapJobRunner:
                                 if k and s and ":" in s:
                                     out[k] = s
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         # 2. Fill gaps from config.json (backward compat)
         hooks = self._bootstrap_job_hooks()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import collections
 import enum
 import threading
@@ -348,7 +350,7 @@ class ControllerState:
         path = Path(self._RUNTIME_CONFIG_FILE)
         if path.is_file():
             try:
-                data = json.loads(path.read_text())
+                data = json.loads(path.read_text(encoding="utf-8"))
                 self.runtime_config.update(data)
                 # Restore webhooks
                 saved_webhooks = data.get("_webhook_urls", [])
@@ -360,8 +362,7 @@ class ControllerState:
                     from media_stack.services.runtime_platform import set_log_level
                     set_log_level(saved_level)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
     def _persist_runtime_config(self) -> None:
         """Write runtime_config to disk (called on every update)."""
@@ -370,10 +371,9 @@ class ControllerState:
         path = Path(self._RUNTIME_CONFIG_FILE)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(self.runtime_config))
+            path.write_text(json.dumps(self.runtime_config), encoding="utf-8")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
     # --- serialization ---
 

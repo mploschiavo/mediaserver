@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from media_stack.api.services.registry import service_internal_url
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 ResolvePathFn = Callable[[str | Path, str], Path]
@@ -83,7 +84,7 @@ class JellyfinAutoCollectionsService:
         if not self.bool_cfg(auto_cfg, "enabled", False):
             return
 
-        jellyfin_url = self.normalize_url(auto_cfg.get("url", "http://jellyfin:8096"))
+        jellyfin_url = self.normalize_url(auto_cfg.get("url", service_internal_url("jellyfin")))
         self.wait_for_service("Jellyfin", jellyfin_url, "/System/Info/Public", wait_timeout)
 
         jellyfin_api_key = self.resolve_jellyfin_api_key(auto_cfg, config_root)

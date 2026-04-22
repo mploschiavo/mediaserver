@@ -12,6 +12,8 @@ Performance:
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import gzip
 import hashlib
 import json
@@ -69,8 +71,7 @@ class EpgMergeService:
             try:
                 payload = gzip.decompress(payload)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         return payload.decode("utf-8", errors="replace")
 
     @staticmethod
@@ -84,12 +85,11 @@ class EpgMergeService:
         # Check cache freshness
         if cache_file.is_file() and meta_file.is_file():
             try:
-                meta = json.loads(meta_file.read_text())
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
                 if time.time() - meta.get("ts", 0) < _CACHE_TTL_SECONDS:
                     return cache_file.read_text(encoding="utf-8", errors="replace")
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # Download
         xml_text = _download_xml(url)
@@ -97,10 +97,9 @@ class EpgMergeService:
         # Write to cache
         try:
             cache_file.write_text(xml_text, encoding="utf-8")
-            meta_file.write_text(json.dumps({"ts": time.time(), "url": url, "size": len(xml_text)}))
+            meta_file.write_text(json.dumps({"ts": time.time(), "url": url, "size": len(xml_text)}), encoding="utf-8")
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         return xml_text
 

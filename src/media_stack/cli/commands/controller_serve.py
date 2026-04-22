@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import argparse
 import multiprocessing
 import os
@@ -85,8 +87,8 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
             )
             return
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass  # Service not ready yet — skip validation
+        # Service not ready yet — skip validation.
+        log_swallowed(exc)
 
 
 class _BootCtxShim:
@@ -505,8 +507,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                     elif msg_type == "error":
                         error_msg = msg_data
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
             if cancelled:
                 state.finish_action(error="cancelled by user")

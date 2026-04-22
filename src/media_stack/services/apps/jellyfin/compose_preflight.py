@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 from typing import Any, Callable
 from urllib import error, request
@@ -88,8 +90,7 @@ class JellyfinComposePreflight:
                 reload_fn()
         except Exception as exc:
             # Best effort only; continue with last-known attrs.
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         attrs = dict(getattr(container, "attrs", {}) or {})
         network_settings = attrs.get("NetworkSettings")
         if not isinstance(network_settings, dict):

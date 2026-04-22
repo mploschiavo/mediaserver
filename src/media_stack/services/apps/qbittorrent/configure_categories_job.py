@@ -14,6 +14,7 @@ import os
 from typing import Any
 
 import media_stack.services.runtime_platform as runtime_platform
+import logging
 
 
 class QbittorrentConfigureCategoriesJob:
@@ -59,7 +60,7 @@ class QbittorrentConfigureCategoriesJob:
             results.append("qbittorrent")
             runtime_platform.log(f"[OK] qBittorrent: download categories configured")
         except ImportError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         except Exception as exc:
             runtime_platform.log(f"[WARN] qBittorrent categories: {exc}")
 
@@ -75,7 +76,7 @@ class QbittorrentConfigureCategoriesJob:
                 results.append("sabnzbd")
                 runtime_platform.log(f"[OK] SABnzbd: download categories configured")
         except ImportError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         except Exception as exc:
             runtime_platform.log(f"[WARN] SABnzbd categories: {exc}")
 

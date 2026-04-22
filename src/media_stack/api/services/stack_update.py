@@ -71,7 +71,7 @@ def _current_version() -> str:
         try:
             return _VERSION_FILE.read_text(encoding="utf-8").strip()
         except OSError:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
     return os.environ.get("STACK_VERSION", "0.0.0")
 
 
@@ -209,7 +209,7 @@ def start_upgrade(target_tag: str | None = None) -> dict[str, Any]:
             old = client.containers.get("media-stack-upgrader")
             old.remove(force=True)
         except Exception:
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         client.containers.run(
             image="docker:27-cli",
             name="media-stack-upgrader",

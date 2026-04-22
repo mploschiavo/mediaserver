@@ -5,6 +5,8 @@ Moved from api/services/admin.py to keep service-specific logic in the app layer
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import http.cookiejar
 import json
 import re
@@ -36,8 +38,7 @@ class QbittorrentAdminOps:
             if match:
                 passwords_to_try.insert(1, match.group(1))
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         for try_pw in passwords_to_try:
             try:
@@ -68,7 +69,7 @@ class QbittorrentAdminOps:
                 opener.open(req2, timeout=5)
                 return True, ""
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                log_swallowed(exc)
                 continue
 
         return False, "login failed with all known passwords"

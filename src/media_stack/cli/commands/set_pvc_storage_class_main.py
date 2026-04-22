@@ -137,7 +137,7 @@ def parse_config(argv: list[str] | None = None) -> SetStorageClassConfig:
 
 
 def run(cfg: SetStorageClassConfig, fs: FileSystem, logger: logging.Logger) -> int:
-    original = fs.read_text(cfg.target_file)
+    original = fs.read_text(cfg.target_file, encoding="utf-8")
     transformed = transform_storage_class_manifest(
         original,
         class_name=cfg.class_name,

@@ -146,7 +146,7 @@ def _ensure_prowlarr_tag(
             try:
                 return int(match["id"])
             except (TypeError, ValueError):
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
     status, body, raw = http_request(
         prowlarr_url, "/api/v1/tag", api_key=api_key,
         method="POST", payload={"label": label},
@@ -228,12 +228,12 @@ def _resolve_per_indexer_apps(
             try:
                 cap_ids.add(int(c.get("id")))
             except (TypeError, ValueError):
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             for sub in (c.get("subCategories") or []):
                 try:
                     cap_ids.add(int(sub.get("id")))
                 except (TypeError, ValueError):
-                    pass
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         if cap_ids and not any(c in cap_ids for c in cats):
             continue
         if _probe_indexer_for_app(

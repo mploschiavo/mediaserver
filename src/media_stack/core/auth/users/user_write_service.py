@@ -312,7 +312,7 @@ class UserWriteService(UserServiceBase):
                         detail={"user_id": user_id, "error": str(exc)[:_ERR_LEN]},
                     )
                 except Exception:  # noqa: BLE001
-                    pass
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
         threading.Thread(
             target=_run, daemon=True,

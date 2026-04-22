@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 import os
 import re
@@ -63,8 +65,7 @@ class ContentService:
                     if v:
                         versions[n] = v
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         result = {"versions": versions}
         cache.set("versions", result)
         return result
@@ -117,8 +118,7 @@ class ContentService:
                     n, v = f.result()
                     stats[n] = v
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         result = {"stats": stats}
         cache.set("stats", result)
         return result
@@ -205,8 +205,7 @@ class ContentService:
                     n, v = f.result()
                     history[n] = v
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         return {"history": history}
 
     def get_quality_profiles(self) -> dict[str, Any]:
@@ -260,8 +259,7 @@ class ContentService:
                     n, v = f.result()
                     profiles[n] = v
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         return {"profiles": profiles}
 
     def get_import_lists(self) -> dict[str, Any]:
@@ -296,8 +294,7 @@ class ContentService:
                     n, v = f.result()
                     lists[n] = v
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         return {"lists": lists}
 
     def get_media_server_libraries(self) -> dict[str, Any]:
@@ -361,8 +358,7 @@ class ContentService:
                     n, v = f.result()
                     recent[n] = v
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
         return {"recent": recent}
 
     # -----------------------------------------------------------------------
@@ -474,8 +470,7 @@ class ContentService:
                             "indexer": str(r.get("data", {}).get("indexer", "")) if isinstance(r.get("data"), dict) else "",
                         })
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         # Aggregate by day
         by_day: dict[str, int] = {}

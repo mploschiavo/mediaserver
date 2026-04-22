@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import logging
 
 
 class ProwlarrIndexerOps:
@@ -64,7 +65,7 @@ class ProwlarrIndexerOps:
             try:
                 payload["proxyId"] = int(proxy_id)
             except (TypeError, ValueError):
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
         if current:
             payload["id"] = current.get("id")

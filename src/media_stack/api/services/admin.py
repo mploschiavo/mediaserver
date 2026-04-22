@@ -6,6 +6,8 @@ names or paths. To support a new service, add its ServiceDef to registry.py.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import json
 import os
@@ -85,8 +87,7 @@ class AdminService:
             result = self.restart_service(service_id)
             restarted = result.get("status") == "restarted"
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
         # 2. Wait for health endpoint
         if restarted and svc.host and svc.port:
@@ -99,7 +100,7 @@ class AdminService:
                     urllib.request.urlopen(req, timeout=5)
                     break
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    log_swallowed(exc)
                     continue
 
         # 3. Re-discover API key if service has one
@@ -115,8 +116,7 @@ class AdminService:
                     self.persist_keys_to_secret({svc.api_key_env: key})
                     key_discovered = True
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         return {
             "status": "reset",
@@ -215,8 +215,7 @@ class AdminService:
                 self.restart_service(svc_id)
                 restarted.append(svc_id)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
 
         return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors, "restarted": restarted}
 
@@ -331,8 +330,7 @@ class AdminService:
                     self.restart_service(svc.id)
                     restarted.append(svc.id)
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
         return {"status": "updated", "services": updated, "errors": errors, "restarted": restarted}
 
@@ -408,11 +406,9 @@ class AdminService:
                     existing.data = secret_data
                 v1.patch_namespaced_secret("media-stack-secrets", namespace, existing)
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
 
 
     @staticmethod

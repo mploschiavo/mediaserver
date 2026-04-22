@@ -7,6 +7,8 @@ and provider registries.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import json
 from typing import TYPE_CHECKING
 
@@ -190,8 +192,7 @@ class ConfigResolutionMixin:
             if svcs:
                 return tuple(s.id for s in svcs)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return ()
 
     def _edge_path_prefix_preserve_service_names(self) -> tuple[str, ...]:
@@ -216,8 +217,7 @@ class ConfigResolutionMixin:
             if svcs:
                 return tuple(s.id for s in svcs)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return ()
 
     def _edge_compose_provider_specs(self) -> dict[str, dict[str, str]]:
@@ -264,8 +264,7 @@ class ConfigResolutionMixin:
             if isinstance(raw_profile, list) and raw_profile:
                 return tuple(str(s).strip().lower() for s in raw_profile if str(s).strip())
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         # 3. Derive from technology_bindings
         cfg = self._resolved_bootstrap_config()
         technology_bindings = cfg.get("technology_bindings")

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .config_models import JellyfinLiveTvConfig
+from media_stack.api.services.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -121,7 +122,7 @@ class JellyfinService:
             guide_type = str(guide.get("type", "xmltv")).strip().lower()
             desired_guide_keys.add((guide_type, guide_path))
 
-        jellyfin_url = d.normalize_url(live_cfg.get("url", "http://jellyfin:8096"))
+        jellyfin_url = d.normalize_url(live_cfg.get("url", service_internal_url("jellyfin")))
         d.wait_for_service("Jellyfin", jellyfin_url, "/System/Info/Public", wait_timeout)
 
         jellyfin_api_key = d.resolve_api_key(live_cfg, config_root)

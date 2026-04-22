@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse
+from media_stack.api.services.registry import service_internal_url
 
 HttpRequestFn = Callable[..., tuple[int, Any, str]]
 NormalizeUrlFn = Callable[[str], str]
@@ -79,7 +80,7 @@ class SabnzbdService:
         if not sab_api_key:
             return
 
-        sab_url = self.normalize_url(sab_cfg.get("url", "http://sabnzbd:8080"))
+        sab_url = self.normalize_url(sab_cfg.get("url", service_internal_url("sabnzbd")))
         misc = self.get_config_section(sab_url, sab_api_key, "misc")
         if not isinstance(misc, dict):
             raise RuntimeError("SABnzbd: unexpected misc config payload from API.")
@@ -198,7 +199,7 @@ class SabnzbdService:
         if not sab_api_key:
             return
 
-        sab_url = self.normalize_url(sab_cfg.get("url", "http://sabnzbd:8080"))
+        sab_url = self.normalize_url(sab_cfg.get("url", service_internal_url("sabnzbd")))
         categories_section = self.get_config_section(sab_url, sab_api_key, "categories")
         current_by_name: dict[str, str] = {}
         if isinstance(categories_section, list):

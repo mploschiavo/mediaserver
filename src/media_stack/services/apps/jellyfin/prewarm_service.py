@@ -22,6 +22,7 @@ from .prewarm.sidecar_ops import (
     resolve_books_root_path,
     resolve_music_root_path,
 )
+from media_stack.api.services.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -128,7 +129,7 @@ class JellyfinPrewarmService:
             prewarm_cfg.get("url")
             or libraries_cfg.get("url")
             or livetv_cfg.get("url")
-            or "http://jellyfin:8096"
+            or service_internal_url("jellyfin")
         )
 
         jellyfin_url = d.normalize_url(api_cfg.get("url"))

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from typing import Any
 
 from ..apps.servarr.config_models import ArrDiscoveryListEntry, ArrDiscoveryListsConfig
@@ -245,7 +247,7 @@ class DiscoveryImportListService:
                     )
                     break
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
+                    log_swallowed(exc)
                     continue
             if selected_metadata_profile_id:
                 service.log(

@@ -31,6 +31,7 @@ import time
 from pathlib import Path
 from typing import Optional
 from xml.etree import ElementTree as ET
+import logging
 
 _TMP_COUNTER_LOCK = threading.Lock()
 _TMP_COUNTER = 0
@@ -133,7 +134,7 @@ def atomic_write_xml(
             # Some filesystems (overlayfs, tmpfs) reject directory
             # fsync; not fatal for correctness, just skips the
             # durability barrier.
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
         os.replace(tmp_path, path)
 
@@ -151,12 +152,12 @@ def atomic_write_xml(
             try:
                 tmp_path.unlink()
             except OSError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         if backup_path and not keep_backup and backup_path.exists():
             try:
                 backup_path.unlink()
             except OSError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
 
 def set_or_create_child(

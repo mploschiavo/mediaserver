@@ -8,6 +8,8 @@ Replaces the compose_preflight.py docker-exec-based approach. Uses:
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import re
 import shutil
 import time
@@ -16,6 +18,8 @@ from typing import Any
 
 import requests
 import logging
+
+from media_stack.api.services.registry import service_internal_url
 
 
 class SabnzbdHttpPreflight:
@@ -29,7 +33,7 @@ class SabnzbdHttpPreflight:
                 if resp.status_code == 200:
                     return True
             except requests.ConnectionError:
-                pass
+                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             time.sleep(3)
         return False
 
@@ -44,8 +48,7 @@ class SabnzbdHttpPreflight:
             container.restart(timeout=15)
             return
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         try:
             from kubernetes import client, config
 
@@ -116,9 +119,9 @@ class SabnzbdHttpPreflight:
 
         return result, changed
 
-    def run_preflight(self, 
+    def run_preflight(self,
         *,
-        sab_url: str = "http://sabnzbd:8080",
+        sab_url: str | None = None,
         config_root: str = "/srv-config",
         container_name: str = "sabnzbd",
         host_whitelist: str = "",
@@ -127,6 +130,8 @@ class SabnzbdHttpPreflight:
         log: Any = None,
         **kwargs: Any,
     ) -> dict[str, str]:
+        if sab_url is None:
+            sab_url = service_internal_url("sabnzbd")
         """Reconcile SABnzbd host_whitelist and local_ranges config.
 
         Edits sabnzbd.ini directly via the shared config mount, then restarts

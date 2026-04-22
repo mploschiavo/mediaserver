@@ -6,6 +6,8 @@ first argument so it can call response helpers and access ``self.state``.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import base64
 import ipaddress
 import json as _dumps_mod
@@ -1469,8 +1471,7 @@ class PostRequestHandler:
             for alias in discover_job_aliases():
                 actions.add(alias)
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return frozenset(actions)
 
     @staticmethod

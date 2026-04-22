@@ -168,7 +168,7 @@ class SnapshotStore:
                 try:
                     old.unlink()
                 except OSError:
-                    pass
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
 
 
 # ----------------------------------------------------------------------

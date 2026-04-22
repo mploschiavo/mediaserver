@@ -50,3 +50,21 @@ class LoggingUtils:
 _instance = LoggingUtils()
 configure_logging = _instance.configure_logging
 log_event = _instance.log_event
+
+
+_swallow_log = logging.getLogger("media_stack")
+
+
+def log_swallowed(exc: BaseException, context: str = "") -> None:
+    """Debug-log an intentionally-swallowed exception.
+
+    Use in narrow ``except`` handlers where the exception is
+    deliberately non-fatal but worth tracing at DEBUG level. The
+    indirection (vs ``logging.getLogger("media_stack").debug(...)``
+    inline) keeps the duplicate-string ratchet honest and lets the
+    project change the format in one place.
+    """
+    if context:
+        _swallow_log.debug("[DEBUG] Swallowed (%s): %s", context, exc)
+    else:
+        _swallow_log.debug("[DEBUG] Swallowed: %s", exc)

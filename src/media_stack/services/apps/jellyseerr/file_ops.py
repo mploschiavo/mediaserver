@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from media_stack.api.services.registry import service_internal_url
 
 
 class JellyseerrFileOps:
@@ -42,7 +43,7 @@ class JellyseerrFileOps:
                 raise RuntimeError(
                     "Jellyseerr file bootstrap: jellyfin.configure=true but Jellyfin API key could not be resolved."
                 )
-            parsed_jf = svc.parse_service_url(jellyfin_cfg.get("url", "http://jellyfin:8096"), 8096)
+            parsed_jf = svc.parse_service_url(jellyfin_cfg.get("url", service_internal_url("jellyfin")), 8096)
             jf = settings.setdefault("jellyfin", {})
             jf["name"] = jellyfin_cfg.get("name", "Jellyfin")
             jf["ip"] = parsed_jf["hostname"]

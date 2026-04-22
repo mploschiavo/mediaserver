@@ -5,6 +5,8 @@ Extracted from controller_main.py for maintainability.
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import argparse
 import os
 import re
@@ -41,8 +43,7 @@ class MaintenanceService:
                     text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
                     snapshot[f"{app}/{rel}"] = text
                 except Exception as exc:
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                    pass
+                    log_swallowed(exc)
 
         ts = time.strftime("%Y%m%dT%H%M%S")
         out = snapshot_dir / f"snapshot-{ts}.json"
@@ -76,8 +77,7 @@ class MaintenanceService:
                         pruned += 1
                         log(f"[INFO] Pruned stale XMLTV guide: {old.name} ({sz // 1048576}MB)")
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
 
         # Media server log directories.
         for ms_id in media_server_ids:
@@ -89,8 +89,7 @@ class MaintenanceService:
                         old.unlink()
                         pruned += 1
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
 
         # Arr services (XML config format) store logs in <id>/logs/.
         arr_ids = tuple(s.id for s in SERVICES if s.api_key_format == "xml")
@@ -104,8 +103,7 @@ class MaintenanceService:
                         old.unlink()
                         pruned += 1
                     except Exception as exc:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                        pass
+                        log_swallowed(exc)
 
         if pruned:
             log(f"[INFO] Stale file cleanup: pruned {pruned} files")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from media_stack.services.enums import RunnerEvent
 from media_stack.services.download_client_adapters.base import DownloadClientAdapterBase
+from media_stack.api.services.registry import service_internal_url
 
 
 class SabnzbdDownloadClientAdapter(DownloadClientAdapterBase):
@@ -14,7 +15,7 @@ class SabnzbdDownloadClientAdapter(DownloadClientAdapterBase):
             return
         self.deps.wait_for_service(
             "SABnzbd",
-            self.context.url or self.deps.normalize_url("http://sabnzbd:8080"),
+            self.context.url or self.deps.normalize_url(service_internal_url("sabnzbd")),
             "/",
             self.context.wait_timeout,
         )

@@ -162,7 +162,7 @@ class ActionRestartAppsTests(unittest.TestCase):
         )
 
     @mock.patch(LOG_PATH)
-    def test_warns_when_no_restart_spec_found(self, mock_log):
+    def test_no_op_when_no_restart_spec_found(self, mock_log):
         args = _ns()
         state = MagicMock()
         load_handler_specs = MagicMock(return_value=[{"name": "unrelated"}])
@@ -171,7 +171,9 @@ class ActionRestartAppsTests(unittest.TestCase):
         action_restart_apps(args, state, load_handler_specs, run_handler_specs)
 
         run_handler_specs.assert_not_called()
-        mock_log.assert_called_with("[WARN] No restart_apps handler found in config")
+        mock_log.assert_called_with(
+            "[INFO] restart-apps: nothing to do (blanket restarts intentionally disabled)"
+        )
 
 
 class ActionSyncIndexersTests(unittest.TestCase):

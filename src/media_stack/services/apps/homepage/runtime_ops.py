@@ -17,6 +17,7 @@ from media_stack.services.runtime_platform import (
 )
 
 from .service import HomepageService
+from media_stack.api.services.registry import service_internal_url
 
 
 class HomepageRuntimeOps:
@@ -41,7 +42,7 @@ class HomepageRuntimeOps:
             return False
 
         homepage_cfg = cfg.get("homepage") or {}
-        homepage_url = normalize_url(str(homepage_cfg.get("url") or "http://homepage:3000"))
+        homepage_url = normalize_url(str(homepage_cfg.get("url") or service_internal_url("homepage")))
         try:
             status, _, body = http_request(homepage_url, "/api/revalidate", timeout=15)
         except Exception as exc:

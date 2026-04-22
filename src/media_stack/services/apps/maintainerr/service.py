@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
+from media_stack.api.services.registry import service_internal_url
 import os
 import re
 from dataclasses import dataclass
@@ -100,7 +103,7 @@ class MaintainerrService:
         # routes (even pod-to-pod) require this prefix.
         if not configured:
             try:
-                from media_stack.api.services.registry import SERVICE_MAP
+                from media_stack.api.services.registry import service_internal_url, SERVICE_MAP
                 svc_id = str(app_name or "").strip().lower()
                 svc = SERVICE_MAP.get(svc_id)
                 if svc and svc.preserve_path_prefix and svc.health_path:
@@ -110,8 +113,7 @@ class MaintainerrService:
                     if api_idx > 0:
                         configured = hp[:api_idx]
             except Exception as exc:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-                pass
+                log_swallowed(exc)
         return self._join_url_base(base_url, configured)
 
     def _ensure_enabled(self, cfg: dict[str, Any], key: str, default: bool = True) -> bool:
@@ -434,7 +436,7 @@ class MaintainerrService:
         jellyseerr_cfg = cfg.get("jellyseerr") or {}
         desired["seerr_url"] = self._resolve_url(
             jellyseerr_section,
-            self._text(jellyseerr_cfg.get("url") or "http://jellyseerr:5055"),
+            self._text(jellyseerr_cfg.get("url") or service_internal_url("jellyseerr")),
         )
         if self._ensure_enabled(jellyseerr_section, "enabled", True):
             desired["seerr_api_key"] = self._resolve_jellyseerr_key(
@@ -449,7 +451,7 @@ class MaintainerrService:
             self._text(
                 main_section.get("jellyfin_url")
                 or jellyfin_cfg.get("url")
-                or "http://jellyfin:8096"
+                or service_internal_url("jellyfin")
             ),
         )
         desired["jellyfin_server_name"] = self._text(
@@ -478,7 +480,7 @@ class MaintainerrService:
             try:
                 desired["tautulli_url"] = self._resolve_url(
                     tautulli_section,
-                    self._text((cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"),
+                    self._text((cfg.get("tautulli") or {}).get("url") or service_internal_url("tautulli")),
                 )
                 desired["tautulli_api_key"] = self._resolve_tautulli_key(
                     config_root=config_root,
@@ -540,7 +542,7 @@ class MaintainerrService:
 
         maintainerr_url = self._resolve_url(
             integrations_cfg,
-            self._text(maintainerr_cfg.get("url") or "http://maintainerr:6246"),
+            self._text(maintainerr_cfg.get("url") or service_internal_url("maintainerr")),
         )
         maintainerr_url = self._resolve_path_aware_url(cfg, "maintainerr", maintainerr_url)
         self.wait_for_service("Maintainerr", maintainerr_url, "/api/settings", wait_timeout)
@@ -568,7 +570,7 @@ class MaintainerrService:
             if isinstance(radarr_app, dict):
                 radarr_url = self._resolve_url(
                     radarr_section,
-                    self._text((radarr_app or {}).get("url") or "http://radarr:7878"),
+                    self._text((radarr_app or {}).get("url") or service_internal_url("radarr")),
                 )
                 radarr_payload = {
                     "serverName": self._text(
@@ -604,7 +606,7 @@ class MaintainerrService:
             if isinstance(sonarr_app, dict):
                 sonarr_url = self._resolve_url(
                     sonarr_section,
-                    self._text((sonarr_app or {}).get("url") or "http://sonarr:8989"),
+                    self._text((sonarr_app or {}).get("url") or service_internal_url("sonarr")),
                 )
                 sonarr_payload = {
                     "serverName": self._text(
@@ -633,7 +635,7 @@ class MaintainerrService:
             jellyseerr_payload = {
                 "url": self._resolve_url(
                     jellyseerr_section,
-                    self._text(jellyseerr_cfg.get("url") or "http://jellyseerr:5055"),
+                    self._text(jellyseerr_cfg.get("url") or service_internal_url("jellyseerr")),
                 ),
                 "api_key": self._resolve_jellyseerr_key(
                     config_root=config_root,
@@ -656,7 +658,7 @@ class MaintainerrService:
                     "url": self._resolve_url(
                         tautulli_section,
                         self._text(
-                            (cfg.get("tautulli") or {}).get("url") or "http://tautulli:8181"
+                            (cfg.get("tautulli") or {}).get("url") or service_internal_url("tautulli")
                         ),
                     ),
                     "api_key": self._resolve_tautulli_key(

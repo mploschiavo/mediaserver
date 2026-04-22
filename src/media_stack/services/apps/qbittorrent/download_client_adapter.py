@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from media_stack.services.enums import RunnerEvent
 from media_stack.services.download_client_adapters.base import DownloadClientAdapterBase
+from media_stack.api.services.registry import service_internal_url
 
 
 class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
@@ -17,7 +18,7 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
             return
         self.deps.wait_for_service(
             "qBittorrent",
-            self.context.url or self.deps.normalize_url("http://qbittorrent:8080"),
+            self.context.url or self.deps.normalize_url(service_internal_url("qbittorrent")),
             "/",
             self.context.wait_timeout,
         )
@@ -30,7 +31,7 @@ class QbittorrentDownloadClientAdapter(DownloadClientAdapterBase):
             self.deps.invoke_handler(
                 RunnerEvent.ACQUIRE,
                 "torrent_client_login",
-                self.context.url or self.deps.normalize_url("http://qbittorrent:8080"),
+                self.context.url or self.deps.normalize_url(service_internal_url("qbittorrent")),
                 self.context.username,
                 self.context.password,
             )

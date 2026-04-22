@@ -21,6 +21,7 @@ from media_stack.core.auth.authelia_oidc_crypto import (
     OidcCrypto,
 )
 from media_stack.core.auth.gateway_policy import GatewayAuthPolicy
+import logging
 
 __all__ = ["AutheliaConfigGenerator", "AutheliaConfigOptions", "OidcClientDef"]
 
@@ -400,7 +401,7 @@ class AutheliaConfigGenerator:
             if isinstance(loaded, dict):
                 return loaded
         except (OSError, yaml.YAMLError):
-            pass
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         return {}
 
     def _merge_users_database(self, existing: dict[str, Any],

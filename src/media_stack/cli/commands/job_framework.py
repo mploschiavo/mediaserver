@@ -12,6 +12,8 @@ A job can contain sub-jobs (job has jobs pattern).
 
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 import importlib
 import os
 import time
@@ -81,7 +83,7 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
         if svc_yaml.name.startswith("_"):
             continue
         try:
-            svc_data = yaml.safe_load(svc_yaml.read_text()) or {}
+            svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
             svc_id = svc_data.get("service", {}).get("id", "")
             if not svc_id:
                 continue
@@ -175,7 +177,7 @@ def get_job_history() -> list[dict[str, Any]]:
         return []
     try:
         import json
-        entries = json.loads(path.read_text())
+        entries = json.loads(path.read_text(encoding="utf-8"))
         return list(reversed(entries)) if isinstance(entries, list) else []
     except Exception:
         return []
@@ -201,16 +203,15 @@ def _record_history(result: dict[str, Any]) -> None:
     path = _history_file()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        existing = json.loads(path.read_text()) if path.is_file() else []
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
         if not isinstance(existing, list):
             existing = []
         existing.append(entry)
         if len(existing) > _JOB_HISTORY_MAX:
             existing = existing[-_JOB_HISTORY_MAX:]
-        path.write_text(json.dumps(existing))
+        path.write_text(json.dumps(existing), encoding="utf-8")
     except Exception as exc:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-        pass
+        log_swallowed(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +536,7 @@ class JobContext:
         if self._profile_cache is None:
             profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
             if profile_file and Path(profile_file).is_file():
-                self._profile_cache = yaml.safe_load(Path(profile_file).read_text()) or {}
+                self._profile_cache = yaml.safe_load(Path(profile_file).read_text(encoding="utf-8")) or {}
             else:
                 self._profile_cache = {}
         return self._profile_cache
@@ -773,7 +774,7 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
         if svc_yaml.name.startswith("_"):
             continue
         try:
-            svc_data = yaml.safe_load(svc_yaml.read_text()) or {}
+            svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
             svc_id = svc_data.get("service", {}).get("id", "")
             plugin = svc_data.get("plugin", {})
             job_defs = plugin.get("jobs", {})
@@ -836,7 +837,7 @@ def discover_job_aliases() -> dict[str, str]:
         if svc_yaml.name.startswith("_"):
             continue
         try:
-            svc_data = yaml.safe_load(svc_yaml.read_text()) or {}
+            svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
             plugin = svc_data.get("plugin", {})
             raw = plugin.get("job_aliases", {})
             if not isinstance(raw, dict):

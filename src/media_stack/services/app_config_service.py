@@ -33,7 +33,7 @@ class AppConfigService:
         if not path.is_file():
             return {}
         try:
-            return yaml.safe_load(path.read_text()) or {}
+            return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception:
             return {}
 
@@ -42,7 +42,7 @@ class AppConfigService:
         path = self._app_config_path(service_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True))
+            path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True), encoding="utf-8")
             return {"status": "saved", "file": str(path)}
         except Exception as exc:
             return {"error": str(exc)[:120]}

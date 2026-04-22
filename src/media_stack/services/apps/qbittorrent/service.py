@@ -9,6 +9,7 @@ from typing import Any, Callable
 from urllib import error, parse, request
 
 from media_stack.services.apps.download_clients.config_models import DownloadClientConfig
+from media_stack.api.services.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]
@@ -236,7 +237,7 @@ class QBittorrentService:
         login_fn: Callable[[str, str, str], Any] | None = None,
     ) -> None:
         config = DownloadClientConfig.from_dict(qbit_cfg)
-        qbit_url = self.normalize_url(config.url or "http://qbittorrent:8080")
+        qbit_url = self.normalize_url(config.url or service_internal_url("qbittorrent"))
         login = login_fn or self.login
         opener = login(qbit_url, qb_username, qb_password)
 

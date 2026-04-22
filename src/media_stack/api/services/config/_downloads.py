@@ -1,6 +1,8 @@
 """Download client category configuration."""
 from __future__ import annotations
 
+
+from media_stack.core.logging_utils import log_swallowed
 from typing import Any
 
 from ._profile import ProfileService
@@ -23,8 +25,7 @@ class DownloadConfigService:
                 if isinstance(caps, dict) and caps.get("torrent_client"):
                     return svc.id
         except Exception as exc:
-            logging.getLogger("media_stack").debug("[DEBUG] Swallowed: %s", exc)
-            pass
+            log_swallowed(exc)
         return ""
 
     def _torrent_client_id(self) -> str:
