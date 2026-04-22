@@ -162,6 +162,67 @@ def _load_boot_profile(env: dict) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+class _SubprocessState:
+    """Lightweight state stub for subprocess workers.
+
+    The real ControllerState can't be pickled across processes.
+    This stub absorbs calls that the dispatch code makes on state
+    (record_preflight, mark_service_failed, etc.) without crashing.
+    Lives at module scope so spawn-pickle can find it by name."""
+    preflight_results: dict = {}
+    is_cancelled: bool = False
+
+    def __getattr__(self, name):
+        """Return a no-op for any method call."""
+        return lambda *a, **kw: None
+
+
+def _action_worker(
+    action_name: str,
+    overrides: dict,
+    args_dict: dict,
+    log_queue,
+) -> None:
+    """Run one action in a subprocess.  MUST be a module-level
+    function — Python's spawn start method pickles by qualified
+    name, so a nested ``_run_serve.<locals>._action_worker``
+    raises ``Can't get local object`` at start time. Logs go to
+    ``log_queue``."""
+    import argparse as _ap
+    import signal as _signal
+    import traceback as _tb
+
+    def _on_sigterm(signum, frame):
+        from media_stack.cli.commands.job_framework import request_cancel
+        request_cancel()
+        log_queue.put(("log", f"[ACTION] {action_name}: SIGTERM received, cancelling jobs"))
+
+    _signal.signal(_signal.SIGTERM, _on_sigterm)
+
+    worker_args = _ap.Namespace(**args_dict)
+
+    import media_stack.services.runtime_platform as _rp
+
+    def _subprocess_log(msg):
+        if _rp._extract_level(str(msg)) < _rp._current_log_level:
+            return
+        log_queue.put(("log", msg))
+
+    _rp.log = _subprocess_log
+
+    stub_state = _SubprocessState()
+
+    try:
+        _dispatch_action(action_name, overrides, worker_args, stub_state)
+        log_queue.put(("done", None))
+    except Exception as exc:
+        log_queue.put(("error", str(exc)))
+        tb = _tb.format_exc().strip()
+        if tb:
+            for line in tb.splitlines():
+                log_queue.put(("log", f"[TRACE] {line}"))
+
+
 def _run_serve(args: argparse.Namespace) -> None:
     """HTTP API server with action dispatch loop.
 
@@ -333,65 +394,7 @@ def _run_serve(args: argparse.Namespace) -> None:
     # healthcheck only checks the parent (API server) which is always up.
     # -----------------------------------------------------------------------
 
-    class _SubprocessState:
-        """Lightweight state stub for subprocess workers.
-
-        The real ControllerState can't be pickled across processes.
-        This stub absorbs calls that the dispatch code makes on state
-        (record_preflight, mark_service_failed, etc.) without crashing.
-        """
-        preflight_results = {}
-        is_cancelled = False
-
-        def __getattr__(self, name):
-            """Return a no-op for any method call."""
-            return lambda *a, **kw: None
-
-    def _action_worker(
-        action_name: str,
-        overrides: dict,
-        args_dict: dict,
-        log_queue: _MP_CTX.Queue,
-    ) -> None:
-        """Run one action in a subprocess. Logs go to log_queue."""
-        import argparse as _ap
-        import signal as _signal
-        import traceback as _tb
-
-        # Register SIGTERM handler so job framework can cancel cooperatively
-        # before the process is killed.
-        def _on_sigterm(signum, frame):
-            from media_stack.cli.commands.job_framework import request_cancel
-            request_cancel()
-            log_queue.put(("log", f"[ACTION] {action_name}: SIGTERM received, cancelling jobs"))
-
-        _signal.signal(_signal.SIGTERM, _on_sigterm)
-
-        # Reconstruct args namespace from dict
-        worker_args = _ap.Namespace(**args_dict)
-
-        # Redirect runtime_platform.log to the queue (preserving level filter)
-        import media_stack.services.runtime_platform as _rp
-
-        def _subprocess_log(msg):
-            if _rp._extract_level(str(msg)) < _rp._current_log_level:
-                return
-            log_queue.put(("log", msg))
-
-        _rp.log = _subprocess_log
-
-        # Stub state — absorbs record_preflight etc. without error
-        stub_state = _SubprocessState()
-
-        try:
-            _dispatch_action(action_name, overrides, worker_args, stub_state)
-            log_queue.put(("done", None))
-        except Exception as exc:
-            log_queue.put(("error", str(exc)))
-            tb = _tb.format_exc().strip()
-            if tb:
-                for line in tb.splitlines():
-                    log_queue.put(("log", f"[TRACE] {line}"))
+    pass  # _SubprocessState + _action_worker moved to module scope
 
     # Serialize args to a dict for subprocess pickling
     _args_dict = vars(args)
