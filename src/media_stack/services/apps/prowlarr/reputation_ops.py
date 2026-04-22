@@ -76,6 +76,60 @@ class ProwlarrReputationOps:
         )
         return False
 
+    @staticmethod
+    def _load_curated_allowed_definitions(service) -> set[str] | None:
+        """Load the curated public-tracker allowlist from
+        ``contracts/curated-indexers.yaml``. Returns:
+
+          - ``set[str]`` of allowed Prowlarr definition slugs when
+            ``mode: allowlist`` is set in the YAML.
+          - ``None`` when ``mode: all`` (no filtering — keep historic
+            "discover everything Prowlarr ships" behavior).
+          - ``None`` when the YAML can't be loaded — operators with
+            no curated config see no behavior change.
+
+        Source-of-truth file is ``contracts/curated-indexers.yaml``;
+        an env override (``CURATED_INDEXERS_FILE``) lets sysadmins
+        point at their own list.
+        """
+        env_path = os.environ.get("CURATED_INDEXERS_FILE", "").strip()
+        candidates = [
+            Path(env_path) if env_path else None,
+            Path("/contracts/curated-indexers.yaml"),
+            Path(__file__).resolve().parents[5] / "contracts" / "curated-indexers.yaml",
+            Path("contracts/curated-indexers.yaml"),
+        ]
+        for cand in candidates:
+            if cand and cand.is_file():
+                try:
+                    import yaml as _yaml
+                    doc = _yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
+                    mode = str(doc.get("mode") or "all").lower().strip()
+                    if mode != "allowlist":
+                        return None
+                    allowed = doc.get("allowed") or []
+                    if not isinstance(allowed, list):
+                        return None
+                    out = {
+                        str(x).strip().lower()
+                        for x in allowed
+                        if str(x).strip()
+                    }
+                    if out:
+                        service.log(
+                            f"[INFO] Auto indexer: loaded curated "
+                            f"allowlist from {cand} "
+                            f"({len(out)} definitions)"
+                        )
+                        return out
+                except Exception as exc:
+                    service.log(
+                        f"[WARN] Auto indexer: curated allowlist "
+                        f"at {cand} failed to parse: {exc}"
+                    )
+                    return None
+        return None
+
     def auto_add_tested_indexers(self,
         service,
         prowlarr_url: str,
@@ -118,6 +172,27 @@ class ProwlarrReputationOps:
                 candidates.extend(presets)
             else:
                 candidates.append(schema)
+
+        # Curated allowlist (contracts/curated-indexers.yaml). Default
+        # discovery enables every Cardigann definition Prowlarr ships
+        # (~70 — most of which are dead, language-specific, or return
+        # CloudFlare HTML). The allowlist pins ~10 known-reliable
+        # public sources so a fresh deploy actually grabs something
+        # on the first SeriesSearch instead of churning. Operators
+        # can switch back via ``mode: all`` in the YAML.
+        allowed_defs = self._load_curated_allowed_definitions(service)
+        if allowed_defs is not None:
+            before = len(candidates)
+            allowed_lc = {x.lower().strip() for x in allowed_defs}
+            candidates = [
+                c for c in candidates
+                if str(c.get("definitionName") or c.get("implementationName") or "").lower().strip() in allowed_lc
+            ]
+            service.log(
+                f"[INFO] Auto indexer: curated allowlist active "
+                f"({len(candidates)}/{before} candidates kept; "
+                f"see contracts/curated-indexers.yaml to edit)"
+            )
 
         configured_excludes = coerce_exclude_name_tokens(exclude_name_tokens)
         env_excludes = coerce_exclude_name_tokens(

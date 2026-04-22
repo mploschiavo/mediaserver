@@ -1298,5 +1298,81 @@ class DockerfileCopyPathsTrackedInGit(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L21 — curated public-indexer allowlist exists + has reasonable size
+# ---------------------------------------------------------------------------
+class CuratedIndexerAllowlistShipped(unittest.TestCase):
+    """Without an allowlist, ``discover-indexers`` enables every
+    Cardigann definition Prowlarr ships (~70). Most are dead /
+    CloudFlare-only / niche. The user adds a series, Sonarr can't
+    grab anything, queue fills with 'Invalid torrent file' errors,
+    qBit stays at 0 active. (v1.0.137 — discovered after a full
+    end-to-end MVP test on Breaking Bad returned 0 grabs.)
+
+    The shipped allowlist (``contracts/curated-indexers.yaml``)
+    pins ~10 known-reliable public sources. This ratchet:
+
+      1. asserts the file exists and parses,
+      2. ``mode`` is one of {allowlist, all},
+      3. when ``mode: allowlist``, the allowed list is non-empty
+         (a typo making ``allowed`` empty would silently disable
+         every indexer).
+    """
+
+    def test_curated_allowlist_present_and_sane(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "curated-indexers.yaml"
+        self.assertTrue(
+            path.is_file(),
+            "contracts/curated-indexers.yaml is the source of "
+            "truth for which public trackers ship enabled by "
+            "default. Removing it sends discovery back to "
+            "enabling all 70 Cardigann defs — most produce "
+            "Invalid torrent file errors and the user's queue "
+            "stays at 0 active.",
+        )
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        mode = str(doc.get("mode") or "").lower().strip()
+        self.assertIn(
+            mode, {"allowlist", "all"},
+            f"contracts/curated-indexers.yaml mode={mode!r} — must "
+            f"be 'allowlist' or 'all'.",
+        )
+        if mode == "allowlist":
+            allowed = doc.get("allowed") or []
+            self.assertIsInstance(
+                allowed, list,
+                "curated-indexers.yaml: 'allowed' must be a list",
+            )
+            self.assertGreater(
+                len(allowed), 0,
+                "curated-indexers.yaml: mode=allowlist with empty "
+                "'allowed' list silently disables every indexer.",
+            )
+
+    def test_discovery_loader_consults_allowlist(self) -> None:
+        path = SRC / "services" / "apps" / "prowlarr" / "reputation_ops.py"
+        if not path.is_file():
+            self.skipTest("reputation_ops.py not present")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            "_load_curated_allowed_definitions",
+            text,
+            "reputation_ops no longer references the curated "
+            "allowlist loader — discovery falls back to enabling "
+            "every Cardigann def.",
+        )
+        self.assertIn(
+            "curated-indexers.yaml",
+            text,
+            "reputation_ops no longer references "
+            "contracts/curated-indexers.yaml — the curated config "
+            "isn't being loaded.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

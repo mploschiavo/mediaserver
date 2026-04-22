@@ -1,0 +1,100 @@
+# =============================================================================
+# Curated public-tracker allowlist for first-boot discoverability
+# =============================================================================
+#
+# Purpose
+# -------
+# When ``discover-indexers`` runs, it asks Prowlarr to enumerate every public
+# tracker definition it ships (~70 entries via Cardigann YAML defs). The vast
+# majority of those return CloudFlare HTML, are dead, are language-specific,
+# or only carry niche content (anime, books, fringe formats). For a fresh
+# install, that produces a queue full of grabs that Sonarr/Radarr can't parse
+# (``MonoTorrent.TorrentException: Invalid torrent file``) and qBit stays at
+# zero downloads.
+#
+# This file pins the SHORT LIST of public trackers that actually work for a
+# typical English-speaking home install, so a brand-new deploy can grab
+# something on the very first SeriesSearch instead of churning indefinitely
+# against unmaintained sites.
+#
+# Selection criteria
+# ------------------
+# 1. Public — no signup/credentials required.
+# 2. Returns valid ``.torrent`` bytes or magnet links from the Cardigann def
+#    (no HTML CloudFlare challenge in the payload).
+# 3. English-language content as the primary catalog.
+# 4. Either no CloudFlare gate, OR survives Flaresolverr proxying reliably.
+# 5. Mainstream coverage (general TV, movies, music, books) — not niche or
+#    region-locked.
+#
+# How it's used
+# -------------
+# ``discover-indexers`` (in ``services/apps/prowlarr/runtime_ops.py``) reads
+# this file. When ``mode: allowlist`` is set, only definitions whose Prowlarr
+# slug appears in ``allowed`` are added; everything else is skipped. The
+# previous behavior (mode: ``all``) is still available for operators who want
+# the full ~70 — set ``mode: all`` and the allowlist is ignored.
+#
+# Update cadence
+# --------------
+# Public trackers come and go. Re-evaluate this list quarterly or when a
+# user reports "I just deployed and nothing downloads". The simplest health
+# probe is the same one ``_probe_indexer_for_app`` already runs:
+#
+#   GET /api/v1/search?type=search&query=ubuntu&categories=...&indexerIds=N
+#
+# If that returns < 1 result for a known-popular query, drop the indexer.
+# =============================================================================
+
+mode: allowlist           # one of: "allowlist" | "all"
+
+# Prowlarr Cardigann ``definitionName`` slugs for the curated set.
+# Add or remove entries here — no Python changes required.
+allowed:
+
+  # --- Broad TV + movies (most useful for Sonarr / Radarr) -----------------
+  - eztv                  # TV-only, magnet-based, no CloudFlare gate.
+                          # Reliable for current and back-catalog TV.
+
+  - therarbg              # RARBG community mirror. Broad TV+movies catalog;
+                          # one of the few RARBG mirrors that's actually live
+                          # and serves valid torrent files.
+
+  - 1337x                 # Top-tier general index. CloudFlare-protected;
+                          # needs Flaresolverr proxy attached (the
+                          # auto-tag step in v1.0.130 handles this).
+
+  - torrentgalaxy         # Broad public, well-categorized releases. Stable.
+
+  - torlock               # Broad TV/movies; CloudFlare-protected, works
+                          # through Flaresolverr.
+
+  # --- Movies-specific -----------------------------------------------------
+  - yts                   # Movies-only, very reliable. Small-file 720p/1080p
+                          # encodes — popular for bandwidth-constrained
+                          # users. No CloudFlare.
+
+  # --- Anime ---------------------------------------------------------------
+  - nyaasi                # The Nyaa.si index. Essential for anime; nothing
+                          # else covers seasonal anime as well.
+
+  # --- Music ---------------------------------------------------------------
+  - rutracker             # Music coverage is excellent (FLAC, lossless, rare
+                          # albums) but RU-language UI. Works through Prowlarr
+                          # without account for read-only catalog.
+                          # NOTE: requires registration for some downloads;
+                          #       Lidarr will skip auth-required releases
+                          #       gracefully.
+
+  # --- Aggregator / fallback -----------------------------------------------
+  - bitsearch             # Meta-aggregator across multiple public sources.
+                          # Useful as a safety net when the per-tracker indexes
+                          # miss something.
+
+  - solidtorrents         # Public meta-search. Broad but uneven quality;
+                          # last-resort coverage for items the other 9 miss.
+
+# When ``mode: allowlist`` and an indexer in ``allowed`` is NOT in Prowlarr's
+# Cardigann set (renamed, removed upstream, etc.), it's silently skipped with
+# a [WARN] log line. The deploy doesn't fail — the user sees N-of-10
+# enabled, can investigate.
