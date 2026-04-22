@@ -394,15 +394,29 @@ class JobRunner:
             # Reset attempt counter — we made progress
             attempt = 0
 
-            # Run all ready jobs
+            # Run all ready jobs.  Per-job [JOB] X: complete log so the
+            # operator + dashboard see real progression — without this,
+            # a 14-min discover-indexers leaves the user staring at a
+            # blank screen wondering if anything is happening.
             for job in ready:
                 if self.ctx.cancelled:
                     self.results[job.name] = {"status": "cancelled", "elapsed": 0}
                     self.completed.add(job.name)
                     continue
+                _t_job = time.time()
                 result = job.run(self.ctx)
+                _job_elapsed = round(time.time() - _t_job, 1)
                 self.completed.add(job.name)
                 self.results[job.name] = result
+                _status = (result or {}).get("status", "ok")
+                _remaining = sum(
+                    1 for j in all_jobs if j.name not in self.completed
+                )
+                runtime_platform.log(
+                    f"[JOB] {job.name}: {_status} ({_job_elapsed}s) "
+                    f"— {len(self.completed)}/{len(all_jobs)} done, "
+                    f"{_remaining} remaining"
+                )
 
         elapsed = round(time.time() - t0, 1)
         ok = sum(1 for r in self.results.values() if r.get("status") == "ok")
