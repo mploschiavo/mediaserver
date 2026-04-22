@@ -140,7 +140,13 @@ class BootstrapConfig:
     preconfigure_apps: bool = True
     preconfigure_api_keys: bool = True
     apply_initial_preferences: bool = True
-    trigger_indexer_sync: bool = False
+    # ON by default: without this, Prowlarr never fires
+    # ``ApplicationIndexerSync`` after the controller adds indexers.
+    # Result: 70 indexers in Prowlarr, 0 indexers in Sonarr/Radarr,
+    # *arr apps can't search, qBittorrent stays empty. Was the root
+    # cause of "why are no downloads starting in qbittorrent?" on
+    # fresh installs through v1.0.101.
+    trigger_indexer_sync: bool = True
     refresh_health_after_setup: bool = True
 
     @classmethod
@@ -150,7 +156,7 @@ class BootstrapConfig:
             preconfigure_apps=bool(d.get("preconfigure_apps", True)),
             preconfigure_api_keys=bool(d.get("preconfigure_api_keys", True)),
             apply_initial_preferences=bool(d.get("apply_initial_preferences", True)),
-            trigger_indexer_sync=bool(d.get("trigger_indexer_sync", False)),
+            trigger_indexer_sync=bool(d.get("trigger_indexer_sync", True)),
             refresh_health_after_setup=bool(d.get("refresh_health_after_setup", True)),
         )
 
