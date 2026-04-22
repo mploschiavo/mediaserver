@@ -515,8 +515,15 @@ def _run_serve(args: argparse.Namespace) -> None:
                 if action_name == "bootstrap" and not state.initial_bootstrap_done:
                     state.initial_bootstrap_done = True
                     runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
-                    for queued in ["configure-media-server", "post-setup", "envoy-config", "discover-indexers", "validate-credentials"]:
-                        runtime_platform.log(f"[INFO] Auto-queuing {queued} after bootstrap")
-                        action_trigger(queued, {})
+                    # Historical: this used to auto-queue
+                    # ``configure-media-server / post-setup / envoy-config /
+                    # discover-indexers / validate-credentials`` because
+                    # the original ``bootstrap`` was a thin wrapper that
+                    # didn't run them. Bootstrap is now the full DAG (see
+                    # contracts/services/core.yaml::bootstrap-orchestrate),
+                    # so re-queuing those wastes ~14 min on a second
+                    # discover-indexers pass and does nothing else useful.
+                    # If a job needs to run AFTER bootstrap, add it as a
+                    # downstream contract job — don't bring this back.
 
                 break  # Success — exit retry loop.
