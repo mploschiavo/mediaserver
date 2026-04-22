@@ -158,6 +158,31 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
         sd2 = ServiceDef(id="y", name="y", port=8989)
         self.assertEqual(sd2.published_port, 0)
 
+    def test_yaml_loader_passes_published_port_through(self) -> None:
+        """v1.0.113 incident: ServiceDef had the field, the
+        contract had the value, the API surface coerced it — but
+        the YAML→ServiceDef parser silently dropped it because
+        ``_parse_service_entry`` didn't read the field. Result:
+        live ``/api/services`` returned ``published_port == port``
+        for every service. SAB direct link still went to :8080."""
+        from media_stack.api.services.registry import _parse_service_entry
+        sd = _parse_service_entry({
+            "id": "sabnzbd", "name": "SABnzbd",
+            "host": "sabnzbd", "port": 8080,
+            "published_port": 8085,
+        })
+        self.assertEqual(sd.published_port, 8085,
+                         "published_port from YAML must reach "
+                         "ServiceDef — otherwise the dashboard "
+                         "direct link reverts to the container port.")
+        # When YAML omits it, ServiceDef.published_port is 0 — the
+        # API-surface coercion fills in port at serialize time.
+        sd2 = _parse_service_entry({
+            "id": "sonarr", "name": "Sonarr",
+            "host": "sonarr", "port": 8989,
+        })
+        self.assertEqual(sd2.published_port, 0)
+
     def test_sabnzbd_contract_sets_published_port_8085(self) -> None:
         import yaml
         text = (ROOT / "contracts/services/sabnzbd.yaml").read_text(encoding="utf-8")
@@ -185,6 +210,56 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
             "s.published_port||s.port", html,
             "getSvcUrl no longer prefers published_port — "
             "SABnzbd's ribbon/services-table link reverts to :8080.",
+        )
+
+
+class ServiceDefFieldsAreAllParsed(unittest.TestCase):
+    """Generic ratchet for the v1.0.113 "published_port silently
+    dropped" bug class.
+
+    The pattern: ``ServiceDef`` is a 30+ field dataclass. The YAML
+    loader ``_parse_service_entry`` reads each field by name. If
+    you add a field to the dataclass and forget the parser line,
+    the field defaults silently — no error, no warning, just
+    wrong behaviour at runtime.
+
+    This test introspects ``ServiceDef`` at runtime and asserts
+    EVERY public field is mentioned in ``_parse_service_entry``.
+    Adds a hard wall against the same bug class. Same pattern
+    can be applied to other dataclass+parser pairs as they grow."""
+
+    def test_every_servicedef_field_is_read_by_parser(self) -> None:
+        import dataclasses, re
+        from media_stack.api.services import registry
+        src = Path(registry.__file__).read_text(encoding="utf-8")
+        m = re.search(
+            r"def _parse_service_entry\(.*?return ServiceDef\(.*?\)\s*\n",
+            src, re.DOTALL,
+        )
+        self.assertIsNotNone(
+            m, "Couldn't locate _parse_service_entry — refactor "
+               "broke this ratchet's grep.",
+        )
+        parser_body = m.group(0)
+        missing = []
+        for f in dataclasses.fields(registry.ServiceDef):
+            if f.name.startswith("_"):
+                continue
+            # Field is "read" if its name appears as a dict-get key
+            # OR as a kwarg name in the ServiceDef(...) call.
+            patterns = (
+                f'"{f.name}"', f"'{f.name}'", f"{f.name}=",
+            )
+            if not any(p in parser_body for p in patterns):
+                missing.append(f.name)
+        self.assertFalse(
+            missing,
+            f"ServiceDef fields not parsed from YAML: {missing}.\n"
+            "Each field added to ServiceDef must also be read in "
+            "_parse_service_entry. Without this, the YAML value is "
+            "silently dropped and callers see the dataclass default "
+            "at runtime (the v1.0.113 published_port=8080-instead-of-8085 "
+            "incident).",
         )
 
 
