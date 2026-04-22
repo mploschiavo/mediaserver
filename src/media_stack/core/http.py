@@ -39,15 +39,58 @@ def _default_normalize_url(url: str) -> str:
 class HttpClient:
     normalize_url: Callable[[str], str] = _default_normalize_url
 
-    @retry(
-        attempts=HTTP_RETRY_ATTEMPTS,
-        delay_seconds=HTTP_RETRY_DELAY_SECONDS,
-        max_delay_seconds=HTTP_RETRY_MAX_DELAY_SECONDS,
-        backoff_multiplier=HTTP_RETRY_BACKOFF,
-        retry_if=_is_retryable_http_error,
-        logger=logging.getLogger("media_stack"),
-        operation="http.request",
-    )
+    def _execute_request_with_retry(
+        self,
+        req: request.Request,
+        timeout: int,
+        *,
+        attempts_override: int | None = None,
+    ) -> tuple[int, Any, str]:
+        """Inline retry loop so the WARN line names the URL + method
+        of the request being retried — the previous decorator-based
+        version logged ``retry operation=http.request attempt=N/3
+        ...`` with no context, which made indexer-discovery storms
+        unreadable (~70 indexers all timing out, no way to tell
+        which). Also reads ``MEDIA_STACK_HTTP_RETRY_ATTEMPTS`` at
+        call time so the discover-indexers job can drop attempts to
+        1 for its short-lived scope."""
+        log = logging.getLogger("media_stack")
+        attempts = (
+            max(1, int(attempts_override))
+            if attempts_override is not None
+            else max(1, int(os.environ.get(
+                "MEDIA_STACK_HTTP_RETRY_ATTEMPTS", "3"
+            )))
+        )
+        delay = float(os.environ.get(
+            "MEDIA_STACK_HTTP_RETRY_DELAY_SECONDS", "0.5"
+        ))
+        max_delay = float(os.environ.get(
+            "MEDIA_STACK_HTTP_RETRY_MAX_DELAY_SECONDS", "3"
+        ))
+        backoff = float(os.environ.get(
+            "MEDIA_STACK_HTTP_RETRY_BACKOFF", "2"
+        ))
+        attempt = 1
+        sleep_seconds = delay
+        while True:
+            try:
+                return self._execute_request(req, timeout)
+            except Exception as exc:
+                if not _is_retryable_http_error(exc):
+                    raise
+                if attempt >= attempts:
+                    raise
+                log.warning(
+                    "retry %s %s attempt=%s/%s delay_seconds=%.2f error=%s",
+                    req.get_method(), req.full_url,
+                    attempt, attempts, sleep_seconds, exc,
+                )
+                import time as _t
+                _t.sleep(sleep_seconds)
+                attempt += 1
+                sleep_seconds = min(max_delay, sleep_seconds * backoff)
+
     def _execute_request(self, req: request.Request, timeout: int) -> tuple[int, Any, str]:
         try:
             with request.urlopen(req, timeout=timeout) as resp:
@@ -109,7 +152,7 @@ class HttpClient:
 
         req = request.Request(url=url, data=data, method=method, headers=headers)
         try:
-            status, parsed, body = self._execute_request(req, timeout)
+            status, parsed, body = self._execute_request_with_retry(req, timeout)
             _logger.debug("[DEBUG] HTTP %s %s → %d (%d bytes)", method, url, status, len(body or ""))
             return status, parsed, body
         except RetryableHttpStatusError as exc:

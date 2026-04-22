@@ -113,13 +113,32 @@ def restart_apps(ctx: JobContext) -> dict:
 
 
 def discover_indexers(ctx: JobContext) -> dict:
-    """Run auto-indexer discovery (indexer phase only)."""
-    from media_stack.cli.commands.action_handlers import (
-        action_discover_indexers,
-    )
-    from media_stack.cli.commands.controller_runner import _build_runner
-    action_discover_indexers(_default_args(ctx), _build_runner)
-    return {"action": "discover-indexers"}
+    """Run auto-indexer discovery (indexer phase only).
+
+    Scopes ``MEDIA_STACK_HTTP_RETRY_ATTEMPTS`` to 1 for the
+    duration. Discovery probes ~70 indexers; many time out
+    (CloudFlare-protected, dead, slow). With the default 3
+    attempts at ~10s timeout each, a dead indexer wastes 30s.
+    70 × 30s = 35 min worst case — long enough to blow past
+    the bootstrap action timeout. Single-attempt during discovery
+    means dead indexers cost ~10s instead of ~30s; the ones that
+    work succeed on first try regardless. The reputation system
+    re-tries skipped indexers on subsequent runs."""
+    import os as _os
+    prev = _os.environ.get("MEDIA_STACK_HTTP_RETRY_ATTEMPTS")
+    _os.environ["MEDIA_STACK_HTTP_RETRY_ATTEMPTS"] = "1"
+    try:
+        from media_stack.cli.commands.action_handlers import (
+            action_discover_indexers,
+        )
+        from media_stack.cli.commands.controller_runner import _build_runner
+        action_discover_indexers(_default_args(ctx), _build_runner)
+        return {"action": "discover-indexers"}
+    finally:
+        if prev is None:
+            _os.environ.pop("MEDIA_STACK_HTTP_RETRY_ATTEMPTS", None)
+        else:
+            _os.environ["MEDIA_STACK_HTTP_RETRY_ATTEMPTS"] = prev
 
 
 def push_indexers(ctx: JobContext) -> dict:
