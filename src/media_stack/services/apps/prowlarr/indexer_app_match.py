@@ -87,7 +87,7 @@ APP_TAGS: dict[str, str] = {
 # probing 73 indexers × 4 apps = 292 search queries is slow on a
 # fresh install (each query ~1-5s; total ~5-25 minutes worst
 # case).  Cache file lives next to indexer-reputation-state.json.
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2  # bumped v1.0.122 — categories-param fix invalidates v1 entries
 _DEFAULT_CACHE_PATH = Path(
     os.environ.get(
         "INDEXER_APP_MATCH_STATE_PATH",
@@ -170,14 +170,23 @@ def _probe_indexer_for_app(
     app: str,
 ) -> bool:
     """True if the indexer returns ≥1 result for the app's
-    categories.  Uses Prowlarr's ``/api/v1/search`` with type=search
-    and the app's category set, scoped to the single indexer."""
+    categories. Uses Prowlarr's ``/api/v1/search`` with type=search
+    and the app's category set, scoped to the single indexer.
+
+    Prowlarr's ``/api/v1/search`` requires ``categories`` as
+    REPEATED query params (``categories=5000&categories=5010``);
+    a comma-separated list returns HTTP 400 with
+    ``"value '5000,5010,...' is not a valid categories value"``.
+    That 400 had silently classified every indexer as "no app
+    match" and poisoned the indexer-app-match cache for the
+    project's whole history. (Fixed v1.0.122.)
+    """
     cats = APP_CATEGORIES.get(app, [])
     if not cats:
         return False
-    cat_param = ",".join(str(c) for c in cats)
+    cat_qs = "&".join(f"categories={c}" for c in cats)
     path = (
-        f"/api/v1/search?type=search&query=&categories={cat_param}"
+        f"/api/v1/search?type=search&query=&{cat_qs}"
         f"&indexerIds={indexer_id}&limit=5"
     )
     status, body, _ = http_request(prowlarr_url, path, api_key=api_key)
