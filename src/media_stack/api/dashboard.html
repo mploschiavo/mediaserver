@@ -1440,7 +1440,13 @@ function renderServices(pf){
     const isExp=expanded===s.id;
     html+='<tr class="svc-detail" id="detail-'+s.id+'" style="display:'+(isExp?'table-row':'none')+'">';
     html+='<td></td><td colspan="11" style="padding:6px 10px;font-size:.85em;color:var(--fg2)">';
-    html+=s.desc+' · Port '+s.port;
+    /* Show host-published port (what the user types in their browser).
+       For symmetric services published_port falls back to port via the
+       /api/services endpoint coercion. SABnzbd is the asymmetric case
+       (internal 8080, published 8085 because qBit owns 8080). */
+    const _shownPort=(s.published_port||s.port);
+    const _portTip=(_shownPort!==s.port)?' (container '+s.port+')':'';
+    html+=s.desc+' · Port '+_shownPort+_portTip;
     const sUrl=getSvcUrl(s.id);
     html+=' · <a href="'+sUrl+'" target="_blank" style="color:var(--blue)">Open</a>';
     html+=' · <button class="btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="event.stopPropagation();restartService(\''+s.id+'\')">Restart</button>';
