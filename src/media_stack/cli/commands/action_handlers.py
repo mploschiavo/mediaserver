@@ -105,7 +105,11 @@ class ActionHandlerService:
         if restart_specs:
             run_handler_specs(restart_specs, state, args, phase_label="RESTART")
         else:
-            runtime_platform.log("[WARN] No restart_apps handler found in config")
+            # Default state since the no-restart-after-bootstrap
+            # decision (admin-bootstrap redesign): blanket restarts
+            # were removed because API-driven config changes are live
+            # immediately. Log INFO so it doesn't read as a problem.
+            runtime_platform.log("[INFO] restart-apps: nothing to do (blanket restarts intentionally disabled)")
 
     def action_push_indexers(self, args: argparse.Namespace, build_runner: Any) -> None:
         """Trigger indexer-manager ApplicationIndexerSync."""

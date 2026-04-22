@@ -242,17 +242,19 @@ class ProwlarrRuntimeOps:
             template if isinstance(template, dict) else None
         ).build_indexer_payload(template)
 
-    def auto_add_tested_indexers(self, 
+    def auto_add_tested_indexers(self,
         prowlarr_url,
         prowlarr_key,
         exclude_name_tokens=None,
         reputation_cfg=None,
+        flaresolverr_proxy_id=None,
     ):
         _prowlarr_service().auto_add_tested_indexers(
             prowlarr_url=prowlarr_url,
             prowlarr_key=prowlarr_key,
             exclude_name_tokens=exclude_name_tokens,
             reputation_cfg=reputation_cfg,
+            flaresolverr_proxy_id=flaresolverr_proxy_id,
         )
 
     def sync_arr_indexers_from_prowlarr(self, 

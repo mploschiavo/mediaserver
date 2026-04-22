@@ -245,11 +245,11 @@ class JellyfinSidecarOps:
 
         books_root, candidates = resolve_books_root_path(service, sidecar_cfg)
         if books_root is None:
-            candidate_label = ", ".join(str(path) for path in candidates)
-            d.log(
-                "[WARN] Jellyfin prewarm: books_root_path missing for sidecar artwork "
-                f"(checked: {candidate_label})"
-            )
+            # Books library not present → silently skip. The prewarm
+            # sidecar feature is opt-in: if there's no books/ root,
+            # the user just doesn't have a books library, which is
+            # the common case. Was [WARN] which read like an error
+            # on every fresh install without books content.
             return
         preferred_root = str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip()
         if preferred_root and str(books_root) != preferred_root:
@@ -362,11 +362,9 @@ class JellyfinSidecarOps:
 
         music_root, candidates = resolve_music_root_path(service, sidecar_cfg)
         if music_root is None:
-            candidate_label = ", ".join(str(path) for path in candidates)
-            d.log(
-                "[WARN] Jellyfin prewarm: music_root_path missing for sidecar artwork "
-                f"(checked: {candidate_label})"
-            )
+            # Music library not present → silently skip. Same logic
+            # as books above: opt-in feature, missing root just means
+            # the user doesn't have a music library.
             return
         preferred_root = str(sidecar_cfg.get("music_root_path") or "/srv-stack/media/music").strip()
         if preferred_root and str(music_root) != preferred_root:
