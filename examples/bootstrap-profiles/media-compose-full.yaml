@@ -28,17 +28,15 @@ routing:
   media_server_service_names:
   - jellyfin
   - jellyfin-nvidia
-# SSO is OFF by default — even on the "full" profile. Authentik
-# isn't implemented in this codebase; Authelia is, but the
-# compose service is gated behind ``--profile auth-authelia`` so
-# claiming it here without explicit opt-in causes Envoy's
-# ext_authz filter to fail closed (every request 403). To enable
-# Authelia, bring up the auth-authelia compose profile and flip
-# this section to ``provider: authelia / enabled: true``.
+# SSO is ON by default. ``internet_exposed: true`` above means
+# Authelia's access_control falls through to ``two_factor`` for
+# anything not in the LAN bypass list — so anyone reaching this
+# stack from the internet must complete 2FA. LAN clients
+# (RFC 1918 / loopback) bypass the challenge entirely.
 auth:
-  enabled: false
-  provider: none
-  mode: none
+  enabled: true
+  provider: authelia
+  mode: authelia
 chaos:
   enabled: false
   duration_minutes: 5

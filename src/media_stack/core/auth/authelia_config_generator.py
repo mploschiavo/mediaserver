@@ -163,11 +163,21 @@ class AutheliaConfigGenerator:
         """Build access control rules based on per-service auth policy."""
         rules: list[dict[str, Any]] = []
 
-        # Local network bypass — one_factor only (not bypass) for security
+        # LAN bypass: home-stack default is "no friction inside the
+        # house, SSO at the perimeter". RFC 1918 + loopback ranges
+        # skip the sign-in challenge entirely; anything outside those
+        # ranges falls through to the one_factor / two_factor rules
+        # below. Tighten this to ``one_factor`` (or remove the rule)
+        # if your LAN is hostile or if every client should sign in.
         rules.append({
             "domain": [f"*.{self._opts.base_domain}"],
-            "networks": ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"],
-            "policy": "one_factor",
+            "networks": [
+                "192.168.0.0/16",
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "127.0.0.0/8",
+            ],
+            "policy": "bypass",
         })
 
         # Native auth services (Jellyfin etc.) — bypass ext_authz entirely

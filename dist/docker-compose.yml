@@ -91,7 +91,11 @@ services:
   authelia:
     image: authelia/authelia:4.38
     container_name: authelia
-    profiles: ["auth-authelia"]
+    # SSO is ON by default — right out-of-the-box posture for any
+    # stack that might end up exposed to the internet. LAN clients
+    # bypass the SSO challenge automatically via Authelia's
+    # per-network access_control rule (see
+    # core/auth/authelia_config_generator.py::_build_access_control).
     # Wait until the controller is healthy before starting. The
     # controller runs configure-auth synchronously at boot (before
     # the /readyz health probe returns ok), so by the time Authelia
@@ -210,7 +214,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.98}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.99}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -641,7 +645,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.98}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.99}
     container_name: media-stack-controller
     command:
       - python3
