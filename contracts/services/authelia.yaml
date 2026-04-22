@@ -19,6 +19,7 @@ plugin:
   jobs:
     configure-auth:
       handler: media_stack.core.auth.configure_auth_job:configure_auth
+      label: "Update authentication"
       phase: default
       priority: 5
       requires: []

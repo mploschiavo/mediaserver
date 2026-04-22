@@ -47,11 +47,13 @@ plugin:
   jobs:
     configure-arr-clients:
       handler: media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients
+      label: "Update download client config"
       phase: download_clients
       priority: 10
       requires: []
     configure-auto-scan:
       handler: media_stack.services.apps.servarr.configure_auto_scan_job:configure_auto_scan
+      label: "Update auto-scan"
       phase: post
       priority: 80
       requires: []

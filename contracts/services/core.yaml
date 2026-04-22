@@ -59,12 +59,14 @@ plugin:
 
     discover-api-keys:
       handler: media_stack.services.apps.core.job_adapters:discover_api_keys
+      label: "Discover API keys"
       phase: pre_bootstrap
       priority: 10
       requires: []
 
     run-legacy-pipeline:
       handler: media_stack.services.apps.core.job_adapters:run_legacy_pipeline
+      label: "Run legacy bootstrap"
       phase: pre_bootstrap
       priority: 20
       requires: []
@@ -75,6 +77,7 @@ plugin:
 
     discover-indexers:
       handler: media_stack.services.apps.core.job_adapters:discover_indexers
+      label: "Discover indexers"
       phase: download_clients
       priority: 30
       requires: []
@@ -87,6 +90,7 @@ plugin:
 
     tag-indexers-for-apps:
       handler: media_stack.services.apps.core.job_adapters:tag_indexers_for_apps
+      label: "Match indexers to apps"
       phase: download_clients
       # Probes each discovered indexer × each *arr app to classify
       # by content type. Another slow one — 70 indexers × 4 apps
@@ -97,6 +101,7 @@ plugin:
 
     reset-prowlarr-app-mappings:
       handler: media_stack.services.apps.core.job_adapters:reset_prowlarr_app_mappings
+      label: "Repair indexer sync"
       phase: download_clients
       # Runs AFTER tagging (so we don't reset mappings while
       # tagging is in flight) and BEFORE push-indexers. Idempotent
@@ -117,12 +122,14 @@ plugin:
 
     push-indexers:
       handler: media_stack.services.apps.core.job_adapters:push_indexers
+      label: "Sync indexers to apps"
       phase: download_clients
       priority: 40
       requires: []
 
     run-media-hygiene:
       handler: media_stack.services.apps.core.job_adapters:run_media_hygiene
+      label: "Clean up downloads"
       phase: post
       # Cleanup pass: prunes stalled, errored, and orphaned downloads
       # from qBit + the *arr queues. Aggressive defaults (v1.0.132):
@@ -139,6 +146,7 @@ plugin:
 
     envoy-config:
       handler: media_stack.services.apps.core.job_adapters:envoy_config
+      label: "Update proxy routes"
       phase: default
       priority: 20
       requires: []
@@ -149,6 +157,7 @@ plugin:
 
     apply-arr-runtime-defaults:
       handler: media_stack.services.apps.core.job_adapters:apply_arr_runtime_defaults
+      label: "Update download settings"
       phase: post
       # Runs BEFORE validate-credentials so the patches affect any
       # subsequent search/grab decisions in this same bootstrap run.
@@ -157,6 +166,7 @@ plugin:
 
     validate-credentials:
       handler: media_stack.services.apps.core.job_adapters:validate_credentials
+      label: "Validate credentials"
       phase: post
       priority: 60
       # Without an API key for the media server we can't probe its
@@ -171,6 +181,7 @@ plugin:
 
     post-setup:
       handler: media_stack.services.apps.core.job_adapters:post_setup
+      label: "Finalize setup"
       phase: post
       priority: 70
       # Post-setup tunes the media server (libraries, hardware
@@ -181,6 +192,7 @@ plugin:
 
     restart-apps:
       handler: media_stack.services.apps.core.job_adapters:restart_apps
+      label: "Restart services"
       phase: post
       priority: 80
       requires: []

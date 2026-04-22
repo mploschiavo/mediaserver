@@ -27,6 +27,7 @@ plugin:
   jobs:
     configure-jellyseerr:
       handler: media_stack.services.apps.jellyseerr.configure_jellyseerr_job:configure_jellyseerr
+      label: "Update Jellyseerr"
       phase: post
       priority: 5
       requires: [media_server_reachable, media_server_api_key]

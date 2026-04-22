@@ -27,3 +27,7 @@ data/
 media/
 dist/data/
 dist/media/
+
+# Templates baked into the controller image — must be tracked
+!config/defaults/
+!config/defaults/**

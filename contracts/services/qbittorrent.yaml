@@ -23,6 +23,7 @@ plugin:
   jobs:
     configure-categories:
       handler: media_stack.services.apps.qbittorrent.configure_categories_job:configure_categories
+      label: "Update download categories"
       phase: download_clients
       priority: 10
   event_handlers:
