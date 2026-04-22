@@ -48,6 +48,11 @@ plugin:
       phase: download_clients
       priority: 20
       requires: []
+      # Iterates the configured indexer set, posting each one to
+      # Prowlarr (each post triggers Prowlarr's "test" against the
+      # actual tracker — slow on cold network). Non-blocking so it
+      # doesn't gate the rest of bootstrap.
+      non_blocking: true
   event_handlers:
     VALIDATE:
       ensure_prowlarr_ready: media_stack.services.apps.prowlarr.runtime_ops:ensure_prowlarr_ready

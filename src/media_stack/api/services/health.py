@@ -94,24 +94,39 @@ class HealthService:
         return {"credentials": results, "ok": ok_count, "total": len(results)}
 
     def discover_api_keys(self) -> dict[str, str]:
-        """Read API keys — prefer env vars, fall back to config files."""
+        """Read API keys.
+
+        On-disk config.xml is the SOURCE OF TRUTH because the *arr
+        rewrites it whenever the key rotates (restart cycles often
+        regenerate keys; env vars baked at controller-start go stale
+        immediately). Env vars are the BOOTSTRAP fallback for the
+        first run before any *arr has written its file.
+
+        Until v1.0.134 this was reversed (env first, file fallback),
+        which left ``/api/stats`` returning HTTP 401 across every
+        *arr after a Sonarr/Radarr DB regenerate — Library tile
+        showed 0/0/0/0 even with content present.
+        """
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
         keys: dict[str, str] = {}
 
-        # Built from registry — add a service to registry.py and it auto-discovers
-        env_map = {s.id: s.api_key_env for s in SERVICES if s.api_key_env}
-        for app, env_key in env_map.items():
-            val = (os.environ.get(env_key) or "").strip()
-            if val:
-                keys[app] = val
-
-        # Fall back to config files — driven entirely by the registry
+        # Source of truth: config files
         for svc in SERVICES:
-            if not svc.api_key_env or svc.id in keys:
+            if not svc.api_key_env:
                 continue
             key = read_api_key_from_file(svc.id, str(config_root))
             if key:
                 keys[svc.id] = key
+
+        # Bootstrap fallback: env vars for services whose config
+        # file isn't readable yet (cold start, never-bootstrapped).
+        env_map = {s.id: s.api_key_env for s in SERVICES if s.api_key_env}
+        for app, env_key in env_map.items():
+            if app in keys:
+                continue
+            val = (os.environ.get(env_key) or "").strip()
+            if val:
+                keys[app] = val
 
         return keys
 

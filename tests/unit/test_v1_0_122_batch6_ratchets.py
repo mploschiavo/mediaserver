@@ -1003,5 +1003,73 @@ class BrandIsConfigDriven(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L16 — slow jobs are marked non_blocking so they don't gate the dashboard
+# ---------------------------------------------------------------------------
+class SlowJobsAreNonBlocking(unittest.TestCase):
+    """End-user goal: bootstrap completes in <60s so the dashboard
+    is usable. Long-running probe jobs (indexer discovery + per-app
+    tagging across ~70 candidate trackers + Jellyfin EPG channel
+    refresh against ~1000 IPTV entries) MUST carry
+    ``non_blocking: true`` so the runner spawns them in a daemon
+    thread and moves on. Without this, bootstrap takes 8-15 min on
+    a cold deploy and the user stares at a "Loading..." spinner.
+
+    The runner side (``JobRunner.run`` in
+    ``cli/commands/job_framework.py``) honors this by writing a
+    ``status: running_in_background`` placeholder, immediately
+    marking the job complete, and overwriting the placeholder
+    when the thread finishes. (v1.0.134.)"""
+
+    _SLOW_JOBS = (
+        ("contracts/services/core.yaml", "discover-indexers"),
+        ("contracts/services/core.yaml", "tag-indexers-for-apps"),
+        ("contracts/services/jellyfin.yaml", "configure-livetv"),
+        ("contracts/services/prowlarr.yaml", "configure-indexers"),
+    )
+
+    def test_runner_honors_non_blocking_flag(self) -> None:
+        text = (
+            SRC / "cli" / "commands" / "job_framework.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "non_blocking",
+            text,
+            "JobRunner no longer references non_blocking — the "
+            "flag is dead, every slow job blocks bootstrap again.",
+        )
+        self.assertIn(
+            '"job-async-',
+            text,
+            "Non-blocking dispatch is no longer spawning a thread "
+            "with a job-async-* name (so logs lose the source "
+            "marker AND blocking probably wasn't actually "
+            "concurrent).",
+        )
+
+    def test_known_slow_jobs_carry_non_blocking_true(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        bad: list[str] = []
+        for rel_path, job_name in self._SLOW_JOBS:
+            path = ROOT / rel_path
+            if not path.is_file():
+                continue
+            doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            jobs = ((doc.get("plugin") or {}).get("jobs") or {})
+            job = jobs.get(job_name) or {}
+            if not job.get("non_blocking"):
+                bad.append(f"{rel_path}::{job_name}")
+        self.assertFalse(
+            bad,
+            "Slow jobs lost their non_blocking: true flag — they "
+            "now gate bootstrap completion. Each of these takes "
+            "minutes on a cold deploy:\n  - "
+            + "\n  - ".join(bad),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
