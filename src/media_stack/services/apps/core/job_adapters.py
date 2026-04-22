@@ -368,6 +368,13 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
         apply_arr_runtime_defaults as _apply,
     )
     cfg = ctx.cfg
+    # Build arr_apps from the registry (the cfg.arr_apps key is
+    # legacy / never populated on contract-driven deploys; the fall-
+    # back of `[]` made apply_arr_runtime_defaults a silent NOOP →
+    # delay profile stayed at preferredProtocol=usenet even when
+    # SAB was off, and qBit grabs hung in "delay" status forever.
+    # v1.0.135 — derive arr_apps from ctx.service_url like every
+    # other adapter does.)
     arr_apps = cfg.get("arr_apps") or []
     if not isinstance(arr_apps, list):
         arr_apps = []
@@ -376,6 +383,18 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
         for name in ("sonarr", "radarr", "lidarr", "readarr")
         if ctx.api_key(name)
     }
+    if not arr_apps:
+        for name in ("sonarr", "radarr", "lidarr", "readarr"):
+            url = ctx.service_url(name)
+            if not url or not app_keys.get(name):
+                continue
+            arr_apps.append({
+                "name": name.capitalize(),
+                "implementation": name.capitalize(),
+                "url": url,
+            })
+        # The keys downstream are looked up by capitalized name.
+        app_keys = {n.capitalize(): k for n, k in app_keys.items()}
     # Lazy http_request: re-use the same shape the rest of the
     # *arr ops use — small synchronous urllib wrapper.
     import json as _json

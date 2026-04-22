@@ -851,6 +851,13 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
                     # scan) so the dashboard becomes usable before
                     # they complete. Default false = blocking.
                     "non_blocking": bool(job_def.get("non_blocking", False)),
+                    # Human-readable label shown in the dashboard
+                    # toast / job tree / activity feed. Falls back
+                    # to a slug → Title Case translation if
+                    # missing. The label lives WITH the job
+                    # definition (not in dashboard.html) so adding
+                    # a new contract job is one-place.
+                    "label": str(job_def.get("label") or "").strip(),
                     "service": svc_id,
                 })
         except Exception as exc:

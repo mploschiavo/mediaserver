@@ -45,6 +45,7 @@ plugin:
   jobs:
     configure-indexers:
       handler: media_stack.services.apps.prowlarr.configure_indexers_job:configure_indexers
+      label: "Configure indexers"
       phase: download_clients
       priority: 20
       requires: []

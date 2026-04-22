@@ -51,11 +51,13 @@ plugin:
   jobs:
     configure-libraries:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries
+      label: "Update libraries"
       phase: media_server
       priority: 10
       requires: [media_server_reachable, media_server_api_key]
     configure-livetv:
       handler: media_stack.services.apps.jellyfin.configure_livetv_job:configure_livetv
+      label: "Update Live TV"
       phase: media_server
       priority: 20
       requires: [media_server_reachable, media_server_api_key]
@@ -68,26 +70,31 @@ plugin:
       non_blocking: true
     configure-plugins:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_plugins
+      label: "Update plugins"
       phase: media_server
       priority: 30
       requires: [media_server_reachable, media_server_api_key]
     configure-playback:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_playback_defaults
+      label: "Update playback config"
       phase: media_server
       priority: 40
       requires: [media_server_reachable, media_server_api_key]
     configure-home-screen:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_home_rails
+      label: "Update home screen"
       phase: media_server
       priority: 50
       requires: [media_server_reachable, media_server_api_key]
     configure-collections:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config
+      label: "Update auto-collections"
       phase: media_server
       priority: 60
       requires: [media_server_reachable, media_server_api_key]
     refresh-media:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm
+      label: "Refresh media library"
       phase: post
       priority: 90
       requires: [media_server_reachable, media_server_api_key]

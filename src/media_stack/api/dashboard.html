@@ -847,6 +847,12 @@ let expanded=null;
 const matrixState={};
 
 /* Action labels are derived from the action ID. The job tree shows the same names so nothing in the dashboard talks about an operation by a name that doesn't exist in the contract. The few overrides below are kept for IDs whose humanised slug ("Bootstrap", "Reconcile") is too terse to be useful at the top of the dashboard. */
+// Job labels live with each job in contracts/services/<svc>.yaml
+// under ``plugin.jobs.<name>.label``. The dashboard fetches them
+// at boot via /api/jobs and populates the map below. Two top-level
+// aliases (bootstrap, reconcile) aren't real contract jobs, so
+// they stay hardcoded as the only static entries. Anything not in
+// the map falls back to slug → Title Case.
 const ACTION_LABEL_OVERRIDES={
   'bootstrap':'Setup All Services',
   'reconcile':'Reconcile All Config',
@@ -855,6 +861,17 @@ function actionLabel(name){
   if(ACTION_LABEL_OVERRIDES[name])return ACTION_LABEL_OVERRIDES[name];
   return name.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 }
+// Populate from /api/jobs once on boot. Subsequent label lookups
+// are O(1). Failures keep the slug-translation fallback so the UI
+// still renders something sensible.
+(async()=>{try{
+  const r=await fetch('/api/jobs',{credentials:'same-origin'});
+  if(!r.ok)return;
+  const d=await r.json();
+  for(const j of (d.jobs||[])){
+    if(j&&j.name&&j.label)ACTION_LABEL_OVERRIDES[j.name]=j.label;
+  }
+}catch(e){/* keep slug fallback */}})();
 
 /* Read the CSRF cookie so mutating requests can echo it in X-CSRF-Token.
  * Empty string when CSRF is disabled server-side — the header is still
@@ -1136,16 +1153,19 @@ function confirmAction(name,title,desc){
 }
 function closeConfirm(){document.getElementById('confirm-root').innerHTML='';}
 let _actionPending=false;
+
 async function doAction(name){
   if(_actionPending){toast('Action already in progress',true);return;}
   _actionPending=true;showLoading();
   document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
-  toast(name+' starting...');
+  const label=actionLabel(name);
+  toast(label+'…');
   try{const r=await apiFetch('/actions/'+name,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:'{}'});
-    const d=await r.json();if(r.status>=400)toast(d.error||'Failed',true);else{toast(name+' accepted');setTimeout(load,1500);}
+    const d=await r.json();if(r.status>=400)toast(d.error||'Failed',true);else{toast(label+' queued');setTimeout(load,1500);}
   }catch(e){toast(_safeErrText(e),true);}
   finally{_actionPending=false;hideLoading();document.querySelectorAll('#action-buttons button').forEach(b=>{b.disabled=false;b.style.opacity='';});}
 }
+const queueJob = doAction;
 async function cancelAction(){
   try{const r=await apiFetch('/cancel',{method:'POST'});const d=await r.json();
   if(d.status==='cancel_requested'){
@@ -1158,9 +1178,12 @@ async function cancelAction(){
 async function toggleAuto(on){
   try{await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({auto_download_content:on})});
     document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(on?'on':'off')+'</b>';
-    toast('Auto-downloads '+(on?'enabled — running reconcile to apply...':'disabled — running reconcile to apply...'));
-    // Auto-trigger reconcile so the config change takes effect immediately.
-    setTimeout(()=>doAction('reconcile'),500);
+    toast('Auto-downloads '+(on?'enabled':'disabled')+' — applying to *arrs...');
+    // Only re-run the ONE job that consumes auto_download_content
+    // (apply-arr-runtime-defaults). The previous behaviour fired
+    // 'reconcile' which is a full bootstrap alias — 25 jobs for a
+    // single-flag flip is overkill and made the toggle look frozen.
+    setTimeout(()=>queueJob('apply-arr-runtime-defaults'),500);
   }catch(e){toast(_safeErrText(e),true);}
 }
 /* Usenet (SABnzbd) toggle — flips
@@ -1178,8 +1201,11 @@ async function toggleUsenet(on){
       body:JSON.stringify({download_clients:{sabnzbd:{configure_arr_clients:on}}})});
     const lbl=document.getElementById('usenetLabel');
     if(lbl)lbl.innerHTML='Usenet (SABnzbd): <b>'+(on?'on':'off')+'</b>';
-    toast('Usenet '+(on?'enabled — reconciling *arr clients...':'disabled — reconciling *arr clients, qBit now gets grabs...'));
-    setTimeout(()=>doAction('reconcile'),500);
+    toast('Usenet '+(on?'enabled':'disabled')+' — applying to *arr clients...');
+    // Only re-run configure-arr-clients (reads sabnzbd.configure_arr_clients
+    // and flips each *arr's SAB download client enable flag). Was firing
+    // full bootstrap which re-runs 25 jobs; the toggle should be cheap.
+    setTimeout(()=>queueJob('configure-arr-clients'),500);
   }catch(e){toast(_safeErrText(e),true);}
 }
 

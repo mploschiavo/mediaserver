@@ -1071,5 +1071,232 @@ class SlowJobsAreNonBlocking(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L17 — single-flag toggles don't fire full bootstrap
+# ---------------------------------------------------------------------------
+class ConfigTogglesDontFireFullBootstrap(unittest.TestCase):
+    """Dashboard toggles that flip ONE config flag must trigger
+    only the specific job that consumes that flag — not
+    ``reconcile`` (which is an alias for the full 25-job
+    bootstrap).
+
+    Discovered v1.0.134: ``Auto-Downloads`` and ``Usenet`` toggles
+    were both calling ``doAction('reconcile')`` after a single-key
+    /config POST. End-user impact: every toggle re-runs indexer
+    discovery + EPG channel scan + library reconcile + auth + ...
+    A 200-millisecond config write turned into a 10-minute
+    pipeline.
+
+    The right shape: persist the flag, then trigger the ONE job
+    that reads it. ``apply-arr-runtime-defaults`` reads
+    ``auto_download_content``; ``configure-arr-clients`` reads
+    ``sabnzbd.configure_arr_clients``."""
+
+    _TOGGLE_FUNCTIONS = (
+        # (function_name_substring, expected_targeted_action)
+        ("toggleAuto", "apply-arr-runtime-defaults"),
+        ("toggleUsenet", "configure-arr-clients"),
+    )
+
+    def test_toggles_target_specific_action_not_reconcile(self) -> None:
+        dash = (SRC / "api" / "dashboard.html").read_text(encoding="utf-8")
+        bad: list[str] = []
+        for fn_name, expected_action in self._TOGGLE_FUNCTIONS:
+            # Find the function body — between `function fn_name(`
+            # and the next top-level function/marker. Crude regex.
+            m = re.search(
+                rf"async function {re.escape(fn_name)}\([^)]*\)\s*\{{(.*?)\}}\s*(?=function|async function|/\*|\Z)",
+                dash, re.DOTALL,
+            )
+            if not m:
+                bad.append(f"{fn_name}: function not found in dashboard.html")
+                continue
+            body = m.group(1)
+            if (
+                "doAction('reconcile')" in body
+                or 'doAction("reconcile")' in body
+                or "queueJob('reconcile')" in body
+                or 'queueJob("reconcile")' in body
+            ):
+                bad.append(
+                    f"{fn_name}: still fires full bootstrap "
+                    f"('reconcile') — should queue job {expected_action}"
+                )
+                continue
+            if expected_action not in body:
+                bad.append(
+                    f"{fn_name}: doesn't reference targeted job "
+                    f"{expected_action}"
+                )
+        self.assertFalse(
+            bad,
+            "Single-flag toggles re-running full bootstrap — every "
+            "switch flip costs minutes:\n  - " + "\n  - ".join(bad),
+        )
+
+
+# ---------------------------------------------------------------------------
+# L18 — every contract job carries a human-readable label
+# ---------------------------------------------------------------------------
+class ContractJobsHaveLabels(unittest.TestCase):
+    """The dashboard reads job labels from /api/jobs (which forwards
+    the ``label:`` field from each contract YAML). Keeping labels
+    inline with each job — rather than duplicated in dashboard.html
+    — means adding a new contract job is one edit and the UI
+    automatically gets a friendly name.
+
+    Until v1.0.135, the dashboard had a hardcoded
+    ACTION_LABEL_OVERRIDES map that drifted from the contract
+    every time a new job was added. That meant new jobs showed up
+    in the toast as raw slugs (apply-arr-runtime-defaults) rather
+    than human strings ("Update download settings")."""
+
+    def test_every_user_facing_job_has_a_label(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        contracts_dir = ROOT / "contracts" / "services"
+        if not contracts_dir.is_dir():
+            self.skipTest("contracts/services not present")
+        bad: list[str] = []
+        for f in sorted(contracts_dir.glob("*.yaml")):
+            if f.stem.startswith("_"):
+                continue
+            doc = _yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            jobs = ((doc.get("plugin") or {}).get("jobs") or {})
+            for job_name, job_def in jobs.items():
+                if not isinstance(job_def, dict):
+                    continue
+                label = (job_def.get("label") or "").strip()
+                if not label:
+                    bad.append(f"{f.name}::{job_name}")
+        self.assertFalse(
+            bad,
+            f"Contract jobs missing the 'label:' field "
+            f"({len(bad)} of them) — dashboard will show their "
+            f"raw slugs in toasts/job-tree until you add a "
+            f"label.\n  - " + "\n  - ".join(bad[:15]),
+        )
+
+
+# ---------------------------------------------------------------------------
+# L19 — apply-arr-runtime-defaults builds arr_apps from registry, not cfg
+# ---------------------------------------------------------------------------
+class ApplyArrRuntimeDefaultsBuildsArrApps(unittest.TestCase):
+    """``cfg.get("arr_apps")`` is a legacy key never populated on
+    contract-driven deploys. The ``apply_arr_runtime_defaults``
+    adapter relied on it as the SOLE source of arr_apps — when
+    empty, the function silently NOOP'd and the delay profile
+    stayed at ``preferredProtocol=usenet`` even when SAB was off.
+    Sonarr then waited indefinitely for usenet grabs that would
+    never come (status: ``delay`` for every torrent release in
+    the queue), and qBit stayed at 0 active.
+
+    The adapter must build ``arr_apps`` from the registry
+    (``ctx.service_url`` + ``ctx.api_key``) when cfg.arr_apps is
+    empty, matching the pattern used by every other adapter."""
+
+    def test_adapter_falls_back_to_registry(self) -> None:
+        path = SRC / "services" / "apps" / "core" / "job_adapters.py"
+        if not path.is_file():
+            self.skipTest("job_adapters.py not present")
+        text = path.read_text(encoding="utf-8")
+        m = re.search(
+            r"def apply_arr_runtime_defaults\([^)]*\) -> dict:.*?(?=\ndef )",
+            text, re.DOTALL,
+        )
+        self.assertIsNotNone(
+            m, "apply_arr_runtime_defaults not found in job_adapters.py",
+        )
+        body = m.group(0)
+        self.assertIn(
+            "ctx.service_url",
+            body,
+            "apply_arr_runtime_defaults no longer derives arr_apps "
+            "from ctx.service_url — falls back to empty list and "
+            "becomes a silent NOOP. The delay profile stays at "
+            "preferredProtocol=usenet even when SAB is off and "
+            "every grab hangs in 'delay' status.",
+        )
+        self.assertRegex(
+            body,
+            r'arr_apps\.append\(\s*\{[^}]*"name"',
+            "apply_arr_runtime_defaults no longer appends to "
+            "arr_apps from the per-service loop — fallback path "
+            "broken.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L20 — every path the Dockerfile COPYs from is tracked in git
+# ---------------------------------------------------------------------------
+class DockerfileCopyPathsTrackedInGit(unittest.TestCase):
+    """If the Dockerfile does ``COPY foo/ /opt/foo`` but ``foo/``
+    isn't tracked in git, the build works on the developer's local
+    checkout (because the file exists locally) but BREAKS on:
+
+      - fresh git clone
+      - CI build
+      - any teammate
+
+    Discovered v1.0.136: ``COPY config/defaults /opt/media-stack/config/defaults``
+    silently shipped empty because ``config/`` was in .gitignore
+    (added to keep runtime app data out) and the un-ignore rule
+    for ``config/defaults/`` was missing. Envoy then crashed on
+    "envoy.runtime.base.yaml not found" the moment the controller
+    tried to generate a config.
+
+    This ratchet asserts every file/dir referenced in a
+    ``COPY <src> <dst>`` directive IS in ``git ls-files``."""
+
+    def test_dockerfile_copy_sources_are_in_git(self) -> None:
+        import subprocess
+        dockerfile = ROOT / "docker" / "controller.Dockerfile"
+        if not dockerfile.is_file():
+            self.skipTest("controller.Dockerfile not present")
+        try:
+            tracked = set(
+                subprocess.check_output(
+                    ["git", "ls-files"], cwd=ROOT, stderr=subprocess.DEVNULL,
+                ).decode().splitlines()
+            )
+        except Exception:
+            self.skipTest("git not available")
+
+        # Pull each `COPY src dst` directive (skip --from / --chown variants
+        # that source from a build stage, not a host path).
+        copy_re = re.compile(
+            r"^\s*COPY(?!\s+--from)(?:\s+--\S+)?\s+(\S+)\s+\S+",
+            re.MULTILINE,
+        )
+        bad: list[str] = []
+        for src in copy_re.findall(dockerfile.read_text(encoding="utf-8")):
+            # Skip whole-context copies and absolute paths
+            if src in (".", "./") or src.startswith("/"):
+                continue
+            src_path = ROOT / src
+            # If it's a dir, at least ONE file under it must be tracked
+            if src_path.is_dir():
+                prefix = src.rstrip("/") + "/"
+                if not any(t.startswith(prefix) for t in tracked):
+                    bad.append(
+                        f"COPY {src} → directory exists locally but "
+                        f"NO files under {prefix} are tracked in git"
+                    )
+            else:
+                # File copy — must be tracked
+                if src not in tracked:
+                    bad.append(
+                        f"COPY {src} → file is not in git ls-files"
+                    )
+        self.assertFalse(
+            bad,
+            "Dockerfile COPYs from paths not tracked in git — "
+            "build works on the dev's machine, breaks on fresh "
+            "clone / CI:\n  - " + "\n  - ".join(bad),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -209,7 +209,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.134}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.136}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -228,7 +228,7 @@ services:
       # the stack comes up (see _resolve_or_mint_certs in
       # core/platforms/compose/edge/providers/envoy/dynamic_config.py).
       # envoy itself still mounts this read-only below.
-      - ./config/certs:/certs:rw
+      - ${CONFIG_ROOT:-../config}/certs:/certs:rw
     restart: "no"
 
   envoy:
@@ -521,7 +521,7 @@ services:
   # service tile + DNS host could resolve before a real Recyclarr
   # runtime was wired in. The placeholder did nothing and surfaced
   # as a confusing "Recyclarr stub endpoint" string in browsers
-  # that hit it. Removed in v1.0.134. To bring Recyclarr back, add
+  # that hit it. Removed in v1.0.136. To bring Recyclarr back, add
   # a service block using ghcr.io/recyclarr/recyclarr (cron-based)
   # and re-enable the homepage tile via the bootstrap profile.
 
@@ -636,7 +636,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.134}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.136}
     container_name: media-stack-controller
     command:
       - python3
@@ -701,7 +701,7 @@ services:
       # HTTP envoy.yaml — which overwrites the working TLS config and
       # breaks HTTPS on :443 until envoy-config-init is rerun by hand.
       # This was a recurring regression before the mount was added.
-      - ./config/certs:/certs:rw
+      - ${CONFIG_ROOT:-../config}/certs:/certs:rw
     depends_on:
       init-permissions:
         condition: service_completed_successfully
