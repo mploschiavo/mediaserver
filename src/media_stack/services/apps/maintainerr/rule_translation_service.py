@@ -403,14 +403,23 @@ class MaintainerrRuleTranslationService:
             return libraries
 
         target_libraries: list[dict[str, str]] = []
+        missing: list[str] = []
         for lib_name in requested_libraries:
             lib = by_title.get(lib_name)
             if lib is None:
-                self.deps.log(
-                    f"[WARN] Maintainerr: skipping unsupported library '{lib_name}' for rule '{rule_name}'."
-                )
+                # Don't WARN per missing library — the rules ship with
+                # music/books/movies/tv defaults and most home stacks
+                # have only movies+tv. The previous behaviour produced
+                # 8-12 scary [WARN] lines per fresh install for what
+                # is normal config drift between defaults and reality.
+                missing.append(lib_name)
                 continue
             target_libraries.append(lib)
+        if missing and not target_libraries:
+            self.deps.log(
+                f"[INFO] Maintainerr: rule '{rule_name}' skipped — "
+                f"target libraries not present ({', '.join(missing)})."
+            )
         return target_libraries
 
     def _normalize_native_rules(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -563,9 +572,9 @@ class MaintainerrRuleTranslationService:
                 rule_name=base_name,
             )
             if not target_libraries:
-                self.deps.log(
-                    f"[WARN] Maintainerr: no compatible libraries found for rule '{base_name}'."
-                )
+                # Already INFO-logged in _resolve_target_libraries when
+                # the missing-library list is non-empty; suppress the
+                # follow-up [WARN] which produced duplicate noise.
                 continue
 
             if isinstance(resolved_rule.get("rules"), list):
@@ -601,6 +610,11 @@ class MaintainerrRuleTranslationService:
                 rule_name = f"{base_name} ({lib_name})" if multi_library else base_name
                 rules = self._build_rule_conditions(conditions=conditions, data_type=data_type)
                 if not rules:
+                    # Real WARN: the rule's declared conditions
+                    # couldn't be translated, so we substituted a
+                    # generic watched-content rule. Operator should
+                    # re-author the rule with conditions Maintainerr
+                    # can interpret natively.
                     self.deps.log(
                         f"[WARN] Maintainerr: rule '{rule_name}' had no translatable conditions; "
                         "using watched-content fallback condition."

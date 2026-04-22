@@ -120,7 +120,9 @@ class ProwlarrService:
         prowlarr_key: str,
         exclude_name_tokens: list[str] | None = None,
         reputation_cfg: dict[str, Any] | None = None,
+        flaresolverr_proxy_id: int | None = None,
     ) -> None:
         auto_add_tested_indexers(
-            self, prowlarr_url, prowlarr_key, exclude_name_tokens, reputation_cfg
+            self, prowlarr_url, prowlarr_key, exclude_name_tokens, reputation_cfg,
+            flaresolverr_proxy_id,
         )

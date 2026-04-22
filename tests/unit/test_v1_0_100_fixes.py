@@ -37,6 +37,42 @@ sys.path.insert(0, str(ROOT / "src"))
 
 class FlaresolverrCfRetryWiring(unittest.TestCase):
 
+    def test_auto_add_signatures_agree_across_layers(self) -> None:
+        """``auto_add_tested_indexers`` exists in three layers
+        (reputation_ops → service.ProwlarrService → runtime_ops)
+        and the controller calls the OUTERMOST one. If any layer
+        drops ``flaresolverr_proxy_id`` from its signature, the
+        live call fails at runtime with::
+
+            TypeError: ProwlarrRuntimeOps.auto_add_tested_indexers()
+            takes from 3 to 5 positional arguments but 6 were given
+
+        That regressed in v1.0.100 — a Python signature mismatch
+        the unit suite couldn't catch because no test called the
+        full chain. Pin the signatures here."""
+        import inspect
+        from media_stack.services.apps.prowlarr.runtime_ops import (
+            auto_add_tested_indexers as runtime_fn,
+        )
+        from media_stack.services.apps.prowlarr.service import (
+            ProwlarrService,
+        )
+        from media_stack.services.apps.prowlarr.reputation_ops import (
+            auto_add_tested_indexers as rep_fn,
+        )
+        for label, sig in (
+            ("runtime_ops", inspect.signature(runtime_fn)),
+            ("service",
+             inspect.signature(ProwlarrService.auto_add_tested_indexers)),
+            ("reputation_ops", inspect.signature(rep_fn)),
+        ):
+            self.assertIn(
+                "flaresolverr_proxy_id", sig.parameters,
+                f"{label} layer's auto_add_tested_indexers is missing "
+                "flaresolverr_proxy_id — the runtime call from "
+                "pipeline_service will TypeError.",
+            )
+
     def test_proxy_id_in_indexer_payload_allowlist(self) -> None:
         path = ROOT / "src/media_stack/services/apps/prowlarr/indexer_ops.py"
         text = path.read_text(encoding="utf-8")

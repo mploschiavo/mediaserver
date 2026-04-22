@@ -656,31 +656,40 @@ def _prereq_media_server_reachable(ctx: "JobContext") -> bool:
         return False
 
 def _prereq_arr_apps_reachable(ctx: "JobContext") -> bool:
-    """True when every configured *arr app responds to ``/api/v3/system/status``
-    (or v1 for prowlarr) within a short timeout. Used by
-    ``validate-credentials`` so it doesn't fire while services
-    are still warming up — the previous behaviour produced a
-    cosmetic ``5/7 credential checks did not pass`` warning on
+    """True when every *arr app whose container is in the registry
+    responds to ``/api/v{N}/system/status`` within a short timeout.
+    Used by ``validate-credentials`` so it doesn't fire while
+    services are still warming up — the previous behaviour produced
+    a cosmetic ``5/7 credential checks did not pass`` warning on
     every fresh install.
 
-    Returns True when no *arr apps are configured (no preconditions
-    to satisfy) so single-service profiles aren't blocked."""
+    URLs come from the service registry (``ctx.service_url()``), NOT
+    from ``ctx.cfg`` — the flat-cfg layout doesn't carry per-service
+    URLs because they're derived from the container hostname/port at
+    runtime. Same for API keys: ``ctx.api_key()`` reads the env var
+    set by discover-api-keys, falling back to the on-disk config.
+
+    Returns True when no *arr apps are present in the registry (no
+    preconditions to satisfy) so single-service profiles aren't
+    blocked."""
     import urllib.request
+    from media_stack.api.services.registry import SERVICE_MAP
     arr_specs = (
         ("sonarr", "v3"), ("radarr", "v3"), ("lidarr", "v1"),
-        ("readarr", "v1"), ("bazarr", "v1"), ("prowlarr", "v1"),
+        ("readarr", "v1"), ("prowlarr", "v1"),
     )
-    cfg = ctx.cfg if hasattr(ctx, "cfg") else {}
-    keys = (cfg.get("arr_app_keys") or {}) if isinstance(cfg, dict) else {}
     checked = 0
     for name, ver in arr_specs:
-        url_key = f"{name}_url"
-        url = (cfg.get(url_key) if isinstance(cfg, dict) else None) or ""
-        if not url:
+        if name not in SERVICE_MAP:
             continue
-        api_key = keys.get(name) if isinstance(keys, dict) else None
-        if not api_key:
-            continue
+        url = ctx.service_url(name)
+        api_key = ctx.api_key(name)
+        if not url or not api_key:
+            # No key yet → discover-api-keys hasn't read it from
+            # the service config. Treat as "not ready" so the
+            # gate keeps waiting rather than letting validate-
+            # credentials fire too early.
+            return False
         checked += 1
         req = urllib.request.Request(
             f"{url.rstrip('/')}/api/{ver}/system/status",
