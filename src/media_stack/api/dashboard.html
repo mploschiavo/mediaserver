@@ -507,6 +507,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
         <button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="confirmAction('bootstrap','Setup All Services','Full setup pipeline: credentials, download clients, libraries, routing. Safe to re-run.')">Setup All Services</button>
         <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="confirmAction('reconcile','Reconcile Config','Re-check all configs and fix drift.')">Reconcile</button>
         <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="confirmAction('push-indexers','Sync Indexers','Push Prowlarr indexers to all Arr apps.')">Sync Indexers</button>
+        <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="confirmAction('reset-prowlarr-app-mappings','Repair Indexer Sync','If Sonarr/Radarr show 0 indexers but Prowlarr says &quot;synced&quot;, this clears Prowlarr&apos;s stale mapping table so the next Sync re-pushes everything. Safe — does nothing unless an Arr app is genuinely empty.')">Repair Indexer Sync</button>
         <button class="btn-secondary" style="padding:6px 14px;font-size:.85em" onclick="confirmAction('envoy-config','Update Proxy Routes','Regenerate Envoy routing config.')">Rebuild Routing</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">

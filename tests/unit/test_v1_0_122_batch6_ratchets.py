@@ -577,5 +577,108 @@ class ProwlarrApplicationMappingReset(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L9 — indexer-chain job sequencing in core.yaml
+# ---------------------------------------------------------------------------
+class IndexerChainJobSequencing(unittest.TestCase):
+    """The download_clients phase has four jobs that MUST run in
+    this order::
+
+        discover-indexers          (priority 30)
+        tag-indexers-for-apps      (priority 35)
+        reset-prowlarr-app-mappings (priority 38)  <-- v1.0.125
+        push-indexers              (priority 40)
+
+    Reset MUST run AFTER tag (so we don't reset mappings while
+    tagging is in flight) and BEFORE push (so the next push sees
+    a clean slate when an *arr is at zero).
+
+    If someone re-orders priorities or removes a job, this
+    ratchet catches it before deploy."""
+
+    _EXPECTED_ORDER = [
+        ("discover-indexers", 30),
+        ("tag-indexers-for-apps", 35),
+        ("reset-prowlarr-app-mappings", 38),
+        ("push-indexers", 40),
+    ]
+
+    def test_indexer_chain_jobs_priority_ordered(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        if not path.is_file():
+            self.skipTest("core.yaml not present")
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = ((doc.get("plugin") or {}).get("jobs") or {})
+        observed: list[tuple[str, int]] = []
+        for name, expected_pri in self._EXPECTED_ORDER:
+            job = jobs.get(name)
+            self.assertIsNotNone(
+                job,
+                f"core.yaml is missing the indexer-chain job "
+                f"{name!r}. Reset is the v1.0.125 fix for the "
+                f"Prowlarr stale-mapping bug — removing it is the "
+                f"exact regression that ratchet L8 + this one "
+                f"prevent.",
+            )
+            self.assertEqual(
+                int(job.get("priority", -1)),
+                expected_pri,
+                f"core.yaml::{name} priority drift "
+                f"(want {expected_pri}, got {job.get('priority')}). "
+                f"The four indexer-chain jobs are sequenced 30 → 35 "
+                f"→ 38 → 40 so reset runs AFTER tagging and BEFORE "
+                f"push. Re-ordering breaks the bullet-proof chain.",
+            )
+            self.assertEqual(
+                job.get("phase"), "download_clients",
+                f"core.yaml::{name} phase must be download_clients",
+            )
+            observed.append((name, int(job["priority"])))
+        # Strictly ascending by priority — no ties allowed.
+        for i in range(1, len(observed)):
+            self.assertGreater(
+                observed[i][1], observed[i-1][1],
+                f"core.yaml indexer-chain priorities not strictly "
+                f"ascending: {observed}",
+            )
+
+
+# ---------------------------------------------------------------------------
+# L10 — release pipeline runs the version-parity ratchet pre-build
+# ---------------------------------------------------------------------------
+class RegenDistInvokesVersionParity(unittest.TestCase):
+    """We HAVE a ratchet for image-version drift
+    (``ControllerImageVersionParity``, Batch 4) — but in v1.0.126
+    the bug it would have caught shipped anyway because nobody ran
+    the ratchet between bumping VERSION and ``bin/build-controller-image.sh``.
+    The user's sed expected v1.0.125 → v1.0.126 but the file was
+    still at v1.0.123 (skipped two intermediate version bumps), so
+    the substitution was a NOOP and the deployed controller ran
+    the old image.
+
+    Ratchets only protect you if the release pipeline RUNS them.
+    ``bin/regen-dist.sh`` is the natural choke-point — every
+    release runs it before the build. Pin that it invokes the
+    version-parity check."""
+
+    def test_regen_dist_runs_version_parity(self) -> None:
+        path = ROOT / "bin" / "regen-dist.sh"
+        if not path.is_file():
+            self.skipTest("regen-dist.sh not present")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(
+            "ControllerImageVersionParity",
+            text,
+            "bin/regen-dist.sh must invoke the "
+            "ControllerImageVersionParity ratchet before regen — "
+            "otherwise version-tag drift ships into the dist "
+            "bundles and into harbor with old image refs.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -88,6 +88,26 @@ plugin:
       priority: 35
       requires: []
 
+    reset-prowlarr-app-mappings:
+      handler: media_stack.services.apps.core.job_adapters:reset_prowlarr_app_mappings
+      phase: download_clients
+      # Runs AFTER tagging (so we don't reset mappings while
+      # tagging is in flight) and BEFORE push-indexers. Idempotent
+      # NOOP when each *arr already has indexers — the heavy work
+      # only fires when an *arr is genuinely at zero.
+      #
+      # Why this exists: Prowlarr's ApplicationIndexerMapping table
+      # tracks "what I've already pushed to each *arr". In
+      # ``addOnly`` syncLevel mode (the v1.0.110 Fix C default),
+      # Prowlarr REFUSES to re-push anything in this table — even
+      # when the *arr's actual DB has been wiped. Result: the *arr
+      # sits at 0 indexers while Prowlarr's "sync ok" log claims
+      # everything is fine. Clearing the mapping rows for any *arr
+      # that's actually at zero forces the next push to re-add.
+      # (Discovered v1.0.124, fix shipped v1.0.125.)
+      priority: 38
+      requires: []
+
     push-indexers:
       handler: media_stack.services.apps.core.job_adapters:push_indexers
       phase: download_clients
