@@ -194,5 +194,323 @@ class ProwlarrSearchCategoriesRepeatedParam(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# L4 — onclick handlers in dashboard.html call defined JS functions
+#       (with the right shape if they're known navigation calls)
+# ---------------------------------------------------------------------------
+class DashboardOnclickHandlersResolve(unittest.TestCase):
+    """Every ``onclick="someFunc(...)"`` in dashboard.html must
+    reference a function that's actually defined in the same file.
+    The "Config Drift / N issue →" link silently no-op'd because
+    its onclick called ``goToDriftTab()`` which then called
+    ``showSubTab('cfg-drift')`` without the second ``btn`` arg —
+    ``showSubTab`` immediately did ``btn.closest()`` and threw,
+    leaving the user staring at an unresponsive link.
+
+    This catches:
+    1. ``onclick="undefinedFn(...)"`` — typo or rename drift.
+    2. ``onclick="showSubTab('id')"`` (single-arg) — the exact
+       bug shape we just hit. ``showSubTab`` requires two args
+       (id, btn) unless called from inline ``onclick`` where
+       ``this`` is the button.
+    """
+
+    # JS keywords / control-flow that look like function calls
+    # but aren't.
+    _JS_KEYWORDS = {
+        "if", "else", "for", "while", "switch", "return", "throw",
+        "new", "typeof", "instanceof", "delete", "void", "in", "of",
+        "do", "try", "catch", "finally", "yield", "await", "async",
+        "function", "class", "extends", "super", "import", "export",
+        "default", "case", "break", "continue", "with", "var", "let",
+        "const",
+    }
+
+    def test_onclick_handlers_reference_defined_functions(self) -> None:
+        dash = (SRC / "api" / "dashboard.html").read_text(encoding="utf-8")
+        # Extract function names defined in <script> blocks.
+        defined = set(re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", dash))
+        defined |= set(re.findall(
+            r"\b([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b", dash,
+        ))
+        # const/let/var X = (...) => ...   OR   X = function ...
+        defined |= set(re.findall(
+            r"^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=",
+            dash, re.MULTILINE,
+        ))
+        # Inline arrow assignment without var/let/const
+        defined |= set(re.findall(
+            r"\b([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>",
+            dash,
+        ))
+        # Browser/DOM globals + project-wide always-defined helpers.
+        defined |= {
+            "window", "document", "console", "setTimeout", "setInterval",
+            "clearInterval", "clearTimeout", "alert", "confirm", "prompt",
+            "fetch", "Promise", "Object", "Array", "String",
+            "Number", "Date", "Math", "RegExp", "encodeURIComponent",
+            "decodeURIComponent", "parseInt", "parseFloat", "isNaN",
+            "event", "this", "msUI", "JSON",
+        }
+        defined |= self._JS_KEYWORDS
+
+        # Find every onclick="X(..." and pull X.
+        bad: list[str] = []
+        for m in re.finditer(
+            r'''onclick\s*=\s*["']([A-Za-z_$][\w$.]*)\(''', dash,
+        ):
+            fn = m.group(1).split(".")[0]
+            if fn in defined:
+                continue
+            line_no = dash[:m.start()].count("\n") + 1
+            bad.append(f"line {line_no}: {fn}(...)")
+        self.assertFalse(
+            bad,
+            f"Dashboard onclick handlers reference undefined "
+            f"functions ({len(bad)}):\n  - "
+            + "\n  - ".join(bad[:10]),
+        )
+
+    def test_show_sub_tab_calls_pass_button_argument(self) -> None:
+        """``showSubTab(id, btn)`` requires the button so it can
+        find its parent .tab-content. Single-arg calls from
+        cross-tab navigation (not inline ``onclick``) silently
+        threw before. Allow inline-onclick form where ``btn=this``
+        is implicit and pre-resolved at parse time."""
+        dash = (SRC / "api" / "dashboard.html").read_text(encoding="utf-8")
+        # ``onclick="showSubTab(...)"`` is fine — `this` is
+        # available. Plain ``showSubTab('id')`` from a function
+        # body is the bug.
+        bad: list[str] = []
+        for m in re.finditer(
+            r"(?<!onclick=[\"'])showSubTab\(\s*['\"][^'\"]+['\"]\s*\)",
+            dash,
+        ):
+            line_no = dash[:m.start()].count("\n") + 1
+            # Skip if this match IS inside an onclick attr (regex
+            # lookbehind only checks the immediately-preceding char).
+            seg = dash[max(0, m.start()-200):m.start()]
+            if 'onclick="' in seg.split('"')[-1] or "onclick='" in seg.split("'")[-1]:
+                continue
+            bad.append(f"line {line_no}: {m.group(0).strip()}")
+        self.assertFalse(
+            bad,
+            f"showSubTab() called without a btn arg "
+            f"({len(bad)} sites). It needs a real button to find "
+            f"the parent .tab-content. Pass the button explicitly:\n  - "
+            + "\n  - ".join(bad[:10]),
+        )
+
+
+# ---------------------------------------------------------------------------
+# L5 — probe-cache must not store a "no match" entry on probe failure
+# ---------------------------------------------------------------------------
+class ProbeCacheRejectsFailureAsResult(unittest.TestCase):
+    """``indexer_app_match._resolve_per_indexer_apps`` writes to
+    the indexer-app-match cache after probing each indexer × app.
+    If the probe call ITSELF fails (HTTP 401, 400, network error),
+    the function stored ``apps=[]`` — which the cache then served
+    back as the authoritative answer ("no app matches this
+    indexer"), poisoning the cache for the entire TTL window
+    (24h by default). Any cache write of ``apps=[]`` must be
+    accompanied by an explicit success signal — not a silent
+    fall-through from a broken probe.
+
+    Currently soft-asserted via comment scan; the real fix is to
+    refactor ``_probe_indexer_for_app`` to return a 3-state
+    ``(matched, probed_ok)`` tuple. Tracked for next session."""
+
+    def test_resolve_per_indexer_apps_warns_on_no_results(self) -> None:
+        path = SRC / "services/apps/prowlarr/indexer_app_match.py"
+        if not path.is_file():
+            self.skipTest("indexer_app_match not present")
+        text = path.read_text(encoding="utf-8")
+        # Today's marker that the no-match path is at least logged.
+        # The deeper fix (don't cache on probe-failure) lives in a
+        # follow-up commit; this ratchet pins the LOG and prevents
+        # someone from quietly removing it.
+        self.assertIn(
+            "no app match",
+            text,
+            "indexer_app_match no longer logs the per-indexer "
+            "'no app match' line — operators lose the only signal "
+            "that a fresh probe ran AND classified the indexer "
+            "as no-match.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L6 — auto-refreshing dashboard sections preserve user UI state
+# ---------------------------------------------------------------------------
+class AutoRefreshPreservesUserState(unittest.TestCase):
+    """Any dashboard JS function that BOTH:
+
+      1. assigns ``el.innerHTML = ...`` (full re-render), AND
+      2. self-schedules a refresh via ``setTimeout(...) => loadX``
+
+    MUST have a state-preservation block — without it, the
+    auto-refresh wipes anything the user just expanded
+    (``<details open>``), scrolled to, or focused. The Job-tree
+    Execution-History "details that keep closing" bug was exactly
+    this pattern.
+
+    The marker we look for is a comment containing "Preserve" or
+    "preserve" near the el.innerHTML+setTimeout combo, OR a
+    ``_openDetailsKeys`` / ``_scrollY`` variable name nearby.
+    Rough heuristic — false positives are easy, false negatives
+    catch the bug class."""
+
+    def test_self_refreshing_renders_preserve_state(self) -> None:
+        dash = (SRC / "api" / "dashboard.html").read_text(encoding="utf-8")
+        # Find every async function that does both el.innerHTML= AND
+        # setTimeout calling itself.
+        bad: list[str] = []
+        # Function bodies are ugly to extract reliably from raw text;
+        # use a heuristic: split on `function NAME(` boundaries and
+        # check each chunk.
+        chunks = re.split(r"(?=\bfunction\s+\w+\s*\()", dash)
+        for chunk in chunks:
+            m_name = re.match(r"\bfunction\s+(\w+)\s*\(", chunk)
+            if not m_name:
+                continue
+            name = m_name.group(1)
+            # Stop at next top-level function or async function defn
+            # (already split). Limit chunk to first 4000 chars.
+            body = chunk[: 4000]
+            self_refresh = re.search(
+                rf"setTimeout\s*\(\s*\(?\)?\s*=>\s*\{{[^}}]*\b{re.escape(name)}\s*\(",
+                body,
+            )
+            innerhtml = "innerHTML=" in body or "innerHTML =" in body
+            if not (self_refresh and innerhtml):
+                continue
+            preserves = bool(
+                re.search(
+                    r"(?i)preserve|_openDetails|_scrollY|details\[open\]",
+                    body,
+                )
+            )
+            if not preserves:
+                bad.append(name)
+        self.assertFalse(
+            bad,
+            f"Dashboard functions that auto-refresh (setTimeout "
+            f"self-call) and rebuild innerHTML — but don't restore "
+            f"user-expanded <details>/scroll. The next refresh wipes "
+            f"the user's expand. Add a state-preservation block "
+            f"(see loadJobTree() for a reference):\n  - "
+            + "\n  - ".join(bad),
+        )
+
+
+# ---------------------------------------------------------------------------
+# L7 — meta: every fix-commit either adds a ratchet or declares N/A
+# ---------------------------------------------------------------------------
+class FixCommitsTouchRatchets(unittest.TestCase):
+    """For every recent commit whose message marks a fix
+    (``fix``, ``bug``, ``regression``, ``FIXED``), at least one of:
+
+      a) a file matching ``tests/unit/test_v*_batch*_ratchets.py``
+         was modified in that commit, OR
+      b) the commit message contains ``Ratchet: N/A`` (with any
+         trailing reason — usually a one-off typo or message wording)
+
+    The rule forces the AUTHOR to consciously decide whether the
+    bug is a recurring CLASS or a one-off — instead of silently
+    shipping fixes that the next mistake of the same shape will
+    re-introduce. This is the principle the user articulated:
+    *'every fix should answer the question — is this a class?'*
+
+    Scope: last 50 commits (cheap; CI-friendly). Skipped on
+    detached-HEAD or shallow clones."""
+
+    _FIX_TOKENS = re.compile(r"\b(fix|bug|regression|FIXED)\b", re.IGNORECASE)
+    _RATCHET_NA = re.compile(r"Ratchet:\s*N/?A\b", re.IGNORECASE)
+    _RATCHET_FILE_HINT = re.compile(r"tests/unit/test_v[\d_]+_batch.*_ratchets\.py")
+
+    # Subjects that are pure version-bumps / chore commits aren't
+    # fixes even if their bodies say "fixes ...".
+    _SKIP_SUBJECT_PREFIX = (
+        "v1.0.", "Bump ", "Release ", "chore:", "docs:",
+    )
+
+    # Baseline tag — only commits AFTER this one are subject to the
+    # rule. v1.0.123 was the release where this ratchet shipped, so
+    # everything before it is grandfathered without re-litigating.
+    _BASELINE_TAG = "v1.0.123"
+
+    def test_recent_fix_commits_have_ratchet_or_na(self) -> None:
+        import subprocess
+        # Resolve baseline. If the tag doesn't exist yet, the rule
+        # is dormant — nothing to enforce.
+        try:
+            subprocess.check_output(
+                ["git", "rev-parse", self._BASELINE_TAG],
+                cwd=ROOT, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            self.skipTest(
+                f"baseline tag {self._BASELINE_TAG} not present "
+                f"yet — rule starts after that tag is created"
+            )
+        try:
+            log = subprocess.check_output(
+                ["git", "log", f"{self._BASELINE_TAG}..HEAD",
+                 "--name-only", "--pretty=format:%H%x00%s%x00%b%x01"],
+                cwd=ROOT, stderr=subprocess.DEVNULL,
+            ).decode("utf-8")
+        except Exception:
+            self.skipTest("git not available")
+        if not log.strip():
+            self.skipTest(f"no commits since {self._BASELINE_TAG}")
+
+        bad: list[str] = []
+        for entry in log.split("\x01"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = entry.split("\x00", 2)
+            if len(parts) < 3:
+                continue
+            sha = parts[0].strip()
+            subject = parts[1].strip()
+            rest = parts[2]
+            lines = rest.splitlines()
+            body_lines: list[str] = []
+            file_lines: list[str] = []
+            in_files = False
+            for ln in lines:
+                # The git --name-only filename block starts after a
+                # blank line. Heuristic: a non-indented line ending
+                # with a known file extension.
+                if (not ln.strip()) and not in_files:
+                    in_files = True
+                    continue
+                if in_files:
+                    if ln.strip():
+                        file_lines.append(ln.strip())
+                else:
+                    body_lines.append(ln)
+            full_msg = subject + "\n" + "\n".join(body_lines)
+            if any(subject.startswith(p) for p in self._SKIP_SUBJECT_PREFIX):
+                continue
+            if not self._FIX_TOKENS.search(full_msg):
+                continue
+            if self._RATCHET_NA.search(full_msg):
+                continue
+            if any(self._RATCHET_FILE_HINT.search(f) for f in file_lines):
+                continue
+            bad.append(f"{sha[:8]} {subject[:80]}")
+        self.assertFalse(
+            bad,
+            f"Fix-commits since {self._BASELINE_TAG} with no ratchet "
+            f"AND no 'Ratchet: N/A' declaration ({len(bad)} commits). "
+            f"Either add a regression test in "
+            f"tests/unit/test_v*_batch*_ratchets.py, OR add a line "
+            f"'Ratchet: N/A — <reason>' to the commit message:\n  - "
+            + "\n  - ".join(bad[:10]),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
