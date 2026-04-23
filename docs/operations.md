@@ -172,12 +172,11 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 
 ## Related Docs
 
-- [architecture.md](architecture.md)
-- [deployment-model.md](deployment-model.md)
-- [source-of-truth.md](source-of-truth.md)
+- [internals/architecture.md](internals/architecture.md)
+- [deployment.md](deployment.md)
 - [networking.md](networking.md)
 - [storage.md](storage.md)
-- [maintainerr-rules-library.md](maintainerr-rules-library.md)
+- [reference/maintainerr-rules.md](reference/maintainerr-rules.md)
 - [troubleshooting.md](troubleshooting.md)
 
 ---

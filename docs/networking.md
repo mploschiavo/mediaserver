@@ -83,7 +83,7 @@ Reference diagram:
 
 ## Authentication
 
-See [Authentication Guide](auth-guide.md) for Authelia/Authentik SSO setup, OIDC configuration, and per-service auth policies.
+See [Authentication](auth.md) for Authelia/Authentik SSO setup, OIDC configuration, and per-service auth policies.
 
 ## TLS
 

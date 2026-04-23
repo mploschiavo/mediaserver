@@ -153,7 +153,7 @@ After setting DNS, these should also work:
 
 Jellyseerr sends the request to Radarr, which searches via Prowlarr's indexers and sends the download to qBittorrent. When complete, the movie appears in Jellyfin.
 
-**First request not working?** Open the controller dashboard and click **Discover Indexers** to add search sources. Or toggle **Auto-Downloads** on.
+**First request not working?** Open the controller dashboard and click **Discover Indexers** to add search sources. Confirm **Auto-Add Content** is on.
 
 ---
 
@@ -172,31 +172,21 @@ Jellyfin works on every device. Use your server's network IP (not localhost):
 
 ---
 
-## Step 6: Enable Auto-Downloads (optional)
+## Step 6: Pause Auto-Add Content (optional)
 
-The default profile starts in **manual mode**. To enable automatic content discovery:
+The default profile ships with **Auto-Add Content: on** — import lists, RSS, and scheduled searches automatically queue new content into your download clients. To pause the auto-queue (e.g. disk-full, quiet hours, or you want full manual control):
 
-**From the dashboard:** Toggle "Auto-Downloads" to ON — the dashboard automatically runs a reconcile to apply the change.
+**From the dashboard:** Toggle **Auto-Add Content** to off — the dashboard runs a reconcile to apply the change. In-progress downloads keep running; only the auto-queue stops.
 
 **From the command line:**
 ```bash
 curl -X POST http://localhost:9100/config \
   -H "Content-Type: application/json" \
-  -d '{"auto_download_content": true}'
+  -d '{"auto_download_content": false}'
 curl -X POST http://localhost:9100/actions/reconcile
 ```
 
-This enables:
-- Prowlarr auto-discovers and tests indexers
-- Sonarr/Radarr discovery lists trigger searches
-- Jellyseerr allows automatic request approval
-
-To turn it off, toggle the switch or:
-```bash
-curl -X POST http://localhost:9100/config \
-  -H "Content-Type: application/json" \
-  -d '{"auto_download_content": false}'
-```
+To re-enable, flip the toggle or POST `{"auto_download_content": true}`.
 
 ---
 
@@ -283,17 +273,17 @@ Want to modify the stack or add services? Clone the repo:
 git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
 ```
 
-- **Add a service:** Create `contracts/services/myapp.yaml` (see `_template.yaml`)
-- **Swap a technology:** Edit `contracts/media-stack.profile.yaml` → `technology_bindings`
-- **Full developer guide:** See [README](README.md), [Configuration](docs/configuration.md), [Technology Swaps](docs/technology-swaps.md)
+- **Add a service:** see [internals/adding-a-service.md](internals/adding-a-service.md)
+- **Swap a technology:** Edit `contracts/media-stack.profile.yaml` → `technology_bindings` (details in [internals/technology-swaps.md](internals/technology-swaps.md))
+- **Full developer guide:** [internals/principles.md](internals/principles.md), [internals/architecture.md](internals/architecture.md), [reference/configuration.md](reference/configuration.md)
 
 ---
 
 ## Next Steps
 
-- [Architecture overview](docs/architecture.md)
-- [Service guide](docs/service-guide.md)
-- [Operations runbook](docs/operations.md)
+- [Architecture overview](internals/architecture.md)
+- [Service catalog](reference/service-catalog.md)
+- [Operations runbook](operations.md)
 - [API documentation](http://localhost:9100/api/docs) (when running)
 
 ---

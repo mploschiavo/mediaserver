@@ -1,0 +1,61 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing the idea. A few things help the proposal land:
+
+        - Lead with the **problem**, not the solution. "I keep running into X" goes farther than "you should add Y".
+        - Mention if you've checked alternatives (a different config, an existing dashboard control, an upstream tool).
+        - Say whether you'd be willing to draft a PR.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: |
+        Today the dashboard's Indexers panel only shows pass/fail. If a test fails I have to dig through controller logs to find out why. I'd like the failure reason inline.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach (optional)
+      description: A sketch is fine. If you don't have one, that's also fine — describing the problem clearly is enough.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: |
+        I tried `MEDIA_STACK_LOG_LEVEL=DEBUG` but the indexer-test logs aren't tagged with the indexer name, so I can't correlate them.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Dashboard / UI
+        - Controller HTTP API
+        - Bootstrap behavior
+        - New service support
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Would you submit a PR for this?
+      options:
+        - label: Yes, I'd like to draft it.
+        - label: I could test a draft from someone else.

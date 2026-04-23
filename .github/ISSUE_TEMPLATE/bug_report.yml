@@ -1,0 +1,106 @@
+name: Bug report
+description: Something isn't working the way the docs say it should.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this. Before you report:
+
+        - Check the [troubleshooting guide](../blob/main/docs/troubleshooting.md).
+        - Search [existing issues](../issues?q=is%3Aissue) for the same problem.
+        - Make sure you're on a recent version (`docker compose pull && docker compose up -d` for compose; check the controller image tag in `dist/`).
+
+        The more specific you are, the faster this gets fixed.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: One or two sentences. What did you do, what did you expect, what did you get?
+      placeholder: |
+        I deployed v1.0.155 with `docker compose -f dist/docker-compose.yml up -d`. After bootstrap finished, Jellyseerr showed "Sign in with Authelia" but clicking it returned "redirect_uri mismatch" instead of redirecting back.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A numbered list. If a fresh install reproduces it, say so — that's the most useful signal.
+      placeholder: |
+        1. `docker compose -f dist/docker-compose.yml down -v`
+        2. Wipe `config/`, `data/`, `media/` (sudo rm -rf needed)
+        3. `docker compose -f dist/docker-compose.yml up -d`
+        4. Wait for bootstrap to finish (controller dashboard shows "Setup complete")
+        5. Open https://jellyseerr.media-stack.local and click "Sign in with Authelia"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Controller image tag (from the dashboard footer or `docker ps | grep controller`).
+      placeholder: "v1.0.155"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Docker Compose
+        - Kubernetes (MicroK8s)
+        - Kubernetes (other)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: host-os
+    attributes:
+      label: Host OS
+      placeholder: "Ubuntu 24.04 LTS"
+    validations:
+      required: false
+
+  - type: textarea
+    id: profile
+    attributes:
+      label: Bootstrap profile (relevant excerpt)
+      description: |
+        The relevant section of your `contracts/media-stack.profile.yaml` (or which `examples/bootstrap-profiles/*.yaml` you used). **Redact secrets** — passwords, OAuth tokens, API keys.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Controller logs
+      description: |
+        Output of `docker logs media-stack-controller --tail 200` (or `kubectl logs deploy/media-stack-controller --tail 200`). Redact secrets.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else — screenshots, container status, network setup. The dashboard's Routes tab probe results help a lot if connectivity is involved.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirm
+      options:
+        - label: I checked the troubleshooting guide and existing issues.
+          required: true
+        - label: I redacted secrets (passwords, API keys, OAuth tokens) from logs and config.
+          required: true
