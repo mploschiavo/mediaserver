@@ -24,6 +24,15 @@ bootstrap:
   apply_initial_preferences: true
   preconfigure_api_keys: true
   preconfigure_apps: true
+  # Out-of-the-box auto-downloading. When true:
+  #  - Prowlarr's auto_add_tested_indexers runs on first bootstrap
+  #  - *arr import lists get enableAuto=true so new items auto-add
+  #  - Sonarr's seed_series list auto-adds a few popular titles
+  #  - Jellyseerr's "prevent_search" is left off so requests grab
+  # The dashboard's "Auto-Downloads" toggle flips this at runtime.
+  # Defaulting to true gives the OTB experience users expect; flip
+  # to false for dry-run / test-only deploys. (v1.0.141.)
+  auto_download_content: true
 install_profile: standard
 kind: media_stack_profile
 metadata:

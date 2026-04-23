@@ -133,7 +133,17 @@ class AuthService:
             app_name=app_name,
             implementation=implementation,
         )
-        if desired_url_base or "urlBase" in desired or "UrlBase" in desired:
+        # Only write a urlBase when we have a concrete value. If the
+        # profile doesn't set ``url_base_by_app`` for this app, we
+        # MUST NOT clobber whatever preflight already persisted —
+        # the servarr preflight always sets ``/app/{app}`` so direct
+        # ``prowlarr:9696/api/v1/...`` calls 307 to the prefixed
+        # path. Clearing it back to empty meant Prowlarr's search
+        # response put ``http://prowlarr:9696/5/download?...`` in
+        # the downloadUrl field, Radarr fetched it, got a 307 with
+        # empty body, and MonoTorrent threw IndexOutOfRange parsing
+        # zero bytes. qBit stayed at "0 active". (v1.0.141.)
+        if desired_url_base:
             for key in ("urlBase", "UrlBase"):
                 current_value = self._normalize_url_base(desired.get(key))
                 if current_value != desired_url_base:

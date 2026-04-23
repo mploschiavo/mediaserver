@@ -71,12 +71,28 @@ def _build_config_policy() -> object | None:
         apply_bootstrap_runtime_policy,
     )
 
+    # Resolve auto_download_content: env var wins (operator can flip
+    # at runtime via the dashboard "Auto-Downloads" toggle, which sets
+    # the env). Otherwise fall back to the profile's bootstrap section.
+    # Without the profile fallback, a fresh compose deploy with no env
+    # set would default the policy to False, which silently disabled
+    # enableAuto on every *arr import list — the lists existed but
+    # never auto-added new content. (v1.0.141 root-cause for the
+    # "we used to get more content" symptom on clean install.)
+    profile_bootstrap = profile.get("bootstrap") or {}
+    profile_auto_download = bool(profile_bootstrap.get("auto_download_content", False))
+    env_auto_download_raw = os.environ.get("AUTO_DOWNLOAD_CONTENT", "").strip()
+    if env_auto_download_raw:
+        auto_download_content = env_auto_download_raw == "1"
+    else:
+        auto_download_content = profile_auto_download
+
     def policy(cfg: dict) -> None:
         apply_bootstrap_runtime_policy(
             cfg,
             selected_apps_csv="",
             preconfigure_api_keys=os.environ.get("PRECONFIGURE_API_KEYS", "1") == "1",
-            auto_download_content=os.environ.get("AUTO_DOWNLOAD_CONTENT", "0") == "1",
+            auto_download_content=auto_download_content,
             internet_exposed=internet_exposed,
             route_strategy=route_strategy,
             ingress_domain=base_domain,
@@ -85,7 +101,9 @@ def _build_config_policy() -> object | None:
             app_path_prefix=path_prefix,
             media_server_direct_host=media_server_direct_host,
         )
-        runtime_platform.log("[OK] Config policy applied via runtime factory")
+        runtime_platform.log(
+            f"[OK] Config policy applied (auto_download_content={auto_download_content})"
+        )
 
     return policy
 

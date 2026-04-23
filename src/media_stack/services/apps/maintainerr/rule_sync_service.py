@@ -96,16 +96,31 @@ class MaintainerrRuleSyncService:
         updated = 0
         for desired in desired_rules:
             existing = existing_by_name.get(translator._text(desired.get("name")))
-            method = "POST"
             payload = dict(desired)
+            method_used = "POST"
+
+            # Maintainerr accepts ``PUT /api/rules`` with HTTP 200 but
+            # silently DOES NOT PERSIST the change. The only effective
+            # update path is DELETE the old group, POST the new one.
+            # Without this, link fixes (``radarrSettingsId`` etc.)
+            # appear to "save ok" in the controller logs but the UI
+            # still shows "None". (v1.0.146 root cause for the
+            # "Maintainerr rules show no Radarr server" report.)
             if isinstance(existing, dict):
                 existing_id = existing.get("id")
                 if existing_id is not None:
-                    payload["id"] = existing_id
-                    method = "PUT"
+                    del_status, _, del_body = self.deps.request(
+                        maintainerr_url, f"/api/rules/{existing_id}", method="DELETE",
+                    )
+                    if del_status < 200 or del_status >= 300:
+                        raise RuntimeError(
+                            f"Maintainerr: failed deleting old rule "
+                            f"'{payload.get('name')}' (HTTP {del_status}): {del_body}"
+                        )
+                    method_used = "PUT-via-recreate"
 
             status, data, body = self.deps.request(
-                maintainerr_url, "/api/rules", method=method, payload=payload
+                maintainerr_url, "/api/rules", method="POST", payload=payload,
             )
             if status < 200 or status >= 300:
                 raise RuntimeError(
@@ -116,7 +131,7 @@ class MaintainerrRuleSyncService:
                 raise RuntimeError(
                     f"Maintainerr: rule sync failed for '{payload.get('name')}': {data.get('result')}"
                 )
-            if method == "POST":
+            if method_used == "POST":
                 created += 1
             else:
                 updated += 1

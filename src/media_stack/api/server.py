@@ -149,7 +149,15 @@ class _AuthPolicy:
     can read headers/command/path without ControllerAPIHandler having to
     carry the logic."""
 
-    _PUBLIC_PATHS = frozenset({"/healthz", "/readyz", "/webhooks/arr"})
+    _PUBLIC_PATHS = frozenset({
+        "/healthz", "/readyz", "/webhooks/arr",
+        # Sonarr's CustomImport poller hits this over internal docker
+        # DNS with no Authorization header. The feed is derived from
+        # TVMaze — no secrets exposed. Requiring auth here causes
+        # Sonarr to log "BaseUrl: Authentication Failure" and drop
+        # the list from the active set. (v1.0.143.)
+        "/api/discovery/popular-tv",
+    })
 
     def __init__(self) -> None:
         self._env = os.environ

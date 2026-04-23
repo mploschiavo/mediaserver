@@ -128,6 +128,33 @@ class HealthService:
             if val:
                 keys[app] = val
 
+        # Jellyfin stores its API key in SQLite, not a config file —
+        # the per-format readers above can't reach it. Without this,
+        # the controller's webhook handler (POST /webhooks/arr) can't
+        # trigger ``/Library/Refresh`` after a *arr import, so newly
+        # imported content sits invisible until Jellyfin's library
+        # monitor finds it via inotify (slower). (v1.0.144.)
+        if "jellyfin" not in keys:
+            try:
+                from media_stack.services.apps.jellyfin.api_key_db import (
+                    read_jellyfin_api_key_from_db as _read_jf_db,
+                )
+                jf_cfg = {
+                    "api_key_db_path": "jellyfin/data/jellyfin.db",
+                    "api_key_name_preference": [
+                        "Jellyfin", "Jellyseerr", "media-stack-controller",
+                    ],
+                }
+                token, _ = _read_jf_db(
+                    str(config_root), jf_cfg,
+                    coerce_list=lambda v: list(v) if isinstance(v, (list, tuple)) else [v],
+                    resolve_path=lambda root, rel: Path(root) / rel,
+                )
+                if token:
+                    keys["jellyfin"] = token
+            except Exception as exc:
+                log_swallowed(exc)
+
         return keys
 
     @staticmethod

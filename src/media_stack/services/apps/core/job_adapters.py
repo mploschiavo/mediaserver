@@ -355,6 +355,1216 @@ def run_media_hygiene(ctx: JobContext) -> dict:
     return {"action": "run-media-hygiene", "summary": result}
 
 
+def ensure_bazarr_language_profile(ctx: JobContext) -> dict:
+    """Bring Bazarr to a usable OTB state in one POST:
+
+      1. Enable English (``languages-enabled=en``).
+      2. Create a default English language profile if none exists.
+      3. Set that profile as the default for new Sonarr series and
+         Radarr movies (``general-serie_default_profile`` /
+         ``general-movie_default_profile``). Without this, every
+         new show/movie comes in with profile=None and downloads
+         no subtitles even though a profile exists.
+      4. Replace the provider list with a curated OTB set:
+         ``opensubtitlescom``, ``podnapisi``, ``gestdown`` (TV),
+         ``yifysubtitles`` (movies, pairs with YTS), and
+         ``embeddedsubtitles`` (extracts subtitle tracks already
+         in the .mkv — zero network cost). Drops ``addic7ed``
+         which has anti-scrape issues; Gestdown is its modern
+         replacement.
+
+    Bazarr's settings endpoint is Flask + flask_restx. Form-
+    encoded ``POST /api/system/settings`` is the only effective
+    write path — the JSON profile-list endpoint is read-only.
+    Array-shaped settings (``enabled_providers``,
+    ``languages-enabled``) use repeated form keys (urlencode with
+    ``doseq=True``); ``languages-profiles`` is a single field with
+    a JSON-encoded string value.
+
+    Idempotent: skips profile creation if any profile already
+    exists, but always re-asserts defaults + provider list (so
+    drift is corrected on every run).
+    """
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+    import urllib.error as _ue
+    url = ctx.service_url("bazarr")
+    key = ctx.api_key("bazarr")
+    if not url or not key:
+        return {"action": "ensure-bazarr-language-profile", "skipped": "no url/key"}
+    base = f"{url.rstrip('/')}/api"
+
+    try:
+        req = _ur.Request(
+            f"{base}/system/languages/profiles",
+            headers={"X-Api-Key": key},
+        )
+        with _ur.urlopen(req, timeout=10) as r:
+            existing = _json.loads(r.read())
+    except Exception as exc:
+        return {"action": "ensure-bazarr-language-profile",
+                "error": f"profile list failed: {str(exc)[:80]}"}
+
+    profile_action = "skipped"
+    profile_id = 1
+    if isinstance(existing, list) and existing:
+        # Use the first existing profile's id for the default-profile
+        # field. Operator may have customised — don't clobber.
+        first = existing[0]
+        if isinstance(first, dict) and first.get("profileId") is not None:
+            profile_id = int(first["profileId"])
+    else:
+        profile_action = "created"
+
+    # ``items.language`` shape varies across Bazarr versions: some
+    # accept the bare code2 string, others want ``{"code2": "en", ...}``.
+    # The bare string has worked reliably since v1.5; keep using it.
+    profile_payload = {
+        "profileId": profile_id,
+        "name": "English",
+        "items": [{
+            "id": 1, "language": "en",
+            "audio_exclude": "False", "hi": "False", "forced": "False",
+        }],
+        "cutoff": None,
+        "originalFormat": None,
+        "mustContain": [],
+        "mustNotContain": [],
+        "tag": None,
+    }
+
+    providers = [
+        "opensubtitlescom",  # broad: movies + TV
+        "podnapisi",         # broad: secondary
+        "gestdown",          # TV (modern Addic7ed replacement)
+        "yifysubtitles",     # movies (pairs with YTS releases)
+        "embeddedsubtitles", # zero-network: extracts existing .mkv tracks
+    ]
+
+    # Bazarr's default-profile feature has TWO knobs per media type:
+    # ``_default_enabled`` (bool toggle) and ``_default_profile`` (id).
+    # The ID alone does nothing — the UI shows the toggle as OFF and
+    # Bazarr doesn't auto-assign the profile to new content. Both
+    # must be set. (v1.0.146 — caught when the UI didn't reflect the
+    # change despite the API reporting the ID value.)
+    form_pairs: list[tuple[str, str]] = [
+        ("languages-enabled", "en"),
+        ("languages-profiles", _json.dumps([profile_payload])),
+        ("settings-general-serie_default_enabled", "true"),
+        ("settings-general-serie_default_profile", str(profile_id)),
+        ("settings-general-movie_default_enabled", "true"),
+        ("settings-general-movie_default_profile", str(profile_id)),
+    ]
+    for p in providers:
+        form_pairs.append(("settings-general-enabled_providers", p))
+
+    # *arr integration. Bazarr's UI shows "Use Sonarr / Radarr — not
+    # configured" on a fresh install because ``use_sonarr``/``use_radarr``
+    # default to False, ip defaults to 127.0.0.1, and apikey is empty.
+    # Set hostname (docker DNS), port, URL base (matching the
+    # ``/app/<app>/`` prefix the preflight persisted), and API key.
+    # Without this, Bazarr never polls Sonarr/Radarr for episodes /
+    # movies, so no subtitles get fetched even with a default profile
+    # and providers configured. (v1.0.146.)
+    arr_integrations = {
+        "sonarr":  (8989, "/app/sonarr"),
+        "radarr":  (7878, "/app/radarr"),
+    }
+    integrations_added: list[str] = []
+    for app, (port, base_url) in arr_integrations.items():
+        arr_key = ctx.api_key(app)
+        if not arr_key:
+            continue
+        form_pairs.extend([
+            (f"settings-general-use_{app}", "true"),
+            (f"settings-{app}-ip", app),
+            (f"settings-{app}-port", str(port)),
+            (f"settings-{app}-base_url", base_url),
+            (f"settings-{app}-apikey", arr_key),
+            (f"settings-{app}-ssl", "false"),
+        ])
+        integrations_added.append(app)
+
+    body = _up.urlencode(form_pairs).encode()
+    try:
+        req = _ur.Request(
+            f"{base}/system/settings",
+            data=body, method="POST",
+            headers={
+                "X-Api-Key": key,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        with _ur.urlopen(req, timeout=15) as r:
+            status = r.status
+    except _ue.HTTPError as exc:
+        return {"action": "ensure-bazarr-language-profile",
+                "error": f"settings POST failed (HTTP {exc.code}): {exc.read()[:120].decode(errors='replace')}"}
+    except Exception as exc:
+        return {"action": "ensure-bazarr-language-profile",
+                "error": str(exc)[:120]}
+
+    # Seed the Jellyfin-side Bazarr plugin config so the in-Jellyfin
+    # "Edit Subtitles" UI can talk to Bazarr without the user having
+    # to open Jellyfin → Plugins → Bazarr and fill in URL+API-key.
+    # Plugin: enoch85/bazarr-jellyfin (GPLv3). The plugin config
+    # lives at ``<jellyfin_config>/plugins/configurations/Bazarr.xml``
+    # and Jellyfin reads it on plugin load. Writing it pre-install
+    # is safe — the plugin picks it up the first time it loads.
+    plugin_config_written = False
+    try:
+        from pathlib import Path as _Path
+        config_root = _Path(ctx.config_root)
+        # Jellyfin's /config bind-mount is rooted at /srv-config/jellyfin/
+        # (not /srv-config/jellyfin/config/) — the container sees
+        # /config/plugins/configurations/ which maps to this host path.
+        config_dir = config_root / "jellyfin" / "plugins" / "configurations"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        xml = (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+            'xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n'
+            f'  <BazarrUrl>{url.rstrip("/")}</BazarrUrl>\n'
+            f'  <BazarrApiKey>{key}</BazarrApiKey>\n'
+            '  <EnableForMovies>true</EnableForMovies>\n'
+            '  <EnableForEpisodes>true</EnableForEpisodes>\n'
+            '  <SearchTimeoutSeconds>25</SearchTimeoutSeconds>\n'
+            '</PluginConfiguration>\n'
+        )
+        # Jellyfin names plugin config files by the assembly name,
+        # not the display name. Bazarr plugin's assembly is
+        # ``Jellyfin.Plugin.Bazarr``. Writing to ``Bazarr.xml``
+        # silently does nothing — the plugin keeps its in-memory
+        # defaults and the UI shows ``http://localhost:6767`` /
+        # empty API key. Verified via
+        # ``GET /Plugins`` → ``configurationFileName``. (v1.0.146.)
+        (config_dir / "Jellyfin.Plugin.Bazarr.xml").write_text(xml, encoding="utf-8")
+        # Clean up any previous stray file from the v1.0.146 first
+        # cut, before we knew the right filename.
+        stray = config_dir / "Bazarr.xml"
+        if stray.exists():
+            stray.unlink()
+        plugin_config_written = True
+    except Exception:
+        # Non-fatal — plugin still works, user can fill in the fields
+        # manually via Jellyfin → Dashboard → Plugins → Bazarr.
+        pass
+
+    return {
+        "action": "ensure-bazarr-language-profile",
+        "profile": f"English (en) — {profile_action} (id={profile_id})",
+        "default_for_new": "series + movies",
+        "providers": providers,
+        "arr_integrations": integrations_added,
+        "jellyfin_plugin_config": "written" if plugin_config_written else "skipped",
+        "status": status,
+    }
+
+
+def _mass_search_qbit_active_count(ctx: JobContext) -> int | None:
+    """Return the count of currently-downloading qBit torrents, or
+    None if qBit can't be reached. Used by the adaptive scheduler
+    to decide whether to skip a search tick (qBit is busy)."""
+    import urllib.parse as _up
+    import urllib.request as _ur
+    qb_user = os.environ.get("QBIT_USERNAME", "admin")
+    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
+    base = (ctx.service_url("qbittorrent") or "http://qbittorrent:8080").rstrip("/")
+    cj = __import__("http.cookiejar", fromlist=["CookieJar"]).CookieJar()
+    opener = _ur.build_opener(_ur.HTTPCookieProcessor(cj))
+    try:
+        opener.open(_ur.Request(
+            f"{base}/api/v2/auth/login",
+            data=_up.urlencode({"username": qb_user, "password": qb_pass}).encode(),
+        ), timeout=5)
+        import json as _json
+        with opener.open(
+            f"{base}/api/v2/torrents/info?filter=active", timeout=5,
+        ) as r:
+            return len(_json.loads(r.read()))
+    except Exception:
+        return None
+
+
+def mass_search_throttled(ctx: JobContext) -> dict:
+    """Adaptive "search every monitored missing item" pass.
+
+    The hourly scheduler fires this every tick. The adapter then
+    decides whether to:
+
+      a) **Skip** — library is healthy AND qBit is actively
+         downloading. No reason to add more search load; existing
+         downloads will populate the library.
+
+      b) **Run lazy** — library is healthy but qBit is idle. Pace
+         dispatch at ``MASS_SEARCH_DELAY_SECONDS`` (default 2s)
+         so indexers don't get hammered.
+
+      c) **Run aggressive** — library is "thin" (fewer than
+         ``MASS_SEARCH_THIN_THRESHOLD`` imported files, default 25).
+         Pace at ``MASS_SEARCH_THIN_DELAY_SECONDS`` (default 0.5s)
+         so first-hour impressions land fast. The 429 risk is
+         acceptable here because there's NO content yet anyway.
+
+    Why hourly + adaptive instead of fixed cadence: a fresh install
+    needs urgency (user sees nothing); a healthy install with
+    hundreds of in-flight downloads doesn't (search load is wasted).
+    Self-throttles without operator tuning. (v1.0.148.)
+    """
+    import json as _json
+    import time as _t
+    import urllib.request as _ur
+    import urllib.error as _ue
+    healthy_delay = float(os.environ.get("MASS_SEARCH_DELAY_SECONDS", "2.0"))
+    thin_delay = float(os.environ.get("MASS_SEARCH_THIN_DELAY_SECONDS", "0.5"))
+    thin_threshold = int(os.environ.get("MASS_SEARCH_THIN_THRESHOLD", "25"))
+    max_items = int(os.environ.get("MASS_SEARCH_MAX_ITEMS", "200"))
+
+    # ---- Adaptive decision: count imported files + qBit activity.
+    imported_count = 0
+    for _app, _ver, _stat_field in (
+        ("sonarr", "v3", "episodeFileCount"),
+        ("radarr", "v3", "hasFile"),
+    ):
+        _u = ctx.service_url(_app); _k = ctx.api_key(_app)
+        if not _u or not _k:
+            continue
+        try:
+            _path = "series" if _app == "sonarr" else "movie"
+            _req = _ur.Request(
+                f"{_u.rstrip('/')}/api/{_ver}/{_path}",
+                headers={"X-Api-Key": _k},
+            )
+            with _ur.urlopen(_req, timeout=10) as _r:
+                _items = _json.loads(_r.read())
+            if _app == "sonarr":
+                imported_count += sum(
+                    int((s.get("statistics") or {}).get("episodeFileCount", 0))
+                    for s in _items if isinstance(s, dict)
+                )
+            else:
+                imported_count += sum(
+                    1 for m in _items if isinstance(m, dict) and m.get("hasFile")
+                )
+        except Exception:
+            pass
+
+    qbit_active = _mass_search_qbit_active_count(ctx)
+    is_thin = imported_count < thin_threshold
+
+    # Skip when healthy AND qBit is busy. Single condition keeps the
+    # logic legible — both factors must be present to justify a noop.
+    if not is_thin and qbit_active is not None and qbit_active > 0:
+        return {
+            "action": "mass-search-throttled",
+            "skipped": "healthy library + qBit active",
+            "imported_files": imported_count,
+            "qbit_active": qbit_active,
+        }
+
+    delay = thin_delay if is_thin else healthy_delay
+    mode = "aggressive (thin)" if is_thin else "lazy (healthy idle)"
+    arr_specs = [
+        # (app, api_ver, list_path, list_filter, search_cmd, id_field)
+        ("sonarr",  "v3", "/series", lambda s: s.get("monitored") and (s.get("statistics") or {}).get("episodeFileCount", 0) == 0, "SeriesSearch", "seriesId"),
+        ("radarr",  "v3", "/movie",  lambda m: m.get("monitored") and not m.get("hasFile"), "MoviesSearch", "movieIds"),
+    ]
+    summary: dict[str, dict[str, int]] = {}
+    for app, ver, list_path, fn, cmd, id_field in arr_specs:
+        url = ctx.service_url(app)
+        key = ctx.api_key(app)
+        if not url or not key:
+            summary[app] = {"skipped": 1}
+            continue
+        # *arrs serve at ``/app/<app>/`` URL base (set by preflight).
+        # Hitting the bare ``/api/...`` returns a 307 redirect, and
+        # urllib drops the POST body on 307 — the search command
+        # arrives empty and the *arr returns 400. Always include the
+        # prefix. (Same bug pattern as ensure_arr_jellyfin_notifier.)
+        api_base = f"{url.rstrip('/')}/app/{app}/api/{ver}"
+        try:
+            req = _ur.Request(
+                f"{api_base}{list_path}",
+                headers={"X-Api-Key": key},
+            )
+            with _ur.urlopen(req, timeout=15) as r:
+                items = _json.loads(r.read())
+        except Exception as exc:
+            summary[app] = {"list_error": str(exc)[:60]}
+            continue
+        targets = [i for i in items if isinstance(i, dict) and fn(i)][:max_items]
+        fired = 0
+        errors = 0
+        for item in targets:
+            iid = item.get("id")
+            if iid is None:
+                continue
+            payload = (
+                {"name": cmd, id_field: [int(iid)]}
+                if id_field.endswith("s") else
+                {"name": cmd, id_field: int(iid)}
+            )
+            cmd_req = _ur.Request(
+                f"{api_base}/command",
+                data=_json.dumps(payload).encode(), method="POST",
+                headers={"X-Api-Key": key, "Content-Type": "application/json"},
+            )
+            try:
+                with _ur.urlopen(cmd_req, timeout=10):
+                    fired += 1
+            except Exception:
+                errors += 1
+            _t.sleep(delay)
+        summary[app] = {"fired": fired, "errors": errors, "candidates": len(targets)}
+    return {
+        "action": "mass-search-throttled",
+        "mode": mode,
+        "imported_files": imported_count,
+        "qbit_active": qbit_active,
+        "delay_seconds": delay,
+        "max_items": max_items,
+        "summary": summary,
+    }
+
+
+def ensure_qbittorrent_categories(ctx: JobContext) -> dict:
+    """Make sure qBit has the four content categories (movies, tv,
+    music, books) with savePath under ``/data/torrents/completed/``.
+    Idempotent — qBit's createCategory is a no-op when the category
+    already exists with the same savePath.
+    """
+    import urllib.parse as _up
+    import urllib.request as _ur
+    import urllib.error as _ue
+    qb_user = os.environ.get("QBIT_USERNAME", "admin")
+    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
+    base = ctx.service_url("qbittorrent") or "http://qbittorrent:8080"
+    base = base.rstrip("/")
+    # Login first — qBit's API needs a session cookie even for the
+    # category endpoints.
+    cj = __import__("http.cookiejar", fromlist=["CookieJar"]).CookieJar()
+    opener = _ur.build_opener(_ur.HTTPCookieProcessor(cj))
+    try:
+        opener.open(_ur.Request(
+            f"{base}/api/v2/auth/login",
+            data=_up.urlencode({"username": qb_user, "password": qb_pass}).encode(),
+        ), timeout=10)
+    except Exception as exc:
+        return {"action": "ensure-qbittorrent-categories",
+                "error": f"login failed: {str(exc)[:80]}"}
+
+    desired = {
+        "movies": "/data/torrents/completed/movies",
+        "tv":     "/data/torrents/completed/tv",
+        "music":  "/data/torrents/completed/music",
+        "books":  "/data/torrents/completed/books",
+    }
+    created: list[str] = []
+    skipped: list[str] = []
+    for cat, save_path in desired.items():
+        body = _up.urlencode({"category": cat, "savePath": save_path}).encode()
+        try:
+            opener.open(_ur.Request(
+                f"{base}/api/v2/torrents/createCategory", data=body,
+            ), timeout=10)
+            created.append(cat)
+        except _ue.HTTPError as exc:
+            # qBit returns 409 when the category already exists.
+            if exc.code == 409:
+                skipped.append(cat)
+            else:
+                return {"action": "ensure-qbittorrent-categories",
+                        "error": f"{cat}: HTTP {exc.code}"}
+        except Exception as exc:
+            return {"action": "ensure-qbittorrent-categories",
+                    "error": f"{cat}: {str(exc)[:60]}"}
+    return {"action": "ensure-qbittorrent-categories",
+            "created": created, "skipped": skipped}
+
+
+def ensure_arr_download_client(ctx: JobContext) -> dict:
+    """Make sure each *arr has qBit configured as an enabled download
+    client with the right category. Idempotent — updates the
+    existing entry if it differs, creates if missing.
+
+    Field name varies by *arr: ``tvCategory`` for Sonarr,
+    ``movieCategory`` for Radarr, ``musicCategory`` for Lidarr,
+    ``bookCategory`` for Readarr.
+    """
+    import json as _json
+    import urllib.request as _ur
+    import urllib.error as _ue
+    qb_user = os.environ.get("QBIT_USERNAME", "admin")
+    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
+    arr_specs = [
+        ("sonarr",  "v3", "tvCategory",     "tv"),
+        ("radarr",  "v3", "movieCategory",  "movies"),
+        ("lidarr",  "v1", "musicCategory",  "music"),
+        ("readarr", "v1", "bookCategory",   "books"),
+    ]
+    summary: dict[str, str] = {}
+    for app, ver, cat_field, cat_value in arr_specs:
+        url = ctx.service_url(app)
+        key = ctx.api_key(app)
+        if not url or not key:
+            summary[app] = "skipped (no url/key)"
+            continue
+        base = f"{url.rstrip('/')}/app/{app}/api/{ver}/downloadclient"
+        H = {"X-Api-Key": key, "Content-Type": "application/json"}
+        try:
+            req = _ur.Request(base, headers={"X-Api-Key": key})
+            with _ur.urlopen(req, timeout=10) as r:
+                existing = _json.loads(r.read())
+        except Exception as exc:
+            summary[app] = f"list error: {str(exc)[:60]}"
+            continue
+        match = next(
+            (c for c in (existing or [])
+             if c.get("implementation") == "QBittorrent"),
+            None,
+        )
+        payload_fields = [
+            {"name": "host",      "value": "qbittorrent"},
+            {"name": "port",      "value": 8080},
+            {"name": "useSsl",    "value": False},
+            {"name": "urlBase",   "value": ""},
+            {"name": "username",  "value": qb_user},
+            {"name": "password",  "value": qb_pass},
+            {"name": cat_field,   "value": cat_value},
+        ]
+        payload = {
+            "name": "qBittorrent",
+            "implementation": "QBittorrent",
+            "configContract": "QBittorrentSettings",
+            "enable": True,
+            "priority": 1,
+            "removeCompletedDownloads": False,
+            "removeFailedDownloads": True,
+            "fields": payload_fields,
+        }
+        try:
+            if match:
+                payload["id"] = match.get("id")
+                _ur.urlopen(_ur.Request(
+                    f"{base}/{match['id']}", data=_json.dumps(payload).encode(),
+                    method="PUT", headers=H,
+                ), timeout=10)
+                summary[app] = f"updated (id={match['id']})"
+            else:
+                _ur.urlopen(_ur.Request(
+                    base, data=_json.dumps(payload).encode(),
+                    method="POST", headers=H,
+                ), timeout=10)
+                summary[app] = "created"
+        except _ue.HTTPError as exc:
+            summary[app] = f"HTTP {exc.code}: {exc.read()[:60].decode(errors='replace')}"
+        except Exception as exc:
+            summary[app] = str(exc)[:60]
+    return {"action": "ensure-arr-download-client", "summary": summary}
+
+
+def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
+    """Make sure Jellyfin has Movies, TV Shows, Music, Books libraries
+    pointing at ``/media/<category>/``. Idempotent — skips libraries
+    that already exist with the right path; creates missing ones via
+    ``POST /Library/VirtualFolders``.
+
+    Jellyfin's stores its API key in SQLite — re-uses the controller's
+    discovery flow via the JellyfinApiKeyDb helper.
+    """
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+    from media_stack.api.services.health import discover_api_keys
+    keys = discover_api_keys()
+    jf_key = keys.get("jellyfin", "")
+    if not jf_key:
+        return {"action": "ensure-jellyfin-libraries", "skipped": "no jellyfin key"}
+    base = "http://jellyfin:8096"
+
+    desired = [
+        ("Movies",   "movies",  "/media/movies", "Tmdb"),
+        ("TV Shows", "tvshows", "/media/tv",     "Tmdb"),
+        ("Music",    "music",   "/media/music",  "MusicBrainz"),
+        ("Books",    "books",   "/media/books",  "Open Library"),
+    ]
+    try:
+        req = _ur.Request(
+            f"{base}/Library/VirtualFolders?api_key={jf_key}",
+            headers={"Accept": "application/json"},
+        )
+        with _ur.urlopen(req, timeout=10) as r:
+            existing = _json.loads(r.read())
+    except Exception as exc:
+        return {"action": "ensure-jellyfin-libraries",
+                "error": f"list failed: {str(exc)[:80]}"}
+
+    have = {
+        (l.get("Name"), l.get("CollectionType"))
+        for l in (existing or [])
+    }
+    added: list[str] = []
+    skipped: list[str] = []
+    for name, ctype, path, _meta in desired:
+        if (name, ctype) in have:
+            skipped.append(name)
+            continue
+        params = _up.urlencode({
+            "name": name,
+            "collectionType": ctype,
+            "paths": path,
+            "refreshLibrary": "false",
+            "api_key": jf_key,
+        })
+        try:
+            _ur.urlopen(_ur.Request(
+                f"{base}/Library/VirtualFolders?{params}", method="POST",
+            ), timeout=15)
+            added.append(name)
+        except Exception as exc:
+            return {"action": "ensure-jellyfin-libraries",
+                    "error": f"{name}: {str(exc)[:60]}"}
+    return {"action": "ensure-jellyfin-libraries",
+            "added": added, "skipped": skipped}
+
+
+def ensure_sonarr_seed_series(ctx: JobContext) -> dict:
+    """Add the seed-series titles + the popular-TV CustomImport list
+    to Sonarr if missing. Idempotent — Sonarr's series API skips
+    duplicates by tvdbId; the CustomImport is keyed on name.
+
+    Why this exists as its own job (v1.0.146): the seed-series
+    side-effect previously fired only as a runtime hook inside the
+    main bootstrap pipeline. ``compose down -v`` wiped Sonarr's DB
+    and the next ``up`` rebuilt it minus the seed series unless the
+    full pipeline ran cleanly. Promoting to a dedicated ensure-*
+    job means it's observable, re-runnable on demand, and probed
+    by the promises registry.
+    """
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+    url = ctx.service_url("sonarr")
+    key = ctx.api_key("sonarr")
+    if not url or not key:
+        return {"action": "ensure-sonarr-seed-series", "skipped": "no url/key"}
+
+    base = f"{url.rstrip('/')}/app/sonarr/api/v3"
+    H = {"X-Api-Key": key, "Content-Type": "application/json"}
+
+    cfg = ctx.cfg or {}
+    seed = cfg.get("sonarr_seed_series") or {}
+    series_names = [
+        s.strip() for s in (seed.get("series") or [])
+        if isinstance(s, str) and s.strip()
+    ]
+    if not series_names:
+        return {"action": "ensure-sonarr-seed-series",
+                "skipped": "no series names in contracts/defaults/arr.yaml"}
+
+    monitor = str(seed.get("monitor") or "firstSeason")
+    season_folder = bool(seed.get("season_folder", True))
+
+    try:
+        qps = _json.loads(_ur.urlopen(_ur.Request(
+            f"{base}/qualityprofile", headers={"X-Api-Key": key},
+        ), timeout=10).read())
+        rfs = _json.loads(_ur.urlopen(_ur.Request(
+            f"{base}/rootfolder", headers={"X-Api-Key": key},
+        ), timeout=10).read())
+        existing = _json.loads(_ur.urlopen(_ur.Request(
+            f"{base}/series", headers={"X-Api-Key": key},
+        ), timeout=15).read())
+    except Exception as exc:
+        return {"action": "ensure-sonarr-seed-series",
+                "error": f"sonarr precheck failed: {str(exc)[:80]}"}
+
+    qp_id = qps[0]["id"] if qps else 1
+    rf_path = rfs[0]["path"] if rfs else "/media/tv"
+    existing_tvdbs = {s.get("tvdbId") for s in existing if s.get("tvdbId")}
+
+    added = 0
+    skipped = 0
+    failed = 0
+    for name in series_names[: int(seed.get("max_series", 15))]:
+        try:
+            q = _up.quote(name)
+            hits = _json.loads(_ur.urlopen(_ur.Request(
+                f"{base}/series/lookup?term={q}", headers={"X-Api-Key": key},
+            ), timeout=10).read())
+        except Exception:
+            failed += 1
+            continue
+        if not hits:
+            failed += 1
+            continue
+        s = hits[0]
+        tvdb = s.get("tvdbId")
+        if tvdb and tvdb in existing_tvdbs:
+            skipped += 1
+            continue
+        body = {
+            "title": s["title"],
+            "qualityProfileId": qp_id,
+            "titleSlug": s.get("titleSlug"),
+            "images": s.get("images", []),
+            "seasons": s.get("seasons", []),
+            "tvdbId": tvdb,
+            "rootFolderPath": rf_path,
+            "monitored": True,
+            "seasonFolder": season_folder,
+            "addOptions": {
+                "searchForMissingEpisodes": False,  # avoid 429 burst
+                "monitor": monitor,
+            },
+        }
+        try:
+            _ur.urlopen(_ur.Request(
+                f"{base}/series", data=_json.dumps(body).encode(),
+                method="POST", headers=H,
+            ), timeout=15)
+            added += 1
+        except Exception:
+            failed += 1
+    return {
+        "action": "ensure-sonarr-seed-series",
+        "added": added, "skipped_existing": skipped, "failed": failed,
+        "total": len(series_names),
+    }
+
+
+def ensure_jellyseerr_oidc(ctx: JobContext) -> dict:
+    """Wire Authelia SSO into Jellyseerr's settings.json.
+
+    Authelia's identity_providers.oidc.clients already has a
+    ``jellyseerr`` entry (generated from contracts/auth/oidc_clients.yaml
+    by the authelia-config-generator). What's missing is the
+    DOWNSTREAM half — Jellyseerr needs ``oidcLogin: true`` and an
+    ``oidc`` provider block in its settings.json so the login page
+    actually renders the "Sign in with Authelia" button.
+
+    The preview-OIDC Jellyseerr build (fallenbagel/jellyseerr:preview-OIDC)
+    consumes these fields. Idempotent — only writes if the existing
+    config differs. Restarts Jellyseerr afterward so the change takes
+    effect (settings.json is read at boot, not live).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    settings_path = _Path(ctx.config_root) / "jellyseerr" / "settings.json"
+    if not settings_path.is_file():
+        return {"action": "ensure-jellyseerr-oidc",
+                "skipped": f"settings.json not found at {settings_path}"}
+
+    # Resolve the issuer URL from the profile so external/sub-domain
+    # deployments use the right host. Falls back to the in-cluster
+    # default. Authelia's discovery doc lives at
+    # /.well-known/openid-configuration on the main hostname.
+    profile = ctx.profile or {}
+    routing = profile.get("routing") or {}
+    base_domain = str(routing.get("base_domain") or "local").strip()
+    sub = str(routing.get("stack_subdomain") or "media-stack").strip()
+    issuer = f"https://authelia.{sub}.{base_domain}"
+
+    # The preview-OIDC build's settings schema (PR #1505) uses
+    # ``main.openIdProviders`` as an ARRAY of provider entries.
+    # The login page renders one button per entry. The earlier
+    # single-object ``main.oidc`` shape that worked on older forks
+    # is invisible to this build — settings.json validates fine,
+    # but ``GET /api/v1/settings/public`` returns
+    # ``openIdProviders: []`` and no button shows.
+    desired_provider = {
+        "slug": "authelia",                 # callback at /api/v1/auth/oidc/authelia/callback
+        "name": "Authelia",                 # button text
+        "issuerUrl": issuer,
+        "clientId": "jellyseerr",
+        "clientSecret": "jellyseerr-oidc-secret",
+        "scopes": "openid email profile groups",
+        "newUserLogin": True,               # auto-provision local user on first login
+        "requiredClaims": "",
+    }
+
+    # The persisted shape (from server/lib/settings/index.ts:731):
+    #   main.oidcLogin: true                 (master toggle)
+    #   oidc.providers: [{ slug, name, … }]  (TOP-LEVEL oidc block)
+    # The authenticated /api/v1/settings/main endpoint flattens this
+    # into ``openIdProviders`` for the UI form, which made earlier
+    # debugging misleading — the persistence shape is what matters.
+    # applicationUrl + trustProxy are CRITICAL for redirect_uri to
+    # match what Authelia registered. Without applicationUrl,
+    # Jellyseerr derives the redirect_uri from the raw request Host
+    # header (no scheme — defaults to http), producing
+    # ``http://apps.media-stack.local/login?...`` which Authelia
+    # rejects (its registered URIs are all HTTPS). With trustProxy
+    # set, Jellyseerr also honors X-Forwarded-Proto from Envoy so
+    # the scheme is correct on subsequent requests.
+    gateway_host = str(routing.get("gateway_host") or "").strip() \
+        or f"apps.{sub}.{base_domain}"
+    application_url = f"https://{gateway_host}/app/jellyseerr"
+
+    settings = _json.loads(settings_path.read_text(encoding="utf-8"))
+    main = settings.setdefault("main", {})
+    oidc_block = settings.setdefault("oidc", {})
+    # PR #1505's migration 0005 moved trustProxy from main.trustProxy
+    # to network.trustProxy. Writing it under main.* gets silently
+    # stripped on boot — ``req.protocol`` stays http and Jellyseerr
+    # builds redirect_uri as ``http://apps.media-stack.local/login?…``
+    # which Authelia rejects because its registered URIs are all
+    # HTTPS. This was the last mile that kept breaking every OIDC
+    # fix round-trip in this session. (v1.0.146 real root cause.)
+    network_block = settings.setdefault("network", {})
+    changed = False
+    if main.get("oidcLogin") is not True:
+        main["oidcLogin"] = True
+        changed = True
+    if main.get("applicationUrl") != application_url:
+        main["applicationUrl"] = application_url
+        changed = True
+    if network_block.get("trustProxy") is not True:
+        network_block["trustProxy"] = True
+        changed = True
+    # Strip the wrong-location variant if a previous run put it
+    # under main; the migration removes it on boot, but leaving it
+    # in the file causes confusing diff-noise.
+    if "trustProxy" in main:
+        del main["trustProxy"]
+        changed = True
+    desired_providers = [desired_provider]
+    if oidc_block.get("providers") != desired_providers:
+        oidc_block["providers"] = desired_providers
+        changed = True
+    # Strip leftover wrong-schema fields from earlier debug rounds.
+    for stale_key in ("oidc", "openIdProviders"):
+        if stale_key in main:
+            del main[stale_key]
+            changed = True
+
+    if not changed:
+        return {"action": "ensure-jellyseerr-oidc",
+                "skipped": "oidc config already in sync"}
+
+    settings_path.write_text(_json.dumps(settings, indent=2), encoding="utf-8")
+
+    # Restart Jellyseerr so it loads the new config. Best-effort —
+    # docker SDK works in compose, k8s pod-delete works on cluster.
+    restarted = False
+    try:
+        import docker as _docker
+        _docker.from_env().containers.get("jellyseerr").restart(timeout=15)
+        restarted = True
+    except Exception:
+        try:
+            import os as _os
+            from kubernetes import client as _k8s, config as _kc
+            try:
+                _kc.load_incluster_config()
+            except Exception:
+                _kc.load_kube_config()
+            ns = _os.environ.get("K8S_NAMESPACE", "media-stack")
+            v1 = _k8s.CoreV1Api()
+            for pod in v1.list_namespaced_pod(ns, label_selector="app=jellyseerr").items:
+                v1.delete_namespaced_pod(name=pod.metadata.name, namespace=ns)
+            restarted = True
+        except Exception:
+            pass
+
+    return {
+        "action": "ensure-jellyseerr-oidc",
+        "issuer": issuer,
+        "client_id": "jellyseerr",
+        "settings_written": True,
+        "restarted": restarted,
+    }
+
+
+def ensure_arr_jellyfin_notifier(ctx: JobContext) -> dict:
+    """Add a Jellyfin (MediaBrowser) notifier to each *arr that
+    supports it (Sonarr/Radarr/Lidarr — Readarr's notification
+    schema doesn't include MediaBrowser yet).
+
+    Why: replaces the controller's ``/webhooks/arr`` →
+    ``/Library/Refresh`` round-trip with a direct *arr → Jellyfin
+    library-update call. Per-item refresh (only the changed series
+    /movie's library) instead of a full scan, no controller
+    bottleneck, fires synchronously inside the *arr's import
+    pipeline. The webhook stays as a fallback.
+
+    Idempotent: GET /api/vN/notification, skip if a MediaBrowser
+    notifier already exists by name (``media-stack-jellyfin``).
+    """
+    import json as _json
+    import urllib.request as _ur
+    import urllib.error as _ue
+    from media_stack.api.services.health import discover_api_keys
+    keys = discover_api_keys()
+    jf_key = keys.get("jellyfin", "")
+    if not jf_key:
+        return {"action": "ensure-arr-jellyfin-notifier",
+                "skipped": "no jellyfin key"}
+
+    notifier_name = "media-stack-jellyfin"
+    # Each *arr has a DIFFERENT set of event flag names. Sending an
+    # unknown flag is silently ignored, so the union of all names
+    # would leave each app missing its own critical events. Map per
+    # app explicitly. The semantic intent is identical — "fire on
+    # any change to a file on disk."
+    common_off = {
+        "onGrab": False,
+        "onHealthIssue": False,
+        "onHealthRestored": False,
+        "onApplicationUpdate": False,
+        "onManualInteractionRequired": False,
+    }
+    arr_event_maps = {
+        "sonarr": {
+            **common_off,
+            "onDownload": True,                       # episode imported
+            "onUpgrade": True,                        # episode upgraded
+            "onImportComplete": True,                 # batch import
+            "onRename": True,                         # folder rename
+            "onSeriesAdd": False,                     # no file yet
+            "onSeriesDelete": True,                   # whole series gone
+            "onEpisodeFileDelete": True,              # one file gone
+            "onEpisodeFileDeleteForUpgrade": False,   # onUpgrade covers it
+        },
+        "radarr": {
+            **common_off,
+            "onDownload": True,                       # movie imported
+            "onUpgrade": True,                        # movie upgraded
+            "onRename": True,                         # folder rename
+            "onMovieAdded": False,                    # no file yet
+            "onMovieDelete": True,                    # whole movie gone
+            "onMovieFileDelete": True,                # one file gone
+            "onMovieFileDeleteForUpgrade": False,     # onUpgrade covers it
+        },
+        "lidarr": {
+            **common_off,
+            "onReleaseImport": True,                  # = onDownload (album)
+            "onUpgrade": True,
+            "onRename": True,                         # artist folder rename
+            "onTrackRetag": True,                     # file metadata rewrite
+            "onArtistAdd": False,                     # no file yet
+            "onArtistDelete": True,
+            "onAlbumDelete": True,
+            "onDownloadFailure": False,
+            "onImportFailure": False,
+        },
+    }
+    arr_specs = [("sonarr", "v3"), ("radarr", "v3"), ("lidarr", "v1")]
+    summary: dict[str, str] = {}
+    for app, ver in arr_specs:
+        url = ctx.service_url(app)
+        key = ctx.api_key(app)
+        if not url or not key:
+            summary[app] = "skipped (no url/key)"
+            continue
+        # *arrs serve at ``/app/<app>/`` URL base (set by preflight).
+        # Hitting the bare ``/api/...`` returns a 307 redirect, and
+        # urllib drops the POST body on 307 — request lands with no
+        # payload and the *arr rejects it. Always go through the
+        # prefixed path.
+        base = f"{url.rstrip('/')}/app/{app}/api/{ver}/notification"
+        headers = {"X-Api-Key": key, "Content-Type": "application/json"}
+
+        try:
+            req = _ur.Request(base, headers={"X-Api-Key": key})
+            with _ur.urlopen(req, timeout=10) as r:
+                existing = _json.loads(r.read())
+        except Exception as exc:
+            summary[app] = f"list error: {str(exc)[:60]}"
+            continue
+        if any(
+            isinstance(n, dict) and n.get("name") == notifier_name
+            for n in (existing or [])
+        ):
+            summary[app] = "already configured"
+            continue
+
+        payload = {
+            "name": notifier_name,
+            "implementation": "MediaBrowser",
+            "configContract": "MediaBrowserSettings",
+            # Per-app event flags from arr_event_maps above. Each
+            # *arr only persists fields it knows; sending the union
+            # would silently drop the events that have different
+            # names on different *arrs (e.g. Lidarr's
+            # ``onReleaseImport`` vs Sonarr's ``onDownload``).
+            **arr_event_maps[app],
+            # ``updateLibrary=true`` (field below) tells Jellyfin to
+            # scan the affected path; ``notify=false`` skips the
+            # in-app banner so users don't see a popup per import.
+            "fields": [
+                {"name": "host",          "value": "jellyfin"},
+                {"name": "port",          "value": 8096},
+                {"name": "useSsl",        "value": False},
+                {"name": "urlBase",       "value": ""},
+                {"name": "apiKey",        "value": jf_key},
+                {"name": "notify",        "value": False},
+                {"name": "updateLibrary", "value": True},
+            ],
+        }
+        try:
+            req = _ur.Request(
+                base, data=_json.dumps(payload).encode(),
+                method="POST", headers=headers,
+            )
+            with _ur.urlopen(req, timeout=15) as r:
+                summary[app] = f"created (HTTP {r.status})"
+        except _ue.HTTPError as exc:
+            summary[app] = f"HTTP {exc.code}: {exc.read()[:80].decode(errors='replace')}"
+        except Exception as exc:
+            summary[app] = str(exc)[:80]
+    return {"action": "ensure-arr-jellyfin-notifier", "summary": summary}
+
+
+def _qbit_completed_torrents(ctx: JobContext) -> list[dict]:
+    """Return qBit torrents at progress=1.0, with the fields needed
+    for manualimport routing: name, content_path, category."""
+    import http.cookiejar as _cj
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+    qb_user = os.environ.get("QBIT_USERNAME", "admin")
+    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
+    base = (ctx.service_url("qbittorrent") or "http://qbittorrent:8080").rstrip("/")
+    cookies = _cj.CookieJar()
+    opener = _ur.build_opener(_ur.HTTPCookieProcessor(cookies))
+    try:
+        opener.open(_ur.Request(
+            f"{base}/api/v2/auth/login",
+            data=_up.urlencode({"username": qb_user, "password": qb_pass}).encode(),
+        ), timeout=5)
+        with opener.open(f"{base}/api/v2/torrents/info", timeout=10) as r:
+            torrents = _json.loads(r.read())
+    except Exception:
+        return []
+    return [t for t in torrents if t.get("progress", 0) >= 1.0]
+
+
+def recover_stuck_imports(ctx: JobContext) -> dict:
+    """Find files that qBit finished downloading but the *arr never
+    imported, then force-import them via /api/v3/manualimport.
+
+    Why this exists (v1.0.150 — "Shelter incident"): the *arr's
+    queue cache can lag qBit by several minutes. Radarr's queue
+    sees ``sizeleft: 80MB`` while qBit reports the torrent at
+    100% / stalledUP. Auto-scan (DownloadedMoviesScan) skips files
+    Radarr's queue thinks are still downloading, so the file
+    sits in /data/torrents/completed/ forever.
+
+    ManualImport bypasses the queue check, force-imports the file,
+    then we DELETE the stale queue entry so the next recovery tick
+    doesn't redo the same work. The torrent stays in qBit (seeding)
+    — media-hygiene handles eventual cleanup by age/ratio, same as
+    a normally-imported torrent. ``RECOVER_STUCK_REMOVE_FROM_QBIT=1``
+    overrides for low-disk hosts that want aggressive cleanup.
+    """
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+    import urllib.error as _ue
+    remove_from_qbit = os.environ.get(
+        "RECOVER_STUCK_REMOVE_FROM_QBIT", "0",
+    ).strip() == "1"
+    arr_specs = [
+        # (app, api_ver, queue_movie_field, qbit_category)
+        ("sonarr",  "v3", "seriesId", "tv"),
+        ("radarr",  "v3", "movieId",  "movies"),
+        ("lidarr",  "v1", "albumId",  "music"),
+    ]
+    # qBit is the source of truth for "what's actually done".
+    # In-flight torrents (progress<1.0) have no data on disk yet,
+    # so it's wrong to try to import them — only consider
+    # progress=1.0. Group by category so we know which *arr to
+    # ask about each torrent.
+    qbit_done = _qbit_completed_torrents(ctx)
+    by_cat: dict[str, list[dict]] = {}
+    for t in qbit_done:
+        by_cat.setdefault(str(t.get("category") or ""), []).append(t)
+    summary: dict[str, dict] = {}
+    for app, ver, id_field, _cat in arr_specs:
+        url = ctx.service_url(app)
+        key = ctx.api_key(app)
+        if not url or not key:
+            summary[app] = {"skipped": "no url/key"}
+            continue
+        api_base = f"{url.rstrip('/')}/app/{app}/api/{ver}"
+        H = {"X-Api-Key": key, "Content-Type": "application/json"}
+
+        # 1. Get this *arr's current queue (so we can DELETE the
+        #    stuck entry after a successful import) — keyed by
+        #    qBit downloadId (hash) so we can match by torrent.
+        try:
+            req = _ur.Request(
+                f"{api_base}/queue?pageSize=200",
+                headers={"X-Api-Key": key},
+            )
+            with _ur.urlopen(req, timeout=15) as r:
+                queue_records = _json.loads(r.read()).get("records", [])
+        except Exception:
+            queue_records = []
+        queue_by_hash = {
+            (q.get("downloadId") or "").upper(): q for q in queue_records
+        }
+
+        # 2. For every qBit torrent in THIS *arr's category that's
+        #    100% complete, ask the *arr to manualimport its
+        #    content_path. The *arr decides if there's a match.
+        candidates = by_cat.get(_cat, [])
+        recovered = 0
+        skipped = 0
+        errors = 0
+        match_id_field = (
+            "movie" if app == "radarr"
+            else "series" if app == "sonarr"
+            else "album"
+        )
+        for t in candidates:
+            content_path = t.get("content_path") or ""
+            tor_hash = (t.get("hash") or "").upper()
+            if not content_path:
+                skipped += 1
+                continue
+            try:
+                probe_url = (
+                    f"{api_base}/manualimport"
+                    f"?folder={_up.quote(content_path)}&filterExistingFiles=true"
+                )
+                req = _ur.Request(probe_url, headers={"X-Api-Key": key})
+                with _ur.urlopen(req, timeout=20) as r:
+                    items = _json.loads(r.read())
+            except Exception:
+                errors += 1
+                continue
+            # Need: at least one file matched to a known *arr item
+            # with no rejections. ``filterExistingFiles=true`` makes
+            # this a no-op when /media/<title>/ already has the file.
+            usable = [
+                i for i in items
+                if not i.get("rejections")
+                and i.get("path")
+                and (i.get(match_id_field) or {}).get("id")
+            ]
+            if not usable:
+                skipped += 1
+                continue
+            files_payload = []
+            for i in usable:
+                matched_id = (i.get(match_id_field) or {}).get("id")
+                entry = {
+                    "path": i["path"],
+                    id_field: int(matched_id),
+                    "quality": i.get("quality") or {},
+                }
+                if app == "sonarr":
+                    eps = i.get("episodes") or []
+                    if eps:
+                        entry["episodeIds"] = [
+                            e.get("id") for e in eps if e.get("id")
+                        ]
+                files_payload.append(entry)
+            cmd_body = {
+                "name": "ManualImport", "files": files_payload,
+                "importMode": "auto",
+            }
+            try:
+                req = _ur.Request(
+                    f"{api_base}/command",
+                    data=_json.dumps(cmd_body).encode(),
+                    method="POST", headers=H,
+                )
+                _ur.urlopen(req, timeout=15)
+                recovered += 1
+            except Exception:
+                errors += 1
+                continue
+
+            # Clear matching queue entry by torrent hash so the
+            # *arr's "still downloading" cache doesn't re-flag
+            # this on the next tick. removeFromClient governed by
+            # env (default off — keep seeding, media-hygiene cleans
+            # up eventually).
+            stale_q = queue_by_hash.get(tor_hash)
+            if stale_q and stale_q.get("id"):
+                try:
+                    rm_param = "true" if remove_from_qbit else "false"
+                    del_url = (
+                        f"{api_base}/queue/{stale_q['id']}"
+                        f"?removeFromClient={rm_param}&blocklist=false"
+                    )
+                    _ur.urlopen(_ur.Request(
+                        del_url, method="DELETE", headers={"X-Api-Key": key},
+                    ), timeout=10)
+                except Exception:
+                    pass
+
+        summary[app] = {
+            "qbit_completed_in_category": len(candidates),
+            "imported": recovered,
+            "skipped": skipped,
+            "errors": errors,
+        }
+    return {
+        "action": "recover-stuck-imports",
+        "remove_from_qbit": remove_from_qbit,
+        "summary": summary,
+    }
+
+
+def scan_completed_downloads(ctx: JobContext) -> dict:
+    """Tell each *arr to scan its completed-downloads path and import
+    anything it recognizes.
+
+    Two paths into qBit produce content:
+      1. *arr drives qBit (Sonarr/Radarr add the torrent, qBit
+         downloads, *arr's webhook fires on completion → import)
+      2. The user adds a torrent to qBit directly (no *arr knows)
+
+    Path 2 leaves files in ``/data/torrents/completed/...`` that
+    nothing imports — they sit there forever, never reaching the
+    Jellyfin library.
+
+    Each *arr has a "scan downloaded" command (Sonarr's
+    ``DownloadedEpisodesScan``, Radarr's ``DownloadedMoviesScan``,
+    etc.) that walks its configured download path and imports any
+    file it can identify by metadata. Firing these on a 15m
+    schedule means user-added qBit content reaches Jellyfin within
+    one tick — no manual intervention.
+    """
+    import json as _json
+    import urllib.request as _ur
+    import urllib.error as _ue
+    # ``DownloadedXScan`` command name + completed path per *arr.
+    # Path defaults match qBit's category save_paths configured
+    # in download_clients.yaml + bin/init-permissions.
+    arr_specs = [
+        ("sonarr",  "v3", "DownloadedEpisodesScan", "/data/torrents/completed/tv"),
+        ("radarr",  "v3", "DownloadedMoviesScan",   "/data/torrents/completed/movies"),
+        ("lidarr",  "v1", "DownloadedAlbumsScan",   "/data/torrents/completed/music"),
+        ("readarr", "v1", "DownloadedBooksScan",    "/data/torrents/completed/books"),
+    ]
+    fired: dict[str, str] = {}
+    for app, ver, cmd, path in arr_specs:
+        url = ctx.service_url(app)
+        key = ctx.api_key(app)
+        if not url or not key:
+            fired[app] = "skipped (no url/key)"
+            continue
+        endpoint = f"{url.rstrip('/')}/api/{ver}/command"
+        body = _json.dumps({"name": cmd, "path": path}).encode()
+        req = _ur.Request(endpoint, data=body, method="POST", headers={
+            "X-Api-Key": key, "Content-Type": "application/json",
+        })
+        try:
+            with _ur.urlopen(req, timeout=10) as resp:
+                fired[app] = f"queued ({resp.status})"
+        except _ue.HTTPError as exc:
+            fired[app] = f"HTTP {exc.code}"
+        except Exception as exc:
+            fired[app] = str(exc)[:80]
+    return {"action": "scan-completed-downloads", "summary": fired}
+
+
 def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
     """Patch each *arr's runtime quality settings to release-friendly
     defaults. Without this, the *arr family ships defaults that

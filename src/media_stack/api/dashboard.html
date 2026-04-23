@@ -301,6 +301,40 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   </div>
 </header>
 <div class="env-banner" id="env-banner" style="display:none"></div>
+<!-- DNS-readiness banner — surfaces when the gateway hostname
+     (apps.<sub>.<domain>) doesn't resolve from the controller. Without
+     DNS, services still work via direct port URLs (rendered by the
+     dashboard's URL builder) but Authelia SSO is disabled because
+     OIDC needs a stable HTTPS host. The banner is dismissible (state
+     in localStorage); it re-shows after a clean redeploy or when the
+     user clears site data. (v1.0.147 — promoted from buried hint
+     inside the routing-edit panel.) -->
+<div id="dns-banner" style="display:none;background:linear-gradient(90deg,var(--bg3) 0%,var(--bg2) 4px,var(--bg2) 100%);border-left:4px solid var(--blue);border-bottom:1px solid var(--border);padding:14px 24px;font-family:system-ui">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap">
+    <div style="flex:1;min-width:320px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <span style="font-size:1.1em" aria-hidden="true">🔐</span>
+        <span style="font-weight:600;color:var(--fg);font-size:1em">Enable single sign-on</span>
+        <span style="background:var(--bg4);color:var(--fg3);padding:1px 8px;border-radius:10px;font-size:.7em;letter-spacing:.05em;text-transform:uppercase">Optional · 1 min</span>
+      </div>
+      <div style="color:var(--fg2);font-size:.88em;line-height:1.45">
+        Services work now via direct ports. To enable Authelia SSO + HTTPS, add the stack hostnames to your device's hosts file.
+        <a href="#" onclick="document.getElementById('dns-banner-details').style.display='block';this.style.display='none';return false;" style="color:var(--blue);text-decoration:none;font-weight:500">Show details →</a>
+      </div>
+      <div id="dns-banner-details" style="display:none;margin-top:8px">
+        <code id="dns-banner-hosts" style="user-select:all;display:block;background:var(--bg);padding:8px 12px;border-radius:4px;font-size:.82em;line-height:1.5;white-space:pre-wrap;color:var(--fg2);max-height:120px;overflow-y:auto;border:1px solid var(--border)"></code>
+        <div style="color:var(--fg3);font-size:.78em;margin-top:6px">
+          Linux/macOS: <code style="background:var(--bg);padding:1px 5px;border-radius:2px">/etc/hosts</code>
+          &middot; Windows: <code style="background:var(--bg);padding:1px 5px;border-radius:2px">C:\Windows\System32\drivers\etc\hosts</code>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+      <button onclick="copyDnsBanner()" class="btn-primary" style="font-size:.85em;padding:8px 16px;font-weight:600">Copy hosts entry</button>
+      <button onclick="dismissDnsBanner()" style="font-size:.78em;padding:6px 10px;background:transparent;color:var(--fg3);border:none;cursor:pointer" title="Dismiss this banner (you can re-enable it by clearing site data)">Not now</button>
+    </div>
+  </div>
+</div>
 <!-- Stack-update banner: shows when /api/stack/update finds a newer
      image tag in the registry. ``loadUpdateBanner()`` polls on page
      load + every 5 min. ``stackUpgradeNow()`` triggers the in-place
@@ -360,7 +394,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:8px">
       <label class="switch" style="width:34px;height:18px"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"><span class="slider" style="border-radius:9px"></span></label>
-      <span id="autoLabel" style="font-size:.82em;font-weight:600">Auto-Downloads</span>
+      <span id="autoLabel" style="font-size:.82em;font-weight:600" title="When on, new content is auto-queued from import lists, RSS, and scheduled searches. When off, in-progress downloads keep running — only the auto-queue stops.">Auto-Add Content: <b>on</b></span>
     </div>
     <span style="border-left:1px solid var(--border);height:20px"></span>
     <div style="display:flex;align-items:center;gap:8px" title="Enable once SABnzbd has working usenet provider credentials. When off, grabs route to qBittorrent immediately.">
@@ -755,6 +789,21 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
 
 <div id="toast"></div>
 <div id="confirm-root"></div>
+<footer style="margin:32px 24px 16px;padding:18px 0;border-top:1px solid var(--border);text-align:center">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:14px">
+    <div style="color:var(--fg2);font-size:.82em">If Media Stack saves you a weekend, consider supporting the project.</div>
+    <a href="https://www.paypal.com/donate?hosted_button_id=XKDG7XXVEQK3W"
+       target="_blank" rel="noopener"
+       title="PayPal — secure donation">
+      <img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif"
+           alt="Donate with PayPal" border="0"
+           style="display:block" />
+    </a>
+  </div>
+  <div style="color:var(--fg3);font-size:.78em">
+    &copy; 2026 <a href="https://iomio.io" style="color:var(--fg2);text-decoration:none" target="_blank" rel="noopener">Iomio.io</a> &middot; Matthew Loschiavo &middot; All rights reserved
+  </div>
+</footer>
 <script>
 /* Authenticated fetch wrapper — ensures credentials are sent on every request */
 function apiFetch(url,opts){opts=opts||{};opts.credentials='same-origin';return window.fetch(url,opts);}
@@ -1177,7 +1226,7 @@ async function cancelAction(){
 }
 async function toggleAuto(on){
   try{await apiFetch('/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':mediaStackCsrfToken()},body:JSON.stringify({auto_download_content:on})});
-    document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(on?'on':'off')+'</b>';
+    document.getElementById('autoLabel').innerHTML='Auto-Add Content: <b style="color:'+(on?'var(--ok)':'var(--warn)')+'">'+(on?'on':'paused')+'</b>';
     toast('Auto-downloads '+(on?'enabled':'disabled')+' — applying to *arrs...');
     // Only re-run the ONE job that consumes auto_download_content
     // (apply-arr-runtime-defaults). The previous behaviour fired
@@ -1288,7 +1337,13 @@ function getSvcUrl(svcId){
      server didn't send published_port (older controller), fall
      back to port. */
   const p=s?(s.published_port||s.port):80;
-  return 'http://'+location.hostname+':'+p+'/';
+  // Some services (Maintainerr) don't serve at root — they only
+  // mount their UI at /app/<svcId>/. The server tells us via
+  // preserve_path_prefix; if true, we MUST include the prefix or
+  // the user gets a 404. Symmetric services (Sonarr UI at /, etc.)
+  // omit the prefix to avoid breaking them. (v1.0.145.)
+  const suffix=(s&&s.preserve_path_prefix)?('/app/'+svcId+'/'):'/';
+  return 'http://'+location.hostname+':'+p+suffix;
 }
 
 /* Quick Links — only enabled services. Mirrors the homepage-tile
@@ -1351,7 +1406,7 @@ async function load(){
 
     const cfg=d.runtime_config||{},autoOn=cfg.auto_download_content===true||cfg.auto_download_content==='1';
     document.getElementById('autoToggle').checked=autoOn;
-    document.getElementById('autoLabel').innerHTML='Auto-Downloads: <b>'+(autoOn?'on':'off')+'</b>';
+    document.getElementById('autoLabel').innerHTML='Auto-Add Content: <b style="color:'+(autoOn?'var(--ok)':'var(--warn)')+'">'+(autoOn?'on':'paused')+'</b>';
     /* Usenet toggle state — cfg.download_clients.sabnzbd.configure_arr_clients.
        Default false until the operator flips it on after setting up
        a provider in the SABnzbd UI. */
@@ -1933,6 +1988,63 @@ async function loadEnv(){
     // Rebuild links with real URLs now that we have env data.
     buildQuickLinks();buildDns();renderMatrix();renderSvcMgmtTips();
   }}catch(e){}
+  // After env loads, gate the DNS-readiness banner on the gateway
+  // probe. Done here so it runs once per page load rather than on
+  // every nav.
+  checkDnsReadiness();
+}
+
+/* DNS-readiness banner. Hits the existing /api/routing-probe endpoint
+   to learn whether the controller can reach itself via the gateway
+   hostname. If localhost works but gateway/subdomain don't, the user
+   needs to add hosts entries (or DNS records) to enable SSO. */
+async function checkDnsReadiness(){
+  if(localStorage.getItem('dns-banner-dismissed')==='1')return;
+  try{
+    const r=await apiFetch('/api/routing-probe');
+    if(!r.ok)return;
+    const d=await r.json();
+    // Use the controller's own row (always present) to test the
+    // gateway path — cheaper + more reliable than scanning all
+    // services.
+    const ctrl=(d.services||{})['controller']||(d.services||{})['media-stack-controller'];
+    if(!ctrl)return;
+    const gwOk=ctrl.gateway&&ctrl.gateway.ok;
+    const subOk=ctrl.subdomain&&ctrl.subdomain.ok;
+    if(gwOk&&subOk)return; // both work — DNS already set up
+    // Build the hosts entry from /api/routing's authoritative
+    // hostname list so the user copies the EXACT names the stack
+    // expects.
+    let gwHost='apps.media-stack.local',sub='media-stack',dom='local';
+    try{
+      const rr=await apiFetch('/api/routing');
+      if(rr.ok){const rc=await rr.json();
+        gwHost=rc.gateway_host||gwHost;
+        sub=rc.stack_subdomain||sub;
+        dom=rc.base_domain||dom;
+      }
+    }catch(e){}
+    const subdomains=['authelia','jellyfin','jellyseerr','sonarr','radarr',
+                      'lidarr','readarr','prowlarr','bazarr','qbittorrent',
+                      'sabnzbd','homepage','maintainerr','tautulli','controller']
+      .map(s=>s+'.'+sub+'.'+dom).join(' ');
+    const hosts='127.0.0.1  '+gwHost+' '+subdomains;
+    const el=document.getElementById('dns-banner-hosts');
+    if(el)el.textContent=hosts;
+    document.getElementById('dns-banner').style.display='block';
+  }catch(e){}
+}
+function copyDnsBanner(){
+  const t=document.getElementById('dns-banner-hosts').textContent;
+  // Reveal the hosts block if collapsed so the user can see what was
+  // copied (and re-copy by selecting if their clipboard is restricted).
+  const det=document.getElementById('dns-banner-details');
+  if(det&&det.style.display==='none')det.style.display='block';
+  navigator.clipboard.writeText(t).then(()=>toast('Copied — paste into /etc/hosts')).catch(()=>toast('Copy failed',true));
+}
+function dismissDnsBanner(){
+  localStorage.setItem('dns-banner-dismissed','1');
+  document.getElementById('dns-banner').style.display='none';
 }
 
 /* Routing / DNS Matrix */
@@ -4020,7 +4132,11 @@ function renderWizardSteps(){
   const baseUrl='http://'+gwHost+portStr;
   const directMedia=routing.direct_hosts?.media_server?'http://'+routing.direct_hosts.media_server+portStr:'';
 
-  let h='<div style="margin-bottom:12px;color:var(--ok);font-weight:600">Your media stack is configured and running.</div>';
+  /* Celebration header — fresh-install bootstrap is a multi-minute process; the user deserves a clear "you made it" moment instead of a one-line muted status. */
+  let h='<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:var(--bg4);border-left:4px solid var(--ok);border-radius:6px">';
+  h+='<div style="font-size:1.6em;line-height:1">&#10003;</div>';
+  h+='<div><div style="color:var(--ok);font-weight:700;font-size:1.05em">Your media stack is ready</div>';
+  h+='<div style="color:var(--fg2);font-size:.85em">A few quick steps below to finish setup &mdash; or jump straight in.</div></div></div>';
 
   /* Resolve the deployed media-server name from the profile's technology_bindings, NOT by guessing through SVCS — the registry contains every contract we ship (jellyfin, plex, emby) regardless of which the user actually deployed, so a Find() over the registry returns whichever happens to be first in array order. The user reported "Connect to Emby" copy on a Jellyfin-only stack because emby.yaml exists in the registry but isn't bound. */
   const mediaId=(_techBindings&&_techBindings.media_server)||'jellyfin';
@@ -4045,27 +4161,16 @@ function renderWizardSteps(){
   h+='<div style="font-size:.78em;color:var(--fg3)">Create with role <code>adult</code> (or <code>family</code> for restricted libraries). Sign in with the new account on '+_escHtml(mediaName)+' / Jellyseerr — admin stays parked for stack admin tasks.</div>';
   h+='</div>';
 
-  // Access your services — only the user-facing apps (media server + request UI). Indexers, the *arrs, downloaders, and ops tools are admin surface and live in the services table.
-  const userFacingIds=['jellyfin','plex','emby','jellyseerr','overseerr','homepage'];
-  const userFacing=SVCS.filter(s=>s.port&&userFacingIds.includes(s.id)&&SVC_HEALTH[s.id]!=='disabled');
-  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Access Your Services</div>';
-  h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0">';
-  if(userFacing.length===0){
-    h+='<span style="color:var(--fg3);font-size:.85em">No user-facing apps enabled — see the services table below.</span>';
-  } else {
-    for(const s of userFacing){
-      const url=baseUrl+prefix+'/'+s.id;
-      h+='<a href="'+_escHtml(url)+'" target="_blank" class="btn-secondary" style="padding:4px 10px;font-size:.82em;text-decoration:none">'+_escHtml(s.name)+'</a>';
-    }
-  }
-  h+='</div>';
-  if(directMedia)h+='<div style="font-size:.82em;color:var(--fg3)">'+_escHtml(mediaName)+' direct: <a href="'+_escHtml(directMedia)+'" target="_blank" style="color:var(--blue)">'+_escHtml(directMedia)+'</a></div>';
-  h+='</div>';
-
-  // Step 2 (HTTPS only): Trust the self-signed CA so the browser stops warning. Pinned to a real download endpoint so users do not have to dig the cert out of the filesystem.
+  // Step 2 (HTTPS only): Trust the self-signed CA BEFORE the user
+  // clicks any service buttons — every "Open Jellyfin / Jellyseerr"
+  // link triggers a browser cert warning until the cert is trusted.
+  // Putting cert-trust AFTER the service buttons trained users to
+  // click through warnings before reaching the trust step. Pinned
+  // to a real download endpoint so users don't have to dig the
+  // cert out of the filesystem.
   if(httpsActive){
-    h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Trust the Stack Certificate (Recommended)</div>';
-    h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">Your stack uses a self-signed HTTPS certificate. Browsers will warn on every visit until you trust it once. After trusting, the warnings disappear and SSO sign-in works smoothly.</p>';
+    h+='<div class="action-group" style="margin-bottom:10px;border-left:3px solid var(--accent);padding-left:10px"><div class="action-group-title">'+(step++)+'. Trust the Stack Certificate <span style="color:var(--fg3);font-weight:400;font-size:.85em">(do this first)</span></div>';
+    h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">Your stack uses a self-signed HTTPS certificate. Browsers will warn on every visit until you trust it once. <b>Trust it before clicking any service link below</b> — otherwise SSO sign-in keeps looping at the certificate warning.</p>';
     h+='<div style="margin:8px 0"><a href="/api/tls/certificate/download" download="media-stack-ca.pem" class="btn-primary" style="padding:6px 14px;font-size:.85em;text-decoration:none">Download certificate</a></div>';
     h+='<details style="margin-top:6px;font-size:.85em"><summary style="cursor:pointer;color:var(--fg2);font-weight:600">Per-device install instructions</summary>';
     h+='<div style="margin-top:6px;color:var(--fg2);line-height:1.7">';
@@ -4086,26 +4191,66 @@ function renderWizardSteps(){
     h+='</div>';
   }
 
-  // Step 3: DNS / Host file setup
-  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Set Up DNS (Optional)</div>';
-  h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">To access services by name, add this to your hosts file or local DNS:</p>';
-  h+='<pre class="profile-pre" style="font-size:.82em">';
-  h+=_escHtml(location.hostname)+' '+_escHtml(gwHost)+'\n';
-  if(directMedia){const host=new URL(directMedia).hostname;h+=_escHtml(location.hostname)+' '+_escHtml(host)+'\n';}
-  h+='</pre>';
-  h+='<div style="font-size:.78em;color:var(--fg3)">On Windows: <code>C:\\Windows\\System32\\drivers\\etc\\hosts</code> · On Mac/Linux: <code>/etc/hosts</code></div>';
+  // Access your services — only the user-facing apps (media server +
+  // request UI). Indexers, the *arrs, downloaders, and ops tools are
+  // admin surface and live in the services table. This step renders
+  // AFTER the cert-trust step (above) so users trust the cert before
+  // clicking through to the apps.
+  const userFacingIds=['jellyfin','plex','emby','jellyseerr','overseerr','homepage'];
+  const userFacing=SVCS.filter(s=>s.port&&userFacingIds.includes(s.id)&&SVC_HEALTH[s.id]!=='disabled');
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Access Your Services</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0">';
+  if(userFacing.length===0){
+    h+='<span style="color:var(--fg3);font-size:.85em">No user-facing apps enabled — see the services table below.</span>';
+  } else {
+    /* Promote the FINAL CTAs (the actual user-facing apps) to primary buttons — they're the reason the user is here. Secondary styling on these conflicted with primary on "Open Users tab" / "Download certificate" earlier in the wizard, which made the wrong things look the most clickable. */
+    for(const s of userFacing){
+      const url=baseUrl+prefix+'/'+s.id;
+      h+='<a href="'+_escHtml(url)+'" target="_blank" class="btn-primary" style="padding:6px 14px;font-size:.85em;text-decoration:none">Open '+_escHtml(s.name)+' &rarr;</a>';
+    }
+  }
+  h+='</div>';
+  if(directMedia)h+='<div style="font-size:.82em;color:var(--fg3)">'+_escHtml(mediaName)+' direct: <a href="'+_escHtml(directMedia)+'" target="_blank" style="color:var(--blue)">'+_escHtml(directMedia)+'</a></div>';
   h+='</div>';
 
-  // Start Watching — request flow is optional; watching isn't.
-  // Auto-downloads is a config toggle the user has to flip on
-  // (it's off by default so a fresh install doesn't hammer
-  // indexers before any libraries exist).
+  // DNS / Host file setup — mirror the comprehensive list used by
+  // the DNS-readiness banner at the top of the page. Earlier this
+  // step shipped only ``gwHost`` + the direct media host, which
+  // was MUCH less than the user actually needs: every per-service
+  // subdomain (jellyseerr, sonarr, etc.) also resolves through
+  // Envoy and would 404 on a name lookup if the user only added
+  // ``apps.media-stack.local``. Building from the same subdomain
+  // list keeps the wizard and the banner consistent.
+  const _stackSub=routing.stack_subdomain||'media-stack';
+  const _baseDom=routing.base_domain||'local';
+  const _gwIp=location.hostname;
+  const _subdomainList=['authelia','jellyfin','jellyseerr','sonarr','radarr',
+                        'lidarr','readarr','prowlarr','bazarr','qbittorrent',
+                        'sabnzbd','homepage','maintainerr','tautulli','controller']
+    .map(s=>s+'.'+_stackSub+'.'+_baseDom).join(' ');
+  const _dnsHosts=_gwIp+'  '+gwHost+' '+_subdomainList;
+  h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Set Up DNS (Optional)</div>';
+  h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">To access services by name (instead of by IP), add this single line to your hosts file or local DNS. It maps every service hostname to your stack&apos;s IP:</p>';
+  h+='<pre id="wizard-dns-hosts" class="profile-pre" style="font-size:.78em;margin:0;white-space:pre-wrap;word-break:break-all">'+_escHtml(_dnsHosts)+'</pre>';
+  /* Copy CTA matches the DNS-readiness banner pattern at the top of the page — without it the user has to manually select the pre-block, and on iOS that selection is fiddly. */
+  h+='<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+  h+='<button class="btn-primary" style="padding:6px 14px;font-size:.85em" onclick="(function(){const t=document.getElementById(\'wizard-dns-hosts\').textContent;navigator.clipboard.writeText(t).then(()=>toast(\'Copied — paste into your hosts file\')).catch(()=>toast(\'Copy failed\',true));})()">Copy hosts entry</button>';
+  h+='<span style="font-size:.78em;color:var(--fg3)">Windows: <code>C:\\Windows\\System32\\drivers\\etc\\hosts</code> · Mac/Linux: <code>/etc/hosts</code></span>';
+  h+='</div>';
+  h+='</div>';
+
+  // Start Watching — leads with "open Jellyfin to start watching"
+  // because by the time the user reads this, downloads from the
+  // seed-series + popular-movies import lists are already in
+  // progress. Jellyseerr is the OPTIONAL "request more content"
+  // path, not the primary entry point. Earlier ordering had
+  // request-flow first, which sent users to Jellyseerr to add
+  // content they already had landing.
   h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Start Watching</div>';
   h+='<ol style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
-  h+='<li><span style="color:var(--fg3);font-size:.85em;font-weight:600">Optional</span> — open <b>Jellyseerr</b> to search and request movies/shows (your family can also request from their own accounts)</li>';
-  h+='<li><span style="color:var(--fg3);font-size:.85em;font-weight:600">Optional</span> — turn on <b>Auto-Downloads</b>. In the Actions panel the toggle starts as <code>off</code>; switch it to <code>on</code> so indexer hits get queued automatically.</li>';
-  h+='<li>Downloads start automatically via your torrent/usenet clients</li>';
-  h+='<li>Open <b>'+_escHtml(mediaName)+'</b> in a browser to watch — it picks up new media automatically. For TV / mobile playback, see the next step.</li>';
+  h+='<li>Downloads from the seed library are likely already in progress. Open <b>'+_escHtml(mediaName)+'</b> to watch &mdash; new media appears automatically as it finishes.</li>';
+  h+='<li><span style="color:var(--fg3);font-size:.85em;font-weight:600">Optional</span> &mdash; open <b>Jellyseerr</b> to search and request additional movies/shows (family members can request from their own accounts too).</li>';
+  h+='<li>For TV / mobile playback, see the next step.</li>';
   h+='</ol></div>';
 
   // Connect your TV
@@ -4116,9 +4261,12 @@ function renderWizardSteps(){
   h+='<li>Sign in with the <b>non-admin user</b> you created above (or <code>admin</code> if you skipped that step — but switch to a regular user when you can)</li>';
   h+='</ol></div>';
 
-  // Troubleshooting
-  h+='<div class="action-group"><div class="action-group-title">'+(step++)+'. Not Working?</div>';
-  h+='<ul style="margin:4px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
+  /* Troubleshooting — collapsed by default so the happy-path doesn't
+     terminate in error-handling. The numbered step above ("Connect
+     Your TV") is the real finish line. */
+  h+='<details style="margin-top:8px;background:var(--bg4);border-radius:6px;padding:8px 12px">';
+  h+='<summary style="cursor:pointer;color:var(--fg2);font-weight:600;font-size:.9em">Something not working? Troubleshooting tips</summary>';
+  h+='<ul style="margin:8px 0 0 16px;color:var(--fg2);font-size:.85em;line-height:1.8">';
   h+='<li><b>Services show "pending"</b> — wait 2-3 minutes for bootstrap to finish, then refresh</li>';
   h+='<li><b>Can\'t access by hostname</b> — check the DNS / hosts file step above</li>';
   h+='<li><b>Downloads not starting</b> — go to Content > Indexers and click "Discover Indexers"</li>';
@@ -4128,7 +4276,7 @@ function renderWizardSteps(){
     h+='<li><b>Browser keeps warning about the certificate</b> — install the cert from the "Trust the Stack Certificate" step above. After trusting once, Sign-in stops looping at the SSO portal.</li>';
   }
   h+='<li><b>Media not appearing</b> — go to Config > Libraries to verify your media folder paths</li>';
-  h+='</ul></div>';
+  h+='</ul></details>';
 
   el.innerHTML=h;
 }

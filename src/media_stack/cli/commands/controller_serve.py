@@ -418,6 +418,58 @@ def _run_serve(args: argparse.Namespace) -> None:
                     "[INFO] Scheduler: seeded default 'run-media-hygiene' "
                     "(every 1h)"
                 )
+            # Periodic scan of completed-downloads paths so files the
+            # user dropped into qBit directly (or that the *arr missed
+            # via webhook) get picked up. Each *arr has a
+            # ``DownloadedMoviesScan`` / ``DownloadedEpisodesScan``
+            # command that walks its configured download path and
+            # imports anything it recognizes by metadata. Without this
+            # job, manually-added qBit content never reaches the media
+            # library. (v1.0.144.)
+            if "scan-completed-downloads" not in existing:
+                _sched.add_schedule(
+                    action="scan-completed-downloads",
+                    interval_seconds=900,  # 15min
+                    label="Scan completed downloads into *arr libraries (15m)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default "
+                    "'scan-completed-downloads' (every 15m)"
+                )
+            # Hourly heartbeat for mass-search-throttled. The adapter
+            # itself is adaptive — when the library is "thin" or qBit
+            # has been idle, it runs aggressively (every tick); when
+            # the library is healthy AND qBit is busy downloading, it
+            # short-circuits as a no-op. Self-throttling: empty
+            # installs get hammered with searches so first-hour
+            # impressions land fast; healthy installs run lazily.
+            # (v1.0.148.)
+            if "mass-search-throttled" not in existing:
+                _sched.add_schedule(
+                    action="mass-search-throttled",
+                    interval_seconds=3600,  # 1h heartbeat; adapter decides
+                    label="Adaptive search for missing content (hourly)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default "
+                    "'mass-search-throttled' (every 1h, adaptive)"
+                )
+            # Catches the "qBit-completed but *arr never imported"
+            # failure mode (Shelter + Strangers incidents, v1.0.150).
+            # Two paths: queue entries stuck "downloading" forever,
+            # AND orphan files in /data/torrents/completed/ that the
+            # *arr's queue doesn't know about. Both get force-imported
+            # via /api/v3/manualimport.
+            if "recover-stuck-imports" not in existing:
+                _sched.add_schedule(
+                    action="recover-stuck-imports",
+                    interval_seconds=1800,  # 30min
+                    label="Recover stuck/orphan downloads (every 30m)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default "
+                    "'recover-stuck-imports' (every 30m)"
+                )
         except Exception as exc:
             runtime_platform.log(
                 f"[WARN] Scheduler seed failed: {exc}"

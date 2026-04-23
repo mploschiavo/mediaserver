@@ -87,7 +87,7 @@ APP_TAGS: dict[str, str] = {
 # probing 73 indexers × 4 apps = 292 search queries is slow on a
 # fresh install (each query ~1-5s; total ~5-25 minutes worst
 # case).  Cache file lives next to indexer-reputation-state.json.
-_CACHE_VERSION = 2  # bumped v1.0.122 — categories-param fix invalidates v1 entries
+_CACHE_VERSION = 3  # bumped v1.0.140 — probe now uses real query (was empty)
 _DEFAULT_CACHE_PATH = Path(
     os.environ.get(
         "INDEXER_APP_MATCH_STATE_PATH",
@@ -184,9 +184,27 @@ def _probe_indexer_for_app(
     cats = APP_CATEGORIES.get(app, [])
     if not cats:
         return False
+    # Per-app probe term. An EMPTY ``query=`` returned 0 hits for many
+    # broad indexers (TPB, 1337x, etc.) when combined with a category
+    # filter — Cardigann definitions translate the empty query into a
+    # request that the upstream tracker can't satisfy. The fix is a
+    # short, well-seeded term that any tracker covering the app's
+    # content type WILL have. Public-domain / well-known content keeps
+    # this safe as a probe (no risk of returning nothing for legal
+    # reasons). (v1.0.140 — root-caused after Pirate Bay returned 100
+    # hits for "Inception" with no category filter and 0 hits for the
+    # same query with categories=2000.)
+    _PROBE_QUERY = {
+        "sonarr":  "office",   # broad TV title — eztv, TPB, etc. carry it.
+        "radarr":  "inception",  # Famous movie — every movie tracker has it.
+        "lidarr":  "metallica",  # Major artist — universal music coverage.
+        "readarr": "shakespeare",  # Classic author — universal book coverage.
+    }
+    query = _PROBE_QUERY.get(app, "linux")
     cat_qs = "&".join(f"categories={c}" for c in cats)
+    from urllib.parse import quote as _quote
     path = (
-        f"/api/v1/search?type=search&query=&{cat_qs}"
+        f"/api/v1/search?type=search&query={_quote(query)}&{cat_qs}"
         f"&indexerIds={indexer_id}&limit=5"
     )
     status, body, _ = http_request(prowlarr_url, path, api_key=api_key)

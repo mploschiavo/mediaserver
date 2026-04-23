@@ -139,7 +139,11 @@ class GuardrailConfigService:
         # with limited disk, those pile up fast. Operators with
         # large disks can override per-cfg; the defaults assume
         # "I want my queue clean and downloads only fail-fast".
-        stale_max_age_hours = ops.to_float(stale_cfg.get("max_age_hours"), 36.0) or 36.0
+        # 24h default — was 36h; tightened per user request to keep
+        # qBit lean. Operators with ratio targets that need longer
+        # seeding can override via guardrails.stale.max_age_hours.
+        # (v1.0.150.)
+        stale_max_age_hours = ops.to_float(stale_cfg.get("max_age_hours"), 24.0) or 24.0
         stale_max_stalled_hours = ops.to_float(stale_cfg.get("max_stalled_hours"), 4.0) or 4.0
         stale_max_eta_seconds = ops.to_int(stale_cfg.get("max_eta_seconds"), 6 * 3600)
         stale_min_progress = ops.to_float(stale_cfg.get("min_progress"), 0.98)

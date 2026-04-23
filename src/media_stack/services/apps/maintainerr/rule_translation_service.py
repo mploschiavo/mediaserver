@@ -507,8 +507,6 @@ class MaintainerrRuleTranslationService:
             notifications = []
         cron_schedule = self._text(rule.get("ruleHandlerCronSchedule"))
         tautulli_override = rule.get("tautulliWatchedPercentOverride")
-        radarr_settings_id = rule.get("radarrSettingsId")
-        sonarr_settings_id = rule.get("sonarrSettingsId")
         payloads: list[dict[str, Any]] = []
         multi_library = len(target_libraries) > 1
 
@@ -538,12 +536,58 @@ class MaintainerrRuleTranslationService:
                 payload["ruleHandlerCronSchedule"] = cron_schedule
             if tautulli_override is not None:
                 payload["tautulliWatchedPercentOverride"] = tautulli_override
-            if radarr_settings_id is not None:
-                payload["radarrSettingsId"] = radarr_settings_id
-            if sonarr_settings_id is not None:
-                payload["sonarrSettingsId"] = sonarr_settings_id
+            # *arr server linking is now applied PER-PAYLOAD by the
+            # caller via ``_link_arr_settings``. Doing it here would
+            # set BOTH IDs on every rule regardless of library type,
+            # which breaks Maintainerr's "select your *arr" UI.
             payloads.append(payload)
         return payloads
+
+    def _link_arr_settings(
+        self,
+        payload: dict[str, Any],
+        radarr_id: int | None,
+        sonarr_id: int | None,
+        *,
+        explicit_radarr: int | None = None,
+        explicit_sonarr: int | None = None,
+    ) -> None:
+        """Set radarrSettingsId/sonarrSettingsId on a rule payload
+        based on its dataType. Movies → Radarr only; TV Shows →
+        Sonarr only. Explicit values from the rule definition win
+        over the auto-resolved IDs. Other dataTypes (music, books)
+        get neither — Maintainerr only links rules to *arr that
+        manage that media type."""
+        data_type = str(payload.get("dataType") or "").strip().lower()
+        if data_type in ("movie", "movies"):
+            chosen = explicit_radarr if explicit_radarr is not None else radarr_id
+            if chosen is not None:
+                payload["radarrSettingsId"] = chosen
+        elif data_type in ("show", "shows", "tv", "episode", "season"):
+            chosen = explicit_sonarr if explicit_sonarr is not None else sonarr_id
+            if chosen is not None:
+                payload["sonarrSettingsId"] = chosen
+
+    def _resolve_arr_settings_ids(self, maintainerr_url: str) -> tuple[int | None, int | None]:
+        """Look up the first configured Radarr/Sonarr server IDs from
+        Maintainerr's settings API. The rule payloads need these to
+        link a rule to its *arr — without them, Maintainerr's UI shows
+        "Radarr server: None" and rules can't delete from the *arr,
+        only from the Jellyfin library. (v1.0.146.)"""
+        radarr_id = sonarr_id = None
+        try:
+            status, data, _ = self.deps.request(maintainerr_url, "/api/settings/radarr")
+            if status == 200 and isinstance(data, list) and data:
+                radarr_id = data[0].get("id")
+        except Exception as exc:
+            self.deps.log(f"[WARN] Maintainerr: radarr settings lookup failed: {exc}")
+        try:
+            status, data, _ = self.deps.request(maintainerr_url, "/api/settings/sonarr")
+            if status == 200 and isinstance(data, list) and data:
+                sonarr_id = data[0].get("id")
+        except Exception as exc:
+            self.deps.log(f"[WARN] Maintainerr: sonarr settings lookup failed: {exc}")
+        return radarr_id, sonarr_id
 
     def _desired_rule_payloads(
         self,
@@ -554,6 +598,7 @@ class MaintainerrRuleTranslationService:
     ) -> list[dict[str, Any]]:
         by_title = {self._token(lib["title"]): lib for lib in libraries}
         desired: list[dict[str, Any]] = []
+        radarr_settings_id, sonarr_settings_id = self._resolve_arr_settings_ids(maintainerr_url)
 
         for rule in policy_rules:
             if not isinstance(rule, dict):
@@ -580,14 +625,24 @@ class MaintainerrRuleTranslationService:
                 continue
 
             if isinstance(resolved_rule.get("rules"), list):
-                desired.extend(
-                    self._native_rule_payloads(
-                        rule=resolved_rule,
-                        base_name=base_name,
-                        description=description,
-                        target_libraries=target_libraries,
-                    )
+                native_payloads = self._native_rule_payloads(
+                    rule=resolved_rule,
+                    base_name=base_name,
+                    description=description,
+                    target_libraries=target_libraries,
                 )
+                # Library-type-aware *arr linking: a Movies-library
+                # rule should ONLY have radarrSettingsId; a TV Shows-
+                # library rule should ONLY have sonarrSettingsId.
+                # Setting both — or the wrong one — leaves the UI's
+                # required dropdown blank. (v1.0.146.)
+                for p in native_payloads:
+                    self._link_arr_settings(
+                        p, radarr_settings_id, sonarr_settings_id,
+                        explicit_radarr=resolved_rule.get("radarrSettingsId"),
+                        explicit_sonarr=resolved_rule.get("sonarrSettingsId"),
+                    )
+                desired.extend(native_payloads)
                 continue
 
             conditions = resolved_rule.get("conditions") or {}
@@ -623,24 +678,26 @@ class MaintainerrRuleTranslationService:
                     )
                     rules = [self._fallback_condition(data_type)]
 
-                desired.append(
-                    {
-                        "libraryId": lib["id"],
-                        "name": rule_name,
-                        "description": description,
-                        "isActive": True,
-                        "arrAction": arr_action,
-                        "useRules": True,
-                        "listExclusions": False,
-                        "forceSeerr": force_seerr,
-                        "rules": rules,
-                        "dataType": data_type,
-                        "notifications": [],
-                        "collection": self._default_collection_config(
-                            name=collection_title,
-                            delete_after_days=delete_after_days,
-                        ),
-                    }
+                payload = {
+                    "libraryId": lib["id"],
+                    "name": rule_name,
+                    "description": description,
+                    "isActive": True,
+                    "arrAction": arr_action,
+                    "useRules": True,
+                    "listExclusions": False,
+                    "forceSeerr": force_seerr,
+                    "rules": rules,
+                    "dataType": data_type,
+                    "notifications": [],
+                    "collection": self._default_collection_config(
+                        name=collection_title,
+                        delete_after_days=delete_after_days,
+                    ),
+                }
+                self._link_arr_settings(
+                    payload, radarr_settings_id, sonarr_settings_id,
                 )
+                desired.append(payload)
 
         return desired

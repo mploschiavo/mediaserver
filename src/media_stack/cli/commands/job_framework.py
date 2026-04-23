@@ -262,19 +262,25 @@ class Job:
         requires: list[str] | None = None,
         max_attempts: int | None = None,
         non_blocking: bool = False,
+        after: list[str] | None = None,
     ):
         self.name = name
         self.handler = handler
         self.requires = requires or []
+        # Job-name dependencies. ``requires`` is for NAMED CONDITIONS
+        # (e.g. ``media_server_reachable``); ``after`` is for job-name
+        # ordering (e.g. ``after: [discover-indexers]`` means "don't
+        # run me until that job's handler has fully finished"). Without
+        # this, a non_blocking job's downstream peers race against its
+        # daemon thread and start with empty data.
+        self.after = list(after or [])
         self.sub_jobs: list["Job"] = []
         self.max_attempts = max_attempts
         # When True, JobRunner spawns the handler in a daemon thread
-        # and immediately moves on to the next job WITHOUT WAITING
-        # for this one to finish. Use for long-running jobs (indexer
-        # discovery, EPG channel scan) that don't gate the rest of
-        # bootstrap — the dashboard becomes usable in seconds while
-        # these continue concurrently. Result lands in job-history
-        # whenever the thread finishes.
+        # and immediately moves on to dispatch other jobs. Downstream
+        # jobs that name this one in ``after`` will still wait for the
+        # daemon thread to finish — non_blocking only relaxes the
+        # SIBLING ordering, not declared dependencies.
         self.non_blocking = bool(non_blocking)
 
     def add_sub_job(self, job: "Job") -> "Job":
@@ -366,66 +372,102 @@ class JobRunner:
         self.root = root
         self.ctx = ctx
         self.max_attempts = kwargs.get("max_wait", max_attempts) if "max_wait" in kwargs else max_attempts
-        self.completed: set[str] = set()
+        # ``dispatched``: jobs we've started (sync ran, or async spawned).
+        #   Prevents re-dispatch.
+        # ``done``: jobs whose handler has FULLY FINISHED (sync handlers
+        #   are added immediately; non_blocking handlers add themselves
+        #   from the daemon thread on completion).
+        # Downstream ordering uses ``done``, not ``dispatched`` — that's
+        # the whole point of the ``after:`` field.
+        self.dispatched: set[str] = set()
+        self.done: set[str] = set()
         self.results: dict[str, dict[str, Any]] = {}
+        # Condition variable so the dispatch loop can sleep when stuck
+        # (jobs in flight, none yet ready) and wake instantly when an
+        # async daemon thread finishes — no polling, no fixed sleeps.
+        self._cv = threading.Condition()
+
+    def _ready(self, job: Job, all_job_names: set[str]) -> bool:
+        """A job is ready when (a) prereqs met AND (b) every job named
+        in its ``after`` field has fully completed. ``after`` entries
+        that don't match any known job name are treated as already-
+        satisfied so a typo doesn't permanently wedge the runner."""
+        if job.check_prereqs(self.ctx) is not None:
+            return False
+        for dep in getattr(job, "after", []):
+            if dep in all_job_names and dep not in self.done:
+                return False
+        return True
+
+    def _async_jobs_running(self) -> bool:
+        """True when at least one dispatched non_blocking job is still
+        in its daemon thread (dispatched but not yet in ``done``)."""
+        return bool(self.dispatched - self.done)
 
     def run(self) -> dict[str, Any]:
         """Execute all jobs in dependency order."""
         t0 = time.time()
         all_jobs = self._flatten(self.root)
+        all_job_names = {j.name for j in all_jobs}
         runtime_platform.log(f"[INFO] JobRunner: {len(all_jobs)} jobs to dispatch")
 
         attempt = 0
         while attempt <= self.max_attempts:
-            # Find jobs that are ready (prereqs met, not yet run)
-            ready = [j for j in all_jobs
-                     if j.name not in self.completed and j.check_prereqs(self.ctx) is None]
-            deferred = [j for j in all_jobs
-                        if j.name not in self.completed and j.check_prereqs(self.ctx) is not None]
+            pending = [j for j in all_jobs if j.name not in self.dispatched]
+            if not pending:
+                # Everything is dispatched. If async jobs are still in
+                # flight, wait for them to finish before declaring done.
+                if self._async_jobs_running():
+                    with self._cv:
+                        self._cv.wait(timeout=1.0)
+                    continue
+                break
 
-            if not ready and not deferred:
-                break  # All done
+            ready = [j for j in pending if self._ready(j, all_job_names)]
+            blocked = [j for j in pending if not self._ready(j, all_job_names)]
 
-            if not ready and deferred:
-                # No jobs ready — try to satisfy prereqs
+            if not ready:
+                # Nothing ready. If async jobs are running, their
+                # completion may unblock something — wait on the CV.
+                if self._async_jobs_running():
+                    with self._cv:
+                        self._cv.wait(timeout=2.0)
+                    continue
+                # No async work in flight either — try to satisfy
+                # named prereqs (e.g. preflight discovers an API key).
                 attempt += 1
                 if attempt > self.max_attempts:
-                    for j in deferred:
-                        reason = j.check_prereqs(self.ctx)
+                    for j in blocked:
+                        reason = (
+                            j.check_prereqs(self.ctx)
+                            or f"after-deps not done: {[d for d in j.after if d in all_job_names and d not in self.done]}"
+                        )
                         runtime_platform.log(f"[WARN] {j.name}: deferred — {reason}")
                         self.results[j.name] = {"status": "prereq_not_met", "reason": reason}
+                        self.dispatched.add(j.name)
+                        self.done.add(j.name)
                     break
                 runtime_platform.log(
-                    f"[INFO] JobRunner: {len(deferred)} jobs waiting on prereqs, "
+                    f"[INFO] JobRunner: {len(blocked)} jobs waiting on prereqs, "
                     f"attempting to satisfy (attempt {attempt}/{self.max_attempts})"
                 )
                 self._try_satisfy_prereqs()
                 continue
 
-            # Reset attempt counter — we made progress
             attempt = 0
 
-            # Run all ready jobs.  Per-job [JOB] X: complete log so the
-            # operator + dashboard see real progression — without this,
-            # a 14-min discover-indexers leaves the user staring at a
-            # blank screen wondering if anything is happening.
             for job in ready:
                 if self.ctx.cancelled:
                     self.results[job.name] = {"status": "cancelled", "elapsed": 0}
-                    self.completed.add(job.name)
+                    self.dispatched.add(job.name)
+                    self.done.add(job.name)
                     continue
-                # Non-blocking jobs (indexer discovery, EPG channel
-                # scan) run in a daemon thread. Mark them complete
-                # IMMEDIATELY so the runner moves on; the thread
-                # writes the real result back into self.results when
-                # it finishes (overwriting the placeholder). This
-                # lets the dashboard become usable in seconds while
-                # the slow probes continue concurrently.
+
                 if getattr(job, "non_blocking", False):
                     self.results[job.name] = {
                         "status": "running_in_background", "elapsed": 0,
                     }
-                    self.completed.add(job.name)
+                    self.dispatched.add(job.name)
 
                     def _run_async(j=job):
                         _t = time.time()
@@ -434,8 +476,10 @@ class JobRunner:
                         except Exception as exc:
                             r = {"status": "error", "error": str(exc)[:200]}
                         r["elapsed"] = round(time.time() - _t, 1)
-                        # Overwrite placeholder with real result.
                         self.results[j.name] = r
+                        with self._cv:
+                            self.done.add(j.name)
+                            self._cv.notify_all()
                         runtime_platform.log(
                             f"[JOB] {j.name}: "
                             f"{r.get('status','?')} ({r['elapsed']}s) "
@@ -447,23 +491,26 @@ class JobRunner:
                     ).start()
                     runtime_platform.log(
                         f"[JOB] {job.name}: started (non-blocking) "
-                        f"— {len(self.completed)}/{len(all_jobs)} done, "
-                        f"{sum(1 for j in all_jobs if j.name not in self.completed)} remaining"
+                        f"— {len(self.done)}/{len(all_jobs)} done, "
+                        f"{sum(1 for j in all_jobs if j.name not in self.done)} remaining"
                     )
                     continue
 
                 _t_job = time.time()
                 result = job.run(self.ctx)
                 _job_elapsed = round(time.time() - _t_job, 1)
-                self.completed.add(job.name)
+                self.dispatched.add(job.name)
+                with self._cv:
+                    self.done.add(job.name)
+                    self._cv.notify_all()
                 self.results[job.name] = result
                 _status = (result or {}).get("status", "ok")
                 _remaining = sum(
-                    1 for j in all_jobs if j.name not in self.completed
+                    1 for j in all_jobs if j.name not in self.done
                 )
                 runtime_platform.log(
                     f"[JOB] {job.name}: {_status} ({_job_elapsed}s) "
-                    f"— {len(self.completed)}/{len(all_jobs)} done, "
+                    f"— {len(self.done)}/{len(all_jobs)} done, "
                     f"{_remaining} remaining"
                 )
 
@@ -851,6 +898,13 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
                     # scan) so the dashboard becomes usable before
                     # they complete. Default false = blocking.
                     "non_blocking": bool(job_def.get("non_blocking", False)),
+                    # ``after: [job-name, ...]`` — wait for those jobs
+                    # to FULLY COMPLETE before this one starts. Distinct
+                    # from ``requires:`` (named conditions). Use this
+                    # when a downstream job needs the SIDE EFFECTS of an
+                    # upstream non_blocking job (e.g. tag-indexers needs
+                    # the indexers discover-indexers added).
+                    "after": list(job_def.get("after", [])),
                     # Human-readable label shown in the dashboard
                     # toast / job tree / activity feed. Falls back
                     # to a slug → Title Case translation if
@@ -974,7 +1028,16 @@ def build_job_framework() -> Job:
     # Phase ordering. ``pre_bootstrap`` runs first because the
     # legacy adapter-hooks pipeline that lives there discovers API
     # keys that every per-app phase job needs as a prereq.
-    phase_order = ["pre_bootstrap", "media_server", "download_clients",
+    # ``infrastructure`` runs second — auth + edge routing are
+    # FOUNDATIONAL: every later phase that talks through the gateway
+    # (OIDC discovery, Jellyfin Library/Refresh via webhook, *arr
+    # connection tests via /app/<arr>/...) needs them ready. Before
+    # this phase existed, auth + envoy lived in ``default`` which
+    # ran AFTER media_server + download_clients — anything that
+    # tried to reach a service through Envoy during early bootstrap
+    # silently failed. (v1.0.149.)
+    phase_order = ["pre_bootstrap", "infrastructure",
+                   "media_server", "download_clients",
                    "default", "post"]
     for phase_name in phase_order:
         phase_jobs = phases.pop(phase_name, [])
@@ -1008,6 +1071,7 @@ def build_job_framework() -> Job:
                 requires=j.get("requires", []),
                 max_attempts=j.get("max_attempts"),
                 non_blocking=j.get("non_blocking", False),
+                after=j.get("after", []),
             ))
         root.add_sub_job(phase_job)
 

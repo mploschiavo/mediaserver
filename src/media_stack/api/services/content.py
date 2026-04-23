@@ -691,19 +691,58 @@ class ContentService:
                         results["torrent"] = {"status": "updated", "settings": prefs}
             except Exception as exc:
                 results["torrent"] = {"error": str(exc)[:80]}
-        # Trigger Jellyfin scan
+        # "Scan Library" — fire BOTH steps: (1) tell each *arr to
+        # scan its completed-downloads path so anything qBit finished
+        # (or that the user dropped in directly) gets imported into
+        # ``/media/<cat>/``, then (2) ask Jellyfin to re-index those
+        # paths. Step (1) alone wouldn't update Jellyfin's library
+        # (it watches /media not /data); step (2) alone wouldn't
+        # find files still sitting in qBit's completed dir. Doing
+        # both makes the button match the user's mental model:
+        # "find every new thing and surface it." (v1.0.144.)
         if settings.get("scan_now"):
+            keys = discover_api_keys()
+            arr_specs = [
+                ("sonarr",  "v3", "DownloadedEpisodesScan", "/data/torrents/completed/tv"),
+                ("radarr",  "v3", "DownloadedMoviesScan",   "/data/torrents/completed/movies"),
+                ("lidarr",  "v1", "DownloadedAlbumsScan",   "/data/torrents/completed/music"),
+                ("readarr", "v1", "DownloadedBooksScan",    "/data/torrents/completed/books"),
+            ]
+            arr_results: dict[str, str] = {}
+            for app, ver, cmd, path in arr_specs:
+                key = keys.get(app, "")
+                svc = SERVICE_MAP.get(app)
+                if not svc or not key:
+                    arr_results[app] = "skipped (no key)"
+                    continue
+                try:
+                    body = json.dumps({"name": cmd, "path": path}).encode()
+                    req = urllib.request.Request(
+                        f"http://{svc.host}:{svc.port}/api/{ver}/command",
+                        data=body, method="POST",
+                        headers={"X-Api-Key": key, "Content-Type": "application/json"},
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        arr_results[app] = f"queued ({resp.status})"
+                except Exception as exc:
+                    arr_results[app] = str(exc)[:60]
+
             try:
-                api_key = discover_api_keys().get("jellyfin", "")
+                api_key = keys.get("jellyfin", "")
                 ms = SERVICE_MAP.get("jellyfin")
                 if ms and api_key:
                     urllib.request.urlopen(urllib.request.Request(
                         f"http://{ms.host}:{ms.port}/Library/Refresh?api_key={api_key}",
                         method="POST",
                     ), timeout=5)
-                    results["scan"] = {"status": "triggered"}
+                    results["scan"] = {"status": "triggered", "arrs": arr_results}
+                else:
+                    results["scan"] = {
+                        "status": "jellyfin scan skipped (no key)",
+                        "arrs": arr_results,
+                    }
             except Exception as exc:
-                results["scan"] = {"error": str(exc)[:80]}
+                results["scan"] = {"error": str(exc)[:80], "arrs": arr_results}
         # Update Jellyfin scan interval
         scan_interval = settings.get("jellyfin_scan_interval_hours")
         if scan_interval is not None:
