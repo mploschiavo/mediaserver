@@ -259,10 +259,20 @@ defaults:
     - name: Intro Skipper
       url: https://intro-skipper.org/manifest.json
       enabled: true
+    # Surfaces Bazarr's subtitle search inside Jellyfin's "Edit
+    # Subtitles" UI so users never have to leave Jellyfin to fix a
+    # missing-subs problem. Plugin is GPLv3, actively maintained.
+    - name: Bazarr
+      url: https://raw.githubusercontent.com/enoch85/bazarr-jellyfin/main/manifest.json
+      enabled: true
     install:
     - name: Intro Skipper
       repository_url: https://intro-skipper.org/manifest.json
+    - name: Bazarr
+      repository_url: https://raw.githubusercontent.com/enoch85/bazarr-jellyfin/main/manifest.json
     - name: TMDb Box Sets
+    - name: TheTVDB        # secondary TV metadata source (TMDb is primary)
+    - name: DLNA           # extracted from core in 10.9+; needed for smart-TV / console discovery
     - name: Fanart
     - name: Artwork
     - name: Open Subtitles

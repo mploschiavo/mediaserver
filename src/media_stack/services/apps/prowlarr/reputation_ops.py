@@ -107,14 +107,25 @@ class ProwlarrReputationOps:
                     mode = str(doc.get("mode") or "all").lower().strip()
                     if mode != "allowlist":
                         return None
-                    allowed = doc.get("allowed") or []
-                    if not isinstance(allowed, list):
-                        return None
-                    out = {
-                        str(x).strip().lower()
-                        for x in allowed
-                        if str(x).strip()
-                    }
+                    # Two accepted forms in the YAML:
+                    #   1. ``allowed: [a, b, c]`` flat list (explicit
+                    #      override — wins when non-empty).
+                    #   2. ``categories: {tv: [...], movies: [...]}``
+                    #      grouped by content type (default form;
+                    #      union of all categories is the allowlist).
+                    flat = doc.get("allowed") or []
+                    if not isinstance(flat, list):
+                        flat = []
+                    merged: list[str] = [str(x) for x in flat if str(x).strip()]
+                    if not merged:
+                        cats = doc.get("categories") or {}
+                        if isinstance(cats, dict):
+                            for cat_list in cats.values():
+                                if isinstance(cat_list, list):
+                                    merged.extend(
+                                        str(x) for x in cat_list if str(x).strip()
+                                    )
+                    out = {x.strip().lower() for x in merged if x.strip()}
                     if out:
                         service.log(
                             f"[INFO] Auto indexer: loaded curated "
@@ -511,6 +522,12 @@ class ProwlarrReputationOps:
                     rep["quarantined"] = False
                     rep["quarantined_at_epoch"] = 0
                 service.log(f"[ADD] {name}")
+            elif status == 409 and "UNIQUE constraint failed" in str(body):
+                # Already exists — another worker (or a previous run)
+                # added it. Not a failure; treat as skipped_existing.
+                with _stats_lock:
+                    existing_keys.add(key)
+                    skipped_existing += 1
             else:
                 with _stats_lock:
                     failed_create += 1
@@ -546,13 +563,24 @@ class ProwlarrReputationOps:
                     )
 
         # Build workload: pre-filter candidates, then test+add in parallel.
+        # De-dupe by (impl, name): Prowlarr's schema list can yield the
+        # same indexer twice (e.g. a base Cardigann def AND a preset
+        # variant with the same Name). Without this, two parallel
+        # workers race on the same indexer — first wins, second hits
+        # ``UNIQUE constraint failed: Indexers.Name`` (HTTP 409) and
+        # the bootstrap log lights up red on a clean install.
         work_items: list[tuple[dict[str, Any], str, str]] = []
+        seen_keys: set[tuple[str, str]] = set()
         for candidate in candidates:
             payload = service.build_indexer_payload(candidate)
             impl = payload.get("implementation")
             name = payload.get("name")
             if not impl or not name:
                 continue
+            key = (str(impl), str(name))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             work_items.append((payload, str(impl), str(name)))
 
         if parallel_workers > 1:

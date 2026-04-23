@@ -588,6 +588,57 @@ class EnvoyDynamicConfigService:
         }
         main_listener["name"] = "listener_https"
 
+        # HTTP→HTTPS redirect listener. Anyone who types
+        # ``http://apps.media-stack.local`` (or omits the scheme and
+        # the browser defaults to http) gets a 301 to the HTTPS URL.
+        # Without this, every Authelia-protected route silently 404s
+        # from the user's POV because OIDC requires HTTPS. Listens on
+        # port 8080 (matched by the ``host:80→envoy:8080`` compose
+        # mapping). (v1.0.147.)
+        if not any(l.get("name") == "listener_http_redirect" for l in listeners):
+            listeners.append({
+                "name": "listener_http_redirect",
+                "address": {
+                    "socket_address": {"address": "0.0.0.0", "port_value": 8080},
+                },
+                "filter_chains": [{
+                    "filters": [{
+                        "name": "envoy.filters.network.http_connection_manager",
+                        "typed_config": {
+                            "@type": (
+                                "type.googleapis.com/envoy.extensions.filters."
+                                "network.http_connection_manager.v3.HttpConnectionManager"
+                            ),
+                            "stat_prefix": "ingress_http_redirect",
+                            "codec_type": "AUTO",
+                            "route_config": {
+                                "name": "redirect_all",
+                                "virtual_hosts": [{
+                                    "name": "redirect_all",
+                                    "domains": ["*"],
+                                    "routes": [{
+                                        "match": {"prefix": "/"},
+                                        "redirect": {
+                                            "https_redirect": True,
+                                            "response_code": "MOVED_PERMANENTLY",
+                                        },
+                                    }],
+                                }],
+                            },
+                            "http_filters": [{
+                                "name": "envoy.filters.http.router",
+                                "typed_config": {
+                                    "@type": (
+                                        "type.googleapis.com/envoy.extensions."
+                                        "filters.http.router.v3.Router"
+                                    ),
+                                },
+                            }],
+                        },
+                    }],
+                }],
+            })
+
     _CERT_CANDIDATE_PATHS: tuple[tuple[str, str], ...] = (
         ("/certs/media-stack.crt", "/certs/media-stack.key"),
         ("/etc/envoy/certs/media-stack.crt",

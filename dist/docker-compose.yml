@@ -226,7 +226,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.137}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.158}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -236,6 +236,21 @@ services:
       CONFIG_ROOT: /runtime-config
       BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
       BOOTSTRAP_CONFIG_FILE: /contracts/media-stack.config.json
+      # Read service contracts from the bind-mount, not the image's
+      # baked-in copy. Lets contract YAML edits (add a Jellyfin
+      # plugin, tweak a job, etc.) take effect on next job run
+      # without a controller image rebuild. (v1.0.147.)
+      SERVICES_REGISTRY_DIR: /contracts/services
+      # Match the compose port mapping (host:443 → envoy:8880,
+      # host:80 → envoy:8080). Without this, the generator's base
+      # template binds the listener at port 80 INSIDE the container
+      # — docker forwards to 8880 instead, nothing is listening
+      # there, and every gateway/subdomain HTTPS URL silently dies
+      # (TCP accept then EOF before TLS handshake completes). The
+      # symptom is "all routes broken" in the dashboard's Routes
+      # test panel + the OIDC discovery URL unreachable from
+      # downstream apps. (v1.0.147 root-cause.)
+      ENVOY_LISTENER_PORT: "8880"
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
@@ -340,6 +355,15 @@ services:
     extra_hosts:
       - "auth.media-stack.local:host-gateway"
       - "apps.media-stack.local:host-gateway"
+      # Jellyseerr's OIDC back-channel hits the issuer URL directly
+      # (discovery, token exchange, userinfo) — must resolve INSIDE
+      # the container. The host machine's /etc/hosts already maps
+      # this to localhost; ``host-gateway`` makes the container
+      # reach it via the docker bridge. Without this, "Sign in with
+      # Authelia" fails with "An error occurred while logging in"
+      # and Jellyseerr's debug log shows DNS lookup failed for
+      # authelia.media-stack.local. (v1.0.146.)
+      - "authelia.media-stack.local:host-gateway"
     environment:
       TZ: ${TZ:-UTC}
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
@@ -363,7 +387,7 @@ services:
       - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
 
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82
+    image: lscr.io/linuxserver/prowlarr@sha256:c5de2a8758a05594319263e7691c1dce56899442ed1720d6eca216c0958f4caf
     container_name: prowlarr
     environment: *arr-env
     volumes:
@@ -432,7 +456,7 @@ services:
       - traefik.http.services.sonarr.loadbalancer.server.port=8989
 
   radarr:
-    image: lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb
+    image: lscr.io/linuxserver/radarr@sha256:b01097ad2d948c9f5eca39eb60bb529e2e55b0738c4bf7db09383bef0abab59d
     container_name: radarr
     environment: *arr-env
     volumes:
@@ -653,7 +677,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.137}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.158}
     container_name: media-stack-controller
     command:
       - python3
@@ -668,8 +692,27 @@ services:
     environment:
       BOOTSTRAP_PROFILE_FILE: /profile/profile.yaml
       BOOTSTRAP_CONFIG_FILE: /contracts/media-stack.config.json
+      # Read service contracts from the bind-mount, not the baked
+      # image copy (v1.0.147). Same rationale as envoy-config-init.
+      SERVICES_REGISTRY_DIR: /contracts/services
+      # MUST match the envoy-config-init env. The ``envoy-config``
+      # JOB runs INSIDE this container (triggered by phase reorder
+      # or routing-config edits) and regenerates envoy.yaml. Without
+      # this env, the regeneration silently downgrades the HTTPS
+      # listener back to port 80, killing every gateway/subdomain
+      # HTTPS route. (v1.0.149 — caught when phase-reorder forced
+      # an envoy-config re-run.)
+      ENVOY_LISTENER_PORT: "8880"
       BOOTSTRAP_API_PORT: "9100"
       FULLY_PRECONFIGURED: "1"
+      # In-place upgrade button on the dashboard. When set, the
+      # controller exposes /api/stack/upgrade which spawns a
+      # docker:cli sibling container holding the docker socket and
+      # runs ``compose pull controller && up -d --force-recreate
+      # controller``. Off by default everywhere else because the
+      # sibling container has full docker-socket access; only enable
+      # when you trust everyone with admin access to the dashboard.
+      STACK_UPDATE_ALLOW_INPLACE: "${STACK_UPDATE_ALLOW_INPLACE:-true}"
       BOOTSTRAP_WAIT_INTERVAL_SECONDS: "3"
       BOOTSTRAP_WAIT_HEARTBEAT_SECONDS: "15"
       AUTO_INDEXER_HEARTBEAT_EVERY: "25"

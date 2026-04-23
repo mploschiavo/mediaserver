@@ -98,11 +98,19 @@ plugin:
       priority: 35
       requires: []
       non_blocking: true
+      # Must wait for discover-indexers to FINISH (not just dispatch).
+      # Otherwise this races and tags zero indexers because discovery
+      # is still in flight. ``after:`` is enforced against the daemon
+      # thread's actual completion, not the dispatcher's "started" log.
+      after: [discover-indexers]
 
     reset-prowlarr-app-mappings:
       handler: media_stack.services.apps.core.job_adapters:reset_prowlarr_app_mappings
       label: "Repair indexer sync"
       phase: download_clients
+      # Runs after the tagging completes; clearing mapping rows
+      # before tags exist would re-create the same race.
+      after: [tag-indexers-for-apps]
       # Runs AFTER tagging (so we don't reset mappings while
       # tagging is in flight) and BEFORE push-indexers. Idempotent
       # NOOP when each *arr already has indexers — the heavy work
@@ -126,6 +134,115 @@ plugin:
       phase: download_clients
       priority: 40
       requires: []
+      # ApplicationIndexerSync only pushes indexers whose tags match
+      # each *arr's filter tag — so this MUST wait for tagging to
+      # finish (which itself waits for discovery via the chain above).
+      after: [reset-prowlarr-app-mappings]
+
+    ensure-qbittorrent-categories:
+      handler: media_stack.services.apps.core.job_adapters:ensure_qbittorrent_categories
+      label: "qBit categories (movies/tv/music/books)"
+      phase: post
+      priority: 84
+      requires: []
+
+    ensure-arr-download-client:
+      handler: media_stack.services.apps.core.job_adapters:ensure_arr_download_client
+      label: "Wire qBit as download client on each *arr"
+      phase: post
+      # Must come AFTER qBit categories exist so the *arr's category
+      # field references something real.
+      priority: 85
+      requires: []
+      after: [ensure-qbittorrent-categories]
+
+    ensure-jellyfin-libraries:
+      handler: media_stack.services.apps.core.job_adapters:ensure_jellyfin_libraries
+      label: "Ensure Jellyfin libraries (Movies/TV/Music/Books)"
+      phase: post
+      priority: 86
+      requires: []
+
+    ensure-sonarr-seed-series:
+      handler: media_stack.services.apps.core.job_adapters:ensure_sonarr_seed_series
+      label: "Seed Sonarr with starter series"
+      phase: post
+      # Re-asserts the seed-series titles from arr.yaml after every
+      # bootstrap. Previously a runtime hook side-effect; promoted
+      # to its own job so it survives ``compose down -v`` cycles
+      # (v1.0.146 systemic fix).
+      priority: 87
+      requires: []
+
+    ensure-jellyseerr-oidc:
+      handler: media_stack.services.apps.core.job_adapters:ensure_jellyseerr_oidc
+      label: "Wire Authelia SSO into Jellyseerr"
+      phase: post
+      # Writes oidcLogin + oidc provider block to Jellyseerr's
+      # settings.json so the login page shows the "Sign in with
+      # Authelia" button. Authelia's client entry is already
+      # generated from contracts/auth/oidc_clients.yaml.
+      priority: 88
+      requires: []
+
+    ensure-arr-jellyfin-notifier:
+      handler: media_stack.services.apps.core.job_adapters:ensure_arr_jellyfin_notifier
+      label: "Wire *arr → Jellyfin library refresh"
+      phase: post
+      # Replaces the controller's webhook→/Library/Refresh full-scan
+      # with a native MediaBrowser notifier per *arr — Jellyfin
+      # rescans only the affected path on import/delete/rename.
+      priority: 89
+      requires: []
+
+    ensure-bazarr-language-profile:
+      handler: media_stack.services.apps.core.job_adapters:ensure_bazarr_language_profile
+      label: "Set up Bazarr language profile"
+      phase: post
+      # Without this, Bazarr's UI shows "Missing languages profile"
+      # and downloads no subtitles. Idempotent — only creates the
+      # default English profile if no profiles exist yet.
+      priority: 91
+      requires: []
+
+    mass-search-throttled:
+      handler: media_stack.services.apps.core.job_adapters:mass_search_throttled
+      label: "Search missing (throttled)"
+      phase: post
+      # Auto-fires at the end of bootstrap after the seed-series and
+      # push-indexers jobs have produced monitored items + indexers
+      # to search against. Paces dispatch (default 2s/item) so the
+      # *arr's RSS sync isn't the only path to grabs — without this,
+      # OLDER seed-series titles (Breaking Bad, etc.) never get
+      # downloaded because Sonarr's RSS only catches currently-
+      # releasing content.
+      priority: 95
+      requires: []
+      after: [ensure-sonarr-seed-series, push-indexers]
+      non_blocking: true
+
+    recover-stuck-imports:
+      handler: media_stack.services.apps.core.job_adapters:recover_stuck_imports
+      label: "Force-import files the *arr queue stalled on"
+      phase: post
+      # Catches the "qBit-completed but *arr queue still says
+      # downloading" failure mode (Shelter incident, v1.0.150).
+      # Auto-fired every 30min by the controller scheduler.
+      priority: 93
+      requires: []
+
+    scan-completed-downloads:
+      handler: media_stack.services.apps.core.job_adapters:scan_completed_downloads
+      label: "Scan completed downloads"
+      phase: post
+      # Fires each *arr's DownloadedXScan command against
+      # /data/torrents/completed/<category>. Catches files that
+      # arrived outside the *arr→webhook flow (user added a
+      # torrent to qBit directly). Auto-fired every 15min by the
+      # controller scheduler. No prereqs — *arrs that aren't up
+      # yet are silently skipped.
+      priority: 92
+      requires: []
 
     run-media-hygiene:
       handler: media_stack.services.apps.core.job_adapters:run_media_hygiene
@@ -147,7 +264,14 @@ plugin:
     envoy-config:
       handler: media_stack.services.apps.core.job_adapters:envoy_config
       label: "Update proxy routes"
-      phase: default
+      # Foundational — see job_framework.py phase_order comment.
+      # Promoted from ``default`` to ``infrastructure`` so the
+      # gateway routing exists BEFORE media_server + download_clients
+      # try to reach services through it. Priority 20 keeps it
+      # AFTER configure-auth (priority 5) — Envoy's ext_authz
+      # filter references the auth provider config that
+      # configure-auth establishes. (v1.0.149.)
+      phase: infrastructure
       priority: 20
       requires: []
 

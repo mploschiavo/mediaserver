@@ -20,6 +20,11 @@ plugin:
     configure-auth:
       handler: media_stack.core.auth.configure_auth_job:configure_auth
       label: "Update authentication"
-      phase: default
+      # Foundational — see job_framework.py phase_order comment.
+      # Promoted to ``infrastructure`` (was ``default``) so OIDC
+      # clients are registered + Authelia is reachable BEFORE
+      # any media_server / download_clients job tries to talk
+      # through the gateway. (v1.0.149.)
+      phase: infrastructure
       priority: 5
       requires: []

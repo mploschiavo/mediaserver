@@ -2,99 +2,141 @@
 # Curated public-tracker allowlist for first-boot discoverability
 # =============================================================================
 #
-# Purpose
-# -------
-# When ``discover-indexers`` runs, it asks Prowlarr to enumerate every public
-# tracker definition it ships (~70 entries via Cardigann YAML defs). The vast
-# majority of those return CloudFlare HTML, are dead, are language-specific,
-# or only carry niche content (anime, books, fringe formats). For a fresh
-# install, that produces a queue full of grabs that Sonarr/Radarr can't parse
-# (``MonoTorrent.TorrentException: Invalid torrent file``) and qBit stays at
-# zero downloads.
+# Why this exists
+# ---------------
+# ``discover-indexers`` (in ``services/apps/prowlarr/reputation_ops.py``)
+# auto-enables every Cardigann definition Prowlarr ships (~70). Most are
+# dead, language-fringe, CloudFlare-only, or niche. A fresh deploy with
+# the full set produces grabs that Sonarr/Radarr can't parse
+# (``MonoTorrent.TorrentException: Invalid torrent file``) and qBit stays
+# at zero downloads.
 #
-# This file pins the SHORT LIST of public trackers that actually work for a
-# typical English-speaking home install, so a brand-new deploy can grab
-# something on the very first SeriesSearch instead of churning indefinitely
-# against unmaintained sites.
+# This file pins the SHORT LIST of public trackers that actually work,
+# grouped by content type so each *arr gets coverage from sources that
+# specialize in its content. Adding here is one edit — no Python changes.
 #
 # Selection criteria
 # ------------------
 # 1. Public — no signup/credentials required.
-# 2. Returns valid ``.torrent`` bytes or magnet links from the Cardigann def
-#    (no HTML CloudFlare challenge in the payload).
-# 3. English-language content as the primary catalog.
-# 4. Either no CloudFlare gate, OR survives Flaresolverr proxying reliably.
-# 5. Mainstream coverage (general TV, movies, music, books) — not niche or
-#    region-locked.
-#
-# How it's used
-# -------------
-# ``discover-indexers`` (in ``services/apps/prowlarr/runtime_ops.py``) reads
-# this file. When ``mode: allowlist`` is set, only definitions whose Prowlarr
-# slug appears in ``allowed`` are added; everything else is skipped. The
-# previous behavior (mode: ``all``) is still available for operators who want
-# the full ~70 — set ``mode: all`` and the allowlist is ignored.
+# 2. Returns valid ``.torrent`` bytes or magnet links from the Cardigann
+#    def (no HTML CloudFlare challenge in the payload).
+# 3. English-language content as the primary catalog (with anime + music
+#    exceptions that have specialized non-English coverage).
+# 4. Either no CloudFlare gate, OR survives Flaresolverr proxying. The
+#    Flaresolverr proxy is auto-attached to all sync-* tagged indexers
+#    (v1.0.130 fix), so CF-protected trackers work transparently.
+# 5. Active uptime — the catalog is current, not abandoned.
 #
 # Update cadence
 # --------------
-# Public trackers come and go. Re-evaluate this list quarterly or when a
-# user reports "I just deployed and nothing downloads". The simplest health
-# probe is the same one ``_probe_indexer_for_app`` already runs:
+# Re-evaluate quarterly. Health probe shape:
 #
-#   GET /api/v1/search?type=search&query=ubuntu&categories=...&indexerIds=N
+#   GET /api/v1/search?type=search&query=ubuntu&categories=2000&indexerIds=N
 #
-# If that returns < 1 result for a known-popular query, drop the indexer.
+# A failing tracker returns 0 results for a known-popular query; drop it
+# from the list. The loader silently skips entries that don't exist in
+# Prowlarr's current Cardigann set (renamed/removed upstream), so a
+# missing slug warns but doesn't fail the deploy.
+#
+# Format
+# ------
+# Either form is accepted by the loader:
+#
+#   1. ``allowed: [a, b, c]``           — flat list, simple.
+#   2. ``categories: {tv: [a, b], ...}`` — grouped, easier to maintain.
+#      The loader merges the union into a single allowlist.
+#
+# We use the grouped form here for readability.
 # =============================================================================
 
 mode: allowlist           # one of: "allowlist" | "all"
 
-# Prowlarr Cardigann ``definitionName`` slugs for the curated set.
-# Add or remove entries here — no Python changes required.
-allowed:
+categories:
 
-  # --- Broad TV + movies (most useful for Sonarr / Radarr) -----------------
-  - eztv                  # TV-only, magnet-based, no CloudFlare gate.
-                          # Reliable for current and back-catalog TV.
+  # --- TV (Sonarr) -------------------------------------------------------
+  # Sonarr's queries are season+episode tuples (e.g. "Breaking Bad S01E01").
+  # TV-focused trackers index by exact episode tag and yield far cleaner
+  # results than broad sites that mix in unrelated content.
+  tv:
+    - eztv                # TV-only, magnet-based, no CloudFlare. Best
+                          # default for current and back-catalog English TV.
+    - ettv                # TV-only mirror; lower latency than EZTV when
+                          # EZTV is rate-limiting.
+    - showrss             # RSS-style TV index; no search, but sees all
+                          # new episodes immediately. Pairs well with
+                          # Sonarr's automatic-search defaults.
+    - magnetdl            # Broad index with strong TV episode coverage;
+                          # CloudFlare-protected (uses Flaresolverr).
+    - torrentgalaxy       # Broad public, well-tagged TV releases.
+    - therarbg            # RARBG mirror — TV catalog is comprehensive.
+    - thepiratebay        # Breadth fallback. Active, CF-protected
+                          # (uses Flaresolverr). Release naming is
+                          # noisier than eztv, so prefer specialists
+                          # first, but useful when others miss.
 
-  - therarbg              # RARBG community mirror. Broad TV+movies catalog;
-                          # one of the few RARBG mirrors that's actually live
-                          # and serves valid torrent files.
+  # --- Movies (Radarr) ---------------------------------------------------
+  # Movie searches are TMDB-id + quality (1080p/2160p). YTS dominates
+  # for small-file rips; RARBG mirrors cover REMUX/full-disc for users
+  # with the bandwidth.
+  movies:
+    - yts                 # Movies-only. Small-file 720p/1080p encodes;
+                          # extremely reliable and CF-free.
+    - 1337x               # Broad index — good for movies the small-file
+                          # specialists don't carry. Needs Flaresolverr.
+    - therarbg            # RARBG mirror; full-fidelity remux/4K coverage.
+    - torrentgalaxy       # Broad public; movie tagging is solid.
+    - torlock             # CloudFlare-protected; works through the auto-
+                          # attached Flaresolverr proxy.
+    - bitsearch           # Aggregator. Catches the long tail when the
+                          # primary movie sources miss.
+    - thepiratebay        # Breadth fallback for older/obscure titles
+                          # the dedicated movie sources don't carry.
+                          # CF-protected (Flaresolverr handles it).
 
-  - 1337x                 # Top-tier general index. CloudFlare-protected;
-                          # needs Flaresolverr proxy attached (the
-                          # auto-tag step in v1.0.130 handles this).
+  # --- Music (Lidarr) ----------------------------------------------------
+  # Public music coverage is thin — the best music libraries are on
+  # private trackers (RED, OPS). These are the few public ones that
+  # carry decent FLAC / lossless catalogs.
+  music:
+    - rutracker           # Russian-language UI but the music catalog is
+                          # one of the largest public ones. Lidarr handles
+                          # the language gracefully.
+    - bitsearch           # Aggregator with reasonable music indexing.
+    - 1337x               # Has a "Music" category; small but maintained.
+    - solidtorrents       # Aggregator; music coverage is uneven but
+                          # better than nothing.
 
-  - torrentgalaxy         # Broad public, well-categorized releases. Stable.
+  # --- Books (Readarr) ---------------------------------------------------
+  # Book grabs prefer epub/mobi/azw3. The major sources here aren't
+  # always in Prowlarr's preset list — operators may need to add custom
+  # Cardigann defs from the unofficial Prowlarr-Indexers repo.
+  books:
+    - libgen-non-fiction  # Library Genesis non-fiction — very large
+                          # catalog, reliable.
+    - libgen-fiction      # LibGen fiction split.
+    - annas-archive       # Anna's Archive — meta-aggregator over LibGen,
+                          # Z-Library, IPFS shadow libraries. Excellent
+                          # coverage; CF-protected.
+    - audiobookbay        # Audiobooks. Niche but the public default.
+    - bitsearch           # Aggregator fallback for books not in the
+                          # specialists.
 
-  - torlock               # Broad TV/movies; CloudFlare-protected, works
-                          # through Flaresolverr.
+  # --- Anime (Sonarr with anime category) -------------------------------
+  # Anime needs its own bucket because the major TV trackers don't carry
+  # it well, and anime fans expect Romaji/translated season tagging that
+  # only the specialists do correctly.
+  anime:
+    - nyaasi              # The Nyaa.si index. Essential — nothing else
+                          # covers seasonal anime as well.
+    - subsplease          # SubsPlease — official subtitle group's
+                          # current-season releases, fastest path to
+                          # day-of episode availability.
+    - tokyotoshokan       # Tokyo Toshokan — back-catalog anime including
+                          # rare/older titles Nyaa doesn't index well.
+    - animetosho          # AnimeTosho mirror; redundancy when Nyaa is
+                          # rate-limiting or down.
 
-  # --- Movies-specific -----------------------------------------------------
-  - yts                   # Movies-only, very reliable. Small-file 720p/1080p
-                          # encodes — popular for bandwidth-constrained
-                          # users. No CloudFlare.
-
-  # --- Anime ---------------------------------------------------------------
-  - nyaasi                # The Nyaa.si index. Essential for anime; nothing
-                          # else covers seasonal anime as well.
-
-  # --- Music ---------------------------------------------------------------
-  - rutracker             # Music coverage is excellent (FLAC, lossless, rare
-                          # albums) but RU-language UI. Works through Prowlarr
-                          # without account for read-only catalog.
-                          # NOTE: requires registration for some downloads;
-                          #       Lidarr will skip auth-required releases
-                          #       gracefully.
-
-  # --- Aggregator / fallback -----------------------------------------------
-  - bitsearch             # Meta-aggregator across multiple public sources.
-                          # Useful as a safety net when the per-tracker indexes
-                          # miss something.
-
-  - solidtorrents         # Public meta-search. Broad but uneven quality;
-                          # last-resort coverage for items the other 9 miss.
-
-# When ``mode: allowlist`` and an indexer in ``allowed`` is NOT in Prowlarr's
-# Cardigann set (renamed, removed upstream, etc.), it's silently skipped with
-# a [WARN] log line. The deploy doesn't fail — the user sees N-of-10
-# enabled, can investigate.
+# Optional flat override. When ``allowed:`` is set, it takes precedence
+# over the categories above (use this for hyper-curated deployments or
+# CI test fixtures). Leave empty to use the categories union.
+allowed: []

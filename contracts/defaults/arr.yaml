@@ -4,7 +4,13 @@
 arr_download_handling:
   enabled: true
   enable_completed_download_handling: true
-  remove_completed_downloads: true
+  # Completed torrents STAY in qBit after import — lets seeding
+  # continue until media-hygiene prunes by age/ratio. Flipping to
+  # true removes the torrent the instant *arr imports, which
+  # kills seeding and hurts the swarm. (v1.0.141.)
+  remove_completed_downloads: false
+  # Failed torrents ARE removed — otherwise "failed" entries pile
+  # up in qBit forever and the user has to log in to clean up.
   remove_failed_downloads: true
   auto_redownload_failed: true
 arr_media_management:
@@ -54,7 +60,7 @@ arr_discovery_lists:
     enable_auto: true
     monitor: movieOnly
     minimum_availability: released
-    search_on_add: true
+    search_on_add: false
     field_overrides:
       tMDbListType: 1
   - name: TMDb Popular Movies
@@ -63,7 +69,7 @@ arr_discovery_lists:
     enable_auto: true
     monitor: movieOnly
     minimum_availability: released
-    search_on_add: true
+    search_on_add: false
     field_overrides:
       tMDbListType: 2
   - name: TMDb Top Rated Movies
@@ -72,7 +78,7 @@ arr_discovery_lists:
     enable_auto: true
     monitor: movieOnly
     minimum_availability: released
-    search_on_add: true
+    search_on_add: false
     field_overrides:
       tMDbListType: 3
   - name: TMDb Upcoming Movies
@@ -81,10 +87,27 @@ arr_discovery_lists:
     enable_auto: true
     monitor: movieOnly
     minimum_availability: released
-    search_on_add: true
+    search_on_add: false
     field_overrides:
       tMDbListType: 4
-  Sonarr: []
+  Sonarr:
+  # Controller-hosted feed of popular TV. Fetches TVMaze (free, no
+  # auth), scores by rating, returns a Sonarr CustomImport JSON of
+  # TVDB IDs. See ``/api/discovery/popular-tv`` in handlers_get.py.
+  # Using CustomImport instead of IMDb/Trakt because IMDb's
+  # importer is upstream-broken (returns 202) and Trakt needs
+  # per-user OAuth — neither works OTB. (v1.0.143.)
+  - name: Popular TV (TVMaze)
+    implementation: CustomImport
+    enabled: true
+    enable_auto: true
+    search_on_add: false
+    should_monitor: firstSeason
+    monitor_new_items: all
+    series_type: standard
+    season_folder: true
+    field_overrides:
+      baseUrl: http://media-stack-controller:9100/api/discovery/popular-tv
   Lidarr:
   - name: Last.fm Top Rock Artists (Top 10)
     implementation: LastFmTag
@@ -92,7 +115,7 @@ arr_discovery_lists:
     enable_automatic_add: true
     should_monitor: all
     monitor_new_items: all
-    should_search: true
+    should_search: false
     field_overrides:
       tagId: rock
       count: 10
@@ -102,7 +125,7 @@ arr_discovery_lists:
     enable_automatic_add: true
     should_monitor: all
     monitor_new_items: all
-    should_search: true
+    should_search: false
     field_overrides:
       tagId: pop
       count: 10
@@ -112,7 +135,7 @@ arr_discovery_lists:
     enable_automatic_add: true
     should_monitor: all
     monitor_new_items: all
-    should_search: true
+    should_search: false
     field_overrides:
       tagId: hip-hop
       count: 10
@@ -122,7 +145,7 @@ arr_discovery_lists:
     enable_automatic_add: true
     should_monitor: all
     monitor_new_items: all
-    should_search: true
+    should_search: false
     field_overrides:
       tagId: electronic
       count: 10
@@ -133,7 +156,7 @@ arr_discovery_lists:
     enable_automatic_add: true
     should_monitor: all
     monitor_new_items: all
-    should_search: true
+    should_search: false
     min_refresh_interval: '168:00:00'
     field_overrides:
       listId: '2681'
@@ -143,7 +166,7 @@ arr_discovery_lists:
     enable_automatic_add: true
     should_monitor: all
     monitor_new_items: all
-    should_search: true
+    should_search: false
     min_refresh_interval: '168:00:00'
     field_overrides:
       listId: '184476'
@@ -152,7 +175,32 @@ sonarr_seed_series:
   max_series: 15
   monitor: firstSeason
   season_folder: true
-  search_for_missing_episodes: true
+  # Suppressed during seed/import — firing N concurrent searches
+  # against ~5 indexers blasts them with 429 TooManyRequests, which
+  # Sonarr surfaces as "Indexers unavailable due to failures". The
+  # controller-side ``mass-search-throttled`` job (job_adapters.py)
+  # paces a follow-up search ~2s/series instead. Sonarr's RSS sync
+  # also picks up new episodes naturally on its 15min cadence.
+  # (v1.0.145.)
+  search_for_missing_episodes: false
+  # Default seed series so a fresh install doesn't sit at "Sonarr 0
+  # series". Sonarr's import-list ecosystem requires Trakt OAuth or
+  # IMDb list IDs that can rot — explicit names are the most stable
+  # path. Sonarr looks each up via its metadata provider (Skyhook /
+  # TVDB) and adds the matching series. Mainstream titles only —
+  # avoids name-collision ambiguity (e.g. "The Office" needs the
+  # year to disambiguate UK vs US).
+  series:
+    - "Breaking Bad"
+    - "Game of Thrones"
+    - "Stranger Things"
+    - "The Mandalorian"
+    - "The Office (US)"
+    - "House of the Dragon"
+    - "Severance"
+    - "Better Call Saul"
+    - "The Last of Us"
+    - "Succession"
   quality_profile_name_tokens:
   - '1080'
   - hd

@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from media_stack.core.logging_utils import log_swallowed
 import base64
+import json
 import os
 import re
 import time
 from http import HTTPStatus
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, parse_qs
 
 from media_stack.api.session_singletons import (
@@ -105,6 +106,10 @@ class GetRequestHandler:
         # --- Brand config (white-label friendly) ---
         elif path == "/api/branding":
             _handle_branding(handler)
+
+        # --- Sonarr CustomImport popular-TV feed ---
+        elif path == "/api/discovery/popular-tv":
+            _handle_popular_tv(handler)
 
         # --- Services (registry) ---
         elif path == "/api/services":
@@ -619,7 +624,15 @@ class GetRequestHandler:
         svc_list = [
             {"id": s.id, "name": s.name, "desc": s.desc, "category": s.category,
              "host": s.host, "port": s.port,
-             "published_port": (s.published_port or s.port)}
+             "published_port": (s.published_port or s.port),
+             # Tells the dashboard whether the service serves at root
+             # (``http://host:port/``) or behind a path prefix
+             # (``http://host:port/app/<id>/``). Maintainerr is the
+             # canonical case where the bare port returns 404 — its
+             # express server only mounts /app/maintainerr/. Without
+             # this hint, the dashboard's "open" link 404s for the
+             # user. (v1.0.145.)
+             "preserve_path_prefix": bool(s.preserve_path_prefix)}
             for s in SERVICES
         ]
         ctrl_port = int(os.environ.get("BOOTSTRAP_API_PORT", os.environ.get("CONTROLLER_PORT", "9100")))
@@ -631,6 +644,104 @@ class GetRequestHandler:
             "health_path": "/healthz",
         })
         handler._json_response(200, svc_list)
+
+    # In-process cache so a Sonarr poll every few minutes doesn't
+    # hammer TVMaze. 6h matches Sonarr's default list-refresh
+    # cadence — the popular set doesn't shift faster than that.
+    _POPULAR_TV_CACHE: dict[str, Any] = {"ts": 0.0, "payload": []}
+    _POPULAR_TV_TTL_SEC = 6 * 3600
+
+    @staticmethod
+    def _handle_popular_tv(handler: ControllerAPIHandler) -> None:
+        """Sonarr CustomImport feed of popular TV.
+
+        Sonarr's stock import-list providers are a dead end for OTB
+        live discovery: IMDb's importer is upstream-broken (returns
+        202 from rate limiting), and Trakt/Plex/AniList all need
+        per-user OAuth. ``CustomImport`` was the escape hatch — it
+        polls any URL that returns ``[{"tvdbId": N}, ...]``.
+
+        TVMaze is the source: fully free, no key, public. We pull
+        a few pages of their show index, score by ``rating.average``
+        (fall back to weighted vote count when missing), filter to
+        English-language shows that have a ``thetvdb`` external id,
+        and return the top ~150. Cached for 6h to stay polite.
+        """
+        import time as _t
+        import urllib.request as _ur
+        import urllib.error as _ue
+        cache = GetRequestHandler._POPULAR_TV_CACHE
+        ttl = GetRequestHandler._POPULAR_TV_TTL_SEC
+        if cache["payload"] and (_t.time() - cache["ts"]) < ttl:
+            handler._json_response(200, cache["payload"])
+            return
+
+        # Pull pages 0–3 (~1000 shows). TVMaze paginates by 250.
+        # 4 pages gives us enough breadth to filter aggressively
+        # without making the request take more than a couple
+        # seconds. 404 means we've exhausted the index.
+        shows: list[dict[str, Any]] = []
+        for page in range(4):
+            url = f"https://api.tvmaze.com/shows?page={page}"
+            try:
+                req = _ur.Request(url, headers={"User-Agent": "media-stack-controller"})
+                with _ur.urlopen(req, timeout=15) as r:
+                    chunk = json.loads(r.read())
+                    if isinstance(chunk, list):
+                        shows.extend(chunk)
+            except _ue.HTTPError as exc:
+                if exc.code == 404:
+                    break
+                continue
+            except Exception:
+                continue
+
+        scored: list[tuple[float, int, str]] = []
+        for s in shows:
+            if not isinstance(s, dict):
+                continue
+            ext = s.get("externals") or {}
+            tvdb = ext.get("thetvdb")
+            try:
+                tvdb_id = int(tvdb) if tvdb is not None else 0
+            except (TypeError, ValueError):
+                tvdb_id = 0
+            if tvdb_id <= 0:
+                continue
+            lang = str(s.get("language") or "").strip().lower()
+            if lang and lang != "english":
+                continue
+            rating = (s.get("rating") or {}).get("average")
+            try:
+                score = float(rating) if rating is not None else 0.0
+            except (TypeError, ValueError):
+                score = 0.0
+            if score < 7.0:
+                continue
+            scored.append((score, tvdb_id, str(s.get("name") or "")))
+
+        # Top 150 by rating, dedupe TVDB ids defensively.
+        scored.sort(key=lambda t: t[0], reverse=True)
+        seen: set[int] = set()
+        payload: list[dict[str, Any]] = []
+        for score, tvdb_id, name in scored:
+            if tvdb_id in seen:
+                continue
+            seen.add(tvdb_id)
+            payload.append({"tvdbId": tvdb_id, "title": name})
+            if len(payload) >= 150:
+                break
+
+        # If TVMaze was unreachable AND we have a stale cache, serve
+        # it anyway — better than 0 entries which would tell Sonarr
+        # to prune everything it auto-added.
+        if not payload and cache["payload"]:
+            handler._json_response(200, cache["payload"])
+            return
+
+        cache["ts"] = _t.time()
+        cache["payload"] = payload
+        handler._json_response(200, payload)
 
     @staticmethod
     def _handle_services_categories(handler: ControllerAPIHandler) -> None:
@@ -1199,6 +1310,7 @@ _build_openapi_servers = _instance._build_openapi_servers
 _handle_keys = _instance._handle_keys
 _handle_services = _instance._handle_services
 _handle_branding = _instance._handle_branding
+_handle_popular_tv = _instance._handle_popular_tv
 _handle_services_categories = _instance._handle_services_categories
 _handle_service_api_key = _instance._handle_service_api_key
 _handle_snapshot_diff = _instance._handle_snapshot_diff

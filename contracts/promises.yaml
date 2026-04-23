@@ -1,0 +1,564 @@
+# =============================================================================
+# Post-install promises — the source of truth for "what works OTB"
+# =============================================================================
+#
+# Every claim like "after a fresh install, Bazarr has English subtitles
+# enabled" lives here as a single declarative entry. Three things consume
+# this file:
+#
+#   1. The meta-ratchet (tests/unit/test_promises_registry.py):
+#      - asserts every promise's ``ensured_by`` resolves to a real
+#        contract job whose handler function exists in the codebase
+#      - asserts every ``ensure-*`` job in contracts/services/*.yaml
+#        is referenced by at least one promise (no orphan adapters
+#        that quietly stop being needed)
+#
+#   2. The fresh-install acceptance script (bin/verify-fresh-install.sh):
+#      - runs ``compose down -v && wipe state && compose up``
+#      - waits for bootstrap to complete
+#      - executes each promise's ``probe`` and fails on any miss
+#
+#   3. Operators reading this file when they want to know what the
+#      stack guarantees and where to look when something stops working.
+#
+# Why this exists
+# ---------------
+# The session that produced this file had a recurring failure mode:
+# a working feature got wired up via a one-shot manual mutation
+# (PUT this, POST that). The mutation persisted on disk, the feature
+# kept working through restarts, but ``compose down -v`` wiped the
+# state and nothing re-applied it on the next ``up``. Tests passed
+# because they verified source-code shape, not live runtime state.
+#
+# Adding a new feature
+# --------------------
+# 1. Write the ``ensure_*`` adapter that re-asserts the desired state.
+#    Idempotent — every run leaves the system in the same end state.
+# 2. Register a contract job pointing at the adapter (``phase: post``).
+# 3. Add an entry below with a probe that proves it actually works.
+#
+# If steps 1+2 happen but step 3 doesn't, the meta-ratchet warns
+# (orphan adapter); if step 3 happens without 1+2, the meta-ratchet
+# fails hard (broken promise).
+#
+# Probe types
+# -----------
+# Each promise has a ``probe`` block. Supported types:
+#
+#   http_json:
+#     service: <id>           # service id from registry (resolves host:port)
+#     path: <path>            # path to GET (include the URL base if needed)
+#     auth: api_key | none    # api_key uses the discovered service key
+#     assert: <python expr>   # evaluated in scope where ``response`` = parsed JSON
+#                             # Must return truthy for the promise to hold.
+#
+#   file_json:
+#     path: <relative path>   # under config_root (e.g. jellyseerr/settings.json)
+#     assert: <python expr>   # ``data`` = parsed JSON
+#
+#   file_text:
+#     path: <relative path>
+#     assert: <python expr>   # ``data`` = file text
+#
+# =============================================================================
+
+version: 1
+
+promises:
+
+  # --- Bazarr ---------------------------------------------------------------
+  - id: bazarr-language-profile
+    description: Bazarr has at least one language profile (default English)
+    ensured_by: ensure-bazarr-language-profile
+    probe:
+      type: http_json
+      service: bazarr
+      path: /api/system/languages/profiles
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) > 0"
+
+  - id: bazarr-default-profile-toggles
+    description: Bazarr auto-assigns the default profile to new series + movies
+    ensured_by: ensure-bazarr-language-profile
+    probe:
+      type: http_json
+      service: bazarr
+      path: /api/system/settings
+      auth: api_key
+      assert: |
+        response['general'].get('serie_default_enabled') is True
+        and response['general'].get('movie_default_enabled') is True
+
+  - id: bazarr-providers
+    description: Bazarr has the curated subtitle provider set enabled
+    ensured_by: ensure-bazarr-language-profile
+    probe:
+      type: http_json
+      service: bazarr
+      path: /api/system/settings
+      auth: api_key
+      assert: |
+        set(response['general'].get('enabled_providers') or []) >= {
+          'opensubtitlescom', 'podnapisi', 'gestdown',
+          'yifysubtitles', 'embeddedsubtitles',
+        }
+
+  - id: bazarr-arr-integration
+    description: Bazarr has Sonarr + Radarr connections configured
+    ensured_by: ensure-bazarr-language-profile
+    probe:
+      type: http_json
+      service: bazarr
+      path: /api/system/settings
+      auth: api_key
+      assert: |
+        response['general'].get('use_sonarr') is True
+        and response['general'].get('use_radarr') is True
+        and response['sonarr'].get('ip') == 'sonarr'
+        and response['radarr'].get('ip') == 'radarr'
+        and bool(response['sonarr'].get('apikey'))
+        and bool(response['radarr'].get('apikey'))
+
+  - id: bazarr-jellyfin-plugin-config
+    description: Jellyfin Bazarr plugin config has the right URL + API key
+    ensured_by: ensure-bazarr-language-profile
+    probe:
+      type: file_text
+      path: jellyfin/plugins/configurations/Jellyfin.Plugin.Bazarr.xml
+      assert: |
+        '<BazarrUrl>http://bazarr:6767</BazarrUrl>' in data
+        and '<BazarrApiKey>' in data
+        and '<BazarrApiKey></BazarrApiKey>' not in data
+
+  # --- Jellyseerr SSO -------------------------------------------------------
+  - id: jellyseerr-oidc
+    description: Jellyseerr login page shows the "Sign in with Authelia" button
+    ensured_by: ensure-jellyseerr-oidc
+    # Probe the LIVE public-settings endpoint, not just settings.json
+    # on disk. The ``openIdProviders`` list in settings.json must be
+    # non-empty AND ``oidcLogin`` must be true — Jellyseerr returns
+    # an empty providers array when the global toggle is off, even
+    # if the provider entries are present.
+    probe:
+      type: http_json
+      service: jellyseerr
+      path: /api/v1/settings/public
+      auth: none
+      assert: |
+        isinstance(response.get('openIdProviders'), list)
+        and len(response['openIdProviders']) >= 1
+        and any(p.get('slug') == 'authelia' for p in response['openIdProviders'])
+
+  - id: jellyseerr-application-url
+    description: Jellyseerr applicationUrl is set HTTPS so OIDC redirect_uri matches Authelia's registered list
+    ensured_by: ensure-jellyseerr-oidc
+    # Without this, Jellyseerr derives the redirect_uri from the
+    # raw request Host header and defaults to ``http://...`` —
+    # Authelia's registered redirect_uris are all HTTPS, so the
+    # token exchange returns "redirect_uri parameter does not match
+    # any of the OAuth 2.0 Client's pre-registered 'redirect_uris'".
+    probe:
+      type: file_json
+      path: jellyseerr/settings.json
+      # ``trustProxy`` lives under the ``network`` section (PR #1505
+      # migration 0005 moved it there). Writing it under ``main`` gets
+      # silently stripped on boot — both checks are needed because
+      # the *.json shape and the runtime shape diverge.
+      assert: |
+        str(data['main'].get('applicationUrl', '')).startswith('https://')
+        and data.get('network', {}).get('trustProxy') is True
+
+  # --- *arr → Jellyfin notifier --------------------------------------------
+  - id: sonarr-jellyfin-notifier
+    description: Sonarr has the media-stack-jellyfin MediaBrowser notifier
+    ensured_by: ensure-arr-jellyfin-notifier
+    probe:
+      type: http_json
+      service: sonarr
+      path: /app/sonarr/api/v3/notification
+      auth: api_key
+      assert: |
+        any(
+          n.get('name') == 'media-stack-jellyfin'
+          and n.get('implementation') == 'MediaBrowser'
+          and n.get('onDownload') is True
+          for n in (response or [])
+        )
+
+  - id: radarr-jellyfin-notifier
+    description: Radarr has the media-stack-jellyfin MediaBrowser notifier
+    ensured_by: ensure-arr-jellyfin-notifier
+    probe:
+      type: http_json
+      service: radarr
+      path: /app/radarr/api/v3/notification
+      auth: api_key
+      assert: |
+        any(
+          n.get('name') == 'media-stack-jellyfin'
+          and n.get('implementation') == 'MediaBrowser'
+          and n.get('onDownload') is True
+          for n in (response or [])
+        )
+
+  - id: lidarr-jellyfin-notifier
+    description: Lidarr has the media-stack-jellyfin MediaBrowser notifier
+    ensured_by: ensure-arr-jellyfin-notifier
+    probe:
+      type: http_json
+      service: lidarr
+      path: /app/lidarr/api/v1/notification
+      auth: api_key
+      assert: |
+        any(
+          n.get('name') == 'media-stack-jellyfin'
+          and n.get('implementation') == 'MediaBrowser'
+          and n.get('onReleaseImport') is True
+          for n in (response or [])
+        )
+
+  # --- Indexer pipeline ----------------------------------------------------
+  - id: prowlarr-indexers-discovered
+    description: Prowlarr has at least one indexer from the curated allowlist
+    ensured_by: discover-indexers
+    probe:
+      type: http_json
+      service: prowlarr
+      path: /app/prowlarr/api/v1/indexer
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) >= 1"
+
+  - id: prowlarr-indexers-tagged
+    description: Tag-indexers ran and produced sync-* tags on at least one indexer
+    ensured_by: tag-indexers-for-apps
+    probe:
+      type: http_json
+      service: prowlarr
+      path: /app/prowlarr/api/v1/indexer
+      auth: api_key
+      # Some indexers legitimately can't be tagged (CF-blocked at
+      # probe time, content-type mismatch). The promise is "the
+      # tag pipeline ran successfully" — at least one tagged
+      # indexer is the proof. The downstream sonarr-has-indexers
+      # / radarr-has-indexers promises catch the case where ZERO
+      # indexers ended up reaching the *arrs.
+      assert: |
+        isinstance(response, list) and response
+        and any(len(i.get('tags') or []) >= 1 for i in response)
+
+  - id: sonarr-has-indexers
+    description: Sonarr received at least one indexer from Prowlarr push-sync
+    ensured_by: push-indexers
+    probe:
+      type: http_json
+      service: sonarr
+      path: /app/sonarr/api/v3/indexer
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) >= 1"
+
+  - id: radarr-has-indexers
+    description: Radarr received at least one indexer from Prowlarr push-sync
+    ensured_by: push-indexers
+    probe:
+      type: http_json
+      service: radarr
+      path: /app/radarr/api/v3/indexer
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) >= 1"
+
+  # --- Sonarr seed series --------------------------------------------------
+  - id: sonarr-has-series
+    description: Sonarr has the seed-series titles + the popular-TV CustomImport
+    ensured_by: ensure-sonarr-seed-series
+    probe:
+      type: http_json
+      service: sonarr
+      path: /app/sonarr/api/v3/series
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) >= 5"
+
+  # --- Maintainerr rule linking --------------------------------------------
+  - id: maintainerr-rules-linked-to-arr
+    description: Movie rules link to Radarr; TV rules link to Sonarr (not None)
+    ensured_by: configure-collections
+    probe:
+      type: http_json
+      service: maintainerr
+      path: /app/maintainerr/api/collections
+      auth: none
+      assert: |
+        any(
+          (c.get('type') == 'movie' and c.get('radarrSettingsId') is not None)
+          or (c.get('type') == 'show' and c.get('sonarrSettingsId') is not None)
+          for c in (response or [])
+        )
+
+  # --- Default-profile content -----------------------------------------------
+  - id: radarr-import-lists-auto
+    description: Radarr import lists have enableAuto=true (TMDb popular movies auto-add)
+    ensured_by: apply-arr-runtime-defaults
+    probe:
+      type: http_json
+      service: radarr
+      path: /app/radarr/api/v3/importlist
+      auth: api_key
+      assert: |
+        isinstance(response, list) and response
+        and all(l.get('enableAuto') is True for l in response if l.get('enabled'))
+
+  # --- qBittorrent download client wiring ---------------------------------
+  - id: qbittorrent-categories
+    description: qBit has the four content categories (movies/tv/music/books)
+    ensured_by: ensure-qbittorrent-categories
+    probe:
+      type: http_text
+      service: qbittorrent
+      path: /api/v2/torrents/categories
+      auth: qbit_basic
+      assert: |
+        all(c in data for c in ('"movies"', '"tv"', '"music"', '"books"'))
+
+  - id: sonarr-download-client
+    description: Sonarr has qBit configured as enabled download client (cat=tv)
+    ensured_by: ensure-arr-download-client
+    probe:
+      type: http_json
+      service: sonarr
+      path: /app/sonarr/api/v3/downloadclient
+      auth: api_key
+      assert: |
+        any(
+          c.get('enable') is True
+          and c.get('implementation') == 'QBittorrent'
+          and any(f.get('name') == 'tvCategory' and f.get('value') == 'tv'
+                  for f in c.get('fields') or [])
+          for c in (response or [])
+        )
+
+  - id: radarr-download-client
+    description: Radarr has qBit configured as enabled download client (cat=movies)
+    ensured_by: ensure-arr-download-client
+    probe:
+      type: http_json
+      service: radarr
+      path: /app/radarr/api/v3/downloadclient
+      auth: api_key
+      assert: |
+        any(
+          c.get('enable') is True
+          and c.get('implementation') == 'QBittorrent'
+          and any(f.get('name') == 'movieCategory' and f.get('value') == 'movies'
+                  for f in c.get('fields') or [])
+          for c in (response or [])
+        )
+
+  # --- Jellyfin libraries -------------------------------------------------
+  - id: jellyfin-libraries
+    description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
+    ensured_by: ensure-jellyfin-libraries
+    probe:
+      type: http_json
+      service: jellyfin
+      path: /Library/VirtualFolders
+      auth: jellyfin_key
+      assert: |
+        isinstance(response, list)
+        and {l.get('CollectionType') for l in response} >= {'movies', 'tvshows', 'music', 'books'}
+        and all(
+          any(p.startswith('/media/') for p in (l.get('Locations') or []))
+          for l in response
+        )
+
+  # --- Jellyseerr server connections --------------------------------------
+  - id: jellyseerr-arr-servers
+    description: Jellyseerr has Sonarr+Radarr+Jellyfin connections with API keys
+    ensured_by: configure-jellyseerr
+    probe:
+      type: file_json
+      path: jellyseerr/settings.json
+      assert: |
+        len(data.get('radarr') or []) >= 1
+        and any((r or {}).get('apiKey') for r in (data.get('radarr') or []))
+        and len(data.get('sonarr') or []) >= 1
+        and any((s or {}).get('apiKey') for s in (data.get('sonarr') or []))
+        and bool(data.get('jellyfin', {}).get('apiKey'))
+
+  # --- Quality profiles ---------------------------------------------------
+  - id: sonarr-quality-profiles
+    description: Sonarr has at least one quality profile available
+    ensured_by: apply-arr-runtime-defaults
+    probe:
+      type: http_json
+      service: sonarr
+      path: /app/sonarr/api/v3/qualityprofile
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) >= 1"
+
+  - id: radarr-quality-profiles
+    description: Radarr has at least one quality profile available
+    ensured_by: apply-arr-runtime-defaults
+    probe:
+      type: http_json
+      service: radarr
+      path: /app/radarr/api/v3/qualityprofile
+      auth: api_key
+      assert: "isinstance(response, list) and len(response) >= 1"
+
+  # --- Edge gateway / Envoy listener --------------------------------------
+  # These probes hit Envoy on host:443, NOT the service direct port.
+  # Without them, "all routes broken" (Envoy listener bound to wrong
+  # port → silent connection-reset on every TLS handshake) was
+  # invisible because every other promise hits localhost:<service-port>
+  # directly and skips the gateway entirely. Discovered v1.0.147 only
+  # because the user opened the dashboard's Routes test panel.
+  - id: gateway-https-listener-up
+    description: Envoy's HTTPS listener accepts TLS handshakes on host:443
+    ensured_by: envoy-config
+    probe:
+      type: http_text
+      service: gateway_https
+      path: /.well-known/openid-configuration
+      auth: none
+      sni: authelia.media-stack.local
+      assert: "'issuer' in data"
+
+  - id: gateway-jellyfin-route
+    description: Jellyfin reachable via subdomain through Envoy gateway
+    ensured_by: envoy-config
+    probe:
+      type: http_text
+      service: gateway_https
+      path: /System/Info/Public
+      auth: none
+      sni: jellyfin.media-stack.local
+      assert: "'Jellyfin' in data"
+
+  - id: gateway-app-prefix-route
+    description: Path-prefix routing works through Envoy (apps.media-stack.local/app/<svc>/)
+    ensured_by: envoy-config
+    probe:
+      type: http_text
+      service: gateway_https
+      path: /app/authelia/
+      auth: none
+      sni: apps.media-stack.local
+      assert: "len(data) > 0"
+
+  - id: gateway-http-redirects-to-https
+    description: Plain http://<gateway-host>/ returns 301 to https://
+    ensured_by: envoy-config
+    # Catches users who type the URL without a scheme (browsers
+    # default to http) or who have an old http://… bookmark — they
+    # land on the HTTPS version automatically. Without this, every
+    # OIDC-protected click silently 404s because Authelia rejects
+    # http redirect_uris.
+    probe:
+      type: http_status
+      service: gateway_http
+      path: /
+      auth: none
+      sni: apps.media-stack.local
+      assert: "status in (301, 302) and 'https://' in headers.get('location', '').lower()"
+
+  - id: stuck-imports-scheduled
+    description: recover-stuck-imports runs every 30min to catch qBit-completed-but-not-imported files
+    ensured_by: scan-completed-downloads
+    # Same controller_serve.py block seeds both schedules; if it
+    # ran at all both are present. Without this scheduled job, the
+    # "stuck queue entry" + "orphan file in completed/" failure
+    # modes (Shelter + Strangers incidents, v1.0.150) require
+    # manual intervention every time.
+    probe:
+      type: http_json
+      service: controller
+      path: /api/schedules
+      auth: controller_basic
+      assert: |
+        any(
+          s.get('action') == 'recover-stuck-imports'
+          and int(s.get('interval_seconds', 0)) <= 3600
+          for s in (response.get('schedules') or [])
+        )
+
+  - id: adaptive-search-scheduled
+    description: mass-search-throttled is scheduled hourly so empty/idle stacks keep grinding for grabs
+    ensured_by: scan-completed-downloads
+    # Probes the controller's schedule list. The hourly heartbeat is
+    # what makes thin-library installs eventually populate — without
+    # it, mass-search-throttled fires only ONCE at install and then
+    # never again. (v1.0.148.) The ``ensured_by`` points at the
+    # scan-completed-downloads job because both schedules are seeded
+    # by the same controller_serve.py block; if that block runs at
+    # all, both schedules get added.
+    probe:
+      type: http_json
+      service: controller
+      path: /api/schedules
+      auth: controller_basic
+      assert: |
+        any(
+          s.get('action') == 'mass-search-throttled'
+          and int(s.get('interval_seconds', 0)) <= 3600
+          for s in (response.get('schedules') or [])
+        )
+
+  - id: foundational-jobs-run-before-app-jobs
+    description: configure-auth + envoy-config live in the infrastructure phase (before media_server/download_clients)
+    ensured_by: configure-auth
+    # Why this matters: anything in media_server or download_clients
+    # that calls services THROUGH the gateway (e.g. /Library/Refresh
+    # via webhook → controller → Jellyfin via /app/jellyfin) silently
+    # fails if envoy-config hasn't run yet. Same for OIDC discovery
+    # before configure-auth establishes the Authelia client list.
+    # The previous ordering (auth + envoy in ``default``, AFTER
+    # media_server + download_clients) made this latent for months.
+    # (v1.0.149.)
+    probe:
+      type: http_json
+      service: controller
+      path: /api/jobs
+      auth: controller_basic
+      assert: |
+        any(j.get('name') == 'configure-auth' and j.get('phase') == 'infrastructure'
+            for j in (response.get('jobs') or []))
+        and any(j.get('name') == 'envoy-config' and j.get('phase') == 'infrastructure'
+                for j in (response.get('jobs') or []))
+
+  # --- Unpackerr config integrity ----------------------------------------
+  - id: unpackerr-config-valid
+    description: Unpackerr config has resolved arr URLs (not literal service_internal_url() text)
+    ensured_by: unpackerr-post
+    # v1.0.150 shipped a bug where the config writer emitted
+    # ``url = service_internal_url("sonarr")`` as literal TOML text
+    # (forgot to CALL the function). Unpackerr's TOML parser choked
+    # and the container went CrashLoop. The fresh-install path ran
+    # preflight ONCE with the broken image, wrote a broken conf, and
+    # never re-wrote it — even after the image was upgraded. This
+    # probe catches both the original bug AND any future "the config
+    # on disk is stale and references a function name instead of a
+    # URL" regression.
+    probe:
+      type: file_text
+      path: unpackerr/unpackerr.conf
+      assert: |
+        'service_internal_url' not in data
+        and ('url = "http://sonarr:8989"' in data
+             or 'url = "http://radarr:7878"' in data
+             or 'url = "http://lidarr:8686"' in data
+             or 'url = "http://readarr:8787"' in data)
+
+  - id: dns-readiness-banner-data
+    description: Routing-probe endpoint returns enough data for the dashboard's DNS banner to render
+    ensured_by: envoy-config
+    # The dashboard's DNS-readiness banner reads /api/routing-probe
+    # and /api/routing to build the hosts-entry hint. Both endpoints
+    # must return well-formed JSON with the hostnames the user needs
+    # to add — without this data the banner would render empty.
+    probe:
+      type: http_json
+      service: controller
+      path: /api/routing
+      auth: controller_basic
+      assert: |
+        'gateway_host' in response and 'stack_subdomain' in response
+        and 'base_domain' in response

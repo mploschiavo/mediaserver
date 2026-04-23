@@ -1342,15 +1342,30 @@ class CuratedIndexerAllowlistShipped(unittest.TestCase):
             f"be 'allowlist' or 'all'.",
         )
         if mode == "allowlist":
+            # Two accepted forms: flat ``allowed: [...]`` (override)
+            # OR grouped ``categories: {tv: [...], movies: [...]}``
+            # whose union becomes the allowlist when ``allowed`` is
+            # empty. Either must yield at least one slug — otherwise
+            # discovery silently disables every indexer.
             allowed = doc.get("allowed") or []
+            cats = doc.get("categories") or {}
             self.assertIsInstance(
                 allowed, list,
                 "curated-indexers.yaml: 'allowed' must be a list",
             )
+            self.assertIsInstance(
+                cats, dict,
+                "curated-indexers.yaml: 'categories' must be a mapping",
+            )
+            union: list[str] = list(allowed)
+            for cat_list in cats.values():
+                if isinstance(cat_list, list):
+                    union.extend(cat_list)
             self.assertGreater(
-                len(allowed), 0,
+                len(union), 0,
                 "curated-indexers.yaml: mode=allowlist with empty "
-                "'allowed' list silently disables every indexer.",
+                "'allowed' AND empty 'categories' silently disables "
+                "every indexer.",
             )
 
     def test_discovery_loader_consults_allowlist(self) -> None:
@@ -1371,6 +1386,834 @@ class CuratedIndexerAllowlistShipped(unittest.TestCase):
             "reputation_ops no longer references "
             "contracts/curated-indexers.yaml — the curated config "
             "isn't being loaded.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L22 — non_blocking + after: chain enforces real completion order
+# ---------------------------------------------------------------------------
+class NonBlockingJobsHaveAfterDeps(unittest.TestCase):
+    """Discovered v1.0.139 on a fresh-stack MVP test: tag-indexers
+    and discover-indexers were both ``non_blocking: true`` peers
+    with no explicit ordering. The dispatcher reported each as
+    ``done`` the instant it spawned the daemon thread, so push-
+    indexers ran with 0 tagged indexers, ApplicationIndexerSync
+    pushed nothing, Sonarr/Radarr stayed at 0 indexers, qBit at
+    0 grabs.
+
+    The fix introduces an ``after: [job-name, ...]`` field that is
+    evaluated against the daemon thread's ACTUAL completion. This
+    ratchet asserts:
+
+      1. The framework parses an ``after:`` field on jobs.
+      2. The framework respects ``after:`` in dispatch — a job's
+         ``after`` deps must be in ``done`` (not just dispatched)
+         before it becomes ready.
+      3. The contract chain we shipped is intact:
+         ``tag-indexers-for-apps`` waits for ``discover-indexers``,
+         ``push-indexers`` waits transitively for both. Without
+         this chain, the race re-emerges.
+    """
+
+    def test_job_class_supports_after_field(self) -> None:
+        from media_stack.cli.commands.job_framework import Job
+        j = Job("x", lambda ctx: {}, after=["upstream"])
+        self.assertEqual(
+            list(getattr(j, "after", [])), ["upstream"],
+            "Job.__init__ no longer carries the ``after:`` list — "
+            "downstream dependency ordering is silently dropped.",
+        )
+
+    def test_runner_waits_for_after_deps_to_complete(self) -> None:
+        """End-to-end: a non_blocking upstream that takes 100ms must
+        finish before its downstream sibling is dispatched, even
+        though the upstream is reported as ``dispatched`` quickly."""
+        import time as _t
+        from media_stack.cli.commands.job_framework import (
+            Job, JobRunner, JobContext,
+        )
+        order: list[tuple[str, float]] = []
+        t0 = _t.time()
+
+        def upstream(ctx):
+            _t.sleep(0.1)
+            order.append(("up_done", _t.time() - t0))
+            return {}
+
+        def downstream(ctx):
+            order.append(("down_start", _t.time() - t0))
+            return {}
+
+        root = Job("root", lambda ctx: {})
+        root.add_sub_job(Job("up", upstream, non_blocking=True))
+        root.add_sub_job(Job("down", downstream, after=["up"]))
+        ctx = JobContext()
+        JobRunner(root, ctx, max_attempts=3).run()
+
+        events = {n: t for n, t in order}
+        self.assertIn("up_done", events,
+                      "non_blocking upstream never recorded completion")
+        self.assertIn("down_start", events,
+                      "downstream never ran — after-dep chain wedged")
+        self.assertGreater(
+            events["down_start"], events["up_done"],
+            "downstream started before non_blocking upstream finished — "
+            "``after:`` is being ignored, the indexer race is back.",
+        )
+
+    def test_contract_chain_indexers_to_push(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = (doc.get("plugin", {}) or {}).get("jobs", {}) or {}
+
+        tag = jobs.get("tag-indexers-for-apps", {})
+        push = jobs.get("push-indexers", {})
+        self.assertIn(
+            "discover-indexers", tag.get("after", []),
+            "tag-indexers-for-apps lost its ``after: [discover-indexers]`` — "
+            "tagging will race against discovery and tag zero indexers.",
+        )
+        # push-indexers should wait transitively (via reset-prowlarr-app-mappings
+        # OR directly) for tag-indexers to complete.
+        push_after = set(push.get("after", []))
+        chain_ok = bool(
+            push_after & {"tag-indexers-for-apps", "reset-prowlarr-app-mappings"}
+        )
+        self.assertTrue(
+            chain_ok,
+            "push-indexers must wait for tag-indexers (directly or via "
+            "reset-prowlarr-app-mappings) — without it, "
+            "ApplicationIndexerSync runs before any indexer has tags.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L23 — auth reconcile never clears a non-empty urlBase
+# ---------------------------------------------------------------------------
+class AuthReconcileDoesNotClearUrlBase(unittest.TestCase):
+    """Discovered v1.0.141 after a fresh-install MVP test: qBit
+    stayed at 0 active because Radarr fetched the Prowlarr download
+    URL, got a 307 with 0 bytes, and MonoTorrent threw
+    IndexOutOfRange parsing empty bencoded data. Root cause: the
+    ARR preflight persisted ``urlBase=/app/prowlarr`` via API, then
+    the auth reconcile CLEARED it to empty because the profile's
+    ``url_base_by_app`` wasn't set. Prowlarr then constructed
+    search responses with ``http://prowlarr:9696/5/download?...``
+    (no prefix), forcing the 307 that broke the torrent fetch.
+
+    Rule: ``ensure_app_auth_settings`` must never WRITE an empty
+    urlBase over a non-empty one. If the profile doesn't declare
+    a desired value, the preflight's value stands.
+    """
+
+    def test_auth_reconcile_does_not_clear_urlbase(self) -> None:
+        # Assert the write-condition at source-level: the code MUST
+        # NOT enter the clear-urlBase branch when desired_url_base
+        # is empty. Post-fix the condition gates on
+        # ``if desired_url_base:`` only.
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "auth_service.py"
+        ).read_text(encoding="utf-8")
+        bad = 'if desired_url_base or "urlBase" in desired'
+        self.assertNotIn(
+            bad, src,
+            "auth_service.ensure_app_auth_settings regressed: the "
+            "reconcile clobbers non-empty urlBase with empty when "
+            "the profile doesn't declare url_base_by_app. This "
+            "broke qBit downloads on clean install (v1.0.141).",
+        )
+
+    def test_preflight_sets_arr_urlbase(self) -> None:
+        """The preflight MUST still set ``/app/{app}`` — if this
+        loop disappears, the original bug flips to the other side:
+        Radarr's auto-login POST to Prowlarr would lose its body on
+        307, no API key would come back, bootstrap fails."""
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "servarr"
+            / "http_preflight.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            '"UrlBase", f"/app/{app_name}"',
+            src,
+            "servarr preflight no longer seeds UrlBase=/app/{app} "
+            "— Prowlarr's downloadUrl will lack the prefix and "
+            "Radarr's torrent fetch will 307 to empty bytes.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L24 — auto_download_content falls back to profile when env unset
+# ---------------------------------------------------------------------------
+class AutoDownloadContentReadsProfile(unittest.TestCase):
+    """Discovered v1.0.141: a fresh compose deploy creates the *arr
+    import lists but every one comes back with ``enableAuto=false``,
+    so the lists exist on paper but never auto-add new content. Root
+    cause: ``controller_runner._build_config_policy`` read
+    ``AUTO_DOWNLOAD_CONTENT`` from env only, defaulting to ``"0"``
+    when unset. The default bootstrap profile has no env var, the
+    policy applied with ``auto_download_content=False``, and
+    ``apply_content_download_policy`` flipped every list's
+    ``enable_auto`` to False before bootstrap POSTed them.
+
+    Rule: when the env var is unset, the resolver MUST fall back to
+    the profile's ``bootstrap.auto_download_content`` value. The env
+    only overrides if explicitly set — that's how the dashboard
+    "Auto-Downloads" toggle works at runtime.
+    """
+
+    def test_controller_runner_consults_profile_for_auto_download(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "cli" / "commands" / "controller_runner.py"
+        ).read_text(encoding="utf-8")
+        # The fallback chain must be present: env wins when set,
+        # profile fills in when env is empty/unset.
+        self.assertIn(
+            "profile_bootstrap.get(\"auto_download_content\"",
+            src,
+            "controller_runner._build_config_policy regressed: it no "
+            "longer reads ``bootstrap.auto_download_content`` from "
+            "the profile. Default compose deploys will silently "
+            "disable enableAuto on every import list — lists exist "
+            "but never auto-add (v1.0.141 root cause).",
+        )
+        # Anti-pattern: the bare env-only read with default="0".
+        bad = "os.environ.get(\"AUTO_DOWNLOAD_CONTENT\", \"0\") == \"1\""
+        self.assertNotIn(
+            bad, src,
+            "controller_runner regressed back to env-only "
+            "auto_download_content resolution. The profile fallback "
+            "is required for OTB compose deploys.",
+        )
+
+    def test_default_profile_enables_auto_download(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "examples" / "bootstrap-profiles" / "media-compose-standard.yaml"
+        if not path.is_file():
+            self.skipTest("default profile not present")
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        boot = doc.get("bootstrap") or {}
+        self.assertTrue(
+            boot.get("auto_download_content"),
+            "default profile must declare ``bootstrap.auto_download_content: true`` "
+            "for OTB auto-downloading. Without it, *arr import lists "
+            "have enableAuto=False and no content auto-adds.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L25 — controller hosts the popular-TV CustomImport feed + Sonarr uses it
+# ---------------------------------------------------------------------------
+class PopularTvCustomImportWired(unittest.TestCase):
+    """Discovered v1.0.143: Sonarr had no live discovery OTB because
+    every stock provider needs OAuth (Trakt/Plex/AniList) or is
+    upstream-broken (IMDb returns 202 from rate-limiting). The
+    seed_series list covers 10 hand-picked shows but doesn't update.
+
+    Fix: a controller-hosted ``/api/discovery/popular-tv`` endpoint
+    fetches TVMaze (free, no auth), scores by rating, returns a
+    Sonarr CustomImport-compatible JSON array. Sonarr's default
+    list config points at that endpoint, so popular TV auto-adds
+    forever without user action.
+    """
+
+    def test_handler_exists_and_is_routed(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "api" / "handlers_get.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "/api/discovery/popular-tv", src,
+            "GET route for /api/discovery/popular-tv disappeared — "
+            "Sonarr's CustomImport will 404 and no TV auto-adds.",
+        )
+        self.assertIn(
+            "_handle_popular_tv", src,
+            "_handle_popular_tv handler disappeared",
+        )
+        self.assertIn(
+            "api.tvmaze.com/shows", src,
+            "popular-tv handler no longer calls TVMaze — source "
+            "of truth for the feed is gone.",
+        )
+
+    def test_default_sonarr_list_points_at_the_feed(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "defaults" / "arr.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        lists = (doc.get("arr_discovery_lists") or {}).get("Sonarr") or []
+        self.assertTrue(
+            lists,
+            "arr.yaml: Sonarr list is empty. Without CustomImport "
+            "pointing at the popular-tv feed, Sonarr has no live "
+            "discovery — OTB falls back to the seed-series only.",
+        )
+        has_custom = any(
+            str(e.get("implementation") or "") == "CustomImport"
+            and "/api/discovery/popular-tv" in str(
+                (e.get("field_overrides") or {}).get("baseUrl") or ""
+            )
+            for e in lists if isinstance(e, dict)
+        )
+        self.assertTrue(
+            has_custom,
+            "arr.yaml: Sonarr lists no longer contain a CustomImport "
+            "pointing at /api/discovery/popular-tv. The controller's "
+            "TVMaze feed is decoupled from Sonarr — live discovery "
+            "won't happen on a fresh install.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L26 — completed-download → Jellyfin chain
+# ---------------------------------------------------------------------------
+class CompletedDownloadReachesJellyfin(unittest.TestCase):
+    """Discovered v1.0.144: qBit downloads finished but never appeared
+    in Jellyfin. Two gaps:
+
+    A. The Radarr/Sonarr ``/webhooks/arr`` handler tries to trigger a
+       Jellyfin ``/Library/Refresh`` but ``discover_api_keys()`` only
+       reads config-file-format keys. Jellyfin stores its key in
+       SQLite, so the lookup returned empty and the scan never fired.
+
+    B. If a user adds a torrent to qBit DIRECTLY (no *arr involved),
+       the file lands in ``/data/torrents/completed/<cat>/`` and
+       nothing ever imports it. *arrs only know about torrents they
+       initiated.
+
+    Fixes:
+    A. ``discover_api_keys`` falls back to Jellyfin's SQLite ApiKeys
+       table.
+    B. A scheduled ``scan-completed-downloads`` job fires each *arr's
+       ``DownloadedXScan`` command every 15min, picking up anything
+       in the completed paths.
+    """
+
+    def test_discover_api_keys_reads_jellyfin_sqlite(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "api" / "services" / "health.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "read_jellyfin_api_key_from_db",
+            src,
+            "discover_api_keys regressed: no longer falls back to "
+            "Jellyfin's SQLite key. Webhook /Library/Refresh will "
+            "fail and imported content stays invisible until the "
+            "library monitor finds it via inotify.",
+        )
+
+    def test_scan_completed_downloads_job_registered(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = (doc.get("plugin", {}) or {}).get("jobs", {}) or {}
+        self.assertIn(
+            "scan-completed-downloads", jobs,
+            "scan-completed-downloads job missing from core.yaml. "
+            "User-added qBit torrents won't reach Jellyfin — they'll "
+            "sit in /data/torrents/completed/ forever.",
+        )
+
+    def test_scan_completed_downloads_handler_exists(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "core"
+            / "job_adapters.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "def scan_completed_downloads(",
+            src,
+            "scan_completed_downloads handler missing. Contract "
+            "registers the job but the handler isn't there → "
+            "ImportError on dispatch.",
+        )
+        # Sanity: the handler must call each *arr's downloaded-scan
+        # command. Anti-regression: don't let someone trim it to
+        # only one *arr.
+        for cmd in ("DownloadedEpisodesScan", "DownloadedMoviesScan",
+                    "DownloadedAlbumsScan", "DownloadedBooksScan"):
+            self.assertIn(
+                cmd, src,
+                f"scan_completed_downloads no longer fires {cmd} — "
+                "one of the *arrs is silently excluded.",
+            )
+
+    def test_scheduler_seeds_scan_completed_downloads(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "cli" / "commands"
+            / "controller_serve.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "scan-completed-downloads", src,
+            "controller_serve scheduler no longer seeds "
+            "scan-completed-downloads. The job exists but never "
+            "fires automatically → user-added qBit content sits "
+            "unimported.",
+        )
+
+    def test_scan_library_button_fires_arr_scans_and_jellyfin(self) -> None:
+        """The dashboard's "Scan Library" button used to call
+        Jellyfin's /Library/Refresh only — which can't see files
+        still sitting in /data/torrents/completed/. The button
+        must also fire the per-*arr DownloadedXScan commands so
+        the completed-but-unimported files reach /media/* before
+        Jellyfin re-indexes."""
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "api" / "services" / "content.py"
+        ).read_text(encoding="utf-8")
+        # All four DownloadedXScan commands should be issued from
+        # the scan_now path (parallel to the scheduled job in
+        # job_adapters.py — same coverage, different trigger).
+        for cmd in ("DownloadedEpisodesScan", "DownloadedMoviesScan",
+                    "DownloadedAlbumsScan", "DownloadedBooksScan"):
+            self.assertIn(
+                cmd, src,
+                f"content.update_download_client_settings missing "
+                f"{cmd} — the 'Scan Library' button only refreshes "
+                "Jellyfin and won't pick up unimported qBit "
+                "downloads.",
+            )
+
+
+# ---------------------------------------------------------------------------
+# L27 — fresh-install OTB hygiene (v1.0.145)
+# ---------------------------------------------------------------------------
+class FreshInstallOtbHygiene(unittest.TestCase):
+    """Discovered v1.0.145 from a fresh-install user report:
+
+      1. "Indexers unavailable due to failures: TPB / EZTV / 1337x"
+         — caused by 159 series × MissingEpisodeSearch firing
+         concurrently after seed/import. Indexers 429-throttled.
+      2. "Missing languages profile" in Bazarr — Bazarr ships with
+         no profile, downloads no subtitles until manually
+         configured.
+      3. ``http://localhost:6246/`` returns 404 — Maintainerr only
+         serves at /app/maintainerr/. Dashboard's "open" link
+         omitted the prefix for direct-port URLs.
+
+    Fixes:
+      A. Seed/import lists default to ``search_for_missing_episodes:
+         false`` and ``should_search: false`` — RSS sync paces
+         downloads naturally; ``mass-search-throttled`` job is
+         available on-demand for users who want a burst.
+      B. ``ensure-bazarr-language-profile`` job creates a default
+         English profile if none exists.
+      C. Service registry exposes ``preserve_path_prefix`` so the
+         dashboard's direct-link builder appends the correct prefix.
+    """
+
+    def test_seed_search_disabled_to_prevent_429_burst(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "defaults" / "arr.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        seed = doc.get("sonarr_seed_series", {})
+        self.assertFalse(
+            seed.get("search_for_missing_episodes", True),
+            "sonarr_seed_series.search_for_missing_episodes is True. "
+            "Adding 10+ seed series with per-series search fires "
+            "concurrent indexer hits → 429 TooManyRequests → "
+            "indexers marked unavailable. Use mass-search-throttled "
+            "for on-demand bursts instead.",
+        )
+
+    def test_mass_search_throttled_handler_exists(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "core"
+            / "job_adapters.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "def mass_search_throttled(",
+            src,
+            "mass_search_throttled handler removed — users can no "
+            "longer trigger a paced search burst from the dashboard.",
+        )
+        # Sleep between dispatches is the WHOLE point — without it
+        # we re-introduce the 429 burst.
+        self.assertIn("MASS_SEARCH_DELAY_SECONDS", src)
+        self.assertIn("_t.sleep(delay)", src)
+
+    def test_bazarr_language_profile_handler_exists(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "core"
+            / "job_adapters.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "def ensure_bazarr_language_profile(",
+            src,
+            "Bazarr's default-profile handler is gone — fresh "
+            "installs will see 'Missing languages profile' until "
+            "the user manually configures it.",
+        )
+        # Extended in v1.0.146: also sets default profile for new
+        # series/movies + curated provider list. Drift here means
+        # users get a profile but no auto-assignment, OR a usable
+        # setup but with no/wrong subtitle providers.
+        for needle in (
+            "settings-general-serie_default_enabled",
+            "settings-general-serie_default_profile",
+            "settings-general-movie_default_enabled",
+            "settings-general-movie_default_profile",
+            "settings-general-enabled_providers",
+            "gestdown",            # TV provider (Addic7ed replacement)
+            "yifysubtitles",       # movies (pairs with YTS)
+            "embeddedsubtitles",   # zero-network extraction
+            # *arr integration — Bazarr's UI shows "not configured"
+            # without these and never fetches for Sonarr/Radarr content.
+            "settings-general-use_",
+            '"/app/sonarr"',
+            '"/app/radarr"',
+        ):
+            self.assertIn(
+                needle, src,
+                f"ensure_bazarr_language_profile no longer sets "
+                f"{needle!r}. OTB Bazarr config is incomplete — "
+                "fresh content won't auto-fetch subtitles.",
+            )
+        self.assertNotIn(
+            '"addic7ed"', src,
+            "addic7ed is back in the OTB provider list. It has "
+            "anti-scrape issues that return 0 results; gestdown "
+            "is its modern replacement.",
+        )
+
+    def test_services_api_exposes_preserve_path_prefix(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "api" / "handlers_get.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            '"preserve_path_prefix":',
+            src,
+            "/api/services no longer exposes preserve_path_prefix. "
+            "Maintainerr's UI 404s on direct-port links because the "
+            "dashboard can't tell it needs the /app/maintainerr/ "
+            "prefix.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L28 — Maintainerr rules link to the right *arr by library type
+# ---------------------------------------------------------------------------
+class MaintainerrRulesLinkToArr(unittest.TestCase):
+    """Discovered v1.0.146: Maintainerr's UI showed "Radarr server *
+    None" for every rule. The integrations tab had Radarr+Sonarr
+    configured, but the rules themselves had ``radarrSettingsId``
+    and ``sonarrSettingsId`` set to None — so when a rule fired, it
+    could only act on the Jellyfin library, not delete from the
+    *arr.
+
+    Library-type-aware fix:
+      - dataType=movie/movies → set ``radarrSettingsId`` only
+      - dataType=show/shows/tv/episode/season → set ``sonarrSettingsId`` only
+      - other (music, books) → neither (Maintainerr only links rules
+        to *arrs that manage that type)
+
+    Anti-pattern: setting BOTH IDs on every rule. That blanks out
+    the wrong dropdown in Maintainerr's UI (the required-* field
+    shows "None" because the value is for the wrong server).
+    """
+
+    def test_translator_uses_library_type_aware_link(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "maintainerr"
+            / "rule_translation_service.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "_link_arr_settings",
+            src,
+            "_link_arr_settings helper missing — rules will revert "
+            "to having no *arr link, breaking deletion.",
+        )
+        self.assertIn(
+            "_resolve_arr_settings_ids",
+            src,
+            "_resolve_arr_settings_ids helper missing — rules can't "
+            "auto-discover the configured Radarr/Sonarr server IDs.",
+        )
+
+    def test_link_helper_movie_only_sets_radarr(self) -> None:
+        from media_stack.services.apps.maintainerr.rule_translation_service import (
+            MaintainerrRuleTranslationService,
+        )
+        # Stub deps; we don't exercise any methods that require them.
+        class _Deps:
+            def request(self, *a, **k): return (200, [], "")
+            def log(self, *a, **k): pass
+        svc = MaintainerrRuleTranslationService(deps=_Deps())
+        p = {"dataType": "movie"}
+        svc._link_arr_settings(p, radarr_id=1, sonarr_id=2)
+        self.assertEqual(p.get("radarrSettingsId"), 1,
+                         "movie rule didn't get radarrSettingsId")
+        self.assertNotIn(
+            "sonarrSettingsId", p,
+            "movie rule got sonarrSettingsId set — Sonarr dropdown "
+            "in Maintainerr UI will be wrong.",
+        )
+
+    def test_link_helper_show_only_sets_sonarr(self) -> None:
+        from media_stack.services.apps.maintainerr.rule_translation_service import (
+            MaintainerrRuleTranslationService,
+        )
+        class _Deps:
+            def request(self, *a, **k): return (200, [], "")
+            def log(self, *a, **k): pass
+        svc = MaintainerrRuleTranslationService(deps=_Deps())
+        p = {"dataType": "show"}
+        svc._link_arr_settings(p, radarr_id=1, sonarr_id=2)
+        self.assertEqual(p.get("sonarrSettingsId"), 2,
+                         "show rule didn't get sonarrSettingsId")
+        self.assertNotIn(
+            "radarrSettingsId", p,
+            "show rule got radarrSettingsId set — Radarr dropdown "
+            "in Maintainerr UI will be wrong.",
+        )
+
+    def test_link_helper_music_books_get_neither(self) -> None:
+        from media_stack.services.apps.maintainerr.rule_translation_service import (
+            MaintainerrRuleTranslationService,
+        )
+        class _Deps:
+            def request(self, *a, **k): return (200, [], "")
+            def log(self, *a, **k): pass
+        svc = MaintainerrRuleTranslationService(deps=_Deps())
+        for dt in ("music", "book", "audio"):
+            p = {"dataType": dt}
+            svc._link_arr_settings(p, radarr_id=1, sonarr_id=2)
+            self.assertNotIn("radarrSettingsId", p)
+            self.assertNotIn("sonarrSettingsId", p)
+
+
+# ---------------------------------------------------------------------------
+# L29 — Maintainerr rule sync uses DELETE+POST (PUT silently no-ops)
+# ---------------------------------------------------------------------------
+class MaintainerrRuleSyncUsesDeletePost(unittest.TestCase):
+    """Discovered v1.0.146: even with the right payload (correct
+    radarrSettingsId/sonarrSettingsId), Maintainerr rule updates
+    didn't persist. Maintainerr's ``/api/rules`` endpoint accepts
+    PUT with HTTP 200 but its handler silently no-ops — the only
+    effective update path is DELETE the old rule + POST a fresh
+    one. Without this, every link-fix the controller pushes appears
+    to succeed (the controller logs "updated=N") but the
+    Maintainerr UI still shows the stale state."""
+
+    def test_rule_sync_uses_delete_then_post(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "maintainerr"
+            / "rule_sync_service.py"
+        ).read_text(encoding="utf-8")
+        # Anti-pattern: PUT to /api/rules that returns 200 but
+        # doesn't persist. Must use DELETE + POST instead.
+        self.assertNotIn(
+            'method = "PUT"',
+            src,
+            "rule_sync regressed to PUT updates. Maintainerr's "
+            "PUT /api/rules silently no-ops — UI will keep showing "
+            "stale config.",
+        )
+        self.assertIn(
+            'method="DELETE"',
+            src,
+            "rule_sync no longer DELETEs before re-POSTing. "
+            "Updates won't take effect.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L30 — compose reads service contracts from the bind-mount
+# ---------------------------------------------------------------------------
+class ComposeReadsContractsFromBindMount(unittest.TestCase):
+    """Discovered v1.0.147: the controller ignored contract YAML
+    edits (adding the Bazarr Jellyfin plugin) because
+    ``_find_contracts_dir`` preferred the baked-in copy at
+    ``/opt/media-stack/contracts/services`` over the bind-mounted
+    ``/contracts/services``. Users were expected to rebuild the
+    controller image for every contract edit — breaks the "edit
+    YAML, restart the container, done" workflow.
+
+    Fix: ``SERVICES_REGISTRY_DIR=/contracts/services`` env in the
+    compose file forces the loader to skip the baked fallback.
+    The bind-mount already exists (``../contracts:/contracts:ro``),
+    so no extra volume wiring needed. Same pattern as
+    ``BOOTSTRAP_PROFILE_FILE`` / ``BOOTSTRAP_CONFIG_FILE``.
+    """
+
+    def test_compose_sets_services_registry_dir(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        compose_path = ROOT / "docker" / "docker-compose.yml"
+        doc = _yaml.safe_load(compose_path.read_text(encoding="utf-8")) or {}
+        services = doc.get("services") or {}
+        controller = services.get("media-stack-controller") or {}
+        env = controller.get("environment") or {}
+        if isinstance(env, list):
+            env = {
+                (e.split("=", 1) + [""])[0]: (e.split("=", 1) + [""])[1]
+                for e in env if isinstance(e, str)
+            }
+        self.assertEqual(
+            str(env.get("SERVICES_REGISTRY_DIR", "")).strip(),
+            "/contracts/services",
+            "media-stack-controller no longer sets "
+            "SERVICES_REGISTRY_DIR to /contracts/services. "
+            "Contract YAML edits will be invisible until the "
+            "controller image is rebuilt — breaks the standard "
+            "edit-then-restart workflow.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L31 — *arr → Jellyfin notifier (MediaBrowser) wired automatically
+# ---------------------------------------------------------------------------
+class ArrJellyfinNotifierWired(unittest.TestCase):
+    """Discovered v1.0.146: relying solely on the controller's
+    ``/webhooks/arr`` → ``/Library/Refresh`` flow meant every *arr
+    import triggered a FULL Jellyfin library scan and went through
+    a controller round-trip. The native ``MediaBrowser`` notifier
+    in each *arr does a per-path refresh and fires synchronously
+    inside the *arr's own pipeline.
+
+    Jellyfin's API is Emby-compatible, so the *arr "MediaBrowser"
+    notifier works against Jellyfin without modification. Readarr
+    is the exception — its v1 notification schema doesn't expose
+    MediaBrowser, so it stays on the webhook fallback.
+    """
+
+    def test_notifier_handler_exists(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "core"
+            / "job_adapters.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "def ensure_arr_jellyfin_notifier(",
+            src,
+            "ensure_arr_jellyfin_notifier handler missing — *arr "
+            "imports will fall back to the webhook full-refresh "
+            "path which is slower and goes through the controller.",
+        )
+        self.assertIn(
+            '"implementation": "MediaBrowser"', src,
+            "notifier no longer uses the MediaBrowser implementation "
+            "(Jellyfin is API-compatible). Wrong notifier name = "
+            "the *arr will reject the POST.",
+        )
+        self.assertIn(
+            '"updateLibrary"', src,
+            "updateLibrary field gone — without it the notifier "
+            "sends a 'notify' to Jellyfin but no library scan, so "
+            "imports stay invisible to Jellyfin's UI.",
+        )
+
+    def test_notifier_job_registered(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = (doc.get("plugin", {}) or {}).get("jobs", {}) or {}
+        self.assertIn(
+            "ensure-arr-jellyfin-notifier", jobs,
+            "ensure-arr-jellyfin-notifier missing from core.yaml — "
+            "the per-path refresh integration won't fire on bootstrap.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# L32 — Jellyseerr OIDC re-applied on every bootstrap (survives down -v)
+# ---------------------------------------------------------------------------
+class JellyseerrOidcBootstrapped(unittest.TestCase):
+    """Discovered v1.0.146 from a regression report: Jellyseerr's
+    "Sign in with Authelia" button disappeared after a clean
+    redeploy. Authelia's half (the OIDC client) was always re-
+    generated from contracts/auth/oidc_clients.yaml; Jellyseerr's
+    half (oidcLogin + oidc block in settings.json) was a one-shot
+    manual setup that didn't survive ``compose down -v && up``.
+
+    Fix: ``ensure-jellyseerr-oidc`` job re-asserts the OIDC config
+    in Jellyseerr's settings.json on every bootstrap. Idempotent
+    (skips if already in sync); restarts Jellyseerr only when it
+    actually changed something.
+    """
+
+    def test_handler_exists_and_writes_oidc(self) -> None:
+        src = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "src" / "media_stack" / "services" / "apps" / "core"
+            / "job_adapters.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "def ensure_jellyseerr_oidc(",
+            src,
+            "ensure_jellyseerr_oidc handler removed — Jellyseerr's "
+            "Authelia SSO button will disappear on the next clean "
+            "redeploy and stay gone until manually re-applied.",
+        )
+        for needle in ('"oidcLogin"', '"issuerUrl"', '"clientId"',
+                       'newUserLogin', 'jellyseerr-oidc-secret'):
+            self.assertIn(
+                needle, src,
+                f"OIDC adapter no longer writes {needle!r} — the "
+                "config it produces won't satisfy Jellyseerr's "
+                "preview-OIDC schema.",
+            )
+
+    def test_job_registered_in_contract(self) -> None:
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = (doc.get("plugin", {}) or {}).get("jobs", {}) or {}
+        self.assertIn(
+            "ensure-jellyseerr-oidc", jobs,
+            "ensure-jellyseerr-oidc job missing from core.yaml — "
+            "the OIDC bootstrap won't fire on `compose up` after a wipe.",
+        )
+
+    def test_authelia_client_still_in_contract(self) -> None:
+        """Sanity: the Authelia side must keep declaring the
+        jellyseerr client. Without it the downstream fix is moot."""
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "auth" / "oidc_clients.yaml"
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        clients = doc.get("clients") or []
+        self.assertTrue(
+            any(c.get("client_id") == "jellyseerr" for c in clients
+                if isinstance(c, dict)),
+            "contracts/auth/oidc_clients.yaml dropped the jellyseerr "
+            "client. SSO is broken on both ends now.",
         )
 
 
