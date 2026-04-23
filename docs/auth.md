@@ -89,7 +89,7 @@ auth:
 
 ## TLS and Envoy Gateway
 
-Envoy terminates TLS on port **443** with a self-signed certificate auto-minted on first boot (see `_resolve_or_mint_certs` in the compose dynamic-config generator). Port **80** redirects to 443. The legacy port **8880** is plain HTTP and intended only for local probe/testing — browsers should use `https://...`.
+The Envoy edge serves Authelia and every protected app over HTTPS on port 443. See [Security → Infrastructure hardening](security.md#infrastructure-hardening) for the canonical details (self-signed cert auto-mint, port 80 → 443 redirect, the legacy port 8880 used only by local probes).
 
 Authelia 4.38+ requires HTTPS for session cookies. The stack's `session.cookies[].authelia_url` is always emitted as an `https://` URL that shares cookie scope with `apps.<domain>` (same registrable domain).
 

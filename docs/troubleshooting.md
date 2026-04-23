@@ -1,5 +1,12 @@
 # Troubleshooting
 
+## 0a) qBittorrent shows "0 active" / nothing is downloading
+
+See [internals/indexer-pipeline.md](internals/indexer-pipeline.md). The chain
+`discover-indexers → tag-indexers → push-indexers → *arr search →
+qBit` has five stages, each with a one-liner to verify it. If qBit is
+empty, the bug is almost always in one of those stages.
+
 ## 0) Everything Is Running, but I Can’t Access It in My Browser
 
 This stack is exposed through Kubernetes Ingress. Browser access requires both:

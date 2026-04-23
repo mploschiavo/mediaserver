@@ -1,0 +1,52 @@
+name: Question
+description: Stuck on something that isn't clearly a bug? Ask here.
+title: "[question] "
+labels: ["question", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a question issue, please check:
+
+        - The [docs index](../blob/main/docs/README.md).
+        - The [troubleshooting guide](../blob/main/docs/troubleshooting.md).
+        - The dashboard itself — most operational questions ("why is X red?") have an answer in the Routes / Status / Services tabs.
+
+        If you've checked those and still aren't sure, this is the right place.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: Describe the goal first, then what you tried.
+      placeholder: |
+        I want to point Jellyfin at a music library on a different volume. I added a `--mount` line to the compose file but Jellyfin doesn't see the new path.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "v1.0.155"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Docker Compose
+        - Kubernetes
+        - Other / not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Including what didn't work helps narrow down the answer.
+    validations:
+      required: false
