@@ -5,19 +5,28 @@
 
 Every claim like "after a fresh install, Bazarr has English subtitles enabled" lives in [`contracts/promises.yaml`](../../contracts/promises.yaml) as a single declarative entry. Three things consume that file:
 
-1. The meta-ratchet (`tests/unit/test_promises_registry.py`) — verifies every promise points at a real handler.
-2. The fresh-install verifier (`bin/verify-fresh-install.sh`) — runs each promise's probe against a live stack.
+1. The meta-ratchet (`tests/unit/test_promises_registry.py`) — verifies every promise is well-formed, platform-tagged, and points at a real handler (compose) or the infrastructure vocab (k8s).
+2. The fresh-install verifier (`bin/verify-fresh-install.sh` and `bin/_probe_promises.py [--k8s]`) — runs each probe against a live stack.
 3. This page — the human-readable index.
 
-## How to read the table
+## Platforms
+
+Every promise declares which runtime(s) it applies to via the `platforms:` field:
+- **compose + k8s** — agnostic, probed on both runtimes.
+- **compose** — failure modes unique to the docker-compose stack.
+- **k8s** — PVC, image-pull, ingress, and other Kubernetes-only failure modes.
+
+There are **50 promises** at this commit — 35 agnostic, 1 compose-only, 14 k8s-only.
+
+## How to read the tables
 
 - **Promise** — the claim. After a clean bootstrap, the promise should hold and stay holding.
-- **Ensured by** — the contract job (or `post_setup_handler`) whose handler makes the promise true.
+- **Ensured by** — the contract job whose handler makes the promise true (compose vocabulary) or the infra layer that guarantees it (`kubectl-apply` / `operator` for k8s-only promises).
 - **Probe** — what the verifier checks to prove the promise actually holds in a live stack.
 
-There are **33 promises** at this commit.
+## Agnostic promises (compose + k8s)
 
-## The promises
+Run on both runtimes. On k8s the HTTP/file probes are routed through `kubectl exec` into the controller pod so the same assertion exercises both stacks.
 
 | Promise | Ensured by | Probe |
 |---|---|---|
@@ -48,18 +57,59 @@ There are **33 promises** at this commit.
 | **gateway-https-listener-up** &mdash; Envoy's HTTPS listener accepts TLS handshakes on host:443 | `envoy-config` | `http_text` &rarr; gateway_https/.well-known/openid-configuration |
 | **gateway-jellyfin-route** &mdash; Jellyfin reachable via subdomain through Envoy gateway | `envoy-config` | `http_text` &rarr; gateway_https/System/Info/Public |
 | **gateway-app-prefix-route** &mdash; Path-prefix routing works through Envoy (apps.media-stack.local/app/<svc>/) | `envoy-config` | `http_text` &rarr; gateway_https/app/authelia/ |
-| **gateway-http-redirects-to-https** &mdash; Plain http://<gateway-host>/ returns 301 to https:// | `envoy-config` | `http_status` &rarr; gateway_http/ |
 | **stuck-imports-scheduled** &mdash; recover-stuck-imports runs every 30min to catch qBit-completed-but-not-imported files | `scan-completed-downloads` | `http_json` &rarr; controller/api/schedules |
 | **adaptive-search-scheduled** &mdash; mass-search-throttled is scheduled hourly so empty/idle stacks keep grinding for grabs | `scan-completed-downloads` | `http_json` &rarr; controller/api/schedules |
 | **foundational-jobs-run-before-app-jobs** &mdash; configure-auth + envoy-config live in the infrastructure phase (before media_server/download_clients) | `configure-auth` | `http_json` &rarr; controller/api/jobs |
 | **unpackerr-config-valid** &mdash; Unpackerr config has resolved arr URLs (not literal service_internal_url() text) | `unpackerr-post` | `file_text` &rarr; unpackerr/unpackerr.conf |
 | **dns-readiness-banner-data** &mdash; Routing-probe endpoint returns enough data for the dashboard's DNS banner to render | `envoy-config` | `http_json` &rarr; controller/api/routing |
+| **internet-exposed-stack-must-have-auth** &mdash; Stack with routing.internet_exposed=true must NOT have auth.mode=none (else cluster is wide open) | `configure-auth` | `http_json` &rarr; controller/api/auth/config |
+| **auth-overrides-is-valid-yaml-when-present** &mdash; auth-overrides.yaml on the controller PVC is parseable + has a provider field (when present) | `configure-auth` | `file_text` &rarr; .controller/auth-overrides.yaml |
+| **overrides-seeded-at-bootstrap** &mdash; routing-overrides.yaml exists on the controller PVC after bootstrap (seeded from profile) | `seed-runtime-overrides` | `file_text` &rarr; .controller/routing-overrides.yaml |
+
+## Compose-only promises
+
+Failure modes specific to the docker-compose stack — typically because the k8s ingress layer handles the same concern differently and has its own k8s-only probe.
+
+| Promise | Ensured by | Probe |
+|---|---|---|
+| **gateway-http-redirects-to-https** &mdash; Plain http://<gateway-host>/ returns 301 to https:// | `envoy-config` | `http_status` &rarr; gateway_http/ |
+
+## Kubernetes-only promises
+
+PVC phases, image-pull state, pod readiness, ingress rules, and other failure modes that have no compose equivalent. The `ensured_by` vocabulary here is infrastructure-layer (`kubectl-apply`, `operator`) rather than contract-job names.
+
+| Promise | Ensured by | Probe |
+|---|---|---|
+| **pvcs-all-bound** &mdash; Every PVC in the namespace reaches Bound state | `kubectl-apply` | `pvc` in `media-stack` |
+| **media-pv-reclaim-retain** &mdash; media-stack-media PV uses Retain so the library survives PVC deletion | `operator` | `pv` |
+| **torrents-pv-reclaim-retain** &mdash; media-stack-data-torrents PV uses Retain so qBit downloads survive PVC deletion | `operator` | `pv` |
+| **no-image-pull-failures** &mdash; No pod is in ImagePullBackOff or ErrImagePull | `kubectl-apply` | `pod` in `media-stack` |
+| **authelia-pod-ready** &mdash; Authelia pod is Ready (catches the v1.0.158 service-link env collision) | `kubectl-apply` | `pod` in `media-stack` matching `app=authelia` |
+| **envoy-pod-ready** &mdash; Envoy pod is Ready (catches port-bind permission denied + bad config) | `kubectl-apply` | `pod` in `media-stack` matching `app=envoy` |
+| **controller-pod-ready** &mdash; Controller pod is Ready (catches dashboard-down regressions before users notice) | `kubectl-apply` | `pod` in `media-stack` matching `app=media-stack-controller` |
+| **ingress-exists-and-has-rules** &mdash; media-stack-ingress is present with at least one host rule | `kubectl-apply` | `ingress` in `media-stack` |
+| **harbor-pull-secret-exists** &mdash; harbor-pull image-pull Secret exists in the namespace | `operator` | `secret` in `media-stack` |
+| **envoy-has-gateway-host-vhost** &mdash; When a non-default gateway_host is configured, envoy.yaml has a vhost matching it | `kubectl-apply` | `k8s_exec` &rarr; pod `app=envoy` |
+| **homepage-tiles-use-configured-gateway** &mdash; Homepage's services.yaml references the configured gateway_host (not the static default) | `kubectl-apply` | `k8s_exec` &rarr; pod `app=homepage` |
+| **auth-actually-enforced-on-protected-services** &mdash; Unauthenticated requests to SSO-protected apps via the gateway return 401/403/302 (not 200) | `kubectl-apply` | `k8s_exec` &rarr; pod `app=media-stack-controller` |
+| **critical-deployments-have-pull-secret** &mdash; Every Deployment using harbor.iomio.io references imagePullSecrets | `kubectl-apply` | `deployment` in `media-stack` |
+| **profile-configmap-mounted** &mdash; media-stack-controller-profile ConfigMap is present in the namespace | `kubectl-apply` | `configmap` in `media-stack` |
+
+## Running the probes
+
+```bash
+python3 bin/_probe_promises.py              # compose-side probes against localhost
+python3 bin/_probe_promises.py --k8s        # every applicable promise against the cluster
+python3 bin/_probe_promises.py --filter auth   # narrow by substring
+```
+
+The runner fails-fast on any promise that returns false. `skipped` entries are counted as pass (wrong platform, file-missing with `skip_if_missing: true`, etc.).
 
 ## Adding a new promise
 
 1. Write the `ensure_*` adapter that re-asserts the desired state. Idempotent &mdash; every run leaves the system in the same end state.
 2. Register a contract job pointing at the adapter (`phase: post`).
-3. Add an entry to [`contracts/promises.yaml`](../../contracts/promises.yaml) with a probe that proves it works.
+3. Add an entry to [`contracts/promises.yaml`](../../contracts/promises.yaml) with a probe that proves it works, and a `platforms:` tag.
 4. Re-run this script: `python3 bin/render-promises-reference.py`.
 
 If steps 1+2 happen but step 3 doesn't, the meta-ratchet warns (orphan adapter); if step 3 happens without 1+2, the meta-ratchet fails hard (broken promise).

@@ -74,6 +74,17 @@ spec:
     metadata:
       labels: {app: authelia}
     spec:
+      # K8s auto-injects per-Service env vars (AUTHELIA_SERVICE_HOST,
+      # AUTHELIA_SERVICE_PORT, AUTHELIA_PORT_9091_TCP, ...) for every
+      # Service in the namespace whose name matches a container env-var
+      # pattern. Authelia 4.38 misreads AUTHELIA_SERVICE_HOST/PORT as
+      # the deprecated server.host/server.port config keys, conflicts
+      # with the server.address in configuration.yml, and refuses to
+      # start ("the new key already exists … but the deprecated keys
+      # and the new key can't both be configured"). enableServiceLinks
+      # is K8s-only — compose has no equivalent because it doesn't
+      # auto-inject these vars in the first place.
+      enableServiceLinks: false
       initContainers:
         # Seed-only, identical to the compose container's inline
         # command: only copy from the ConfigMap when the file

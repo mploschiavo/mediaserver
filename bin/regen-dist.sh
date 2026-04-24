@@ -76,7 +76,16 @@ echo "Regenerating dist/k8s-deploy.yaml..."
 # Generated from k8s/ manifests (kubectl kustomize k8s/).
 # Do NOT hand-edit — regenerate with `bin/regen-dist.sh`.
 EOF
-    kubectl kustomize "${REPO_ROOT}/k8s/"
+    # ``--load-restrictor LoadRestrictionsNone`` is required because the
+    # configMapGenerator for the profile lives at
+    # ../examples/bootstrap-profiles/media-k8s-standard.yaml relative to
+    # k8s/ — kustomize's default security model rejects file references
+    # outside the kustomization root. We DO want the profile to live with
+    # other profiles, not under k8s/, so the flag is the right tradeoff.
+    # (v1.0.169 — previously the configMapGenerator was commented out so
+    # this wasn't needed; enabling it for clean-deploy reproducibility
+    # forced the flag.)
+    kubectl kustomize --load-restrictor LoadRestrictionsNone "${REPO_ROOT}/k8s/"
 } > "${DIST_DIR}/k8s-deploy.yaml"
 
 echo ""

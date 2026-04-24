@@ -936,11 +936,24 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     # --- Plugin loader ---
 
     def _load_plugins(self) -> str:
-        """Load custom JS/CSS from config mount."""
+        """Load custom JS/CSS from config mount.
+
+        Reads from ``<CONFIG_ROOT>/.controller/plugins/`` (the PVC-backed
+        state directory). Pre-v1.0.169 this was ``controller/plugins/``
+        without the dot prefix — which on k8s landed on the pod's
+        ephemeral overlay instead of the PVC, so any plugin an operator
+        dropped there vanished at the next pod restart. The legacy
+        no-dot location is still honoured as a fallback so operators
+        with compose bind-mounts mid-migration don't lose their plugins
+        on the day they upgrade."""
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
-        plugin_dir = Path(config_root) / "controller" / "plugins"
+        plugin_dir = Path(config_root) / ".controller" / "plugins"
         if not plugin_dir.is_dir():
-            return ""
+            legacy = Path(config_root) / "controller" / "plugins"
+            if legacy.is_dir():
+                plugin_dir = legacy
+            else:
+                return ""
         parts: list[str] = []
         for f in sorted(plugin_dir.iterdir()):
             if f.suffix == ".js" and f.is_file():

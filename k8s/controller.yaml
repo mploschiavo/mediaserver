@@ -19,6 +19,14 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "patch"]
+  # The controller's ingress-config job patches media-stack-ingress
+  # spec.rules + spec.tls.hosts when routing config changes in the
+  # dashboard. Without these verbs the K8s client raises 403 and the
+  # dashboard's "Save Routing" only updates envoy — leaving the
+  # Ingress controller routing the OLD hostnames. (v1.0.162.)
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -29,6 +37,36 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: media-stack-controller
+subjects:
+  - kind: ServiceAccount
+    name: media-stack-controller
+    namespace: media-stack
+---
+# ClusterRole — needed for cluster-scoped reads. The Routing tab's
+# DNS-reachability check resolves the cluster's external IP by
+# reading Node.status.addresses; nodes are cluster-scoped so a
+# namespaced Role can't grant it. Read-only on Nodes is the safest
+# scope — no list-write/patch/delete. (v1.0.163 added this; before
+# it the dns_check fell back to socket-trick + returned 127.0.0.1
+# on MicroK8s, which made every legitimate hostname resolve as
+# "doesn't match cluster IP".)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: media-stack-controller-cluster
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: media-stack-controller-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: media-stack-controller-cluster
 subjects:
   - kind: ServiceAccount
     name: media-stack-controller
@@ -61,7 +99,7 @@ spec:
       - name: harbor-pull
       containers:
         - name: controller
-          image: harbor.iomio.io/library/media-stack-controller:v1.0.151
+          image: harbor.iomio.io/library/media-stack-controller:v1.0.169
           imagePullPolicy: Always
           env:
             - name: SABNZBD_API_KEY
@@ -157,6 +195,21 @@ spec:
               value: "1"
             - name: BOOTSTRAP_API_PORT
               value: "9100"
+            # MUST match the K8s Envoy Service targetPort (8880).
+            # The envoy-config job runs INSIDE this container and
+            # regenerates envoy.yaml; without this env, the
+            # generator silently emits ``listener: 0.0.0.0:80``,
+            # which Envoy on K8s can't bind (non-root container,
+            # no CAP_NET_BIND_SERVICE), CrashLoop. Same env exists
+            # on docker/docker-compose.yml for the compose path.
+            # (v1.0.149 root-cause for compose; v1.0.158 reproduced
+            # on K8s during the fresh-install — added here.)
+            - name: ENVOY_LISTENER_PORT
+              value: "8880"
+            # In-place upgrade button on the dashboard. See
+            # docker/docker-compose.yml for the long rationale.
+            - name: STACK_UPDATE_ALLOW_INPLACE
+              value: "true"
             - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
@@ -242,12 +295,20 @@ spec:
             - name: cfg-authelia
               mountPath: /srv-config/authelia
             # Controller's own state: users.json, audit.log.jsonl,
-            # api_tokens.json, password-policy.yaml. Without a
-            # PVC here everything the dashboard's user-management
-            # writes is ephemeral — every pod restart wipes users,
-            # audit chain, rotated passwords, API tokens.
+            # api_tokens.json, password-policy.yaml, schedules.json,
+            # job-history.json, runtime-config.json,
+            # routing-overrides.yaml. Without a PVC here EVERYTHING
+            # the dashboard writes is ephemeral — every pod restart
+            # wipes users, audit chain, rotated passwords, API
+            # tokens, dashboard-edited routing, scheduled jobs, and
+            # the job-history log. The mountPath has a leading dot
+            # because state.py uses ``/srv-config/.controller/...``;
+            # before v1.0.162 this was mounted at
+            # ``/srv-config/controller`` (no dot) which left the PVC
+            # bound but unused while every dashboard "Save Routing"
+            # silently no-op'd on K8s.
             - name: cfg-controller
-              mountPath: /srv-config/controller
+              mountPath: /srv-config/.controller
             - name: stack-torrents
               mountPath: /srv-stack/data/torrents
             - name: stack-usenet
@@ -262,7 +323,11 @@ spec:
         - name: controller-profile
           configMap:
             name: media-stack-controller-profile
-            optional: true
+            # NOT optional — the kustomization ships a baked-in
+            # standard profile so clean deploys produce the same
+            # working state every time. If the ConfigMap is absent
+            # the controller fails to start rather than silently
+            # falling back to .local LAN defaults. (v1.0.169.)
         - name: cfg-jellyfin
           persistentVolumeClaim:
             claimName: media-stack-config-jellyfin

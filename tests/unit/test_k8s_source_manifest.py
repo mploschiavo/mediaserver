@@ -91,11 +91,23 @@ class TestConfigMapReferences(unittest.TestCase):
     """Every ConfigMap volume must either be defined or marked optional."""
 
     def _get_defined_configmaps(self) -> set[str]:
-        return {
+        defined = {
             d["metadata"]["name"]
             for d in _find_by_kind(DOCS, "ConfigMap")
             if d.get("metadata", {}).get("name")
         }
+        # kustomize ``configMapGenerator`` entries produce real
+        # ConfigMaps at ``kustomize build`` time — they're not
+        # standalone YAML docs in k8s/, so the static scan wouldn't
+        # see them without reading kustomization.yaml. Without this,
+        # v1.0.169's baked-in ``media-stack-controller-profile``
+        # registers as "missing" even though kustomize generates it.
+        kust = yaml.safe_load((K8S_DIR / "kustomization.yaml").read_text()) or {}
+        for gen in (kust.get("configMapGenerator") or []):
+            name = (gen or {}).get("name")
+            if name:
+                defined.add(name)
+        return defined
 
     def test_all_configmap_volumes_resolvable(self):
         """ConfigMap volumes must be defined in manifests OR marked optional."""

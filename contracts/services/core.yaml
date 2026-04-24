@@ -57,6 +57,23 @@ plugin:
     # couldn't be unified through run_job().
     # ---------------------------------------------------------------
 
+    seed-runtime-overrides:
+      handler: media_stack.services.apps.core.job_adapters:seed_runtime_overrides
+      label: "Seed runtime overrides from profile"
+      # Runs FIRST in pre_bootstrap so the merged routing/auth view
+      # is complete before any downstream job reads it. Without this
+      # seed, on a clean deploy (no operator dashboard interaction)
+      # ``.controller/routing-overrides.yaml`` doesn't exist and
+      # ``get_routing()`` falls back to bundled LAN defaults —
+      # ingress-config then silently skips because the merged view
+      # still looks empty. Idempotent: skips when the file is already
+      # present (operator saved something via the dashboard). New in
+      # v1.0.169 as part of the "clean re-deploy = same result"
+      # contract.
+      phase: pre_bootstrap
+      priority: 5
+      requires: []
+
     discover-api-keys:
       handler: media_stack.services.apps.core.job_adapters:discover_api_keys
       label: "Discover API keys"
@@ -273,6 +290,20 @@ plugin:
       # configure-auth establishes. (v1.0.149.)
       phase: infrastructure
       priority: 20
+      requires: []
+
+    ingress-config:
+      handler: media_stack.services.apps.core.job_adapters:ingress_config
+      label: "Update K8s Ingress rules from routing config"
+      # K8s-only sibling of envoy-config. The Ingress controller is
+      # the FIRST hop on K8s — without rules for the configured
+      # gateway_host / per-service subdomains, requests don't even
+      # reach Envoy. Compose has no equivalent (no Ingress layer).
+      # No-op outside K8s (K8S_NAMESPACE unset → returns skipped).
+      # Same phase + priority as envoy-config so they reconcile
+      # together. (v1.0.162.)
+      phase: infrastructure
+      priority: 21
       requires: []
 
     # ---------------------------------------------------------------

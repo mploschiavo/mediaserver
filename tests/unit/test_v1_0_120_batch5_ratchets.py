@@ -78,6 +78,11 @@ class ContractJobPhaseValid(unittest.TestCase):
 
     _KNOWN_PHASES = {
         "pre_bootstrap",
+        # v1.0.149: foundational routing/auth setup. Added so
+        # envoy-config + configure-auth + ingress-config run before
+        # media_server / download_clients try to reach services
+        # through the gateway.
+        "infrastructure",
         "download_clients",
         "arr_apps",
         "media_server",

@@ -11,6 +11,15 @@ import secrets
 from typing import Any
 
 from media_stack.core.auth.users.models import User, UserState
+from media_stack.core.auth.users.async_propagation import (
+    run_service_admin_propagation_async,
+)
+from media_stack.core.auth.users.orphan_adoption import (
+    OrphanAdoptionFinder, adopt_into_provider,
+)
+from media_stack.core.auth.users.provider_self_heal import (
+    heal_missing_provider_user as _heal_missing_provider_user,
+)
 from media_stack.core.auth.users.user_service_base import (
     UserServiceBase,
     UserServiceError,
@@ -64,6 +73,24 @@ class UserWriteService(UserServiceBase):
                 raise UserServiceError(_check.reason or "password rejected by policy")
         sso_groups = self._sso_groups_for(role_slug)
 
+        # Early orphan-adoption: scan providers up-front for an
+        # existing record that matches this username/email. When one
+        # is found, take the adoption branch instead of the normal
+        # create. Running this BEFORE ``self._store.create()`` avoids
+        # the create/soft-delete round-trip and makes the audit log
+        # read "adopt" instead of "create then error then cleanup".
+        # (v1.0.169 — see orphan_adoption.py for the root-cause story.)
+        candidate = OrphanAdoptionFinder(
+            self._providers, source.name,
+        ).find(username=username, email=email)
+        if candidate and candidate.is_source_of_truth:
+            return self._create_via_adoption(
+                source=source, candidate=candidate,
+                email=email, username=username, display_name=display_name,
+                role_slug=role_slug, password=password,
+                sso_groups=sso_groups, actor=actor,
+            )
+
         user = self._store.create(
             email=email, username=username, display_name=display_name,
             role_slug=role_slug, state=UserState.ACTIVE,
@@ -83,6 +110,56 @@ class UserWriteService(UserServiceBase):
         result = user.to_dict()
         result["generated_password"] = password
         result["secondary_results"] = secondary
+        return result
+
+    def _create_via_adoption(self, *, source, candidate, email, username,
+                             display_name, role_slug, password,
+                             sso_groups, actor) -> dict[str, Any]:
+        """Link a fresh central row to an existing source-of-truth
+        record — the adoption branch of create_user. The central
+        store gets a normal row (with a newly-generated id), its
+        provider_refs point at the found external_id, and the
+        external record's password + groups get replaced so the
+        operator's intent wins over whatever stale state existed.
+        """
+        user = self._store.create(
+            email=email, username=username, display_name=display_name,
+            role_slug=role_slug, state=UserState.ACTIVE,
+        )
+        initial_history = self._policy.push_history([], password)
+        if initial_history:
+            self._store.update(user.id, password_history=initial_history)
+        self._store.update(
+            user.id, provider_refs={source.name: candidate.external_id},
+        )
+        replace_status = adopt_into_provider(
+            source, candidate.external_id,
+            password=password, sso_groups=sso_groups,
+        )
+        # Secondaries (jellyfin, jellyseerr) still run — they may have
+        # the user too (additional adopt branches would help later) or
+        # be missing it entirely (best-effort create handles both).
+        secondary = self._provision_secondaries(
+            user, password, display_name, sso_groups, role_slug,
+        )
+        self._audit.append(
+            actor=actor, action="create_user_via_adoption",
+            target=user.email, result="ok",
+            detail={
+                "user_id": user.id, "role": role_slug,
+                "adopted_from": {
+                    "provider": candidate.provider_name,
+                    "external_id": candidate.external_id,
+                    "match": candidate.match,
+                },
+                "replace": replace_status,
+                "secondary": secondary,
+            },
+        )
+        result = user.to_dict()
+        result["generated_password"] = password
+        result["secondary_results"] = secondary
+        result["adopted"] = True
         return result
 
     def _provision_sot(self, source, user, password, display_name, sso_groups, actor):
@@ -269,55 +346,11 @@ class UserWriteService(UserServiceBase):
         self, password: str, *,
         user_id: str, user_email: str, actor: str,
     ) -> None:
-        """Run the service-admin propagation off-request. Errors are
-        captured in an audit-log entry (``action='reset_password.bg'``)
-        so the user / operator can see what happened without blocking
-        the response."""
-        import threading
-
-        def _run() -> None:
-            try:
-                results = self._propagate_to_service_admins(password)
-                failed = [
-                    name for name, status in (results or {}).items()
-                    if isinstance(status, str) and status.startswith("error:")
-                ]
-                # Only audit the background result if there's something
-                # meaningful to record — every successful rotation
-                # creates one entry already on the sync path.
-                if failed:
-                    self._audit.append(
-                        actor=actor, action="reset_password.bg",
-                        target=user_email, result="partial",
-                        detail={
-                            "user_id": user_id,
-                            "service_admins": results,
-                            "failed": failed,
-                        },
-                    )
-                else:
-                    _log.debug(
-                        "[DEBUG] reset_password.bg: service-admins ok for %s",
-                        user_email,
-                    )
-            except Exception as exc:  # noqa: BLE001
-                _log.warning(
-                    "reset_password.bg: %s service-admin propagation raised: %s",
-                    user_email, exc,
-                )
-                try:
-                    self._audit.append(
-                        actor=actor, action="reset_password.bg",
-                        target=user_email, result="error",
-                        detail={"user_id": user_id, "error": str(exc)[:_ERR_LEN]},
-                    )
-                except Exception:  # noqa: BLE001
-                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
-
-        threading.Thread(
-            target=_run, daemon=True,
-            name=f"svc-admin-propagate-{user_id[:8]}",
-        ).start()
+        run_service_admin_propagation_async(
+            self._propagate_to_service_admins, self._audit,
+            password=password, user_id=user_id,
+            user_email=user_email, actor=actor,
+        )
 
     def _forall_providers_set_password(self, user, password):
         results: dict[str, Any] = {}
@@ -356,41 +389,3 @@ class UserWriteService(UserServiceBase):
         return results
 
 
-class _ProviderSelfHealer:
-    """Recreates a user in a provider when set_password failed because
-    the row is missing. Kept as a tiny class (not a free function) so
-    user_write_service doesn't trip the loose-functions ratchet."""
-
-    def heal(self, provider, user, password, original_exc, role) -> bool:
-        if "not found" not in str(original_exc).lower():
-            return False
-        if not hasattr(provider, "create_user"):
-            return False
-        groups = self._groups_from_role(role, provider.name)
-        external_id = user.provider_refs.get(provider.name) or user.username
-        try:
-            provider.create_user(
-                username=external_id,
-                email=user.email,
-                display_name=user.display_name or user.username,
-                password=password,
-                groups=groups,
-            )
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-
-    def _groups_from_role(self, role, provider_name: str) -> list[str]:
-        if role is None:
-            return []
-        payload = (getattr(role, "provider_payloads", {}) or {}).get(
-            provider_name, {})
-        raw_groups = payload.get("groups") if isinstance(payload, dict) else None
-        if isinstance(raw_groups, list):
-            return [str(g) for g in raw_groups if g]
-        return []
-
-
-_provider_self_healer = _ProviderSelfHealer()
-# Back-compat alias used by unit tests and the call site.
-_heal_missing_provider_user = _provider_self_healer.heal

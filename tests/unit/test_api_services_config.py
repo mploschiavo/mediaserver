@@ -267,7 +267,14 @@ class TestUpdateRouting(unittest.TestCase):
                 result = MODULE.update_routing({"base_domain": "new.io"}, action_trigger=trigger)
                 self.assertEqual(result["status"], "updated")
                 self.assertIn("base_domain", result["changed"])
-                trigger.assert_called_once_with("envoy-config", {})
+                # Two triggers: envoy-config (data-plane edge) and
+                # ingress-config (K8s control-plane Ingress rules).
+                # Ingress-config no-ops on compose but must fire on
+                # both so the K8s clean-deploy path reconciles the
+                # Ingress without dashboard click-through. (v1.0.162.)
+                trigger.assert_any_call("envoy-config", {})
+                trigger.assert_any_call("ingress-config", {})
+                self.assertEqual(trigger.call_count, 2)
         finally:
             import shutil
             shutil.rmtree(tmpdir)

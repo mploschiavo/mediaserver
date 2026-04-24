@@ -226,7 +226,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.158}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.169}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -677,7 +677,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.158}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.169}
     container_name: media-stack-controller
     command:
       - python3
@@ -712,6 +712,7 @@ services:
       # controller``. Off by default everywhere else because the
       # sibling container has full docker-socket access; only enable
       # when you trust everyone with admin access to the dashboard.
+      # See docs/upgrades.md for the rationale.
       STACK_UPDATE_ALLOW_INPLACE: "${STACK_UPDATE_ALLOW_INPLACE:-true}"
       BOOTSTRAP_WAIT_INTERVAL_SECONDS: "3"
       BOOTSTRAP_WAIT_HEARTBEAT_SECONDS: "15"

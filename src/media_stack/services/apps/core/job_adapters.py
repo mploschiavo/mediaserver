@@ -27,6 +27,7 @@ import os
 from typing import Any
 
 from media_stack.cli.commands.job_framework import JobContext
+from media_stack.core.logging_utils import log_swallowed
 
 
 def _make_servarr_http_request():
@@ -154,6 +155,121 @@ def envoy_config(ctx: JobContext) -> dict:
     from media_stack.cli.commands.action_handlers import action_envoy_config
     action_envoy_config(_default_args(ctx))
     return {"action": "envoy-config"}
+
+
+def ingress_config(ctx: JobContext) -> dict:
+    """Reconcile the K8s Ingress (rules + tls.hosts) from the runtime
+    routing config. K8s-only — no-ops outside K8s by detecting
+    ``K8S_NAMESPACE``. The dashboard's POST /api/routing triggers
+    both envoy-config (the data-plane edge config) and this
+    (the K8s control-plane Ingress rules) so a routing change
+    propagates end-to-end."""
+    from media_stack.api.services import k8s_ingress_sync
+    result = k8s_ingress_sync.reconcile()
+    return {"action": "ingress-config", **result}
+
+
+def seed_runtime_overrides(ctx: JobContext) -> dict:
+    """Seed ``.controller/routing-overrides.yaml`` and
+    ``.controller/auth-overrides.yaml`` from the bootstrap profile
+    on first run.
+
+    Why this job exists
+    -------------------
+    Before v1.0.169, those override files were only written when the
+    operator hit ``Save Routing`` / ``Save Auth`` in the dashboard.
+    On a clean deploy with no dashboard interaction:
+
+      - ``get_routing()`` fell back to bundled defaults (``.local``
+        gateway host) because the override file didn't exist.
+      - ``ingress-config`` silently returned ``skipped`` because its
+        routing-config lookup went through the same merged view and
+        the operator's real hostnames were nowhere to be found.
+      - A pod restart would re-run bootstrap with the SAME empty
+        state — so "clean deploy" was only ever working if someone
+        had clicked Save once. Reproducibility was a lie.
+
+    This job seeds the overrides from the profile at pre_bootstrap
+    time so the merged view is complete on first run. Idempotent — if
+    the override file already exists (operator saved something via
+    the dashboard) we leave it alone; the dashboard is the authority
+    for everything the operator configured after install.
+
+    Applies on both runtimes because compose has the same underlying
+    shape (override files on the PVC feed ``get_routing()``) even if
+    the "patched live" failure is less visible there.
+    """
+    import os
+    import yaml
+    from pathlib import Path
+    from media_stack.api.services._resolve import resolve_profile_path
+
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    overrides_dir = config_root / ".controller"
+    overrides_dir.mkdir(parents=True, exist_ok=True)
+
+    profile_path_str = resolve_profile_path(
+        os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
+    )
+    if not profile_path_str:
+        return {"action": "seed-runtime-overrides",
+                "skipped": True,
+                "reason": "BOOTSTRAP_PROFILE_FILE not resolvable"}
+    try:
+        profile = yaml.safe_load(
+            Path(profile_path_str).read_text(encoding="utf-8")
+        ) or {}
+    except Exception as exc:
+        return {"action": "seed-runtime-overrides",
+                "error": f"profile read failed: {exc}"[:120]}
+
+    created: list[str] = []
+    kept: list[str] = []
+
+    # Routing overrides — seed from profile.routing. Dashboard saves
+    # land in the same file, so the two never fight: seed writes the
+    # file ONCE (skipped if already present), dashboard writes every
+    # time the operator clicks Save.
+    routing_path = overrides_dir / "routing-overrides.yaml"
+    if routing_path.is_file():
+        kept.append("routing-overrides.yaml")
+    else:
+        routing = profile.get("routing") or {}
+        if routing:
+            try:
+                routing_path.write_text(
+                    yaml.dump({"routing": routing},
+                              default_flow_style=False, sort_keys=False),
+                    encoding="utf-8",
+                )
+                created.append("routing-overrides.yaml")
+            except Exception as exc:
+                return {"action": "seed-runtime-overrides",
+                        "error": f"write routing-overrides failed: {exc}"[:120]}
+
+    # Auth overrides — same pattern, keyed off profile.auth. When the
+    # profile has no auth section (pure LAN deploy) we skip this rather
+    # than writing an empty stub, since the override-presence is also
+    # used by probes as "operator configured auth".
+    auth_path = overrides_dir / "auth-overrides.yaml"
+    if auth_path.is_file():
+        kept.append("auth-overrides.yaml")
+    else:
+        auth = profile.get("auth") or {}
+        if auth:
+            try:
+                auth_path.write_text(
+                    yaml.dump({"auth": auth},
+                              default_flow_style=False, sort_keys=False),
+                    encoding="utf-8",
+                )
+                created.append("auth-overrides.yaml")
+            except Exception as exc:
+                return {"action": "seed-runtime-overrides",
+                        "error": f"write auth-overrides failed: {exc}"[:120]}
+
+    return {"action": "seed-runtime-overrides",
+            "created": created, "kept": kept}
 
 
 def validate_credentials(ctx: JobContext) -> dict:
@@ -570,7 +686,8 @@ def _mass_search_qbit_active_count(ctx: JobContext) -> int | None:
     import urllib.request as _ur
     qb_user = os.environ.get("QBIT_USERNAME", "admin")
     qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
-    base = (ctx.service_url("qbittorrent") or "http://qbittorrent:8080").rstrip("/")
+    from media_stack.api.services.registry import service_internal_url
+    base = (ctx.service_url("qbittorrent") or service_internal_url("qbittorrent")).rstrip("/")
     cj = __import__("http.cookiejar", fromlist=["CookieJar"]).CookieJar()
     opener = _ur.build_opener(_ur.HTTPCookieProcessor(cj))
     try:
@@ -647,8 +764,12 @@ def mass_search_throttled(ctx: JobContext) -> dict:
                 imported_count += sum(
                     1 for m in _items if isinstance(m, dict) and m.get("hasFile")
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            # Per-app failure — one *arr unreachable or returning junk
+            # shouldn't abort the mass-search decision for the rest.
+            # Keep imported_count unchanged for this app; the thin-
+            # library check stays conservative.
+            log_swallowed(exc)
 
     qbit_active = _mass_search_qbit_active_count(ctx)
     is_thin = imported_count < thin_threshold
@@ -739,8 +860,8 @@ def ensure_qbittorrent_categories(ctx: JobContext) -> dict:
     import urllib.error as _ue
     qb_user = os.environ.get("QBIT_USERNAME", "admin")
     qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
-    base = ctx.service_url("qbittorrent") or "http://qbittorrent:8080"
-    base = base.rstrip("/")
+    from media_stack.api.services.registry import service_internal_url
+    base = (ctx.service_url("qbittorrent") or service_internal_url("qbittorrent")).rstrip("/")
     # Login first — qBit's API needs a session cookie even for the
     # category endpoints.
     cj = __import__("http.cookiejar", fromlist=["CookieJar"]).CookieJar()
@@ -881,7 +1002,8 @@ def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
     jf_key = keys.get("jellyfin", "")
     if not jf_key:
         return {"action": "ensure-jellyfin-libraries", "skipped": "no jellyfin key"}
-    base = "http://jellyfin:8096"
+    from media_stack.api.services.registry import service_internal_url
+    base = service_internal_url("jellyfin")
 
     desired = [
         ("Movies",   "movies",  "/media/movies", "Tmdb"),
@@ -1056,12 +1178,18 @@ def ensure_jellyseerr_oidc(ctx: JobContext) -> dict:
         return {"action": "ensure-jellyseerr-oidc",
                 "skipped": f"settings.json not found at {settings_path}"}
 
-    # Resolve the issuer URL from the profile so external/sub-domain
-    # deployments use the right host. Falls back to the in-cluster
-    # default. Authelia's discovery doc lives at
+    # Resolve the issuer URL from the merged routing config (profile
+    # YAML + dashboard runtime overrides) so dashboard-edited
+    # hostnames take effect. On K8s the profile ConfigMap is often
+    # absent and the operator's real routing lives in
+    # ``${CONFIG_ROOT}/.controller/routing-overrides.yaml``;
+    # ``get_routing()`` merges both. Authelia's discovery doc lives at
     # /.well-known/openid-configuration on the main hostname.
-    profile = ctx.profile or {}
-    routing = profile.get("routing") or {}
+    try:
+        from media_stack.api.services.config import get_routing as _get_routing
+        routing = dict(_get_routing() or {})
+    except Exception:
+        routing = (ctx.profile or {}).get("routing") or {}
     base_domain = str(routing.get("base_domain") or "local").strip()
     sub = str(routing.get("stack_subdomain") or "media-stack").strip()
     issuer = f"https://authelia.{sub}.{base_domain}"
@@ -1165,8 +1293,12 @@ def ensure_jellyseerr_oidc(ctx: JobContext) -> dict:
             for pod in v1.list_namespaced_pod(ns, label_selector="app=jellyseerr").items:
                 v1.delete_namespaced_pod(name=pod.metadata.name, namespace=ns)
             restarted = True
-        except Exception:
-            pass
+        except Exception as exc:
+            # Pod-restart is best-effort; Jellyseerr will pick up the
+            # new OIDC config on its next natural restart anyway. Don't
+            # fail the whole ensure-jellyseerr-oidc job if the k8s
+            # client isn't available (compose path) or RBAC is denied.
+            log_swallowed(exc)
 
     return {
         "action": "ensure-jellyseerr-oidc",
@@ -1326,7 +1458,8 @@ def _qbit_completed_torrents(ctx: JobContext) -> list[dict]:
     import urllib.request as _ur
     qb_user = os.environ.get("QBIT_USERNAME", "admin")
     qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
-    base = (ctx.service_url("qbittorrent") or "http://qbittorrent:8080").rstrip("/")
+    from media_stack.api.services.registry import service_internal_url
+    base = (ctx.service_url("qbittorrent") or service_internal_url("qbittorrent")).rstrip("/")
     cookies = _cj.CookieJar()
     opener = _ur.build_opener(_ur.HTTPCookieProcessor(cookies))
     try:
@@ -1495,8 +1628,12 @@ def recover_stuck_imports(ctx: JobContext) -> dict:
                     _ur.urlopen(_ur.Request(
                         del_url, method="DELETE", headers={"X-Api-Key": key},
                     ), timeout=10)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Per-entry delete failure — next run of recover-
+                    # stuck-imports will try again. Don't abort the
+                    # batch because one queue entry refuses to delete
+                    # (usually the queue-API race between list + delete).
+                    log_swallowed(exc)
 
         summary[app] = {
             "qbit_completed_in_category": len(candidates),

@@ -48,6 +48,39 @@ except ImportError:
 _CONFIG_ROOT_ENV = "CONFIG_ROOT"
 _DEFAULT_CONFIG_ROOT = "/srv-config"
 
+# Controller state directory — DOT-prefixed to match the k8s PVC mount
+# and the paths state.py has used since v1.0.162. Previously this
+# factory wrote to ``<config_root>/controller/`` (no dot), which on k8s
+# landed on the pod's ephemeral overlay because the PVC is mounted at
+# ``<config_root>/.controller/``. Effect: every user created via the UI
+# survived until the next pod restart, then vanished — the "patches on
+# a live system" failure class this session has been fighting.
+# (v1.0.169 fix; the migration path below moves old state over.)
+_CONTROLLER_STATE_DIR = ".controller"
+
+
+def _state_path(config_root: Path, filename: str) -> Path:
+    """Return the authoritative path for a controller-state file, and
+    migrate from the legacy non-dot location if only the legacy file
+    exists. Idempotent — once migration happens on first call, every
+    subsequent call returns the new path directly.
+    """
+    new_path = config_root / _CONTROLLER_STATE_DIR / filename
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    if new_path.exists():
+        return new_path
+    legacy_path = config_root / "controller" / filename
+    if legacy_path.exists():
+        try:
+            # Copy rather than rename so a partially-rolled-out fleet
+            # (some pods on the fix, some still on the old code) doesn't
+            # watch its state disappear from under it. The non-dot copy
+            # can be garbage-collected later once every pod's on v1.0.169+.
+            new_path.write_bytes(legacy_path.read_bytes())
+        except OSError:
+            pass
+    return new_path
+
 
 class UserServiceFactory:
     """Build a UserService from env + contract files.
@@ -73,9 +106,9 @@ class UserServiceFactory:
             env.get("SERVICE_ADMINS_PATH", ""),
             "service_admin_providers.yaml",
         )
-        store = UserStore(config_root / "controller" / "users.json")
+        store = UserStore(_state_path(config_root, "users.json"))
         catalog = RoleCatalog(roles_path)
-        audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
+        audit = AuditLog(_state_path(config_root, "audit.log.jsonl"))
         providers = self._load_providers(providers_path, env, config_root)
         service_admins = self._load_service_admins(admins_path)
         # Admin-configurable password policy (edited from the Users
@@ -158,8 +191,8 @@ class UserServiceFactory:
     def build_invite_service(self) -> InviteService:
         env = self._env
         config_root = Path(env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
-        audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
-        invites = InviteStore(config_root / "controller" / "invites.json")
+        audit = AuditLog(_state_path(config_root, "audit.log.jsonl"))
+        invites = InviteStore(_state_path(config_root, "invites.json"))
         service = self.build()
         return InviteService(
             invites=invites,
@@ -177,7 +210,7 @@ class UserServiceFactory:
         roles_path = self._find_contract(
             env.get("ROLE_CATALOG_PATH", ""), "roles.yaml",
         )
-        audit = AuditLog(config_root / "controller" / "audit.log.jsonl")
+        audit = AuditLog(_state_path(config_root, "audit.log.jsonl"))
         tracker = _SHARED_TRACKER
 
         def _alert(username: str, count: int) -> None:
@@ -191,7 +224,7 @@ class UserServiceFactory:
             )
 
         return BasicAuthVerifier(
-            store=UserStore(config_root / "controller" / "users.json"),
+            store=UserStore(_state_path(config_root, "users.json")),
             role_catalog=RoleCatalog(roles_path),
             users_db_path=users_db_path,
             fallback_username=env.get("STACK_ADMIN_USERNAME", "admin"),
@@ -206,7 +239,7 @@ class UserServiceFactory:
         appends an 'audit_chain_tamper' entry so the event is itself
         chained (before the corruption, at least)."""
         config_root = Path(self._env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
-        audit_path = config_root / "controller" / "audit.log.jsonl"
+        audit_path = _state_path(config_root, "audit.log.jsonl")
 
         def _alert(detail: str) -> None:
             try:
@@ -230,7 +263,7 @@ class UserServiceFactory:
 
     def build_api_token_store(self) -> ApiTokenStore:
         config_root = Path(self._env.get(_CONFIG_ROOT_ENV, _DEFAULT_CONFIG_ROOT))
-        return ApiTokenStore(config_root / "controller" / "api_tokens.json")
+        return ApiTokenStore(_state_path(config_root, "api_tokens.json"))
 
     def resolve_roles_path(self) -> Path:
         """Public accessor for callers that need to edit roles.yaml in place."""

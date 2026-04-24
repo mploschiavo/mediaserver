@@ -31,10 +31,45 @@ class ConfigureAuthJob:
         return config_root / "authelia"
 
     def configure_auth(self, ctx: Any) -> dict[str, Any]:
-        """Generate Authelia configuration from profile settings."""
-        profile = ctx.profile or {}
+        """Generate Authelia configuration from profile settings.
+
+        Reads via AuthConfigService._load_profile() so dashboard
+        ``auth-overrides.yaml`` edits take effect — without this, on
+        K8s an operator could "Save Auth: authelia" in the dashboard
+        and configure-auth would still run with the bundled
+        profile's ``auth: {}`` (defaulting to ``none``) on the next
+        bootstrap, leaving them stuck. (v1.0.165.)"""
+        try:
+            from media_stack.api.services.auth_config import AuthConfigService
+            merged_profile = AuthConfigService()._load_profile()
+            profile = merged_profile if merged_profile else (ctx.profile or {})
+        except Exception:
+            profile = ctx.profile or {}
         auth_cfg = profile.get("auth") or {}
         provider = str(auth_cfg.get("provider", "") or "").strip().lower()
+        # Fail-fast: an internet-exposed stack with no auth provider
+        # would be wide open — the v1.0.166 incident shape. The
+        # promise registry catches this at verify time, but bootstrap
+        # should refuse to come up rather than leaving the operator
+        # to discover it via traffic logs. The compose path's
+        # ``routing.internet_exposed`` and the K8s path's same flag
+        # both flow into this profile section.
+        try:
+            from media_stack.api.services.config import get_routing
+            routing = get_routing() or profile.get("routing") or {}
+        except Exception:
+            routing = profile.get("routing") or {}
+        if bool(routing.get("internet_exposed")) and provider in ("", "none"):
+            msg = (
+                "REFUSING to bootstrap: routing.internet_exposed=true "
+                "but auth.provider is 'none'. The cluster would be "
+                "reachable from the internet with no authentication. "
+                "Set auth.provider to 'authelia' (or 'authentik'/'basic') "
+                "in the bootstrap profile, OR set "
+                "routing.internet_exposed=false for a pure-LAN deploy."
+            )
+            runtime_platform.log(f"[ERROR] {msg}")
+            return {"error": msg}
         if provider not in {"authelia", "authelia+oidc"}:
             return {"skipped": f"auth provider is '{provider or 'none'}' — Authelia config not needed"}
 
@@ -70,7 +105,17 @@ class ConfigureAuthJob:
         applied on first deploy but never overwriting a dashboard-
         reset password on a subsequent regen."""
         ingress = profile.get("ingress") or {}
-        routing = profile.get("routing") or {}
+        # Routing source-of-truth: merged routing config so dashboard
+        # edits to gateway_host take effect in Authelia's
+        # access_control rules + cookie domain. Without this, an
+        # operator who set ``gateway_host: m.iomio.io`` in the
+        # dashboard would still get an Authelia config that expected
+        # ``apps.media-stack.local`` and refused login. (v1.0.165.)
+        try:
+            from media_stack.api.services.config import get_routing as _get_routing
+            routing = dict(_get_routing() or profile.get("routing") or {})
+        except Exception:
+            routing = profile.get("routing") or {}
         admin_username = ctx.admin_username
         existing_admin_pw = self._read_existing_admin_password(
             output_dir, admin_username,
