@@ -28,9 +28,16 @@ routing:
   gateway_host: k8.media-stack.local
   direct_hosts:
     media_server: jellyfin.k8.media-stack.local
+# Auth defaults to Authelia on K8s — clusters are typically reachable
+# via real DNS even when ``internet_exposed: false`` (the operator's
+# router exposes ports, family members access from outside the LAN,
+# etc.). A ``provider: none`` default would mean every fresh K8s
+# install is wide open by default, which is exactly the v1.0.166
+# incident the security promises now catch. Operators who want a
+# pure-LAN no-auth setup can override this in their own profile.
 auth:
-  enabled: false
-  provider: none
+  enabled: true
+  provider: authelia
 chaos:
   enabled: false
   duration_minutes: 5

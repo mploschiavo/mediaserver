@@ -60,6 +60,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from media_stack.api.services.registry import service_internal_url
+
 _log = logging.getLogger("media_stack.indexer_app_match")
 
 
@@ -349,7 +351,7 @@ def apply_indexer_app_tags(
     sab_reachable = False
     try:
         _s, _b, _ = http_request(
-            "http://sabnzbd:8080", "/sabnzbd/api?mode=version",
+            service_internal_url("sabnzbd"), "/sabnzbd/api?mode=version",
             api_key="",
         )
         sab_reachable = (_s == 200)

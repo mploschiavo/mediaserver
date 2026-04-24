@@ -53,6 +53,26 @@ rules:
   verbs:
   - get
   - patch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: media-stack-controller-cluster
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -63,6 +83,19 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: media-stack-controller
+subjects:
+- kind: ServiceAccount
+  name: media-stack-controller
+  namespace: media-stack
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: media-stack-controller-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: media-stack-controller-cluster
 subjects:
 - kind: ServiceAccount
   name: media-stack-controller
@@ -115,6 +148,80 @@ data:
 kind: ConfigMap
 metadata:
   name: authelia-config
+  namespace: media-stack
+---
+apiVersion: v1
+data:
+  profile.yaml: |
+    schema_version: 1
+    kind: media_stack_profile
+    metadata:
+      name: media-stack
+      platform: k8s
+      purpose: standard
+    resources:
+      disk_space_gb: 500
+      network_cidr: 192.168.1.0/24
+    install_profile: standard
+    bootstrap:
+      preconfigure_apps: true
+      preconfigure_api_keys: true
+      apply_initial_preferences: true
+      auto_download_content: false
+      trigger_indexer_sync: true
+      refresh_health_after_setup: true
+    routing:
+      internet_exposed: false
+      strategy: hybrid
+      provider: envoy
+      base_domain: local
+      gateway_port: 80
+      app_path_prefix: /app
+      media_server_service_names:
+      - jellyfin
+      - jellyfin-nvidia
+      gateway_host: k8.media-stack.local
+      direct_hosts:
+        media_server: jellyfin.k8.media-stack.local
+    # Auth defaults to Authelia on K8s — clusters are typically reachable
+    # via real DNS even when ``internet_exposed: false`` (the operator's
+    # router exposes ports, family members access from outside the LAN,
+    # etc.). A ``provider: none`` default would mean every fresh K8s
+    # install is wide open by default, which is exactly the v1.0.166
+    # incident the security promises now catch. Operators who want a
+    # pure-LAN no-auth setup can override this in their own profile.
+    auth:
+      enabled: true
+      provider: authelia
+    chaos:
+      enabled: false
+      duration_minutes: 5
+      interval_seconds: 60
+      actions:
+      - restart_container
+      - pause_container
+      - network_disconnect
+    live_tv_defaults:
+      tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
+      guide_url: https://iptv-epg.org/files/epg-us.xml
+      default_program_icon_urls:
+      - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
+    technology_bindings:
+      torrent_client: qbittorrent
+      usenet_client: sabnzbd
+      media_server: jellyfin
+      request_manager: jellyseerr
+      indexer_manager: prowlarr
+    app_auth:
+      enabled: true
+      method: Forms
+      required: DisabledForLocalAddresses
+      fail_on_error: false
+      username_env: STACK_ADMIN_USERNAME
+      password_env: STACK_ADMIN_PASSWORD
+kind: ConfigMap
+metadata:
+  name: media-stack-controller-profile
   namespace: media-stack
 ---
 apiVersion: v1
@@ -852,6 +959,7 @@ spec:
         volumeMounts:
         - mountPath: /config
           name: config
+      enableServiceLinks: false
       initContainers:
       - command:
         - sh
@@ -1591,6 +1699,10 @@ spec:
           value: "1"
         - name: BOOTSTRAP_API_PORT
           value: "9100"
+        - name: ENVOY_LISTENER_PORT
+          value: "8880"
+        - name: STACK_UPDATE_ALLOW_INPLACE
+          value: "true"
         - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
           value: "3"
         - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
@@ -1601,7 +1713,7 @@ spec:
           value: /profile/profile.yaml
         - name: BOOTSTRAP_CONFIG_FILE
           value: /controller-config/config.json
-        image: harbor.iomio.io/library/media-stack-controller:v1.0.158
+        image: harbor.iomio.io/library/media-stack-controller:v1.0.169
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1660,7 +1772,7 @@ spec:
           name: cfg-envoy
         - mountPath: /srv-config/authelia
           name: cfg-authelia
-        - mountPath: /srv-config/controller
+        - mountPath: /srv-config/.controller
           name: cfg-controller
         - mountPath: /srv-stack/data/torrents
           name: stack-torrents
@@ -1678,7 +1790,6 @@ spec:
         name: controller-config
       - configMap:
           name: media-stack-controller-profile
-          optional: true
         name: controller-profile
       - name: cfg-jellyfin
         persistentVolumeClaim:
@@ -2465,7 +2576,7 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.158
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.169
             imagePullPolicy: IfNotPresent
             name: controller-reconcile
             volumeMounts:
@@ -2606,7 +2717,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.158
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.169
             imagePullPolicy: IfNotPresent
             name: jellyfin-prewarm
             volumeMounts:
@@ -2706,7 +2817,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.158
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.169
             imagePullPolicy: IfNotPresent
             name: media-hygiene
             volumeMounts:

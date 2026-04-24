@@ -119,4 +119,65 @@ test.describe('Standalone compose deploy', () => {
       expect(response.ok(), `${ep} should return 200`).toBeTruthy();
     }
   });
+
+  // -----------------------------------------------------------------------
+  // Clean-deploy reproducibility (v1.0.169)
+  //
+  // Same invariant as the K8s side: a clean ``docker compose up -d``
+  // must produce a working stack without requiring the operator to
+  // click Save in the dashboard. The seed-runtime-overrides job runs
+  // in pre_bootstrap on both runtimes, so both should have the same
+  // artifact on disk after bootstrap completes.
+  // -----------------------------------------------------------------------
+
+  test('overrides files were seeded at bootstrap (compose)', () => {
+    // The compose bind-mount exposes the controller's writable config
+    // under ./config/ relative to the operator's working directory;
+    // via the container the same path is /srv-config/. The sandbox
+    // launched docker compose from sandboxDir, so the controller's
+    // bind-mount is underneath it.
+    const output = sh(
+      `docker exec media-stack-controller test -f /srv-config/.controller/routing-overrides.yaml && echo PRESENT || echo MISSING`
+    );
+    expect(
+      output,
+      'routing-overrides.yaml must be seeded at bootstrap on compose too. ' +
+      'Absence means the seed-runtime-overrides job didn\'t run, or ran ' +
+      'before CONFIG_ROOT was mounted — either way clean re-deploys won\'t ' +
+      'produce the same result.'
+    ).toContain('PRESENT');
+  });
+
+  test('routing API returns a non-empty gateway_host (no dashboard interaction)', async ({ request }) => {
+    const response = await request.get(`http://127.0.0.1:${controllerPort}/api/routing`);
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    expect(
+      data.gateway_host,
+      '/api/routing must return a concrete gateway_host without the ' +
+      'operator touching the dashboard. Empty = profile wasn\'t read.'
+    ).toBeTruthy();
+  });
+
+  test('server-side route-probe endpoint returns sane results for a known service', async ({ request }) => {
+    // /api/route-probe runs the probe SERVER SIDE (bypasses the browser's
+    // mixed-content + self-signed-cert restrictions). If this returns
+    // HTTP 200 with ok=true/false and a status code, the "Test All Paths"
+    // matrix works end-to-end. The equivalent test on K8s catches the
+    // v1.0.168 bug where the matrix probe used the compose-only internal
+    // port 8080 and blew up on the K8s envoy Service.
+    const target = `http://127.0.0.1:${controllerPort}/healthz`;
+    const response = await request.get(
+      `http://127.0.0.1:${controllerPort}/api/route-probe?url=${encodeURIComponent(target)}`
+    );
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    expect(data).toHaveProperty('url');
+    expect(data).toHaveProperty('status');
+    expect(data).toHaveProperty('ok');
+    expect(
+      data.ok,
+      `route-probe must reach the controller's own /healthz, got status=${data.status}`
+    ).toBe(true);
+  });
 });

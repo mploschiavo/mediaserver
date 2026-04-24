@@ -3,8 +3,15 @@ users:
   admin:
     disabled: false
     displayname: Media Stack Admin
-    # Password is: media-dev
-    password: "$2b$12$jtEQeNxFD2c6LNINTFFutetzyw/5ncAmCwDYRA3ZGviUoQKBPUXL6"
+    # NOTE: no ``password:`` field on purpose. The controller's
+    # configure-auth job seeds a real bcrypt hash from
+    # STACK_ADMIN_PASSWORD on first run. Shipping a hashed password
+    # here would mean every operator's stack starts with the SAME
+    # well-known password until they noticed and rotated — exactly
+    # the failure mode that
+    # tests/unit/test_admin_credential_sync.py guards against.
+    # The init-config seeder copies this file only when /config is
+    # empty; configure-auth then patches in the real hash.
     email: admin@local
     groups:
       - admins

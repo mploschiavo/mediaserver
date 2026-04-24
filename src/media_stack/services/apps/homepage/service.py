@@ -82,21 +82,26 @@ class HomepageService:
             onboarding_cfg = {}
 
         # Build gateway base URL from routing config so tiles link to
-        # real browser-reachable URLs (e.g. http://apps.media-stack.local/app/sonarr).
-        # Use ProfileConfig as the source of truth.
-        routing_cfg = cfg.get("routing") or {}
+        # real browser-reachable URLs (e.g. https://m.example.com/app/sonarr).
+        # SOURCE OF TRUTH: ``api.services.config.get_routing()`` returns
+        # the profile YAML merged with the dashboard's runtime overrides
+        # (``${CONFIG_ROOT}/.controller/routing-overrides.yaml``).
+        # Before v1.0.165 this only read the bootstrap config + the
+        # raw profile YAML, so on K8s — where the profile ConfigMap
+        # often isn't mounted and dashboard edits live in the overrides
+        # file only — homepage tiles linked to ``apps.media-stack.local``
+        # (the static default) instead of the operator's actual gateway.
+        try:
+            from media_stack.api.services.config import get_routing
+            routing_cfg = dict(get_routing() or {})
+        except Exception:
+            routing_cfg = cfg.get("routing") or {}
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
+        # Final fallback: the bootstrap-config ``routing`` block, in
+        # case neither the merged getter nor the profile module is
+        # available (compose preflight runs that don't have api wired).
         if not routing_cfg.get("gateway_host"):
-            try:
-                from media_stack.services.profile_config import get_profile_config
-                profile = get_profile_config()
-                routing_cfg = {
-                    "gateway_host": profile.routing.gateway_host,
-                    "gateway_port": profile.routing.gateway_port,
-                    "app_path_prefix": profile.routing.app_path_prefix,
-                    "scheme": profile.routing.resolved_scheme,
-                }
-            except Exception:
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
+            routing_cfg = cfg.get("routing") or routing_cfg
         gateway_host = str(routing_cfg.get("gateway_host", "")).strip()
         gateway_port = str(routing_cfg.get("gateway_port", "")).strip()
         app_path_prefix = str(routing_cfg.get("app_path_prefix", "/app")).strip()

@@ -366,7 +366,13 @@ class TestUpdateRoutingEnvoyTrigger(unittest.TestCase):
                     from media_stack.api.services.config import update_routing
                     update_routing({"strategy": "subdomain-only"}, action_trigger=action_trigger)
 
-            action_trigger.assert_called_once_with("envoy-config", {})
+            # Both the data-plane (envoy-config) AND the K8s control
+            # plane (ingress-config) must fire — see the comment in
+            # update_routing. Compose ignores ingress-config at
+            # runtime but the call still happens. (v1.0.162.)
+            action_trigger.assert_any_call("envoy-config", {})
+            action_trigger.assert_any_call("ingress-config", {})
+            self.assertEqual(action_trigger.call_count, 2)
 
     def test_no_trigger_when_no_changes(self):
         import yaml

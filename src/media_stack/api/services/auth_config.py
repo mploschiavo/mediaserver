@@ -14,6 +14,8 @@ from typing import Any, Callable
 
 import yaml
 
+from media_stack.core.logging_utils import log_swallowed
+
 from media_stack.core.auth.gateway_policy import AuthContractService
 
 
@@ -245,14 +247,35 @@ class AuthConfigService:
         if not changed:
             return {"status": "no_changes", "auth": auth}
 
-        # Persist
+        # Persist — auth-overrides on the writable PVC is the
+        # authoritative store; profile YAML is best-effort. On K8s
+        # the profile is a read-only ConfigMap mount, so the profile
+        # write fails silently and only the overrides file survives
+        # restarts. _load_profile() merges them at read time.
+        # (v1.0.165 — same dual-write pattern as routing-overrides.)
+        override_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        overrides_path = Path(override_root) / ".controller" / "auth-overrides.yaml"
+        overrides_path.parent.mkdir(parents=True, exist_ok=True)
+        overrides_payload = {
+            "auth": profile.get("auth") or {},
+            "app_auth": profile.get("app_auth") or {},
+        }
+        try:
+            overrides_path.write_text(
+                yaml.dump(overrides_payload, default_flow_style=False, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            return {"error": f"Failed to write auth overrides: {str(exc)[:120]}"}
         try:
             profile_path.write_text(
                 yaml.dump(profile, default_flow_style=False, sort_keys=False, allow_unicode=True),
                 encoding="utf-8",
             )
-        except Exception as exc:
-            return {"error": f"Failed to write profile: {str(exc)[:120]}"}
+        except Exception:
+            # Best-effort — read-only mount is expected on K8s. The
+            # auth-overrides file above is the durable store.
+            pass
 
         # Trigger downstream regen. Without configure-auth, Authelia
         # never gets its config file rewritten — the stored mode says
@@ -280,15 +303,40 @@ class AuthConfigService:
         return {"status": "updated", "changed": changed, "auth": auth}
 
     def _load_profile(self) -> dict[str, Any]:
-        """Load the profile YAML."""
+        """Load the profile YAML, with dashboard auth-overrides merged
+        on top so dashboard "Save Auth" actually wins on K8s.
+
+        Why: on K8s the bootstrap profile is mounted as a read-only
+        ConfigMap; dashboard writes to it fail silently. Same pattern
+        as the routing-overrides flow — persist edits to a writable
+        PVC location and merge them at read time. (v1.0.165 — auth
+        side of the same shape v1.0.160 fixed for routing.)"""
         from media_stack.api.services import _resolve as _resolve_mod
 
         resolved = _resolve_mod.resolve_profile_path(
             os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
         )
-        if not resolved:
-            return {}
+        profile: dict[str, Any] = {}
+        if resolved:
+            try:
+                profile = yaml.safe_load(Path(resolved).read_text(encoding="utf-8")) or {}
+            except Exception:
+                profile = {}
+        # Merge dashboard auth overrides on top.
         try:
-            return yaml.safe_load(Path(resolved).read_text(encoding="utf-8")) or {}
-        except Exception:
-            return {}
+            override_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+            ov_path = Path(override_root) / ".controller" / "auth-overrides.yaml"
+            if ov_path.is_file():
+                ov = yaml.safe_load(ov_path.read_text(encoding="utf-8")) or {}
+                if isinstance(ov.get("auth"), dict):
+                    profile.setdefault("auth", {}).update(ov["auth"])
+                if isinstance(ov.get("app_auth"), dict):
+                    profile.setdefault("app_auth", {}).update(ov["app_auth"])
+        except Exception as exc:
+            # Overrides file may be present-but-malformed after a
+            # manual edit or a mid-write crash. Fall back to the
+            # profile-only view so auth still works; the malformed
+            # file gets caught by the auth-overrides-is-valid-yaml
+            # probe and the operator fixes it.
+            log_swallowed(exc)
+        return profile

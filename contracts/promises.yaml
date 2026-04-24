@@ -9,9 +9,12 @@
 #   1. The meta-ratchet (tests/unit/test_promises_registry.py):
 #      - asserts every promise's ``ensured_by`` resolves to a real
 #        contract job whose handler function exists in the codebase
+#        (or, for k8s-only promises, uses the kubectl-apply / operator
+#        vocabulary for infrastructure-layer guarantees)
 #      - asserts every ``ensure-*`` job in contracts/services/*.yaml
 #        is referenced by at least one promise (no orphan adapters
 #        that quietly stop being needed)
+#      - asserts every promise carries a ``platforms:`` field
 #
 #   2. The fresh-install acceptance script (bin/verify-fresh-install.sh):
 #      - runs ``compose down -v && wipe state && compose up``
@@ -36,10 +39,26 @@
 #    Idempotent — every run leaves the system in the same end state.
 # 2. Register a contract job pointing at the adapter (``phase: post``).
 # 3. Add an entry below with a probe that proves it actually works.
+# 4. Tag the promise with ``platforms:`` — which runtimes it applies to.
 #
 # If steps 1+2 happen but step 3 doesn't, the meta-ratchet warns
 # (orphan adapter); if step 3 happens without 1+2, the meta-ratchet
 # fails hard (broken promise).
+#
+# Platforms field
+# ---------------
+# Every promise MUST declare the platforms it applies to:
+#
+#   platforms: [compose, k8s]   # agnostic — runs on BOTH runtimes
+#   platforms: [compose]        # compose-only (e.g. envoy-does-HTTP-redirect:
+#                                 k8s ingress terminates TLS before envoy)
+#   platforms: [k8s]            # k8s-only (e.g. PVC phase, image-pull state,
+#                                 ingress rules, harbor-pull secret, pod-spec
+#                                 quirks that only bite in k8s)
+#
+# No default — the meta-ratchet requires the field explicitly so "which
+# platforms does this apply to" is never a guess. When in doubt, tag
+# ``[compose, k8s]``; the runner skips platform-inappropriate probes.
 #
 # Probe types
 # -----------
@@ -52,13 +71,26 @@
 #     assert: <python expr>   # evaluated in scope where ``response`` = parsed JSON
 #                             # Must return truthy for the promise to hold.
 #
+#   http_text / http_status:  # similar, for non-JSON / status-code probes
+#
 #   file_json:
 #     path: <relative path>   # under config_root (e.g. jellyseerr/settings.json)
-#     assert: <python expr>   # ``data`` = parsed JSON
+#     assert: <python expr>   # ``data`` = parsed JSON (``None`` if missing and skip_if_missing)
 #
 #   file_text:
 #     path: <relative path>
 #     assert: <python expr>   # ``data`` = file text
+#     skip_if_missing: bool   # optional — when True and file absent,
+#                             #  treat as pass with "skipped" message
+#
+#   k8s_resource:             # k8s-only — kubectl get
+#     kind: pvc|pv|pod|deployment|service|ingress|secret|configmap|...
+#     namespace: <ns>         # required for namespaced kinds
+#     label_selector: <sel>   # optional
+#     assert: <expr>          # ``resources`` = list of items
+#
+#   k8s_exec:                 # k8s-only — kubectl exec into a pod
+#     namespace / pod_label / container / command / assert / skip_if_unset
 #
 # =============================================================================
 
@@ -70,6 +102,7 @@ promises:
   - id: bazarr-language-profile
     description: Bazarr has at least one language profile (default English)
     ensured_by: ensure-bazarr-language-profile
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: bazarr
@@ -80,6 +113,7 @@ promises:
   - id: bazarr-default-profile-toggles
     description: Bazarr auto-assigns the default profile to new series + movies
     ensured_by: ensure-bazarr-language-profile
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: bazarr
@@ -92,6 +126,7 @@ promises:
   - id: bazarr-providers
     description: Bazarr has the curated subtitle provider set enabled
     ensured_by: ensure-bazarr-language-profile
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: bazarr
@@ -106,6 +141,7 @@ promises:
   - id: bazarr-arr-integration
     description: Bazarr has Sonarr + Radarr connections configured
     ensured_by: ensure-bazarr-language-profile
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: bazarr
@@ -122,6 +158,7 @@ promises:
   - id: bazarr-jellyfin-plugin-config
     description: Jellyfin Bazarr plugin config has the right URL + API key
     ensured_by: ensure-bazarr-language-profile
+    platforms: [compose, k8s]
     probe:
       type: file_text
       path: jellyfin/plugins/configurations/Jellyfin.Plugin.Bazarr.xml
@@ -134,6 +171,7 @@ promises:
   - id: jellyseerr-oidc
     description: Jellyseerr login page shows the "Sign in with Authelia" button
     ensured_by: ensure-jellyseerr-oidc
+    platforms: [compose, k8s]
     # Probe the LIVE public-settings endpoint, not just settings.json
     # on disk. The ``openIdProviders`` list in settings.json must be
     # non-empty AND ``oidcLogin`` must be true — Jellyseerr returns
@@ -152,6 +190,7 @@ promises:
   - id: jellyseerr-application-url
     description: Jellyseerr applicationUrl is set HTTPS so OIDC redirect_uri matches Authelia's registered list
     ensured_by: ensure-jellyseerr-oidc
+    platforms: [compose, k8s]
     # Without this, Jellyseerr derives the redirect_uri from the
     # raw request Host header and defaults to ``http://...`` —
     # Authelia's registered redirect_uris are all HTTPS, so the
@@ -172,6 +211,7 @@ promises:
   - id: sonarr-jellyfin-notifier
     description: Sonarr has the media-stack-jellyfin MediaBrowser notifier
     ensured_by: ensure-arr-jellyfin-notifier
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: sonarr
@@ -188,6 +228,7 @@ promises:
   - id: radarr-jellyfin-notifier
     description: Radarr has the media-stack-jellyfin MediaBrowser notifier
     ensured_by: ensure-arr-jellyfin-notifier
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: radarr
@@ -204,6 +245,7 @@ promises:
   - id: lidarr-jellyfin-notifier
     description: Lidarr has the media-stack-jellyfin MediaBrowser notifier
     ensured_by: ensure-arr-jellyfin-notifier
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: lidarr
@@ -221,6 +263,7 @@ promises:
   - id: prowlarr-indexers-discovered
     description: Prowlarr has at least one indexer from the curated allowlist
     ensured_by: discover-indexers
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: prowlarr
@@ -231,6 +274,7 @@ promises:
   - id: prowlarr-indexers-tagged
     description: Tag-indexers ran and produced sync-* tags on at least one indexer
     ensured_by: tag-indexers-for-apps
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: prowlarr
@@ -249,6 +293,7 @@ promises:
   - id: sonarr-has-indexers
     description: Sonarr received at least one indexer from Prowlarr push-sync
     ensured_by: push-indexers
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: sonarr
@@ -259,6 +304,7 @@ promises:
   - id: radarr-has-indexers
     description: Radarr received at least one indexer from Prowlarr push-sync
     ensured_by: push-indexers
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: radarr
@@ -270,6 +316,7 @@ promises:
   - id: sonarr-has-series
     description: Sonarr has the seed-series titles + the popular-TV CustomImport
     ensured_by: ensure-sonarr-seed-series
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: sonarr
@@ -281,6 +328,7 @@ promises:
   - id: maintainerr-rules-linked-to-arr
     description: Movie rules link to Radarr; TV rules link to Sonarr (not None)
     ensured_by: configure-collections
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: maintainerr
@@ -297,6 +345,7 @@ promises:
   - id: radarr-import-lists-auto
     description: Radarr import lists have enableAuto=true (TMDb popular movies auto-add)
     ensured_by: apply-arr-runtime-defaults
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: radarr
@@ -310,6 +359,7 @@ promises:
   - id: qbittorrent-categories
     description: qBit has the four content categories (movies/tv/music/books)
     ensured_by: ensure-qbittorrent-categories
+    platforms: [compose, k8s]
     probe:
       type: http_text
       service: qbittorrent
@@ -321,6 +371,7 @@ promises:
   - id: sonarr-download-client
     description: Sonarr has qBit configured as enabled download client (cat=tv)
     ensured_by: ensure-arr-download-client
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: sonarr
@@ -338,6 +389,7 @@ promises:
   - id: radarr-download-client
     description: Radarr has qBit configured as enabled download client (cat=movies)
     ensured_by: ensure-arr-download-client
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: radarr
@@ -356,6 +408,7 @@ promises:
   - id: jellyfin-libraries
     description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
     ensured_by: ensure-jellyfin-libraries
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: jellyfin
@@ -373,6 +426,7 @@ promises:
   - id: jellyseerr-arr-servers
     description: Jellyseerr has Sonarr+Radarr+Jellyfin connections with API keys
     ensured_by: configure-jellyseerr
+    platforms: [compose, k8s]
     probe:
       type: file_json
       path: jellyseerr/settings.json
@@ -387,6 +441,7 @@ promises:
   - id: sonarr-quality-profiles
     description: Sonarr has at least one quality profile available
     ensured_by: apply-arr-runtime-defaults
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: sonarr
@@ -397,6 +452,7 @@ promises:
   - id: radarr-quality-profiles
     description: Radarr has at least one quality profile available
     ensured_by: apply-arr-runtime-defaults
+    platforms: [compose, k8s]
     probe:
       type: http_json
       service: radarr
@@ -414,6 +470,7 @@ promises:
   - id: gateway-https-listener-up
     description: Envoy's HTTPS listener accepts TLS handshakes on host:443
     ensured_by: envoy-config
+    platforms: [compose, k8s]
     probe:
       type: http_text
       service: gateway_https
@@ -425,6 +482,7 @@ promises:
   - id: gateway-jellyfin-route
     description: Jellyfin reachable via subdomain through Envoy gateway
     ensured_by: envoy-config
+    platforms: [compose, k8s]
     probe:
       type: http_text
       service: gateway_https
@@ -436,6 +494,7 @@ promises:
   - id: gateway-app-prefix-route
     description: Path-prefix routing works through Envoy (apps.media-stack.local/app/<svc>/)
     ensured_by: envoy-config
+    platforms: [compose, k8s]
     probe:
       type: http_text
       service: gateway_https
@@ -447,6 +506,11 @@ promises:
   - id: gateway-http-redirects-to-https
     description: Plain http://<gateway-host>/ returns 301 to https://
     ensured_by: envoy-config
+    # Compose-only: on K8s the Ingress controller terminates TLS
+    # before the request ever reaches Envoy, so Envoy can't see
+    # nor redirect plain-HTTP traffic — the HTTP→HTTPS guarantee
+    # is the Ingress's job there. Skipped under --k8s --unified.
+    platforms: [compose]
     # Catches users who type the URL without a scheme (browsers
     # default to http) or who have an old http://… bookmark — they
     # land on the HTTPS version automatically. Without this, every
@@ -463,6 +527,7 @@ promises:
   - id: stuck-imports-scheduled
     description: recover-stuck-imports runs every 30min to catch qBit-completed-but-not-imported files
     ensured_by: scan-completed-downloads
+    platforms: [compose, k8s]
     # Same controller_serve.py block seeds both schedules; if it
     # ran at all both are present. Without this scheduled job, the
     # "stuck queue entry" + "orphan file in completed/" failure
@@ -483,6 +548,7 @@ promises:
   - id: adaptive-search-scheduled
     description: mass-search-throttled is scheduled hourly so empty/idle stacks keep grinding for grabs
     ensured_by: scan-completed-downloads
+    platforms: [compose, k8s]
     # Probes the controller's schedule list. The hourly heartbeat is
     # what makes thin-library installs eventually populate — without
     # it, mass-search-throttled fires only ONCE at install and then
@@ -505,6 +571,7 @@ promises:
   - id: foundational-jobs-run-before-app-jobs
     description: configure-auth + envoy-config live in the infrastructure phase (before media_server/download_clients)
     ensured_by: configure-auth
+    platforms: [compose, k8s]
     # Why this matters: anything in media_server or download_clients
     # that calls services THROUGH the gateway (e.g. /Library/Refresh
     # via webhook → controller → Jellyfin via /app/jellyfin) silently
@@ -528,6 +595,7 @@ promises:
   - id: unpackerr-config-valid
     description: Unpackerr config has resolved arr URLs (not literal service_internal_url() text)
     ensured_by: unpackerr-post
+    platforms: [compose, k8s]
     # v1.0.150 shipped a bug where the config writer emitted
     # ``url = service_internal_url("sonarr")`` as literal TOML text
     # (forgot to CALL the function). Unpackerr's TOML parser choked
@@ -550,6 +618,7 @@ promises:
   - id: dns-readiness-banner-data
     description: Routing-probe endpoint returns enough data for the dashboard's DNS banner to render
     ensured_by: envoy-config
+    platforms: [compose, k8s]
     # The dashboard's DNS-readiness banner reads /api/routing-probe
     # and /api/routing to build the hosts-entry hint. Both endpoints
     # must return well-formed JSON with the hostnames the user needs
@@ -562,3 +631,367 @@ promises:
       assert: |
         'gateway_host' in response and 'stack_subdomain' in response
         and 'base_domain' in response
+
+  # =============================================================================
+  # Agnostic security promises — apply on BOTH compose and k8s
+  # =============================================================================
+  #
+  # These two were originally in promises-k8s.yaml written as k8s_exec probes
+  # (they execed python into the controller pod). On consolidation they moved
+  # here and were rewritten as plain http_json / file_text probes so the exact
+  # same promise runs against compose by hitting localhost:9100 and against
+  # k8s unified-mode by hitting the controller Service — no duplicate entries,
+  # no platform-flavoured probe code.
+
+  - id: internet-exposed-stack-must-have-auth
+    description: Stack with routing.internet_exposed=true must NOT have auth.mode=none (else cluster is wide open)
+    ensured_by: configure-auth
+    platforms: [compose, k8s]
+    # Catches the v1.0.166 incident where the cluster was internet-exposed
+    # with auth.mode=none and every existing test passed (code shape was
+    # fine, no pods crashed, health endpoints were green) while real
+    # unauthenticated requests succeeded. /api/auth/config returns both
+    # the live mode and the routing.internet_exposed flag in one response,
+    # so the invariant is a single JSON assertion: if the operator says
+    # this stack is on the internet, auth must NOT be off.
+    probe:
+      type: http_json
+      service: controller
+      path: /api/auth/config
+      auth: controller_basic
+      assert: |
+        not (response.get('internet_exposed') and response.get('mode') == 'none')
+
+  - id: auth-overrides-is-valid-yaml-when-present
+    description: auth-overrides.yaml on the controller PVC is parseable + has a provider field (when present)
+    ensured_by: configure-auth
+    platforms: [compose, k8s]
+    # The dashboard's Save Auth writes .controller/auth-overrides.yaml
+    # to the controller's writable config volume — that file is the
+    # "durable store" for dashboard-edited auth mode on k8s (where the
+    # profile ConfigMap is read-only). Catches the v1.0.158–v1.0.164 bug
+    # shape where Save Auth landed in the wrong place or wrote malformed
+    # YAML, so restart reverted to bundled defaults.
+    # ``skip_if_missing: true`` means this promise is a pass on a clean
+    # deploy where the dashboard has never been used — the file only
+    # exists once an operator saved a custom auth mode. When it DOES
+    # exist, it had better parse and carry a provider key.
+    probe:
+      type: file_text
+      path: .controller/auth-overrides.yaml
+      skip_if_missing: true
+      assert: |
+        'provider:' in data or 'mode:' in data
+
+  # =============================================================================
+  # Kubernetes-only promises — failure modes that don't exist on compose
+  # =============================================================================
+  #
+  # ``platforms: [k8s]`` — the runner skips them when invoked without --k8s.
+  #
+  # ``ensured_by`` uses an infrastructure vocabulary here rather than a
+  # contract-job name:
+  #
+  #   kubectl-apply   the manifest in dist/k8s-deploy.yaml (or k8s/) is what
+  #                   makes the promise hold — the runner doesn't apply it,
+  #                   the deploy step does.
+  #   operator        a one-time human step (e.g. patching a PV's reclaim
+  #                   policy) documented in docs/deployment.md.
+
+  - id: pvcs-all-bound
+    description: Every PVC in the namespace reaches Bound state
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # Catches storage-class misconfiguration, default-StorageClass missing,
+    # and the "PVCs stuck Pending forever" failure that wedges every
+    # downstream pod. A single un-Bound PVC can keep bootstrap in a
+    # half-failed state for hours before anyone notices.
+    probe:
+      type: k8s_resource
+      kind: pvc
+      namespace: media-stack
+      assert: |
+        len(resources) > 0
+        and all(p['status']['phase'] == 'Bound' for p in resources)
+
+  - id: media-pv-reclaim-retain
+    description: media-stack-media PV uses Retain so the library survives PVC deletion
+    ensured_by: operator
+    platforms: [k8s]
+    # The 2 TiB Jellyfin library PV. If the reclaim policy slips back
+    # to Delete (the storage class default), an accidental
+    # ``kubectl delete pvc media-stack-media`` would garbage-collect
+    # the PV and erase the whole media library. Retain is set manually
+    # because microk8s-hostpath provisions with Delete by default.
+    probe:
+      type: k8s_resource
+      kind: pv
+      label_selector: ""
+      assert: |
+        any(
+          'media-stack-media' in (p.get('spec', {}).get('claimRef') or {}).get('name', '')
+          and p['spec']['persistentVolumeReclaimPolicy'] == 'Retain'
+          for p in resources
+        )
+
+  - id: torrents-pv-reclaim-retain
+    description: media-stack-data-torrents PV uses Retain so qBit downloads survive PVC deletion
+    ensured_by: operator
+    platforms: [k8s]
+    probe:
+      type: k8s_resource
+      kind: pv
+      label_selector: ""
+      assert: |
+        any(
+          'media-stack-data-torrents' in (p.get('spec', {}).get('claimRef') or {}).get('name', '')
+          and p['spec']['persistentVolumeReclaimPolicy'] == 'Retain'
+          for p in resources
+        )
+
+  - id: no-image-pull-failures
+    description: No pod is in ImagePullBackOff or ErrImagePull
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # Catches missing imagePullSecrets, wrong image tag, expired registry
+    # auth. Without this probe, half the stack can be broken for hours
+    # before someone notices a few pods stuck in ImagePullBackOff.
+    probe:
+      type: k8s_resource
+      kind: pod
+      namespace: media-stack
+      assert: |
+        all(
+          (cs.get('state') or {}).get('waiting', {}).get('reason')
+          not in ('ImagePullBackOff', 'ErrImagePull', 'InvalidImageName')
+          for p in resources
+          for cs in (p.get('status', {}).get('containerStatuses') or [])
+        )
+
+  - id: authelia-pod-ready
+    description: Authelia pod is Ready (catches the v1.0.158 service-link env collision)
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # The static ratchet (tests/unit/test_k8s_service_link_collision.py)
+    # catches the missing ``enableServiceLinks: false`` at PR time.
+    # This live probe catches OTHER ways Authelia can fail to start
+    # on K8s: bad config in the seeded ConfigMap, broken volume mount,
+    # init-container failure, scheduler unable to place the pod.
+    probe:
+      type: k8s_resource
+      kind: pod
+      namespace: media-stack
+      label_selector: app=authelia
+      assert: |
+        any(
+          all(c.get('ready') for c in (p.get('status', {}).get('containerStatuses') or []))
+          for p in resources
+          if p.get('status', {}).get('phase') == 'Running'
+        )
+
+  - id: envoy-pod-ready
+    description: Envoy pod is Ready (catches port-bind permission denied + bad config)
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # The v1.0.158 K8s deploy hit "cannot bind '0.0.0.0:80': Permission
+    # denied" because the controller didn't have ENVOY_LISTENER_PORT=8880
+    # set on K8s. Fix landed in k8s/controller.yaml; this probe ensures
+    # any future regression of envoy.yaml generation is caught.
+    probe:
+      type: k8s_resource
+      kind: pod
+      namespace: media-stack
+      label_selector: app=envoy
+      assert: |
+        any(
+          all(c.get('ready') for c in (p.get('status', {}).get('containerStatuses') or []))
+          for p in resources
+          if p.get('status', {}).get('phase') == 'Running'
+        )
+
+  - id: controller-pod-ready
+    description: Controller pod is Ready (catches dashboard-down regressions before users notice)
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    probe:
+      type: k8s_resource
+      kind: pod
+      namespace: media-stack
+      label_selector: app=media-stack-controller
+      assert: |
+        any(
+          all(c.get('ready') for c in (p.get('status', {}).get('containerStatuses') or []))
+          for p in resources
+          if p.get('status', {}).get('phase') == 'Running'
+        )
+
+  - id: ingress-exists-and-has-rules
+    description: media-stack-ingress is present with at least one host rule
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # Catches the "ingress applied but no rules" failure mode — the
+    # ingress object exists, kubectl get ingress shows it, but every
+    # external request 404s because the rules never landed (kustomize
+    # patch error, schema migration). HTTP-against-gateway probes
+    # would also catch this but require a working DNS resolver.
+    probe:
+      type: k8s_resource
+      kind: ingress
+      namespace: media-stack
+      assert: |
+        any(
+          len((i.get('spec') or {}).get('rules') or []) > 0
+          for i in resources
+        )
+
+  - id: harbor-pull-secret-exists
+    description: harbor-pull image-pull Secret exists in the namespace
+    ensured_by: operator
+    platforms: [k8s]
+    # Required for any container pulling from harbor.iomio.io. When
+    # the namespace gets nuked (or someone forgets the bootstrap step),
+    # the controller pod gets ImagePullBackOff with a non-obvious
+    # "no basic auth credentials" error.
+    probe:
+      type: k8s_resource
+      kind: secret
+      namespace: media-stack
+      assert: |
+        any(
+          s.get('metadata', {}).get('name') == 'harbor-pull'
+          and s.get('type') == 'kubernetes.io/dockerconfigjson'
+          for s in resources
+        )
+
+  - id: envoy-has-gateway-host-vhost
+    description: When a non-default gateway_host is configured, envoy.yaml has a vhost matching it
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # The v1.0.158 K8s regression: ``_build_synthetic_services`` only
+    # emitted subdomain Traefik rules and skipped the gateway-host
+    # path-prefix rule, so every ``https://<gateway>/app/<svc>/`` request
+    # 404'd against Envoy. Compose side is covered by ``gateway-app-prefix-route``
+    # which hits the gateway live; this is the k8s equivalent that
+    # greps the rendered envoy.yaml in-pod because the k8s gateway may
+    # not have a resolvable external DNS from the cluster.
+    probe:
+      type: k8s_exec
+      namespace: media-stack
+      pod_label: app=envoy
+      container: envoy
+      command: ["sh", "-c", "grep -F \"${gateway_host}\" /etc/envoy/envoy.yaml | head -1"]
+      skip_if_unset: gateway_host
+      assert: "len(data.strip()) > 0"
+
+  - id: homepage-tiles-use-configured-gateway
+    description: Homepage's services.yaml references the configured gateway_host (not the static default)
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # Catches the v1.0.158 regression where Homepage tiles linked to
+    # ``apps.media-stack.local`` regardless of what the operator
+    # configured. Greps the rendered services.yaml inside the homepage
+    # pod for any URL pointing at the static default; when the operator
+    # IS using that hostname, the assertion still passes (legitimate).
+    probe:
+      type: k8s_exec
+      namespace: media-stack
+      pod_label: app=homepage
+      container: homepage
+      command: ["sh", "-c", "grep -F 'apps.media-stack.local' /app/config/services.yaml 2>/dev/null | wc -l"]
+      skip_if_unset: gateway_host
+      assert: "data.strip() == '0' or '${gateway_host}' == 'apps.media-stack.local'"
+
+  - id: auth-actually-enforced-on-protected-services
+    description: Unauthenticated requests to SSO-protected apps via the gateway return 401/403/302 (not 200)
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # Catches the v1.0.166 incident where the cluster was internet-exposed
+    # with auth.mode=none and every existing test passed because they
+    # verified CODE SHAPE (function exists, registry consistent, pods
+    # Ready) but NONE checked whether real unauthenticated requests
+    # actually got blocked. The compose side is covered indirectly by
+    # ``internet-exposed-stack-must-have-auth`` at the config layer;
+    # this k8s probe does end-to-end gateway exercise via exec-in-pod
+    # because the external gateway may not resolve from the cluster.
+    probe:
+      type: k8s_exec
+      namespace: media-stack
+      pod_label: app=media-stack-controller
+      container: controller
+      command: ["sh", "-c", "python3 -c 'import http.client,os,sys; sys.path.insert(0, \"/opt/media-stack/src\"); from media_stack.api.services.auth_config import AuthConfigService; from media_stack.api.services.config import get_routing; cfg=AuthConfigService().get_current_config(); r=get_routing() or {}; c=http.client.HTTPConnection(\"envoy\", 80, timeout=5); c.request(\"GET\", \"/app/sonarr/\", headers={\"Host\": r.get(\"gateway_host\",\"\") or \"localhost\", \"X-Forwarded-For\": \"1.2.3.4\", \"X-Real-IP\": \"1.2.3.4\"}); resp=c.getresponse(); print(\"status=%d\" % resp.status); print(\"mode=%s\" % cfg.get(\"mode\",\"none\")); print(\"inet=%d\" % (1 if r.get(\"internet_exposed\") else 0))'"]
+      assert: |
+        any(line.startswith('status=') and line.split('=')[1] in ('401','403','302') for line in data.splitlines())
+        or (
+          any(line == 'mode=none' for line in data.splitlines())
+          and any(line == 'inet=0' for line in data.splitlines())
+        )
+
+  - id: critical-deployments-have-pull-secret
+    description: Every Deployment using harbor.iomio.io references imagePullSecrets
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # Defends against a NEW Deployment being added that references
+    # harbor.iomio.io but forgets the imagePullSecrets field — would
+    # CrashLoop on first deploy and waste hours of debugging.
+    probe:
+      type: k8s_resource
+      kind: deployment
+      namespace: media-stack
+      assert: |
+        all(
+          any(
+            ref.get('name') == 'harbor-pull'
+            for ref in ((d.get('spec', {}).get('template', {}).get('spec') or {}).get('imagePullSecrets') or [])
+          )
+          for d in resources
+          if any(
+            'harbor.iomio.io' in (c.get('image') or '')
+            for c in (d.get('spec', {}).get('template', {}).get('spec') or {}).get('containers') or []
+          )
+        )
+
+  # =============================================================================
+  # Clean-deploy reproducibility promises (k8s) — the ones that prove a
+  # fresh ``kubectl apply -k k8s/`` on an empty cluster produces a working
+  # system without ANY dashboard interaction.
+  # =============================================================================
+  #
+  # The controller ships with a standard profile baked into the ConfigMap,
+  # bootstrap seeds routing-overrides + auth-overrides from that profile
+  # on first run, and ingress-config reconciliation hard-fails rather than
+  # silently skipping. These promises are the live proof at cluster side.
+
+  - id: profile-configmap-mounted
+    description: media-stack-controller-profile ConfigMap is present in the namespace
+    ensured_by: kubectl-apply
+    platforms: [k8s]
+    # The profile ConfigMap is what bootstrap reads for gateway_host,
+    # auth mode, etc. Historically it was ``optional: true`` on the
+    # volume, so missing ConfigMap = silent fallback to LAN defaults,
+    # ingress rules don't match the operator's real hostnames, and every
+    # request 404s at the ingress layer. Shipped baked-in since v1.0.169.
+    probe:
+      type: k8s_resource
+      kind: configmap
+      namespace: media-stack
+      assert: |
+        any(
+          c.get('metadata', {}).get('name') == 'media-stack-controller-profile'
+          for c in resources
+        )
+
+  - id: overrides-seeded-at-bootstrap
+    description: routing-overrides.yaml exists on the controller PVC after bootstrap (seeded from profile)
+    ensured_by: seed-runtime-overrides
+    platforms: [compose, k8s]
+    # Before v1.0.169, overrides files were only written on dashboard
+    # "Save Routing". A clean deploy with no dashboard interaction left
+    # the overrides file absent, meaning `get_routing()` on subsequent
+    # boots fell back to profile defaults and ``ingress-config`` silently
+    # skipped. Bootstrap now seeds the overrides file from the profile
+    # on first run; this probe proves the seed happened.
+    probe:
+      type: file_text
+      path: .controller/routing-overrides.yaml
+      assert: |
+        'gateway_host' in data or 'base_domain' in data

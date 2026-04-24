@@ -209,6 +209,40 @@ class GetRequestHandler:
                     HTTPStatus.INTERNAL_SERVER_ERROR,
                     {"error": str(exc)[:80]},
                 )
+        elif path == "/api/route-probe":
+            # Server-side reachability probe for the dashboard's
+            # "Test All Paths" matrix. Bypasses three structural
+            # browser-side problems: mixed-content blocking, self-
+            # signed cert errors, and the opaque-response trap of
+            # ``no-cors`` mode. See services/route_probe.py header
+            # for the full why. (v1.0.165.)
+            try:
+                from media_stack.api.services import route_probe as _route_probe
+                from urllib.parse import urlparse, parse_qs
+                qs = parse_qs(urlparse(handler.path).query)
+                target = (qs.get("url") or [""])[0]
+                handler._json_response(HTTPStatus.OK, _route_probe.probe(target))
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": str(exc)[:99]},
+                )
+        elif path == "/api/dns-check":
+            # Lightweight DNS reachability probe — used by the Routing
+            # tab to warn before save when the typed gateway_host
+            # doesn't resolve, or resolves to a different machine than
+            # this cluster. Doesn't open HTTP connections — DNS only.
+            try:
+                from media_stack.api.services import dns_check as _dns_check
+                from urllib.parse import urlparse, parse_qs
+                qs = parse_qs(urlparse(handler.path).query)
+                host = (qs.get("host") or [""])[0]
+                handler._json_response(HTTPStatus.OK, _dns_check.check(host))
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": str(exc)[:99]},
+                )
         elif path == "/api/gateway-hostnames":
             try:
                 handler._json_response(
@@ -1179,12 +1213,29 @@ class _RoutingMatrixProbe:
         }
 
     def _internal_gateway_port(self, scheme: str) -> int:
-        """Envoy's listening port inside the cluster/compose network,
-        which is NOT the same as the host-exposed gateway_port. Users
-        reach the stack via 80/443 (port-forwarded), but inside the
-        network Envoy listens on 8080/8880 by default. Override via
-        GATEWAY_INTERNAL_HTTP_PORT / GATEWAY_INTERNAL_HTTPS_PORT for
-        deployments that expose Envoy on non-default service ports."""
+        """Envoy's listening port INSIDE the cluster/compose network.
+        Platform-specific because envoy is fronted differently:
+
+          - Compose: envoy listens on 8080 (HTTP) + 8880 (HTTPS) inside
+            the network; the host port-forward maps 80→8080, 443→8880.
+            From another container the bare hostname ``envoy`` with
+            port 8080 or 8880 reaches envoy directly.
+
+          - K8s: envoy pod listens on 8880 only (unprivileged) and the
+            envoy Service exposes a SINGLE port 80 → targetPort 8880.
+            Ingress terminates TLS upstream, so envoy speaks plain HTTP
+            inside the cluster. ``envoy:8080`` and ``envoy:8880`` both
+            fail because the Service has no listener there — only
+            port 80 is proxied to the pod.
+
+        Override via GATEWAY_INTERNAL_HTTP_PORT / GATEWAY_INTERNAL_HTTPS_PORT
+        for non-default deployments."""
+        on_k8s = bool(self._env.get("K8S_NAMESPACE", "").strip())
+        if on_k8s:
+            # Single-port Service on K8s — same port whether external
+            # scheme is HTTP or HTTPS (Ingress has already terminated
+            # the TLS). GATEWAY_INTERNAL_HTTP_PORT override honoured.
+            return int(self._env.get("GATEWAY_INTERNAL_HTTP_PORT", "80"))
         if scheme == self._HTTPS:
             return int(self._env.get("GATEWAY_INTERNAL_HTTPS_PORT", "8880"))
         return int(self._env.get("GATEWAY_INTERNAL_HTTP_PORT", "8080"))
@@ -1210,8 +1261,17 @@ class _RoutingMatrixProbe:
         path = urlparse(shown_url).path or "/"
         if not gw_internal:
             return self._err(shown_url, "envoy container unreachable")
+        # On K8s the envoy Service speaks plain HTTP regardless of the
+        # external scheme — the Ingress ahead of it terminates TLS, so
+        # everything INSIDE the cluster is HTTP. Trying to do TLS to
+        # ``envoy:80`` gives an ``SSLEOFError`` and every row goes red
+        # even though routing works fine from a browser. Compose keeps
+        # the external scheme because its envoy does terminate TLS on
+        # the 8880 listener. (v1.0.169 K8s routing-matrix fix.)
+        on_k8s = bool(self._env.get("K8S_NAMESPACE", "").strip())
+        actual_scheme = self._HTTP if on_k8s else scheme
         return self._http_request(
-            shown_url, gw_internal, gw_port, scheme, host_header, path,
+            shown_url, gw_internal, gw_port, actual_scheme, host_header, path,
         )
 
     def _probe_direct(self, shown_url, svc_host, svc_port):

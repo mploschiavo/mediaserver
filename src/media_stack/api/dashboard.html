@@ -2015,7 +2015,10 @@ async function checkDnsReadiness(){
     // Build the hosts entry from /api/routing's authoritative
     // hostname list so the user copies the EXACT names the stack
     // expects.
-    let gwHost='apps.media-stack.local',sub='media-stack',dom='local';
+    /* Edit-form initial values come from the live routing config —
+       no static defaults so the user never sees ``apps.media-stack.local``
+       prefilled when their actual gateway is something else. */
+    let gwHost='',sub='',dom='';
     try{
       const rr=await apiFetch('/api/routing');
       if(rr.ok){const rc=await rr.json();
@@ -2048,10 +2051,19 @@ function dismissDnsBanner(){
 }
 
 /* Routing / DNS Matrix */
-let _routingCfg={base_domain:'local',stack_subdomain:'media-stack',gateway_host:'apps.media-stack.local',gateway_port:80,app_path_prefix:'/app'};
+/* Routing config — populated by /api/routing on page load. Starts
+   with empty placeholders so render functions can DETECT "not yet
+   loaded" and skip rendering routing-dependent UI rather than
+   filling it with the stale default ``apps.media-stack.local``.
+   Any place that uses _routingCfg.gateway_host || '<default>' would
+   leak the default into the matrix / DNS panel / wizard before the
+   API answered, which we hit on K8s when the user's actual gateway
+   was m.iomio.io. (v1.0.165.) */
+let _routingCfg={base_domain:'',stack_subdomain:'',gateway_host:'',gateway_port:0,app_path_prefix:'/app'};
+let _routingCfgLoaded=false;
 function getHostIp(){const h=location.hostname;return (h==='localhost'||h==='127.0.0.1'||!h)?'127.0.0.1':h;}
 async function loadRoutingConfig(){
-  try{const r=await apiFetch('/api/routing');if(r.ok){_routingCfg=await r.json();}}catch(e){}
+  try{const r=await apiFetch('/api/routing');if(r.ok){_routingCfg=await r.json();_routingCfgLoaded=true;}}catch(e){}
   renderRoutingPanel();buildDns();
   // Populate edit form — derive prefix/subdomain/domain from gateway_host
   const gwHost=_routingCfg.gateway_host||'';
@@ -2076,8 +2088,18 @@ async function loadRoutingConfig(){
 }
 function renderRoutingPanel(){
   const rc=_routingCfg;const el=document.getElementById('routing-config');if(!el)return;
-  const gwUrl='http://'+rc.gateway_host+(rc.gateway_port&&rc.gateway_port!==80?':'+rc.gateway_port:'')+rc.app_path_prefix+'/';
-  const locUrl='http://localhost'+(rc.gateway_port&&rc.gateway_port!==80?':'+rc.gateway_port:'')+rc.app_path_prefix+'/';
+  /* Pick scheme + port-suffix from the configured port. Port 443
+     means HTTPS and the suffix should be hidden (default port).
+     Port 80 means HTTP and the suffix should also be hidden.
+     Anything else is rendered explicitly. Earlier this hardcoded
+     ``http://`` and always included ``:443`` — the dashboard's
+     "Gateway URL" field misleadingly read ``http://m.iomio.io:443``
+     for HTTPS deployments. */
+  const port=rc.gateway_port||80;
+  const scheme=port===443?'https':'http';
+  const portSuffix=(port!==80&&port!==443)?':'+port:'';
+  const gwUrl=scheme+'://'+rc.gateway_host+portSuffix+rc.app_path_prefix+'/';
+  const locUrl=scheme+'://localhost'+portSuffix+rc.app_path_prefix+'/';
   el.innerHTML='<table style="width:100%;font-size:.88em;border-collapse:collapse">'+
     '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Gateway URL</td><td style="padding:6px;font-family:monospace"><a href="'+gwUrl+'" target="_blank" style="color:var(--blue)">'+gwUrl+'</a></td></tr>'+
     '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;color:var(--fg2);font-weight:600">Localhost</td><td style="padding:6px;font-family:monospace"><a href="'+locUrl+'" target="_blank" style="color:var(--blue)">'+locUrl+'</a> <span style="color:var(--fg3);font-size:.82em">(no DNS needed)</span></td></tr>'+
@@ -2092,8 +2114,17 @@ function _enabledSvcs(){
 }
 function buildDns(){
   const ip=getHostIp();const rc=_routingCfg;
-  const gwHost=rc.gateway_host||'apps.media-stack.local';
-  const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
+  /* Skip rendering until /api/routing has answered. Otherwise the
+     DNS table + matrix flash stale defaults
+     (apps.media-stack.local etc.) for a beat before being replaced
+     with the real values, and the user sees URLs they shouldn't
+     reach for. (v1.0.165.) */
+  if(!_routingCfgLoaded||!rc.gateway_host){
+    const el=document.getElementById('dns-entries');if(el)el.textContent='Loading routing config…';
+    return;
+  }
+  const gwHost=rc.gateway_host;
+  const sub=rc.stack_subdomain||'';const dom=rc.base_domain||'';
   // Start with gateway host + enabled service hostnames only.
   const hosts=[gwHost].concat(_enabledSvcs().map(s=>s.id+'.'+sub+'.'+dom));
   // If /api/gateway-hostnames is reachable, use its authoritative list
@@ -2119,9 +2150,13 @@ function getAccessUrls(s){
   const scheme=(rc.scheme||'').toLowerCase()==='https'||gwPort===443?'https':
                ((rc.scheme||'').toLowerCase()==='http'?'http':'http');
   const portSuffix=(gwPort===80||gwPort===443)?'':':'+gwPort;
-  const gwHost=rc.gateway_host||'apps.media-stack.local';
+  /* No silent fallback to apps.media-stack.local — when routing
+     hasn't loaded yet, gwHost/sub/dom are empty strings and the
+     matrix renders blank cells rather than misleading hostnames
+     the operator never configured. */
+  const gwHost=rc.gateway_host||'';
   const prefix=rc.app_path_prefix||'/app';
-  const sub=rc.stack_subdomain||'media-stack';const dom=rc.base_domain||'local';
+  const sub=rc.stack_subdomain||'';const dom=rc.base_domain||'';
   return{
     gateway:scheme+'://'+gwHost+portSuffix+prefix+'/'+s.id+'/',
     localhost:scheme+'://localhost'+portSuffix+prefix+'/'+s.id+'/',
@@ -2141,7 +2176,24 @@ function renderMatrix(){
     h+='<td><div class="matrix-cell"><span class="dot '+ds+'"></span><a href="'+urls.direct+'" target="_blank">'+urls.direct.replace('http://','')+'</a></div></td></tr>';}
   h+='</tbody></table>';document.getElementById('dns-matrix').innerHTML=h;
 }
-async function probeUrl(url,timeout){const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout||4000);try{await window.fetch(url,{mode:'no-cors',cache:'no-store',signal:c.signal});clearTimeout(t);return 'ok';}catch(e){clearTimeout(t);return 'error';}}
+async function probeUrl(url,timeout){
+  /* Server-side probe via /api/route-probe — bypasses browser-side
+     mixed-content blocking, self-signed-cert rejection, and the
+     opaque-response trap of no-cors mode. The controller has the
+     waivers for all three (it accepts self-signed because Envoy
+     is upstream of itself, can hit http+https freely, and sees real
+     status codes). 401/403 count as ``ok`` because Authelia's
+     ext_authz challenge IS evidence the gateway answered. */
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(),timeout||6000);
+  try{
+    const r=await apiFetch('/api/route-probe?url='+encodeURIComponent(url),{signal:c.signal});
+    clearTimeout(t);
+    if(!r.ok)return 'error';
+    const d=await r.json();
+    return d.ok?'ok':'error';
+  }catch(e){clearTimeout(t);return 'error';}
+}
 
 /* TLS certificate management (Routing tab → Ops panel) */
 async function loadTlsCert(){
@@ -2362,16 +2414,53 @@ function updateRoutingPreview(){
   const dom=document.getElementById('rt-domain')?.value?.trim()||'local';
   const pfx=document.getElementById('rt-prefix')?.value?.trim()||'/app';
   const port=parseInt(document.getElementById('rt-port')?.value)||80;
-  const portStr=port===80?'':':'+port;
+  const portStr=(port===80||port===443)?'':':'+port;
+  const scheme=port===443?'https':'http';
   const gwHost=gwp+'.'+sub+'.'+dom;
   const el=document.getElementById('rt-preview');if(!el)return;
   el.innerHTML=
     '<div style="color:var(--fg3);font-size:.82em;margin-bottom:4px;font-family:system-ui">Live preview — how services will be accessed:</div>'+
-    '<div><span style="color:var(--fg3)">Gateway:</span> <span style="color:var(--accent)">'+gwHost+portStr+'</span></div>'+
-    '<div><span style="color:var(--fg3)">Path-based:</span> <span style="color:var(--ok)">'+gwHost+portStr+pfx+'/sonarr</span></div>'+
-    '<div><span style="color:var(--fg3)">Subdomain:</span> <span style="color:var(--blue)">sonarr.'+sub+'.'+dom+portStr+'</span></div>'+
-    '<div><span style="color:var(--fg3)">Localhost:</span> <span style="color:var(--fg2)">localhost'+portStr+pfx+'/sonarr</span></div>'+
-    '<div style="margin-top:6px;color:var(--fg3);font-size:.82em;font-family:system-ui">/etc/hosts entry: <code style="user-select:all">127.0.0.1  '+gwHost+' jellyfin.'+sub+'.'+dom+'</code></div>';
+    '<div><span style="color:var(--fg3)">Gateway:</span> <span style="color:var(--accent)">'+scheme+'://'+gwHost+portStr+'</span></div>'+
+    '<div><span style="color:var(--fg3)">Path-based:</span> <span style="color:var(--ok)">'+scheme+'://'+gwHost+portStr+pfx+'/sonarr</span></div>'+
+    '<div><span style="color:var(--fg3)">Subdomain:</span> <span style="color:var(--blue)">'+scheme+'://sonarr.'+sub+'.'+dom+portStr+'</span></div>'+
+    '<div><span style="color:var(--fg3)">Localhost:</span> <span style="color:var(--fg2)">'+scheme+'://localhost'+portStr+pfx+'/sonarr</span></div>'+
+    '<div style="margin-top:6px;color:var(--fg3);font-size:.82em;font-family:system-ui">/etc/hosts entry: <code style="user-select:all">127.0.0.1  '+gwHost+' jellyfin.'+sub+'.'+dom+'</code></div>'+
+    '<div id="rt-reachability" style="margin-top:8px;font-size:.82em;font-family:system-ui;color:var(--fg3)">Checking DNS for <code>'+gwHost+'</code>&hellip;</div>';
+  /* Reachability check — small head request to /api/routing-probe so
+     the controller can resolve the host on the user's behalf (the
+     dashboard JS can't do raw DNS but the controller can). Catches:
+       - host doesn't resolve at all (typo, missing hosts entry)
+       - host resolves to an IP that isn't this cluster
+     Without this, users typed any old host into the form, the preview
+     looked fine, save succeeded, and they only found out later that
+     the gateway URL was unreachable. */
+  if(_rtReachabilityTimer)clearTimeout(_rtReachabilityTimer);
+  _rtReachabilityTimer=setTimeout(()=>checkRoutingReachability(gwHost),350);
+}
+
+let _rtReachabilityTimer=null;
+async function checkRoutingReachability(host){
+  const el=document.getElementById('rt-reachability');if(!el)return;
+  if(!host||host.split('.').length<2){
+    el.innerHTML='<span style="color:var(--fg3)">Enter a hostname to check reachability.</span>';
+    return;
+  }
+  try{
+    const r=await apiFetch('/api/dns-check?host='+encodeURIComponent(host));
+    if(!r.ok){el.innerHTML='<span style="color:var(--warn)">Reachability probe unavailable</span>';return;}
+    const d=await r.json();
+    if(d.resolves===false){
+      el.innerHTML='<span style="color:var(--warn)">&#9888;</span> <code>'+host+'</code> doesn\u2019t resolve. Add a DNS record (or <code>/etc/hosts</code> entry) pointing at this cluster\u2019s IP before saving, or browsers won\u2019t reach it.';
+    }else if(d.matches_cluster===false){
+      el.innerHTML='<span style="color:var(--warn)">&#9888;</span> <code>'+host+'</code> resolves to <code>'+(d.resolved_ip||'?')+'</code>, but this cluster is at <code>'+(d.cluster_ip||'?')+'</code>. Requests to this hostname will land on a different machine.';
+    }else if(d.matches_cluster===true){
+      el.innerHTML='<span style="color:var(--ok)">&#10003;</span> <code>'+host+'</code> resolves to <code>'+(d.resolved_ip||'?')+'</code> (this cluster).';
+    }else{
+      el.innerHTML='<span style="color:var(--fg2)">&#10003;</span> <code>'+host+'</code> resolves to <code>'+(d.resolved_ip||'?')+'</code>.';
+    }
+  }catch(e){
+    el.innerHTML='<span style="color:var(--fg3)">Reachability check skipped: '+_safeErrText(e)+'</span>';
+  }
 }
 
 /* Save Routing Config */
@@ -4129,8 +4218,10 @@ function renderWizardSteps(){
   const gwPort=routing.gateway_port||80;
   const prefix=routing.app_path_prefix||'/app';
   const portStr=(gwPort===80||gwPort===443)?'':':'+gwPort;
-  const baseUrl='http://'+gwHost+portStr;
-  const directMedia=routing.direct_hosts?.media_server?'http://'+routing.direct_hosts.media_server+portStr:'';
+  /* Pick scheme from port: 443 → https, anything else → http. */
+  const scheme=(gwPort===443)?'https':'http';
+  const baseUrl=scheme+'://'+gwHost+portStr;
+  const directMedia=routing.direct_hosts?.media_server?scheme+'://'+routing.direct_hosts.media_server+portStr:'';
 
   /* Celebration header — fresh-install bootstrap is a multi-minute process; the user deserves a clear "you made it" moment instead of a one-line muted status. */
   let h='<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:var(--bg4);border-left:4px solid var(--ok);border-radius:6px">';
@@ -4196,6 +4287,22 @@ function renderWizardSteps(){
   // admin surface and live in the services table. This step renders
   // AFTER the cert-trust step (above) so users trust the cert before
   // clicking through to the apps.
+  /* Public-routing setup hint — only renders when the user is on the
+     LAN-only defaults (gateway_host like apps.media-stack.local).
+     Once they've changed routing to a real domain in the Routing tab
+     this step disappears so the wizard stays focused. We deliberately
+     don't duplicate the Routing-tab form here — single source of truth
+     for editing routing config. The reachability check + DNS warnings
+     all live in the Routing tab via /api/dns-check. */
+  const _isDefaultGw=/^(apps?\.media-stack\.local|media-stack\.local|localhost)$/i.test(gwHost||'');
+  if(_isDefaultGw){
+    h+='<div class="action-group" style="margin-bottom:10px;border-left:3px solid var(--blue);padding-left:10px"><div class="action-group-title">'+(step++)+'. Set up access from outside your LAN <span style="color:var(--fg3);font-weight:400;font-size:.85em">(if you want it)</span></div>';
+    h+='<p style="color:var(--fg2);font-size:.85em;margin:0 0 6px">Today the stack is reachable as <code>'+_escHtml(gwHost)+'</code>, which only resolves on machines you\u2019ve added it to <code>/etc/hosts</code>. To use a real hostname (so family members on phones, smart TVs, or off-LAN can reach it), point a DNS record at this cluster and tell the stack what hostname to use.</p>';
+    h+='<div style="margin:8px 0"><a href="#" onclick="showTab(\'tab-routing\',document.querySelector(\'header button[onclick*=tab-routing]\'));requestAnimationFrame(()=>document.getElementById(\'tab-routing\').scrollIntoView({behavior:\'smooth\',block:\'start\'}));return false;" class="btn-primary" style="padding:6px 14px;font-size:.85em;text-decoration:none">Open Routing tab</a></div>';
+    h+='<div style="font-size:.78em;color:var(--fg3)">The Routing tab has a live DNS check that warns if the hostname you type doesn\u2019t resolve to this cluster &mdash; so you find DNS mistakes before saving, not after.</div>';
+    h+='</div>';
+  }
+
   const userFacingIds=['jellyfin','plex','emby','jellyseerr','overseerr','homepage'];
   const userFacing=SVCS.filter(s=>s.port&&userFacingIds.includes(s.id)&&SVC_HEALTH[s.id]!=='disabled');
   h+='<div class="action-group" style="margin-bottom:10px"><div class="action-group-title">'+(step++)+'. Access Your Services</div>';

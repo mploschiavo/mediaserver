@@ -396,4 +396,89 @@ test.describe('Kubernetes deployment validation', () => {
       `no pods should be in Failed/Unknown phase, found: ${failedOrUnknown.map((p: any) => p.name).join(', ')}`
     ).toHaveLength(0);
   });
+
+  // -----------------------------------------------------------------------
+  // Clean-deploy reproducibility (v1.0.169)
+  //
+  // These tests enforce the invariant: ``kubectl apply -f dist/k8s-deploy.yaml``
+  // on an empty cluster produces a working stack WITHOUT any operator
+  // dashboard interaction. Before v1.0.169 the cluster came up with
+  // ``.local`` LAN defaults (because the profile ConfigMap was marked
+  // optional and absent) and the only way to fix it was to open the
+  // dashboard and click Save Routing — making "same result every time"
+  // a lie.
+  // -----------------------------------------------------------------------
+
+  test('profile ConfigMap is mounted and non-empty', () => {
+    const profile = sh(
+      `kubectl -n ${namespace} get configmap media-stack-controller-profile -o jsonpath='{.data.profile\\.yaml}' 2>/dev/null`
+    );
+    test.skip(!profile || profile.includes('error'), 'kubectl not available');
+    expect(
+      profile.length,
+      'media-stack-controller-profile ConfigMap must ship baked-in ' +
+      'with the standard profile. Absence / empty content means the ' +
+      'clean-deploy reproducibility invariant broke.'
+    ).toBeGreaterThan(100);
+    expect(
+      profile,
+      'ConfigMap profile.yaml must declare a gateway_host'
+    ).toMatch(/gateway_host:/);
+  });
+
+  test('routing config resolves to non-default gateway_host (no dashboard interaction)', async ({ request }) => {
+    const response = await request.get(`${controllerBase}/api/routing`);
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    // The profile ships with gateway_host: k8.media-stack.local — any
+    // other k8s-shaped hostname is fine; what we reject is the
+    // ``apps.media-stack.local`` fallback that indicates the profile
+    // wasn't read at all.
+    expect(
+      data.gateway_host,
+      'gateway_host must come from the baked-in profile, not the ' +
+      'compose LAN default. If this reads ``apps.media-stack.local`` ' +
+      'on a clean K8s deploy, the profile ConfigMap isn\'t being read ' +
+      '(check BOOTSTRAP_PROFILE_FILE mount + configmap presence).'
+    ).not.toBe('apps.media-stack.local');
+    expect(data.gateway_host, 'gateway_host must be non-empty').toBeTruthy();
+  });
+
+  test('ingress has a rule for the configured gateway_host', () => {
+    const gwHost = sh(
+      `kubectl -n ${namespace} get configmap media-stack-controller-profile -o jsonpath='{.data.profile\\.yaml}' 2>/dev/null | grep '^  gateway_host:' | awk '{print $2}'`
+    );
+    test.skip(!gwHost, 'profile ConfigMap not readable');
+    const ingress = sh(
+      `kubectl -n ${namespace} get ingress media-stack-ingress -o jsonpath='{.spec.rules[*].host}' 2>/dev/null`
+    );
+    test.skip(!ingress, 'media-stack-ingress not readable');
+    expect(
+      ingress.split(/\s+/),
+      'Ingress must carry a rule for the configured gateway_host — ' +
+      'without it, requests to that hostname never reach Envoy on K8s. ' +
+      'This is the exact failure mode v1.0.169 fixed via ingress-config ' +
+      'running at bootstrap with seeded overrides.'
+    ).toContain(gwHost);
+  });
+
+  test('overrides files were seeded at bootstrap (no dashboard click required)', () => {
+    // Exec into the controller pod and look for .controller/routing-overrides.yaml
+    // on the writable PVC. Present + non-empty = seed-runtime-overrides
+    // ran and did its job.
+    const controllerPod = sh(
+      `kubectl -n ${namespace} get pod -l app=media-stack-controller -o jsonpath='{.items[?(@.status.phase==\"Running\")].metadata.name}' 2>/dev/null`
+    ).split(/\s+/)[0];
+    test.skip(!controllerPod, 'no running controller pod');
+    const routing = sh(
+      `kubectl -n ${namespace} exec ${controllerPod} -c controller -- cat /srv-config/.controller/routing-overrides.yaml 2>/dev/null`
+    );
+    expect(
+      routing,
+      'routing-overrides.yaml must be seeded at bootstrap. Its absence ' +
+      'means clean-re-deploy produces a stack that relies on dashboard ' +
+      'clicks to reach a working state — "patches on a live system" ' +
+      'instead of reproducible.'
+    ).toMatch(/gateway_host:/);
+  });
 });

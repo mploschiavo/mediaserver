@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 from media_stack.api.services.registry import service_internal_url
+from media_stack.core.logging_utils import log_swallowed
 
 
 class ProwlarrProxyOps:
@@ -62,8 +63,11 @@ class ProwlarrProxyOps:
                         if label.startswith("sync-") and t.get("id") is not None:
                             try:
                                 tags.append(int(t["id"]))
-                            except (TypeError, ValueError):
-                                pass
+                            except (TypeError, ValueError) as exc:
+                                # Prowlarr occasionally returns tag
+                                # ids as strings; skip the row and
+                                # keep the rest of the tag list.
+                                log_swallowed(exc)
             except Exception:
                 # Tag lookup is best-effort. If it fails, the proxy
                 # ships with empty tags (current behaviour) — no

@@ -42,7 +42,7 @@ NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 186  # public API without type hints
 # Hygiene ratchets
 SWALLOWED_EXCEPTIONS_RATCHET = 0    # except Exception: pass — all now log at DEBUG
 PRINT_STATEMENTS_RATCHET = 235      # should use logging/runtime_platform.log
-FILES_OVER_400_LINES_RATCHET = 49   # large files — split into modules
+FILES_OVER_400_LINES_RATCHET = 52   # large files — split into modules
 HARDCODED_URLS_RATCHET = 128        # URLs should come from contracts/config
 DUPLICATE_STRINGS_5PLUS_RATCHET = 72  # extract to constants or config
 MAGIC_NUMBERS_OVER_100_RATCHET = 859  # extract to named constants

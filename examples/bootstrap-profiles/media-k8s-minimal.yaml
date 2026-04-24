@@ -23,9 +23,13 @@ routing:
   media_server_service_names:
   - jellyfin
   - jellyfin-nvidia
+# Auth defaults to Authelia on K8s — even minimal deployments need
+# real protection because K8s clusters typically reach the internet
+# through the operator's router. See media-k8s-standard.yaml for
+# the rationale and v1.0.166 incident notes.
 auth:
-  enabled: false
-  provider: none
+  enabled: true
+  provider: authelia
 chaos:
   enabled: false
   duration_minutes: 5

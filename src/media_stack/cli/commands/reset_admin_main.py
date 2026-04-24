@@ -148,7 +148,7 @@ class ResetAdminCommand:
         of no-op'ing on a missing ref.
         """
         target = username.strip().lower()
-        for user in service._store.list(include_soft_deleted=False):
+        for user in service._store.list_all(include_deleted=False):
             if user.username.strip().lower() == target:
                 return user
         # No row — create it. Use a placeholder password so the

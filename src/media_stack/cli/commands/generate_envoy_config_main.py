@@ -60,6 +60,29 @@ class GenerateEnvoyConfigCommand:
         bootstrap_config = os.environ.get("BOOTSTRAP_CONFIG_FILE", "")
         edge_hooks = _load_bootstrap_edge_hooks(bootstrap_config)
         profile = _load_profile(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
+        # Merge dashboard-edited routing overrides on top of the profile.
+        # The dashboard's POST /api/routing writes to
+        # ``${CONFIG_ROOT}/.controller/routing-overrides.yaml`` because on
+        # K8s the bootstrap profile is mounted from a read-only ConfigMap
+        # and can't be edited in place. Without this merge, every
+        # dashboard "Save Routing" silently no-ops on K8s — envoy-config
+        # keeps generating with whatever the original profile said
+        # (often the LAN defaults). Discovered v1.0.158 when the user's
+        # iomio.io routing config wasn't applied even after re-saving.
+        # Use a distinct local — ``config_root`` is reassigned to a Path
+        # later in this function and reused at lines 227/298. Don't clobber.
+        _override_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        overrides_path = Path(_override_root) / ".controller" / "routing-overrides.yaml"
+        if overrides_path.is_file():
+            try:
+                import yaml as _yaml
+                overrides = _yaml.safe_load(overrides_path.read_text(encoding="utf-8")) or {}
+                ovr_routing = overrides.get("routing") or {}
+                if ovr_routing:
+                    profile.setdefault("routing", {}).update(ovr_routing)
+                    print(f"[INFO] Applied routing overrides from {overrides_path}")
+            except Exception as exc:
+                print(f"[WARN] Failed to merge routing overrides: {exc}")
         routing = profile.get("routing") or {}
 
         # Routing config: profile YAML is the source of truth; env vars are fallback.
@@ -241,7 +264,15 @@ class GenerateEnvoyConfigCommand:
         # Load services — from compose spec or synthetic (K8s mode).
         if k8s_mode:
             print("[INFO] K8s mode: building synthetic services from known app list")
-            services = _build_synthetic_services(gateway_host, compose_provider_specs)
+            services = _build_synthetic_services(
+                gateway_host=gateway_host,
+                compose_provider_specs=compose_provider_specs,
+                strategy=route_strategy,
+                stack_subdomain=stack_subdomain,
+                base_domain=base_domain,
+                path_prefix=path_prefix,
+                media_server_direct_host=media_server_direct_host,
+            )
             selected = dict(services)
         else:
             compose_spec = spec_resolver.load_compose_spec()
@@ -354,28 +385,117 @@ class GenerateEnvoyConfigCommand:
 
     @staticmethod
     def _build_synthetic_services(
-        gateway_host: str,
-        compose_provider_specs: dict,
+        gateway_host: str = "",
+        compose_provider_specs: dict | None = None,
+        strategy: str = "subdomain",
+        stack_subdomain: str = "",
+        base_domain: str = "local",
+        path_prefix: str = "/app",
+        media_server_direct_host: str = "",
     ) -> dict[str, dict]:
         """Build compose-compatible service dicts from known services.
-    
-        Used when no compose file is available (K8s mode). Generates
-        the same label structure that the compose label service expects.
+
+        Used when no compose file is available (K8s mode). Generates the
+        same label structure that the compose label service expects so the
+        downstream route-graph + envoy-config pipeline runs unchanged.
+
+        Why this is rule-aware: before v1.0.159 this method emitted only
+        ``Host(<svc>.local)`` for every service, regardless of the user's
+        routing config. On K8s with hybrid strategy, that left envoy with
+        zero routes for the user's actual gateway host — every
+        ``https://<gateway>/app/<svc>/`` request 404'd because no vhost
+        matched. The compose path sidesteps this because it reads real
+        Traefik labels off live containers (where the rules are already
+        spelled out).
+
+        Strategy mapping (matches compose/services/labels.py contract):
+
+            subdomain   → Host(<svc>.<stack_subdomain>.<base_domain>)
+            path-prefix → Host(<gateway>) && PathPrefix(<prefix>/<svc>)
+            hybrid      → BOTH rules emitted as separate routers, so a
+                          user can hit either subdomain or gateway/path.
+
+        For the media server we ALSO emit a direct-host rule when
+        ``media_server_direct_host`` is set, matching the compose
+        behavior — TV / mobile clients can hit ``jf.<base>`` directly
+        without going through the gateway.
         """
+        compose_provider_specs = compose_provider_specs or {}
         spec = compose_provider_specs.get("envoy") or compose_provider_specs.get("traefik") or {}
         enable_key = spec.get("enable_label_key", "traefik.enable")
         router_rule_tpl = spec.get("router_rule_key_template", "traefik.http.routers.{router_name}.rule")
         router_svc_tpl = spec.get("router_service_key_template", "traefik.http.routers.{router_name}.service")
         svc_port_tpl = spec.get("service_label_prefix", "traefik.http.services.")
-    
+
+        strategy = (strategy or "subdomain").lower().strip()
+        wants_subdomain = strategy in ("subdomain", "hybrid")
+        wants_path = strategy in ("path-prefix", "hybrid") and bool(gateway_host)
+
+        # Build subdomain hostname pieces. When ``stack_subdomain`` is
+        # set use ``<svc>.<stack_subdomain>.<base_domain>`` (matching the
+        # compose path). When unset, fall back to the legacy
+        # ``<svc>.local`` shape so existing LAN deployments stay happy.
+        if stack_subdomain and base_domain:
+            subdomain_parts = [stack_subdomain, base_domain]
+        elif base_domain:
+            subdomain_parts = [base_domain]
+        else:
+            subdomain_parts = ["local"]
+        subdomain_suffix = ".".join(p for p in subdomain_parts if p)
+
+        # The media-server slug needs special handling for the direct-host
+        # rule — pull it from the registry so a stack that swapped Plex
+        # in for Jellyfin still wires the right name.
+        try:
+            from media_stack.api.services.registry import SERVICES as _reg_services
+            media_ids = {
+                s.id for s in _reg_services if s.category == "media"
+            }
+        except Exception:
+            media_ids = {"jellyfin", "plex", "emby"}
+
         services: dict[str, dict] = {}
         for svc_name, port in _DEFAULT_SERVICE_PORTS.items():
-            labels = {
+            labels: dict[str, str] = {
                 enable_key: "true",
-                router_rule_tpl.replace("{router_name}", svc_name): f"Host(`{svc_name}.local`)",
-                router_svc_tpl.replace("{router_name}", svc_name): svc_name,
                 f"{svc_port_tpl}{svc_name}.loadbalancer.server.port": str(port),
             }
+
+            # Subdomain rule (if enabled by strategy). Two routers so
+            # users hitting a LAN-only ``.local`` URL keep working even
+            # after they reconfigure to a real domain — emit both when
+            # ``base_domain`` differs from ``local``.
+            if wants_subdomain:
+                router_name = svc_name
+                rule = f"Host(`{svc_name}.{subdomain_suffix}`)"
+                labels[router_rule_tpl.replace("{router_name}", router_name)] = rule
+                labels[router_svc_tpl.replace("{router_name}", router_name)] = svc_name
+                # Always include the .local fallback so DNS-less LAN access
+                # via /etc/hosts still works regardless of the user's
+                # configured base_domain.
+                if base_domain != "local":
+                    fallback_router = f"{svc_name}-local"
+                    fallback_rule = f"Host(`{svc_name}.local`)"
+                    labels[router_rule_tpl.replace("{router_name}", fallback_router)] = fallback_rule
+                    labels[router_svc_tpl.replace("{router_name}", fallback_router)] = svc_name
+
+            # Gateway path-prefix rule. This is the one that was missing
+            # entirely on K8s before v1.0.159 and caused
+            # ``<gateway>/app/<svc>/`` to 404 against Envoy.
+            if wants_path:
+                router_name = f"{svc_name}-path"
+                rule = f"Host(`{gateway_host}`) && PathPrefix(`{path_prefix}/{svc_name}`)"
+                labels[router_rule_tpl.replace("{router_name}", router_name)] = rule
+                labels[router_svc_tpl.replace("{router_name}", router_name)] = svc_name
+
+            # Direct-host rule for the media server (one extra hostname
+            # bypasses the gateway for TV / mobile clients).
+            if media_server_direct_host and svc_name in media_ids:
+                router_name = f"{svc_name}-direct"
+                rule = f"Host(`{media_server_direct_host}`)"
+                labels[router_rule_tpl.replace("{router_name}", router_name)] = rule
+                labels[router_svc_tpl.replace("{router_name}", router_name)] = svc_name
+
             services[svc_name] = {
                 "container_name": svc_name,
                 "labels": labels,

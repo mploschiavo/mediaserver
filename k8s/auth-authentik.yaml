@@ -76,6 +76,11 @@ spec:
     metadata:
       labels: {app: authentik}
     spec:
+      # See enableServiceLinks rationale on auth-authelia.yaml.
+      # Authentik uses AUTHENTIK_* env vars heavily; the K8s
+      # auto-injected AUTHENTIK_PORT_9000_TCP / AUTHENTIK_SERVICE_*
+      # collide with its config-from-env mechanism.
+      enableServiceLinks: false
       containers:
         - name: server
           image: ghcr.io/goauthentik/server:2026.2.2-rc1
@@ -155,6 +160,8 @@ spec:
     metadata:
       labels: {app: authentik-worker}
     spec:
+      # See enableServiceLinks rationale on auth-authelia.yaml.
+      enableServiceLinks: false
       containers:
         - name: worker
           image: ghcr.io/goauthentik/server:2026.2.2-rc1

@@ -400,9 +400,15 @@ class K8sControllerStateIsPersistentTests(unittest.TestCase):
     # Files the controller writes that MUST survive restart. If
     # the controller grows a new persistent artifact, add its
     # containing path here.
+    #
+    # ``/srv-config/.controller`` (dot-prefixed) — the state directory
+    # moved from ``/srv-config/controller`` to ``/srv-config/.controller``
+    # in v1.0.162 because state.py uses the dot-prefixed path. Before
+    # the move the PVC was bound but unused, so every dashboard
+    # "Save Routing" silently no-op'd on K8s.
     _STATEFUL_PATHS = (
-        "/srv-config/authelia",    # users_database.yml, db.sqlite3
-        "/srv-config/controller",  # users.json, audit.log.jsonl
+        "/srv-config/authelia",     # users_database.yml, db.sqlite3
+        "/srv-config/.controller",  # users.json, audit.log.jsonl, overrides
     )
 
     def test_controller_stateful_paths_have_pvc_mounts(self):

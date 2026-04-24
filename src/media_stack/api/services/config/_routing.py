@@ -90,12 +90,35 @@ class RoutingConfigService:
             with open(profile_path) as f:
                 profile = yaml.safe_load(f) or {}
             routing = profile.setdefault("routing", {})
-            allowed_keys = {"base_domain", "stack_subdomain", "gateway_host", "gateway_port", "app_path_prefix", "strategy", "internet_exposed"}
+            # ``direct_hosts`` is a dict (e.g. ``{"media_server":
+            # "jf.example.com"}``) — handled specially below.
+            # ``scheme`` lets the operator force ``https`` when the
+            # gateway port isn't 443 but the upstream still serves TLS.
+            allowed_keys = {"base_domain", "stack_subdomain", "gateway_host", "gateway_port", "app_path_prefix", "strategy", "internet_exposed", "scheme"}
             changed = []
             for key, value in updates.items():
                 if key in allowed_keys and str(routing.get(key, "")) != str(value):
                     routing[key] = value
                     changed.append(key)
+            # direct_hosts is a dict — merge sub-keys rather than
+            # overwriting (so the operator can update one role at a
+            # time without losing the others). Empty/None unsets.
+            incoming_direct = updates.get("direct_hosts")
+            if isinstance(incoming_direct, dict):
+                current_direct = dict(routing.get("direct_hosts") or {})
+                direct_changed = False
+                for role, host in incoming_direct.items():
+                    new_val = str(host or "").strip()
+                    old_val = str(current_direct.get(role, "")).strip()
+                    if new_val != old_val:
+                        if new_val:
+                            current_direct[role] = new_val
+                        else:
+                            current_direct.pop(role, None)
+                        direct_changed = True
+                if direct_changed:
+                    routing["direct_hosts"] = current_direct
+                    changed.append("direct_hosts")
             if ("stack_subdomain" in changed or "base_domain" in changed) and "gateway_host" not in changed:
                 sub = routing.get("stack_subdomain", "media-stack")
                 dom = routing.get("base_domain", "local")
@@ -125,7 +148,18 @@ class RoutingConfigService:
             except OSError:
                 logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             if action_trigger:
+                # envoy-config rebuilds Envoy's vhosts so the new
+                # gateway_host / subdomains route to backends.
+                # ingress-config rebuilds the K8s Ingress rules so
+                # those hostnames actually reach Envoy in the first
+                # place — required on K8s, no-ops elsewhere.
+                # (v1.0.162 — without ingress-config the dashboard
+                # "Save Routing" silently changed envoy.yaml but
+                # left the K8s Ingress on the OLD hostnames, so
+                # external requests to the new gateway never reached
+                # the cluster.)
                 action_trigger("envoy-config", {})
+                action_trigger("ingress-config", {})
             return {"status": "updated", "persisted_to": str(overrides_path), "changed": changed, "routing": routing}
         except Exception as exc:
             return {"error": str(exc)[:200]}
