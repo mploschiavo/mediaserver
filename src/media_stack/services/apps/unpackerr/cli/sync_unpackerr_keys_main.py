@@ -12,7 +12,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from media_stack.cli.workflows.cli_common import repo_root_from_script_file
+from media_stack.core.cli_common import repo_root_from_script_file
 from media_stack.core.exceptions import ConfigError, KubernetesError, MediaStackError
 from media_stack.core.logging_utils import configure_logging, log_event
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient

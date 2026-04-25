@@ -30,7 +30,7 @@ def _run_generator(*, compose_mode: bool, tmp: Path) -> dict:
     parsed envoy.yaml. Compose mode requires a real compose file;
     k8s mode uses the synthetic-services path."""
     import os
-    from media_stack.cli.commands.generate_envoy_config_main import (
+    from media_stack.services.edge.envoy_config_generator import (
         GenerateEnvoyConfigCommand,
     )
 

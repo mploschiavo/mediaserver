@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from media_stack.cli.commands.generate_envoy_config_main import _load_bootstrap_edge_hooks, _load_profile
+from media_stack.services.edge.envoy_config_generator import _load_bootstrap_edge_hooks, _load_profile
 
 
 class TestLoadProfile(unittest.TestCase):
@@ -61,43 +61,43 @@ class TestCsv(unittest.TestCase):
     """Tests for _csv() — comma-separated string splitter."""
 
     def test_simple_split(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("sonarr,radarr,lidarr")
         self.assertEqual(result, ("sonarr", "radarr", "lidarr"))
 
     def test_strips_whitespace(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("  sonarr , radarr ,  lidarr  ")
         self.assertEqual(result, ("sonarr", "radarr", "lidarr"))
 
     def test_filters_empty_items(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("sonarr,,radarr,,,lidarr")
         self.assertEqual(result, ("sonarr", "radarr", "lidarr"))
 
     def test_whitespace_only_items_filtered(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("sonarr,  ,radarr, ,")
         self.assertEqual(result, ("sonarr", "radarr"))
 
     def test_empty_string_returns_empty_tuple(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("")
         self.assertEqual(result, ())
 
     def test_single_value(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("jellyfin")
         self.assertEqual(result, ("jellyfin",))
 
     def test_returns_tuple_not_list(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _csv
+        from media_stack.services.edge.envoy_config_generator import _csv
 
         result = _csv("a,b")
         self.assertIsInstance(result, tuple)
@@ -118,7 +118,7 @@ class TestBuildSyntheticServices(unittest.TestCase):
         }
 
     def test_returns_all_known_services(self):
-        from media_stack.cli.commands.generate_envoy_config_main import (
+        from media_stack.services.edge.envoy_config_generator import (
             _build_synthetic_services,
             _DEFAULT_SERVICE_PORTS,
         )
@@ -127,27 +127,27 @@ class TestBuildSyntheticServices(unittest.TestCase):
         self.assertEqual(set(result.keys()), set(_DEFAULT_SERVICE_PORTS.keys()))
 
     def test_service_has_container_name(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", self._get_default_specs())
         self.assertEqual(result["sonarr"]["container_name"], "sonarr")
 
     def test_service_has_labels_dict(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", self._get_default_specs())
         self.assertIn("labels", result["sonarr"])
         self.assertIsInstance(result["sonarr"]["labels"], dict)
 
     def test_enable_label_set_to_true(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", self._get_default_specs())
         labels = result["jellyfin"]["labels"]
         self.assertEqual(labels["traefik.enable"], "true")
 
     def test_router_rule_uses_service_name(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", self._get_default_specs())
         labels = result["radarr"]["labels"]
@@ -157,14 +157,14 @@ class TestBuildSyntheticServices(unittest.TestCase):
         )
 
     def test_router_service_label(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", self._get_default_specs())
         labels = result["prowlarr"]["labels"]
         self.assertEqual(labels["traefik.http.routers.prowlarr.service"], "prowlarr")
 
     def test_port_label_matches_default(self):
-        from media_stack.cli.commands.generate_envoy_config_main import (
+        from media_stack.services.edge.envoy_config_generator import (
             _build_synthetic_services,
             _DEFAULT_SERVICE_PORTS,
         )
@@ -175,7 +175,7 @@ class TestBuildSyntheticServices(unittest.TestCase):
         self.assertEqual(labels[port_key], str(_DEFAULT_SERVICE_PORTS["jellyfin"]))
 
     def test_falls_back_to_traefik_spec_when_envoy_missing(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         specs_traefik_only = {
             "traefik": {
@@ -191,7 +191,7 @@ class TestBuildSyntheticServices(unittest.TestCase):
         self.assertEqual(result["sonarr"]["labels"]["traefik.enable"], "true")
 
     def test_empty_specs_uses_hardcoded_defaults(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", {})
         # When specs dict is empty, spec = {} and defaults kick in for key names
@@ -200,7 +200,7 @@ class TestBuildSyntheticServices(unittest.TestCase):
         self.assertEqual(labels["traefik.enable"], "true")
 
     def test_each_service_has_exactly_four_labels(self):
-        from media_stack.cli.commands.generate_envoy_config_main import _build_synthetic_services
+        from media_stack.services.edge.envoy_config_generator import _build_synthetic_services
 
         result = _build_synthetic_services("apps.test.local", self._get_default_specs())
         for svc_name, svc in result.items():

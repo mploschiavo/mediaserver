@@ -38,7 +38,7 @@ def _record(
     if not triggers:
         return
     try:
-        from media_stack.cli.commands.job_framework import _record_history
+        from media_stack.services.jobs.framework import _record_history
     except Exception as exc:  # noqa: BLE001
         _log.debug("guardrails: history module unavailable: %s", exc)
         return

@@ -19,7 +19,7 @@ from media_stack.cli.commands.deploy_stack_errors import (
 from media_stack.core.edge.provider_registry import router_service_names_by_provider
 from media_stack.core.subprocess_utils import CommandResult
 
-from media_stack.cli.workflows.cli_common import info, warn
+from media_stack.core.cli_common import info, warn
 
 if TYPE_CHECKING:
     from pathlib import Path

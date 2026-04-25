@@ -28,7 +28,7 @@ from media_stack.api.session_singletons import (
 from media_stack.core.observability.security_counters import security_counters
 
 try:
-    from media_stack.cli.commands import generate_envoy_config_main as _envoy_gen_main
+    from media_stack.services.edge import envoy_config_generator as _envoy_gen_main
 except ImportError:
     _envoy_gen_main = None
 from media_stack.api.tls_factory import build_default_tls_service
@@ -1847,7 +1847,7 @@ class PostRequestHandler:
         """
         actions = set(_CORE_ACTIONS)
         try:
-            from media_stack.cli.commands.job_framework import (
+            from media_stack.services.jobs.framework import (
                 discover_jobs_from_contracts,
                 discover_job_aliases,
             )
@@ -1942,7 +1942,7 @@ def _dispatch_media_integrity_via_job(handler, path, body, actor):
     JobRunner summary) so UI v1.3.x's existing fetch handlers don't
     break.
     """
-    from media_stack.cli.commands.job_framework import run_job
+    from media_stack.services.jobs.framework import run_job
     from media_stack.services.media_integrity.service import (
         MediaIntegrityInProgress,
     )

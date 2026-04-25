@@ -8,7 +8,7 @@ import os
 import sys
 from dataclasses import dataclass
 
-from media_stack.cli.workflows.cli_common import kube_cmd
+from media_stack.core.cli_common import kube_cmd
 
 
 @dataclass(frozen=True)

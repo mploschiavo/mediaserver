@@ -215,7 +215,7 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
     def test_bootstrap_entrypoint_uses_manifest_bound_handlers_for_tech_operations(self):
         wrapper = (ROOT / "bin" / "controller.py").read_text(encoding="utf-8")
         runner = (
-            ROOT / "src" / "media_stack" / "cli" / "commands" / "controller_runner.py"
+            ROOT / "src" / "media_stack" / "services" / "jobs" / "controller_runner.py"
         ).read_text(encoding="utf-8")
         operation_names: set[str] = set()
         for tech in TECHNOLOGIES:

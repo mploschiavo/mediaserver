@@ -62,7 +62,7 @@ def _get_known_actions() -> set[str]:
 
 def _get_contract_job_names() -> set[str]:
     try:
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             discover_jobs_from_contracts,
         )
         return {j["name"] for j in discover_jobs_from_contracts()}

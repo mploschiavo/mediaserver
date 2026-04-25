@@ -211,7 +211,7 @@ class ImportTimeSideEffects(unittest.TestCase):
         # and we have ~400 modules.  Start with a curated set of
         # "entry point" modules and expand if a bug bites.
         entry_points = [
-            "media_stack.cli.commands.job_framework",
+            "media_stack.services.jobs.framework",
             "media_stack.cli.commands.controller_serve",
             "media_stack.api.server",
             "media_stack.api.services.registry",

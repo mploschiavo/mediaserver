@@ -98,7 +98,7 @@ class HeartbeatAndPerJobLogs(unittest.TestCase):
         self.assertIn("t_last_heartbeat", text)
 
     def test_jobrunner_logs_per_job_completion_with_progress(self) -> None:
-        path = ROOT / "src/media_stack/cli/commands/job_framework.py"
+        path = ROOT / "src/media_stack/services/jobs/framework.py"
         text = path.read_text(encoding="utf-8")
         # The new completion log: "[JOB] X: <status> (<elapsed>s) — N/M done"
         self.assertRegex(

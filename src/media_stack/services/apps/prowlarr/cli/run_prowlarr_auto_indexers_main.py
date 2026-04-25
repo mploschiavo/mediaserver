@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 
-from media_stack.cli.workflows.cli_common import repo_root_from_script_file
+from media_stack.core.cli_common import repo_root_from_script_file
 from media_stack.core.defaults import default_controller_image
 from media_stack.core.exceptions import ConfigError, KubernetesError, MediaStackError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient

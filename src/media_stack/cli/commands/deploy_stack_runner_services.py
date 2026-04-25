@@ -23,7 +23,7 @@ from media_stack.core.platform_plugin_contract import PlatformPlugin
 from media_stack.core.platform_plugin_registry import resolve_platform_plugin
 
 from media_stack.cli.commands.deploy_stack_errors import DeployError
-from media_stack.cli.workflows.cli_common import info, ts
+from media_stack.core.cli_common import info, ts
 from media_stack.cli.workflows.controller_notification_service import (
     ControllerNotificationConfig,
     ControllerNotificationService,
@@ -353,7 +353,7 @@ class RunnerServicesMixin:
         if confirmation and confirmation_target and confirmation == confirmation_target:
             self._delete_environment_enabled_cache = True
             return True
-        from media_stack.cli.workflows.cli_common import warn
+        from media_stack.core.cli_common import warn
         warn(
             "Delete namespace requested but blocked by safeguard. "
             "Set DELETE_NAMESPACE_CONFIRM to the environment identifier "

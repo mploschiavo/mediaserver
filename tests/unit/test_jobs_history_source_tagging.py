@@ -35,8 +35,8 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands import job_framework  # noqa: E402
-from media_stack.cli.commands.job_framework import (  # noqa: E402
+from media_stack.services.jobs import framework as job_framework  # noqa: E402
+from media_stack.services.jobs.framework import (  # noqa: E402
     Job, JobContext, JobRunner, _record_history, get_job_history,
     run_job, _normalize_source,
 )
@@ -209,7 +209,7 @@ class TestDispatchActionSourceExtraction(unittest.TestCase):
             controller_dispatch, "_apply_overrides", lambda o: None,
         ):
             with patch(
-                "media_stack.cli.commands.job_framework.run_job",
+                "media_stack.services.jobs.framework.run_job",
                 fake_run_job,
             ):
                 import argparse

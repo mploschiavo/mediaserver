@@ -1030,7 +1030,7 @@ class SlowJobsAreNonBlocking(unittest.TestCase):
 
     def test_runner_honors_non_blocking_flag(self) -> None:
         text = (
-            SRC / "cli" / "commands" / "job_framework.py"
+            SRC / "services" / "jobs" / "framework.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             "non_blocking",
@@ -1416,7 +1416,7 @@ class NonBlockingJobsHaveAfterDeps(unittest.TestCase):
     """
 
     def test_job_class_supports_after_field(self) -> None:
-        from media_stack.cli.commands.job_framework import Job
+        from media_stack.services.jobs.framework import Job
         j = Job("x", lambda ctx: {}, after=["upstream"])
         self.assertEqual(
             list(getattr(j, "after", [])), ["upstream"],
@@ -1429,7 +1429,7 @@ class NonBlockingJobsHaveAfterDeps(unittest.TestCase):
         finish before its downstream sibling is dispatched, even
         though the upstream is reported as ``dispatched`` quickly."""
         import time as _t
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             Job, JobRunner, JobContext,
         )
         order: list[tuple[str, float]] = []

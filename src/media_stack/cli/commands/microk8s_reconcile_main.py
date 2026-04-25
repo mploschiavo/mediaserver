@@ -14,8 +14,8 @@ from typing import Any, Callable
 from media_stack.services.enums import RunnerEvent
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
-from media_stack.cli.workflows.controller_component_resolver import evaluate_phase_condition
-from media_stack.cli.workflows.cli_common import kube_cmd, repo_root_from_script_file, run_command
+from media_stack.services.controller_component_resolver import evaluate_phase_condition
+from media_stack.core.cli_common import kube_cmd, repo_root_from_script_file, run_command
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ def _load_reconcile_hooks(config_file: Path) -> dict[str, object]:
         raise ConfigError(f"Bootstrap config root must be an object: {config_file}")
 
     # Merge platform-specific adapter hooks (e.g. adapter-hooks.k8s.yaml)
-    from media_stack.cli.workflows.controller_component_resolver import _merge_platform_adapter_hooks
+    from media_stack.services.controller_component_resolver import _merge_platform_adapter_hooks
     payload = _merge_platform_adapter_hooks(payload, config_file.parent)
 
     adapter_hooks = payload.get("adapter_hooks")

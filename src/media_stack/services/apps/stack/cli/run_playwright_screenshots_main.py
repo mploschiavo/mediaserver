@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from media_stack.cli.workflows.cli_common import repo_root_from_script_file
+from media_stack.core.cli_common import repo_root_from_script_file
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
 

@@ -20,7 +20,7 @@ from media_stack.services.runtime_factory import (
     ControllerRuntimeFactoryService,
 )
 
-from media_stack.cli.commands.controller_handlers import _resolve_config_path
+from media_stack.services.jobs.controller_handlers import _resolve_config_path
 
 
 # ---------------------------------------------------------------------------

@@ -34,7 +34,7 @@ from media_stack.cli.commands.deploy_stack_runner_services import (
 from media_stack.cli.commands.deploy_stack_runner_phases import (
     RunnerPhasesMixin,
 )
-from media_stack.cli.workflows.cli_common import info, warn
+from media_stack.core.cli_common import info, warn
 from media_stack.cli.workflows.deploy_cli_config_service import (
     DeployStackConfig,
     parse_deploy_stack_config,

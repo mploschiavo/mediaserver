@@ -23,7 +23,7 @@ def _load_contract(service_id: str) -> dict:
 
 def _load_cfg_from_contracts() -> dict:
     """Load config through the same pipeline the job framework uses."""
-    from media_stack.cli.commands.job_framework import _load_cfg_from_contracts
+    from media_stack.services.jobs.framework import _load_cfg_from_contracts
     return _load_cfg_from_contracts()
 
 

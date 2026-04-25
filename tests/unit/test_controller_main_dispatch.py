@@ -259,21 +259,21 @@ class TestDispatchAction(unittest.TestCase):
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")
     @patch("media_stack.services.runtime_platform.log")
-    @patch("media_stack.cli.commands.action_handlers.action_bootstrap")
+    @patch("media_stack.services.jobs.action_handlers.action_bootstrap")
     def test_dispatch_bootstrap(self, mock_handler, mock_log, mock_apply):
         _dispatch_action("bootstrap", {}, _make_args(), ControllerState())
         mock_handler.assert_called_once()
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")
     @patch("media_stack.services.runtime_platform.log")
-    @patch("media_stack.cli.commands.action_handlers.action_post_setup")
+    @patch("media_stack.services.jobs.action_handlers.action_post_setup")
     def test_dispatch_finalize(self, mock_handler, mock_log, mock_apply):
         _dispatch_action("post-setup", {}, _make_args(), ControllerState())
         mock_handler.assert_called_once()
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")
     @patch("media_stack.services.runtime_platform.log")
-    @patch("media_stack.cli.commands.action_handlers.action_envoy_config")
+    @patch("media_stack.services.jobs.action_handlers.action_envoy_config")
     def test_dispatch_envoy_config(self, mock_handler, mock_log, mock_apply):
         _dispatch_action("envoy-config", {}, _make_args(), ControllerState())
         mock_handler.assert_called_once()
@@ -494,7 +494,7 @@ class TestRunHandlerSpecs(unittest.TestCase):
             call_order.append("normal")
             return {}
 
-        with patch("media_stack.cli.commands.controller_handlers._resolve_handler") as mr:
+        with patch("media_stack.services.jobs.controller_handlers._resolve_handler") as mr:
             mr.side_effect = lambda s: fake_env if "env" in s else fake_normal
             specs = [
                 {"name": "n1", "handler": "normal.m:f", "export_env": False},
@@ -509,7 +509,7 @@ class TestRunHandlerSpecs(unittest.TestCase):
         def boom(**kw):
             raise RuntimeError("fail")
 
-        with patch("media_stack.cli.commands.controller_handlers._resolve_handler", return_value=boom):
+        with patch("media_stack.services.jobs.controller_handlers._resolve_handler", return_value=boom):
             state = MagicMock()
             _run_handler_specs(
                 [{"name": "f", "handler": "m:f", "optional": True}],

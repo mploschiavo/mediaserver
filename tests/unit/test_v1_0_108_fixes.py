@@ -118,9 +118,9 @@ class DiscoverIndexersRetryScopeIsLeakProof(unittest.TestCase):
         # Stub action_discover_indexers + _build_runner so the
         # adapter runs end-to-end without touching real services.
         with _mock.patch(
-            "media_stack.cli.commands.action_handlers.action_discover_indexers"
+            "media_stack.services.jobs.action_handlers.action_discover_indexers"
         ), _mock.patch(
-            "media_stack.cli.commands.controller_runner._build_runner"
+            "media_stack.services.jobs.controller_runner._build_runner"
         ):
             class _Ctx:
                 config_root = "/srv-config"
@@ -133,7 +133,7 @@ class DiscoverIndexersRetryScopeIsLeakProof(unittest.TestCase):
                     "MEDIA_STACK_HTTP_RETRY_ATTEMPTS"
                 )
 
-            import media_stack.cli.commands.action_handlers as _ah
+            import media_stack.services.jobs.action_handlers as _ah
             _ah.action_discover_indexers = _spy
             job_adapters.discover_indexers(_Ctx())
 
@@ -148,9 +148,9 @@ class DiscoverIndexersRetryScopeIsLeakProof(unittest.TestCase):
         from media_stack.services.apps.core import job_adapters
 
         with _mock.patch(
-            "media_stack.cli.commands.action_handlers.action_discover_indexers"
+            "media_stack.services.jobs.action_handlers.action_discover_indexers"
         ), _mock.patch(
-            "media_stack.cli.commands.controller_runner._build_runner"
+            "media_stack.services.jobs.controller_runner._build_runner"
         ):
             class _Ctx:
                 config_root = "/srv-config"
@@ -159,7 +159,7 @@ class DiscoverIndexersRetryScopeIsLeakProof(unittest.TestCase):
             def _boom(*a, **kw):
                 raise RuntimeError("simulated failure")
 
-            import media_stack.cli.commands.action_handlers as _ah
+            import media_stack.services.jobs.action_handlers as _ah
             _ah.action_discover_indexers = _boom
             with self.assertRaises(RuntimeError):
                 job_adapters.discover_indexers(_Ctx())

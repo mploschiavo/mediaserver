@@ -89,7 +89,7 @@ class TestBootstrapJobsReadFromContracts(unittest.TestCase):
 
     def test_job_context_cfg_has_flat_jellyfin_keys(self):
         """JobContext.cfg must produce flat keys from service YAML defaults."""
-        from media_stack.cli.commands.job_framework import JobContext
+        from media_stack.services.jobs.framework import JobContext
         ctx = JobContext()
         cfg = ctx.cfg
         for key in ["jellyfin_libraries", "jellyfin_livetv", "jellyfin_plugins", "jellyfin_playback"]:
@@ -97,7 +97,7 @@ class TestBootstrapJobsReadFromContracts(unittest.TestCase):
 
     def test_job_context_cfg_does_not_have_nested_jellyfin(self):
         """Config must NOT have a nested 'jellyfin' key with sub-sections."""
-        from media_stack.cli.commands.job_framework import JobContext
+        from media_stack.services.jobs.framework import JobContext
         ctx = JobContext()
         cfg = ctx.cfg
         if "jellyfin" in cfg:
@@ -110,7 +110,7 @@ class TestBootstrapJobsReadFromContracts(unittest.TestCase):
     def test_no_config_json_import_in_job_framework(self):
         """job_framework.py must NOT load from JSON config files."""
         import inspect
-        from media_stack.cli.commands import job_framework
+        from media_stack.services.jobs import framework as job_framework
         source = inspect.getsource(job_framework)
         self.assertNotIn("config.json", source, "job_framework.py must not reference config.json")
         self.assertNotIn("_resolve_config_path", source, "job_framework.py must not use _resolve_config_path")

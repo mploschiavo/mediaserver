@@ -241,7 +241,7 @@ class AutoHealService:
         # imported by handlers_get for the same reason.
         if record_history_fn is None:
             try:
-                from media_stack.cli.commands.job_framework import (
+                from media_stack.services.jobs.framework import (
                     _record_history as _default_record_history,
                 )
                 record_history_fn = _default_record_history

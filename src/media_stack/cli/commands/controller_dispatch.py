@@ -62,7 +62,7 @@ def _dispatch_action(
     state: object,
 ) -> None:
     """Route an action to the appropriate handler."""
-    from media_stack.cli.commands.job_framework import run_job
+    from media_stack.services.jobs.framework import run_job
 
     # Pull the trigger-source / actor metadata out of overrides
     # before they get logged or passed onward. ``_source`` /

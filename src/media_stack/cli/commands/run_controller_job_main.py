@@ -18,7 +18,7 @@ from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 from media_stack.core.exceptions import ConfigError, MediaStackError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
-from media_stack.cli.workflows.controller_component_resolver import resolve_bootstrap_component_plan
+from media_stack.services.controller_component_resolver import resolve_bootstrap_component_plan
 from media_stack.cli.workflows.controller_core_phases_service import (
     ControllerCorePhasesConfig,
     ControllerCorePhasesService,
@@ -63,7 +63,7 @@ from media_stack.cli.workflows.run_controller_job_cli_config_service import (
 )
 
 
-from media_stack.cli.workflows.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
+from media_stack.core.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
 import logging
 
 from .run_controller_job_priming_mixin import _RunBootstrapJobPrimingMixin

@@ -122,7 +122,7 @@ media-stack-set-pvc-storage-class = "media_stack.cli.commands.set_pvc_storage_cl
 media-stack-validate-config = "media_stack.cli.commands.validate_controller_config_main:main"
 media-stack-validate-profile = "media_stack.cli.commands.validate_controller_profile_main:main"
 media-stack-apply-scale-policy = "media_stack.cli.commands.apply_scale_policy_main:main"
-media-stack-generate-envoy-config = "media_stack.cli.commands.generate_envoy_config_main:main"
+media-stack-generate-envoy-config = "media_stack.services.edge.envoy_config_generator:main"
 media-stack-render-arch-diagrams = "media_stack.cli.commands.render_architecture_diagrams_main:main"
 media-stack-run-unit-tests = "media_stack.cli.commands.run_unit_tests_main:main"
 

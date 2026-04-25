@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.workflows.controller_component_resolver import (  # noqa: E402
+from media_stack.services.controller_component_resolver import (  # noqa: E402
     evaluate_phase_condition,
     resolve_bootstrap_enable_components,
     resolve_component_deployment_name,
@@ -24,7 +24,7 @@ from media_stack.core.exceptions import ConfigError  # noqa: E402
 class BootstrapComponentResolverTests(unittest.TestCase):
     def _base_config(self) -> dict:
         import os
-        from media_stack.cli.workflows.controller_component_resolver import _merge_platform_adapter_hooks
+        from media_stack.services.controller_component_resolver import _merge_platform_adapter_hooks
         config_path = ROOT / "contracts" / "media-stack.config.json"
         payload = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
         old = os.environ.get("MEDIA_STACK_PLATFORM")

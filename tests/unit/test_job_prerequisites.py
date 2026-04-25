@@ -19,7 +19,7 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands.job_framework import (
+from media_stack.services.jobs.framework import (
     Job, JobContext, JobRunner, PREREQS, register_prereq,
     build_job_framework, get_job_registry,
     run_job, run_all_media_server_jobs,
@@ -195,7 +195,7 @@ class TestJobTreePrereqs(unittest.TestCase):
     def test_prewarm_requires_api_key(self):
         root = build_job_framework()
         # Prewarm is under configure-post phase
-        from media_stack.cli.commands.job_framework import _find_job_in_tree
+        from media_stack.services.jobs.framework import _find_job_in_tree
         prewarm = _find_job_in_tree(root, "refresh-media")
         self.assertIsNotNone(prewarm, "refresh-media not found in tree")
         self.assertIn("media_server_api_key", prewarm.requires)
@@ -255,7 +255,7 @@ class TestRunAllWithRetry(unittest.TestCase):
             "media_server_api_key": lambda ctx: False,
         }):
             with patch(
-                "media_stack.cli.commands.job_framework.JobRunner._try_satisfy_prereqs"
+                "media_stack.services.jobs.framework.JobRunner._try_satisfy_prereqs"
             ):
                 result = run_all_media_server_jobs(max_wait=1)
         # Jobs with unmet prereqs should be skipped
@@ -365,7 +365,7 @@ class TestJobFrameworkPluggable(unittest.TestCase):
 
     def test_find_job_in_tree(self):
         """run_job finds jobs deep in the tree with their prereqs."""
-        from media_stack.cli.commands.job_framework import _find_job_in_tree
+        from media_stack.services.jobs.framework import _find_job_in_tree
         root = build_job_framework()
         lib_job = _find_job_in_tree(root, "configure-libraries")
         self.assertIsNotNone(lib_job)

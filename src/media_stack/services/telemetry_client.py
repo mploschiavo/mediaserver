@@ -182,7 +182,7 @@ class TelemetryClient:
     @staticmethod
     def _collect_job_metrics() -> dict[str, Any]:
         try:
-            from media_stack.cli.commands.job_framework import get_job_history
+            from media_stack.services.jobs.framework import get_job_history
             history = get_job_history()
             if not history:
                 return {"runs_24h": 0, "ok": 0, "errors": 0, "avg_duration_s": 0}

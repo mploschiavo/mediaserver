@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 # Force a fresh discover so the migration is exercised even if a
 # previous test cached the registry.
-import media_stack.cli.commands.job_framework as _jf  # noqa: E402
+import media_stack.services.jobs.framework as _jf  # noqa: E402
 _jf._DISCOVERED_JOBS_CACHE = None
 
 
@@ -195,12 +195,12 @@ class AdapterDelegationTests(unittest.TestCase):
     work the action used to do."""
 
     def _ctx(self):
-        from media_stack.cli.commands.job_framework import JobContext
+        from media_stack.services.jobs.framework import JobContext
         return JobContext()
 
     def test_envoy_config_calls_action_envoy_config(self) -> None:
         with mock.patch(
-            "media_stack.cli.commands.action_handlers.action_envoy_config"
+            "media_stack.services.jobs.action_handlers.action_envoy_config"
         ) as m:
             from media_stack.services.apps.core.job_adapters import (
                 envoy_config,
@@ -210,7 +210,7 @@ class AdapterDelegationTests(unittest.TestCase):
 
     def test_discover_api_keys_calls_run_preflights(self) -> None:
         with mock.patch(
-            "media_stack.cli.commands.controller_handlers._run_preflights"
+            "media_stack.services.jobs.controller_handlers._run_preflights"
         ) as m_pre, mock.patch(
             "media_stack.cli.commands.controller_k8s"
             "._persist_preflight_keys_to_secret"
@@ -224,7 +224,7 @@ class AdapterDelegationTests(unittest.TestCase):
     def test_run_legacy_pipeline_calls_runner_run(self) -> None:
         runner = mock.MagicMock()
         with mock.patch(
-            "media_stack.cli.commands.controller_runner._build_runner",
+            "media_stack.services.jobs.controller_runner._build_runner",
             return_value=(runner, mock.MagicMock()),
         ):
             from media_stack.services.apps.core.job_adapters import (
@@ -235,7 +235,7 @@ class AdapterDelegationTests(unittest.TestCase):
 
     def test_validate_credentials_calls_action_validate_credentials(self) -> None:
         with mock.patch(
-            "media_stack.cli.commands.action_handlers.action_validate_credentials"
+            "media_stack.services.jobs.action_handlers.action_validate_credentials"
         ) as m:
             from media_stack.services.apps.core.job_adapters import (
                 validate_credentials,
@@ -245,13 +245,13 @@ class AdapterDelegationTests(unittest.TestCase):
 
     def test_restart_apps_calls_action_restart_apps(self) -> None:
         with mock.patch(
-            "media_stack.cli.commands.action_handlers.action_restart_apps"
+            "media_stack.services.jobs.action_handlers.action_restart_apps"
         ) as m:
             with mock.patch(
-                "media_stack.cli.commands.controller_handlers"
+                "media_stack.services.jobs.controller_handlers"
                 "._load_handler_specs"
             ), mock.patch(
-                "media_stack.cli.commands.controller_handlers"
+                "media_stack.services.jobs.controller_handlers"
                 "._run_handler_specs"
             ):
                 from media_stack.services.apps.core.job_adapters import (

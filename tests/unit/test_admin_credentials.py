@@ -185,7 +185,7 @@ class TestValidateCredentialsAction(unittest.TestCase):
            return_value={"services": ["sonarr"], "errors": [], "status": "updated", "services": ["sonarr"]})
     def test_auto_syncs_disabled_services(self, mock_reset, mock_probe):
         """validate_credentials should call reset_password for disabled services."""
-        from media_stack.cli.commands.action_handlers import action_validate_credentials
+        from media_stack.services.jobs.action_handlers import action_validate_credentials
         # Second call for re-validation
         mock_probe.side_effect = [
             {"credentials": {"sonarr": "disabled", "jellyfin": "ok"}, "ok": 1, "total": 2},
@@ -201,7 +201,7 @@ class TestValidateCredentialsAction(unittest.TestCase):
            return_value={"credentials": {"jellyfin": "ok"}, "ok": 1, "total": 1})
     def test_no_sync_when_all_ok(self, mock_probe):
         """validate_credentials should not call reset_password when all pass."""
-        from media_stack.cli.commands.action_handlers import action_validate_credentials
+        from media_stack.services.jobs.action_handlers import action_validate_credentials
         with patch("media_stack.api.services.admin.reset_password") as mock_reset:
             action_validate_credentials()
             mock_reset.assert_not_called()
@@ -212,7 +212,7 @@ class TestValidateCredentialsAction(unittest.TestCase):
            return_value={"services": ["sonarr", "radarr"], "errors": [], "status": "updated", "services": []})
     def test_syncs_failed_services(self, mock_reset, mock_probe):
         """validate_credentials should auto-sync services that fail."""
-        from media_stack.cli.commands.action_handlers import action_validate_credentials
+        from media_stack.services.jobs.action_handlers import action_validate_credentials
         mock_probe.side_effect = [
             {"credentials": {"sonarr": "fail", "radarr": "fail"}, "ok": 0, "total": 2},
             {"credentials": {"sonarr": "ok", "radarr": "ok"}, "ok": 2, "total": 2},

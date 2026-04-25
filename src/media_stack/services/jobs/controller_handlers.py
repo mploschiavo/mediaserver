@@ -212,7 +212,7 @@ def _auto_generate_config_json(target_path: str) -> str | None:
     the config schema, operation plans, and service defaults.
     """
     from pathlib import Path
-    from media_stack.cli.commands.generate_bootstrap_config import generate
+    from media_stack.services.jobs.bootstrap_config_generator import generate
 
     profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
     profile_path = Path(profile_file) if profile_file else None

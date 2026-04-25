@@ -49,7 +49,7 @@ def _make_args(**overrides):
 # _dispatch_action routing table
 # ---------------------------------------------------------------------------
 
-_HANDLER_MODULE = "media_stack.cli.commands.action_handlers"
+_HANDLER_MODULE = "media_stack.services.jobs.action_handlers"
 
 
 class TestDispatchActionBootstrap(unittest.TestCase):

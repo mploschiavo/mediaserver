@@ -229,7 +229,7 @@ class DiscoverApiKeysJobTests(unittest.TestCase):
         ``status: error`` in /api/jobs.history — now it lands as a
         recorded skip and on-disk fallback still resolves keys."""
         with mock.patch(
-            "media_stack.cli.commands.controller_handlers._run_preflights",
+            "media_stack.services.jobs.controller_handlers._run_preflights",
             side_effect=RuntimeError("boom"),
         ), mock.patch(
             "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
@@ -249,7 +249,7 @@ class DiscoverApiKeysJobTests(unittest.TestCase):
         to tell the operator what worked, what didn't, and what to do
         about it."""
         with mock.patch(
-            "media_stack.cli.commands.controller_handlers._run_preflights",
+            "media_stack.services.jobs.controller_handlers._run_preflights",
         ), mock.patch(
             "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
             return_value=({"SONARR_API_KEY": "k"}, ["radarr: no key on disk"]),
@@ -267,7 +267,7 @@ class DiscoverApiKeysJobTests(unittest.TestCase):
         """Otherwise the next /api/libraries call would still see the
         stale (None) cache entry until the 30s TTL elapsed."""
         with mock.patch(
-            "media_stack.cli.commands.controller_handlers._run_preflights",
+            "media_stack.services.jobs.controller_handlers._run_preflights",
         ), mock.patch(
             "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
             return_value=({}, []),
