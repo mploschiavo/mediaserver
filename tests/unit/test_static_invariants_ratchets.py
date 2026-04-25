@@ -18,9 +18,9 @@ Bug classes covered:
        module (catches "I deleted/renamed the symbol but forgot
        to update __all__"); files using __getattr__ are exempt
        since they intentionally lazy-load names.
-  M5   every test class in test_v1_0_*_batch*_ratchets.py has a
-       docstring naming the bug class (so future maintainers know
-       why the ratchet exists, not just what it asserts)
+  M5   every test class in test_*_ratchets.py has a docstring
+       naming the bug class (so future maintainers know why the
+       ratchet exists, not just what it asserts)
   M6   every tests/unit/*.py file is a real pytest module (name
        matches test_*.py and contains at least one TestCase or
        test_ function)
@@ -231,7 +231,7 @@ class RatchetDocstringDiscipline(unittest.TestCase):
     def test_every_ratchet_class_has_docstring(self) -> None:
         bad: list[str] = []
         for f in sorted((ROOT / "tests" / "unit").glob(
-            "test_v1_0_*_batch*_ratchets.py"
+            "test_*_ratchets.py"
         )):
             try:
                 tree = ast.parse(f.read_text(encoding="utf-8"))
@@ -254,16 +254,65 @@ class RatchetDocstringDiscipline(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # M6 — every tests/unit/*.py is a real pytest module
 # ---------------------------------------------------------------------------
-class TestModuleNamingConvention(unittest.TestCase):
-    """Every file under ``tests/unit/`` (excluding ``__init__``,
-    ``conftest``, and shared helpers prefixed with ``_``) must
-    follow ``test_*.py`` so pytest collects it. A misnamed file
-    is a test that silently never runs."""
+class MeaningfulFilenamesAcrossRepo(unittest.TestCase):
+    """Filenames must describe what they cover, not when they
+    were created.
 
-    _ALLOWED_NON_TEST_FILES = {
+    Two conventions enforced across the entire git tree:
+
+    1. ``tests/unit/*.py`` follows ``test_*.py`` so pytest
+       collects it (a misnamed file is a test that silently
+       never runs).
+    2. NO file ANYWHERE in the repo carries a version-prefix
+       (``v1_0_NNN_...``) or a numbered ``_batchN_`` suffix.
+       These names tell future-you nothing about what's inside
+       and bias every reader toward "this is historic, ignore
+       it." Pin the rule for the whole repo (not just tests/),
+       since the same naming rot can creep into ``src/``,
+       ``contracts/``, and docs.
+
+    No grandfather list. The rule is applied retroactively;
+    if the test fails, rename the file."""
+
+    _ALLOWED_NON_TEST_FILES = frozenset({
         "__init__.py",
         "conftest.py",
-    }
+    })
+
+    # Repo subtrees that aren't ours — vendor code can have any
+    # naming convention it likes.
+    _SCAN_EXCLUDE = (
+        "/.venv/",
+        "/.git/",
+        "/__pycache__/",
+        "/node_modules/",
+        "/.hypothesis/",
+        "/.pytest_cache/",
+        "/.mypy_cache/",
+        "/dist/",
+        "/build/",
+        "/api/static/",  # bundled swagger-ui assets
+    )
+
+    # ``test_v1_0_NNN_...`` — the historic release-tagged name.
+    _VERSION_PREFIX = re.compile(r"(^|/)([a-zA-Z_]+_)?v\d+(?:_\d+)+_")
+    # ``_batchN_`` (numbered batch suffix) is the bad pattern;
+    # ``_batch_topology`` etc. are fine — "batch" can be a
+    # domain word.
+    _BATCH_INFIX = re.compile(r"_batch\d+_")
+
+    def _walk_repo(self) -> list[Path]:
+        """Yield every tracked file in the repo, minus vendor /
+        cache subtrees."""
+        out: list[Path] = []
+        for p in ROOT.rglob("*"):
+            if not p.is_file():
+                continue
+            sp = "/" + str(p.relative_to(ROOT)) + "/"
+            if any(ex in sp for ex in self._SCAN_EXCLUDE):
+                continue
+            out.append(p)
+        return out
 
     def test_every_unit_test_file_follows_convention(self) -> None:
         bad: list[str] = []
@@ -279,6 +328,39 @@ class TestModuleNamingConvention(unittest.TestCase):
             "Files under tests/unit/ that don't follow test_*.py — "
             "pytest doesn't collect them and they silently "
             "never run:\n  - " + "\n  - ".join(bad),
+        )
+
+    def test_no_version_prefix_filenames_anywhere(self) -> None:
+        """``foo_v1_0_NNN_bar.py`` style names in the entire repo,
+        not just tests/. Rename to describe the topic, not the
+        release."""
+        bad: list[str] = []
+        for f in self._walk_repo():
+            if self._VERSION_PREFIX.search(f.name):
+                bad.append(str(f.relative_to(ROOT)))
+        self.assertFalse(
+            bad,
+            "Files carrying a version-prefix in the name — these "
+            "tell you nothing about what's inside. Rename to "
+            "describe the topic (test_<topic>.py / "
+            "<feature>_helpers.py / etc.):\n  - "
+            + "\n  - ".join(bad),
+        )
+
+    def test_no_numbered_batch_suffix_anywhere(self) -> None:
+        """``foo_batch3_bar.py`` style names. ``batch_topology``,
+        ``batch_runner`` etc. are fine — only NUMBERED batch
+        suffixes are caught."""
+        bad: list[str] = []
+        for f in self._walk_repo():
+            if self._BATCH_INFIX.search(f.name):
+                bad.append(str(f.relative_to(ROOT)))
+        self.assertFalse(
+            bad,
+            "Files carrying a numbered _batchN_ suffix — these "
+            "name themselves after the order in which the batch "
+            "shipped, not what it contains:\n  - "
+            + "\n  - ".join(bad),
         )
 
 

@@ -410,8 +410,8 @@ class FixCommitsTouchRatchets(unittest.TestCase):
     """For every recent commit whose message marks a fix
     (``fix``, ``bug``, ``regression``, ``FIXED``), at least one of:
 
-      a) a file matching ``tests/unit/test_v*_batch*_ratchets.py``
-         was modified in that commit, OR
+      a) a file matching ``tests/unit/test_*_ratchets.py`` was
+         modified in that commit, OR
       b) the commit message contains ``Ratchet: N/A`` (with any
          trailing reason — usually a one-off typo or message wording)
 
@@ -426,7 +426,7 @@ class FixCommitsTouchRatchets(unittest.TestCase):
 
     _FIX_TOKENS = re.compile(r"\b(fix|bug|regression|FIXED)\b", re.IGNORECASE)
     _RATCHET_NA = re.compile(r"Ratchet:\s*N/?A\b", re.IGNORECASE)
-    _RATCHET_FILE_HINT = re.compile(r"tests/unit/test_v[\d_]+_batch.*_ratchets\.py")
+    _RATCHET_FILE_HINT = re.compile(r"tests/unit/test_[\w_]+_ratchets\.py")
 
     # Subjects that are pure version-bumps / chore commits aren't
     # fixes even if their bodies say "fixes ...".
@@ -506,7 +506,7 @@ class FixCommitsTouchRatchets(unittest.TestCase):
             f"Fix-commits since {self._BASELINE_TAG} with no ratchet "
             f"AND no 'Ratchet: N/A' declaration ({len(bad)} commits). "
             f"Either add a regression test in "
-            f"tests/unit/test_v*_batch*_ratchets.py, OR add a line "
+            f"tests/unit/test_*_ratchets.py, OR add a line "
             f"'Ratchet: N/A — <reason>' to the commit message:\n  - "
             + "\n  - ".join(bad[:10]),
         )
