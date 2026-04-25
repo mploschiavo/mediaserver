@@ -94,7 +94,7 @@ Documentation = "https://github.com/mploschiavo/mediaserver/tree/main/docs"
 media-stack-controller = "media_stack.cli.commands.controller_main:main"
 
 # Bootstrap + install flows.
-media-stack-install = "media_stack.cli.commands.install_main:main"
+media-stack-install = "media_stack.services.apps.stack.cli.install_main:main"
 media-stack-bootstrap-all = "media_stack.cli.commands.controller_all_main:main"
 media-stack-watch-install = "media_stack.cli.commands.watch_install_main:main"
 
