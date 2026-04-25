@@ -38,7 +38,7 @@ no per-app re-prompt).
 3. **Surface it in the bootstrap profile** (`config/defaults/.../profile.yaml`):
    add a top-level `auth.lan_bypass: false` knob. Operators set it via
    `bootstrap-profile` overrides without touching the codebase.
-4. **Document the trade-off** in `docs/auth.md`:
+4. **Document the trade-off** in `docs/how-to/auth.md`:
    - Off (default): one Authelia portal hit per session per LAN device. Aligns
      with the intuition that "the dashboard challenges me before I see admin
      surfaces". Stops casual LAN-side discovery (typo'd URL on a guest

@@ -7,7 +7,7 @@
 - **4 singleton cache isolation tests** preventing LRU cache pollution across tests
 - **E2E API and Playwright tests** for runtime verification
 
-See [docs/internals/testing.md](../docs/internals/testing.md) for the full testing guide and [docs/internals/sdlc.md](../docs/internals/sdlc.md) for the development lifecycle.
+See [docs/architecture/testing.md](../docs/architecture/testing.md) for the full testing guide and [docs/architecture/sdlc.md](../docs/architecture/sdlc.md) for the development lifecycle.
 
 ## Folder layout
 - `tests/unit/` -- Python unit tests (2294+), architecture enforcement, cache isolation

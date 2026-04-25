@@ -100,7 +100,7 @@ ui/
 
 ## Design system
 
-See [`docs/ui-design-system.md`](../docs/ui-design-system.md) for the
+See [`docs/reference/ui-design-system.md`](../docs/reference/ui-design-system.md) for the
 contract. Key rules:
 
 - **One way to do each thing.** Three button variants, five chip
@@ -158,7 +158,7 @@ root.
 
 1. Run `pnpm typecheck && pnpm test` before every commit.
 2. If you add a visual primitive, document it in
-   `docs/ui-design-system.md` AND update the ratchet's allowed
+   `docs/reference/ui-design-system.md` AND update the ratchet's allowed
    vocabulary.
 3. If you add an API endpoint to the controller, regenerate types:
    `pnpm gen:api` (reads `contracts/.../openapi.yaml`).

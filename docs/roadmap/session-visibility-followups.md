@@ -7,7 +7,7 @@ each one up later.
 
 Status: each item is `flagged` (agreed to defer) until someone opens a
 tracking ticket. When work begins, move the item into the main docs
-tree (most likely `docs/security.md` or `docs/user-management.md`) and
+tree (most likely `docs/how-to/security.md` or `docs/how-to/user-management.md`) and
 link the ticket here.
 
 ---

@@ -129,7 +129,7 @@ next session can pick up without re-discovering state.
 ### Documentation (done)
 - `docs/roadmap/session-visibility-followups.md` — deferred items
   (impersonation, device approval, GDPR purge, HIBP).
-- `docs/security-a11y-contract.md` — OWASP Top-10 coverage, CIA +
+- `docs/reference/security-a11y-contract.md` — OWASP Top-10 coverage, CIA +
   AAA + defense-in-depth layers, XSS rules with CSP spec, SQLi
   defense, 8 ratchet commitments, endpoint checklist, client-side
   disclosure matrix, password-handoff redesign (§ 10).
@@ -172,7 +172,7 @@ Roughly in priority order:
     assignment, idempotency key support, SQLi grep.
 13. **Coverage sweep** — verify ≥85% on every new module (most
     are at 95–100%).
-14. **Docs** — update `docs/security.md`, `docs/user-management.md`
+14. **Docs** — update `docs/how-to/security.md`, `docs/how-to/user-management.md`
     with session-visibility additions; deploy-parity note.
 
 ## How to resume

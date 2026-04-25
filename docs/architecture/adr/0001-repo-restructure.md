@@ -146,3 +146,239 @@ The goals, in priority order, are:
 This ADR is the agreement to do the work. The actual phases land as
 separate commits, each described in its own short ADR or PR
 description that references this one.
+
+---
+
+## Amendment 1 (2026-04-25) — Phases 12-15 added
+
+Phase 12 — pip-installable package + console-script entry points
+[SCOPE: medium-large, RISK: medium, PAYOFF: very high]
+
+The original ADR left `bin/` as the home for both shell wrappers AND
+several large Python files (1,157 LOC: `_probe_promises.py` 821 LOC,
+`render-promises-reference.py` 191 LOC, `scaffold_job_test.py` 140
+LOC, `controller.py` 5-line wrapper). That violates the
+"`bin/` = operator shell scripts only" rule. The deeper miss: the
+package isn't pip-installable — `pyproject.toml` had no `[project]`
+block, so every Python invocation needs PYTHONPATH gymnastics or a
+file-path wrapper.
+
+### Steps
+
+A. **`[project]` + `[project.scripts]` + `[build-system]` in
+   `pyproject.toml`** (DONE, this commit).
+   * Hatchling backend, single-source version via
+     `src/media_stack/version.py`.
+   * 21 existing CLIs published as `media-stack-*` console-scripts.
+   * Reserved `media_stack.adapters` entry-point group for out-of-tree
+     plugins (the packaging-layer expression of "pluggable apps").
+   * Verified `pip install -e .` succeeds + binaries on `$PATH`.
+
+B. **Migrate three exiles** from `bin/` to `src/media_stack/cli/commands/`:
+   * `bin/_probe_promises.py` → `src/media_stack/cli/commands/probe_promises.py`
+   * `bin/render-promises-reference.py` → `src/media_stack/cli/commands/render_promises_reference.py`
+   * `bin/scaffold_job_test.py` → `src/media_stack/cli/commands/scaffold_job_test.py`
+   * Update `[project.scripts]` (entries already reserved as comments).
+   * Update referrers (e.g. `bin/verify-fresh-install.sh:114`) to call
+     the console-script names.
+
+C. **Container ENTRYPOINT cutover.**
+   * Delete `bin/controller.py` (5-line wrapper).
+   * `services/controller/Dockerfile` adds `RUN pip install --no-cache-dir .`
+     and sets `ENTRYPOINT ["media-stack-controller"]`.
+   * `k8s/controller.yaml` + `docker/docker-compose.yml`: change
+     `command:` to `[media-stack-controller, --serve]`.
+
+D. **Migrate `bin/lib/run-python-cli.sh` consumers in two waves:**
+   * Wave 1 — `run-python-cli.sh` switches its internal
+     `python <file>` invocation to `python -m
+     media_stack.cli.commands.<module>`. Existing `.sh` wrappers
+     unchanged on the outside.
+   * Wave 2 — `.sh` wrappers become `exec media-stack-<name> "$@"`.
+     `run-python-cli.sh` retired in Phase 13.
+
+E. **Wheel-based image build.** `bin/release.sh` builds a wheel once
+   (`pip wheel . -w dist-wheels/`), every Dockerfile installs from
+   that wheel. Smaller image diff per release; reusable across
+   controller / dev / telemetry.
+
+F. **CI gates.** Add a test that asserts `pip install -e .` succeeds
+   and every declared console-script imports + responds to `--help`.
+
+### What stays unchanged
+
+- Source tree under `src/media_stack/` — same imports, same layout.
+  The hexagonal restructure (ADR-0002) is a separate, much larger
+  effort.
+- Test commands (`pytest` still works). `pythonpath = ["src", "."]`
+  stays as a transitional aid; Phase 12-F drops it after the
+  editable install lands in CI.
+- `contracts/` + `k8s/` paths.
+
+### Risks
+
+- Dockerfile size + build-time changes. Mitigation: time the
+  difference, accept ~15s delta.
+- Wheels with non-Python data files (`config/defaults/`,
+  `contracts/`) need explicit declarations. Mechanical.
+- Operator muscle-memory for `python3 bin/_probe_promises.py`.
+  Mitigation: leave a 2-line shim at `bin/_probe_promises.py` for
+  one release that prints a deprecation note and execs
+  `media-stack-probe-promises`. Delete in Phase 13.
+
+---
+
+Phase 13 — Layering integrity + minor cleanup
+[SCOPE: small, RISK: low, PAYOFF: high]
+
+Three small wins on `src/media_stack/`:
+
+A. **Delete the empty `src/media_stack/contracts/` package** (zero
+   .py files; dead since some prior cleanup).
+
+B. **Fold `src/media_stack/core/edge/`** (10 files / 423 LOC) into
+   either `core/platforms/` (if it's compose-edge plumbing) or `api/`
+   (if it's gateway-adapter shape). Too thin to justify a top-level.
+
+C. **Layering ratchet** as a unit test:
+   ```python
+   # tests/unit/test_architecture_layering.py
+   def test_core_does_not_import_services():
+       """core/ is platform/infrastructure; services/ is the domain
+       layer. Domain depends on platform; never the reverse."""
+       for path in (ROOT / "src/media_stack/core").rglob("*.py"):
+           src = path.read_text()
+           assert "from media_stack.services" not in src
+   ```
+   Document the rules in `docs/architecture/repo-layout.md`. Locks
+   the convention without moving any files.
+
+D. **`bin/` cleanup** (after Phase 12 lands):
+   - Group .sh files by concern: `release/`, `build/`, `deploy/`,
+     `verify/`, `ops/`.
+   - Keep `bin/lib/run-python-cli.sh` (LOAD-BEARING dispatcher) and
+     `bin/controller.py` becomes obsolete (Phase 12-C deletes).
+
+---
+
+Phase 14 — Tests mirror source taxonomy
+[SCOPE: medium, RISK: low, PAYOFF: very high]
+
+Today **429 of 430 unit tests live FLAT** at `tests/unit/test_*.py`.
+Plus 11 top-level test homes with overlapping scope (`tests/api/`,
+`tests/jobs/`, `tests/services/`, `tests/media_integrity/`,
+`tests/guardrails/` are all "unit-ish" but separated; `tests/e2e/`,
+`tests/integration/`, `tests/smoke/` are all "integration-ish").
+
+### Target
+
+```
+tests/
+├── unit/
+│   ├── auth/               # was tests/unit/test_auth_*.py + test_authelia_*.py
+│   ├── jobs/               # was tests/unit/test_*job*.py + tests/jobs/
+│   ├── media_integrity/    # was tests/unit/test_media_integrity_* + tests/media_integrity/
+│   ├── guardrails/         # was tests/unit/test_guardrails_* + tests/guardrails/
+│   ├── apps/
+│   │   ├── jellyfin/       # 20 tests
+│   │   ├── jellyseerr/     # 6 tests
+│   │   └── ...
+│   ├── api/                # was tests/unit/test_api_*.py + tests/api/
+│   ├── core/
+│   ├── adapters/
+│   ├── ratchets/           # all *_ratchet.py tests centralized
+│   └── conftest.py
+├── integration/            # unchanged
+├── contract/               # was tests/api/ — folded
+├── smoke/  e2e/  security/ # unchanged
+└── browser/                # was tests/e2e/playwright/ — Playwright project
+```
+
+### Migration
+
+~430 `git mv` operations in one atomic commit. Pytest discovery is
+path-agnostic; `testpaths = ["tests"]` keeps working. Test IDs
+change in CI logs (acceptable).
+
+### Payoff
+
+- `pytest tests/unit/auth/` — runs auth tests only. Today: manually
+  enumerate 9+ patterns.
+- Coverage by domain via `--include="src/media_stack/core/auth/*"`
+  paired with the matching test dir.
+- Per-domain `conftest.py` — fixtures only auth tests need don't
+  pollute global namespace.
+
+---
+
+Phase 15 — Diataxis docs split + mkdocs site
+[SCOPE: medium, RISK: low, PAYOFF: very high]
+
+Today: 15 `.md` files at top of `docs/` + 6 sub-directories with
+overlapping scope (`docs/architecture/` 1 file vs
+`docs/architecture/overview.md` is a separate doc).
+
+### Target
+
+Diataxis framework — separate docs by what the reader needs:
+
+```
+docs/
+├── tutorials/              # Learning — first-time walkthroughs
+├── how-to/                 # Goal-oriented — operator runbooks
+│   ├── operations/   auth/   storage/   networking/   ...
+├── reference/              # Information — facts, configs, schemas
+│   ├── api/                # auto-generated from contracts/api/openapi.yaml
+│   ├── promises.md         # auto-generated from contracts/promises.yaml
+│   ├── cli/                # auto-generated from --help
+│   └── ui-design-system.md
+├── architecture/           # Explanation — why
+│   ├── overview.md         # was docs/architecture/overview.md
+│   ├── *.md                # consolidated from internals/
+│   └── adr/                # decision records
+├── diagrams/  screenshots/
+
+mkdocs.yml                  # NEW — drives a deployable doc site
+```
+
+### What this enables
+
+1. mkdocs-material renders as a real navigable site, deployable to
+   GitHub Pages.
+2. CI link-checker (lychee or markdown-link-check) — broken cross-
+   doc links fail PR.
+3. Auto-generated reference:
+   - OpenAPI → `docs/reference/api/` (redoc-cli or similar)
+   - `contracts/promises.yaml` → `docs/reference/promises.md`
+     (`bin/render-promises-reference.py` already does this — point
+     at the new path).
+   - `--help` of every console-script → `docs/reference/cli/`
+4. ADRs as first-class — directory pattern already established
+   with this file (ADR-0001).
+
+### Migration
+
+Mostly mechanical `git mv` (Phase 3-extended in the original ADR
+table now has these specifics). ~30 file moves + mkdocs.yml +
+CI workflow step.
+
+---
+
+## Sequencing summary
+
+Recommended execution order across all 15 phases:
+
+1. **Low-risk batch:** 0, 1, 2, 13. Stop, verify CI green.
+2. **First-class signals (each commit-isolated):** 12-A (DONE),
+   12-B, 12-D-Wave-1.
+3. **Docs upgrade:** 15 (additive — old paths can stay as redirects
+   during transition).
+4. **Tests upgrade:** 14 (atomic 430-mv commit).
+5. **K8s reorganization in isolation:** 5.
+6. **Contracts/api/ in isolation:** 4.
+7. **Deploy + services unification together:** 6 + 7.
+8. **Container ENTRYPOINT cutover:** 12-C, 12-D-Wave-2, 12-E, 12-F.
+9. **Final cleanup:** 8, 9, 10.
+
+Phase 16 (full hexagonal restructure) is documented in **ADR-0002**
+as a multi-week parallel effort that runs at its own cadence.
