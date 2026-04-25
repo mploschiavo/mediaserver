@@ -118,31 +118,6 @@ class PatchArrUsenetEnabledReconciler(unittest.TestCase):
         )
         # Already off + already torrent → no PUTs.
         self.assertEqual(puts, [])
-
-
-class DashboardToggle(unittest.TestCase):
-
-    def test_ui_has_usenet_toggle(self) -> None:
-        html = (ROOT / "src/media_stack/api/dashboard.html").read_text(encoding="utf-8")
-        self.assertIn('id="usenetToggle"', html,
-                      "usenetToggle checkbox missing from dashboard")
-        self.assertIn("async function toggleUsenet(", html,
-                      "toggleUsenet handler missing")
-        # Toggle POSTs download_clients.sabnzbd.configure_arr_clients.
-        self.assertIn(
-            "download_clients:{sabnzbd:{configure_arr_clients:on}}", html,
-            "toggleUsenet POST body doesn't flip the right cfg key.",
-        )
-
-    def test_load_wires_toggle_state(self) -> None:
-        html = (ROOT / "src/media_stack/api/dashboard.html").read_text(encoding="utf-8")
-        # load() must read the runtime config and update the toggle.
-        self.assertIn(
-            "sabCfg.configure_arr_clients", html,
-            "load() doesn't read SABnzbd toggle state from cfg",
-        )
-
-
 class PublishedPortForAsymmetricServices(unittest.TestCase):
     """Services where the host-published port differs from the
     container's internal port. SABnzbd is the only default case:
@@ -203,14 +178,10 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
             "dashboard falls back to port and builds broken SAB links.",
         )
 
-    def test_dashboard_prefers_published_port_in_direct_url(self) -> None:
-        html = (ROOT / "src/media_stack/api/dashboard.html").read_text(encoding="utf-8")
-        # getSvcUrl must consult published_port with fallback to port.
-        self.assertIn(
-            "s.published_port||s.port", html,
-            "getSvcUrl no longer prefers published_port — "
-            "SABnzbd's ribbon/services-table link reverts to :8080.",
-        )
+    # test_dashboard_prefers_published_port_in_direct_url retired with
+    # dashboard.html in v1.0.193 — the SPA's service-link logic at
+    # ``ui/src/features/services/`` owns this assertion now via its
+    # own vitest suite.
 
 
 class ServiceDefFieldsAreAllParsed(unittest.TestCase):

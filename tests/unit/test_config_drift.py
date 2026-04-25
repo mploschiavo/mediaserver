@@ -1,4 +1,7 @@
-"""Tests for config drift detection and dashboard features."""
+"""Tests for config drift detection.
+
+Dashboard-side rendering tests retired with dashboard.html in
+v1.0.193 — the SPA UI under ``ui/`` owns those assertions now."""
 
 import os
 import sys
@@ -11,9 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.config as config_mod  # noqa: E402
-
-DASHBOARD_PATH = ROOT / "src" / "media_stack" / "api" / "dashboard.html"
-DASHBOARD_HTML = DASHBOARD_PATH.read_text(encoding="utf-8") if DASHBOARD_PATH.exists() else ""
 
 
 class TestConfigDrift(unittest.TestCase):
@@ -70,27 +70,6 @@ class TestConfigDrift(unittest.TestCase):
         self.assertIn("total", result)
         self.assertIn("clean", result)
         self.assertEqual(result["total"], len(result["drifts"]))
-
-
-class TestDashboardDrift(unittest.TestCase):
-    def test_drift_tab_exists(self):
-        self.assertIn("cfg-drift", DASHBOARD_HTML)
-
-    def test_drift_calls_api(self):
-        self.assertIn("/api/config-drift", DASHBOARD_HTML)
-
-    def test_drift_shows_grouped_issues(self):
-        self.assertIn("Configuration Issue", DASHBOARD_HTML)
-
-    def test_drift_shows_clean_message(self):
-        self.assertIn("No Configuration Drift", DASHBOARD_HTML)
-
-    def test_drift_uses_eschtml(self):
-        self.assertIn("_escHtml(d.key)", DASHBOARD_HTML)
-
-    def test_drift_shows_expected_vs_actual(self):
-        self.assertIn("Expected", DASHBOARD_HTML)
-        self.assertIn("Actual", DASHBOARD_HTML)
 
 
 class TestDashboardKeyFormatsRefactor(unittest.TestCase):

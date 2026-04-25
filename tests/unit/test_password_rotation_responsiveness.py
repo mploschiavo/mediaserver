@@ -35,65 +35,10 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 # ----------------------------------------------------------------------
-# 1. UI spinner pattern in dashboard.html
-# ----------------------------------------------------------------------
-
-
-DASHBOARD = (
-    ROOT / "src" / "media_stack" / "api" / "dashboard.html"
-).read_text(encoding="utf-8")
-
-
-class RotationSpinnerUiTests(unittest.TestCase):
-
-    def test_rotation_modal_uses_busy_helper(self) -> None:
-        """The rotation modal in ``_enforceAdminRotation`` must
-        toggle a busy state (visible label change + spinner)
-        when the request is in flight, not just disable the
-        button."""
-        idx = DASHBOARD.find("function _enforceAdminRotation")
-        self.assertGreater(idx, -1)
-        body = DASHBOARD[idx:idx + 6000]
-        self.assertIn(
-            "_setBusy(true)", body,
-            "Rotation handler must call _setBusy(true) to show "
-            "visible feedback during the in-flight request.",
-        )
-        self.assertIn(
-            "Rotating password", body,
-            "Busy state must change the button label so the user "
-            "knows the click registered.",
-        )
-        self.assertIn(
-            "ms-spinner", body,
-            "A visible spinner element must be added during busy.",
-        )
-        self.assertIn(
-            "_setBusy(false)", body,
-            "Failure paths must un-busy the button; otherwise it "
-            "stays stuck after a wrong-password attempt.",
-        )
-
-    def test_user_tab_reset_shows_toast_during_request(self) -> None:
-        """The user-tab reset flow has all modals closed by the
-        time the request fires; show a non-blocking toast so the
-        user knows the click registered."""
-        # Anchor the search at the reset-password fetch call so we
-        # don't false-positive on an unrelated toast() elsewhere.
-        idx = DASHBOARD.find("/api/users/${userId}/reset-password")
-        self.assertGreater(idx, -1)
-        # Look at the lines immediately before the fetch.
-        window = DASHBOARD[max(0, idx - 600):idx]
-        self.assertIn(
-            "Resetting password", window,
-            "User-tab reset must show a 'Resetting password…' "
-            "toast so the user knows the click registered. "
-            "Without it the UI looks frozen for ~1-2s.",
-        )
-
-
-# ----------------------------------------------------------------------
-# 2. Boot pre-warm
+# Boot pre-warm
+#
+# (UI spinner pattern tests retired with dashboard.html in v1.0.193;
+#  the SPA UI under ``ui/`` owns those assertions now.)
 # ----------------------------------------------------------------------
 
 

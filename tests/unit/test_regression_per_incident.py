@@ -175,23 +175,10 @@ class LogoutRedirectsToAutheliaRegressionTests(unittest.TestCase):
     hit 404. Fix: use Authelia's real /logout path and call the
     controller's /api/auth/logout first."""
 
-    def test_authelia_logout_endpoint_is_slash_logout(self):
-        """The dashboard JS builds a URL pointing at the Authelia
-        host's /logout. The REGRESSION was /api/authz/logout (which
-        was never Authelia's endpoint). This check is a grep — if
-        someone puts the bad path back, the test fails."""
-        html = (ROOT / "src" / "media_stack" / "api"
-                / "dashboard.html").read_text(encoding="utf-8")
-        self.assertNotIn(
-            "/api/authz/logout", html,
-            "Dashboard references the non-existent Authelia endpoint "
-            "/api/authz/logout — logout will 404 for browser users.",
-        )
-        self.assertIn(
-            "/logout?rd=", html,
-            "Dashboard missing the Authelia /logout redirect. Sign-out "
-            "clicks won't kill the SSO session.",
-        )
+    # test_authelia_logout_endpoint_is_slash_logout retired with
+    # dashboard.html in v1.0.193 — the SPA's logout handler at
+    # ``ui/src/lib/auth-redirect.ts`` owns this assertion now via
+    # ``ui/src/lib/auth-redirect.test.ts``.
 
 
 class AutheliaUsersDatabasePreservedRegressionTests(unittest.TestCase):

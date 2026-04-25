@@ -1,4 +1,8 @@
-"""Tests for health history batch writes and dashboard topology/schedule features."""
+"""Tests for health history batch writes.
+
+Dashboard-side topology/schedule rendering tests retired with
+dashboard.html in v1.0.193 — the SPA UI under ``ui/`` owns those
+assertions now."""
 
 import json
 import os
@@ -13,9 +17,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.health as health_mod  # noqa: E402
-
-DASHBOARD_PATH = ROOT / "src" / "media_stack" / "api" / "dashboard.html"
-DASHBOARD_HTML = DASHBOARD_PATH.read_text(encoding="utf-8") if DASHBOARD_PATH.exists() else ""
 
 
 class TestHealthHistoryBatchWrites(unittest.TestCase):
@@ -106,48 +107,6 @@ class TestHealthHistoryBatchWrites(unittest.TestCase):
         sla = result.get("sla", {}).get("sonarr", {})
         self.assertEqual(sla.get("total"), health_mod._HEALTH_HISTORY_FLUSH_SIZE)
         self.assertEqual(sla.get("ok"), 4)
-
-
-class TestDashboardTopology(unittest.TestCase):
-    """Verify topology graph features in dashboard HTML."""
-
-    def test_topology_has_live_health_colors(self):
-        self.assertIn("SVC_HEALTH[n.id]", DASHBOARD_HTML)
-
-    def test_topology_has_legend(self):
-        self.assertIn("Healthy", DASHBOARD_HTML)
-        self.assertIn("Error", DASHBOARD_HTML)
-        self.assertIn("Starting", DASHBOARD_HTML)
-        self.assertIn("Disabled", DASHBOARD_HTML)
-
-    def test_topology_filters_by_registered(self):
-        self.assertIn("registeredIds", DASHBOARD_HTML)
-
-    def test_topology_has_clickable_links(self):
-        self.assertIn("getSvcUrl(n.id)", DASHBOARD_HTML)
-
-    def test_topology_has_tooltips(self):
-        self.assertIn("<title>", DASHBOARD_HTML)
-
-
-class TestDashboardSchedule(unittest.TestCase):
-    """Verify schedule management features in dashboard HTML."""
-
-    def test_has_remove_button(self):
-        self.assertIn("Remove</button>", DASHBOARD_HTML)
-
-    def test_has_execution_history(self):
-        self.assertIn("schedHistory", DASHBOARD_HTML)
-
-    def test_has_clear_history_button(self):
-        self.assertIn("clearScheduleHistory", DASHBOARD_HTML)
-
-    def test_uses_eschtml_for_actions(self):
-        self.assertIn("_escHtml(s.action)", DASHBOARD_HTML)
-
-    def test_sched_exec_tracks_timestamps(self):
-        self.assertIn("_schedExec", DASHBOARD_HTML)
-        self.assertIn("ts:Date.now()", DASHBOARD_HTML)
 
 
 if __name__ == "__main__":
