@@ -4,7 +4,7 @@
 
 The single source of truth is:
 
-- **`src/media_stack/api/openapi.yaml`** — hand-maintained OpenAPI 3.0
+- **`contracts/api/openapi.yaml`** — hand-maintained OpenAPI 3.0
   document rendered at runtime by the `/api/docs` (Redoc) endpoint and
   served verbatim at `/api/openapi.yaml` / `/api/openapi.json`.
 
@@ -16,7 +16,7 @@ it at request time from the live routing config (see
 
 1. Land the handler in `src/media_stack/api/handlers_get.py` or
    `src/media_stack/api/handlers_post.py`.
-2. Open `src/media_stack/api/openapi.yaml` and add a new path entry
+2. Open `contracts/api/openapi.yaml` and add a new path entry
    under `paths:`. Minimum fields:
    - `path` (the key)
    - HTTP method (`get` / `post` / ...)

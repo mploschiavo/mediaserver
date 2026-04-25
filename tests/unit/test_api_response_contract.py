@@ -67,7 +67,7 @@ from media_stack.api.contract_validator import (  # noqa: E402
     validate_response_strict,
 )
 
-_SPEC_PATH = ROOT / "src" / "media_stack" / "api" / "openapi.yaml"
+_SPEC_PATH = ROOT / "contracts" / "api" / "openapi.yaml"
 
 _FIXTURES = ROOT / "tests" / "fixtures" / "api_responses"
 

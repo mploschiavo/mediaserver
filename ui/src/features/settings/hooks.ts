@@ -5,7 +5,7 @@
 // independently of neighboring agents — see the wave-4 sibling
 // agents for `auth-admin`, `infra-detail`, `stack-lifecycle`.
 //
-// Backend reference: src/media_stack/api/openapi.yaml under the
+// Backend reference: contracts/api/openapi.yaml under the
 // `Profile`, `Env`, `Config`, `Display`, and `Logs` tags.
 
 import {

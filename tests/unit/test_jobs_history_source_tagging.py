@@ -343,7 +343,7 @@ class TestOpenAPISchemaTightened(unittest.TestCase):
         import re
         import yaml
         spec_path = (
-            ROOT / "src" / "media_stack" / "api" / "openapi.yaml"
+            ROOT / "contracts" / "api" / "openapi.yaml"
         )
         spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
         history_item = (

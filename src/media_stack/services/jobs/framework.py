@@ -178,7 +178,7 @@ def _history_file() -> Path:
 # Allowed values for the ``source`` field on history entries. The
 # UI persona-questions agent renders a badge per source, so this
 # list is part of the public schema (also surfaced in
-# ``api/openapi.yaml``).
+# ``contracts/api/openapi.yaml``).
 _HISTORY_SOURCE_VALUES: frozenset[str] = frozenset({
     "cron",
     "manual",

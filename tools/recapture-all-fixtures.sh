@@ -18,7 +18,7 @@
 set -euo pipefail
 
 NS="${NS:-media-stack}"
-SPEC="src/media_stack/api/openapi.yaml"
+SPEC="contracts/api/openapi.yaml"
 OUT_DIR="tests/fixtures/api_responses"
 
 if ! command -v kubectl >/dev/null 2>&1; then

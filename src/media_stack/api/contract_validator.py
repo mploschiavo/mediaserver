@@ -50,7 +50,7 @@ from jsonschema import Draft202012Validator, RefResolver
 from jsonschema.exceptions import ValidationError
 
 _SPEC_PATH = (
-    Path(__file__).resolve().parents[1] / "api" / "openapi.yaml"
+    Path(__file__).resolve().parents[3] / "contracts" / "api" / "openapi.yaml"
 )
 
 

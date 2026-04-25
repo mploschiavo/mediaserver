@@ -22,7 +22,7 @@ RUN pnpm install --frozen-lockfile
 COPY ui/ ./
 # The OpenAPI spec is referenced by `pnpm gen:api` to generate
 # typed API definitions during the build.
-COPY src/media_stack/api/openapi.yaml /openapi-spec/openapi.yaml
+COPY contracts/api/openapi.yaml /openapi-spec/openapi.yaml
 # Captured response fixtures referenced by
 # `src/api/fixture-codegen-validation.ts`. The source file imports
 # JSON via `../../../tests/fixtures/api_responses/*`. Inside the

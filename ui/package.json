@@ -15,7 +15,7 @@
     "test:e2e": "playwright test",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "gen:api": "openapi-typescript ${OPENAPI_SPEC:-../src/media_stack/api/openapi.yaml} -o src/api/types.ts",
+    "gen:api": "openapi-typescript ${OPENAPI_SPEC:-../contracts/api/openapi.yaml} -o src/api/types.ts",
     "size": "size-limit",
     "check:todos": "node scripts/check-todos.mjs"
   },

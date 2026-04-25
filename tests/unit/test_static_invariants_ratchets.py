@@ -387,7 +387,7 @@ class OpenApiHandlerParity(unittest.TestCase):
             import yaml as _yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        ofile = SRC / "api" / "openapi.yaml"
+        ofile = ROOT / "contracts" / "api" / "openapi.yaml"
         if not ofile.is_file():
             self.skipTest("openapi.yaml not present")
         doc = _yaml.safe_load(ofile.read_text(encoding="utf-8")) or {}

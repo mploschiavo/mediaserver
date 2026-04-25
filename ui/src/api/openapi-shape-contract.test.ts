@@ -66,7 +66,7 @@ describe("OpenAPI 200-response shape contract", () => {
   // ratchet keeps working even if vitest cwd shifts.
   const yamlPath = path.resolve(
     __dirname,
-    "../../../src/media_stack/api/openapi.yaml",
+    "../../../contracts/api/openapi.yaml",
   );
   const yaml = readFileSync(yamlPath, "utf8");
 

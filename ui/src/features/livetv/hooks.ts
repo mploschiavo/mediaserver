@@ -7,7 +7,7 @@
 // touching the shared barrels.
 //
 // OpenAPI path mapping (verified against
-// `src/media_stack/api/openapi.yaml` — every endpoint lives under the
+// `contracts/api/openapi.yaml` — every endpoint lives under the
 // `/api/` prefix and the spec models all responses as
 // `additionalProperties: true` objects, so the strict slices below are
 // hand-typed and any list field is read through `asArray()` on the

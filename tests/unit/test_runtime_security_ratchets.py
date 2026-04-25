@@ -95,7 +95,7 @@ class SensitivePatternLiterals(unittest.TestCase):
         "docs/",
         # OpenAPI spec embeds example values in schemas — these are
         # documentation, not real credentials.
-        "src/media_stack/api/openapi.yaml",
+        "contracts/api/openapi.yaml",
     }
 
     def test_no_long_hex_or_base64_literals(self) -> None:
