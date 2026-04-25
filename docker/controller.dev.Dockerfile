@@ -32,6 +32,7 @@ RUN pip install --no-cache-dir bcrypt docker kubernetes pyyaml requests
 # them. The production image at ``controller.Dockerfile`` skips
 # ``bin/`` since the runtime never invokes them.
 COPY VERSION /opt/media-stack/VERSION
+COPY README.md /opt/media-stack/README.md
 COPY pyproject.toml /opt/media-stack/pyproject.toml
 COPY bin /opt/media-stack/bin
 COPY src /opt/media-stack/src

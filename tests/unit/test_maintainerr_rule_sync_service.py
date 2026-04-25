@@ -257,6 +257,8 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
         self.assertEqual(calls[0].get("method"), "POST")
 
     def test_updates_existing_rule_when_name_matches(self):
+        # Maintainerr's PUT /api/rules silently no-ops (v1.0.146);
+        # the update path is DELETE old id + POST new payload.
         calls = []
 
         def fake_request(url, path, **kw):
@@ -264,9 +266,12 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
                 return (200, [{"id": "1", "title": "Movies", "type": "movie"}], "")
             if path == "/api/rules?activeOnly=false":
                 return (200, [{"id": 42, "name": "Test Rule"}], "")
+            if path == "/api/rules/42" and kw.get("method") == "DELETE":
+                calls.append(("DELETE", path))
+                return (204, None, "")
             if path == "/api/rules":
-                calls.append(kw)
-                return (200, {"id": 42, "code": 1}, "")
+                calls.append((kw.get("method"), path))
+                return (200, {"id": 99, "code": 1}, "")
             return (200, {}, "")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -277,20 +282,25 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
                 maintainerr_cfg={},
                 config_root=tmp,
             )
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0].get("method"), "PUT")
+        self.assertEqual(calls, [("DELETE", "/api/rules/42"), ("POST", "/api/rules")])
 
-    def test_update_sets_existing_id_in_payload(self):
-        payloads = []
+    def test_update_post_payload_omits_id(self):
+        # After v1.0.146 the update path is DELETE-then-POST; the
+        # POST payload must NOT carry the old id (Maintainerr would
+        # treat it as a malformed create and reject), so the
+        # service strips/never-injects ``id``.
+        post_payloads = []
 
         def fake_request(url, path, **kw):
             if "/api/media-server/libraries" in path:
                 return (200, [{"id": "1", "title": "Movies", "type": "movie"}], "")
             if path == "/api/rules?activeOnly=false":
                 return (200, [{"id": 77, "name": "Test Rule"}], "")
-            if path == "/api/rules":
-                payloads.append(kw.get("payload"))
-                return (200, {"id": 77, "code": 1}, "")
+            if path == "/api/rules/77" and kw.get("method") == "DELETE":
+                return (204, None, "")
+            if path == "/api/rules" and kw.get("method") == "POST":
+                post_payloads.append(kw.get("payload"))
+                return (200, {"id": 200, "code": 1}, "")
             return (200, {}, "")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -301,7 +311,8 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
                 maintainerr_cfg={},
                 config_root=tmp,
             )
-        self.assertEqual(payloads[0]["id"], 77)
+        self.assertEqual(len(post_payloads), 1)
+        self.assertNotIn("id", post_payloads[0])
 
     def test_create_does_not_set_id_in_payload(self):
         payloads = []
@@ -471,15 +482,22 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
     def test_mix_create_and_update(self):
-        methods = []
+        # Updates → DELETE+POST; creates → POST only. Mixed batch
+        # should produce exactly one DELETE and two POSTs (one
+        # per rule, since POST is the only persisting verb).
+        events = []
 
         def fake_request(url, path, **kw):
+            method = kw.get("method")
             if "/api/media-server/libraries" in path:
                 return (200, [{"id": "1", "title": "Movies", "type": "movie"}], "")
             if path == "/api/rules?activeOnly=false":
                 return (200, [{"id": 5, "name": "Rule A"}], "")
-            if path == "/api/rules":
-                methods.append(kw.get("method"))
+            if path.startswith("/api/rules/") and method == "DELETE":
+                events.append(("DELETE", path))
+                return (204, None, "")
+            if path == "/api/rules" and method == "POST":
+                events.append(("POST", path))
                 return (200, {"code": 1}, "")
             return (200, {}, "")
 
@@ -497,8 +515,10 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
                 maintainerr_cfg={},
                 config_root=tmp,
             )
-        self.assertIn("PUT", methods)
-        self.assertIn("POST", methods)
+        delete_events = [e for e in events if e[0] == "DELETE"]
+        post_events = [e for e in events if e[0] == "POST"]
+        self.assertEqual(len(delete_events), 1, events)
+        self.assertEqual(len(post_events), 2, events)
 
     def test_mix_create_update_logs_both_counts(self):
         def fake_request(url, path, **kw):
@@ -633,15 +653,23 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
     # -----------------------------------------------------------------------
 
     def test_name_match_strips_whitespace(self):
-        methods = []
+        # Whitespace difference in remote name shouldn't prevent
+        # update: matching takes the trimmed form, so "  Test Rule  "
+        # in the remote registers as the existing rule. Result is
+        # the standard DELETE+POST update path.
+        events = []
 
         def fake_request(url, path, **kw):
+            method = kw.get("method")
             if "/api/media-server/libraries" in path:
                 return (200, [{"id": "1", "title": "Movies", "type": "movie"}], "")
             if path == "/api/rules?activeOnly=false":
                 return (200, [{"id": 1, "name": "  Test Rule  "}], "")
-            if path == "/api/rules":
-                methods.append(kw.get("method"))
+            if path.startswith("/api/rules/") and method == "DELETE":
+                events.append(("DELETE", path))
+                return (204, None, "")
+            if path == "/api/rules" and method == "POST":
+                events.append(("POST", path))
                 return (200, {"code": 1}, "")
             return (200, {}, "")
 
@@ -653,7 +681,7 @@ class TestMaintainerrRuleSyncService(unittest.TestCase):
                 maintainerr_cfg={},
                 config_root=tmp,
             )
-        self.assertEqual(methods, ["PUT"])
+        self.assertEqual(events, [("DELETE", "/api/rules/1"), ("POST", "/api/rules")])
 
     # -----------------------------------------------------------------------
     # Dependencies dataclass

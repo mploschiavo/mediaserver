@@ -116,14 +116,14 @@ class TestOnboardingStatus(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestDownloadAnalytics(unittest.TestCase):
-    @patch("media_stack.api.services.content.discover_api_keys", return_value={})
+    @patch("media_stack.api.services.content_analytics_mixin.discover_api_keys", return_value={})
     def test_no_keys_returns_empty(self, _):
         result = content_mod.get_download_analytics()
         self.assertEqual(result["total_records"], 0)
         self.assertIn("daily_trend", result)
         self.assertIn("top_indexers", result)
 
-    @patch("media_stack.api.services.content.discover_api_keys", return_value={"sonarr": "key"})
+    @patch("media_stack.api.services.content_analytics_mixin.discover_api_keys", return_value={"sonarr": "key"})
     @patch("urllib.request.urlopen")
     def test_aggregates_records(self, mock_urlopen, _):
         resp = MagicMock()
@@ -140,7 +140,7 @@ class TestDownloadAnalytics(unittest.TestCase):
         self.assertGreater(len(result["daily_trend"]), 0)
         self.assertGreater(len(result["top_indexers"]), 0)
 
-    @patch("media_stack.api.services.content.discover_api_keys", return_value={"sonarr": "key"})
+    @patch("media_stack.api.services.content_analytics_mixin.discover_api_keys", return_value={"sonarr": "key"})
     @patch("urllib.request.urlopen", side_effect=Exception("timeout"))
     def test_http_failure_graceful(self, *_):
         result = content_mod.get_download_analytics()

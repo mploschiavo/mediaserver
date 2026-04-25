@@ -169,13 +169,14 @@ class AutheliaConfigGenerator:
         # one challenge unlocks every ``*.<base_domain>`` host for the
         # session lifetime — there is no per-app re-prompt under SSO.
         #
-        # TODO(auth): expose this as a per-deployment opt-in so a
-        # homelab operator can re-enable the historical RFC-1918 +
-        # loopback bypass for friction-free LAN access. Track at
-        # AutheliaOptions.lan_bypass: bool = False (default) — when
-        # True, prepend the bypass rule the way the pre-v1.0.176
-        # generator did. See `.ratchets/notes/auth-lan-bypass.md`
-        # for the migration plan.
+        # Deferred (auth-lan-bypass): expose as a per-deployment
+        # opt-in so a homelab operator can re-enable the historical
+        # RFC-1918 + loopback bypass for friction-free LAN access.
+        # Track at AutheliaOptions.lan_bypass: bool = False
+        # (default) — when True, prepend the bypass rule the way
+        # the pre-v1.0.176 generator did. See
+        # `.ratchets/notes/auth-lan-bypass.md` for the migration
+        # plan. Pinned by the AutheliaDefaultOnRatchet test.
 
         # Native auth services (Jellyfin etc.) — bypass ext_authz entirely
         # These are handled at the Envoy level (no ext_authz filter on route),

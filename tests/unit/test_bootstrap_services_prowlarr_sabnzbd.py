@@ -145,6 +145,20 @@ class ProwlarrServiceTests(unittest.TestCase):
     def setUp(self):
         self.logs = []
         self.calls = []
+        # Disable the curated-allowlist filter (added in v1.0.130;
+        # see ``contracts/curated-indexers.yaml``) so these
+        # end-to-end tests run against the historic "discover
+        # everything" path. Without this, every fixture indexer
+        # gets filtered out because the YAML doesn't list
+        # ``NewOne``, ``Existing``, ``LimeTorrents``, etc.
+        from unittest.mock import patch
+        self._curated_patch = patch(
+            "media_stack.services.apps.prowlarr.reputation_ops."
+            "ProwlarrReputationOps._load_curated_allowed_definitions",
+            return_value=None,
+        )
+        self._curated_patch.start()
+        self.addCleanup(self._curated_patch.stop)
 
     def _service_with_stub(self, stub):
         def http_request(base_url, path, api_key=None, method="GET", payload=None):

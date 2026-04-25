@@ -60,8 +60,9 @@ class _TodoMixin:
     def _todo(self, scenario: str) -> None:
         # Replace this with a real assertion once the fixture
         # set has been built. Keeping the placeholder is a soft
-        # ratchet — the bare scaffold is a visible TODO in CI.
-        self.skipTest(f"TODO: implement {{scenario}} for {{JOB_NAME}}")
+        # ratchet — the bare scaffold surfaces in CI as a skip
+        # for every untouched scenario.
+        self.skipTest(f"unimplemented: {{scenario}} for {{JOB_NAME}}")
 
 
 class {class_name}SuccessTests(unittest.TestCase, _TodoMixin):
