@@ -149,6 +149,11 @@ export default defineConfig({
             "@tanstack/react-table",
           ],
           ui: ["framer-motion", "cmdk", "sonner", "vaul", "lucide-react"],
+          // Stoplight Elements ships a Monaco-backed editor (~2 MB)
+          // so it gets its own chunk. The /api-docs route already
+          // lazy-loads it; isolating the chunk means the rest of the
+          // app doesn't pay the bytes.
+          stoplight: ["@stoplight/elements"],
         },
       },
     },

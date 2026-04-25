@@ -116,13 +116,16 @@ describe("Sidebar", () => {
     }
   });
 
-  it("renders secondary nav (Settings) and the Docs link", () => {
+  it("renders secondary nav (Settings, API docs) and the Source link", () => {
     locationState.pathname = "/";
     render(<Sidebar />);
     for (const item of SECONDARY_NAV) {
       expect(screen.getByText(item.label)).toBeInTheDocument();
     }
-    expect(screen.getByText("Docs")).toBeInTheDocument();
+    // The in-app API reference (Stoplight Elements) is now its own
+    // sidebar entry; the GitHub external link reads "Source".
+    expect(screen.getByText("API docs")).toBeInTheDocument();
+    expect(screen.getByText("Source")).toBeInTheDocument();
   });
 
   it("marks the active link with the accent rail (route exact match)", () => {
@@ -158,10 +161,10 @@ describe("Sidebar", () => {
     expect(onNavigate).toHaveBeenCalled();
   });
 
-  it("Docs link points at the GitHub URL", () => {
+  it("Source link points at the GitHub URL", () => {
     locationState.pathname = "/";
     render(<Sidebar />);
-    const docsLink = screen.getByText("Docs").closest("a");
+    const docsLink = screen.getByText("Source").closest("a");
     expect(docsLink).toHaveAttribute(
       "href",
       "https://github.com/mploschiavo/mediaserver",
