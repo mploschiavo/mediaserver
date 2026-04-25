@@ -1,0 +1,182 @@
+{
+  "countries": 34,
+  "details": {
+    "ae": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "ar": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "au": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "br": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "ca": {
+      "epg-pw": true,
+      "epgshare01": false,
+      "iptv-epg": true
+    },
+    "cl": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "cn": {
+      "epg-pw": true,
+      "epgshare01": false,
+      "iptv-epg": false
+    },
+    "co": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "de": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "dk": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "es": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "fi": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "fr": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "gb": {
+      "epg-pw": true,
+      "epgshare01": false,
+      "epgtalk": false,
+      "freeview-epg": true,
+      "iptv-epg": true
+    },
+    "hk": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "id": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "il": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "in": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "it": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "jp": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "kr": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "mx": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "epgtalk": false,
+      "iptv-epg": true
+    },
+    "nl": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "no": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "ph": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "pl": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "pt": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "ru": {
+      "epg-pw": true,
+      "epgshare01": false,
+      "iptv-epg": true
+    },
+    "se": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "th": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "tr": {
+      "epg-pw": false,
+      "epgshare01": true,
+      "iptv-epg": true
+    },
+    "tw": {
+      "epg-pw": true,
+      "epgshare01": false,
+      "iptv-epg": true
+    },
+    "us": {
+      "epg-pw": true,
+      "epgshare01": false,
+      "epgtalk": false,
+      "iptv-epg": true
+    },
+    "za": {
+      "epg-pw": true,
+      "epgshare01": true,
+      "iptv-epg": true
+    }
+  },
+  "healthy": 81,
+  "providers": 5,
+  "unhealthy": 25
+}

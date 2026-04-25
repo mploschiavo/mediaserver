@@ -1,0 +1,76 @@
+{
+  "configured": [
+    {
+      "collection_type": "movies",
+      "name": "Movies",
+      "paths": [
+        "/media/movies"
+      ]
+    },
+    {
+      "collection_type": "tvshows",
+      "name": "TV Shows",
+      "paths": [
+        "/media/tv"
+      ]
+    },
+    {
+      "collection_type": "music",
+      "name": "Music",
+      "paths": [
+        "/media/music"
+      ]
+    },
+    {
+      "collection_type": "books",
+      "name": "Books",
+      "paths": [
+        "/media/books"
+      ]
+    }
+  ],
+  "live": [
+    {
+      "collection_type": "music",
+      "item_count": 236,
+      "name": "Music",
+      "paths": [
+        "/media/music"
+      ]
+    },
+    {
+      "collection_type": "boxsets",
+      "item_count": 0,
+      "name": "Collections",
+      "paths": [
+        "/config/data/collections"
+      ]
+    },
+    {
+      "collection_type": "books",
+      "item_count": 180,
+      "name": "Books",
+      "paths": [
+        "/media/books"
+      ]
+    },
+    {
+      "collection_type": "movies",
+      "item_count": 108,
+      "name": "Movies",
+      "paths": [
+        "/media/movies"
+      ]
+    },
+    {
+      "collection_type": "tvshows",
+      "item_count": 10,
+      "name": "TV Shows",
+      "paths": [
+        "/media/tv"
+      ]
+    }
+  ],
+  "media_server": "jellyfin",
+  "source": "live"
+}

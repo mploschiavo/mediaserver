@@ -1,0 +1,587 @@
+{
+  "health": {
+    "epg-pw:ae": {
+      "ok": false,
+      "ts": 1777137733.0440373,
+      "url": "https://epg.pw/xmltv/epg_AE.xml.gz"
+    },
+    "epg-pw:ar": {
+      "ok": false,
+      "ts": 1777137729.8047698,
+      "url": "https://epg.pw/xmltv/epg_AR.xml.gz"
+    },
+    "epg-pw:au": {
+      "ok": true,
+      "ts": 1777137742.6841083,
+      "url": "https://epg.pw/xmltv/epg_AU.xml.gz"
+    },
+    "epg-pw:br": {
+      "ok": true,
+      "ts": 1777137747.2020886,
+      "url": "https://epg.pw/xmltv/epg_BR.xml.gz"
+    },
+    "epg-pw:ca": {
+      "ok": true,
+      "ts": 1777137742.0034876,
+      "url": "https://epg.pw/xmltv/epg_CA.xml.gz"
+    },
+    "epg-pw:cl": {
+      "ok": false,
+      "ts": 1777137731.0174022,
+      "url": "https://epg.pw/xmltv/epg_CL.xml.gz"
+    },
+    "epg-pw:cn": {
+      "ok": true,
+      "ts": 1777137733.5911036,
+      "url": "https://epg.pw/xmltv/epg_CN.xml.gz"
+    },
+    "epg-pw:co": {
+      "ok": false,
+      "ts": 1777137730.413351,
+      "url": "https://epg.pw/xmltv/epg_CO.xml.gz"
+    },
+    "epg-pw:de": {
+      "ok": true,
+      "ts": 1777137743.5771859,
+      "url": "https://epg.pw/xmltv/epg_DE.xml.gz"
+    },
+    "epg-pw:dk": {
+      "ok": false,
+      "ts": 1777137752.3893063,
+      "url": "https://epg.pw/xmltv/epg_DK.xml.gz"
+    },
+    "epg-pw:es": {
+      "ok": true,
+      "ts": 1777137744.9522135,
+      "url": "https://epg.pw/xmltv/epg_ES.xml.gz"
+    },
+    "epg-pw:fi": {
+      "ok": false,
+      "ts": 1777137753.0897496,
+      "url": "https://epg.pw/xmltv/epg_FI.xml.gz"
+    },
+    "epg-pw:fr": {
+      "ok": true,
+      "ts": 1777137744.222343,
+      "url": "https://epg.pw/xmltv/epg_FR.xml.gz"
+    },
+    "epg-pw:gb": {
+      "ok": true,
+      "ts": 1777137741.2595978,
+      "url": "https://epg.pw/xmltv/epg_GB.xml.gz"
+    },
+    "epg-pw:hk": {
+      "ok": true,
+      "ts": 1777137736.9243307,
+      "url": "https://epg.pw/xmltv/epg_HK.xml.gz"
+    },
+    "epg-pw:id": {
+      "ok": true,
+      "ts": 1777137736.1772573,
+      "url": "https://epg.pw/xmltv/epg_ID.xml.gz"
+    },
+    "epg-pw:il": {
+      "ok": false,
+      "ts": 1777137732.3557706,
+      "url": "https://epg.pw/xmltv/epg_IL.xml.gz"
+    },
+    "epg-pw:in": {
+      "ok": true,
+      "ts": 1777137749.853766,
+      "url": "https://epg.pw/xmltv/epg_IN.xml.gz"
+    },
+    "epg-pw:it": {
+      "ok": false,
+      "ts": 1777137746.5904307,
+      "url": "https://epg.pw/xmltv/epg_IT.xml.gz"
+    },
+    "epg-pw:jp": {
+      "ok": true,
+      "ts": 1777137748.5218127,
+      "url": "https://epg.pw/xmltv/epg_JP.xml.gz"
+    },
+    "epg-pw:kr": {
+      "ok": true,
+      "ts": 1777137749.1712914,
+      "url": "https://epg.pw/xmltv/epg_KR.xml.gz"
+    },
+    "epg-pw:mx": {
+      "ok": false,
+      "ts": 1777137747.8073244,
+      "url": "https://epg.pw/xmltv/epg_MX.xml.gz"
+    },
+    "epg-pw:nl": {
+      "ok": false,
+      "ts": 1777137750.4792082,
+      "url": "https://epg.pw/xmltv/epg_NL.xml.gz"
+    },
+    "epg-pw:no": {
+      "ok": false,
+      "ts": 1777137751.807217,
+      "url": "https://epg.pw/xmltv/epg_NO.xml.gz"
+    },
+    "epg-pw:ph": {
+      "ok": true,
+      "ts": 1777137734.9194164,
+      "url": "https://epg.pw/xmltv/epg_PH.xml.gz"
+    },
+    "epg-pw:pl": {
+      "ok": false,
+      "ts": 1777137753.676388,
+      "url": "https://epg.pw/xmltv/epg_PL.xml.gz"
+    },
+    "epg-pw:pt": {
+      "ok": false,
+      "ts": 1777137754.3553627,
+      "url": "https://epg.pw/xmltv/epg_PT.xml.gz"
+    },
+    "epg-pw:ru": {
+      "ok": true,
+      "ts": 1777137754.9303184,
+      "url": "https://epg.pw/xmltv/epg_RU.xml.gz"
+    },
+    "epg-pw:se": {
+      "ok": false,
+      "ts": 1777137751.153063,
+      "url": "https://epg.pw/xmltv/epg_SE.xml.gz"
+    },
+    "epg-pw:th": {
+      "ok": true,
+      "ts": 1777137735.513589,
+      "url": "https://epg.pw/xmltv/epg_TH.xml.gz"
+    },
+    "epg-pw:tr": {
+      "ok": false,
+      "ts": 1777137731.7020347,
+      "url": "https://epg.pw/xmltv/epg_TR.xml.gz"
+    },
+    "epg-pw:tw": {
+      "ok": true,
+      "ts": 1777137734.267649,
+      "url": "https://epg.pw/xmltv/epg_TW.xml.gz"
+    },
+    "epg-pw:us": {
+      "ok": true,
+      "ts": 1777137740.4893875,
+      "url": "https://epg.pw/xmltv/epg_US.xml.gz"
+    },
+    "epg-pw:za": {
+      "ok": true,
+      "ts": 1777137755.636847,
+      "url": "https://epg.pw/xmltv/epg_ZA.xml.gz"
+    },
+    "epgshare01:ae": {
+      "ok": true,
+      "ts": 1777137733.191095,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_AE1.xml.gz"
+    },
+    "epgshare01:ar": {
+      "ok": true,
+      "ts": 1777137729.9121337,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_AR1.xml.gz"
+    },
+    "epgshare01:au": {
+      "ok": true,
+      "ts": 1777137742.7782931,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_AU1.xml.gz"
+    },
+    "epgshare01:br": {
+      "ok": true,
+      "ts": 1777137747.2884336,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_BR1.xml.gz"
+    },
+    "epgshare01:ca": {
+      "ok": false,
+      "ts": 1777137742.1434548,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_CA1.xml.gz"
+    },
+    "epgshare01:cl": {
+      "ok": true,
+      "ts": 1777137731.1138382,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_CL1.xml.gz"
+    },
+    "epgshare01:cn": {
+      "ok": false,
+      "ts": 1777137733.6792767,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_CN1.xml.gz"
+    },
+    "epgshare01:co": {
+      "ok": true,
+      "ts": 1777137730.50308,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz"
+    },
+    "epgshare01:de": {
+      "ok": true,
+      "ts": 1777137743.7066493,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_DE1.xml.gz"
+    },
+    "epgshare01:dk": {
+      "ok": true,
+      "ts": 1777137752.566341,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_DK1.xml.gz"
+    },
+    "epgshare01:es": {
+      "ok": true,
+      "ts": 1777137746.0950897,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz"
+    },
+    "epgshare01:fi": {
+      "ok": true,
+      "ts": 1777137753.1827893,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_FI1.xml.gz"
+    },
+    "epgshare01:fr": {
+      "ok": true,
+      "ts": 1777137744.363758,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz"
+    },
+    "epgshare01:gb": {
+      "ok": false,
+      "ts": 1777137741.3427389,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_GB1.xml.gz"
+    },
+    "epgshare01:hk": {
+      "ok": true,
+      "ts": 1777137737.0386496,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_HK1.xml.gz"
+    },
+    "epgshare01:id": {
+      "ok": true,
+      "ts": 1777137736.2975738,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_ID1.xml.gz"
+    },
+    "epgshare01:il": {
+      "ok": true,
+      "ts": 1777137732.477475,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_IL1.xml.gz"
+    },
+    "epgshare01:in": {
+      "ok": true,
+      "ts": 1777137749.9700313,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_IN1.xml.gz"
+    },
+    "epgshare01:it": {
+      "ok": true,
+      "ts": 1777137746.713117,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
+    },
+    "epgshare01:jp": {
+      "ok": true,
+      "ts": 1777137748.6181538,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_JP1.xml.gz"
+    },
+    "epgshare01:kr": {
+      "ok": true,
+      "ts": 1777137749.3038456,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_KR1.xml.gz"
+    },
+    "epgshare01:mx": {
+      "ok": true,
+      "ts": 1777137747.9231231,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_MX1.xml.gz"
+    },
+    "epgshare01:nl": {
+      "ok": true,
+      "ts": 1777137750.5986316,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_NL1.xml.gz"
+    },
+    "epgshare01:no": {
+      "ok": true,
+      "ts": 1777137751.8813376,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_NO1.xml.gz"
+    },
+    "epgshare01:ph": {
+      "ok": true,
+      "ts": 1777137734.9993963,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_PH1.xml.gz"
+    },
+    "epgshare01:pl": {
+      "ok": true,
+      "ts": 1777137753.7976596,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_PL1.xml.gz"
+    },
+    "epgshare01:pt": {
+      "ok": true,
+      "ts": 1777137754.4442992,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_PT1.xml.gz"
+    },
+    "epgshare01:ru": {
+      "ok": false,
+      "ts": 1777137755.046043,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_RU1.xml.gz"
+    },
+    "epgshare01:se": {
+      "ok": true,
+      "ts": 1777137751.2636333,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_SE1.xml.gz"
+    },
+    "epgshare01:th": {
+      "ok": true,
+      "ts": 1777137735.635254,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_TH1.xml.gz"
+    },
+    "epgshare01:tr": {
+      "ok": true,
+      "ts": 1777137731.7951596,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz"
+    },
+    "epgshare01:tw": {
+      "ok": false,
+      "ts": 1777137734.3960593,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_TW1.xml.gz"
+    },
+    "epgshare01:us": {
+      "ok": false,
+      "ts": 1777137740.5793917,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_US1.xml.gz"
+    },
+    "epgshare01:za": {
+      "ok": true,
+      "ts": 1777137755.732772,
+      "url": "https://epgshare01.online/epgshare01/epg_ripper_ZA1.xml.gz"
+    },
+    "epgtalk:gb": {
+      "ok": false,
+      "ts": 1777137741.420483,
+      "url": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/uk.xml"
+    },
+    "epgtalk:mx": {
+      "ok": false,
+      "ts": 1777137747.9986303,
+      "url": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/latino.xml"
+    },
+    "epgtalk:us": {
+      "ok": false,
+      "ts": 1777137740.6443987,
+      "url": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/us.xml"
+    },
+    "freeview-epg:gb": {
+      "ok": true,
+      "ts": 1777137741.4917088,
+      "url": "https://raw.githubusercontent.com/dp247/Freeview-EPG/master/epg.xml"
+    },
+    "iptv-epg:ae": {
+      "ok": true,
+      "ts": 1777137732.9357822,
+      "url": "https://iptv-epg.org/files/epg-ae.xml"
+    },
+    "iptv-epg:ar": {
+      "ok": true,
+      "ts": 1777137729.6626954,
+      "url": "https://iptv-epg.org/files/epg-ar.xml"
+    },
+    "iptv-epg:au": {
+      "ok": true,
+      "ts": 1777137742.5877748,
+      "url": "https://iptv-epg.org/files/epg-au.xml"
+    },
+    "iptv-epg:br": {
+      "ok": true,
+      "ts": 1777137747.080178,
+      "url": "https://iptv-epg.org/files/epg-br.xml"
+    },
+    "iptv-epg:ca": {
+      "ok": true,
+      "ts": 1777137741.9071865,
+      "url": "https://iptv-epg.org/files/epg-ca.xml"
+    },
+    "iptv-epg:cl": {
+      "ok": true,
+      "ts": 1777137730.9165564,
+      "url": "https://iptv-epg.org/files/epg-cl.xml"
+    },
+    "iptv-epg:cn": {
+      "ok": false,
+      "ts": 1777137733.4941554,
+      "url": "https://iptv-epg.org/files/epg-cn.xml"
+    },
+    "iptv-epg:co": {
+      "ok": true,
+      "ts": 1777137730.3229392,
+      "url": "https://iptv-epg.org/files/epg-co.xml"
+    },
+    "iptv-epg:de": {
+      "ok": true,
+      "ts": 1777137743.4567344,
+      "url": "https://iptv-epg.org/files/epg-de.xml"
+    },
+    "iptv-epg:dk": {
+      "ok": true,
+      "ts": 1777137752.2710896,
+      "url": "https://iptv-epg.org/files/epg-dk.xml"
+    },
+    "iptv-epg:es": {
+      "ok": true,
+      "ts": 1777137744.8242307,
+      "url": "https://iptv-epg.org/files/epg-es.xml"
+    },
+    "iptv-epg:fi": {
+      "ok": true,
+      "ts": 1777137752.9692795,
+      "url": "https://iptv-epg.org/files/epg-fi.xml"
+    },
+    "iptv-epg:fr": {
+      "ok": true,
+      "ts": 1777137744.1152039,
+      "url": "https://iptv-epg.org/files/epg-fr.xml"
+    },
+    "iptv-epg:gb": {
+      "ok": true,
+      "ts": 1777137741.083574,
+      "url": "https://iptv-epg.org/files/epg-gb.xml"
+    },
+    "iptv-epg:hk": {
+      "ok": true,
+      "ts": 1777137736.7793257,
+      "url": "https://iptv-epg.org/files/epg-hk.xml"
+    },
+    "iptv-epg:id": {
+      "ok": true,
+      "ts": 1777137736.042748,
+      "url": "https://iptv-epg.org/files/epg-id.xml"
+    },
+    "iptv-epg:il": {
+      "ok": true,
+      "ts": 1777137732.231303,
+      "url": "https://iptv-epg.org/files/epg-il.xml"
+    },
+    "iptv-epg:in": {
+      "ok": true,
+      "ts": 1777137749.7319627,
+      "url": "https://iptv-epg.org/files/epg-in.xml"
+    },
+    "iptv-epg:it": {
+      "ok": true,
+      "ts": 1777137746.5126967,
+      "url": "https://iptv-epg.org/files/epg-it.xml"
+    },
+    "iptv-epg:jp": {
+      "ok": true,
+      "ts": 1777137748.4411688,
+      "url": "https://iptv-epg.org/files/epg-jp.xml"
+    },
+    "iptv-epg:kr": {
+      "ok": true,
+      "ts": 1777137749.0518718,
+      "url": "https://iptv-epg.org/files/epg-kr.xml"
+    },
+    "iptv-epg:mx": {
+      "ok": true,
+      "ts": 1777137747.6735206,
+      "url": "https://iptv-epg.org/files/epg-mx.xml"
+    },
+    "iptv-epg:nl": {
+      "ok": true,
+      "ts": 1777137750.3875716,
+      "url": "https://iptv-epg.org/files/epg-nl.xml"
+    },
+    "iptv-epg:no": {
+      "ok": true,
+      "ts": 1777137751.6974657,
+      "url": "https://iptv-epg.org/files/epg-no.xml"
+    },
+    "iptv-epg:ph": {
+      "ok": true,
+      "ts": 1777137734.8025985,
+      "url": "https://iptv-epg.org/files/epg-ph.xml"
+    },
+    "iptv-epg:pl": {
+      "ok": true,
+      "ts": 1777137753.5771542,
+      "url": "https://iptv-epg.org/files/epg-pl.xml"
+    },
+    "iptv-epg:pt": {
+      "ok": true,
+      "ts": 1777137754.2485561,
+      "url": "https://iptv-epg.org/files/epg-pt.xml"
+    },
+    "iptv-epg:ru": {
+      "ok": true,
+      "ts": 1777137754.8393383,
+      "url": "https://iptv-epg.org/files/epg-ru.xml"
+    },
+    "iptv-epg:se": {
+      "ok": true,
+      "ts": 1777137751.0288765,
+      "url": "https://iptv-epg.org/files/epg-se.xml"
+    },
+    "iptv-epg:th": {
+      "ok": true,
+      "ts": 1777137735.4268832,
+      "url": "https://iptv-epg.org/files/epg-th.xml"
+    },
+    "iptv-epg:tr": {
+      "ok": true,
+      "ts": 1777137731.5429637,
+      "url": "https://iptv-epg.org/files/epg-tr.xml"
+    },
+    "iptv-epg:tw": {
+      "ok": true,
+      "ts": 1777137734.126485,
+      "url": "https://iptv-epg.org/files/epg-tw.xml"
+    },
+    "iptv-epg:us": {
+      "ok": true,
+      "ts": 1777137740.395075,
+      "url": "https://iptv-epg.org/files/epg-us.xml"
+    },
+    "iptv-epg:za": {
+      "ok": true,
+      "ts": 1777137755.50969,
+      "url": "https://iptv-epg.org/files/epg-za.xml"
+    }
+  },
+  "providers": [
+    {
+      "enabled": true,
+      "format": "xml",
+      "id": "iptv-epg",
+      "name": "IPTV-EPG.org",
+      "notes": "Best for US, EU. ~30 countries. 7-day guide data.",
+      "priority": 1,
+      "url_template": "https://iptv-epg.org/files/epg-{code}.xml"
+    },
+    {
+      "enabled": true,
+      "format": "xml.gz",
+      "id": "epg-pw",
+      "name": "EPG.pw",
+      "notes": "20 countries. Good Asia-Pacific coverage (CN, HK, JP, SG, MY, VN). Daily updates.",
+      "priority": 2,
+      "url_template": "https://epg.pw/xmltv/epg_{CODE}.xml.gz"
+    },
+    {
+      "enabled": true,
+      "format": "xml.gz",
+      "id": "epgshare01",
+      "name": "EPGShare01",
+      "notes": "102 files, 50+ countries. Broad coverage. Gzipped.",
+      "priority": 3,
+      "url_template": "https://epgshare01.online/epgshare01/epg_ripper_{CODE}1.xml.gz"
+    },
+    {
+      "country_urls": {
+        "gb": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/uk.xml",
+        "mx": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/latino.xml",
+        "us": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/us.xml"
+      },
+      "enabled": true,
+      "format": "xml",
+      "id": "epgtalk",
+      "name": "EPGTalk",
+      "notes": "US/UK/Mexico only. High channel count. Updated daily.",
+      "priority": 4
+    },
+    {
+      "country_urls": {
+        "gb": "https://raw.githubusercontent.com/dp247/Freeview-EPG/master/epg.xml"
+      },
+      "enabled": true,
+      "format": "xml",
+      "id": "freeview-epg",
+      "name": "Freeview EPG",
+      "notes": "UK Freeview + radio. Updated every 12 hours.",
+      "priority": 5
+    }
+  ]
+}

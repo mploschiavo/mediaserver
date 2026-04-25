@@ -1,0 +1,23 @@
+{
+  "by_service": {
+    "radarr": 10,
+    "sonarr": 10
+  },
+  "daily_trend": [
+    {
+      "count": 10,
+      "date": "2026-04-25"
+    },
+    {
+      "count": 10,
+      "date": "2026-04-24"
+    }
+  ],
+  "top_indexers": [
+    {
+      "count": 10,
+      "name": "YTS (Prowlarr)"
+    }
+  ],
+  "total_records": 20
+}

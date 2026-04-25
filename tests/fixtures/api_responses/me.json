@@ -1,0 +1,11 @@
+{
+  "authenticated": true,
+  "display_name": "Administrator",
+  "email": "admin@local",
+  "id": "50c37f20-4984-460f-893b-643d6faddbfe",
+  "last_login_at": "",
+  "needs_rotation": true,
+  "role_slug": "superadmin",
+  "source": "env-legacy",
+  "username": "admin"
+}

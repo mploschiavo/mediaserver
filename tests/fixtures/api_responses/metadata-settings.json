@@ -1,0 +1,132 @@
+{
+  "country": "US",
+  "language": "en",
+  "presets": [
+    {
+      "country": "US",
+      "label": "English (US)",
+      "language": "en"
+    },
+    {
+      "country": "GB",
+      "label": "English (UK)",
+      "language": "en"
+    },
+    {
+      "country": "AU",
+      "label": "English (AU)",
+      "language": "en"
+    },
+    {
+      "country": "DE",
+      "label": "Deutsch",
+      "language": "de"
+    },
+    {
+      "country": "FR",
+      "label": "Fran\u00e7ais",
+      "language": "fr"
+    },
+    {
+      "country": "ES",
+      "label": "Espa\u00f1ol",
+      "language": "es"
+    },
+    {
+      "country": "MX",
+      "label": "Espa\u00f1ol (MX)",
+      "language": "es"
+    },
+    {
+      "country": "BR",
+      "label": "Portugu\u00eas (BR)",
+      "language": "pt"
+    },
+    {
+      "country": "PT",
+      "label": "Portugu\u00eas (PT)",
+      "language": "pt"
+    },
+    {
+      "country": "IT",
+      "label": "Italiano",
+      "language": "it"
+    },
+    {
+      "country": "NL",
+      "label": "Nederlands",
+      "language": "nl"
+    },
+    {
+      "country": "SE",
+      "label": "Svenska",
+      "language": "sv"
+    },
+    {
+      "country": false,
+      "label": "Norsk",
+      "language": false
+    },
+    {
+      "country": "DK",
+      "label": "Dansk",
+      "language": "da"
+    },
+    {
+      "country": "FI",
+      "label": "Suomi",
+      "language": "fi"
+    },
+    {
+      "country": "PL",
+      "label": "Polski",
+      "language": "pl"
+    },
+    {
+      "country": "RU",
+      "label": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+      "language": "ru"
+    },
+    {
+      "country": "JP",
+      "label": "\u65e5\u672c\u8a9e",
+      "language": "ja"
+    },
+    {
+      "country": "KR",
+      "label": "\ud55c\uad6d\uc5b4",
+      "language": "ko"
+    },
+    {
+      "country": "CN",
+      "label": "\u4e2d\u6587 (CN)",
+      "language": "zh"
+    },
+    {
+      "country": "TW",
+      "label": "\u4e2d\u6587 (TW)",
+      "language": "zh"
+    },
+    {
+      "country": "AE",
+      "label": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629",
+      "language": "ar"
+    },
+    {
+      "country": "IN",
+      "label": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "language": "hi"
+    },
+    {
+      "country": "TR",
+      "label": "T\u00fcrk\u00e7e",
+      "language": "tr"
+    },
+    {
+      "country": "TH",
+      "label": "\u0e44\u0e17\u0e22",
+      "language": "th"
+    }
+  ],
+  "source": "profile"
+}

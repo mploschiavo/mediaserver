@@ -1,0 +1,20 @@
+{
+  "stats": {
+    "lidarr": {
+      "count": 43,
+      "label": "artists"
+    },
+    "radarr": {
+      "count": 190,
+      "label": "movies"
+    },
+    "readarr": {
+      "count": 135,
+      "label": "books"
+    },
+    "sonarr": {
+      "count": 159,
+      "label": "series"
+    }
+  }
+}

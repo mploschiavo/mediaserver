@@ -1,0 +1,72 @@
+{
+  "checked_at": 1777137719.009567,
+  "stories": [
+    {
+      "affected_services": [
+        "tautulli"
+      ],
+      "auto_heal_status": "n/a",
+      "cause": "tautulli have no API key in env or on disk",
+      "description": "Endpoints that depend on these services (libraries, recent additions, indexer stats) will return empty payloads until the keys are populated. Re-run the discover-api-keys job, or set the key manually under Services.",
+      "headline": "API key discovery is incomplete \u2014 1 service(s) have no credential",
+      "id": "api_keys_missing",
+      "next_action": "Re-run discover-api-keys from the Jobs panel, or POST /api/services/<id>/api-key with a value.",
+      "severity": "warn"
+    },
+    {
+      "affected_services": [
+        "prowlarr",
+        "sonarr",
+        "radarr",
+        "lidarr",
+        "readarr",
+        "qbittorrent"
+      ],
+      "auto_heal_status": "n/a",
+      "cause": "",
+      "description": "Indexers, the *arrs, and download clients are all responding.",
+      "headline": "Downloads are working",
+      "id": "downloads_ok",
+      "next_action": "",
+      "severity": "ok"
+    },
+    {
+      "affected_services": [
+        "jellyfin",
+        "plex"
+      ],
+      "auto_heal_status": "n/a",
+      "cause": "",
+      "description": "Your media server is responding to play requests.",
+      "headline": "Playback is working",
+      "id": "playback_ok",
+      "next_action": "",
+      "severity": "ok"
+    },
+    {
+      "affected_services": [
+        "authelia",
+        "authentik"
+      ],
+      "auto_heal_status": "n/a",
+      "cause": "",
+      "description": "The SSO provider is responding.",
+      "headline": "Sign-in is working",
+      "id": "auth_ok",
+      "next_action": "",
+      "severity": "ok"
+    },
+    {
+      "affected_services": [
+        "jellyseerr"
+      ],
+      "auto_heal_status": "n/a",
+      "cause": "",
+      "description": "Users can search and request new content.",
+      "headline": "Content search is working",
+      "id": "search_ok",
+      "next_action": "",
+      "severity": "ok"
+    }
+  ]
+}

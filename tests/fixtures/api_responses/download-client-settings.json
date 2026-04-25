@@ -1,0 +1,16 @@
+{
+  "jellyfin_scan": {
+    "interval_hours": 12,
+    "last_status": "Completed",
+    "state": "Idle",
+    "task_id": "7738148ffcd07979c7ceb148e06b3aed"
+  },
+  "torrent": {
+    "dl_limit_mbps": 0,
+    "max_active_downloads": 3,
+    "max_active_torrents": 5,
+    "max_active_uploads": 3,
+    "queueing_enabled": true,
+    "up_limit_mbps": 0
+  }
+}

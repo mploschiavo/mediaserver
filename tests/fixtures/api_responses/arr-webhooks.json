@@ -1,0 +1,7 @@
+{
+  "url": "http://media-stack-controller:9100/webhooks/arr",
+  "webhooks": {
+    "radarr": "already registered",
+    "sonarr": "already registered"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "detected": false,
+  "gpus": [],
+  "host_os": "linux",
+  "jellyfin_configured": false,
+  "jellyfin_has_gpu": false,
+  "note": "On Kubernetes, request GPU via resource limits: nvidia.com/gpu: 1 in the media-server pod spec.",
+  "runtime": "kubernetes"
+}

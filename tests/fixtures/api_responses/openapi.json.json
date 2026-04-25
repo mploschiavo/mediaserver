@@ -1,0 +1,610 @@
+{
+  "info": {
+    "description": "Abridged spec. For the full OpenAPI 3.0.3 specification with schemas, examples, and descriptions, see GET /api/openapi.yaml or visit /api/docs.",
+    "title": "Media Stack Controller API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/actions/{name}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Trigger action"
+      }
+    },
+    "/api/backup": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Config backup download"
+      }
+    },
+    "/api/batch-restart": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Restart multiple services"
+      }
+    },
+    "/api/cleanup-preview": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Guardrail cleanup preview"
+      }
+    },
+    "/api/disk": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Disk usage + guardrails"
+      }
+    },
+    "/api/download-history": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Recent download history"
+      }
+    },
+    "/api/downloads": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Active downloads"
+      }
+    },
+    "/api/env": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Runtime environment"
+      }
+    },
+    "/api/envoy/stats": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Envoy proxy traffic stats"
+      }
+    },
+    "/api/envvars": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Set environment variable"
+      }
+    },
+    "/api/feed.xml": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "RSS feed"
+      }
+    },
+    "/api/gpu": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "GPU detection for transcoding"
+      }
+    },
+    "/api/gpu/enable": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Auto-configure GPU transcoding"
+      }
+    },
+    "/api/grafana.json": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Grafana dashboard JSON"
+      }
+    },
+    "/api/guardrails": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Update guardrail settings"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Live service health probes"
+      }
+    },
+    "/api/health-history": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Health history and SLA metrics"
+      }
+    },
+    "/api/image-updates": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Image versions + staleness"
+      }
+    },
+    "/api/import-lists": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Import/discovery lists"
+      }
+    },
+    "/api/indexer-stats": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Indexer performance stats"
+      }
+    },
+    "/api/indexers": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Indexer manager entries"
+      }
+    },
+    "/api/keys": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "All API keys and admin credentials"
+      }
+    },
+    "/api/libraries": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Media server libraries"
+      }
+    },
+    "/api/logs/{service}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Service container logs"
+      }
+    },
+    "/api/manifests": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Deployment manifests"
+      }
+    },
+    "/api/media-server/reset": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Hard-reset media server credentials"
+      }
+    },
+    "/api/mounts": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Filesystem mounts"
+      }
+    },
+    "/api/namespaces": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Containers / namespaces"
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "This spec (abridged)"
+      }
+    },
+    "/api/openapi.yaml": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Full OpenAPI 3.0.3 spec"
+      }
+    },
+    "/api/profile": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Save bootstrap profile"
+      }
+    },
+    "/api/quality-profiles": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Quality profiles"
+      }
+    },
+    "/api/recent": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Recently added items"
+      }
+    },
+    "/api/reset-password": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Reset admin password"
+      }
+    },
+    "/api/restart/{service}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Restart a single service"
+      }
+    },
+    "/api/restore": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Restore config from backup"
+      }
+    },
+    "/api/rotate-keys": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Rotate all API keys"
+      }
+    },
+    "/api/routing": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Update routing config"
+      }
+    },
+    "/api/routing-probe": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Probe all user-facing URLs per service"
+      }
+    },
+    "/api/services": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "List managed services"
+      }
+    },
+    "/api/services/categories": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Service categories"
+      }
+    },
+    "/api/services/{id}/api-key": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Set/discover API key"
+      }
+    },
+    "/api/snapshot": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Take a config snapshot"
+      }
+    },
+    "/api/snapshot-diff": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Compare two snapshots"
+      }
+    },
+    "/api/snapshots": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Config snapshots"
+      }
+    },
+    "/api/snapshots/{file}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Snapshot detail"
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Library counts"
+      }
+    },
+    "/api/versions": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Service versions"
+      }
+    },
+    "/apps": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "All app statuses"
+      }
+    },
+    "/apps/{name}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Single app status"
+      }
+    },
+    "/cancel": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Cancel running action"
+      }
+    },
+    "/config": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Update runtime config"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Liveness probe"
+      }
+    },
+    "/logs/stream": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Real-time log stream (SSE)"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Prometheus metrics"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Readiness probe"
+      }
+    },
+    "/run": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Trigger bootstrap (legacy)"
+      }
+    },
+    "/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Full controller state"
+      }
+    },
+    "/webhooks": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Register webhook URL"
+      }
+    },
+    "/webhooks/test": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Test all webhooks"
+      }
+    }
+  }
+}

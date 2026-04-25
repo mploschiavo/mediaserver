@@ -1,0 +1,42 @@
+{
+  "diffs": [
+    {
+      "ghosts": [],
+      "matched": 2,
+      "orphans": [],
+      "provider": "authelia"
+    },
+    {
+      "ghosts": [],
+      "matched": 0,
+      "orphans": [
+        {
+          "email": "",
+          "external_id": "8ea2c23f0c5b42988da8a6d175fa185f",
+          "groups": [],
+          "username": "2510"
+        },
+        {
+          "email": "",
+          "external_id": "674b3ec1ab954487bf37b70ab3a6006f",
+          "groups": [],
+          "username": "admin"
+        }
+      ],
+      "provider": "jellyfin"
+    },
+    {
+      "ghosts": [],
+      "matched": 0,
+      "orphans": [
+        {
+          "email": "admin",
+          "external_id": "1",
+          "groups": [],
+          "username": "admin"
+        }
+      ],
+      "provider": "jellyseerr"
+    }
+  ]
+}

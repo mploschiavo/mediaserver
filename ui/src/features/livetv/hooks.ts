@@ -78,10 +78,16 @@ export interface IptvCountry {
   /** ISO-3166 alpha-2 in most controller builds. */
   code: string;
   name?: string;
-  /** Convenience M3U bundled by the controller for the country. */
-  m3u_url?: string;
-  /** Newer `tuner_url` alias (controller uses this in v1.4+). */
+  /**
+   * M3U / IPTV playlist URL bundled by the controller for the
+   * country. Live response field is ``tuner_url``; ``m3u_url`` is
+   * an older alias kept for back-compat with profiles that still
+   * persist the legacy name. Cards SHOULD prefer ``tuner_url`` —
+   * the IPTV-Countries widget had a "browse-only on every row"
+   * regression before consumers learned to fall through.
+   */
   tuner_url?: string;
+  m3u_url?: string;
   /** Bundled XMLTV EPG URL when available. */
   guide_url?: string;
   [key: string]: unknown;
@@ -95,7 +101,22 @@ export interface IptvCountriesResponse {
 export interface EpgProvider {
   id?: string;
   name: string;
+  /**
+   * Live shape (verified against the contract fixture): each provider
+   * declares a parameterized URL pattern like
+   * ``"https://iptv-epg.org/files/epg-{code}.xml"`` rather than a
+   * plain base URL. The card renders this verbatim — earlier reads
+   * of ``base_url`` always returned undefined and produced "—" for
+   * every row.
+   */
+  url_template?: string;
+  format?: string;
+  priority?: number;
+  enabled?: boolean;
+  notes?: string;
+  /** Some providers carry a real base URL too; keep optional. */
   base_url?: string;
+  /** Open vs auth-required catalog flag — present on a few providers. */
   requires_auth?: boolean;
   [key: string]: unknown;
 }
@@ -106,8 +127,22 @@ export interface EpgProvidersResponse {
 }
 
 export interface EpgHealthShape {
+  /**
+   * Live `/api/epg-health` shape (verified 2026-04-25):
+   *   ``{healthy, unhealthy, countries, providers, details: {...}}``
+   * The earlier interface (``last_run``/``status``/``ok``) was an
+   * aspirational contract that never landed — the card showed
+   * "failing — last run never" because every legacy field was
+   * undefined on the real payload. ``details`` is keyed by country
+   * code, each entry being ``{provider_id: bool}``.
+   */
+  healthy?: number;
+  unhealthy?: number;
+  countries?: number;
+  providers?: number;
+  details?: Record<string, Record<string, boolean>>;
+  /** Aspirational fields kept optional for forward compat. */
   last_run?: string;
-  /** "ok" / "fail" / "degraded" — the controller leaves this open. */
   status?: string;
   ok?: boolean;
   errors?: readonly string[] | number;

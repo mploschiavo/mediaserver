@@ -1,0 +1,50 @@
+{
+  "disk": {
+    "config": {
+      "free_bytes": 581203111936,
+      "path": "/srv-config",
+      "percent_used": 50.9,
+      "total_bytes": 1291379437568,
+      "used_bytes": 657515991040
+    },
+    "media": {
+      "free_bytes": 581203111936,
+      "fstype": "ext4",
+      "path": "/srv-stack/media",
+      "percent_used": 50.9,
+      "total_bytes": 1291379437568,
+      "used_bytes": 657515991040
+    },
+    "torrents": {
+      "free_bytes": 581203111936,
+      "fstype": "ext4",
+      "path": "/srv-stack/data/torrents",
+      "percent_used": 50.9,
+      "total_bytes": 1291379437568,
+      "used_bytes": 657515991040
+    },
+    "usenet": {
+      "free_bytes": 581203111936,
+      "fstype": "ext4",
+      "path": "/srv-stack/data/usenet",
+      "percent_used": 50.9,
+      "total_bytes": 1291379437568,
+      "used_bytes": 657515991040
+    }
+  },
+  "guardrails": {
+    "enabled": false,
+    "max_used_percent": 65.0,
+    "monitor_path": "",
+    "qbit_cleanup": {
+      "categories": [],
+      "delete_files": true,
+      "enabled": true,
+      "max_delete_per_run": 80,
+      "min_completion_age_hours": 36.0,
+      "min_ratio": 1.0,
+      "min_seeding_time_minutes": 720
+    },
+    "target_used_percent": 58.0
+  }
+}

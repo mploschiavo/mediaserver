@@ -1,0 +1,61 @@
+{
+  "count": 7,
+  "schedules": [
+    {
+      "action": "run-media-hygiene",
+      "created_at": 1776991803.778402,
+      "id": 1776991803778,
+      "interval_seconds": 3600,
+      "label": "Auto-cleanup stalled / orphaned downloads (hourly)",
+      "last_run": 1777136520.8929207
+    },
+    {
+      "action": "scan-completed-downloads",
+      "created_at": 1776991803.8931234,
+      "id": 1776991803893,
+      "interval_seconds": 900,
+      "label": "Scan completed downloads into *arr libraries (15m)",
+      "last_run": 1777136940.914475
+    },
+    {
+      "action": "mass-search-throttled",
+      "created_at": 1776991804.0675616,
+      "id": 1776991804067,
+      "interval_seconds": 3600,
+      "label": "Adaptive search for missing content (hourly)",
+      "last_run": 1777136520.8929207
+    },
+    {
+      "action": "recover-stuck-imports",
+      "created_at": 1776991804.2254233,
+      "id": 1776991804225,
+      "interval_seconds": 1800,
+      "label": "Recover stuck/orphan downloads (every 30m)",
+      "last_run": 1777136580.8939197
+    },
+    {
+      "action": "media-integrity:scan",
+      "created_at": 1777106899.7564566,
+      "id": 1777106899756,
+      "interval_seconds": 900,
+      "label": "Media-integrity status scan (every 15m)",
+      "last_run": 1777137060.9162621
+    },
+    {
+      "action": "media-integrity:reconcile",
+      "created_at": 1777106899.7763464,
+      "id": 1777106899776,
+      "interval_seconds": 21600,
+      "label": "Media-integrity duplicate reconcile (every 6h)",
+      "last_run": 1777128676.437289
+    },
+    {
+      "action": "media-integrity:enforce-config",
+      "created_at": 1777106899.7778397,
+      "id": 1777106899777,
+      "interval_seconds": 86400,
+      "label": "Media-integrity policy enforcement (daily)",
+      "last_run": 1777107019.7880256
+    }
+  ]
+}

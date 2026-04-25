@@ -209,7 +209,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.187}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.188}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -660,7 +660,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.187}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.188}
     container_name: media-stack-controller
     command:
       - python3
@@ -766,7 +766,7 @@ services:
 
   media-stack-ui:
     container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-ui
-    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.7}
+    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.8}
     restart: unless-stopped
     depends_on:
       media-stack-controller:

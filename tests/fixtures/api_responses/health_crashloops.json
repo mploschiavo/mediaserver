@@ -1,0 +1,275 @@
+{
+  "checked_at": 1777137717.7070146,
+  "services": {
+    "authelia": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7067046,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "authelia"
+    },
+    "authentik": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7067385,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "authentik"
+    },
+    "bazarr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.70675,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "bazarr"
+    },
+    "core": {
+      "cause": "healthy",
+      "checked_at": 1777137717.70676,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "core"
+    },
+    "emby": {
+      "cause": "healthy",
+      "checked_at": 1777137717.706769,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "emby"
+    },
+    "envoy": {
+      "cause": "healthy",
+      "checked_at": 1777137717.706778,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "envoy"
+    },
+    "flaresolverr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7067876,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "flaresolverr"
+    },
+    "grabit": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7067962,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "grabit"
+    },
+    "homepage": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7068048,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "homepage"
+    },
+    "jdownloader": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7068133,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "jdownloader"
+    },
+    "jellyfin": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7068226,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "jellyfin"
+    },
+    "jellyseerr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7068317,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "jellyseerr"
+    },
+    "lidarr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.70684,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "lidarr"
+    },
+    "maintainerr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.706849,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "maintainerr"
+    },
+    "media_integrity": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7068577,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "media_integrity"
+    },
+    "mythtv": {
+      "cause": "healthy",
+      "checked_at": 1777137717.706866,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "mythtv"
+    },
+    "nzbget": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7068746,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "nzbget"
+    },
+    "plex": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069023,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "plex"
+    },
+    "prowlarr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069135,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "prowlarr"
+    },
+    "qbittorrent": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069225,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "qbittorrent"
+    },
+    "radarr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069468,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "radarr"
+    },
+    "readarr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069552,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "readarr"
+    },
+    "sabnzbd": {
+      "cause": "healthy",
+      "checked_at": 1777137717.706965,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "sabnzbd"
+    },
+    "sonarr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069736,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "sonarr"
+    },
+    "tautulli": {
+      "cause": "healthy",
+      "checked_at": 1777137717.706982,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "tautulli"
+    },
+    "traefik": {
+      "cause": "healthy",
+      "checked_at": 1777137717.70699,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "traefik"
+    },
+    "unpackerr": {
+      "cause": "healthy",
+      "checked_at": 1777137717.7069986,
+      "description": "restart count below threshold",
+      "healable": false,
+      "last_terminated_reason": "",
+      "restart_count": 0,
+      "sample_log_line": "",
+      "service_id": "unpackerr"
+    }
+  }
+}

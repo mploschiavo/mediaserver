@@ -1,0 +1,39 @@
+{
+  "lists": {
+    "radarr": [
+      {
+        "enabled": false,
+        "id": 2,
+        "listType": "tmdb",
+        "name": "TMDb Popular Movies"
+      },
+      {
+        "enabled": false,
+        "id": 3,
+        "listType": "tmdb",
+        "name": "TMDb Top Rated Movies"
+      },
+      {
+        "enabled": false,
+        "id": 1,
+        "listType": "tmdb",
+        "name": "TMDb Trending Movies"
+      },
+      {
+        "enabled": false,
+        "id": 4,
+        "listType": "tmdb",
+        "name": "TMDb Upcoming Movies"
+      }
+    ],
+    "sonarr": [
+      {
+        "enabled": true,
+        "id": 1,
+        "listType": "advanced",
+        "name": "Popular TV (TVMaze)"
+      }
+    ]
+  },
+  "total": 5
+}

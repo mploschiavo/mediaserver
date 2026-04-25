@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { useNavigate } from "@tanstack/react-router";
 import { ScrollText, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,6 +70,7 @@ function readUrlState(): { service: LogSource | null; filter: string } {
  */
 export function LogsPage() {
   const reduce = useReducedMotion();
+  const navigate = useNavigate({ from: "/logs" });
   const initialUrl = useRef(readUrlState());
 
   const [sources, setSources] = useState<readonly LogSource[]>(() => {
@@ -97,22 +99,28 @@ export function LogsPage() {
 
   // Debounced URL write-through so a wild typer doesn't trash the
   // browser history. Tracking `service` (single, first) and `filter`.
+  //
+  // Routed through Tanstack Router's `navigate` (not raw
+  // `history.replaceState`) so the basepath is honored. Writing the
+  // URL directly with `window.location.pathname` re-pushed the full
+  // deployed prefix (`/app/media-stack-ui/logs`) back through the
+  // router, which would re-evaluate against its bare-path route table
+  // and fall to the splat 404 ("Lost your way?") about 300ms after
+  // the page mounted. See `bug_class_history_replacestate_basepath`.
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const id = window.setTimeout(() => {
-      const params = new URLSearchParams(window.location.search);
-      const first = sources[0];
-      if (first) params.set("service", first);
-      else params.delete("service");
-      if (search) params.set("filter", search);
-      else params.delete("filter");
-      const next = params.toString();
-      const url = `${window.location.pathname}${next ? `?${next}` : ""}${window.location.hash}`;
-      // `replaceState` so we don't grow history with each keystroke.
-      window.history.replaceState(window.history.state, "", url);
+      void navigate({
+        to: "/logs",
+        replace: true,
+        search: (prev) => ({
+          ...prev,
+          service: sources[0],
+          filter: search || undefined,
+        }),
+      });
     }, URL_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [sources, search]);
+  }, [sources, search, navigate]);
 
   const stream = useMultiLogs(sources, { tailing });
 

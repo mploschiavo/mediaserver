@@ -1,0 +1,44 @@
+{
+  "presets": [
+    {
+      "app": "sonarr",
+      "cf_url": "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/custom-formats/sonarr-v4-custom-formats-web-1080p.yml",
+      "description": "Streaming services (Netflix, Amazon, etc.) in 1080p. Best for most users.",
+      "id": "web-1080p",
+      "name": "WEB 1080p",
+      "profile_url": "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/quality-profiles/sonarr-v4-quality-profile-web-1080p.yml"
+    },
+    {
+      "app": "sonarr",
+      "cf_url": "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/custom-formats/sonarr-v4-custom-formats-web-2160p.yml",
+      "description": "Streaming services in 4K with HDR. Requires 4K-capable display.",
+      "id": "web-2160p",
+      "name": "WEB 2160p (4K)",
+      "profile_url": "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/quality-profiles/sonarr-v4-quality-profile-web-2160p.yml"
+    },
+    {
+      "app": "sonarr",
+      "cf_url": "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/custom-formats/sonarr-v4-custom-formats-anime.yml",
+      "description": "Optimized for anime with dual audio and subtitle preferences.",
+      "id": "anime",
+      "name": "Anime",
+      "profile_url": ""
+    },
+    {
+      "app": "radarr",
+      "cf_url": "",
+      "description": "Movie streaming services in 1080p.",
+      "id": "radarr-web-1080p",
+      "name": "WEB 1080p (Movies)",
+      "profile_url": ""
+    },
+    {
+      "app": "radarr",
+      "cf_url": "",
+      "description": "Movie streaming in 4K with HDR.",
+      "id": "radarr-web-2160p",
+      "name": "WEB 2160p (Movies 4K)",
+      "profile_url": ""
+    }
+  ]
+}

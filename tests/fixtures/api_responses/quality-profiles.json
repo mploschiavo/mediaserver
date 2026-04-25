@@ -1,0 +1,80 @@
+{
+  "profiles": {
+    "radarr": [
+      {
+        "cutoff": "20",
+        "id": 1,
+        "name": "Any",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "20",
+        "id": 2,
+        "name": "SD",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "6",
+        "id": 3,
+        "name": "HD-720p",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "9",
+        "id": 4,
+        "name": "HD-1080p",
+        "upgradeAllowed": true
+      },
+      {
+        "cutoff": "31",
+        "id": 5,
+        "name": "Ultra-HD",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "6",
+        "id": 6,
+        "name": "HD - 720p/1080p",
+        "upgradeAllowed": false
+      }
+    ],
+    "sonarr": [
+      {
+        "cutoff": "1",
+        "id": 1,
+        "name": "Any",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "1",
+        "id": 2,
+        "name": "SD",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "4",
+        "id": 3,
+        "name": "HD-720p",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "9",
+        "id": 4,
+        "name": "HD-1080p",
+        "upgradeAllowed": true
+      },
+      {
+        "cutoff": "16",
+        "id": 5,
+        "name": "Ultra-HD",
+        "upgradeAllowed": false
+      },
+      {
+        "cutoff": "4",
+        "id": 6,
+        "name": "HD - 720p/1080p",
+        "upgradeAllowed": false
+      }
+    ]
+  }
+}

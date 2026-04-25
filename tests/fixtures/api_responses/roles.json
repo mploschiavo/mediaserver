@@ -1,0 +1,169 @@
+{
+  "roles": [
+    {
+      "controller_admin": true,
+      "description": "Full control of the stack, user management, and all services.",
+      "name": "Super Admin",
+      "propagate_to_service_admins": true,
+      "provider_payloads": {
+        "jellyfin": {
+          "EnableAllFolders": true,
+          "EnableRemoteAccess": true,
+          "IsAdministrator": true,
+          "MaxActiveSessions": 0
+        },
+        "jellyseerr": {
+          "permissions": 2,
+          "request_quota": {
+            "movies": 0,
+            "tv": 0
+          }
+        }
+      },
+      "require_2fa": false,
+      "slug": "superadmin",
+      "sso_groups": [
+        "admins"
+      ]
+    },
+    {
+      "controller_admin": false,
+      "description": "Manage household requests and library settings.",
+      "name": "Family Admin",
+      "propagate_to_service_admins": false,
+      "provider_payloads": {
+        "jellyfin": {
+          "EnableAllFolders": true,
+          "EnableRemoteAccess": true,
+          "IsAdministrator": false,
+          "MaxActiveSessions": 4
+        },
+        "jellyseerr": {
+          "permissions": 256,
+          "request_quota": {
+            "movies": 20,
+            "tv": 20
+          }
+        }
+      },
+      "require_2fa": false,
+      "slug": "family_admin",
+      "sso_groups": [
+        "family",
+        "family_admins"
+      ]
+    },
+    {
+      "controller_admin": false,
+      "description": "Standard user; full library access, can request content.",
+      "name": "Adult",
+      "propagate_to_service_admins": false,
+      "provider_payloads": {
+        "jellyfin": {
+          "EnableAllFolders": true,
+          "EnableRemoteAccess": true,
+          "IsAdministrator": false,
+          "MaxActiveSessions": 3
+        },
+        "jellyseerr": {
+          "permissions": 32,
+          "request_quota": {
+            "movies": 10,
+            "tv": 10
+          }
+        }
+      },
+      "require_2fa": false,
+      "slug": "adult",
+      "sso_groups": [
+        "family"
+      ]
+    },
+    {
+      "controller_admin": false,
+      "description": "Access to family library with PG-13 ceiling.",
+      "name": "Teen",
+      "propagate_to_service_admins": false,
+      "provider_payloads": {
+        "jellyfin": {
+          "EnableAllFolders": true,
+          "EnableRemoteAccess": false,
+          "IsAdministrator": false,
+          "MaxActiveSessions": 2,
+          "MaxParentalRating": 13
+        },
+        "jellyseerr": {
+          "permissions": 0,
+          "request_quota": {
+            "movies": 0,
+            "tv": 0
+          }
+        }
+      },
+      "require_2fa": false,
+      "slug": "teen",
+      "sso_groups": [
+        "family",
+        "teens"
+      ]
+    },
+    {
+      "controller_admin": false,
+      "description": "Kids library only, G/PG rating ceiling.",
+      "name": "Kid",
+      "propagate_to_service_admins": false,
+      "provider_payloads": {
+        "jellyfin": {
+          "EnableAllFolders": false,
+          "EnableRemoteAccess": false,
+          "EnabledFolderNames": [
+            "Kids",
+            "Family"
+          ],
+          "IsAdministrator": false,
+          "MaxActiveSessions": 2,
+          "MaxParentalRating": 7
+        },
+        "jellyseerr": {
+          "permissions": 0,
+          "request_quota": {
+            "movies": 0,
+            "tv": 0
+          }
+        }
+      },
+      "require_2fa": false,
+      "slug": "kid",
+      "sso_groups": [
+        "family",
+        "kids"
+      ]
+    },
+    {
+      "controller_admin": false,
+      "description": "Temporary access; limited streams, cannot request.",
+      "name": "Guest",
+      "propagate_to_service_admins": false,
+      "provider_payloads": {
+        "jellyfin": {
+          "EnableAllFolders": true,
+          "EnableRemoteAccess": false,
+          "IsAdministrator": false,
+          "MaxActiveSessions": 1
+        },
+        "jellyseerr": {
+          "permissions": 0,
+          "request_quota": {
+            "movies": 0,
+            "tv": 0
+          }
+        }
+      },
+      "require_2fa": false,
+      "slug": "guest",
+      "sso_groups": [
+        "guests"
+      ]
+    }
+  ]
+}

@@ -82,6 +82,13 @@ LOGIN_PROBES: dict[str, tuple[str, int, str, str]] = {
     for s in SERVICES if s.login_mode and s.login_path
 }
 
+# Captured once at import. The controller process start time feeds
+# ``/api/ops/health.uptime_seconds``. Sampling per-call gives the
+# user "how long has this controller pod been up" — exactly what
+# the ops dashboard tile is asking. Container/pod restarts re-import
+# this module, resetting the clock; that's the right semantic.
+_PROCESS_START_TIME: float = time.time()
+
 _HEALTH_HISTORY_PATH = Path(os.environ.get("HEALTH_HISTORY_PATH", "/tmp/media-stack-health-history.json"))
 _HEALTH_HISTORY_LOCK = threading.Lock()
 _HEALTH_HISTORY_BUFFER: list[dict[str, Any]] = []
@@ -560,7 +567,18 @@ class HealthService:
                 _HEALTH_HISTORY_LAST_FLUSH = now
 
     def get_health_history(self) -> dict[str, Any]:
-        """Return health history for SLA calculations."""
+        """Return health history for the ops dashboard sparkline + SLA.
+
+        Emits BOTH shapes the UI accepts:
+          * ``history``: raw per-tick samples ``[{ts, services}, ...]``,
+            preferred by the sparkline so it can plot ok/total over
+            time. Earlier revisions only emitted ``sla`` (an aggregate),
+            which made HealthHistorySparkline render
+            "No history yet — controller hasn't recorded enough probe
+             samples to plot" even when ``entries`` was non-zero.
+          * ``sla``: per-service uptime percentage rolled up across the
+            entire history window. Used by the sparkline as a fallback
+            and by other consumers that need the aggregate."""
         with _HEALTH_HISTORY_LOCK:
             if not _HEALTH_HISTORY_PATH.exists():
                 return {"history": [], "period_hours": 0}
@@ -583,7 +601,98 @@ class HealthService:
         for name in sla:
             t = sla[name]["total"]
             sla[name]["uptime_pct"] = round(sla[name]["ok"] / t * 100, 2) if t else 0
-        return {"sla": sla, "period_hours": period_hours, "entries": len(history)}
+        return {
+            "history": history,
+            "sla": sla,
+            "period_hours": period_hours,
+            "entries": len(history),
+        }
+
+    def get_ops_health(self) -> dict[str, Any]:
+        """Return aggregated runtime stats for the /ops dashboard tile.
+
+        Replaces the UI-side ``Promise.resolve({uptime: 0, containers:
+        0, last_bootstrap_at: new Date(0)})`` stub that produced the
+        infamous "12/31/1969" bootstrap timestamp. Each field is
+        derived from a cheap, already-cached source — no extra HTTP
+        probes beyond what the dashboard does anyway.
+
+        Fields:
+          * ``uptime_seconds``: time since the controller process
+            started. Resets on pod restart.
+          * ``containers``: count of live media-stack containers.
+            On K8s this is the Running pod count in our namespace;
+            on compose it's the running container set the existing
+            ``_get_running_containers`` helper already computes.
+          * ``disk_used_pct``: highest used-percent across the
+            volumes ``DiskService`` reports. Surfaces capacity
+            pressure even if only one volume is full.
+          * ``last_bootstrap_at``: ISO timestamp of the most
+            recent run that touched the bootstrap pipeline (any
+            entry with source=='bootstrap' OR a job key starting
+            with 'bootstrap'). Empty string if no bootstrap run is
+            recorded — the UI renders that as ``—``."""
+        return {
+            "uptime_seconds": int(time.time() - _PROCESS_START_TIME),
+            "containers": len(self._get_running_containers()),
+            "disk_used_pct": self._max_disk_pct(),
+            "last_bootstrap_at": self._last_bootstrap_iso(),
+        }
+
+    @staticmethod
+    def _max_disk_pct() -> float:
+        """Largest ``percent_used`` across reported volumes. The
+        dashboard tile shows a single number; pick the worst so a
+        full /media volume doesn't get hidden behind a 2%-used /config."""
+        try:
+            from media_stack.api.services.disk import get_disk
+            volumes = (get_disk().get("disk") or {}).values()
+            pcts = [
+                float(v.get("percent_used", 0))
+                for v in volumes
+                if isinstance(v, dict) and isinstance(v.get("percent_used"), (int, float))
+            ]
+            return max(pcts) if pcts else 0.0
+        except Exception as exc:
+            log_swallowed(exc)
+            return 0.0
+
+    @staticmethod
+    def _last_bootstrap_iso() -> str:
+        """Find the most recent bootstrap-flavored run in
+        ``job-history.json`` and return its ts as an ISO string.
+
+        ``source=='bootstrap'`` is the canonical marker, but older
+        entries used job-id prefixes like ``bootstrap:configure-...``.
+        Walk newest-first and return on the first match. Empty string
+        when no bootstrap has ever run (fresh deploy)."""
+        from datetime import datetime, timezone
+        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        path = Path(config_root) / ".controller" / "job-history.json"
+        try:
+            if not path.is_file():
+                return ""
+            history = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            log_swallowed(exc)
+            return ""
+        if not isinstance(history, list):
+            return ""
+        for entry in reversed(history):
+            if not isinstance(entry, dict):
+                continue
+            source = str(entry.get("source") or "")
+            jobs = entry.get("jobs") or {}
+            is_bootstrap = (
+                source == "bootstrap"
+                or any(str(k).startswith("bootstrap") for k in jobs)
+            )
+            if not is_bootstrap:
+                continue
+            ts = entry.get("ts")
+            if isinstance(ts, (int, float)) and ts > 0:
+                return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        return ""
 
 
     @staticmethod
@@ -712,5 +821,6 @@ _get_running_containers = _instance._get_running_containers
 probe_services = _instance.probe_services
 append_health_history = _instance.append_health_history
 get_health_history = _instance.get_health_history
+get_ops_health = _instance.get_ops_health
 _probe_login = _instance._probe_login
 _flush_health_history = _instance._flush_health_history

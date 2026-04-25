@@ -23,6 +23,15 @@ COPY ui/ ./
 # The OpenAPI spec is referenced by `pnpm gen:api` to generate
 # typed API definitions during the build.
 COPY src/media_stack/api/openapi.yaml /openapi-spec/openapi.yaml
+# Captured response fixtures referenced by
+# `src/api/fixture-codegen-validation.ts`. The source file imports
+# JSON via `../../../tests/fixtures/api_responses/*`. Inside the
+# container the source lives at `/build/src/api/...`; three `..`
+# ups land at `/`, so the imports resolve to
+# `/tests/fixtures/api_responses/*`. Copy fixtures there. Without
+# this, `pnpm build` fails with "Cannot find module" for every
+# fixture and the image build breaks.
+COPY tests/fixtures/api_responses /tests/fixtures/api_responses
 
 # Generate API types from the OpenAPI spec. The package.json script
 # reads OPENAPI_SPEC from env so the same script works locally

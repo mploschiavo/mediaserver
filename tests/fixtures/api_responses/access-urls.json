@@ -1,0 +1,80 @@
+{
+  "authelia": [
+    {
+      "kind": "gateway",
+      "needs_dns": true,
+      "scheme": "https",
+      "service": "authelia",
+      "url": "https://auth.media-stack.local/"
+    }
+  ],
+  "controller": [
+    {
+      "kind": "direct-ip",
+      "needs_dns": false,
+      "scheme": "http",
+      "service": "controller",
+      "url": "http://10.1.55.177:9100/"
+    },
+    {
+      "kind": "direct-ip",
+      "needs_dns": false,
+      "scheme": "http",
+      "service": "controller",
+      "url": "http://127.0.0.1:9100/"
+    }
+  ],
+  "gateway": [
+    {
+      "kind": "direct-ip",
+      "needs_dns": false,
+      "scheme": "https",
+      "service": "gateway",
+      "url": "https://10.1.55.177/"
+    },
+    {
+      "kind": "direct-ip",
+      "needs_dns": false,
+      "scheme": "https",
+      "service": "gateway",
+      "url": "https://127.0.0.1/"
+    },
+    {
+      "kind": "gateway",
+      "needs_dns": true,
+      "scheme": "https",
+      "service": "gateway",
+      "url": "https://apps.media-stack.local/"
+    }
+  ],
+  "jellyfin": [
+    {
+      "kind": "direct-ip",
+      "needs_dns": false,
+      "scheme": "http",
+      "service": "jellyfin",
+      "url": "http://10.1.55.177:8096/"
+    },
+    {
+      "kind": "direct-ip",
+      "needs_dns": false,
+      "scheme": "http",
+      "service": "jellyfin",
+      "url": "http://127.0.0.1:8096/"
+    },
+    {
+      "kind": "gateway",
+      "needs_dns": true,
+      "scheme": "https",
+      "service": "jellyfin",
+      "url": "https://jellyfin.media-stack.local/"
+    },
+    {
+      "kind": "gateway-apps",
+      "needs_dns": true,
+      "scheme": "https",
+      "service": "jellyfin",
+      "url": "https://apps.media-stack.local/app/jellyfin/"
+    }
+  ]
+}

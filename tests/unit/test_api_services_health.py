@@ -811,5 +811,129 @@ class TestProbeCredentials(unittest.TestCase):
         self.assertEqual(result["credentials"]["sonarr"], "fail")
 
 
+class TestGetHealthHistoryEmitsRawHistory(unittest.TestCase):
+    """get_health_history must emit the raw `history` array, not just
+    the SLA aggregate. The HealthHistorySparkline reads `history` to
+    plot ok/total over time; without it, the sparkline shows
+    "No history yet" even when the on-disk journal has 1000+ entries.
+    Pre-fix the function returned only ``{sla, period_hours, entries}``."""
+
+    def test_emits_history_array_and_sla(self):
+        sample = [
+            {"ts": 100.0, "services": {"sonarr": {"status": "ok", "ms": 12}}},
+            {"ts": 160.0, "services": {"sonarr": {"status": "ok", "ms": 11}}},
+            {"ts": 220.0, "services": {"sonarr": {"status": "error", "ms": None}}},
+        ]
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False,
+        ) as fh:
+            json.dump(sample, fh)
+            tmp_path = Path(fh.name)
+        try:
+            with patch.object(health_mod, "_HEALTH_HISTORY_PATH", tmp_path):
+                result = health_mod.get_health_history()
+            self.assertEqual(len(result.get("history") or []), 3,
+                             "raw `history` array must be in response — "
+                             "the sparkline plots from this, not from sla")
+            self.assertEqual(result["history"][0]["ts"], 100.0)
+            self.assertIn("sla", result, "sla aggregate must still be present")
+            self.assertEqual(result["sla"]["sonarr"]["total"], 3)
+            self.assertEqual(result["sla"]["sonarr"]["ok"], 2)
+            self.assertEqual(result["entries"], 3)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+
+class TestGetOpsHealth(unittest.TestCase):
+    """get_ops_health aggregates uptime/containers/disk/last_bootstrap
+    for the /ops dashboard tile. Fixes the
+    ``last_bootstrap_at: new Date(0)`` (12/31/1969) regression that
+    was caused by the UI returning a hardcoded ``Promise.resolve``
+    stub instead of calling this endpoint."""
+
+    def test_uptime_seconds_grows_from_process_start(self):
+        # Set the start to 100s ago — uptime should be roughly 100.
+        with patch.object(health_mod, "_PROCESS_START_TIME",
+                          time.time() - 100):
+            result = health_mod.get_ops_health()
+        self.assertGreaterEqual(result["uptime_seconds"], 99)
+        self.assertLess(result["uptime_seconds"], 105)
+
+    def test_containers_uses_running_set(self):
+        with patch.object(
+            health_mod._instance, "_get_running_containers",
+            return_value={"sonarr", "radarr", "jellyfin"},
+        ), patch.object(health_mod, "_PROCESS_START_TIME", time.time()):
+            result = health_mod.get_ops_health()
+        self.assertEqual(result["containers"], 3)
+
+    def test_disk_used_pct_takes_max_across_volumes(self):
+        # /config 12% full, /media 87% full → tile should show 87%
+        # (capacity pressure on any volume is operationally relevant).
+        fake_disk = {
+            "disk": {
+                "config": {"path": "/srv-config", "percent_used": 12.0},
+                "media": {"path": "/media", "percent_used": 87.0},
+                "torrents": {"path": "/data/torrents", "percent_used": 5.0},
+            },
+        }
+        with patch("media_stack.api.services.disk.get_disk",
+                   return_value=fake_disk):
+            result = health_mod.get_ops_health()
+        self.assertEqual(result["disk_used_pct"], 87.0)
+
+    def test_last_bootstrap_finds_most_recent_bootstrap_run(self):
+        history = [
+            {"ts": 100.0, "source": "auto-heal",
+             "jobs": {"auto-heal:snapshot": {"status": "ok"}}},
+            {"ts": 200.0, "source": "bootstrap",
+             "jobs": {"bootstrap:configure-auth": {"status": "ok"}}},
+            {"ts": 300.0, "source": "auto-heal",
+             "jobs": {"auto-heal:snapshot": {"status": "ok"}}},
+            {"ts": 400.0, "source": "bootstrap",
+             "jobs": {"bootstrap:configure-envoy": {"status": "ok"}}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            controller_dir = Path(tmp) / ".controller"
+            controller_dir.mkdir()
+            (controller_dir / "job-history.json").write_text(json.dumps(history))
+            with patch.dict(os.environ, {"CONFIG_ROOT": tmp}):
+                result = health_mod.get_ops_health()
+        # ts=400 is the latest bootstrap; ISO format with timezone.
+        self.assertTrue(result["last_bootstrap_at"].startswith("1970-"),
+                        f"ts=400 should map to 1970; got {result['last_bootstrap_at']!r}")
+        self.assertIn("+00:00", result["last_bootstrap_at"],
+                      "must be UTC-zoned ISO so the UI Date() parse is unambiguous")
+
+    def test_last_bootstrap_empty_when_no_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"CONFIG_ROOT": tmp}):
+                result = health_mod.get_ops_health()
+        # No journal → empty string. UI renders "—" for falsy values.
+        self.assertEqual(result["last_bootstrap_at"], "",
+                         "empty string is the contract — NOT the epoch-0 "
+                         "regression that the dashboard was rendering as 1969")
+
+    def test_last_bootstrap_skips_non_bootstrap_runs(self):
+        """An auto-heal-only history must NOT have its newest entry
+        masquerade as the last bootstrap. The user reported the
+        controller restarting frequently for non-bootstrap reasons —
+        if any of those leaked in here, the dashboard would lie about
+        when bootstrap actually ran."""
+        history = [
+            {"ts": 100.0, "source": "auto-heal",
+             "jobs": {"auto-heal:snapshot": {"status": "ok"}}},
+            {"ts": 200.0, "source": "auto-heal",
+             "jobs": {"auto-heal:snapshot": {"status": "ok"}}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            controller_dir = Path(tmp) / ".controller"
+            controller_dir.mkdir()
+            (controller_dir / "job-history.json").write_text(json.dumps(history))
+            with patch.dict(os.environ, {"CONFIG_ROOT": tmp}):
+                result = health_mod.get_ops_health()
+        self.assertEqual(result["last_bootstrap_at"], "")
+
+
 if __name__ == "__main__":
     unittest.main()

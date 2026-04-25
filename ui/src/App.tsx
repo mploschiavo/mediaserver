@@ -18,7 +18,27 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createRouter({ routeTree });
+// Auto-detect the deployment basepath from the document URL the SPA
+// was loaded under. In production Envoy mounts the UI at
+// `/app/media-stack-ui/*`; the dev server (vite) serves it at `/`.
+//
+// Without a basepath, raw `history.pushState`/`replaceState` calls
+// that build a URL from `window.location.pathname` would re-feed the
+// full prefixed path through the router, which has only bare-path
+// routes registered (`/logs`, `/audit-log`, …) — the next match cycle
+// would fall to the splat 404. Going through the router with a
+// declared basepath keeps every navigation consistent regardless of
+// whether the user deep-linked or click-navigated in.
+const ROUTER_BASEPATH: string | undefined = (() => {
+  if (typeof window === "undefined") return undefined;
+  const m = /^(\/app\/[^/]+)\//.exec(window.location.pathname);
+  return m?.[1];
+})();
+
+const router = createRouter({
+  routeTree,
+  ...(ROUTER_BASEPATH ? { basepath: ROUTER_BASEPATH } : {}),
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

@@ -1,0 +1,221 @@
+{
+  "checked_at": 1777137716.364966,
+  "services": {
+    "authelia": {
+      "checked_at": 1777137716.3279455,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "authelia",
+      "status": "unknown"
+    },
+    "authentik": {
+      "checked_at": 1777137716.3279917,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "authentik",
+      "status": "unknown"
+    },
+    "bazarr": {
+      "checked_at": 1777137716.3280282,
+      "file": "/srv-config/bazarr/config/config.yaml",
+      "format": "yaml",
+      "reason": "",
+      "service_id": "bazarr",
+      "status": "ok"
+    },
+    "core": {
+      "checked_at": 1777137716.3571205,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "core",
+      "status": "unknown"
+    },
+    "emby": {
+      "checked_at": 1777137716.3571317,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "emby",
+      "status": "unknown"
+    },
+    "envoy": {
+      "checked_at": 1777137716.3571403,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "envoy",
+      "status": "unknown"
+    },
+    "flaresolverr": {
+      "checked_at": 1777137716.3571482,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "flaresolverr",
+      "status": "unknown"
+    },
+    "grabit": {
+      "checked_at": 1777137716.3571558,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "grabit",
+      "status": "unknown"
+    },
+    "homepage": {
+      "checked_at": 1777137716.3571634,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "homepage",
+      "status": "unknown"
+    },
+    "jdownloader": {
+      "checked_at": 1777137716.3571718,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "jdownloader",
+      "status": "unknown"
+    },
+    "jellyfin": {
+      "checked_at": 1777137716.3571904,
+      "file": "/srv-config/jellyfin/data/jellyfin.db",
+      "format": "sqlite",
+      "reason": "",
+      "service_id": "jellyfin",
+      "status": "ok"
+    },
+    "jellyseerr": {
+      "checked_at": 1777137716.3607163,
+      "file": "/srv-config/jellyseerr/settings.json",
+      "format": "json",
+      "reason": "",
+      "service_id": "jellyseerr",
+      "status": "ok"
+    },
+    "lidarr": {
+      "checked_at": 1777137716.3611526,
+      "file": "/srv-config/lidarr/config.xml",
+      "format": "xml",
+      "reason": "",
+      "service_id": "lidarr",
+      "status": "ok"
+    },
+    "maintainerr": {
+      "checked_at": 1777137716.3617418,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "maintainerr",
+      "status": "unknown"
+    },
+    "media_integrity": {
+      "checked_at": 1777137716.3617532,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "media_integrity",
+      "status": "unknown"
+    },
+    "mythtv": {
+      "checked_at": 1777137716.3617623,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "mythtv",
+      "status": "unknown"
+    },
+    "nzbget": {
+      "checked_at": 1777137716.3617709,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "nzbget",
+      "status": "unknown"
+    },
+    "plex": {
+      "checked_at": 1777137716.3617792,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "plex",
+      "status": "unknown"
+    },
+    "prowlarr": {
+      "checked_at": 1777137716.3618,
+      "file": "/srv-config/prowlarr/config.xml",
+      "format": "xml",
+      "reason": "",
+      "service_id": "prowlarr",
+      "status": "ok"
+    },
+    "qbittorrent": {
+      "checked_at": 1777137716.362007,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "qbittorrent",
+      "status": "unknown"
+    },
+    "radarr": {
+      "checked_at": 1777137716.3620257,
+      "file": "/srv-config/radarr/config.xml",
+      "format": "xml",
+      "reason": "",
+      "service_id": "radarr",
+      "status": "ok"
+    },
+    "readarr": {
+      "checked_at": 1777137716.362175,
+      "file": "/srv-config/readarr/config.xml",
+      "format": "xml",
+      "reason": "",
+      "service_id": "readarr",
+      "status": "ok"
+    },
+    "sabnzbd": {
+      "checked_at": 1777137716.362326,
+      "file": "/srv-config/sabnzbd/sabnzbd.ini",
+      "format": "ini",
+      "reason": "",
+      "service_id": "sabnzbd",
+      "status": "ok"
+    },
+    "sonarr": {
+      "checked_at": 1777137716.3645372,
+      "file": "/srv-config/sonarr/config.xml",
+      "format": "xml",
+      "reason": "",
+      "service_id": "sonarr",
+      "status": "ok"
+    },
+    "tautulli": {
+      "checked_at": 1777137716.3648577,
+      "file": "/srv-config/tautulli/config.ini",
+      "format": "ini",
+      "reason": "file not present yet (pre-bootstrap?)",
+      "service_id": "tautulli",
+      "status": "missing"
+    },
+    "traefik": {
+      "checked_at": 1777137716.3649461,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "traefik",
+      "status": "unknown"
+    },
+    "unpackerr": {
+      "checked_at": 1777137716.364957,
+      "file": "",
+      "format": "",
+      "reason": "no config file declared in service registry",
+      "service_id": "unpackerr",
+      "status": "unknown"
+    }
+  }
+}

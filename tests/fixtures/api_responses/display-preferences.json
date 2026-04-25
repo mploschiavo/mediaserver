@@ -1,0 +1,42 @@
+{
+  "clients": [
+    "emby",
+    "jellyfin-web"
+  ],
+  "custom_prefs": {
+    "enableBackdrops": true,
+    "enableLibraryBackdrops": true,
+    "enableNextVideoInfoOverlay": true,
+    "enableThemeVideos": true,
+    "homesection0": "smalllibrarytiles",
+    "homesection1": "resume",
+    "homesection2": "latestmedia",
+    "homesection3": "nextup",
+    "homesection4": "livetv",
+    "homesection5": "activerecordings",
+    "homesection6": "none",
+    "homesection7": "none",
+    "homesection8": "none",
+    "homesection9": "none"
+  },
+  "enabled": true,
+  "per_library_prefs": {
+    "books": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    },
+    "movies": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    },
+    "music": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    },
+    "tv": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    }
+  },
+  "show_backdrop": true
+}

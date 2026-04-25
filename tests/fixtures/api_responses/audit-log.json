@@ -1,0 +1,232 @@
+{
+  "entries": [
+    {
+      "action": "api_mutation",
+      "actor": "anonymous",
+      "detail": {
+        "client": "127.0.0.1",
+        "method": "POST",
+        "status": 200
+      },
+      "hash": "5510644374c718279732079b0cd2ab7fca2994f00d153f2f998826779319abcf",
+      "ip": "",
+      "prev_hash": "",
+      "result": "ok",
+      "target": "/api/routing",
+      "timestamp": "2026-04-23T23:48:18+00:00",
+      "user_agent": ""
+    },
+    {
+      "action": "api_mutation",
+      "actor": "anonymous",
+      "detail": {
+        "client": "127.0.0.1",
+        "method": "POST",
+        "status": 200
+      },
+      "hash": "aeea65bd13430b9ae1345f6490f0d1fd5f19532a01b2f0ba13b762ee85397e44",
+      "ip": "",
+      "prev_hash": "5510644374c718279732079b0cd2ab7fca2994f00d153f2f998826779319abcf",
+      "result": "ok",
+      "target": "/api/routing",
+      "timestamp": "2026-04-23T23:48:40+00:00",
+      "user_agent": ""
+    },
+    {
+      "action": "create_user_via_adoption",
+      "actor": "verify-e2e",
+      "detail": {
+        "adopted_from": {
+          "external_id": "2510",
+          "match": "username",
+          "provider": "authelia"
+        },
+        "replace": {
+          "set_password": "ok",
+          "update_user": "ok"
+        },
+        "role": "adult",
+        "secondary": {
+          "jellyfin": "error: API key not set",
+          "jellyseerr": "deferred_oidc_first_login"
+        },
+        "user_id": "92337a56-dee0-4ff8-87fa-e4d25bede330"
+      },
+      "hash": "d5cd6edf91db7923040df1b5229d58894de528c59417447adcc842e0c857d305",
+      "ip": "",
+      "prev_hash": "aeea65bd13430b9ae1345f6490f0d1fd5f19532a01b2f0ba13b762ee85397e44",
+      "result": "ok",
+      "target": "2510@local",
+      "timestamp": "2026-04-24T15:14:15+00:00",
+      "user_agent": ""
+    },
+    {
+      "action": "login_failure",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "bad_credentials"
+      },
+      "hash": "761da73d47f13345a397f92a751126cff1516e6256083847590879675280a7f8",
+      "ip": "",
+      "prev_hash": "d5cd6edf91db7923040df1b5229d58894de528c59417447adcc842e0c857d305",
+      "result": "fail",
+      "target": "admin",
+      "timestamp": "2026-04-24T23:18:37+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "login_success",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "cookie_mint"
+      },
+      "hash": "cd93ae50b78bfe8ef23491cde21934d2d9e57c8d6ccfdfd123b5aa84e60a1452",
+      "ip": "",
+      "prev_hash": "761da73d47f13345a397f92a751126cff1516e6256083847590879675280a7f8",
+      "result": "ok",
+      "target": "admin",
+      "timestamp": "2026-04-24T23:18:42+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "login_success",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "cookie_mint"
+      },
+      "hash": "a76c1ee4d7738700b81b9dd411ced5e3f235c9cc210885b6dcd1125dadad2ecc",
+      "ip": "",
+      "prev_hash": "cd93ae50b78bfe8ef23491cde21934d2d9e57c8d6ccfdfd123b5aa84e60a1452",
+      "result": "ok",
+      "target": "admin",
+      "timestamp": "2026-04-24T23:19:20+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "login_success",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "cookie_mint"
+      },
+      "hash": "14b1b666e7e0bea68e412777b86c9ec7e8903fb281b6748af3b76907f6cbfac1",
+      "ip": "",
+      "prev_hash": "a76c1ee4d7738700b81b9dd411ced5e3f235c9cc210885b6dcd1125dadad2ecc",
+      "result": "ok",
+      "target": "admin",
+      "timestamp": "2026-04-24T23:30:42+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "login_success",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "cookie_mint"
+      },
+      "hash": "60149126e673415cb0cae67af7d5c56c5258165802d77a4c710bf5ade661e752",
+      "ip": "",
+      "prev_hash": "14b1b666e7e0bea68e412777b86c9ec7e8903fb281b6748af3b76907f6cbfac1",
+      "result": "ok",
+      "target": "admin",
+      "timestamp": "2026-04-24T23:38:39+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "login_success",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "cookie_mint"
+      },
+      "hash": "250fa3900cd178f41a21d14c55ffee3692ad43e399aa445470dd55d9f9cc982a",
+      "ip": "",
+      "prev_hash": "60149126e673415cb0cae67af7d5c56c5258165802d77a4c710bf5ade661e752",
+      "result": "ok",
+      "target": "admin",
+      "timestamp": "2026-04-24T23:49:12+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "api_mutation",
+      "actor": "admin",
+      "detail": {
+        "client": "",
+        "method": "POST",
+        "status": 200
+      },
+      "hash": "7dcebbae9c7ca2cae957f6e57971b2cd1688efc90c6261f3feccdcb3be705f3f",
+      "ip": "",
+      "prev_hash": "250fa3900cd178f41a21d14c55ffee3692ad43e399aa445470dd55d9f9cc982a",
+      "result": "ok",
+      "target": "/actions/envoy-config",
+      "timestamp": "2026-04-25T00:24:18+00:00",
+      "user_agent": ""
+    },
+    {
+      "action": "login_success",
+      "actor": "admin",
+      "detail": {
+        "provider": "controller",
+        "reason": "cookie_mint"
+      },
+      "hash": "83bbcde1d6f6c057fea57696eb88a3f6ffaeebc7ced38534f780a15958b759d2",
+      "ip": "",
+      "prev_hash": "7dcebbae9c7ca2cae957f6e57971b2cd1688efc90c6261f3feccdcb3be705f3f",
+      "result": "ok",
+      "target": "admin",
+      "timestamp": "2026-04-25T01:18:37+00:00",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    },
+    {
+      "action": "brute_force_alert",
+      "actor": "auth-watchdog",
+      "detail": {
+        "failed_count": 5,
+        "window_seconds": 300
+      },
+      "hash": "aeec711e997cd19d5b4fab78fb0a39c7deaa85b367eb58fcc3ba01825f4a010d",
+      "ip": "",
+      "prev_hash": "83bbcde1d6f6c057fea57696eb88a3f6ffaeebc7ced38534f780a15958b759d2",
+      "result": "alert",
+      "target": "admin",
+      "timestamp": "2026-04-25T05:25:22+00:00",
+      "user_agent": ""
+    },
+    {
+      "action": "api_mutation",
+      "actor": "admin",
+      "detail": {
+        "client": "",
+        "method": "POST",
+        "status": 200
+      },
+      "hash": "1f5041fd9d79babdb400b2557c56a0540287652f6c0c2567498ad21429f5f621",
+      "ip": "",
+      "prev_hash": "aeec711e997cd19d5b4fab78fb0a39c7deaa85b367eb58fcc3ba01825f4a010d",
+      "result": "ok",
+      "target": "/api/tokens",
+      "timestamp": "2026-04-25T08:55:06+00:00",
+      "user_agent": ""
+    },
+    {
+      "action": "api_mutation",
+      "actor": "admin",
+      "detail": {
+        "client": "",
+        "method": "POST",
+        "status": 200
+      },
+      "hash": "0ef736800f3d23ff9afef8ddbe052b98c97037f14e7b771d3935415d36bfaca4",
+      "ip": "",
+      "prev_hash": "1f5041fd9d79babdb400b2557c56a0540287652f6c0c2567498ad21429f5f621",
+      "result": "ok",
+      "target": "/api/rotate-keys",
+      "timestamp": "2026-04-25T08:59:41+00:00",
+      "user_agent": ""
+    }
+  ]
+}

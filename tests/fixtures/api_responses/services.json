@@ -1,0 +1,282 @@
+[
+  {
+    "category": "infrastructure",
+    "desc": "SSO auth provider",
+    "host": "authelia",
+    "id": "authelia",
+    "name": "Authelia",
+    "port": 9091,
+    "preserve_path_prefix": false,
+    "published_port": 9091
+  },
+  {
+    "category": "infrastructure",
+    "desc": "Identity provider",
+    "host": "authentik",
+    "id": "authentik",
+    "name": "Authentik",
+    "port": 9000,
+    "preserve_path_prefix": false,
+    "published_port": 9000
+  },
+  {
+    "category": "automation",
+    "desc": "Subtitles",
+    "host": "bazarr",
+    "id": "bazarr",
+    "name": "Bazarr",
+    "port": 6767,
+    "preserve_path_prefix": true,
+    "published_port": 6767
+  },
+  {
+    "category": "infrastructure",
+    "desc": "Bootstrap-pipeline operations that aren't tied to a single app",
+    "host": "",
+    "id": "core",
+    "name": "Core Operations",
+    "port": 0,
+    "preserve_path_prefix": false,
+    "published_port": 0
+  },
+  {
+    "category": "media",
+    "desc": "Alternative media server",
+    "host": "emby",
+    "id": "emby",
+    "name": "Emby",
+    "port": 8096,
+    "preserve_path_prefix": false,
+    "published_port": 8096
+  },
+  {
+    "category": "infrastructure",
+    "desc": "Gateway proxy",
+    "host": "envoy",
+    "id": "envoy",
+    "name": "Envoy",
+    "port": 9901,
+    "preserve_path_prefix": false,
+    "published_port": 9901
+  },
+  {
+    "category": "management",
+    "desc": "Indexer proxy",
+    "host": "flaresolverr",
+    "id": "flaresolverr",
+    "name": "FlareSolverr",
+    "port": 8191,
+    "preserve_path_prefix": false,
+    "published_port": 8191
+  },
+  {
+    "category": "downloads",
+    "desc": "Usenet download client",
+    "host": "grabit",
+    "id": "grabit",
+    "name": "Grabit",
+    "port": 0,
+    "preserve_path_prefix": false,
+    "published_port": 0
+  },
+  {
+    "category": "management",
+    "desc": "Dashboard",
+    "host": "homepage",
+    "id": "homepage",
+    "name": "Homepage",
+    "port": 3000,
+    "preserve_path_prefix": false,
+    "published_port": 3000
+  },
+  {
+    "category": "downloads",
+    "desc": "Direct download client",
+    "host": "jdownloader",
+    "id": "jdownloader",
+    "name": "JDownloader",
+    "port": 5800,
+    "preserve_path_prefix": false,
+    "published_port": 5800
+  },
+  {
+    "category": "media",
+    "desc": "Media server",
+    "host": "jellyfin",
+    "id": "jellyfin",
+    "name": "Jellyfin",
+    "port": 8096,
+    "preserve_path_prefix": false,
+    "published_port": 8096
+  },
+  {
+    "category": "media",
+    "desc": "Request manager",
+    "host": "jellyseerr",
+    "id": "jellyseerr",
+    "name": "Jellyseerr",
+    "port": 5055,
+    "preserve_path_prefix": false,
+    "published_port": 5055
+  },
+  {
+    "category": "automation",
+    "desc": "Music automation",
+    "host": "lidarr",
+    "id": "lidarr",
+    "name": "Lidarr",
+    "port": 8686,
+    "preserve_path_prefix": true,
+    "published_port": 8686
+  },
+  {
+    "category": "management",
+    "desc": "Library cleanup",
+    "host": "maintainerr",
+    "id": "maintainerr",
+    "name": "Maintainerr",
+    "port": 6246,
+    "preserve_path_prefix": true,
+    "published_port": 6246
+  },
+  {
+    "category": "infrastructure",
+    "desc": "Duplicate-prevention subsystem (registered as native Jobs)",
+    "host": "",
+    "id": "media_integrity",
+    "name": "Media Integrity",
+    "port": 0,
+    "preserve_path_prefix": false,
+    "published_port": 0
+  },
+  {
+    "category": "media",
+    "desc": "PVR and media server",
+    "host": "mythtv",
+    "id": "mythtv",
+    "name": "MythTV",
+    "port": 6544,
+    "preserve_path_prefix": false,
+    "published_port": 6544
+  },
+  {
+    "category": "downloads",
+    "desc": "Usenet download client",
+    "host": "nzbget",
+    "id": "nzbget",
+    "name": "NZBGet",
+    "port": 6789,
+    "preserve_path_prefix": false,
+    "published_port": 6789
+  },
+  {
+    "category": "media",
+    "desc": "Alt media server",
+    "host": "plex",
+    "id": "plex",
+    "name": "Plex",
+    "port": 32400,
+    "preserve_path_prefix": false,
+    "published_port": 32400
+  },
+  {
+    "category": "automation",
+    "desc": "Indexer manager",
+    "host": "prowlarr",
+    "id": "prowlarr",
+    "name": "Prowlarr",
+    "port": 9696,
+    "preserve_path_prefix": true,
+    "published_port": 9696
+  },
+  {
+    "category": "downloads",
+    "desc": "Torrent client",
+    "host": "qbittorrent",
+    "id": "qbittorrent",
+    "name": "qBittorrent",
+    "port": 8080,
+    "preserve_path_prefix": false,
+    "published_port": 8080
+  },
+  {
+    "category": "automation",
+    "desc": "Movie automation",
+    "host": "radarr",
+    "id": "radarr",
+    "name": "Radarr",
+    "port": 7878,
+    "preserve_path_prefix": true,
+    "published_port": 7878
+  },
+  {
+    "category": "automation",
+    "desc": "Books automation",
+    "host": "readarr",
+    "id": "readarr",
+    "name": "Readarr",
+    "port": 8787,
+    "preserve_path_prefix": true,
+    "published_port": 8787
+  },
+  {
+    "category": "downloads",
+    "desc": "Usenet client",
+    "host": "sabnzbd",
+    "id": "sabnzbd",
+    "name": "SABnzbd",
+    "port": 8080,
+    "preserve_path_prefix": true,
+    "published_port": 8085
+  },
+  {
+    "category": "automation",
+    "desc": "TV automation",
+    "host": "sonarr",
+    "id": "sonarr",
+    "name": "Sonarr",
+    "port": 8989,
+    "preserve_path_prefix": true,
+    "published_port": 8989
+  },
+  {
+    "category": "management",
+    "desc": "Analytics",
+    "host": "tautulli",
+    "id": "tautulli",
+    "name": "Tautulli",
+    "port": 8181,
+    "preserve_path_prefix": false,
+    "published_port": 8181
+  },
+  {
+    "category": "infrastructure",
+    "desc": "Reverse proxy (alt)",
+    "host": "traefik",
+    "id": "traefik",
+    "name": "Traefik",
+    "port": 8080,
+    "preserve_path_prefix": false,
+    "published_port": 8080
+  },
+  {
+    "category": "downloads",
+    "desc": "Archive extractor",
+    "host": "unpackerr",
+    "id": "unpackerr",
+    "name": "Unpackerr",
+    "port": 0,
+    "preserve_path_prefix": false,
+    "published_port": 0
+  },
+  {
+    "category": "infrastructure",
+    "desc": "Orchestration API and dashboard",
+    "health_path": "/healthz",
+    "host": "media-stack-controller",
+    "id": "controller",
+    "name": "Media Stack Controller",
+    "port": 9100,
+    "published_port": 9100
+  }
+]

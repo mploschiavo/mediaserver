@@ -1,0 +1,10 @@
+{
+  "brand": {
+    "homepage_url": "https://iomio.io",
+    "icon": "/api/static/iomio-icon.svg",
+    "illustration": "/api/static/iomio-orbit.svg",
+    "name": "iomio.io",
+    "tagline": "Media Stack Controller",
+    "wordmark": "/api/static/iomio-wordmark.svg"
+  }
+}

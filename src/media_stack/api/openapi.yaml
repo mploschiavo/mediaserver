@@ -389,7 +389,11 @@ components:
           items:
             type: string
         current_action:
-          $ref: '#/components/schemas/ActionRecord'
+          # null when no action is running. JSON Schema 2020-12
+          # doesn't combine $ref + nullable directly — use oneOf.
+          oneOf:
+            - $ref: '#/components/schemas/ActionRecord'
+            - type: 'null'
         action_history:
           type: array
           items:
@@ -462,6 +466,15 @@ components:
                 enum: [ok, unauthorized, error, no_key, n/a]
               error:
                 type: string
+              # Login-probe outcome. health_service.py runs the
+              # per-service login flow on every health refresh
+              # (when configured) and stamps the result here. Not
+              # all services have a login probe — `n/a` covers
+              # those. Strict-validator clients failed against the
+              # live response until this was declared.
+              login:
+                type: string
+                enum: [ok, error, n/a]
         healthy:
           type: integer
           example: 12
@@ -964,6 +977,32 @@ paths:
               schema:
                 type: object
                 properties:
+                  history:
+                    type: array
+                    description: |
+                      Raw per-tick samples, newest last. The
+                      ops-detail HealthHistorySparkline plots
+                      ok/total over time from this array. Older
+                      revisions emitted only the SLA aggregate
+                      below, which made the sparkline render
+                      "no history yet" even when entries was
+                      non-zero.
+                    items:
+                      type: object
+                      properties:
+                        ts:
+                          type: number
+                          description: Unix epoch seconds.
+                        services:
+                          type: object
+                          additionalProperties:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                              ms:
+                                type: number
+                                nullable: true
                   sla:
                     type: object
                     additionalProperties:
@@ -1858,6 +1897,26 @@ paths:
                               type: number
                       error:
                         type: string
+                  # NZBGet client — same shape as sabnzbd. Emitted
+                  # whenever the deploy includes the nzbget service.
+                  # The dashboard's DownloadsCard fans out across
+                  # qbittorrent, sabnzbd, AND nzbget; missing this
+                  # property left the column empty.
+                  nzbget:
+                    type: object
+                    properties:
+                      active:
+                        type: integer
+                      speed:
+                        type: string
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      error:
+                        type: string
+                    additionalProperties: true
               example:
                 qbittorrent:
                   active: 3
@@ -2119,8 +2178,13 @@ paths:
                             type: integer
                           name:
                             type: string
+                          # `enabled` is null in arr APIs when the list
+                          # exists but the operator hasn't toggled it
+                          # either way (factory default). UI maps null
+                          # → "indeterminate" tri-state checkbox.
                           enabled:
                             type: boolean
+                            nullable: true
                           listType:
                             type: string
               example:
@@ -2200,11 +2264,16 @@ paths:
                   source:
                     type: string
                     description: |
-                      Where `configured` came from — `defaults` (built-in
-                      profile), `profile` (operator-edited), or `persisted`
-                      (POST overrides).
-                    enum: [defaults, profile, persisted]
-                    example: defaults
+                      Where the dashboard should consider authoritative.
+                      ``live`` when Jellyfin returned libraries (the
+                      common steady state — UI's
+                      LibraryDataSourceBanner stays hidden); otherwise
+                      passthrough of the configured-libraries source:
+                      ``defaults`` (built-in profile), ``profile``
+                      (operator-edited), or ``persisted`` (POST
+                      overrides).
+                    enum: [live, defaults, profile, persisted]
+                    example: live
                   media_server:
                     type: string
                     description: Which media server this library set targets.
@@ -2361,21 +2430,42 @@ paths:
                 properties:
                   keys:
                     type: object
-                    description: Map of service ID to API key
+                    description: |
+                      Map of service id → discovered-key envelope.
+                      Each entry hides the raw secret behind a
+                      ``fingerprint`` (first 4 + last 4 chars), with
+                      ``has_key`` for presence and ``source`` for the
+                      origin (env / config-file / discovered).
+                      Earlier ``additionalProperties: string`` was a
+                      v0.x shape; the live response stopped emitting
+                      raw strings to avoid leaking keys into logs.
                     additionalProperties:
-                      type: string
+                      type: object
+                      properties:
+                        fingerprint:
+                          type: string
+                          description: Truncated visual hint (e.g. "7e8a…2c24"). Never the full key.
+                          example: "7e8a…2c24"
+                        has_key:
+                          type: boolean
+                        source:
+                          type: string
+                          enum: [env, config-file, discovered, none]
+                      additionalProperties: true
                     example:
-                      sonarr: "abc123def456"
-                      radarr: "789ghi012jkl"
+                      sonarr: { fingerprint: "abcd…ef01", has_key: true, source: discovered }
+                      radarr: { fingerprint: "f7d9…f611", has_key: true, source: discovered }
                   admin:
                     type: object
                     properties:
                       username:
                         type: string
                         example: admin
-                      password:
-                        type: string
-                        example: media-stack
+                      # `password_set: bool` replaces the raw `password`
+                      # field on the live shape. Same redaction
+                      # rationale — never emit the secret.
+                      password_set:
+                        type: boolean
                   count:
                     type: integer
                     description: Number of keys discovered
@@ -2496,6 +2586,12 @@ paths:
                     type: number
                   would_trigger:
                     type: boolean
+                  # Human-readable summary the dashboard renders
+                  # under the candidates table ("would clean N
+                  # candidates totalling X GB"). Always present —
+                  # even when there are no candidates.
+                  message:
+                    type: string
               example:
                 candidates:
                   - name: "Old.Torrent.Name"
@@ -3134,6 +3230,21 @@ paths:
                           type: string
                         memory:
                           type: string
+                  # Aggregate pod_metrics + per-namespace counters
+                  # rolled up across the cluster. Surfaces in the
+                  # InfraDetail "cluster summary" tile.
+                  totals:
+                    type: object
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                      pods:
+                        type: integer
+                      running:
+                        type: integer
+                    additionalProperties: true
               example:
                 namespaces:
                   - namespace: media-stack
@@ -3188,6 +3299,12 @@ paths:
                   total:
                     type: integer
                   pinned:
+                    type: integer
+                  # Count of running images whose ``image_created``
+                  # is older than the staleness threshold the
+                  # controller flags. Surfaces in the OpsDetail
+                  # ImageUpdatesCard as "N stale".
+                  stale:
                     type: integer
               example:
                 images:
@@ -3442,6 +3559,14 @@ paths:
                     type: string
                   total_changes:
                     type: integer
+                  # On error paths (missing snapshot, parse failure)
+                  # the handler returns 200 with ``{error: msg}``
+                  # rather than a 4xx — the dashboard renders the
+                  # message in-card. Documenting this keeps strict-
+                  # mode contract validation honest. Future cleanup:
+                  # have the handler 4xx instead and remove this.
+                  error:
+                    type: string
               example:
                 diffs:
                   - file: sonarr/config.xml
@@ -3724,6 +3849,16 @@ paths:
                     type: string
                   error:
                     type: string
+                  # List of profile-section keys that have been
+                  # migrated out of the legacy ``profile.yaml`` to
+                  # ``/srv-config/app-config/*.yaml``. Empty array
+                  # when nothing has been migrated yet. The profile
+                  # editor surfaces this so operators don't try to
+                  # edit migrated sections in the legacy file.
+                  moved_to_app_config:
+                    type: array
+                    items:
+                      type: string
     post:
       operationId: saveProfile
       tags: [Config]
@@ -3953,6 +4088,22 @@ paths:
                   api_keys_masked:
                     type: object
                     additionalProperties:
+                      type: string
+                  # Raw discovered keys (controller-internal — only
+                  # makes sense in a backup envelope where the
+                  # operator has already proven they hold admin
+                  # creds). Live response always includes both maps.
+                  api_keys:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  # Resolved on-disk paths the controller consulted
+                  # while assembling the backup. Useful when the
+                  # backup is restored on a host with different
+                  # mount layout — operator can spot stale paths.
+                  valid_config_paths:
+                    type: array
+                    items:
                       type: string
           headers:
             Content-Disposition:
@@ -4719,6 +4870,11 @@ paths:
       operationId: getAuthModes
       tags: [Auth]
       summary: Supported auth modes
+      description: |
+        Catalog of auth modes the controller supports. Each entry
+        carries enough metadata for the dashboard to render mode-
+        chooser tiles (display name, description, controller-side
+        auth strategy, gateway-auth boolean, provider service id).
       responses:
         "200":
           description: Mode list
@@ -4730,7 +4886,27 @@ paths:
                   modes:
                     type: array
                     items:
-                      type: string
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          description: Stable mode id (none | basic | authelia | authentik).
+                          example: authelia
+                        display_name:
+                          type: string
+                          example: Authelia (SSO)
+                        description:
+                          type: string
+                        controller_auth:
+                          type: string
+                          enum: [none, basic, forwarded]
+                        gateway_auth:
+                          type: boolean
+                        provider_service:
+                          type: string
+                          description: Service id of the auth provider, or empty when in-process.
+                          example: authelia
+                      additionalProperties: true
 
   /api/auth/oidc-providers:
     get:
@@ -4782,6 +4958,11 @@ paths:
       operationId: getServiceAuthPolicies
       tags: [Auth]
       summary: Per-service auth policies
+      description: |
+        Resolved auth policy for every service the controller knows
+        about. Each entry includes its category, policy verdict
+        (`public` | `protected` | `native`), service id+name, and
+        the source of the policy (`contract` | `override`).
       responses:
         "200":
           description: Service policies
@@ -4791,8 +4972,26 @@ paths:
                 type: object
                 properties:
                   services:
-                    type: object
-                    additionalProperties: true
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        service_id:
+                          type: string
+                          example: sonarr
+                        service_name:
+                          type: string
+                          example: Sonarr
+                        category:
+                          type: string
+                          example: automation
+                        policy:
+                          type: string
+                          enum: [public, protected, native]
+                        source:
+                          type: string
+                          enum: [contract, override]
+                      additionalProperties: true
 
   # =========================================================================
   # Me (self-service)
@@ -6737,6 +6936,52 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+  /api/ops/health:
+    get:
+      operationId: getOpsHealth
+      tags: [Health]
+      summary: Aggregated runtime stats for the /ops dashboard tile
+      description: |
+        Cheap aggregate intended for the operator's at-a-glance ops
+        tile. All four fields come from cached / already-running
+        sources (process clock, container set, DiskService, the
+        on-disk job-history journal) — no extra HTTP probes are
+        kicked off when this endpoint is hit, even on a busy refresh
+        cadence. Replaces the UI-side `Promise.resolve` stub that
+        produced the "12/31/1969" bootstrap timestamp.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/ops/health | jq .
+      responses:
+        "200":
+          description: Runtime stats snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uptime_seconds:
+                    type: integer
+                    description: Seconds since the controller process started. Resets on pod restart.
+                  containers:
+                    type: integer
+                    description: Live media-stack container/pod count.
+                  disk_used_pct:
+                    type: number
+                    description: Highest used-percent across reported volumes.
+                  last_bootstrap_at:
+                    type: string
+                    description: |
+                      ISO timestamp of the most recent bootstrap-flavored
+                      job-history entry. Empty string when the journal
+                      has no bootstrap run (fresh deploy).
+              example:
+                uptime_seconds: 7842
+                containers: 18
+                disk_used_pct: 64.2
+                last_bootstrap_at: "2026-04-25T15:43:20+00:00"
   /api/credentials:
     get:
       operationId: getCredentialsReport
@@ -6790,10 +7035,17 @@ paths:
               schema:
                 type: object
                 properties:
+                  # Live shape is a service-id -> failure-detail map.
+                  # ``{}`` is the steady state when nothing is failing
+                  # (count: 0). Earlier `array of string` declaration
+                  # never matched the live response.
                   failed_services:
-                    type: array
-                    items:
-                      type: string
+                    type: object
+                    additionalProperties:
+                      oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
                   count:
                     type: integer
 
@@ -7850,12 +8102,42 @@ paths:
                           example: qbittorrent
                       additionalProperties: true
                   tree:
-                    type: object
+                    # Live shape (verified 2026-04-25): array of recursive
+                    # JobTreeNode objects. The previous `type: object`
+                    # declaration was a v1.0.185-era artifact — the
+                    # v1.0.186 fix changed the handler to emit an array
+                    # but the schema was never updated. Strict OpenAPI
+                    # validators (e.g. spectral, openapi-typescript with
+                    # --strict) reject the live response against the
+                    # current spec.
+                    type: array
                     description: |
-                      Phase-keyed dependency graph. Each phase value is
-                      a job-id-keyed map of dependency lists, suitable
-                      for rendering as a collapsible tree.
-                    additionalProperties: true
+                      Recursive dependency tree of jobs. Each node is
+                      ``{name, requires, sub_jobs}`` where ``sub_jobs``
+                      is itself an array of nodes. Suitable for
+                      rendering as a collapsible tree in the UI.
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: bootstrap
+                        requires:
+                          type: array
+                          items:
+                            type: string
+                          example: []
+                        sub_jobs:
+                          type: array
+                          # Recursive — each sub_jobs entry has the same
+                          # shape. OpenAPI 3.0 doesn't support strict
+                          # recursive refs cleanly, so we declare items
+                          # as additionalProperties:true and rely on
+                          # consumers to walk recursively.
+                          items:
+                            type: object
+                            additionalProperties: true
+                      additionalProperties: true
                   count:
                     type: integer
                     description: Cardinality of `jobs[]`.
@@ -7912,7 +8194,14 @@ paths:
                             The UI persona-questions agent treats
                             anything matching ``^cron(:|$)`` as a
                             cron run for badge selection.
-                          pattern: '^(cron|manual|auto-heal|scheduler|unknown)(:[A-Za-z0-9_.-]+)?$'
+                          # Permissive head set with optional
+                          # colon-separated suffixes — auto-heal in
+                          # particular nests guardrail-rule ids
+                          # (``auto-heal:guardrail:job:runtime_cap``)
+                          # that the earlier two-segment pattern
+                          # rejected. Validator now accepts a known
+                          # head followed by any colon-delimited tail.
+                          pattern: '^(cron|manual|auto-heal|scheduler|unknown)(:[A-Za-z0-9_.:-]+)?$'
                           x-source-heads: [cron, manual, auto-heal, scheduler, unknown]
                           example: cron:reconcile
                         actor:

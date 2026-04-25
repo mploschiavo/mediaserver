@@ -181,12 +181,23 @@ export function IptvCountriesCard() {
                 <option value="" disabled>
                   Select a country…
                 </option>
-                {filtered.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {countryLabel(c)} ({c.code})
-                    {c.m3u_url ? "" : " — browse-only"}
-                  </option>
-                ))}
+                {filtered.map((c) => {
+                  // A country is APPLY-CAPABLE when ANY of its bundled
+                  // URLs is present. The earlier check read only
+                  // `m3u_url` (a legacy alias the live API never
+                  // emits) so every country in the list rendered as
+                  // "browse-only" — including the dozens that ship
+                  // a real `tuner_url` and/or `guide_url`. Mirror the
+                  // canApply predicate above so the dropdown label
+                  // and the apply button stay in sync.
+                  const hasAnyUrl = !!(c.tuner_url || c.guide_url || c.m3u_url);
+                  return (
+                    <option key={c.code} value={c.code}>
+                      {countryLabel(c)} ({c.code})
+                      {hasAnyUrl ? "" : " — browse-only"}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div className="flex items-center justify-end">

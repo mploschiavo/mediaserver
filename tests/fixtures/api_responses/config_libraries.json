@@ -1,0 +1,34 @@
+{
+  "libraries": [
+    {
+      "collection_type": "movies",
+      "name": "Movies",
+      "paths": [
+        "/media/movies"
+      ]
+    },
+    {
+      "collection_type": "tvshows",
+      "name": "TV Shows",
+      "paths": [
+        "/media/tv"
+      ]
+    },
+    {
+      "collection_type": "music",
+      "name": "Music",
+      "paths": [
+        "/media/music"
+      ]
+    },
+    {
+      "collection_type": "books",
+      "name": "Books",
+      "paths": [
+        "/media/books"
+      ]
+    }
+  ],
+  "media_server": "jellyfin",
+  "source": "defaults"
+}

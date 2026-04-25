@@ -1,0 +1,54 @@
+{
+  "admin": {
+    "password_set": true,
+    "username": "admin"
+  },
+  "count": 9,
+  "keys": {
+    "bazarr": {
+      "fingerprint": "6661\u20269e61",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "jellyfin": {
+      "fingerprint": "7e8a\u20262c24",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "jellyseerr": {
+      "fingerprint": "lRQB\u2026at0=",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "lidarr": {
+      "fingerprint": "7507\u20263e83",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "prowlarr": {
+      "fingerprint": "0c34\u20263d72",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "radarr": {
+      "fingerprint": "f7d9\u2026f611",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "readarr": {
+      "fingerprint": "cdea\u2026665d",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "sabnzbd": {
+      "fingerprint": "8b52\u202683df",
+      "has_key": true,
+      "source": "discovered"
+    },
+    "sonarr": {
+      "fingerprint": "e140\u2026a8e1",
+      "has_key": true,
+      "source": "discovered"
+    }
+  }
+}

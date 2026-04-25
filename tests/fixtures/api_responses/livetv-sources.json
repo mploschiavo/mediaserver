@@ -1,0 +1,18 @@
+{
+  "guide_url": "https://iptv-epg.org/files/epg-us.xml",
+  "guides": [
+    {
+      "name": "Default",
+      "url": "https://iptv-epg.org/files/epg-us.xml"
+    }
+  ],
+  "load_all_tuners": false,
+  "source": "profile",
+  "tuner_url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+  "tuners": [
+    {
+      "name": "Default",
+      "url": "https://iptv-org.github.io/iptv/countries/us.m3u"
+    }
+  ]
+}

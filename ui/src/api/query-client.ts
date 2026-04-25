@@ -20,8 +20,18 @@ export function createQueryClient(): QueryClient {
         staleTime: 30_000,
         gcTime: 300_000,
         refetchOnWindowFocus: true,
+        // Retry policy:
+        //   * 4xx — never retry. Programming/auth errors don't get
+        //     better with another attempt.
+        //   * 5xx + network errors — retry up to 8 times with the
+        //     default exponential backoff (capped at 30s per attempt).
+        //     Total coverage ≈ 1+2+4+8+16+30+30+30s ≈ 2 minutes —
+        //     enough to ride out a controller pod rollout (typically
+        //     30-60s on this stack) without the user having to hit
+        //     refresh. Earlier policy was 2 retries (~3s) which left
+        //     /me-tab cards stuck on 503 after every restart.
         retry: (failureCount, error) => {
-          if (failureCount >= 2) return false;
+          if (failureCount >= 8) return false;
           if (error instanceof ApiError) return error.status >= 500;
           return true;
         },
