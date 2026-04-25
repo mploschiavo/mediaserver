@@ -65,6 +65,16 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.5",
 ]
+# Documentation site deps — what `pip install -e .[docs]` pulls in.
+# ADR-0001 Phase 15. Driven by mkdocs.yml at the repo root; the
+# `mkdocs build --strict` CI gate fails on missing pages, broken
+# nav refs, or unresolved intra-doc anchors.
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocs-include-markdown-plugin>=6.2",
+    "pymdown-extensions>=10.0",
+]
 # Future: telemetry server may grow its own optional extras.
 
 [project.urls]
@@ -93,7 +103,10 @@ Documentation = "https://github.com/mploschiavo/mediaserver/tree/main/docs"
 # directly: `command: ["media-stack-controller", "--serve"]`.
 media-stack-controller = "media_stack.cli.commands.controller_main:main"
 
-# Bootstrap + install flows.
+# Bootstrap + install flows. Phase 12-D Wave-2 turned
+# `bin/bootstrap-all.sh` and `bin/run-bootstrap-job.sh` into thin
+# `exec media-stack-…` shims around these entries (operator muscle-
+# memory only; the load-bearing thing is the console-script).
 media-stack-install = "media_stack.services.apps.stack.cli.install_main:main"
 media-stack-bootstrap-all = "media_stack.cli.commands.controller_all_main:main"
 media-stack-watch-install = "media_stack.cli.commands.watch_install_main:main"

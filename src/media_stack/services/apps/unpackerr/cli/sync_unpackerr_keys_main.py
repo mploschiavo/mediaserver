@@ -123,7 +123,7 @@ class SyncUnpackerrKeysService:
             print(f"[OK] Restarted deploy/unpackerr in namespace {self.cfg.namespace}.")
         else:
             print("Enable/restart Unpackerr:")
-            print(f"  kubectl -n {self.cfg.namespace} apply -f k8s/unpackerr.yaml")
+            print(f"  kubectl -n {self.cfg.namespace} apply -f k8s/base/apps/unpackerr.yaml")
             print(f"  kubectl -n {self.cfg.namespace} scale deploy/unpackerr --replicas=1")
         return 0
 
