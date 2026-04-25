@@ -2138,8 +2138,8 @@ def _mi_review_params(params: dict):
         if prev is None:
             try:
                 del _MI_REVIEW_TLS.params
-            except AttributeError:
-                pass
+            except AttributeError as exc:
+                log_swallowed(exc)
             _jh.set_review_params(None)
         else:
             _MI_REVIEW_TLS.params = prev

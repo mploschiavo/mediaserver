@@ -1570,7 +1570,7 @@ class AutoDownloadContentReadsProfile(unittest.TestCase):
     def test_controller_runner_consults_profile_for_auto_download(self) -> None:
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[2]
-            / "src" / "media_stack" / "cli" / "commands" / "controller_runner.py"
+            / "src" / "media_stack" / "services" / "jobs" / "controller_runner.py"
         ).read_text(encoding="utf-8")
         # The fallback chain must be present: env wins when set,
         # profile fills in when env is empty/unset.

@@ -59,8 +59,8 @@ def set_review_params(params: dict | None) -> None:
     if params is None:
         try:
             del _REVIEW_TLS.params
-        except AttributeError:
-            pass
+        except AttributeError as exc:
+            log_swallowed(exc)
     else:
         _REVIEW_TLS.params = dict(params)
 

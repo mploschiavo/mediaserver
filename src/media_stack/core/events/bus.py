@@ -54,8 +54,8 @@ def _default_ts() -> str:
         fn = getattr(time_utils, "utcnow_iso", None)
         if callable(fn):
             return str(fn())
-    except Exception:
-        pass
+    except Exception as exc:
+        log_swallowed(exc)
     return datetime.now(timezone.utc).isoformat()
 
 

@@ -123,7 +123,7 @@ class TrustCaWizardStepTests(unittest.TestCase):
     def test_wizard_links_to_cert_download_endpoint(self) -> None:
         idx = self.html.find("function renderWizardSteps")
         self.assertGreater(idx, -1)
-        body = self.html[idx:idx + 6000]
+        body = self.html[idx:idx + 10000]
         self.assertIn(
             "/api/tls/certificate/download", body,
             "Wizard step must link to the download endpoint, not "
@@ -141,7 +141,7 @@ class TrustCaWizardStepTests(unittest.TestCase):
         trust."""
         idx = self.html.find("function renderWizardSteps")
         self.assertGreater(idx, -1)
-        body = self.html[idx:idx + 6000]
+        body = self.html[idx:idx + 10000]
         # The current implementation gates on ``location.protocol``.
         self.assertIn(
             "location.protocol", body,
@@ -156,7 +156,7 @@ class TrustCaWizardStepTests(unittest.TestCase):
         Linux or iOS."""
         idx = self.html.find("function renderWizardSteps")
         self.assertGreater(idx, -1)
-        body = self.html[idx:idx + 6000]
+        body = self.html[idx:idx + 10000]
         for token in ("macOS:", "Windows:", "Linux", "Firefox", "iOS"):
             self.assertIn(token, body,
                           f"Trust-the-CA section is missing the "
@@ -169,7 +169,7 @@ class TrustCaWizardStepTests(unittest.TestCase):
         sneak back in."""
         idx = self.html.find("function renderWizardSteps")
         self.assertGreater(idx, -1)
-        body = self.html[idx:idx + 6000]
+        body = self.html[idx:idx + 10000]
         self.assertNotIn(
             "docker/config/envoy/certs/cert.pem", body,
             "Wizard should link to /api/tls/certificate/download "

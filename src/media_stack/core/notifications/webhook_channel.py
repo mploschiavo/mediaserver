@@ -34,6 +34,7 @@ Result mapping:
 from __future__ import annotations
 
 import ipaddress
+from media_stack.core.logging_utils import log_swallowed
 import json
 import socket
 from typing import Any
@@ -103,8 +104,8 @@ class _SsrfGuard:
         try:
             literal = ipaddress.ip_address(host)
             return self._classify_ip(literal)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            log_swallowed(exc)
         try:
             infos = socket.getaddrinfo(host, None)
         except socket.gaierror:

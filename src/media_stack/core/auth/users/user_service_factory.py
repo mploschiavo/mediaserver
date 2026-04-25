@@ -8,6 +8,7 @@ localized here.
 from __future__ import annotations
 
 import importlib
+from media_stack.core.logging_utils import log_swallowed
 import os
 from pathlib import Path
 from typing import Any
@@ -77,8 +78,8 @@ def _state_path(config_root: Path, filename: str) -> Path:
             # watch its state disappear from under it. The non-dot copy
             # can be garbage-collected later once every pod's on v1.0.169+.
             new_path.write_bytes(legacy_path.read_bytes())
-        except OSError:
-            pass
+        except OSError as exc:
+            log_swallowed(exc)
     return new_path
 
 
