@@ -8,7 +8,7 @@ different two of them, leaving asymmetric coverage that the
 
 This directory is the canonical home for one file per job. The
 shape of every file is identical; the generator at
-`bin/scaffold_job_test.py` produces it.
+`media-stack-scaffold-job-test` produces it.
 
 ## The four scenarios every job must cover
 
@@ -35,7 +35,7 @@ shape of every file is identical; the generator at
 ## Generating a new test
 
 ```bash
-python bin/scaffold_job_test.py <job-name>
+media-stack-scaffold-job-test <job-name>
 ```
 
 The generator emits `tests/jobs/test_<job-name>.py` with one
