@@ -111,7 +111,7 @@ if [ "$WIPE" -eq 1 ]; then
 fi
 
 log "running promise probes"
-exec python3 bin/_probe_promises.py \
+exec media-stack-probe-promises \
   --compose-file "$COMPOSE_FILE" \
   --controller-url "$CONTROLLER_URL" \
   --admin-user "$ADMIN_USER" \

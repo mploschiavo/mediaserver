@@ -50,7 +50,7 @@ bash bin/test.sh
 1. Open a draft PR early if you want directional feedback.
 2. Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md). Fill in the test-plan section with what you actually verified, not what you intend to verify.
 3. CI must pass — unit tests, the meta-ratchet (`tests/unit/test_promises_registry.py`), security harness, and the linter.
-4. If your PR changes a behavior covered by [`contracts/promises.yaml`](contracts/promises.yaml), update the promise. If you add a new OTB guarantee, add a new promise and re-run `python3 bin/render-promises-reference.py`.
+4. If your PR changes a behavior covered by [`contracts/promises.yaml`](contracts/promises.yaml), update the promise. If you add a new OTB guarantee, add a new promise and re-run `media-stack-render-promises`.
 5. Maintainer reviews, may ask for changes, then merges (no force-push to other people's branches).
 
 ## Adding a service

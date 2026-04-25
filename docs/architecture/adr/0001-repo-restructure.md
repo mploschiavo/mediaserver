@@ -108,10 +108,10 @@ The goals, in priority order, are:
 
 ## Other refactoring opportunities (separate ADRs when promoted)
 
-- **Naming consistency** — `bin/_probe_promises.py` (35KB Python in
+- **Naming consistency** — `media-stack-probe-promises` (35KB Python in
   a shell-wrapper directory) should move under
-  `src/media_stack/cli/commands/`; same for `bin/scaffold_job_test.py`
-  and `bin/render-promises-reference.py`.
+  `src/media_stack/cli/commands/`; same for `media-stack-scaffold-job-test`
+  and `media-stack-render-promises`.
 - **Dead code sweep** — `bin/__pycache__`, `tools/__pycache__`, root
   `package.json` placeholders, four virtualenvs at root.
 - **Configuration sprawl** — `config/defaults/` (image-baked
@@ -175,9 +175,9 @@ A. **`[project]` + `[project.scripts]` + `[build-system]` in
    * Verified `pip install -e .` succeeds + binaries on `$PATH`.
 
 B. **Migrate three exiles** from `bin/` to `src/media_stack/cli/commands/`:
-   * `bin/_probe_promises.py` → `src/media_stack/cli/commands/probe_promises.py`
-   * `bin/render-promises-reference.py` → `src/media_stack/cli/commands/render_promises_reference.py`
-   * `bin/scaffold_job_test.py` → `src/media_stack/cli/commands/scaffold_job_test.py`
+   * `media-stack-probe-promises` → `src/media_stack/cli/commands/probe_promises.py`
+   * `media-stack-render-promises` → `src/media_stack/cli/commands/render_promises_reference.py`
+   * `media-stack-scaffold-job-test` → `src/media_stack/cli/commands/scaffold_job_test.py`
    * Update `[project.scripts]` (entries already reserved as comments).
    * Update referrers (e.g. `bin/verify-fresh-install.sh:114`) to call
      the console-script names.
@@ -221,8 +221,8 @@ F. **CI gates.** Add a test that asserts `pip install -e .` succeeds
   difference, accept ~15s delta.
 - Wheels with non-Python data files (`config/defaults/`,
   `contracts/`) need explicit declarations. Mechanical.
-- Operator muscle-memory for `python3 bin/_probe_promises.py`.
-  Mitigation: leave a 2-line shim at `bin/_probe_promises.py` for
+- Operator muscle-memory for `media-stack-probe-promises`.
+  Mitigation: leave a 2-line shim at `media-stack-probe-promises` for
   one release that prints a deprecation note and execs
   `media-stack-probe-promises`. Delete in Phase 13.
 
@@ -350,7 +350,7 @@ mkdocs.yml                  # NEW — drives a deployable doc site
 3. Auto-generated reference:
    - OpenAPI → `docs/reference/api/` (redoc-cli or similar)
    - `contracts/promises.yaml` → `docs/reference/promises.md`
-     (`bin/render-promises-reference.py` already does this — point
+     (`media-stack-render-promises` already does this — point
      at the new path).
    - `--help` of every console-script → `docs/reference/cli/`
 4. ADRs as first-class — directory pattern already established

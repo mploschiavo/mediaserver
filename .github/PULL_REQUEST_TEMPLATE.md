@@ -25,7 +25,7 @@ say which browser + OS. If a fresh-install verification, list `bin/verify-fresh-
 <!--
 Did this change touch a behavior covered by `contracts/promises.yaml`? If so,
 which promise IDs? If you added a new behavior that should be guaranteed OTB,
-add a new promise + run `python3 bin/render-promises-reference.py`.
+add a new promise + run `media-stack-render-promises`.
 -->
 
 ## Breaking changes
