@@ -6,9 +6,9 @@
 # and has an SBOM attached. Fails non-zero if EITHER check fails.
 #
 # Usage:
-#   IMAGE=... bin/verify-image.sh
-#   IMAGE=... EXPECTED_IDENTITY=user@example.com bin/verify-image.sh
-#   IMAGE=... COSIGN_PUB=./cosign.pub bin/verify-image.sh   # keyful
+#   IMAGE=... bin/release/verify-image.sh
+#   IMAGE=... EXPECTED_IDENTITY=user@example.com bin/release/verify-image.sh
+#   IMAGE=... COSIGN_PUB=./cosign.pub bin/release/verify-image.sh   # keyful
 #
 # Exit codes:
 #   0  signature + (if present) SBOM attestation valid
@@ -55,5 +55,5 @@ if cosign verify-attestation --type spdxjson \
     "$IMAGE" >/dev/null 2>&1; then
   echo "[OK] SBOM attestation present and valid"
 else
-  echo "[WARN] No SBOM attestation (or invalid). Consider running bin/sign-image.sh --with-sbom"
+  echo "[WARN] No SBOM attestation (or invalid). Consider running bin/release/sign-image.sh --with-sbom"
 fi

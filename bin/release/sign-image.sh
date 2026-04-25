@@ -9,13 +9,13 @@
 #      private key file (cosign.key) + COSIGN_PASSWORD.
 #
 # Usage:
-#   IMAGE=... bin/sign-image.sh                      # sign image only
-#   IMAGE=... bin/sign-image.sh --with-sbom          # sign + attest SBOM
+#   IMAGE=... bin/release/sign-image.sh              # sign image only
+#   IMAGE=... bin/release/sign-image.sh --with-sbom  # sign + attest SBOM
 #
 # Requires: cosign (https://docs.sigstore.dev/cosign/installation/).
 set -Eeuo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}"
 WITH_SBOM=0
 for arg in "$@"; do
@@ -62,7 +62,7 @@ if [[ "$WITH_SBOM" == "1" ]]; then
   SBOM_PATH="${ROOT_DIR}/artifacts/sbom/${SAFE_NAME}.spdx.json"
   if [[ ! -f "$SBOM_PATH" ]]; then
     echo "[INFO] SBOM not found at $SBOM_PATH — generating now"
-    "$ROOT_DIR/bin/generate-sbom.sh" "$IMAGE"
+    "$ROOT_DIR/bin/release/generate-sbom.sh" "$IMAGE"
   fi
   echo "[INFO] Attesting SBOM → $IMAGE"
   if [[ "$MODE" == "keyful" ]]; then

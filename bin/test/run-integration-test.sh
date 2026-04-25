@@ -2,18 +2,18 @@
 # Integration test: docker compose up → wait for bootstrap → run Playwright.
 #
 # Usage:
-#   bash bin/run-integration-test.sh
-#   BOOTSTRAP_PROFILE_FILE=my-profile.yaml bash bin/run-integration-test.sh
+#   bash bin/test/run-integration-test.sh
+#   BOOTSTRAP_PROFILE_FILE=my-profile.yaml bash bin/test/run-integration-test.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_DIR="$REPO_ROOT/docker"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+COMPOSE_DIR="$REPO_ROOT/deploy/compose"
 PLAYWRIGHT_DIR="$REPO_ROOT/tests/browser"
 
 # Defaults — override via env vars.
-: "${BOOTSTRAP_PROFILE_FILE:=$REPO_ROOT/examples/bootstrap-profiles/media-compose-standard.yaml}"
+: "${BOOTSTRAP_PROFILE_FILE:=$REPO_ROOT/deploy/examples/bootstrap-profiles/media-compose-standard.yaml}"
 : "${STACK_COMPOSE_EDGE_PORT:=18080}"
 : "${STACK_ADMIN_USERNAME:=admin}"
 : "${STACK_ADMIN_PASSWORD:=media-dev}"
@@ -24,7 +24,7 @@ echo "[test] Edge port: $STACK_COMPOSE_EDGE_PORT"
 
 # Step 1: Build controller image.
 echo "[test] Building controller image..."
-PUSH_IMAGE=0 bash "$REPO_ROOT/bin/build-controller-image.sh"
+PUSH_IMAGE=0 bash "$REPO_ROOT/bin/build/build-controller-image.sh"
 
 # Step 2: Start the stack.
 echo "[test] Starting compose stack..."

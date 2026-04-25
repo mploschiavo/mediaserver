@@ -4,13 +4,13 @@ set -euo pipefail
 # Media Stack Controller — Release Script
 #
 # Usage:
-#   bash bin/release.sh                  # build + push current VERSION
-#   bash bin/release.sh 1.2.0            # set version, build, push
-#   bash bin/release.sh --dry-run        # show what would happen
-#   bash bin/release.sh --build-only     # build locally, don't push
+#   bash bin/release/release.sh                  # build + push current VERSION
+#   bash bin/release/release.sh 1.2.0            # set version, build, push
+#   bash bin/release/release.sh --dry-run        # show what would happen
+#   bash bin/release/release.sh --build-only     # build locally, don't push
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Registry config
 REGISTRY="${REGISTRY:-harbor.iomio.io}"
@@ -27,7 +27,7 @@ for arg in "$@"; do
     --dry-run)    DRY_RUN=true ;;
     --build-only) BUILD_ONLY=true ;;
     -h|--help)
-      echo "Usage: bash bin/release.sh [VERSION] [--dry-run] [--build-only]"
+      echo "Usage: bash bin/release/release.sh [VERSION] [--dry-run] [--build-only]"
       echo ""
       echo "  VERSION       Set version (e.g. 1.2.0). Default: read from VERSION file."
       echo "  --dry-run     Show what would happen without executing."
@@ -106,7 +106,7 @@ if $DRY_RUN; then
   echo "  3. docker tag + push         -> ${PROD_REGISTRY}, ${PROD_REGISTRY_LATEST}"
   echo "  4. docker tag + push         -> ${DEV_REGISTRY}, ${DEV_REGISTRY_LATEST}"
   echo "  5. git tag v${VERSION}"
-  echo "  6. Update dist/ YAMLs with pinned image tag"
+  echo "  6. Update deploy/dist/ YAMLs with pinned image tag"
   exit 0
 fi
 
@@ -119,7 +119,7 @@ docker build \
   --build-arg VERSION="$VERSION" \
   --build-arg GIT_SHA="$GIT_SHA_FULL" \
   --build-arg BUILD_DATE="$BUILD_DATE" \
-  -f docker/controller.Dockerfile \
+  -f deploy/compose/controller.Dockerfile \
   -t "$PROD_LOCAL" \
   -t "$PROD_LATEST" \
   .
@@ -131,7 +131,7 @@ docker build \
   --build-arg VERSION="$VERSION" \
   --build-arg GIT_SHA="$GIT_SHA_FULL" \
   --build-arg BUILD_DATE="$BUILD_DATE" \
-  -f docker/controller.dev.Dockerfile \
+  -f deploy/compose/controller.dev.Dockerfile \
   -t "$DEV_LOCAL" \
   -t "$DEV_LATEST" \
   .
@@ -160,29 +160,29 @@ docker push "$PROD_REGISTRY_LATEST"
 docker push "$DEV_REGISTRY"
 docker push "$DEV_REGISTRY_LATEST"
 
-# --- Update dist/ YAMLs ---
+# --- Update deploy/dist/ YAMLs ---
 echo ""
-echo "[5/6] Updating dist/ YAMLs with pinned image tag..."
+echo "[5/6] Updating deploy/dist/ YAMLs with pinned image tag..."
 PINNED_IMAGE="${REGISTRY}/${PROJECT}/${IMAGE_NAME}:v${VERSION}"
 
 # Update docker-compose dist
-if [[ -f dist/docker-compose.yml ]]; then
-  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/docker-compose.yml
-  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/docker-compose.yml
-  echo "  Updated dist/docker-compose.yml"
+if [[ -f deploy/dist/docker-compose.yml ]]; then
+  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" deploy/dist/docker-compose.yml
+  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" deploy/dist/docker-compose.yml
+  echo "  Updated deploy/dist/docker-compose.yml"
 fi
 
 # Update k8s dist
-if [[ -f dist/k8s-deploy.yaml ]]; then
-  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/k8s-deploy.yaml
-  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" dist/k8s-deploy.yaml
-  echo "  Updated dist/k8s-deploy.yaml"
+if [[ -f deploy/dist/k8s-deploy.yaml ]]; then
+  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" deploy/dist/k8s-deploy.yaml
+  sed -i "s|harbor\.iomio\.io/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" deploy/dist/k8s-deploy.yaml
+  echo "  Updated deploy/dist/k8s-deploy.yaml"
 fi
 
 # Update docker-compose.yml (source)
-if [[ -f docker/docker-compose.yml ]]; then
-  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" docker/docker-compose.yml
-  echo "  Updated docker/docker-compose.yml"
+if [[ -f deploy/compose/docker-compose.yml ]]; then
+  sed -i "s|192\.168\.1\.60:30002/library/${IMAGE_NAME}:[^ }]*|${PINNED_IMAGE}|g" deploy/compose/docker-compose.yml
+  echo "  Updated deploy/compose/docker-compose.yml"
 fi
 
 # --- Git tag ---
@@ -206,10 +206,10 @@ echo "    docker pull ${PROD_REGISTRY}"
 echo "    docker pull ${DEV_REGISTRY}"
 echo ""
 echo "  One-liner deploy (Docker Compose):"
-echo "    curl -sL https://raw.githubusercontent.com/mploschiavo/mediaserver/v${VERSION}/dist/docker-compose.yml | docker compose -f - up -d"
+echo "    curl -sL https://raw.githubusercontent.com/mploschiavo/mediaserver/v${VERSION}/deploy/dist/docker-compose.yml | docker compose -f - up -d"
 echo ""
 echo "  One-liner deploy (Kubernetes):"
-echo "    kubectl apply -f https://raw.githubusercontent.com/mploschiavo/mediaserver/v${VERSION}/dist/k8s-deploy.yaml"
+echo "    kubectl apply -f https://raw.githubusercontent.com/mploschiavo/mediaserver/v${VERSION}/deploy/dist/k8s-deploy.yaml"
 echo ""
 echo "  Push git tag:"
 echo "    git push origin v${VERSION}"

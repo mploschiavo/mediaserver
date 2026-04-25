@@ -4,19 +4,51 @@
 
 ```
 bin/
-  install.sh              # Pre-deploy stack setup
-  deploy-stack.sh         # Deploy to K8s
-  bootstrap-all.sh        # Full K8s bootstrap pipeline
-  run-bootstrap-job.sh    # Bootstrap job runner
-  build-controller-image.sh # Build Docker image
-  test.sh                 # Run test suite
-  with-env.sh             # Load env file + run command
-  controller.py           # Controller entrypoint
+  bootstrap-all.sh         # Operator one-liner: full bootstrap pipeline (shim → media-stack-bootstrap-all)
+  run-bootstrap-job.sh     # Operator one-liner: single bootstrap job (shim → media-stack-run-job)
+  reset-admin.sh           # Operator one-liner: reset admin credential
+  with-env.sh              # Operator one-liner: load env file + run command
+  sync-etc-hosts.sh        # Operator one-liner: sync /etc/hosts to running Envoy vhosts
 
-  lib/
-    run-python-cli.sh     # Python CLI resolver (used by all wrappers)
+  release/                 # Release pipeline (versioning, signing, dist regen)
+    release.sh
+    regen-dist.sh
+    sign-image.sh
+    verify-image.sh
+    generate-sbom.sh
 
-  utils/                  # Operational utilities
+  build/                   # Container image builders
+    build-controller-image.sh
+    build-ui-image.sh
+
+  install/                 # Pre-deploy + deploy entry points
+    install.sh
+    deploy-stack.sh
+
+  test/                    # Test runners + verification probes
+    test.sh
+    verify-fresh-install.sh
+    verify-stack.sh
+    deploy-verify.sh
+    fast-first-run.sh
+    microk8s-smoke-test.sh
+    run-api-e2e.sh
+    run-integration-test.sh
+    run-playwright-screenshots.sh
+    run-playwright-smoke.sh
+    verify-flow.sh
+    watch-install.sh
+
+  ops/                     # Operations / docs / hotfix scripts
+    generate-reference-docs.sh
+    lychee.sh
+    hotfix_envoy_ext_authz_headers.py
+    hotfix_envoy_ext_authz_recover.py
+    hotfix_envoy_x_original_url.py
+    recapture-all-fixtures.sh
+    gen-fixture-codegen-validation.py
+
+  utils/                   # Operator utilities
     validate-bootstrap-config.sh
     validate-bootstrap-profile.sh
     backup-stack.sh / restore-stack.sh
@@ -28,7 +60,7 @@ bin/
     prepare-host.sh / fix-media-perms.sh
     render-hosts-example.sh / render-dnsmasq-snippet.sh
 
-  debug/                  # Per-service debugging
+  debug/                   # Per-service debugging
     ensure-qbit-credentials.sh
     ensure-sabnzbd-api-access.sh
     ensure-jellyfin-bootstrap.sh
@@ -41,19 +73,15 @@ bin/
     run-prowlarr-auto-indexers.sh
     capture-k8s-snapshots.sh
 
-  test/                   # Test and verification
-    deploy-verify.sh / verify-flow.sh
-    microk8s-smoke-test.sh
-    run-playwright-smoke.sh / run-playwright-screenshots.sh
-    run-api-e2e.sh / run-integration-test.sh
-    fast-first-run.sh / watch-install.sh
-
-  k8s/                    # K8s-specific
+  k8s/                     # K8s-specific
     microk8s-reconcile.sh
     microk8s-patch-ingress-class.sh
 
-  docs/                   # Documentation
+  docs/                    # Documentation
     render-architecture-diagrams.sh
+
+  lib/                     # Shared shim helpers (LOAD-BEARING)
+    run-python-cli.sh      # Python CLI resolver (used by all wrappers)
 ```
 
 ## Design Rules
@@ -63,6 +91,8 @@ bin/
 - App CLIs: `src/media_stack/services/apps/<app>/cli/*_main.py`
 - The controller calls Python modules directly (not shell scripts)
 - Shell scripts exist for operators to run manually
+- ADR-0001 Phase 13-D groups scripts by concern (release/, build/, install/, test/, ops/)
+  rather than leaving everything flat under bin/
 
 ## Pluggable Runtime Contract
 

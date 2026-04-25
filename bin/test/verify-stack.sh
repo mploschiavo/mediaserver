@@ -22,9 +22,9 @@
 #   2  prerequisite missing (docker, curl)
 #
 # Usage:
-#   bin/verify-stack.sh                          # full check
-#   bin/verify-stack.sh --only 5                 # run only step 5
-#   bin/verify-stack.sh --host apps.other.local  # non-default gateway
+#   bin/test/verify-stack.sh                          # full check
+#   bin/test/verify-stack.sh --only 5                 # run only step 5
+#   bin/test/verify-stack.sh --host apps.other.local  # non-default gateway
 set -Eeuo pipefail
 
 GATEWAY_HOST="apps.media-stack.local"
@@ -188,7 +188,7 @@ echo "=== $passes pass / $fails fail / $skips skip ==="
 if [[ "$fails" -gt 0 ]]; then
   echo
   echo "To fix most issues in one go:"
-  echo "  docker compose -f docker/docker-compose.yml -p media-stack run --rm envoy-config-init"
+  echo "  docker compose -f deploy/compose/docker-compose.yml -p media-stack run --rm envoy-config-init"
   echo "  docker restart envoy"
   echo "  bin/sync-etc-hosts.sh --apply"
   exit 1
