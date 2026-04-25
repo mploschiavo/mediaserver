@@ -40,7 +40,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 _DIST = ROOT / "dist" / "k8s-deploy.yaml"
-_K8S_CONTROLLER = ROOT / "k8s" / "controller.yaml"
+# Phase 5 (ADR-0001) regrouped flat k8s/ manifests under
+# k8s/base/<concern>/. The root kustomization at k8s/ remains
+# the apply entry point and now references files via
+# relative ``base/<concern>/<file>`` paths.
+_K8S_CONTROLLER = ROOT / "k8s" / "base" / "controller" / "controller.yaml"
 _K8S_KUSTOMIZATION = ROOT / "k8s" / "kustomization.yaml"
 _K8S_STANDARD_PROFILE = ROOT / "examples" / "bootstrap-profiles" / "media-k8s-standard.yaml"
 _CORE_CONTRACT = ROOT / "contracts" / "services" / "core.yaml"
@@ -124,7 +128,7 @@ class ProfileVolumeIsRequiredTests(unittest.TestCase):
         cm = vol.get("configMap") or {}
         self.assertNotEqual(
             cm.get("optional"), True,
-            "k8s/controller.yaml controller profile volume must NOT be "
+            "k8s/base/controller/controller.yaml controller profile volume must NOT be "
             "optional (same reason as dist). The kustomization ships "
             "the ConfigMap via configMapGenerator.",
         )

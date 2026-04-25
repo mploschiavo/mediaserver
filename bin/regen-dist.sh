@@ -85,6 +85,11 @@ EOF
     # (v1.0.169 — previously the configMapGenerator was commented out so
     # this wasn't needed; enabling it for clean-deploy reproducibility
     # forced the flag.)
+    #
+    # ADR-0001 Phase 5 (v1.0.195): k8s/ flat manifests regrouped under
+    # k8s/base/<concern>/. The kustomization references them via relative
+    # paths (base/apps/core.yaml, base/edge/envoy.yaml, etc.); the apply
+    # entry point at k8s/ is unchanged.
     kubectl kustomize --load-restrictor LoadRestrictionsNone "${REPO_ROOT}/k8s/"
 } > "${DIST_DIR}/k8s-deploy.yaml"
 

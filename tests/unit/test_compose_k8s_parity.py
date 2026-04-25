@@ -38,10 +38,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 _COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
 _K8S_DIR = ROOT / "k8s"
-_K8S_AUTHELIA = _K8S_DIR / "auth-authelia.yaml"
-_K8S_CONTROLLER = _K8S_DIR / "controller.yaml"
+# Phase 5 (ADR-0001) regrouped k8s/ flat manifests under
+# k8s/base/<concern>/. References use the new paths; the
+# kustomization at k8s/ remains the apply entry point.
+_K8S_AUTHELIA = _K8S_DIR / "base" / "auth" / "auth-authelia.yaml"
+_K8S_CONTROLLER = _K8S_DIR / "base" / "controller" / "controller.yaml"
 _K8S_KUSTOMIZATION = _K8S_DIR / "kustomization.yaml"
-_K8S_SECRETS = _K8S_DIR / "secrets.example.yaml"
+_K8S_SECRETS = _K8S_DIR / "base" / "secrets.example.yaml"
 
 _AUTHELIA_CONFIG_PVC = "media-stack-config-authelia"
 _CONTROLLER_IMAGE = "harbor.iomio.io/library/media-stack-controller"
@@ -56,7 +59,7 @@ def _k8s_authelia_deployment() -> dict:
         if doc.get("kind") == "Deployment" \
                 and doc.get("metadata", {}).get("name") == "authelia":
             return doc
-    raise AssertionError("authelia Deployment not found in k8s/auth-authelia.yaml")
+    raise AssertionError("authelia Deployment not found in k8s/base/auth/auth-authelia.yaml")
 
 
 def _k8s_controller_deployment() -> dict:
@@ -64,7 +67,7 @@ def _k8s_controller_deployment() -> dict:
         if doc.get("kind") == "Deployment" \
                 and doc.get("metadata", {}).get("name") == "media-stack-controller":
             return doc
-    raise AssertionError("controller Deployment not found in k8s/controller.yaml")
+    raise AssertionError("controller Deployment not found in k8s/base/controller/controller.yaml")
 
 
 def _k8s_authelia_configmap() -> dict:
@@ -227,7 +230,7 @@ class ComposeK8sControllerEnvParityTests(unittest.TestCase):
         for name in self._REQUIRED_ENV_VARS:
             self.assertIn(
                 name, k8s_keys,
-                f"{name} missing from k8s/controller.yaml env — "
+                f"{name} missing from k8s/base/controller/controller.yaml env — "
                 "boot hooks that depend on it will silently skip.",
             )
             self.assertIn(
@@ -364,14 +367,20 @@ class K8sKustomizationCoversAllManifestsTests(unittest.TestCase):
     def test_every_manifest_is_referenced(self):
         data = yaml.safe_load(_K8S_KUSTOMIZATION.read_text(encoding="utf-8"))
         resources = set(data.get("resources") or [])
+        # Phase 5 (ADR-0001) regrouped manifests under
+        # k8s/base/<concern>/. The kustomization references them
+        # via relative paths like "base/apps/core.yaml". Compare
+        # against the same form by walking k8s/base/ recursively.
+        base_dir = _K8S_DIR / "base"
         missing: list[str] = []
-        for path in sorted(_K8S_DIR.glob("*.yaml")):
+        for path in sorted(base_dir.rglob("*.yaml")):
             name = path.name
             if name in self._IGNORED:
                 continue
-            if name in resources:
+            rel = str(path.relative_to(_K8S_DIR))
+            if rel in resources:
                 continue
-            missing.append(name)
+            missing.append(rel)
         self.assertFalse(
             missing,
             "k8s manifests not in kustomization.yaml resources:\n  "

@@ -1,15 +1,15 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../namespace.yaml
-  - ../../hardening.yaml
-  - ../../secrets.example.yaml
-  - ../../storage-pvc.yaml
-  - ../../core.yaml
-  - ../../optional.yaml
-  - ../../ui.yaml
-  - ../../ingress-traefik.yaml
-  - ../../scale-policy.yaml
+  - ../../base/namespace.yaml
+  - ../../base/hardening.yaml
+  - ../../base/secrets.example.yaml
+  - ../../base/storage/storage-pvc.yaml
+  - ../../base/apps/core.yaml
+  - ../../base/apps/optional.yaml
+  - ../../base/ui/ui.yaml
+  - ../../base/edge/ingress-traefik.yaml
+  - ../../base/scale-policy.yaml
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
