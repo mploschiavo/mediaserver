@@ -8,6 +8,7 @@ resources:
   - ../../core.yaml
   - ../../optional.yaml
   - ../../auth-authelia.yaml
+  - ../../ui.yaml
   - ../../ingress-traefik.yaml
   - ../../unpackerr.yaml
   - ../../scale-policy.yaml
@@ -15,4 +16,4 @@ resources:
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.169
+    newTag: v1.0.175

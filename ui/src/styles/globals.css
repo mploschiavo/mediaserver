@@ -1,0 +1,262 @@
+@import "tailwindcss";
+
+/* Geist Sans + Geist Mono via Vercel CDN. Self-hosting later if
+   the operator requires it; for now the CDN is the path of least
+   resistance and these files are public-domain MIT. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/vercel/[email protected]/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/vercel/[email protected]/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+}
+
+@theme {
+  /* Color palette — OKLCH for perceptual uniformity. The values
+     here are placeholders that read from the active theme; pin
+     concrete values in the [data-theme="..."] blocks below. */
+  --color-bg: var(--bg);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* shadcn-style aliases so utilities like `bg-card`, `bg-muted`,
+     `border-input`, `ring-ring` resolve without per-component
+     overrides. */
+  --color-card: var(--bg-1);
+  --color-card-fg: var(--fg);
+  --color-popover: var(--bg-2);
+  --color-popover-fg: var(--fg);
+  --color-muted: var(--bg-2);
+  --color-muted-fg: var(--fg-muted);
+  --color-input: var(--border-strong);
+  --color-ring: var(--accent);
+
+  /* Typography */
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* Spacing — 4px grid */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows — multi-layer, chromatic */
+  --shadow-sm: 0 1px 2px 0 oklch(0% 0 0 / 0.05);
+  --shadow-md:
+    0 4px 6px -1px oklch(0% 0 0 / 0.1), 0 2px 4px -2px oklch(0% 0 0 / 0.1);
+  --shadow-lg:
+    0 10px 15px -3px oklch(0% 0 0 / 0.1), 0 4px 6px -4px oklch(0% 0 0 / 0.1);
+  --shadow-xl:
+    0 20px 25px -5px oklch(0% 0 0 / 0.15), 0 8px 10px -6px oklch(0% 0 0 / 0.1);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Dark theme — applied via [data-theme="dark"] on <html>. The
+   palette is OKLCH-based so gradations look perceptually even.
+   Hue stays pinned at 270 (cool slate) across all neutrals so
+   the chromatic axis reads as one family. */
+[data-theme="dark"] {
+  --bg: oklch(14% 0.005 270);
+  --bg-1: oklch(17% 0.005 270);
+  --bg-2: oklch(20% 0.008 270);
+  --bg-3: oklch(24% 0.01 270);
+  --fg: oklch(96% 0.005 270);
+  --fg-muted: oklch(70% 0.01 270);
+  --fg-faint: oklch(50% 0.01 270);
+  --border: oklch(28% 0.01 270);
+  --border-strong: oklch(38% 0.015 270);
+  --accent: oklch(72% 0.18 150);
+  --accent-fg: oklch(15% 0.05 150);
+  --success: oklch(72% 0.18 150);
+  --warning: oklch(80% 0.16 85);
+  --danger: oklch(67% 0.22 20);
+  --info: oklch(68% 0.18 235);
+}
+
+[data-theme="light"] {
+  --bg: oklch(99% 0.002 270);
+  --bg-1: oklch(100% 0 0);
+  --bg-2: oklch(96% 0.005 270);
+  --bg-3: oklch(92% 0.008 270);
+  --fg: oklch(18% 0.01 270);
+  --fg-muted: oklch(40% 0.015 270);
+  --fg-faint: oklch(55% 0.015 270);
+  --border: oklch(90% 0.005 270);
+  --border-strong: oklch(82% 0.008 270);
+  --accent: oklch(58% 0.2 150);
+  --accent-fg: oklch(98% 0.005 150);
+  --success: oklch(58% 0.2 150);
+  --warning: oklch(62% 0.22 85);
+  --danger: oklch(55% 0.25 20);
+  --info: oklch(58% 0.22 235);
+}
+
+/* Default to dark when no [data-theme] is set on <html>. */
+:root:not([data-theme]) {
+  --bg: oklch(14% 0.005 270);
+  --bg-1: oklch(17% 0.005 270);
+  --bg-2: oklch(20% 0.008 270);
+  --bg-3: oklch(24% 0.01 270);
+  --fg: oklch(96% 0.005 270);
+  --fg-muted: oklch(70% 0.01 270);
+  --fg-faint: oklch(50% 0.01 270);
+  --border: oklch(28% 0.01 270);
+  --border-strong: oklch(38% 0.015 270);
+  --accent: oklch(72% 0.18 150);
+  --accent-fg: oklch(15% 0.05 150);
+  --success: oklch(72% 0.18 150);
+  --warning: oklch(80% 0.16 85);
+  --danger: oklch(67% 0.22 20);
+  --info: oklch(68% 0.18 235);
+}
+
+/* Base styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-color: var(--color-border);
+}
+
+html {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss03";
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus ring — visible but not garish. focus-visible only so
+   mouse clicks don't render a ring. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Scrollbars — slim, theme-aware. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 9999px;
+  border: 2px solid var(--color-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fg-faint);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+  color: var(--color-fg);
+}
+
+/* Reduced motion — honor the OS toggle. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Mobile-first polish ---- */
+
+/* Disable iOS gray tap-flash; per-component :active states give
+   intentional feedback. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Honor iPhone notch + Android gesture bar. Components opt into
+   these with var(--safe-area-bottom) etc. */
+:root {
+  --safe-area-top:    env(safe-area-inset-top, 0px);
+  --safe-area-right:  env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left:   env(safe-area-inset-left, 0px);
+}
+
+/* Mobile typography bump: pixel sizes have to clear iOS Safari's
+   16px input-zoom threshold. We do this mobile-first: base size is
+   16px on small screens, 14px from sm+ where 14px reads cleanly on
+   denser displays. Component classes (text-sm, text-base) inherit. */
+html {
+  font-size: 16px;
+}
+@media (min-width: 640px) {
+  html { font-size: 15px; }
+}
+
+/* Smoother momentum on iOS. */
+body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+/* Reduced-motion already honored above; this adds reduce-data
+   for slow networks (no big animations / video autoplay). */
+@media (prefers-reduced-data: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

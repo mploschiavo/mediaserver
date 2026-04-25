@@ -46,6 +46,16 @@ Things that work without any clicking after `up -d`:
 - Envoy gateway with self-signed TLS on `:443`, HTTP→HTTPS redirect on `:80`.
 - 33 OTB promises, each verified by a probe against the live stack — see [reference/promises.md](docs/reference/promises.md).
 
+## Dashboard
+
+The controller dashboard at `:9100` is a React 19 SPA (Vite 6 + Tailwind v4 + shadcn/ui + Tanstack Router/Query/Table + Framer Motion + cmdk + Sonner + Geist Variable). Mobile-first (44px touch-target floor, safe-area insets, bottom nav) with light/dark OKLCH theming via `next-themes`.
+
+Installable as a PWA — service worker is NetworkOnly for `/api/*`, CacheFirst for the Geist CDN, with home-screen shortcuts for Media Integrity, Logs, and Reconcile now. ⌘K opens the in-app command palette; `ConnectionStatus` polls `/api/health`. Auth is unchanged: cookies from Authelia, validated by Envoy `ext_authz`, UI sends `credentials: "same-origin"`.
+
+Quality ratchets enforced in CI: `pnpm size` (250 KB total JS gzip ceiling, currently 240.8 KB), `pnpm check:todos` (snapshot at `.ratchets/todos.json`), `pnpm lint` (flat ESLint locks `no-console` / `no-only-tests` / `no-explicit-any` at 0), `vitest-axe` a11y on AppShell / CommandPalette / UserMenu / MediaIntegrity (blocks serious + critical), a path-contract test that every `/api/*` literal in `src/` exists in the OpenAPI spec, and a manifest contract that every PNG referenced from `dist/manifest.webmanifest` exists at the declared dimensions.
+
+UI image: `harbor.iomio.io/library/media-stack-ui:v1.1.0` (see [CHANGELOG.md](CHANGELOG.md)).
+
 ## Project status
 
 Active. The controller image is published as `harbor.iomio.io/library/media-stack-controller:vX.Y.Z`. Recent changes are in [CHANGELOG.md](CHANGELOG.md).

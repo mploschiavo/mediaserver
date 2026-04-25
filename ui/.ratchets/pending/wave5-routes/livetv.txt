@@ -1,0 +1,6 @@
+ROUTE_FILE: src/routes/livetv.tsx
+ROUTE_NAME: LivetvRoute
+ROUTE_PATH: /livetv
+SIDEBAR_SECTION: Library
+SIDEBAR_LABEL: Live TV
+SIDEBAR_ICON: Tv

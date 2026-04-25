@@ -1,0 +1,17 @@
+{
+  "max": 11,
+  "snapshot_taken": "2026-04-24T00:00:00.000Z",
+  "files_with_todos": [
+    "src/api/endpoints.ts:98 — // TODO(api): real /api/logs/stream endpoint with SSE; for now we",
+    "src/api/hooks.ts:169 — // matching `api.*` call and drop the TODO comment.",
+    "src/api/hooks.ts:174 — // TODO(api): GET /api/library/stats — counts per kind across the stack.",
+    "src/api/hooks.ts:190 — // TODO(api): GET /api/library/recent?window=24h&limit=N",
+    "src/api/hooks.ts:200 — // TODO(api): switch to SSE/EventSource once api.logs is wired server-side.",
+    "src/api/hooks.ts:211 — // TODO(api): GET /api/routing — strategy + per-app health.",
+    "src/api/hooks.ts:227 — // TODO(api): GET /api/webhooks",
+    "src/api/hooks.ts:235 — // TODO(api): GET /api/users — paginated user directory.",
+    "src/api/hooks.ts:244 — // TODO(api): GET /api/ops/health — aggregated runtime stats.",
+    "src/api/hooks.ts:258 — // TODO(api): GET /api/me — sessions, tokens, MFA state.",
+    "src/routes/webhooks.tsx:148 — // TODO(api): POST /api/webhooks { url, event_type }"
+  ]
+}

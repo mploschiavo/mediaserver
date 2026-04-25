@@ -75,18 +75,26 @@ class UserManagementApiTests(unittest.TestCase):
         fake_service.set_role.assert_called_once()
 
     def test_post_users_reset_password(self):
+        # The HTTP response MUST NOT echo the plaintext. It returns a
+        # single-use ``password_ticket`` that a follow-up GET exchanges
+        # for the plaintext; see core.auth.users.password_ticket_store.
         from media_stack.api.handlers_post import PostRequestHandler
         svc = PostRequestHandler()
         h, captured = _post_handler("/api/users/u1/reset-password", {})
         fake_service = MagicMock()
-        fake_service.reset_password.return_value = {"generated_password": "newp"}
+        fake_service.reset_password.return_value = {
+            "user_id": "u1", "generated_password": "newp",
+        }
         with patch(
             "media_stack.api.handlers_post.build_default_service",
             return_value=fake_service,
         ):
             svc.handle(h)
         self.assertEqual(captured["status"], 200)
-        self.assertEqual(captured["payload"]["generated_password"], "newp")
+        self.assertNotIn("generated_password", captured["payload"])
+        self.assertIn("password_ticket", captured["payload"])
+        self.assertTrue(captured["payload"]["password_ticket"])
+        self.assertIn("ticket_expires_at", captured["payload"])
 
     def test_post_users_delete_via_action_path(self):
         from media_stack.api.handlers_post import PostRequestHandler
@@ -100,7 +108,14 @@ class UserManagementApiTests(unittest.TestCase):
         ):
             svc.handle(h)
         self.assertEqual(captured["status"], 200)
-        fake_service.delete_user.assert_called_once_with("u1", actor="controller-ui")
+        # Handler builds an Actor from the authenticated identity
+        # (see core/auth/authz.py). Assert on its username rather
+        # than object identity — the Actor value is opaque to tests.
+        fake_service.delete_user.assert_called_once()
+        call_kwargs = fake_service.delete_user.call_args.kwargs
+        self.assertEqual(fake_service.delete_user.call_args.args, ("u1",))
+        self.assertEqual(call_kwargs["actor"].username, "controller-ui")
+        self.assertTrue(call_kwargs["actor"].is_admin)
 
     def test_post_users_unknown_action_400(self):
         from media_stack.api.handlers_post import PostRequestHandler

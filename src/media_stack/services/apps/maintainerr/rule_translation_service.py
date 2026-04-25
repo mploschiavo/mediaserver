@@ -143,95 +143,9 @@ class MaintainerrRuleTranslationService:
                 entry["operator"] = 0
             entries.append(entry)
 
-        if conditions.get("favorited_by_any_user") is True:
-            fav_prop = 39 if data_type == "movie" else 41
-            append(
-                self._jellyfin_rule_entry(
-                    first_prop_id=fav_prop,
-                    action=16,
-                    section=0,
-                    operator=None,
-                    custom_rule_type_id=0,
-                    custom_value="0",
-                )
-            )
-
-        if "watched" in conditions:
-            watched = bool(conditions.get("watched"))
-            watched_prop = 5 if data_type == "movie" else 17
-            append(
-                self._jellyfin_rule_entry(
-                    first_prop_id=watched_prop,
-                    action=0 if watched else 2,
-                    section=0,
-                    operator=None,
-                    custom_rule_type_id=0,
-                    custom_value="0",
-                )
-            )
-
-        if "added_days_ago_gte" in conditions:
-            days = self._as_int(conditions.get("added_days_ago_gte"), 0)
-            append(
-                self._jellyfin_rule_entry(
-                    first_prop_id=0,
-                    action=5,
-                    section=0,
-                    operator=None,
-                    custom_rule_type_id=1,
-                    custom_value=self._iso_days_ago(days),
-                )
-            )
-
-        if "not_watched_for_days" in conditions:
-            days = self._as_int(conditions.get("not_watched_for_days"), 0)
-            last_watch_prop = 7 if data_type == "movie" else 13
-            append(
-                self._jellyfin_rule_entry(
-                    first_prop_id=last_watch_prop,
-                    action=5,
-                    section=0,
-                    operator=None,
-                    custom_rule_type_id=1,
-                    custom_value=self._iso_days_ago(days),
-                )
-            )
-
-        if "last_watched_days_ago_gte" in conditions:
-            days = self._as_int(conditions.get("last_watched_days_ago_gte"), 0)
-            last_watch_prop = 7 if data_type == "movie" else 13
-            append(
-                self._jellyfin_rule_entry(
-                    first_prop_id=last_watch_prop,
-                    action=5,
-                    section=0,
-                    operator=None,
-                    custom_rule_type_id=1,
-                    custom_value=self._iso_days_ago(days),
-                )
-            )
-
-        if self._token(conditions.get("requested_via")) == "jellyseerr":
-            entry: dict[str, Any] = {
-                "firstVal": [3, 6],
-                "operator": 0 if entries else None,
-                "action": 2,
-                "customVal": {"ruleTypeId": 3, "value": "1"},
-                "section": 0,
-            }
-            entries.append(entry)
-
-        if "requested_days_ago_gte" in conditions:
-            days = self._as_int(conditions.get("requested_days_ago_gte"), 0)
-            entry = {
-                "firstVal": [3, 1],
-                "operator": 0 if entries else None,
-                "action": 5,
-                "customVal": {"ruleTypeId": 1, "value": self._iso_days_ago(days)},
-                "section": 0,
-            }
-            entries.append(entry)
-
+        self._append_favorite_and_watch_conditions(conditions, data_type, append)
+        self._append_time_window_conditions(conditions, data_type, append)
+        self._append_jellyseerr_conditions(conditions, entries)
         if "community_rating_gte" in conditions:
             rating_prop = 34 if data_type == "movie" else 38
             rating_val = self._as_float(conditions.get("community_rating_gte"), 0.0)
@@ -247,6 +161,123 @@ class MaintainerrRuleTranslationService:
             )
 
         return entries
+
+    def _append_favorite_and_watch_conditions(
+        self,
+        conditions: dict[str, Any],
+        data_type: str,
+        append: Callable[[dict[str, Any]], None],
+    ) -> None:
+        """Emit rule entries for ``favorited_by_any_user`` and ``watched``.
+
+        Grouped together because both conditions share the same rule
+        shape (single-property Jellyfin section=0 entry) — splitting
+        them from the rest of the builder keeps the caller list flat.
+        """
+        if conditions.get("favorited_by_any_user") is True:
+            fav_prop = 39 if data_type == "movie" else 41
+            append(
+                self._jellyfin_rule_entry(
+                    first_prop_id=fav_prop,
+                    action=16,
+                    section=0,
+                    operator=None,
+                    custom_rule_type_id=0,
+                    custom_value="0",
+                )
+            )
+        if "watched" in conditions:
+            watched = bool(conditions.get("watched"))
+            watched_prop = 5 if data_type == "movie" else 17
+            append(
+                self._jellyfin_rule_entry(
+                    first_prop_id=watched_prop,
+                    action=0 if watched else 2,
+                    section=0,
+                    operator=None,
+                    custom_rule_type_id=0,
+                    custom_value="0",
+                )
+            )
+
+    def _append_time_window_conditions(
+        self,
+        conditions: dict[str, Any],
+        data_type: str,
+        append: Callable[[dict[str, Any]], None],
+    ) -> None:
+        """Emit rule entries for the three days-ago / not-watched-since windows.
+
+        These share a ruleTypeId=1 (ISO-date) custom value, so they live
+        together to surface the shared translation choice.
+        """
+        if "added_days_ago_gte" in conditions:
+            days = self._as_int(conditions.get("added_days_ago_gte"), 0)
+            append(
+                self._jellyfin_rule_entry(
+                    first_prop_id=0,
+                    action=5,
+                    section=0,
+                    operator=None,
+                    custom_rule_type_id=1,
+                    custom_value=self._iso_days_ago(days),
+                )
+            )
+        if "not_watched_for_days" in conditions:
+            days = self._as_int(conditions.get("not_watched_for_days"), 0)
+            last_watch_prop = 7 if data_type == "movie" else 13
+            append(
+                self._jellyfin_rule_entry(
+                    first_prop_id=last_watch_prop,
+                    action=5,
+                    section=0,
+                    operator=None,
+                    custom_rule_type_id=1,
+                    custom_value=self._iso_days_ago(days),
+                )
+            )
+        if "last_watched_days_ago_gte" in conditions:
+            days = self._as_int(conditions.get("last_watched_days_ago_gte"), 0)
+            last_watch_prop = 7 if data_type == "movie" else 13
+            append(
+                self._jellyfin_rule_entry(
+                    first_prop_id=last_watch_prop,
+                    action=5,
+                    section=0,
+                    operator=None,
+                    custom_rule_type_id=1,
+                    custom_value=self._iso_days_ago(days),
+                )
+            )
+
+    def _append_jellyseerr_conditions(
+        self,
+        conditions: dict[str, Any],
+        entries: list[dict[str, Any]],
+    ) -> None:
+        """Emit rule entries keyed off the Jellyseerr "requested_*" fields.
+
+        Cross-source section=0 entries hit ``firstVal`` directly (not via
+        ``_jellyfin_rule_entry``) because Maintainerr expects the raw
+        ``[3, x]`` coordinate for Jellyseerr-origin rules.
+        """
+        if self._token(conditions.get("requested_via")) == "jellyseerr":
+            entries.append({
+                "firstVal": [3, 6],
+                "operator": 0 if entries else None,
+                "action": 2,
+                "customVal": {"ruleTypeId": 3, "value": "1"},
+                "section": 0,
+            })
+        if "requested_days_ago_gte" in conditions:
+            days = self._as_int(conditions.get("requested_days_ago_gte"), 0)
+            entries.append({
+                "firstVal": [3, 1],
+                "operator": 0 if entries else None,
+                "action": 5,
+                "customVal": {"ruleTypeId": 1, "value": self._iso_days_ago(days)},
+                "section": 0,
+            })
 
     def _map_arr_action(self, actions: dict[str, Any]) -> int:
         if actions.get("arr_unmonitor") is True:

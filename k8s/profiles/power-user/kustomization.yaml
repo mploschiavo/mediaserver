@@ -9,6 +9,7 @@ resources:
   - ../../optional.yaml
   - ../../envoy.yaml
   - ../../controller.yaml
+  - ../../ui.yaml
   - ../../auth-authelia.yaml
   - ../../networkpolicy.yaml   # zero-trust tier isolation (opt-in)
   - ../../ingress-traefik.yaml
@@ -17,6 +18,6 @@ resources:
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.169
+    newTag: v1.0.175
 patches:
   - path: ingress-tls-patch.yaml

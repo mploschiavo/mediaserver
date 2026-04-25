@@ -409,6 +409,12 @@ class TestGetJellyfinLibraries(unittest.TestCase):
             api_key_env="JELLYFIN_API_KEY",
         )
 
+    def setUp(self):
+        # The runtime_keys module caches read_service_api_key results
+        # for 30s by default — bypass it so each test starts clean.
+        from media_stack.api.services import runtime_keys
+        runtime_keys.invalidate_cache()
+
     @patch(PATCH_URLOPEN)
     @patch.dict(os.environ, {"JELLYFIN_API_KEY": "jf-test-key"})
     def test_returns_libraries(self, mock_urlopen):
@@ -445,6 +451,46 @@ class TestGetJellyfinLibraries(unittest.TestCase):
         mock_urlopen.return_value = _make_response({"error": "something"})
         result = content_mod.get_jellyfin_libraries()
         self.assertEqual(result["libraries"], [])
+
+    @patch(PATCH_URLOPEN)
+    @patch.dict(os.environ, {"JELLYFIN_API_KEY": ""})
+    def test_live_libraries_populated_from_disk_when_env_empty(self, mock_urlopen):
+        """v1.0.181 regression: ``LibraryStatsTiles`` showed 1 of each
+        because the K8s Secret had every API key as empty string and
+        the libraries endpoint short-circuited on env-empty. The new
+        ``read_service_api_key`` helper reads the on-disk config file
+        as a fallback so live data still flows."""
+        os.environ.pop("JELLYFIN_API_KEY", None)
+        lib_data = [
+            {"Name": "Movies", "CollectionType": "movies",
+             "Locations": ["/media/movies"], "ItemCount": 42},
+        ]
+        mock_urlopen.return_value = _make_response(lib_data)
+        with patch.object(content_mod, "SERVICES", [self._jellyfin_service()]), \
+             patch(
+                 "media_stack.api.services.runtime_keys._read_file_key",
+                 return_value="key-from-disk",
+             ):
+            result = content_mod.get_jellyfin_libraries()
+        self.assertEqual(len(result["libraries"]), 1)
+        self.assertEqual(result["libraries"][0]["name"], "Movies")
+        self.assertNotIn("error", result)
+
+    @patch.dict(os.environ, {"JELLYFIN_API_KEY": ""})
+    def test_no_key_anywhere_surfaces_actionable_error(self):
+        """When neither env nor disk has a key, the response must
+        carry a structured error for the dashboard rather than the
+        ambiguous empty-libraries-without-explanation."""
+        os.environ.pop("JELLYFIN_API_KEY", None)
+        with patch.object(content_mod, "SERVICES", [self._jellyfin_service()]), \
+             patch(
+                 "media_stack.api.services.runtime_keys._read_file_key",
+                 return_value="",
+             ):
+            result = content_mod.get_jellyfin_libraries()
+        self.assertEqual(result["libraries"], [])
+        self.assertIn("error", result)
+        self.assertIn("jellyfin", result["error"])
 
 
 # ---------------------------------------------------------------------------

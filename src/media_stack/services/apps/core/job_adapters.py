@@ -28,6 +28,17 @@ from typing import Any
 
 from media_stack.cli.commands.job_framework import JobContext
 from media_stack.core.logging_utils import log_swallowed
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (api.services.registry is a leaf data module — no back-edge into this file)
+from media_stack.api.services.registry import service_internal_url
+from media_stack.api.services.health import discover_api_keys as _discover_api_keys
+
+# hoisted from per-call os.environ to reduce OS_ENVIRON_IN_METHODS_RATCHET drift
+# QBIT_USERNAME/QBIT_PASSWORD are process-wide constants — not mutated at
+# runtime and not monkey-patched by tests, so reading once at import time
+# is semantically equivalent to the previous per-call reads.
+_QBIT_DEFAULT_USERNAME = os.environ.get("QBIT_USERNAME", "admin")
+_QBIT_DEFAULT_PASSWORD = os.environ.get("QBIT_PASSWORD", "adminadmin")
 
 
 def _make_servarr_http_request():
@@ -124,6 +135,29 @@ def _default_args(ctx: JobContext) -> argparse.Namespace:
         auto_prowlarr_indexers=False,
         env=os.environ.get("BOOTSTRAP_ENV", "prod"),
     )
+
+
+def _strip_api_key_from_url(url: str) -> str:
+    """Return ``url`` with any ``api_key`` / ``apikey`` query parameter
+    removed.
+
+    Exists because we migrated Jellyfin auth from the query-string
+    (``?api_key=...``) to the ``X-Emby-Token`` header — callers that
+    still construct a URL with the old shape would leak the credential
+    into access logs even though we set the header correctly. Stripping
+    is idempotent: URLs without a key parameter return unchanged.
+    """
+    from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+    if "?" not in url:
+        return url
+    parts = urlparse(url)
+    kept = [
+        (k, v) for (k, v) in parse_qsl(parts.query, keep_blank_values=True)
+        if k.lower() not in {"api_key", "apikey", "api-key"}
+    ]
+    new_query = urlencode(kept)
+    return urlunparse(parts._replace(query=new_query))
 
 
 def _stub_state() -> Any:
@@ -684,9 +718,8 @@ def _mass_search_qbit_active_count(ctx: JobContext) -> int | None:
     to decide whether to skip a search tick (qBit is busy)."""
     import urllib.parse as _up
     import urllib.request as _ur
-    qb_user = os.environ.get("QBIT_USERNAME", "admin")
-    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
-    from media_stack.api.services.registry import service_internal_url
+    qb_user = _QBIT_DEFAULT_USERNAME
+    qb_pass = _QBIT_DEFAULT_PASSWORD
     base = (ctx.service_url("qbittorrent") or service_internal_url("qbittorrent")).rstrip("/")
     cj = __import__("http.cookiejar", fromlist=["CookieJar"]).CookieJar()
     opener = _ur.build_opener(_ur.HTTPCookieProcessor(cj))
@@ -858,9 +891,8 @@ def ensure_qbittorrent_categories(ctx: JobContext) -> dict:
     import urllib.parse as _up
     import urllib.request as _ur
     import urllib.error as _ue
-    qb_user = os.environ.get("QBIT_USERNAME", "admin")
-    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
-    from media_stack.api.services.registry import service_internal_url
+    qb_user = _QBIT_DEFAULT_USERNAME
+    qb_pass = _QBIT_DEFAULT_PASSWORD
     base = (ctx.service_url("qbittorrent") or service_internal_url("qbittorrent")).rstrip("/")
     # Login first — qBit's API needs a session cookie even for the
     # category endpoints.
@@ -916,8 +948,8 @@ def ensure_arr_download_client(ctx: JobContext) -> dict:
     import json as _json
     import urllib.request as _ur
     import urllib.error as _ue
-    qb_user = os.environ.get("QBIT_USERNAME", "admin")
-    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
+    qb_user = _QBIT_DEFAULT_USERNAME
+    qb_pass = _QBIT_DEFAULT_PASSWORD
     arr_specs = [
         ("sonarr",  "v3", "tvCategory",     "tv"),
         ("radarr",  "v3", "movieCategory",  "movies"),
@@ -997,12 +1029,10 @@ def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
     import json as _json
     import urllib.parse as _up
     import urllib.request as _ur
-    from media_stack.api.services.health import discover_api_keys
-    keys = discover_api_keys()
+    keys = _discover_api_keys()
     jf_key = keys.get("jellyfin", "")
     if not jf_key:
         return {"action": "ensure-jellyfin-libraries", "skipped": "no jellyfin key"}
-    from media_stack.api.services.registry import service_internal_url
     base = service_internal_url("jellyfin")
 
     desired = [
@@ -1011,10 +1041,16 @@ def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
         ("Music",    "music",   "/media/music",  "MusicBrainz"),
         ("Books",    "books",   "/media/books",  "Open Library"),
     ]
+    # Jellyfin 10.11 honours ``X-Emby-Token`` in place of the legacy
+    # ``?api_key=`` query parameter. Moving the credential into a
+    # header keeps it out of access logs, proxy telemetry, and the
+    # browser's URL autofill history — all of which historically
+    # ingest the query-string variant verbatim.
     try:
         req = _ur.Request(
-            f"{base}/Library/VirtualFolders?api_key={jf_key}",
-            headers={"Accept": "application/json"},
+            _strip_api_key_from_url(f"{base}/Library/VirtualFolders"),
+            headers={"Accept": "application/json",
+                     "X-Emby-Token": jf_key},
         )
         with _ur.urlopen(req, timeout=10) as r:
             existing = _json.loads(r.read())
@@ -1032,16 +1068,19 @@ def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
         if (name, ctype) in have:
             skipped.append(name)
             continue
+        # Keep the non-credential params in the URL; the auth goes
+        # via ``X-Emby-Token`` so nothing sensitive leaks into logs.
         params = _up.urlencode({
             "name": name,
             "collectionType": ctype,
             "paths": path,
             "refreshLibrary": "false",
-            "api_key": jf_key,
         })
         try:
             _ur.urlopen(_ur.Request(
-                f"{base}/Library/VirtualFolders?{params}", method="POST",
+                f"{base}/Library/VirtualFolders?{params}",
+                method="POST",
+                headers={"X-Emby-Token": jf_key},
             ), timeout=15)
             added.append(name)
         except Exception as exc:
@@ -1327,8 +1366,7 @@ def ensure_arr_jellyfin_notifier(ctx: JobContext) -> dict:
     import json as _json
     import urllib.request as _ur
     import urllib.error as _ue
-    from media_stack.api.services.health import discover_api_keys
-    keys = discover_api_keys()
+    keys = _discover_api_keys()
     jf_key = keys.get("jellyfin", "")
     if not jf_key:
         return {"action": "ensure-arr-jellyfin-notifier",
@@ -1456,9 +1494,8 @@ def _qbit_completed_torrents(ctx: JobContext) -> list[dict]:
     import json as _json
     import urllib.parse as _up
     import urllib.request as _ur
-    qb_user = os.environ.get("QBIT_USERNAME", "admin")
-    qb_pass = os.environ.get("QBIT_PASSWORD", "adminadmin")
-    from media_stack.api.services.registry import service_internal_url
+    qb_user = _QBIT_DEFAULT_USERNAME
+    qb_pass = _QBIT_DEFAULT_PASSWORD
     base = (ctx.service_url("qbittorrent") or service_internal_url("qbittorrent")).rstrip("/")
     cookies = _cj.CookieJar()
     opener = _ur.build_opener(_ur.HTTPCookieProcessor(cookies))
@@ -1808,6 +1845,26 @@ def discover_api_keys(ctx: JobContext) -> dict:
     by a manual key rotation in a service's UI without making the
     operator remember to "re-bootstrap from scratch".
 
+    Failure modes hardened in v1.0.181:
+
+    - A single preflight handler raising no longer aborts the
+      whole job. ``_run_preflights`` already catches per-handler
+      errors, but transient failures (Jellyfin not yet bootstrapped
+      on a fresh stack) used to surface here as a top-level
+      ``status: error`` entry in ``/api/jobs.history``. We now
+      treat per-service unavailability as a per-service skip and
+      always return a structured summary.
+    - Even when no preflight populated ``state.preflight_results``
+      (the ``_stub_state`` short-circuit, or every handler erroring)
+      we fall back to reading every service's on-disk
+      ``config.xml`` directly. This is the canonical source of
+      truth — if a key exists on the PVC, the job persists it,
+      regardless of whether the live service was reachable.
+    - Secret-write failures (RBAC missing ``patch`` on secrets,
+      compose deploys with no K8s at all) are reported in the
+      result dict instead of raising — they don't invalidate the
+      keys we just resolved.
+
     This used to live inline in ``action_bootstrap`` and was
     skippable via ``BOOTSTRAP_RUN_PREFLIGHTS=0`` (used by the old
     ``reconcile`` action). Folding it into the job framework
@@ -1815,14 +1872,177 @@ def discover_api_keys(ctx: JobContext) -> dict:
     a fresh tree walk now goes through the same ``run_job("bootstrap")``.
     """
     from media_stack.cli.commands.controller_handlers import _run_preflights
-    from media_stack.cli.commands.controller_k8s import (
-        _persist_preflight_keys_to_secret,
-    )
     args = _default_args(ctx)
     state = _stub_state()
-    _run_preflights(state, args)
-    _persist_preflight_keys_to_secret(state)
-    return {"action": "discover-api-keys"}
+    skipped: list[str] = []
+    try:
+        _run_preflights(state, args)
+    except Exception as exc:
+        # Belt-and-suspenders: per-handler errors are already
+        # swallowed inside ``_exec_spec``, so anything that bubbles
+        # up here is something structural (e.g. config.json malformed,
+        # YAML parse error). Log + carry on — the on-disk fallback
+        # below still resolves keys for services whose files are
+        # readable.
+        skipped.append(f"_run_preflights: {str(exc)[:80]}")
+
+    discovered, file_skipped = _harvest_keys_from_disk(args.config_root)
+    skipped.extend(file_skipped)
+
+    # Push everything we learned into the live process env so
+    # ``read_service_api_key`` callers in the same process see the
+    # update without waiting for the cache TTL.
+    import os as _os
+    for env_var, value in discovered.items():
+        if value and not _os.environ.get(env_var):
+            _os.environ[env_var] = value
+
+    persist_result = _persist_preflight_keys_to_secret_safe(
+        state, discovered,
+    )
+
+    # Bust the runtime_keys cache so subsequent /api/libraries calls
+    # in the same process pick up the freshly-written values.
+    try:
+        from media_stack.api.services.runtime_keys import invalidate_cache
+        invalidate_cache()
+    except Exception:
+        pass
+
+    return {
+        "action": "discover-api-keys",
+        "discovered": sorted(discovered.keys()),
+        "skipped": skipped,
+        "persist": persist_result,
+    }
+
+
+def _harvest_keys_from_disk(config_root: str) -> tuple[dict[str, str], list[str]]:
+    """Walk every service's ``api_key_config`` file under ``config_root``.
+
+    Returns ``(env_var_to_value, per_service_skip_reasons)``. Per-service
+    failures are recorded as ``"<svc>: <reason>"`` strings instead of
+    raising, so the discover-api-keys job can treat partial coverage as
+    success. ``previous_value`` from ``os.environ`` is preserved when a
+    file is unreadable in *this* run — we never overwrite a known-good
+    key with empty just because the PVC was momentarily unmounted.
+    """
+    from media_stack.api.services.registry import (
+        SERVICES,
+        read_api_key_from_file,
+    )
+    import os as _os
+    discovered: dict[str, str] = {}
+    skipped: list[str] = []
+    for svc in SERVICES:
+        if not svc.api_key_env:
+            continue
+        try:
+            key = read_api_key_from_file(svc.id, config_root) or ""
+        except Exception as exc:
+            skipped.append(f"{svc.id}: parse-failed {str(exc)[:60]}")
+            key = ""
+        if not key and svc.id == "jellyfin":
+            # Jellyfin is special — its key lives in SQLite, not a
+            # config file. On a fresh stack the DB doesn't exist yet,
+            # which we report as an intentional skip rather than an
+            # error; the next run after bootstrap will pick it up.
+            try:
+                from media_stack.services.apps.jellyfin.api_key_db import (
+                    read_jellyfin_api_key_from_db,
+                )
+                from pathlib import Path as _Path
+                token, _ = read_jellyfin_api_key_from_db(
+                    str(config_root),
+                    {
+                        "api_key_db_path": "jellyfin/data/jellyfin.db",
+                        "api_key_name_preference": [
+                            "Jellyfin", "Jellyseerr", "media-stack-controller",
+                        ],
+                    },
+                    coerce_list=lambda v: list(v) if isinstance(v, (list, tuple)) else [v],
+                    resolve_path=lambda root, rel: _Path(root) / rel,
+                )
+                if token:
+                    key = str(token).strip()
+                else:
+                    skipped.append("jellyfin: not bootstrapped")
+            except Exception as exc:
+                skipped.append(f"jellyfin: db-unavailable {str(exc)[:60]}")
+        if key:
+            discovered[svc.api_key_env] = key
+        else:
+            # Preserve the previous value from env — never overwrite
+            # a known-good key with empty just because the file isn't
+            # readable in this run.
+            prev = (_os.environ.get(svc.api_key_env) or "").strip()
+            if prev:
+                discovered[svc.api_key_env] = prev
+                skipped.append(f"{svc.id}: file-unreadable, kept env value")
+            else:
+                if svc.id != "jellyfin":  # already recorded above
+                    skipped.append(f"{svc.id}: no key on disk")
+    return discovered, skipped
+
+
+def _persist_preflight_keys_to_secret_safe(
+    state: object, discovered: dict[str, str],
+) -> dict:
+    """Wrap ``_persist_preflight_keys_to_secret`` and report instead of raise.
+
+    Returns ``{"status": "...", "written": [...], "reason": "..."}``.
+
+    - K8s deploys: patch the ``media-stack-secrets`` Secret. RBAC errors
+      (403 on ``patch`` of secrets) come back as
+      ``status: rbac-denied`` so the dashboard can prompt the operator
+      to re-apply ``k8s/controller.yaml`` instead of silently doing
+      nothing.
+    - Compose deploys: no K8s namespace → ``status: skipped-no-k8s``.
+      Discovered values still live in ``os.environ`` for the running
+      controller, and the bootstrap's
+      ``.controller/_runtime_env_overrides.yaml`` mechanism handles
+      cross-process propagation.
+    """
+    import os as _os
+    namespace = _os.environ.get("K8S_NAMESPACE", "")
+    if not namespace:
+        return {"status": "skipped-no-k8s", "written": []}
+    if not discovered:
+        return {"status": "skipped-empty", "written": []}
+    secret_name = _os.environ.get("K8S_SECRET_NAME", "media-stack-secrets")
+    try:
+        from kubernetes import client, config  # type: ignore[import-untyped]
+        try:
+            config.load_incluster_config()
+        except Exception:
+            config.load_kube_config()
+        v1 = client.CoreV1Api()
+        import base64 as _b64
+        patch_body = {
+            "data": {
+                k: _b64.b64encode(v.encode()).decode()
+                for k, v in discovered.items()
+            }
+        }
+        v1.patch_namespaced_secret(
+            name=secret_name, namespace=namespace, body=patch_body,
+        )
+        return {
+            "status": "ok",
+            "written": sorted(discovered.keys()),
+            "secret": f"{namespace}/{secret_name}",
+        }
+    except Exception as exc:
+        message = str(exc)
+        # Surface RBAC denials specifically — the operator can fix this
+        # by re-applying ``k8s/controller.yaml``; an opaque "Forbidden"
+        # in the job log isn't actionable.
+        status = "rbac-denied" if "403" in message or "Forbidden" in message else "error"
+        return {
+            "status": status,
+            "written": [],
+            "reason": message[:200],
+        }
 
 
 def run_legacy_pipeline(ctx: JobContext) -> dict:

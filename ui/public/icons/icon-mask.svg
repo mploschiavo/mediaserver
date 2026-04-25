@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Media Stack maskable icon">
+  <defs>
+    <linearGradient id="maskGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#33D9B2"/>
+      <stop offset="0.55" stop-color="#FFBE0B"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+  </defs>
+  <!-- Full bleed background; Android masks the corners. -->
+  <rect width="512" height="512" fill="#0d1117"/>
+  <!--
+    Maskable spec: keep meaningful content within the inner 80% safe
+    zone. Inner zone runs from (51.2, 51.2) to (460.8, 460.8) — the
+    artwork is scaled & translated to live entirely inside.
+  -->
+  <g transform="translate(51.2 51.2) scale(0.8)">
+    <rect x="112" y="176" width="64" height="256" rx="32" fill="url(#maskGrad)"/>
+    <circle cx="144" cy="112" r="40" fill="url(#maskGrad)"/>
+    <circle cx="352" cy="304" r="112" fill="none" stroke="url(#maskGrad)" stroke-width="48"/>
+  </g>
+</svg>

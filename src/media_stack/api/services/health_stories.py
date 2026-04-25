@@ -354,11 +354,215 @@ def _rule_auto_heal_busy(
     )
 
 
+def _rule_api_keys_missing(
+    *, health: dict, integrity: dict, crashloops: dict,
+    heal_events: list[dict], now_ts: float,
+) -> Story | None:
+    """Surface a warn-level story when ``discover-api-keys`` left
+    services without a usable credential.
+
+    The bug we're guarding against: empty keys in the
+    ``media-stack-secrets`` Secret cause endpoints like
+    ``/api/libraries`` and ``/api/recent`` to skip the upstream call
+    and return empty payloads, which the dashboard renders as "1 of
+    each". Without this rule the operator sees an apparently-healthy
+    stack with zero content — a confusing failure mode that this
+    story translates into "discovery failed for X, Y, Z, run
+    discover-api-keys again from /api/jobs"."""
+    try:
+        from .runtime_keys import services_missing_keys
+    except Exception:
+        return None
+    missing = services_missing_keys()
+    if not missing:
+        return None
+    affected = sorted(missing)
+    return Story(
+        id="api_keys_missing",
+        severity="warn",
+        headline=(
+            f"API key discovery is incomplete — {len(affected)} "
+            "service(s) have no credential"
+        ),
+        description=(
+            "Endpoints that depend on these services (libraries, "
+            "recent additions, indexer stats) will return empty "
+            "payloads until the keys are populated. "
+            "Re-run the discover-api-keys job, or set the key "
+            "manually under Services."
+        ),
+        affected_services=affected,
+        cause=", ".join(affected) + " have no API key in env or on disk",
+        next_action=(
+            "Re-run discover-api-keys from the Jobs panel, or "
+            "POST /api/services/<id>/api-key with a value."
+        ),
+    )
+
+
+def job_flapping_stories(history: list[dict]) -> list[dict]:
+    """Pure rule: scan a job-history list and emit one story per
+    job that errored in **>=2 of the last 5** batches.
+
+    ``history`` is the same list emitted by ``/api/jobs`` — each
+    batch is a dict like::
+
+        {
+            "started_at": ...,
+            "results": [
+                {"name": "discover-api-keys",
+                 "status": "ok" | "error",
+                 "error": "..."},
+                ...
+            ],
+        }
+
+    The rule is intentionally pure (no I/O). It returns dicts in
+    the same wire format ``compose()`` returns so the GET handler
+    can splice them into the stories list.
+
+    For ``discover-api-keys`` we escalate to ``critical`` and
+    prefix the body with the operator-facing impact message —
+    that is the bug class that motivated the whole ratchet set,
+    and we never want it to scroll past unnoticed in the warning
+    bucket.
+    """
+    if not isinstance(history, list) or not history:
+        return []
+
+    # Newest 5 batches. Producers prepend, so ``history[:5]`` is
+    # "the most recent five"; the rule still works with a shorter
+    # history.
+    recent = history[:5] if len(history) >= 5 else history[:]
+
+    counts: dict[str, int] = {}
+    last_errors: dict[str, str] = {}
+    for batch in recent:
+        if not isinstance(batch, dict):
+            continue
+        # Two on-disk shapes are tolerated:
+        #   - ``results: [{name, status, error}, ...]`` (the spec
+        #     shape, used by docs/tests).
+        #   - ``jobs: {name: {status, error}}`` (the production
+        #     shape emitted by ``_record_history`` in the job
+        #     framework).
+        items: list[tuple[str, str, str]] = []
+        results = batch.get("results")
+        if isinstance(results, list):
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
+                items.append((
+                    str(item.get("name") or "").strip(),
+                    str(item.get("status") or "").lower(),
+                    str(item.get("error") or "").strip(),
+                ))
+        jobs = batch.get("jobs")
+        if isinstance(jobs, dict):
+            for jname, jbody in jobs.items():
+                if not isinstance(jbody, dict):
+                    continue
+                items.append((
+                    str(jname or "").strip(),
+                    str(jbody.get("status") or "").lower(),
+                    str(jbody.get("error") or "").strip(),
+                ))
+        for name, status, err_text in items:
+            if not name or status != "error":
+                continue
+            counts[name] = counts.get(name, 0) + 1
+            if err_text:
+                last_errors[name] = err_text
+
+    out: list[dict] = []
+    for name, n in sorted(counts.items()):
+        if n < 2:
+            continue
+        last_error_text = last_errors.get(name) or "no error text"
+        if name == "discover-api-keys":
+            severity = "critical"
+            body = (
+                "API keys are missing — UI tile counts and "
+                "live-data endpoints will be wrong until this "
+                f"resolves. Last error: {last_error_text}. "
+                "Run history at /jobs."
+            )
+        else:
+            severity = "warning"
+            body = (
+                f"Last error: {last_error_text}. Run history "
+                "at /jobs."
+            )
+        out.append(
+            Story(
+                id=f"job-flapping:{name}",
+                severity=severity,
+                headline=f"{name} has failed {n}× recently",
+                description=body,
+                affected_services=[],
+                cause=last_error_text,
+            ).to_dict()
+        )
+    return out
+
+
+def guardrail_streak_stories(
+    streaks: list[dict] | None,
+    *,
+    min_streak: int = 2,
+) -> list[dict]:
+    """Pure rule: emit one story per guardrail that has fired with
+    severity >= warning for ``min_streak`` consecutive evaluation
+    ticks. Mirrors ``job_flapping_stories`` — no I/O, deterministic
+    output, easy to test.
+
+    The input is the list returned by
+    ``services.guardrails.consecutive_warning_streaks`` so the
+    health-stories layer doesn't import the registry directly. ``min_streak``
+    matches the registry-side default; it's exposed so a test can
+    flex the rule with a smaller window.
+    """
+    if not isinstance(streaks, list) or not streaks:
+        return []
+    out: list[dict] = []
+    for entry in streaks:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            streak = int(entry.get("streak") or 0)
+        except (TypeError, ValueError):
+            continue
+        if streak < min_streak:
+            continue
+        rule_id = str(entry.get("rule_id") or "")
+        if not rule_id:
+            continue
+        sev = str(entry.get("severity") or "warning")
+        story_sev = "critical" if sev == "critical" else "warning"
+        out.append(
+            Story(
+                id=f"guardrail-streak:{rule_id}",
+                severity=story_sev,
+                headline=(
+                    f"{rule_id} has fired {streak} ticks in a row"
+                ),
+                description=(
+                    str(entry.get("description") or "")
+                    + " Open /guardrails to inspect or adjust the threshold."
+                ).strip(),
+                affected_services=[],
+                cause=f"guardrail {rule_id} severity={sev}",
+            ).to_dict()
+        )
+    return out
+
+
 _RULES = [
     _rule_downloads,
     _rule_playback,
     _rule_auth,
     _rule_search,
+    _rule_api_keys_missing,
     _rule_auto_heal_busy,
 ]
 
@@ -425,6 +629,44 @@ def compose_live() -> dict:
         integrity=integrity_result,
         crashloops=crashloop_result,
         heal_events=heal_events,
+    )
+    # Splice in job-flapping stories from the recent run history.
+    # Kept out of ``compose()`` because the rule input shape is
+    # different — a list of batches, not the four signal dicts.
+    try:
+        from media_stack.cli.commands.job_framework import (
+            get_job_history,
+        )
+        history = list(get_job_history() or [])
+    except Exception as exc:
+        logging.getLogger("media_stack").debug(
+            "[DEBUG] could not load job history for flapping rule: %s",
+            exc,
+        )
+        history = []
+    flapping = job_flapping_stories(history)
+    if flapping:
+        stories = (stories or []) + flapping
+    # Surface guardrail rules that have fired warn+ for ≥2 consecutive
+    # ticks. The registry tracks streaks itself; we read them here so
+    # a buggy registry import can't take stories down with it.
+    try:
+        from media_stack.services.guardrails import (
+            consecutive_warning_streaks,
+        )
+        streaks = consecutive_warning_streaks()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("media_stack").debug(
+            "[DEBUG] could not load guardrail streaks: %s", exc,
+        )
+        streaks = []
+    streak_stories = guardrail_streak_stories(streaks)
+    if streak_stories:
+        stories = (stories or []) + streak_stories
+    stories.sort(
+        key=lambda s: _SEVERITY_ORDER.get(
+            str(s.get("severity", "")), 9
+        )
     )
     return {
         "stories": stories,

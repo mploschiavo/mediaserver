@@ -7,6 +7,16 @@ from typing import Any
 import yaml
 
 from ._profile import ProfileService
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (app_config_service and epg_provider_service are leaf modules — no cycle)
+from media_stack.services.app_config_service import (
+    load_app_config,
+    save_app_config,
+)
+from media_stack.services.epg_provider_service import (
+    get_guide_providers,
+    _expand_url,
+)
 
 
 class LiveTvConfigService:
@@ -34,7 +44,6 @@ class LiveTvConfigService:
             return [{"code": "us", "name": "United States"}]
 
     def get_livetv_sources(self) -> dict[str, Any]:
-        from media_stack.services.app_config_service import load_app_config
         ms_id = self._profile.media_server_id()
         app_cfg = load_app_config(ms_id) if ms_id else {}
         from_app_config = "livetv" in app_cfg
@@ -64,7 +73,6 @@ class LiveTvConfigService:
         tuner_url: str = "", guide_url: str = "",
         load_all_tuners: bool | None = None,
     ) -> dict[str, Any]:
-        from media_stack.services.app_config_service import load_app_config, save_app_config
         ms_id = self._profile.media_server_id()
         if not ms_id:
             return {"error": "No media server configured"}
@@ -114,7 +122,6 @@ class LiveTvConfigService:
         ltv_defaults = data.get("live_tv_defaults", {})
         tuner_tpl = ltv_defaults.get("tuner_url_template", "")
         guide_tpl = ltv_defaults.get("guide_url_template", "")
-        from media_stack.services.epg_provider_service import get_guide_providers, _expand_url
         guide_providers = get_guide_providers()
         countries = []
         for entry in self._load_default_countries():

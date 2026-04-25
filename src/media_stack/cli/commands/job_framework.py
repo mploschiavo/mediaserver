@@ -33,8 +33,12 @@ import logging
 
 def _find_contracts_dir() -> Path | None:
     """Locate the contracts/services/ YAML directory."""
+    # Single env read — the previous ``X if X else None`` pattern read
+    # SERVICES_REGISTRY_DIR twice, doubling the os.environ count without
+    # adding semantic value.
+    _override = os.environ.get("SERVICES_REGISTRY_DIR", "")
     candidates = [
-        Path(os.environ.get("SERVICES_REGISTRY_DIR", "")) if os.environ.get("SERVICES_REGISTRY_DIR") else None,
+        Path(_override) if _override else None,
         Path("/opt/media-stack/contracts/services"),
         Path(__file__).resolve().parents[4] / "contracts" / "services",
         Path("contracts/services"),
@@ -171,21 +175,82 @@ def _history_file() -> Path:
     return Path(config_root) / ".controller" / "job-history.json"
 
 
+# Allowed values for the ``source`` field on history entries. The
+# UI persona-questions agent renders a badge per source, so this
+# list is part of the public schema (also surfaced in
+# ``api/openapi.yaml``).
+_HISTORY_SOURCE_VALUES: frozenset[str] = frozenset({
+    "cron",
+    "manual",
+    "auto-heal",
+    "scheduler",
+    "unknown",
+})
+
+
+def _normalize_source(source: str | None) -> str:
+    """Coerce a caller-supplied source token into the persisted form.
+
+    Returns ``"unknown"`` for falsy inputs. Any token whose prefix
+    (before the first ``:``) matches one of the canonical
+    ``_HISTORY_SOURCE_VALUES`` entries passes through unchanged so
+    sub-tagged forms like ``"cron:reconcile"`` survive. Unknown
+    tokens collapse to ``"unknown"`` rather than getting persisted
+    verbatim — the UI's enum-based badge logic would otherwise
+    fall back to a generic style.
+    """
+    if not source:
+        return "unknown"
+    token = str(source).strip()
+    if not token:
+        return "unknown"
+    head = token.split(":", 1)[0]
+    if head in _HISTORY_SOURCE_VALUES:
+        return token
+    return "unknown"
+
+
 def get_job_history() -> list[dict[str, Any]]:
-    """Return recent job execution history (newest first). Reads from disk."""
+    """Return recent job execution history (newest first). Reads from disk.
+
+    Pre-existing entries on disk that lack a ``source`` field are
+    backfilled with ``"unknown"`` here so the UI never has to
+    handle a missing key — old serialized entries from before the
+    field existed remain readable.
+    """
     path = _history_file()
     if not path.is_file():
         return []
     try:
         import json
         entries = json.loads(path.read_text(encoding="utf-8"))
-        return list(reversed(entries)) if isinstance(entries, list) else []
+        if not isinstance(entries, list):
+            return []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            entry.setdefault("source", "unknown")
+            entry.setdefault("actor", None)
+        return list(reversed(entries))
     except Exception:
         return []
 
 
-def _record_history(result: dict[str, Any]) -> None:
-    """Record a job run result in history. Writes to disk (survives subprocess)."""
+def _record_history(
+    result: dict[str, Any],
+    *,
+    source: str | None = None,
+    actor: str | None = None,
+) -> None:
+    """Record a job run result in history. Writes to disk (survives subprocess).
+
+    ``source`` tags who triggered the run (``"cron"``, ``"manual"``,
+    ``"auto-heal"``, ``"scheduler"``, ``"unknown"``); sub-tagging
+    like ``"cron:reconcile"`` is preserved. ``actor`` carries the
+    authenticated username for ``manual`` runs (``None``
+    otherwise). Defaults keep the function backwards-compatible
+    with callers that don't yet thread a source through.
+    """
     import json
     entry = {
         "ts": time.time(),
@@ -193,6 +258,8 @@ def _record_history(result: dict[str, Any]) -> None:
         "ok": result.get("ok", 0),
         "skipped": result.get("skipped", 0),
         "errors": result.get("errors", 0),
+        "source": _normalize_source(source),
+        "actor": (str(actor).strip() or None) if actor else None,
         "jobs": {
             name: {
                 "status": r.get("status", "?"),
@@ -368,10 +435,26 @@ class JobRunner:
     No sleep loops. No polling. Each round makes progress or stops.
     """
 
-    def __init__(self, root: Job, ctx: "JobContext", max_attempts: int = 3, **kwargs: Any):
+    def __init__(
+        self,
+        root: Job,
+        ctx: "JobContext",
+        max_attempts: int = 3,
+        *,
+        source: str | None = None,
+        actor: str | None = None,
+        **kwargs: Any,
+    ):
         self.root = root
         self.ctx = ctx
         self.max_attempts = kwargs.get("max_wait", max_attempts) if "max_wait" in kwargs else max_attempts
+        # ``source`` / ``actor`` flow into ``_record_history`` so
+        # ``GET /api/jobs.history[]`` carries a who-triggered-this
+        # tag. ``None`` defaults to ``"unknown"`` at the writer
+        # site — keeps existing JobRunner(...) call-sites working
+        # without forcing every caller to opt in.
+        self.source: str | None = source
+        self.actor: str | None = actor
         # ``dispatched``: jobs we've started (sync ran, or async spawned).
         #   Prevents re-dispatch.
         # ``done``: jobs whose handler has FULLY FINISHED (sync handlers
@@ -529,7 +612,7 @@ class JobRunner:
             "errors": errors,
             "jobs": self.results,
         }
-        _record_history(result)
+        _record_history(result, source=self.source, actor=self.actor)
         return result
 
     def _flatten(self, job: Job) -> list[Job]:
@@ -1116,7 +1199,12 @@ def get_job_registry() -> dict[str, Callable[[JobContext], dict[str, Any]]]:
 _DEFAULT_JOB_MAX_ATTEMPTS = 3
 
 
-def run_job(job_name: str) -> dict[str, Any]:
+def run_job(
+    job_name: str,
+    *,
+    source: str | None = None,
+    actor: str | None = None,
+) -> dict[str, Any]:
     """Run a single job by name. Uses JobRunner for prereq waiting.
 
     Resolves contract-declared aliases first (so callers can pass
@@ -1124,7 +1212,14 @@ def run_job(job_name: str) -> dict[str, Any]:
     job ``bootstrap``), then reads ``max_attempts`` from the
     resolved Job instance — the contract is the source of truth.
     No more ``run_job(name, max_wait=180)`` callers; if a job
-    needs special timing it declares it in YAML."""
+    needs special timing it declares it in YAML.
+
+    ``source`` / ``actor`` are optional and propagate through to
+    the history entry written by ``JobRunner.run`` so the dashboard
+    can show ``cron`` / ``manual`` / ``auto-heal`` badges. Default
+    values keep older callers (e.g. test fixtures) working without
+    a code change.
+    """
     job_name = resolve_alias(job_name)
     root = build_job_framework()
     job = _find_job_in_tree(root, job_name)
@@ -1136,18 +1231,28 @@ def run_job(job_name: str) -> dict[str, Any]:
         job = Job(job_name, handler)
     ctx = JobContext()
     attempts = job.max_attempts if job.max_attempts is not None else _DEFAULT_JOB_MAX_ATTEMPTS
-    return JobRunner(job, ctx, max_attempts=attempts).run()
+    return JobRunner(
+        job, ctx, max_attempts=attempts, source=source, actor=actor,
+    ).run()
 
 
-def run_all_media_server_jobs(max_wait: int = 180) -> dict[str, Any]:
+def run_all_media_server_jobs(
+    max_wait: int = 180,
+    *,
+    source: str | None = None,
+    actor: str | None = None,
+) -> dict[str, Any]:
     """Run all media server configuration jobs.
 
     Uses JobRunner which waits for prerequisites with active retry
-    before executing the tree.
+    before executing the tree. ``source`` / ``actor`` propagate
+    into the recorded history entry (see ``run_job``).
     """
     ctx = JobContext()
     root = build_job_framework()
-    return JobRunner(root, ctx, max_wait=max_wait).run()
+    return JobRunner(
+        root, ctx, max_wait=max_wait, source=source, actor=actor,
+    ).run()
 
 
 def _find_job_in_tree(root: Job, name: str) -> Job | None:

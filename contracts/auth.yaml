@@ -130,8 +130,11 @@ service_overrides:
   plex: native
   emby: native
 
-  # Controller: protected when internet-exposed (SSO covers dashboard access)
+  # Controller: protected when internet-exposed (SSO covers dashboard access).
+  # Note: after the v1.0.175 split, media-stack-controller is API-only;
+  # the dashboard HTML moves to media-stack-ui below. Both stay protected.
   media-stack-controller: protected
+  media-stack-ui: protected
 
   # Jellyseerr: protected — web-only UI, SSO works fine.
   # Jellyseerr also has native auth but SSO is better UX.

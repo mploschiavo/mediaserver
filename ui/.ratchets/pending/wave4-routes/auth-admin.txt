@@ -1,0 +1,6 @@
+ROUTE_FILE: src/routes/auth.tsx
+ROUTE_NAME: AuthAdminRoute
+ROUTE_PATH: /auth
+SIDEBAR_SECTION: Identity
+SIDEBAR_LABEL: Auth
+SIDEBAR_ICON: KeyRound

@@ -251,21 +251,9 @@ class ControllerAllRunner:
 
         plan = self._component_plan()
         phase_plan = resolve_pipeline_phase_plan(
-            plan.config,
-            pipeline="bootstrap_all",
+            plan.config, pipeline="bootstrap_all",
         )
-        adapter_hooks = plan.config.get("adapter_hooks")
-        runner_phase_scripts = (
-            (adapter_hooks or {}).get("runner_phase_scripts")
-            if isinstance(adapter_hooks, dict)
-            else {}
-        )
-        configured_phase_keys = (
-            tuple(str(key) for key in runner_phase_scripts.keys())
-            if isinstance(runner_phase_scripts, dict)
-            else ()
-        )
-
+        configured_phase_keys = self._configured_phase_keys(plan.config)
         components: dict[str, str] = resolve_pipeline_components(
             plan.config,
             pipeline="bootstrap_all",
@@ -274,35 +262,188 @@ class ControllerAllRunner:
         )
 
         def _resolve_component_technology(step: ControllerPhasePlanStep) -> tuple[str, str]:
-            params = dict(step.params or {})
-            component_key = str(params.get("component") or "").strip()
-            if component_key:
-                token = str(components.get(component_key) or "").strip()
-                if token:
-                    return component_key, token
+            return self._resolve_component_technology(step, plan, components)
 
-            binding_key = str(params.get("binding") or "").strip()
-            if binding_key:
-                token = str(plan.role_bindings.get(binding_key) or "").strip()
-                if token:
-                    return component_key or binding_key, token
+        self._seed_components_from_plan(
+            phase_plan, components, _resolve_component_technology,
+        )
+        component_context = self._build_component_context(
+            components, configured_phase_keys, plan,
+        )
+        phase_context = self._build_phase_context(plan, component_context)
 
-            technology = str(params.get("technology") or "").strip()
-            if technology:
-                return component_key or technology, technology
+        action_handlers = self._build_action_handlers(
+            plan=plan,
+            components=components,
+            phase_context=phase_context,
+            resolve_component_technology=_resolve_component_technology,
+        )
+        self._dispatch_phase_plan(phase_plan, action_handlers)
 
-            return component_key, ""
+        info("Full bootstrap complete.")
+        self.tracker.summary()
+        return 0
 
+    def _build_action_handlers(
+        self,
+        *,
+        plan,
+        components: dict[str, str],
+        phase_context: dict[str, object],
+        resolve_component_technology,
+    ) -> dict[str, Callable[[ControllerPhasePlanStep], None]]:
+        """Bind the four ``action`` handler closures that ``run`` dispatches over.
+
+        Isolates the closure captures (``self``, ``plan``, ``components``,
+        rendering helpers) so the run method stays short and the closure
+        wiring is easy to inspect in one place.
+        """
+        phase_enabled = self._make_phase_enabled(phase_context)
+        render_args = self._render_args_closure()
+        render_env = self._render_env_closure()
+        phase_name = self._phase_name_closure()
+        return {
+            "component_script": lambda step: _execute_component_script(
+                self, step, plan, components, phase_enabled, resolve_component_technology,
+                render_args, render_env, phase_name,
+            ),
+            "script": lambda step: _execute_script(
+                self, step, phase_enabled, render_args, render_env, phase_name,
+            ),
+            "enable_components": lambda step: _execute_enable_components(
+                self, step, plan, phase_enabled,
+            ),
+            "http_action": lambda step: _execute_http_action(
+                self, step, phase_enabled,
+            ),
+        }
+
+    def _make_phase_enabled(
+        self, phase_context: dict[str, object],
+    ) -> Callable[[ControllerPhasePlanStep], bool]:
+        """Build the phase-enabled predicate closed over ``phase_context``.
+
+        Split out so the action-handler builder is just a wiring table
+        and the conditional logic has one named home.
+        """
+        def _phase_enabled(step: ControllerPhasePlanStep) -> bool:
+            enabled = bool(step.enabled) and evaluate_phase_condition(
+                step.when, context=phase_context
+            )
+            if enabled and step.skip_flag and self._skip_phase(step.skip_flag):
+                enabled = False
+            return enabled
+        return _phase_enabled
+
+    def _render_args_closure(self):
+        """Thin closure that dispatches to ``_resolve_rendered_args`` on self."""
+        def _resolve_rendered_args(
+            *, raw_args: object, component_key: str = "", component_technology: str = "",
+        ) -> list[str]:
+            return self._resolve_rendered_args(
+                raw_args=raw_args, component_key=component_key,
+                component_technology=component_technology,
+            )
+        return _resolve_rendered_args
+
+    def _render_env_closure(self):
+        """Thin closure that dispatches to ``_resolve_rendered_env`` on self."""
+        def _resolve_rendered_env(
+            *, raw_env: object, component_key: str = "", component_technology: str = "",
+        ) -> dict[str, str]:
+            return self._resolve_rendered_env(
+                raw_env=raw_env, component_key=component_key,
+                component_technology=component_technology,
+            )
+        return _resolve_rendered_env
+
+    @staticmethod
+    def _phase_name_closure():
+        """Pure-function closure that picks ``step.phase_name`` or the caller's default."""
+        def _phase_name(default_name: str, step: ControllerPhasePlanStep) -> str:
+            return step.phase_name or default_name
+        return _phase_name
+
+    def _dispatch_phase_plan(
+        self,
+        phase_plan,
+        action_handlers: dict[str, Callable[[ControllerPhasePlanStep], None]],
+    ) -> None:
+        """Walk the phase plan and invoke the matching action handler per step."""
+        for step in phase_plan:
+            action = self._resolve_step_action(step)
+            handler = action_handlers.get(action)
+            if handler is None:
+                raise ConfigError(
+                    "Unknown bootstrap-all run action "
+                    f"'{action}' in adapter_hooks.bootstrap_all.phase_plan params.action."
+                )
+            handler(step)
+
+    @staticmethod
+    def _configured_phase_keys(config: dict) -> tuple[str, ...]:
+        """Extract the tuple of phase keys declared under runner_phase_scripts."""
+        adapter_hooks = config.get("adapter_hooks")
+        runner_phase_scripts = (
+            (adapter_hooks or {}).get("runner_phase_scripts")
+            if isinstance(adapter_hooks, dict)
+            else {}
+        )
+        if isinstance(runner_phase_scripts, dict):
+            return tuple(str(key) for key in runner_phase_scripts.keys())
+        return ()
+
+    @staticmethod
+    def _resolve_component_technology(
+        step: ControllerPhasePlanStep,
+        plan: "ControllerComponentPlan",
+        components: dict[str, str],
+    ) -> tuple[str, str]:
+        """Pick the (component_key, technology) pair for a phase step.
+
+        Precedence: explicit ``component`` wins, then ``binding`` looked
+        up in role_bindings, then raw ``technology`` param.
+        """
+        params = dict(step.params or {})
+        component_key = str(params.get("component") or "").strip()
+        if component_key:
+            token = str(components.get(component_key) or "").strip()
+            if token:
+                return component_key, token
+        binding_key = str(params.get("binding") or "").strip()
+        if binding_key:
+            token = str(plan.role_bindings.get(binding_key) or "").strip()
+            if token:
+                return component_key or binding_key, token
+        technology = str(params.get("technology") or "").strip()
+        if technology:
+            return component_key or technology, technology
+        return component_key, ""
+
+    @staticmethod
+    def _seed_components_from_plan(
+        phase_plan,
+        components: dict[str, str],
+        resolve_component_technology,
+    ) -> None:
+        """Register component_script-referenced keys even if absent from the plan."""
         for step in phase_plan:
             params = dict(step.params or {})
             operation = str(step.operation or "").strip()
             action = str(params.get("action") or "").strip().lower()
             if operation != "run" or action != "component_script":
                 continue
-            key, technology = _resolve_component_technology(step)
+            key, technology = resolve_component_technology(step)
             if key and key not in components:
                 components[key] = technology
 
+    def _build_component_context(
+        self,
+        components: dict[str, str],
+        configured_phase_keys: tuple[str, ...],
+        plan,
+    ) -> dict[str, dict[str, object]]:
+        """Per-component dict of ``technology``/``scripts``/``selected`` for templates."""
         component_context: dict[str, dict[str, object]] = {}
         for component_key, technology in components.items():
             script_map: dict[str, str] = {}
@@ -314,118 +455,76 @@ class ControllerAllRunner:
                 "scripts": script_map,
                 "selected": dict(selected_client) if isinstance(selected_client, dict) else {},
             }
+        return component_context
 
-        phase_context: dict[str, object] = {
+    def _build_phase_context(
+        self, plan, component_context: dict[str, dict[str, object]],
+    ) -> dict[str, object]:
+        """Compose the context dict used by phase conditions / template renders."""
+        return {
             "config": plan.config,
             "bindings": dict(plan.role_bindings),
             "components": component_context,
-            "flags": {
-                "enable_components": self.cfg.enable_components,
-            },
+            "flags": {"enable_components": self.cfg.enable_components},
         }
 
-        def _phase_enabled(step: ControllerPhasePlanStep) -> bool:
-            enabled = bool(step.enabled) and evaluate_phase_condition(
-                step.when, context=phase_context
+    @staticmethod
+    def _resolve_step_action(step: ControllerPhasePlanStep) -> str:
+        """Validate the step shape and return the normalized action token."""
+        operation = str(step.operation or "").strip()
+        if operation != "run":
+            raise ConfigError(
+                "Unknown bootstrap-all phase operation "
+                f"'{operation}' in adapter_hooks.bootstrap_all.phase_plan. "
+                "Supported operation: 'run'."
             )
-            if enabled and step.skip_flag and self._skip_phase(step.skip_flag):
-                enabled = False
-            return enabled
+        params = dict(step.params or {})
+        action = str(params.get("action") or "").strip().lower()
+        if not action:
+            raise ConfigError(
+                "bootstrap_all phase operation 'run' requires params.action "
+                "in adapter_hooks.bootstrap_all.phase_plan."
+            )
+        return action
 
-        def _phase_name(default_name: str, step: ControllerPhasePlanStep) -> str:
-            return step.phase_name or default_name
-
-        def _resolve_step_action(step: ControllerPhasePlanStep) -> str:
-            operation = str(step.operation or "").strip()
-            if operation != "run":
-                raise ConfigError(
-                    "Unknown bootstrap-all phase operation "
-                    f"'{operation}' in adapter_hooks.bootstrap_all.phase_plan. "
-                    "Supported operation: 'run'."
-                )
-            params = dict(step.params or {})
-            action = str(params.get("action") or "").strip().lower()
-            if not action:
-                raise ConfigError(
-                    "bootstrap_all phase operation 'run' requires params.action "
-                    "in adapter_hooks.bootstrap_all.phase_plan."
-                )
-            return action
-
-        def _resolve_rendered_args(
-            *,
-            raw_args: object,
-            component_key: str = "",
-            component_technology: str = "",
-        ) -> list[str]:
-            args: list[str] = []
-            if raw_args is None:
-                return args
-            if not isinstance(raw_args, list):
-                raise ConfigError("Phase params.args must be an array when provided.")
-            for value in raw_args:
-                args.append(
-                    self._render_template_value(
-                        value,
-                        component_key=component_key,
-                        component_technology=component_technology,
-                    )
-                )
+    def _resolve_rendered_args(
+        self, *, raw_args: object, component_key: str = "", component_technology: str = "",
+    ) -> list[str]:
+        """Render each element of ``raw_args`` through the template engine."""
+        args: list[str] = []
+        if raw_args is None:
             return args
-
-        def _resolve_rendered_env(
-            *,
-            raw_env: object,
-            component_key: str = "",
-            component_technology: str = "",
-        ) -> dict[str, str]:
-            env: dict[str, str] = {}
-            if raw_env is None:
-                return env
-            if not isinstance(raw_env, dict):
-                raise ConfigError("Phase params.env must be an object/map when provided.")
-            for key, value in raw_env.items():
-                env_key = str(key or "").strip()
-                if not env_key:
-                    continue
-                env[env_key] = self._render_template_value(
+        if not isinstance(raw_args, list):
+            raise ConfigError("Phase params.args must be an array when provided.")
+        for value in raw_args:
+            args.append(
+                self._render_template_value(
                     value,
                     component_key=component_key,
                     component_technology=component_technology,
                 )
+            )
+        return args
+
+    def _resolve_rendered_env(
+        self, *, raw_env: object, component_key: str = "", component_technology: str = "",
+    ) -> dict[str, str]:
+        """Render each value of ``raw_env`` through the template engine."""
+        env: dict[str, str] = {}
+        if raw_env is None:
             return env
-
-        # Step execution — dispatch table
-        action_handlers: dict[str, Callable[[ControllerPhasePlanStep], None]] = {
-            "component_script": lambda step: _execute_component_script(
-                self, step, plan, components, _phase_enabled, _resolve_component_technology,
-                _resolve_rendered_args, _resolve_rendered_env, _phase_name,
-            ),
-            "script": lambda step: _execute_script(
-                self, step, _phase_enabled, _resolve_rendered_args,
-                _resolve_rendered_env, _phase_name,
-            ),
-            "enable_components": lambda step: _execute_enable_components(
-                self, step, plan, _phase_enabled,
-            ),
-            "http_action": lambda step: _execute_http_action(
-                self, step, _phase_enabled,
-            ),
-        }
-
-        for step in phase_plan:
-            action = _resolve_step_action(step)
-            handler = action_handlers.get(action)
-            if handler is None:
-                raise ConfigError(
-                    "Unknown bootstrap-all run action "
-                    f"'{action}' in adapter_hooks.bootstrap_all.phase_plan params.action."
-                )
-            handler(step)
-
-        info("Full bootstrap complete.")
-        self.tracker.summary()
-        return 0
+        if not isinstance(raw_env, dict):
+            raise ConfigError("Phase params.env must be an object/map when provided.")
+        for key, value in raw_env.items():
+            env_key = str(key or "").strip()
+            if not env_key:
+                continue
+            env[env_key] = self._render_template_value(
+                value,
+                component_key=component_key,
+                component_technology=component_technology,
+            )
+        return env
 
 
 # ---------------------------------------------------------------------------

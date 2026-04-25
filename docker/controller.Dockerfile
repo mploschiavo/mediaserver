@@ -27,6 +27,15 @@ RUN apk add --no-cache openssl \
 COPY VERSION /opt/media-stack/VERSION
 COPY bin /opt/media-stack/bin
 COPY src /opt/media-stack/src
+# As of v1.0.175 the dashboard HTML, /api/static/* assets and the
+# Swagger UI HTML wrapper are owned by a separate UI container. The
+# Python source tree still ships the original files for ratchet
+# tests + dev workflows, but the runtime image MUST NOT contain
+# them — they're a 5000-line attack surface that's no longer
+# served. Strip them from the image right after the source COPY so
+# nothing reads them at runtime.
+RUN rm -rf /opt/media-stack/src/media_stack/api/static \
+    /opt/media-stack/src/media_stack/api/dashboard.html
 COPY config/defaults /opt/media-stack/config/defaults
 COPY contracts /opt/media-stack/contracts
 

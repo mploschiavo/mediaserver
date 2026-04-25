@@ -365,6 +365,48 @@ def _run_serve(args: argparse.Namespace) -> None:
     from media_stack.services.telemetry_client import start_telemetry_timer
     start_telemetry_timer(log=runtime_platform.log)
 
+    # ------------------------------------------------------------------
+    # Media-integrity subsystem: enforce the canonical *arr + Bazarr
+    # policy at boot, reconcile duplicates every 15 min. See
+    # ``docs/media-integrity.md`` for the full contract. Wiring is
+    # best-effort: a missing policy file, unreachable adapter, or
+    # unset API-key env var logs a warning and continues — we never
+    # want the media-integrity daemon to block the controller from
+    # serving its core surface.
+    # ------------------------------------------------------------------
+    # Build the media-integrity service singleton. Cadence (scan /
+    # reconcile / enforce-config) is now driven by the JobRunner via
+    # contract-registered jobs in
+    # ``contracts/services/media_integrity.yaml``; the legacy
+    # daemon-thread scheduler was removed in v1.0.184 so history flows
+    # into ``GET /api/jobs.history[]`` and actor tagging works for
+    # manual triggers. The scheduler service below seeds the three
+    # cron-driven media-integrity entries.
+    try:
+        from media_stack.api.services.media_integrity_handlers import (
+            _instance as _media_integrity_api,
+        )
+        from media_stack.services.media_integrity.factory import (
+            build_default_service as _build_media_integrity,
+        )
+
+        _mi_service = _build_media_integrity()
+        _media_integrity_api.set_service(_mi_service)
+        runtime_platform.log(
+            "[INFO] Media integrity: service ready "
+            "(driven by JobRunner; legacy scheduler removed)"
+        )
+    except FileNotFoundError as exc:
+        # Policy file missing — non-fatal; the feature just isn't live.
+        runtime_platform.log(
+            f"[WARN] Media integrity: policy contract missing "
+            f"({exc}); subsystem disabled"
+        )
+    except Exception as exc:  # noqa: BLE001 — defensive; must not block boot
+        runtime_platform.log(
+            f"[WARN] Media integrity: init failed ({exc}); subsystem disabled"
+        )
+
     # Start config snapshot background timer
     snapshot_interval = int(os.environ.get("CONFIG_SNAPSHOT_INTERVAL_SECONDS", "3600"))  # 1h default
     if snapshot_interval > 0:
@@ -469,6 +511,50 @@ def _run_serve(args: argparse.Namespace) -> None:
                 runtime_platform.log(
                     "[INFO] Scheduler: seeded default "
                     "'recover-stuck-imports' (every 30m)"
+                )
+            # ----------------------------------------------------------
+            # Media-integrity jobs (v1.0.184). Replaces the legacy
+            # in-process daemon-thread scheduler. Each cadence maps to
+            # a contract-registered job; manual SPA triggers reach
+            # the same job through ``handlers_post`` so history is
+            # unified in /api/jobs.history[].
+            #
+            # Cron-equivalence:
+            #   media-integrity:scan          → */15 * * * *  (15 min)
+            #   media-integrity:reconcile     → 0 */6 * * *   (6 h)
+            #   media-integrity:enforce-config→ 0 4 * * *     (24 h)
+            # The interval scheduler doesn't support clock-aligned
+            # cron expressions; cadence-equivalence is the contract.
+            # ----------------------------------------------------------
+            if "media-integrity:scan" not in existing:
+                _sched.add_schedule(
+                    action="media-integrity:scan",
+                    interval_seconds=900,  # 15min
+                    label="Media-integrity status scan (every 15m)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default "
+                    "'media-integrity:scan' (every 15m)"
+                )
+            if "media-integrity:reconcile" not in existing:
+                _sched.add_schedule(
+                    action="media-integrity:reconcile",
+                    interval_seconds=21600,  # 6h
+                    label="Media-integrity duplicate reconcile (every 6h)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default "
+                    "'media-integrity:reconcile' (every 6h)"
+                )
+            if "media-integrity:enforce-config" not in existing:
+                _sched.add_schedule(
+                    action="media-integrity:enforce-config",
+                    interval_seconds=86400,  # 24h
+                    label="Media-integrity policy enforcement (daily)",
+                )
+                runtime_platform.log(
+                    "[INFO] Scheduler: seeded default "
+                    "'media-integrity:enforce-config' (every 24h)"
                 )
         except Exception as exc:
             runtime_platform.log(
@@ -648,7 +734,9 @@ def _run_serve(args: argparse.Namespace) -> None:
                     )
                     for queued in ["configure-media-server", "post-setup", "envoy-config", "validate-credentials"]:
                         runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
-                        action_trigger(queued, {})
+                        # Tag as auto-heal so the dashboard badges
+                        # the recovery cascade correctly.
+                        action_trigger(queued, {"_source": "auto-heal"})
 
                 if attempt <= retry_limit:
                     delay = min(10.0, 2.0 ** (attempt - 1))
@@ -673,7 +761,17 @@ def _run_serve(args: argparse.Namespace) -> None:
                         f"[HEAL] {len(state.get_failed_services())} services need healing. "
                         f"Auto-queuing reconcile in {heal_delay}s."
                     )
-                    threading.Timer(heal_delay, lambda: action_trigger("reconcile", {})).start()
+                    # Tag the auto-queued reconcile as auto-heal so
+                    # the history badge reads ``auto-heal`` instead
+                    # of ``unknown`` — operators need to distinguish
+                    # "the controller decided to retry" from "the
+                    # cron schedule fired".
+                    threading.Timer(
+                        heal_delay,
+                        lambda: action_trigger(
+                            "reconcile", {"_source": "auto-heal"},
+                        ),
+                    ).start()
 
                 break  # Exhausted retries.
 

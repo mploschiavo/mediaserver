@@ -18,6 +18,9 @@ from media_stack.core.auth.users.provider import (
     ProviderHealth,
 )
 from media_stack.core.http import HttpClient
+from media_stack.services.apps.jellyfin.visibility_mixin import (
+    _JellyfinVisibilityMixin,
+)
 
 _log = logging.getLogger("media_stack")
 
@@ -31,7 +34,7 @@ class JellyfinProviderError(RuntimeError):
     pass
 
 
-class JellyfinApiProvider:
+class JellyfinApiProvider(_JellyfinVisibilityMixin):
 
     name = "jellyfin"
     capabilities = ProviderCapabilities(
@@ -274,3 +277,4 @@ class JellyfinApiProvider:
             except Exception as exc:  # noqa: BLE001
                 _log.debug("[DEBUG] revoke %s failed: %s", session_id, exc)
                 continue
+

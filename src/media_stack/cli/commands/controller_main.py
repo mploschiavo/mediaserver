@@ -135,9 +135,59 @@ class ControllerMainCommand:
 
     @staticmethod
     def _run_oneshot(args: argparse.Namespace) -> None:
-        """Original one-shot bootstrap mode."""
+        """Original one-shot bootstrap mode.
+
+        Used by the three k8s CronJobs (``media-stack-controller-
+        reconcile``, ``media-stack-jellyfin-prewarm``, ``media-
+        stack-media-hygiene``) — each launches ``controller.py``
+        with a different ``--mode`` flag. We stamp a
+        ``cron:<mode>`` history entry so ``GET /api/jobs.history``
+        shows a "ran via cron" badge for each invocation. The
+        legacy adapter-pipeline ``runner.run`` path doesn't write
+        to history on its own (it predates the framework); we wrap
+        it here rather than retrofitting every legacy step writer.
+        """
+        import time as _time
+        from media_stack.cli.commands.job_framework import _record_history
+
+        mode = str(getattr(args, "mode", "") or "full").strip()
+        source_tag = f"cron:{mode}" if mode else "cron"
         runner, runtime_state = _build_runner(args)
-        runner.run(runtime_state)
+        t0 = _time.time()
+        error: Exception | None = None
+        try:
+            runner.run(runtime_state)
+        except Exception as exc:  # noqa: BLE001
+            error = exc
+            raise
+        finally:
+            elapsed = round(_time.time() - t0, 2)
+            # Synthesize a one-line history entry for the cron run.
+            # Without this, only ``run_job`` invocations (i.e. the
+            # ``--serve`` action queue) show up in
+            # ``/api/jobs.history`` and the dashboard's "ran via
+            # cron" badge has nothing to render against.
+            try:
+                _record_history(
+                    {
+                        "elapsed": elapsed,
+                        "ok": 0 if error else 1,
+                        "skipped": 0,
+                        "errors": 1 if error else 0,
+                        "jobs": {
+                            f"controller-{mode or 'full'}": {
+                                "status": "error" if error else "ok",
+                                "elapsed": elapsed,
+                            },
+                        },
+                    },
+                    source=source_tag,
+                )
+            except Exception:  # noqa: BLE001
+                # History write is best-effort — never let it
+                # mask the real error or fail an otherwise-good
+                # cron run.
+                pass
 
 
 _instance = ControllerMainCommand()

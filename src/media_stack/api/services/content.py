@@ -14,17 +14,133 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from media_stack.services.apps.download_clients.registry_helpers import DOWNLOAD_CLIENT_CATEGORIES
+from .content_analytics_mixin import _ContentAnalyticsMixin
+from .content_download_settings_mixin import _ContentDownloadSettingsMixin
 from .health import discover_api_keys
 from .registry import SERVICE_MAP, SERVICES
+from .runtime_keys import read_service_api_key
 import logging
 
 
+# Extracted to remove 5+ duplicate string-literal warnings (duplicate-strings
+# ratchet). Content-Type / Accept header values are canonical JSON MIME —
+# defining once makes downstream edits (e.g. switching to ``application/vnd+``
+# variants) a single-line change.
+_JSON_MIME = "application/json"
 
 
+def _cutoff_name_from_items(items: list[Any], cutoff_id: Any) -> str:
+    """Resolve a quality-profile cutoff id to its display name.
+
+    Pulled out of ``get_quality_profiles`` to flatten a deeply nested
+    search (for/if/for/if) into a single pass; behaviour is identical:
+    the first match — whether on an outer group or a nested quality —
+    wins. Falls back to ``str(cutoff_id)`` when no entry matches.
+    """
+    default = str(cutoff_id)
+    for item in items:
+        if item.get("id") == cutoff_id:
+            return item.get("name", default)
+        for q in item.get("items", []):
+            if q.get("id") == cutoff_id:
+                return q.get("name", default)
+    return default
 
 
-class ContentService:
-    """Content operations: library stats, downloads, indexers, versions, history."""
+def _find_scan_task(tasks: list[Any]) -> dict[str, Any] | None:
+    """Locate the Jellyfin scheduled task named ``Scan Media``.
+
+    Hoisted out of ``get_download_client_settings`` to flatten the
+    for/if/if/if ladder; returns ``None`` if no matching task exists
+    rather than letting the caller nest another level of ``if``.
+    """
+    for t in tasks:
+        if isinstance(t, dict) and "Scan Media" in t.get("Name", ""):
+            return t
+    return None
+
+
+def _summarize_scan_task(task: dict[str, Any]) -> dict[str, Any]:
+    """Shape a Jellyfin scheduled-task payload for the dashboard.
+
+    Decodes the 100-ns ``IntervalTicks`` into hours. Extracted so the
+    outer handler reads as a single ``if task: result = summarize(...)``
+    instead of a 4+-deep ladder.
+    """
+    triggers = task.get("Triggers", [])
+    interval_h = 12
+    if triggers:
+        ticks = triggers[0].get("IntervalTicks", 0)
+        if ticks:
+            interval_h = int(ticks / 36000000000)
+    return {
+        "task_id": task.get("Id", ""),
+        "state": task.get("State", "?"),
+        "interval_hours": interval_h,
+        "last_status": task.get("LastExecutionResult", {}).get("Status", "never"),
+    }
+
+
+def _update_jellyfin_scan_interval(scan_interval: Any) -> dict[str, Any]:
+    """Write a new ``IntervalTicks`` trigger onto Jellyfin's Scan Media task.
+
+    Extracted so ``update_download_client_settings`` doesn't need 4
+    levels of if/try/for/if nesting. Returns a status dict suitable
+    for merging into the caller's response.
+    """
+    try:
+        api_key = discover_api_keys().get("jellyfin", "")
+        ms = SERVICE_MAP.get("jellyfin")
+        if not (ms and api_key):
+            return {"status": "skipped", "reason": "jellyfin not reachable"}
+        tasks = json.loads(urllib.request.urlopen(
+            f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=5,
+        ).read())
+        task = _find_scan_task(tasks)
+        if task is None:
+            return {"status": "skipped", "reason": "Scan Media task missing"}
+        ticks = int(scan_interval) * 36000000000
+        triggers = [{"Type": "IntervalTrigger", "IntervalTicks": ticks}]
+        req = urllib.request.Request(
+            f"http://{ms.host}:{ms.port}/ScheduledTasks/{task['Id']}/Triggers?api_key={api_key}",
+            data=json.dumps(triggers).encode(),
+            method="POST",
+            headers={"Content-Type": _JSON_MIME},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return {"status": "updated", "hours": int(scan_interval)}
+    except Exception as exc:
+        return {"error": str(exc)[:80]}
+
+
+def _profile_summary(profile: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a single arr quality-profile payload into a dashboard shape.
+
+    Exists to pull a 5-deep loop out of ``get_quality_profiles`` — see
+    ``_cutoff_name_from_items`` for the cutoff-resolution specifics.
+    """
+    entry: dict[str, Any] = {"id": profile.get("id"), "name": profile.get("name", "")}
+    if "upgradeAllowed" in profile:
+        entry["upgradeAllowed"] = profile["upgradeAllowed"]
+    cutoff_id = profile.get("cutoff")
+    if cutoff_id is not None:
+        entry["cutoff"] = _cutoff_name_from_items(profile.get("items", []), cutoff_id)
+    return entry
+
+
+class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
+    """Content operations: library stats, downloads, indexers, versions, history.
+
+    Several surface areas live on sibling mixins so the class body
+    stays under the 500-line god-class ratchet — same public methods,
+    same behaviour, just split by topic:
+
+      * ``_ContentAnalyticsMixin`` — ``get_download_analytics``,
+        ``ensure_arr_scan_webhooks``.
+      * ``_ContentDownloadSettingsMixin`` — qBittorrent + Jellyfin
+        scan control panel (``get_download_client_settings`` /
+        ``update_download_client_settings``).
+    """
 
     def get_versions(self, cache: Any) -> dict[str, Any]:
         """Fetch version strings from arr apps and other services."""
@@ -41,7 +157,7 @@ class ContentService:
         def fetch_version(name: str) -> tuple[str, str]:
             host, port, path, json_key = version_endpoints[name]
             key = api_keys.get(name, "")
-            headers: dict[str, str] = {"Accept": "application/json"}
+            headers: dict[str, str] = {"Accept": _JSON_MIME}
             if key:
                 headers["X-Api-Key"] = key
             try:
@@ -225,30 +341,9 @@ class ContentService:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     data = json.loads(resp.read())
-                result = []
-                if isinstance(data, list):
-                    for p in data:
-                        entry: dict[str, Any] = {"id": p.get("id"), "name": p.get("name", "")}
-                        if "upgradeAllowed" in p:
-                            entry["upgradeAllowed"] = p["upgradeAllowed"]
-                        cutoff_id = p.get("cutoff")
-                        if cutoff_id is not None:
-                            cutoff_name = str(cutoff_id)
-                            for item in p.get("items", []):
-                                if item.get("id") == cutoff_id:
-                                    cutoff_name = item.get("name", cutoff_name)
-                                    break
-                                found = False
-                                for q in item.get("items", []):
-                                    if q.get("id") == cutoff_id:
-                                        cutoff_name = q.get("name", cutoff_name)
-                                        found = True
-                                        break
-                                if found:
-                                    break
-                            entry["cutoff"] = cutoff_name
-                        result.append(entry)
-                return name, result
+                if not isinstance(data, list):
+                    return name, []
+                return name, [_profile_summary(p) for p in data]
             except Exception:
                 return name, []
 
@@ -298,13 +393,22 @@ class ContentService:
         return {"lists": lists}
 
     def get_media_server_libraries(self) -> dict[str, Any]:
-        """Fetch library list from the active media server (registry-driven)."""
-        # Find the media server service that has a host/port configured
+        """Fetch library list from the active media server (registry-driven).
+
+        Uses ``read_service_api_key`` so an empty K8s Secret (typical on
+        first boot, before ``discover-api-keys`` has populated it)
+        triggers a fallback to the on-disk config file rather than
+        silently returning ``{libraries: []}``. When neither source has
+        a key the response includes a structured ``error`` field so the
+        dashboard can render an actionable message instead of "0 of
+        each".
+        """
+        first_seen: str | None = None
         for svc in SERVICES:
             if svc.category != "media-server" or not svc.host or not svc.port:
                 continue
-            env_key = svc.api_key_env or f"{svc.id.upper()}_API_KEY"
-            key = os.environ.get(env_key, "")
+            first_seen = first_seen or svc.id
+            key = read_service_api_key(svc.id)
             if not key:
                 continue
             try:
@@ -322,8 +426,13 @@ class ContentService:
                     for lib in (data if isinstance(data, list) else [])
                 ]
                 return {"libraries": libs}
-            except Exception:
-                return {"libraries": []}
+            except Exception as exc:
+                return {"libraries": [], "error": f"{svc.id}: {str(exc)[:80]}"}
+        if first_seen:
+            return {
+                "libraries": [],
+                "error": f"no API key for {first_seen}",
+            }
         return {"libraries": []}
 
     def get_recent(self) -> dict[str, Any]:
@@ -387,7 +496,7 @@ class ContentService:
             put_req = urllib.request.Request(
                 f"http://{svc.host}:{svc.port}{svc.indexer_path}/{indexer_id}",
                 data=json.dumps(indexer).encode(), method="PUT",
-                headers={"X-Api-Key": key, "Content-Type": "application/json"},
+                headers={"X-Api-Key": key, "Content-Type": _JSON_MIME},
             )
             urllib.request.urlopen(put_req, timeout=5)
             return {"status": "ok", "indexer_id": indexer_id, "enable": enable}
@@ -439,62 +548,7 @@ class ContentService:
                 all_lists[svc_id] = []
         return {"lists": all_lists, "total": sum(len(v) for v in all_lists.values())}
 
-    def get_download_analytics(self) -> dict[str, Any]:
-        """Aggregate download history into analytics: counts by day, success rates, top indexers."""
-        api_keys = discover_api_keys()
-        apps = [(s.id, s.host, s.port, s.history_path) for s in SERVICES if s.history_path]
-        all_records: list[dict[str, Any]] = []
-        for svc_id, host, port, path in apps:
-            key = api_keys.get(svc_id, "")
-            if not key:
-                continue
-            try:
-                # Fetch last 100 history records
-                url = f"http://{host}:{port}{path}"
-                if "?" in path:
-                    url += "&pageSize=100"
-                else:
-                    url += "?pageSize=100"
-                req = urllib.request.Request(url, headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    data = json.loads(resp.read())
-                records = data.get("records", data) if isinstance(data, dict) else data
-                if isinstance(records, list):
-                    for r in records:
-                        all_records.append({
-                            "service": svc_id,
-                            "title": str(r.get("sourceTitle", ""))[:60],
-                            "event": str(r.get("eventType", "")),
-                            "date": str(r.get("date", ""))[:10],
-                            "quality": str(r.get("quality", {}).get("quality", {}).get("name", "")) if isinstance(r.get("quality"), dict) else "",
-                            "indexer": str(r.get("data", {}).get("indexer", "")) if isinstance(r.get("data"), dict) else "",
-                        })
-            except Exception as exc:
-                log_swallowed(exc)
-
-        # Aggregate by day
-        by_day: dict[str, int] = {}
-        by_service: dict[str, int] = {}
-        by_indexer: dict[str, int] = {}
-        for r in all_records:
-            day = r.get("date", "unknown")
-            by_day[day] = by_day.get(day, 0) + 1
-            svc = r.get("service", "?")
-            by_service[svc] = by_service.get(svc, 0) + 1
-            idx = r.get("indexer", "")
-            if idx:
-                by_indexer[idx] = by_indexer.get(idx, 0) + 1
-
-        # Sort by day descending
-        daily_trend = [{"date": d, "count": c} for d, c in sorted(by_day.items(), reverse=True)][:30]
-        top_indexers = sorted(by_indexer.items(), key=lambda x: x[1], reverse=True)[:10]
-
-        return {
-            "total_records": len(all_records),
-            "daily_trend": daily_trend,
-            "by_service": by_service,
-            "top_indexers": [{"name": n, "count": c} for n, c in top_indexers],
-        }
+    # get_download_analytics lives on ``_ContentAnalyticsMixin``.
 
     def toggle_import_list(self, service_id: str, list_id: int, enabled: bool) -> dict[str, Any]:
         """Enable or disable an import list on a specific arr service."""
@@ -514,70 +568,14 @@ class ContentService:
             data["enabled"] = enabled
             put_req = urllib.request.Request(
                 url, data=json.dumps(data).encode(),
-                method="PUT", headers={"X-Api-Key": key, "Content-Type": "application/json"},
+                method="PUT", headers={"X-Api-Key": key, "Content-Type": _JSON_MIME},
             )
             urllib.request.urlopen(put_req, timeout=10)
             return {"status": "toggled", "service": service_id, "list_id": list_id, "enabled": enabled}
         except Exception as exc:
             return {"error": str(exc)[:120]}
 
-    def ensure_arr_scan_webhooks(self, controller_url: str = "") -> dict[str, Any]:
-        """Register webhooks on Sonarr/Radarr to trigger Jellyfin scan on import.
-
-        Creates a 'media-stack-scan' webhook on each arr service that POSTs
-        to /webhooks/arr on the controller when content is downloaded.
-        """
-        if not controller_url:
-            controller_url = f"http://media-stack-controller:{os.environ.get('BOOTSTRAP_API_PORT', '9100')}"
-        webhook_url = f"{controller_url}/webhooks/arr"
-        webhook_name = "media-stack-scan"
-        api_keys = discover_api_keys()
-        results: dict[str, str] = {}
-
-        for svc_id in ("sonarr", "radarr"):
-            svc = SERVICE_MAP.get(svc_id)
-            if not svc:
-                continue
-            key = api_keys.get(svc_id, "")
-            if not key:
-                results[svc_id] = "no API key"
-                continue
-            try:
-                base = f"http://{svc.host}:{svc.port}"
-                # Check existing webhooks (use core HTTP client for redirect handling)
-                from media_stack.core.http import HttpClient
-                _http = HttpClient()
-                _, existing, _ = _http.request(base, "/api/v3/notification", api_key=key)
-                already = any(n.get("name") == webhook_name for n in existing)
-                if already:
-                    results[svc_id] = "already registered"
-                    continue
-                # Create webhook
-                payload = {
-                    "name": webhook_name,
-                    "implementation": "Webhook",
-                    "configContract": "WebhookSettings",
-                    "fields": [
-                        {"name": "url", "value": webhook_url},
-                        {"name": "method", "value": 1},  # POST
-                    ],
-                    "onDownload": True,
-                    "onUpgrade": True,
-                    "onImportComplete": True,
-                    "onMovieAdded": svc_id == "radarr",
-                    "onSeriesAdd": svc_id == "sonarr",
-                    "onEpisodeFileDelete": svc_id == "sonarr",
-                    "onMovieFileDelete": svc_id == "radarr",
-                    "supportsOnDownload": True,
-                    "supportsOnUpgrade": True,
-                    "supportsOnImportComplete": True,
-                }
-                _http.request(base, "/api/v3/notification", api_key=key,
-                              method="POST", payload=payload)
-                results[svc_id] = "registered"
-            except Exception as exc:
-                results[svc_id] = f"error: {str(exc)[:60]}"
-        return {"webhooks": results, "url": webhook_url}
+    # ensure_arr_scan_webhooks lives on ``_ContentAnalyticsMixin``.
 
     def delete_import_list(self, service_id: str, list_id: int) -> dict[str, Any]:
         """Delete an import list from a specific arr service."""
@@ -599,230 +597,69 @@ class ContentService:
             return {"error": str(exc)[:120]}
 
 
-    def get_download_client_settings(self) -> dict[str, Any]:
-        """Get qBittorrent download limits and Jellyfin scan schedule."""
-        result: dict[str, Any] = {"torrent": {}, "jellyfin_scan": {}}
-        # qBittorrent settings
-        try:
-            import http.cookiejar
-            cj = http.cookiejar.CookieJar()
-            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-            user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-            pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
-            svc = SERVICE_MAP.get("qbittorrent")
-            if svc:
-                opener.open(urllib.request.Request(
-                    f"http://{svc.host}:{svc.port}/api/v2/auth/login",
-                    data=f"username={user}&password={pw}".encode(),
-                ))
-                prefs = json.loads(opener.open(f"http://{svc.host}:{svc.port}/api/v2/app/preferences").read())
-                result["torrent"] = {
-                    "max_active_downloads": prefs.get("max_active_downloads", 3),
-                    "max_active_torrents": prefs.get("max_active_torrents", 5),
-                    "max_active_uploads": prefs.get("max_active_uploads", 3),
-                    "dl_limit_mbps": round(prefs.get("dl_limit", 0) / 1024 / 1024, 1) if prefs.get("dl_limit") else 0,
-                    "up_limit_mbps": round(prefs.get("up_limit", 0) / 1024 / 1024, 1) if prefs.get("up_limit") else 0,
-                    "queueing_enabled": prefs.get("queueing_enabled", True),
-                }
-        except Exception as exc:
-            result["torrent"]["error"] = str(exc)[:80]
-        # Jellyfin scan schedule
-        try:
-            api_key = discover_api_keys().get("jellyfin", "")
-            ms = SERVICE_MAP.get("jellyfin")
-            if ms and api_key:
-                tasks = json.loads(urllib.request.urlopen(
-                    f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=5
-                ).read())
-                for t in tasks:
-                    if "Scan Media" in t.get("Name", ""):
-                        triggers = t.get("Triggers", [])
-                        interval_h = 12
-                        if triggers:
-                            ticks = triggers[0].get("IntervalTicks", 0)
-                            if ticks:
-                                interval_h = int(ticks / 36000000000)
-                        result["jellyfin_scan"] = {
-                            "task_id": t.get("Id", ""),
-                            "state": t.get("State", "?"),
-                            "interval_hours": interval_h,
-                            "last_status": t.get("LastExecutionResult", {}).get("Status", "never"),
-                        }
-                        break
-        except Exception as exc:
-            result["jellyfin_scan"]["error"] = str(exc)[:80]
-        return result
+    # get_download_client_settings / update_download_client_settings live
+    # on ``_ContentDownloadSettingsMixin`` — see the mixin for their bodies.
 
-    def update_download_client_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
-        """Update qBittorrent limits and/or trigger Jellyfin scan."""
-        results: dict[str, Any] = {}
-        # Update qBittorrent
-        torrent = settings.get("torrent", {})
-        if torrent:
-            try:
-                import http.cookiejar
-                cj = http.cookiejar.CookieJar()
-                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-                user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-                pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
-                svc = SERVICE_MAP.get("qbittorrent")
-                if svc:
-                    opener.open(urllib.request.Request(
-                        f"http://{svc.host}:{svc.port}/api/v2/auth/login",
-                        data=f"username={user}&password={pw}".encode(),
-                    ))
-                    prefs = {}
-                    if "max_active_downloads" in torrent:
-                        prefs["max_active_downloads"] = int(torrent["max_active_downloads"])
-                    if "max_active_torrents" in torrent:
-                        prefs["max_active_torrents"] = int(torrent["max_active_torrents"])
-                    if "max_active_uploads" in torrent:
-                        prefs["max_active_uploads"] = int(torrent["max_active_uploads"])
-                    if "dl_limit_mbps" in torrent:
-                        prefs["dl_limit"] = int(float(torrent["dl_limit_mbps"]) * 1024 * 1024)
-                    if "up_limit_mbps" in torrent:
-                        prefs["up_limit"] = int(float(torrent["up_limit_mbps"]) * 1024 * 1024)
-                    if prefs:
-                        req = urllib.request.Request(
-                            f"http://{svc.host}:{svc.port}/api/v2/app/setPreferences",
-                            data=f"json={json.dumps(prefs)}".encode(),
-                        )
-                        opener.open(req)
-                        results["torrent"] = {"status": "updated", "settings": prefs}
-            except Exception as exc:
-                results["torrent"] = {"error": str(exc)[:80]}
-        # "Scan Library" — fire BOTH steps: (1) tell each *arr to
-        # scan its completed-downloads path so anything qBit finished
-        # (or that the user dropped in directly) gets imported into
-        # ``/media/<cat>/``, then (2) ask Jellyfin to re-index those
-        # paths. Step (1) alone wouldn't update Jellyfin's library
-        # (it watches /media not /data); step (2) alone wouldn't
-        # find files still sitting in qBit's completed dir. Doing
-        # both makes the button match the user's mental model:
-        # "find every new thing and surface it." (v1.0.144.)
-        if settings.get("scan_now"):
-            keys = discover_api_keys()
-            arr_specs = [
-                ("sonarr",  "v3", "DownloadedEpisodesScan", "/data/torrents/completed/tv"),
-                ("radarr",  "v3", "DownloadedMoviesScan",   "/data/torrents/completed/movies"),
-                ("lidarr",  "v1", "DownloadedAlbumsScan",   "/data/torrents/completed/music"),
-                ("readarr", "v1", "DownloadedBooksScan",    "/data/torrents/completed/books"),
-            ]
-            arr_results: dict[str, str] = {}
-            for app, ver, cmd, path in arr_specs:
-                key = keys.get(app, "")
-                svc = SERVICE_MAP.get(app)
-                if not svc or not key:
-                    arr_results[app] = "skipped (no key)"
-                    continue
-                try:
-                    body = json.dumps({"name": cmd, "path": path}).encode()
-                    req = urllib.request.Request(
-                        f"http://{svc.host}:{svc.port}/api/{ver}/command",
-                        data=body, method="POST",
-                        headers={"X-Api-Key": key, "Content-Type": "application/json"},
-                    )
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        arr_results[app] = f"queued ({resp.status})"
-                except Exception as exc:
-                    arr_results[app] = str(exc)[:60]
 
-            try:
-                api_key = keys.get("jellyfin", "")
-                ms = SERVICE_MAP.get("jellyfin")
-                if ms and api_key:
-                    urllib.request.urlopen(urllib.request.Request(
-                        f"http://{ms.host}:{ms.port}/Library/Refresh?api_key={api_key}",
-                        method="POST",
-                    ), timeout=5)
-                    results["scan"] = {"status": "triggered", "arrs": arr_results}
-                else:
-                    results["scan"] = {
-                        "status": "jellyfin scan skipped (no key)",
-                        "arrs": arr_results,
-                    }
-            except Exception as exc:
-                results["scan"] = {"error": str(exc)[:80], "arrs": arr_results}
-        # Update Jellyfin scan interval
-        scan_interval = settings.get("jellyfin_scan_interval_hours")
-        if scan_interval is not None:
-            try:
-                api_key = discover_api_keys().get("jellyfin", "")
-                ms = SERVICE_MAP.get("jellyfin")
-                if ms and api_key:
-                    tasks = json.loads(urllib.request.urlopen(
-                        f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=5
-                    ).read())
-                    for t in tasks:
-                        if "Scan Media" in t.get("Name", ""):
-                            ticks = int(scan_interval) * 36000000000
-                            triggers = [{"Type": "IntervalTrigger", "IntervalTicks": ticks}]
-                            req = urllib.request.Request(
-                                f"http://{ms.host}:{ms.port}/ScheduledTasks/{t['Id']}/Triggers?api_key={api_key}",
-                                data=json.dumps(triggers).encode(),
-                                method="POST",
-                                headers={"Content-Type": "application/json"},
-                            )
-                            urllib.request.urlopen(req, timeout=5)
-                            results["scan_interval"] = {"status": "updated", "hours": int(scan_interval)}
-                            break
-            except Exception as exc:
-                results["scan_interval"] = {"error": str(exc)[:80]}
-        return results or {"status": "no changes"}
+def _fetch_qbit_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
+    """Fetch active torrents from the torrent client API.
 
-    @staticmethod
-    def _fetch_qbit_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
-        """Fetch active torrents from the torrent client API."""
-        import http.cookiejar
-        cj = http.cookiejar.CookieJar()
-        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-        pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
-        login = urllib.request.Request(
-            f"http://{svc_host}:{svc_port}/api/v2/auth/login",
-            data=f"username={user}&password={pw}".encode(),
-        )
-        opener.open(login, timeout=5)
-        req = urllib.request.Request(f"http://{svc_host}:{svc_port}/api/v2/torrents/info?filter=active")
-        with opener.open(req, timeout=5) as resp:
-            torrents = json.loads(resp.read())
-        items = [
-            {"name": t.get("name", "")[:80],
-             "progress": round((t.get("progress", 0) or 0) * 100, 1),
-             "state": t.get("state", ""), "size": t.get("size", 0),
-             "dlspeed": t.get("dlspeed", 0)}
-            for t in torrents[:10]
-        ]
-        return {"active": len(torrents), "items": items}
+    Module-level — the prior ``@staticmethod`` lived on ``ContentService``
+    but never touched ``self``, and keeping it here trims the class line
+    count below the god-class threshold.
+    """
+    import http.cookiejar
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+    pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+    login = urllib.request.Request(
+        f"http://{svc_host}:{svc_port}/api/v2/auth/login",
+        data=f"username={user}&password={pw}".encode(),
+    )
+    opener.open(login, timeout=5)
+    req = urllib.request.Request(f"http://{svc_host}:{svc_port}/api/v2/torrents/info?filter=active")
+    with opener.open(req, timeout=5) as resp:
+        torrents = json.loads(resp.read())
+    items = [
+        {"name": t.get("name", "")[:80],
+         "progress": round((t.get("progress", 0) or 0) * 100, 1),
+         "state": t.get("state", ""), "size": t.get("size", 0),
+         "dlspeed": t.get("dlspeed", 0)}
+        for t in torrents[:10]
+    ]
+    return {"active": len(torrents), "items": items}
 
-    @staticmethod
-    def _fetch_sab_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
-        """Fetch active NZB downloads from a usenet-client-compatible API."""
-        from pathlib import Path
-        from .registry import read_api_key_from_file
-        # Discover the usenet client service ID from the download client registry.
-        _usenet_ids = [sid for sid, cat in DOWNLOAD_CLIENT_CATEGORIES.items() if cat == "usenet"]
-        _usenet_svc_id = _usenet_ids[0] if _usenet_ids else "usenet"
-        _usenet_svc = SERVICE_MAP.get(_usenet_svc_id)
-        _key_env = _usenet_svc.api_key_env if _usenet_svc else ""
-        sab_key = os.environ.get(_key_env, "") if _key_env else ""
-        if not sab_key:
-            sab_key = read_api_key_from_file(_usenet_svc_id, os.environ.get("CONFIG_ROOT", "/srv-config"))
-        if not sab_key:
-            return {"active": 0, "speed": "0", "items": []}
-        req = urllib.request.Request(
-            f"http://{svc_host}:{svc_port}/api?mode=queue&output=json&apikey={sab_key}"
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-        queue = data.get("queue", {})
-        slots = queue.get("slots", [])
-        items = [
-            {"name": s.get("filename", "")[:80],
-             "progress": round(float(s.get("percentage", 0)), 1)}
-            for s in slots[:10]
-        ]
-        return {"active": len(slots), "speed": f"{queue.get('speed', '0')} KB/s", "items": items}
+
+def _fetch_sab_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
+    """Fetch active NZB downloads from a usenet-client-compatible API.
+
+    Extracted from ``ContentService`` for the same reason as
+    ``_fetch_qbit_downloads`` — pure function, no ``self``, keeps the
+    host class short enough to clear the 500-line ratchet."""
+    from .registry import read_api_key_from_file
+    _usenet_ids = [sid for sid, cat in DOWNLOAD_CLIENT_CATEGORIES.items() if cat == "usenet"]
+    _usenet_svc_id = _usenet_ids[0] if _usenet_ids else "usenet"
+    _usenet_svc = SERVICE_MAP.get(_usenet_svc_id)
+    _key_env = _usenet_svc.api_key_env if _usenet_svc else ""
+    sab_key = os.environ.get(_key_env, "") if _key_env else ""
+    if not sab_key:
+        sab_key = read_api_key_from_file(_usenet_svc_id, os.environ.get("CONFIG_ROOT", "/srv-config"))
+    if not sab_key:
+        return {"active": 0, "speed": "0", "items": []}
+    req = urllib.request.Request(
+        f"http://{svc_host}:{svc_port}/api?mode=queue&output=json&apikey={sab_key}"
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.loads(resp.read())
+    queue = data.get("queue", {})
+    slots = queue.get("slots", [])
+    items = [
+        {"name": s.get("filename", "")[:80],
+         "progress": round(float(s.get("percentage", 0)), 1)}
+        for s in slots[:10]
+    ]
+    return {"active": len(slots), "speed": f"{queue.get('speed', '0')} KB/s", "items": items}
 
 
 _instance = ContentService()
@@ -847,8 +684,9 @@ delete_import_list = _instance.delete_import_list
 
 # Backward compat alias
 get_jellyfin_libraries = get_media_server_libraries
-_fetch_qbit_downloads = _instance._fetch_qbit_downloads
-_fetch_sab_downloads = _instance._fetch_sab_downloads
+# ``_fetch_qbit_downloads`` / ``_fetch_sab_downloads`` were promoted from
+# staticmethods on ``ContentService`` to module-level helpers (see their
+# definitions above); they are already in the module namespace.
 
 # Download client category → fetch function.  Extend for new client types.
 _DOWNLOAD_FETCHERS: dict[str, Any] = {

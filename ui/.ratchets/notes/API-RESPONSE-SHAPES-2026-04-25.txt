@@ -1,0 +1,465 @@
+### /api/libraries
+{
+  "live": [],
+  "configured": [
+    {
+      "name": "Movies",
+      "collection_type": "movies",
+      "paths": [
+        "/media/movies"
+      ]
+    },
+    {
+      "name": "TV Shows",
+      "collection_type": "tvshows",
+      "paths": [
+        "/media/tv"
+      ]
+    },
+    {
+      "name": "Music",
+      "collection_type": "music",
+      "paths": [
+        "/media/music"
+      ]
+    },
+    {
+      "name": "Books",
+      "collection_type": "books",
+      "paths": [
+        "/media/books"
+      ]
+    }
+  ],
+  "source": "defaults",
+  "media_server": "jellyfin"
+}
+
+### /api/recent
+{
+  "recent": {
+    "radarr": [
+      {
+        "title": "The Super Mario Galaxy Movie",
+        "added": ""
+      },
+      {
+        "title": "Your Heart Will Be Broken",
+        "added": ""
+      },
+      {
+        "title": "Vengeance",
+        "added": ""
+      },
+      {
+        "title": "Project Hail Mary",
+        "added": ""
+      },
+      {
+        "title": "The Mortuary Assistant",
+        "added": ""
+      }
+    ],
+    "sonarr": [
+      {
+        "title": "Breaking Bad",
+        "added": ""
+      },
+      {
+        "title": "Stranger Things",
+        "added": ""
+      },
+      {
+        "title": "The Last of Us",
+        "added": ""
+      },
+      {
+        "title": "The Boys",
+        "added": ""
+      },
+      {
+        "title": "Severance",
+        "added": ""
+      }
+    ]
+  }
+}
+
+### /api/routing
+{
+  "base_domain": "io",
+  "stack_subdomain": "iomio",
+  "gateway_host": "m.iomio.io",
+  "gateway_port": 443,
+  "app_path_prefix": "/app",
+  "strategy": "hybrid",
+  "scheme": "",
+  "internet_exposed": true,
+  "direct_hosts": {
+    "media_server": "jf.iomio.io",
+    "auth": "auth.iomio.io"
+  }
+}
+
+### /api/auth/config
+{
+  "mode": "authelia",
+  "internet_exposed": false,
+  "oidc_provider": "local",
+  "oidc_config": {},
+  "per_service": {},
+  "app_auth": {
+    "enabled": true,
+    "method": "None",
+    "required": "DisabledForLocalAddresses",
+    "fail_on_error": false,
+    "username_env": "STACK_ADMIN_USERNAME",
+    "password_env": "STACK_ADMIN_PASSWORD"
+  },
+  "app_auth_method": "None",
+  "app_auth_summary": "SSO gateway \u2014 arr apps trust local network (no second login)"
+}
+
+### /api/display-preferences
+{
+  "enabled": true,
+  "show_backdrop": true,
+  "custom_prefs": {
+    "enableNextVideoInfoOverlay": true,
+    "enableBackdrops": true,
+    "enableLibraryBackdrops": true,
+    "enableThemeVideos": true,
+    "homesection0": "smalllibrarytiles",
+    "homesection1": "resume",
+    "homesection2": "latestmedia",
+    "homesection3": "nextup",
+    "homesection4": "livetv",
+    "homesection5": "activerecordings",
+    "homesection6": "none",
+    "homesection7": "none",
+    "homesection8": "none",
+    "homesection9": "none"
+  },
+  "per_library_prefs": {
+    "movies": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    },
+    "tv": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    },
+    "music": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    },
+    "books": {
+      "SortBy": "DateCreated,SortName",
+      "SortOrder": "Descending"
+    }
+  },
+  "clients": [
+    "emby",
+    "jellyfin-web"
+  ]
+}
+
+### /api/password-policy
+{
+  "policy": {
+    "min_length": 4,
+    "require_classes": 1,
+    "history_len": 5
+  },
+  "bounds": {
+    "min_length": {
+      "floor": 4,
+      "ceiling": 128,
+      "default": 12
+    },
+    "require_classes": {
+      "floor": 1,
+      "ceiling": 4,
+      "default": 3
+    },
+    "history_len": {
+      "floor": 0,
+      "ceiling": 20,
+      "default": 5
+    }
+  }
+}
+
+### /api/branding
+{
+  "brand": {
+    "name": "iomio.io",
+    "homepage_url": "https://iomio.io",
+    "tagline": "Media Stack Controller",
+    "wordmark": "/api/static/iomio-wordmark.svg",
+    "icon": "/api/static/iomio-icon.svg",
+    "illustration": "/api/static/iomio-orbit.svg"
+  }
+}
+
+### /api/jobs
+{
+  "jobs": [
+    {
+      "name": "configure-categories",
+      "handler": "media_stack.services.apps.qbittorrent.configure_categories_job:configure_categories",
+      "phase": "download_clients",
+      "priority": 10,
+      "requires": [],
+      "max_attempts": null,
+      "non_blocking": false,
+      "after": [],
+      "label": "Update download categories",
+      "service": "qbittorrent"
+    },
+    {
+      "name": "configure-arr-clients",
+      "handler": "media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients",
+      "phase": "download_clients",
+      "priority": 10,
+      "requires": [],
+      "max_attempts": null,
+      "non_blocking": false,
+      "after": [],
+      "label": "Update download client config",
+      "service": "sonarr"
+    },
+    {
+      "name": "configure-indexers",
+      "handler": "media_stack.services.apps.prowlarr.configure_indexers_job:configure_indexers",
+      "phase": "download_clients",
+      "priority": 20,
+      "requires": [],
+      "max_attempts": null,
+      "non_blocking": true,
+      "after": [],
+      "label": "Configure indexers",
+      "service": "prowlarr"
+    },
+    {
+      "name": "discover-indexers",
+      "handler": "media_stack.services.apps.core.job_adapters:discover_indexers",
+      "phase": "download_clients",
+      "priority": 30,
+      "requires": [],
+      "max_attempts": null,
+      "non_blocking": 
+
+### /api/livetv-sources
+{
+  "tuners": [
+    {
+      "url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+      "name": "Default"
+    }
+  ],
+  "guides": [
+    {
+      "url": "https://iptv-epg.org/files/epg-us.xml",
+      "name": "Default"
+    }
+  ],
+  "tuner_url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+  "guide_url": "https://iptv-epg.org/files/epg-us.xml",
+  "load_all_tuners": false,
+  "source": "profile"
+}
+
+### /api/iptv-countries
+{
+  "countries": [
+    {
+      "code": "us",
+      "name": "United States",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-us.xml"
+    },
+    {
+      "code": "gb",
+      "name": "United Kingdom",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-gb.xml"
+    },
+    {
+      "code": "ca",
+      "name": "Canada",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-ca.xml"
+    },
+    {
+      "code": "au",
+      "name": "Australia",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-au.xml"
+    },
+    {
+      "code": "de",
+      "name": "Germany",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-de.xml"
+    },
+    {
+      "code": "fr",
+      "name": "France",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-fr.xml"
+    },
+    {
+      "code": "es",
+      "name": "Spain",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-es.xml"
+    },
+    {
+      "code": "it",
+      "name": "Italy",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-it.xml"
+    },
+    {
+      "code": "br",
+      "name": "Brazil",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org/files/epg-br.xml"
+    },
+    {
+      "code": "mx",
+      "name": "Mexico",
+      "tuner_url": "",
+      "guide_url": "https://iptv-epg.org
+
+### /api/epg-providers
+{
+  "providers": [
+    {
+      "id": "iptv-epg",
+      "name": "IPTV-EPG.org",
+      "url_template": "https://iptv-epg.org/files/epg-{code}.xml",
+      "format": "xml",
+      "priority": 1,
+      "enabled": true,
+      "notes": "Best for US, EU. ~30 countries. 7-day guide data."
+    },
+    {
+      "id": "epg-pw",
+      "name": "EPG.pw",
+      "url_template": "https://epg.pw/xmltv/epg_{CODE}.xml.gz",
+      "format": "xml.gz",
+      "priority": 2,
+      "enabled": true,
+      "notes": "20 countries. Good Asia-Pacific coverage (CN, HK, JP, SG, MY, VN). Daily updates."
+    },
+    {
+      "id": "epgshare01",
+      "name": "EPGShare01",
+      "url_template": "https://epgshare01.online/epgshare01/epg_ripper_{CODE}1.xml.gz",
+      "format": "xml.gz",
+      "priority": 3,
+      "enabled": true,
+      "notes": "102 files, 50+ countries. Broad coverage. Gzipped."
+    },
+    {
+      "id": "epgtalk",
+      "name": "EPGTalk",
+      "format": "xml",
+      "priority": 4,
+      "enabled": true,
+      "notes": "US/UK/Mexico only. High channel count. Updated daily.",
+      "country_urls": {
+        "us": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/us.xml",
+        "gb": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/uk.xml",
+        "mx": "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/latino.xml"
+      }
+    },
+    {
+      "id": "freeview-epg",
+      "nam
+
+### /api/quality-profiles/sonarr
+{
+  "profiles": [
+    {
+      "id": 1,
+      "name": "Any",
+      "upgradeAllowed": false,
+      "cutoff": 1,
+      "allowed": [
+        "SDTV",
+        "WEBRip-480p",
+        "WEBDL-480p",
+        "DVD",
+        "Bluray-480p",
+        "Bluray-576p",
+        "HDTV-720p",
+        "HDTV-1080p",
+        "WEBRip-720p",
+        "WEBDL-720p",
+        "Bluray-720p",
+        "WEBRip-1080p",
+        "WEBDL-1080p",
+        "Bluray-1080p"
+      ],
+      "formatItems": 0
+    },
+    {
+      "id": 2,
+      "name": "SD",
+      "upgradeAllowed": false,
+      "cutoff": 1,
+      "allowed": [
+        "SDTV",
+        "WEBRip-480p",
+        "WEBDL-480p",
+        "DVD",
+        "Bluray-480p",
+        "Bluray-576p"
+      ],
+      "formatItems": 0
+    },
+    {
+      "id": 3,
+      "name": "HD-720p",
+      "upgradeAllowed": false,
+      "cutoff": 4,
+      "allowed": [
+        "HDTV-720p",
+        "WEBRip-720p",
+        "WEBDL-720p",
+        "Bluray-720p"
+      ],
+      "formatItems": 0
+    },
+    {
+      "id": 4,
+      "name": "HD-1080p",
+      "upgradeAllowed": true,
+      "cutoff": 9,
+      "allowed": [
+        "HDTV-1080p",
+        "WEBRip-1080p",
+        "WEBDL-1080p",
+        "Bluray-1080p"
+      ],
+      "formatItems": 0
+    },
+    {
+      "id": 5,
+      "name": "Ultra-HD",
+      "upgradeAllowed": false,
+      "cutoff": 16,
+      "allowed": [
+        "HDTV-2160p",
+        "WEBRip-2160p",
+        
+
+### /api/auto-heal
+{
+  "enabled": true,
+  "recent_events": []
+}
+

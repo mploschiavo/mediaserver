@@ -1,0 +1,6 @@
+ROUTE_FILE: src/routes/audit-log.tsx
+ROUTE_NAME: AuditLogRoute
+ROUTE_PATH: /audit-log
+SIDEBAR_SECTION: Observability
+SIDEBAR_LABEL: Audit log
+SIDEBAR_ICON: ScrollText

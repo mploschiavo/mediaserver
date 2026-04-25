@@ -7,9 +7,15 @@
     "test": "playwright test",
     "test:list": "playwright test --list",
     "test:headed": "playwright test --headed",
-    "test:screenshots": "playwright test tests/screenshot-capture.spec.ts --workers=1"
+    "test:screenshots": "playwright test tests/screenshot-capture.spec.ts --workers=1",
+    "test:session-visibility": "playwright test tests/session-visibility.spec.ts tests/session-visibility-a11y.spec.ts",
+    "test:a11y": "playwright test tests/session-visibility-a11y.spec.ts",
+    "test:lighthouse": "lhci autorun --config=.lighthouserc.json"
   },
   "devDependencies": {
-    "@playwright/test": "^1.53.0"
+    "@playwright/test": "^1.53.0",
+    "@axe-core/playwright": "^4.10.0",
+    "axe-core": "^4.10.0",
+    "@lhci/cli": "^0.14.0"
   }
 }

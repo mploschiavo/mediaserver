@@ -9,6 +9,7 @@ resources:
   - optional.yaml
   - envoy.yaml
   - controller.yaml
+  - ui.yaml
   - auth-authelia.yaml
   - ingress-traefik.yaml
   - unpackerr.yaml
@@ -34,4 +35,4 @@ configMapGenerator:
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.169
+    newTag: v1.0.175

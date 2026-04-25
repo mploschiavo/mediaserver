@@ -68,6 +68,15 @@ metadata:
   namespace: media-stack
 spec:
   replicas: 1
+  # Authelia owns a single SQLite db on a RWO PVC. Two pods running
+  # at once (the default RollingUpdate's maxSurge=1) attach to the
+  # same db.sqlite3 simultaneously and the new pod's startup check
+  # races the old pod's writers, surfacing as
+  #   "the configured encryption key does not appear to be valid"
+  # even though the key on disk is unchanged. Recreate kills the old
+  # pod first, then starts the new one — minimal downtime, no race.
+  strategy:
+    type: Recreate
   selector:
     matchLabels: {app: authelia}
   template:

@@ -436,6 +436,7 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
     <button onclick="showTab('tab-routing',this)">Routing</button>
     <button onclick="showTab('tab-webhooks',this)">Alerts</button>
     <button onclick="showTab('tab-users',this)">Users</button>
+    <button onclick="showTab('tab-media-integrity',this)">Media Integrity</button>
   </div>
 
   <!-- Logs tab -->
@@ -763,6 +764,9 @@ details{margin-top:8px}details summary{cursor:pointer;color:var(--fg2);font-size
       </div>
     </div>
   </div>
+
+  <!-- Media Integrity tab -->
+  <div id="tab-media-integrity" class="tab-content"></div>
 </div>
 
 <!-- Recent Additions -->
@@ -5378,7 +5382,31 @@ async function onTabShow(tabId){
     else if(tabId==='tab-ops'){/* ops-actions is static, no load needed */}
     else if(tabId==='tab-profile'){await loadDisplayConfig();}
     else if(tabId==='tab-users'){await loadUserList();}  /* auto-load users on first tab click */
+    else if(tabId==='tab-media-integrity'){await loadMediaIntegrityTab();}
   }finally{hideLoading();}
+}
+
+/* Media-integrity tab: lazily load the tab script and invoke its
+   renderer. The script attaches window.renderMediaIntegrityTab as a
+   side effect; we cache the fact that it's loaded so repeat tab
+   switches re-render without re-fetching the bundle. */
+let _mediaIntegrityScriptLoaded=false;
+async function loadMediaIntegrityTab(){
+  const root=document.getElementById('tab-media-integrity');
+  if(!root)return;
+  if(!_mediaIntegrityScriptLoaded){
+    await new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src='/api/static/tab_media_integrity.js';
+      s.async=true;
+      s.onload=()=>{_mediaIntegrityScriptLoaded=true;resolve();};
+      s.onerror=()=>reject(new Error('failed to load tab_media_integrity.js'));
+      document.head.appendChild(s);
+    });
+  }
+  if(typeof window.renderMediaIntegrityTab==='function'){
+    window.renderMediaIntegrityTab(root);
+  }
 }
 /* Preload other tabs 3s after page load so switching feels instant */
 setTimeout(async()=>{

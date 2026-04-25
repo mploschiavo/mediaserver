@@ -84,7 +84,12 @@ class UserServiceTests(unittest.TestCase):
                 role_slug="adult",
             )
             self.assertEqual(result["email"], "jane@x")
-            self.assertTrue(result["generated_password"])
+            # Plaintext ships via the password-ticket store (see
+            # password_ticket_store.py); the result carries a one-
+            # shot handle, never the plaintext itself.
+            self.assertNotIn("generated_password", result)
+            self.assertTrue(result["password_ticket"])
+            self.assertIn("ticket_expires_at", result)
             self.assertEqual(result["secondary_results"]["jellyfin"], "ok")
             sot.create_user.assert_called_once()
             jf.create_user.assert_called_once()
@@ -176,7 +181,11 @@ class UserServiceTests(unittest.TestCase):
             result = svc.reset_password(created["id"])
             self.assertEqual(result["providers"]["authelia"], "ok")
             self.assertEqual(result["providers"]["jellyfin"], "ok")
-            self.assertTrue(result["generated_password"])
+            # Plaintext never lands in the response — retrieval is via
+            # the single-use ticket store. See password_ticket_store.py.
+            self.assertNotIn("generated_password", result)
+            self.assertTrue(result["password_ticket"])
+            self.assertIn("ticket_expires_at", result)
 
     def test_reset_password_flips_env_seed_source_to_rotated(self):
         """Closes the env backdoor: once the admin rotates, the

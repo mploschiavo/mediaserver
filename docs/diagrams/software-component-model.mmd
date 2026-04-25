@@ -39,6 +39,7 @@ flowchart TD
 
   subgraph Runtime[Cluster Runtime]
     CTRL["media-stack-controller\nHTTP API + Dashboard on :9100"]
+    UI["media-stack-ui v1.1.0\nSPA on :8080\nreverse-proxies /api/*"]
     APPS["Arr/Prowlarr/Jellyfin\nJellyseerr + bound clients"]
   end
 
@@ -67,3 +68,4 @@ flowchart TD
   WIRE --> APPMOD
 
   MAIN --> CTRL --> APPS
+  UI -->|/api/*| CTRL

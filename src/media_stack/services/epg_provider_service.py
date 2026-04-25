@@ -31,8 +31,11 @@ class EpgProviderService:
 
     @staticmethod
     def _find_providers_yaml() -> Path | None:
+        # Single env read — previously ``X if X else None`` counted twice
+        # against OS_ENVIRON_IN_METHODS_RATCHET without adding value.
+        _override = os.environ.get("EPG_PROVIDERS_FILE", "")
         candidates = [
-            Path(os.environ.get("EPG_PROVIDERS_FILE", "")) if os.environ.get("EPG_PROVIDERS_FILE") else None,
+            Path(_override) if _override else None,
             Path("/opt/media-stack/contracts/epg_providers.yaml"),
             Path(__file__).resolve().parents[3] / "contracts" / "epg_providers.yaml",
             Path("contracts/epg_providers.yaml"),

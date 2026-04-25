@@ -294,6 +294,90 @@ curl -u admin:$PW -X POST https://controller/api/tokens/revoke-family \
 - No self-service reset; contact your admin, they'll either
   reset directly or issue a new invite.
 
+### "This wasn't me" on a login you don't recognise
+
+- **My Profile → Security → Login history** shows every
+  authentication attempt attributed to your account, with device,
+  IP prefix, and outcome. Click **This wasn't me** on an entry
+  and the controller will:
+  - Revoke every live session of yours across every provider.
+  - Flag the session cookie as `compromised` so it can't be
+    reused even if the attacker still has the raw token.
+  - Force a password rotation at your next sign-in.
+  - Audit the event as `anomaly_credential_stuffing` with your
+    username + the flagged IP for an admin to review.
+
+## 2b. Admin runbook (session visibility)
+
+### Who is connected right now
+
+- **Sessions tab** — live table of every active session across
+  every provider (controller + Authelia + Jellyfin). Columns:
+  user, provider badge, device class (TV / phone / tablet /
+  desktop / CLI), client app, client IP (with "first seen" flag
+  if new for that user), connected-since, last activity.
+- Filter by user, provider, device class. Click **Revoke** on any
+  row to terminate one session without touching the others.
+
+### Bans — users + IPs
+
+- **Bans tab** — two tables: **User bans** (by username, cascades
+  to Authelia + Jellyfin + session revoke) and **IP bans** (by
+  CIDR, enforced at the Envoy gateway via Authelia's
+  `access_control.rules`).
+- Every ban requires a **reason** picked from a template (
+  `CREDENTIAL_STUFFING`, `UNAUTHORIZED_SHARING`, `ADMIN_REQUEST`,
+  `INVESTIGATION_HOLD`, `SECURITY_INCIDENT`, `POLICY_VIOLATION`,
+  `OTHER`). Free-text only allowed for the template `OTHER`.
+- **Expiry** — every ban carries an expiration. The "indefinite"
+  choice logs louder so it shows up in reviews.
+- Remove a ban from the row menu. All changes audited with the
+  operator and reason.
+
+### Security signals
+
+- **Security tab** — surfaces three detections from the audit log:
+  - **Failed login clusters** — grouped by IP /24, showing the
+    users attempted. A single IP trying 5+ distinct usernames is
+    the credential-stuffing signature.
+  - **New-location logins** — successful sign-ins from (user,
+    /24) pairs never seen in the past 90 days. Click through to
+    the user's login history for context.
+  - **Concurrent session spikes** — users holding ≥ 5 live
+    sessions. Signal for shared credentials or in-progress ATO.
+- MFA enrollment status is shown on every user row in the Users
+  tab. An admin can see who has TOTP / WebAuthn enrolled at a
+  glance; unenrolled admin users are flagged red.
+
+### Audit log integrity
+
+- `GET /api/audit-log/head` returns `{height, hash, ts}` — the
+  tip of the hash chain. Point an external monitor (Prometheus
+  blackbox / UptimeRobot / your SIEM) at it and alert if `hash`
+  changes without `height` going up. A mid-chain rewrite will
+  trip the detector.
+
+### Emergency revoke
+
+- **Security tab → Emergency actions → Revoke everywhere**. One
+  confirmation prompt, then the controller:
+  1. Revokes every live session on every provider.
+  2. Rotates the controller's bearer-token signing secret.
+  3. Triggers a forced password rotation on next login for every
+     admin-role user.
+  4. Writes an `emergency_revoke_all` entry to the audit log
+     with your identity + timestamp.
+- Use when an incident is active. All users will need to log back
+  in.
+
+### API-token inventory
+
+- **My Profile → Tokens** (for self) and **Users → row → Tokens**
+  (for admins) show every long-lived credential tied to the
+  account across controller + Jellyfin + *arr. Metadata only —
+  secrets are never surfaced to the browser. Revoke from the
+  row menu.
+
 ## 3. Troubleshooting
 
 | Symptom | Check |

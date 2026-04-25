@@ -215,6 +215,7 @@ class AutoHealService:
         services: list[ServiceDef] | None = None,
         restart_fn: Callable[[str], bool] | None = None,
         audit_fn: Callable[[HealEvent], None] | None = None,
+        record_history_fn: Callable | None = None,
         enabled: bool | None = None,
         throttle_seconds: int = _HEAL_THROTTLE_SECONDS,
     ) -> None:
@@ -234,6 +235,24 @@ class AutoHealService:
         )
         self._restart_fn = restart_fn or _default_restart
         self._audit_fn = audit_fn or _default_audit
+        # Late-import default: avoids a controller_main → auto_heal
+        # → job_framework → controller_main cycle at module import
+        # time. The job_framework module is small and already
+        # imported by handlers_get for the same reason.
+        if record_history_fn is None:
+            try:
+                from media_stack.cli.commands.job_framework import (
+                    _record_history as _default_record_history,
+                )
+                record_history_fn = _default_record_history
+            except Exception as exc:  # noqa: BLE001
+                _log.debug(
+                    "[DEBUG] auto-heal: default _record_history "
+                    "unavailable (%s) — history tagging disabled",
+                    exc,
+                )
+                record_history_fn = None
+        self._record_history = record_history_fn
         self._throttle = int(throttle_seconds)
         self._last_heal_at: dict[str, float] = {}
         self._recent_events: list[HealEvent] = []
@@ -383,8 +402,66 @@ class AutoHealService:
     # ------------------------------------------------------------------
 
     def run_cycle(self) -> dict:
+        t0 = time.time()
         snapshots = self.snapshot_healthy()
         heals = self.heal_corrupt()
+        # Guardrail evaluation rides the auto-heal cycle so we don't
+        # spawn a second daemon thread (and so a stop-the-world heal
+        # can pause guardrails too). Lazy-imported to avoid pulling
+        # the registry into every test that constructs an
+        # ``AutoHealService`` with a noop snapshot store.
+        try:
+            from media_stack.services import guardrails as _guardrails_pkg
+            _guardrails_pkg.tick()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("[DEBUG] auto-heal: guardrail tick failed: %s", exc)
+        elapsed = round(time.time() - t0, 2)
+        # Surface the cycle in /api/jobs.history with an
+        # ``auto-heal`` source tag whenever it actually took action
+        # (snapshotted a config or healed a corrupt one). A
+        # zero-effect tick fires every ~minute via the daemon
+        # thread; recording every tick would flood the 20-entry
+        # ring buffer and crowd out cron + manual runs the
+        # operator actually cares about.
+        if (snapshots or heals) and self._record_history is not None:
+            try:
+                ok = sum(1 for h in heals if h.get("action") == "restored")
+                errors = sum(
+                    1 for h in heals
+                    if h.get("action") in ("restore_failed",)
+                )
+                skipped = sum(
+                    1 for h in heals
+                    if h.get("action") == "skipped_no_snapshot"
+                )
+                jobs: dict[str, dict] = {}
+                for ev in heals:
+                    svc = str(ev.get("service_id") or "?")
+                    status = "ok" if ev.get("action") == "restored" else (
+                        "skipped" if ev.get("action") == "skipped_no_snapshot"
+                        else "error"
+                    )
+                    jobs[f"auto-heal:{svc}"] = {
+                        "status": status, "elapsed": 0,
+                    }
+                if not jobs and snapshots:
+                    jobs["auto-heal:snapshot"] = {
+                        "status": "ok", "elapsed": elapsed,
+                    }
+                self._record_history(
+                    {
+                        "elapsed": elapsed,
+                        "ok": ok or (1 if snapshots and not heals else 0),
+                        "skipped": skipped,
+                        "errors": errors,
+                        "jobs": jobs,
+                    },
+                    source="auto-heal",
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.debug(
+                    "[DEBUG] auto-heal: history record failed: %s", exc,
+                )
         return {
             "enabled": self._enabled,
             "snapshots_taken": snapshots,

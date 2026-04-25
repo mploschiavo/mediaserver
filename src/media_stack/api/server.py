@@ -51,6 +51,19 @@ from media_stack.api.session_singletons import (
 )
 from media_stack.api.login_page import LOGIN_HTML as _LOGIN_HTML
 from media_stack.core.auth.csrf import CsrfProtector as _CsrfProtector
+from media_stack.core.auth.security_headers import (
+    LEGACY_DASHBOARD_POLICY as _LEGACY_DASHBOARD_POLICY_BASE,
+    apply_policy as _apply_security_policy,
+)
+
+# ControllerAPIHandler already emits ``Server: media-stack`` via its
+# ``version_string`` override on every send_response. Emitting it a
+# SECOND time through the policy would land two ``Server`` lines in
+# the wire response. Strip the banner bit from the policy so the
+# handler's built-in path owns that header.
+_LEGACY_DASHBOARD_POLICY = _LEGACY_DASHBOARD_POLICY_BASE.with_overrides(
+    strip_server_banner=False,
+)
 
 _csrf_issuer = _CsrfProtector()
 
@@ -326,35 +339,16 @@ class _AuthPolicy:
     def emit_security_headers(self, handler) -> None:
         """Send hardening headers on every response.
 
-        CSP uses 'unsafe-inline' because dashboard.html has inline
-        scripts/styles; tightening to nonce-based CSP is the ideal
-        next step.
+        Delegates to ``core.auth.security_headers.apply_policy`` so the
+        full set — CSP, HSTS, COOP, CORP, Cache-Control, Permissions-
+        Policy, X-Frame, X-CTO, Referrer-Policy, Server-banner scrub —
+        is emitted from a single canonical preset. The legacy preset
+        preserves the Envoy same-origin Referrer behaviour documented
+        at this method's historical location and also flips
+        Cache-Control to ``no-store`` so auth-gated responses never
+        land in a shared cache.
         """
-        handler.send_header("X-Content-Type-Options", "nosniff")
-        handler.send_header("X-Frame-Options", "DENY")
-        # Envoy's apex vhost relies on Referer to route same-origin
-        # fetches from /app/<svc>/ back to the right upstream. A strict
-        # "no-referrer" policy silently misroutes them to the catch-all
-        # (jellyfin), which 405s POST JSON calls → browser sees a
-        # "position 4" JSON parse error. "same-origin" keeps Referer on
-        # same-origin requests (where routing needs it) and strips it
-        # on cross-origin (where leakage matters).
-        handler.send_header("Referrer-Policy", "same-origin")
-        handler.send_header("Permissions-Policy",
-                           "geolocation=(), camera=(), microphone=()")
-        handler.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'",
-        )
-        handler.send_header("Strict-Transport-Security",
-                           "max-age=31536000; includeSubDomains")
+        _apply_security_policy(handler, _LEGACY_DASHBOARD_POLICY)
 
 
 _auth_policy = _AuthPolicy()
@@ -669,7 +663,7 @@ def _audit_mutation(handler) -> None:
             detail={
                 "method": getattr(handler, "command", "POST"),
                 "status": status,
-                "client": _trusted_proxy_auth._client_ip(handler),
+                "client": _trusted_proxy_auth.client_ip(handler),
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -766,6 +760,24 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
     state: ControllerState
     _callbacks: dict[str, Any] = {}
 
+    # BaseHTTPRequestHandler defaults to "BaseHTTP/0.x Python/3.y.z",
+    # which leaks the Python version + a recognisable stdlib banner
+    # for fingerprinting attackers. Override to a static opaque string.
+    # We use "media-stack" (NOT an empty value) because several proxies
+    # (notably older nginx + Envoy access-log parsers) log a warning
+    # and synthesise a placeholder when they see a blank Server header,
+    # which is worse than a static label for triage noise.
+    # ``server_version`` is what BaseHTTPRequestHandler uses to build
+    # ``version_string()``; ``sys_version`` is the stdlib-appended
+    # "Python/x.y.z" suffix we want gone.
+    server_version = "media-stack"
+    sys_version = ""
+
+    def version_string(self) -> str:
+        # Defensive override: even if a subclass or monkey-patch twiddles
+        # server_version / sys_version above, this returns a stable label.
+        return "media-stack"
+
     @property
     def action_trigger(self) -> ActionTriggerFn | None:
         return self._callbacks.get("action_trigger")
@@ -800,7 +812,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         password = os.environ.get("STACK_ADMIN_PASSWORD", "")
         if _auth_policy.decision(self, path, password) == "allow":
             return True
-        client_ip = _trusted_proxy_auth._client_ip(self)
+        client_ip = _trusted_proxy_auth.client_ip(self)
         if _should_reject_for_ip_lockout(client_ip):
             security_counters.incr("ip_lockout_trip")
             self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
@@ -831,6 +843,31 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
 
     # --- Response helpers ---
 
+    def _safe_write(self, payload: bytes) -> None:
+        """Write to the response socket, swallowing client-side
+        disconnects.
+
+        BrokenPipeError / ConnectionResetError mean the browser has
+        already closed the connection — typically because a React
+        component unmounted mid-fetch, the user navigated away, or a
+        Tanstack Query observer was cancelled. The server has nothing
+        useful to do about it; the previous behavior raised the
+        exception out to socketserver, which logged a noisy multi-line
+        traceback for every cancelled request. Quietly drop the write
+        and let the request finish.
+        """
+        try:
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            # Debug-level only — these are normal in any SPA that
+            # cancels in-flight requests on route change.
+            logger.debug(
+                "Client disconnected before response finished: %s %s (%s)",
+                self.command,
+                self.path,
+                exc,
+            )
+
     def _json_response(self, status: int, body: dict[str, Any]) -> None:
         payload = json.dumps(body, default=str).encode("utf-8")
         self._last_status = int(status)
@@ -840,7 +877,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         _auth_policy.emit_security_headers(self)
         _issue_csrf_if_missing(self)
         self.end_headers()
-        self.wfile.write(payload)
+        self._safe_write(payload)
 
     def _html_response(self, status: int, html: str) -> None:
         payload = html.encode("utf-8")
@@ -850,7 +887,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         _auth_policy.emit_security_headers(self)
         _issue_csrf_if_missing(self)
         self.end_headers()
-        self.wfile.write(payload)
+        self._safe_write(payload)
 
     def _raw_response(self, status: int, content_type: str, payload: bytes, headers: dict[str, str] | None = None) -> None:
         self.send_response(status)
@@ -860,7 +897,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         _auth_policy.emit_security_headers(self)
         self.end_headers()
-        self.wfile.write(payload)
+        self._safe_write(payload)
 
     def _read_json_body(self) -> dict[str, Any]:
         length = int(self.headers.get(_H_CONTENT_LENGTH, 0))
@@ -923,6 +960,18 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
             except Exception:
                 triggered_by = "user"
         overrides["_triggered_by"] = triggered_by
+        # Tag this run as operator-triggered so the
+        # ``/api/jobs.history`` ``source`` field reads ``"manual"``
+        # rather than ``"unknown"``. The actor's username (parsed
+        # from the Basic auth header above) is propagated as
+        # ``_actor_username`` so the dashboard can show "ran by
+        # alice" alongside the badge. ``_dispatch_action`` strips
+        # both fields out before forwarding overrides to
+        # ``_apply_overrides`` — they're control-plane metadata,
+        # not user-set toggles.
+        overrides["_source"] = "manual"
+        if triggered_by and triggered_by != "system":
+            overrides["_actor_username"] = triggered_by
         if self.action_trigger:
             self.action_trigger(action_name, overrides)
         priority = ACTION_PRIORITY.get(action_name, DEFAULT_ACTION_PRIORITY)

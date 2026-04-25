@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
 from ...config_model_utils import coerce_bool_opt, coerce_str_list_opt, normalize_by_app_key
 from .config_models_discovery import (
@@ -15,9 +15,16 @@ from .config_models_discovery import (
     resolve_discovery_list_contract,
 )
 
+# ``ServarrAppConfig | dict | str`` is the canonical union the public
+# helpers accept — seven methods previously spelled it as a quoted
+# string literal, which tripped the duplicate-strings ratchet. A named
+# alias keeps each signature short without losing the forward-reference
+# semantics (the file uses ``from __future__ import annotations``).
+AppLike = "ServarrAppConfig | dict[str, Any] | str"
+
 
 def app_lookup_keys(
-    app: "ServarrAppConfig | dict[str, Any] | str",
+    app: AppLike,
     canonicalize: Callable[[str], str] | None = None,
 ) -> tuple[str, ...]:
     if isinstance(app, ServarrAppConfig):
@@ -306,7 +313,7 @@ class ArrMediaManagementPolicy:
 
     def override_for(
         self,
-        app: "ServarrAppConfig | dict[str, Any] | str",
+        app: AppLike,
         canonicalize: Callable[[str], str] | None = None,
     ) -> ArrMediaManagementOverride:
         for key in app_lookup_keys(app, canonicalize=canonicalize):
@@ -317,7 +324,7 @@ class ArrMediaManagementPolicy:
 
     def resolved_for(
         self,
-        app: "ServarrAppConfig | dict[str, Any] | str",
+        app: AppLike,
         canonicalize: Callable[[str], str] | None = None,
     ) -> ArrMediaManagementResolvedPolicy:
         override = self.override_for(app, canonicalize=canonicalize)
@@ -409,7 +416,7 @@ class ArrDownloadHandlingPolicy:
 
     def override_for(
         self,
-        app: "ServarrAppConfig | dict[str, Any] | str",
+        app: AppLike,
         canonicalize: Callable[[str], str] | None = None,
     ) -> ArrDownloadHandlingOverride:
         for key in app_lookup_keys(app, canonicalize=canonicalize):
@@ -420,7 +427,7 @@ class ArrDownloadHandlingPolicy:
 
     def resolved_for(
         self,
-        app: "ServarrAppConfig | dict[str, Any] | str",
+        app: AppLike,
         canonicalize: Callable[[str], str] | None = None,
     ) -> ArrDownloadHandlingResolvedPolicy:
         override = self.override_for(app, canonicalize=canonicalize)
@@ -524,7 +531,7 @@ class ArrQualityUpgradePolicy:
 
     def override_for(
         self,
-        app: "ServarrAppConfig | dict[str, Any] | str",
+        app: AppLike,
         canonicalize: Callable[[str], str] | None = None,
     ) -> ArrQualityUpgradeOverride:
         for key in app_lookup_keys(app, canonicalize=canonicalize):
@@ -535,7 +542,7 @@ class ArrQualityUpgradePolicy:
 
     def resolved_for(
         self,
-        app: "ServarrAppConfig | dict[str, Any] | str",
+        app: AppLike,
         canonicalize: Callable[[str], str] | None = None,
     ) -> ArrQualityUpgradeResolvedPolicy:
         override = self.override_for(app, canonicalize=canonicalize)

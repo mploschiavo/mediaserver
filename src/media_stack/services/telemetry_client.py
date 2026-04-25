@@ -43,6 +43,77 @@ _SCHEMA_FIELDS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Pure module-level helpers (extracted from TelemetryClient @staticmethods
+# to keep the class focused on stateful transport). Behaviour-preserving:
+# each helper is referenced under its original name both at class call sites
+# and via the legacy module-level aliases at the bottom of the file.
+# ---------------------------------------------------------------------------
+
+
+def _config_root() -> str:
+    """Root directory for persisted controller state.
+
+    Extracted from ``TelemetryClient`` so the rest of the service package
+    can import it without instantiating the client."""
+    return os.environ.get("CONFIG_ROOT", "/srv-config")
+
+
+def _cluster_name() -> str:
+    """Human-friendly cluster name with sensible fallbacks.
+
+    Used when the telemetry payload and log messages need a readable
+    identifier; pure env lookup means it is safely a module-level
+    function rather than a class staticmethod."""
+    return os.environ.get(
+        "TELEMETRY_CLUSTER_NAME",
+        os.environ.get("COMPOSE_PROJECT_NAME", socket.gethostname()),
+    )
+
+
+def _parse_host_port(endpoint: str) -> tuple[str, int]:
+    """Extract host and port from endpoint URL.
+
+    Module-level so the UDP and TCP transports can share the parse
+    without needing an instance."""
+    from urllib.parse import urlparse
+    parsed = urlparse(endpoint)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 8200
+    return host, port
+
+
+def _to_compact(payload: dict[str, Any]) -> list[Any]:
+    """Convert full payload to positional array (4x smaller).
+
+    Module-level so serialization is a pure function over the schema
+    fields — no hidden class state to worry about."""
+    def _get(d: dict, dotted: str) -> Any:
+        for k in dotted.split("."):
+            if isinstance(d, dict):
+                d = d.get(k, 0)
+            else:
+                return 0
+        return d
+    return [_get(payload, f) for f in _SCHEMA_FIELDS]
+
+
+def _from_compact(arr: list[Any]) -> dict[str, Any]:
+    """Reconstruct full payload from positional array.
+
+    Inverse of ``_to_compact``; kept alongside it at module scope so
+    round-trip tests can import both without touching the class."""
+    result: dict[str, Any] = {}
+    for i, field in enumerate(_SCHEMA_FIELDS):
+        val = arr[i] if i < len(arr) else 0
+        parts = field.split(".")
+        if len(parts) == 1:
+            result[parts[0]] = val
+        else:
+            result.setdefault(parts[0], {})[parts[1]] = val
+    return result
+
+
 class TelemetryClient:
     """Collects cluster metrics and pushes to a central telemetry server."""
 
@@ -55,16 +126,12 @@ class TelemetryClient:
     # Internal helpers
     # -----------------------------------------------------------------------
 
-    @staticmethod
-    def _config_root() -> str:
-        return os.environ.get("CONFIG_ROOT", "/srv-config")
-
     def _cluster_id(self) -> str:
         """Persistent cluster ID -- generated once, stored to disk."""
         explicit = os.environ.get("TELEMETRY_CLUSTER_ID", "").strip()
         if explicit:
             return explicit
-        id_file = Path(self._config_root()) / ".controller" / "cluster-id"
+        id_file = Path(_config_root()) / ".controller" / "cluster-id"
         if id_file.is_file():
             return id_file.read_text(encoding="utf-8").strip()
         cid = str(uuid.uuid4())
@@ -74,12 +141,6 @@ class TelemetryClient:
         except Exception as exc:
             log_swallowed(exc)
         return cid
-
-    @staticmethod
-    def _cluster_name() -> str:
-        return os.environ.get("TELEMETRY_CLUSTER_NAME",
-                              os.environ.get("COMPOSE_PROJECT_NAME",
-                                             socket.gethostname()))
 
     @staticmethod
     def _collect_controller_info() -> dict[str, Any]:
@@ -241,7 +302,7 @@ class TelemetryClient:
         return media
 
     def _buffer_path(self) -> Path:
-        return Path(self._config_root()) / ".controller" / "telemetry-buffer.json"
+        return Path(_config_root()) / ".controller" / "telemetry-buffer.json"
 
     def _buffer_payload(self, payload: dict[str, Any]) -> None:
         """Buffer a failed payload to disk for retry."""
@@ -285,45 +346,11 @@ class TelemetryClient:
             log_swallowed(exc)
         return sent
 
-    @staticmethod
-    def _to_compact(payload: dict[str, Any]) -> list[Any]:
-        """Convert full payload to positional array (4x smaller)."""
-        def _get(d: dict, dotted: str) -> Any:
-            for k in dotted.split("."):
-                if isinstance(d, dict):
-                    d = d.get(k, 0)
-                else:
-                    return 0
-            return d
-        return [_get(payload, f) for f in _SCHEMA_FIELDS]
-
-    @staticmethod
-    def _from_compact(arr: list[Any]) -> dict[str, Any]:
-        """Reconstruct full payload from positional array."""
-        result: dict[str, Any] = {}
-        for i, field in enumerate(_SCHEMA_FIELDS):
-            val = arr[i] if i < len(arr) else 0
-            parts = field.split(".")
-            if len(parts) == 1:
-                result[parts[0]] = val
-            else:
-                result.setdefault(parts[0], {})[parts[1]] = val
-        return result
-
-    @staticmethod
-    def _parse_host_port(endpoint: str) -> tuple[str, int]:
-        """Extract host and port from endpoint URL."""
-        from urllib.parse import urlparse
-        parsed = urlparse(endpoint)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 8200
-        return host, port
-
     def _probe_udp(self, endpoint: str, api_key: str) -> bool:
         """Test if UDP works to the server."""
         import hashlib
         import socket as _socket
-        host, port = self._parse_host_port(endpoint)
+        host, port = _parse_host_port(endpoint)
         udp_port = port + 1
         cid = self._cluster_id()[:8]
         key_hash = hashlib.md5((api_key or "").encode()).hexdigest()[:8]
@@ -343,10 +370,10 @@ class TelemetryClient:
         import gzip
         import hashlib
         import socket as _socket
-        host, port = self._parse_host_port(endpoint)
+        host, port = _parse_host_port(endpoint)
         udp_port = port + 1
         try:
-            compact = [_SCHEMA_VERSION] + self._to_compact(payload)
+            compact = [_SCHEMA_VERSION] + _to_compact(payload)
             raw = json.dumps(compact, separators=(",", ":")).encode()
             compressed = gzip.compress(raw)
             key_hash = hashlib.md5((api_key or "").encode()).hexdigest()[:8].encode()
@@ -365,7 +392,7 @@ class TelemetryClient:
         """Send payload via TCP/HTTP POST with compact gzip."""
         import gzip
         try:
-            compact = [_SCHEMA_VERSION] + TelemetryClient._to_compact(payload)
+            compact = [_SCHEMA_VERSION] + _to_compact(payload)
             raw = json.dumps(compact, separators=(",", ":")).encode("utf-8")
             compressed = gzip.compress(raw)
             req = urllib.request.Request(
@@ -407,7 +434,7 @@ class TelemetryClient:
         """Collect all cluster metrics. Safe -- never raises."""
         metrics: dict[str, Any] = {
             "cluster_id": self._cluster_id(),
-            "cluster_name": self._cluster_name(),
+            "cluster_name": _cluster_name(),
             "ts": time.time(),
             "controller": self._collect_controller_info(),
             "services": self._collect_service_health(),
@@ -472,27 +499,23 @@ _instance = TelemetryClient()
 collect_metrics = _instance.collect_metrics
 push_telemetry = _instance.push_telemetry
 start_telemetry_timer = _instance.start_telemetry_timer
-_to_compact = _instance._to_compact
-_from_compact = _instance._from_compact
+# NOTE: _to_compact, _from_compact, _cluster_name, _config_root, and
+# _parse_host_port are defined at module scope above the class — importing
+# them from here still works via the module's own namespace.
 _cluster_id = _instance._cluster_id
-_cluster_name = _instance._cluster_name
 _buffer_payload = _instance._buffer_payload
 _buffer_path = _instance._buffer_path
 _drain_buffer = _instance._drain_buffer
 _push_one = _instance._push_one
 _probe_udp = _instance._probe_udp
 _send_udp = _instance._send_udp
-_config_root = _instance._config_root
 _collect_controller_info = _instance._collect_controller_info
 _collect_service_health = _instance._collect_service_health
 _collect_job_metrics = _instance._collect_job_metrics
 _collect_network_io = _instance._collect_network_io
 _collect_media_metrics = _instance._collect_media_metrics
-_parse_host_port = _instance._parse_host_port
 _send_tcp = _instance._send_tcp
 _udp_ok = _instance._udp_ok
 _udp_last_probe = _instance._udp_last_probe
 _UDP_PROBE_INTERVAL = _instance._UDP_PROBE_INTERVAL
-_parse_host_port = _instance._parse_host_port
-_send_tcp = _instance._send_tcp
 _UDP_PROBE_INTERVAL = _instance._UDP_PROBE_INTERVAL

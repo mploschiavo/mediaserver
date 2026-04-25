@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from media_stack.core.http import HTTP_OK
+
 import media_stack.services.apps.servarr.runtime.arr_ops as _servarr_arr_ops
 from media_stack.services.apps.servarr.runtime.common import (
     choose_profile,
@@ -60,7 +62,7 @@ class OpenSeerrRuntimeOps:
         preferred_root: str,
     ) -> str:
         status, root_folders, body = http_request(app_url, f"{api_base}/rootfolder", api_key=api_key)
-        if status != 200 or not isinstance(root_folders, list):
+        if status != HTTP_OK or not isinstance(root_folders, list):
             raise RuntimeError(f"{app_name}: failed to list root folders (HTTP {status}): {body}")
         chosen = choose_root_folder(root_folders, preferred_root)
         if chosen:
@@ -79,7 +81,7 @@ class OpenSeerrRuntimeOps:
         status, language_profiles, _ = http_request(
             sonarr_url, f"{sonarr_api_base}/languageprofile", api_key=sonarr_api_key
         )
-        if status == 200 and isinstance(language_profiles, list) and language_profiles:
+        if status == HTTP_OK and isinstance(language_profiles, list) and language_profiles:
             return to_int(language_profiles[0].get("id"), 1)
         return 1
 

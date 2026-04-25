@@ -17,6 +17,11 @@ import logging
 
 class JellyfinAdminOps:
 
+    def _svc_base_url(self, svc: Any) -> str:
+        # Single source of truth for the cluster-internal Jellyfin URL so the
+        # ``http://host:port`` literal appears once rather than per-method.
+        return f"http://{svc.host}:{svc.port}"
+
     def discover_api_key(self, config_root: str) -> str:
         """Discover Jellyfin API key from the SQLite DB."""
         from media_stack.api.services.key_formats import READERS
@@ -52,7 +57,7 @@ class JellyfinAdminOps:
         """
         jf_key = os.environ.get("JELLYFIN_API_KEY", "")
         jf_uid = os.environ.get("JELLYFIN_USER_ID", "")
-        jf_base = f"http://{svc.host}:{svc.port}"
+        jf_base = self._svc_base_url(svc)
 
         if not jf_key:
             jf_key = self.discover_api_key(config_root)
@@ -128,6 +133,7 @@ class JellyfinAdminOps:
 
         # Restart
         restart_msg = ""
+        jf_base = self._svc_base_url(svc)
         try:
             import docker as docker_lib
             client = docker_lib.from_env()
@@ -137,7 +143,7 @@ class JellyfinAdminOps:
             for _ in range(15):
                 time.sleep(2)
                 try:
-                    req = urllib.request.Request(f"http://{svc.host}:{svc.port}{svc.health_path}")
+                    req = urllib.request.Request(f"{jf_base}{svc.health_path}")
                     urllib.request.urlopen(req, timeout=5)
                     restart_msg = "Service restarted."
                     break
@@ -153,7 +159,7 @@ class JellyfinAdminOps:
         try:
             auth_data = json.dumps({"Username": username, "Pw": ""}).encode()
             auth_req = urllib.request.Request(
-                f"http://{svc.host}:{svc.port}/Users/AuthenticateByName",
+                f"{jf_base}/Users/AuthenticateByName",
                 data=auth_data, method="POST",
                 headers={
                     "Content-Type": "application/json",
@@ -167,7 +173,7 @@ class JellyfinAdminOps:
             if token and user_id:
                 pw_data = json.dumps({"CurrentPw": "", "NewPw": password}).encode()
                 pw_req = urllib.request.Request(
-                    f"http://{svc.host}:{svc.port}/Users/{user_id}/Password",
+                    f"{jf_base}/Users/{user_id}/Password",
                     data=pw_data, method="POST",
                     headers={"X-Emby-Token": token, "Content-Type": "application/json"},
                 )

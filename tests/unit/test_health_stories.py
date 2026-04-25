@@ -223,6 +223,42 @@ class HealthStoryTests(unittest.TestCase):
     # Resilience
     # ------------------------------------------------------------------
 
+    def test_api_keys_missing_rule_fires_when_discovery_left_services_empty(self) -> None:
+        """v1.0.181: ``LibraryStatsTiles`` showed 1 of each because the
+        K8s Secret had every API key as empty string. Without this
+        rule the operator sees an apparently-healthy stack with zero
+        content. The rule must fire when ``services_missing_keys()``
+        returns a non-empty list, regardless of the other signals."""
+        from unittest import mock as _mock
+        with _mock.patch(
+            "media_stack.api.services.runtime_keys.services_missing_keys",
+            return_value=["sonarr", "radarr"],
+        ):
+            stories = compose(
+                health=_all_apps_health(), integrity={}, crashloops={},
+                heal_events=[], now_ts=1000.0,
+            )
+        story = next(
+            (s for s in stories if s["id"] == "api_keys_missing"),
+            None,
+        )
+        self.assertIsNotNone(story, "api_keys_missing rule did not fire")
+        self.assertEqual(story["severity"], "warn")
+        self.assertEqual(story["affected_services"], ["radarr", "sonarr"])
+
+    def test_api_keys_missing_rule_does_not_fire_when_all_keys_present(self) -> None:
+        from unittest import mock as _mock
+        with _mock.patch(
+            "media_stack.api.services.runtime_keys.services_missing_keys",
+            return_value=[],
+        ):
+            stories = compose(
+                health=_all_apps_health(), integrity={}, crashloops={},
+                heal_events=[], now_ts=1000.0,
+            )
+        ids = {s["id"] for s in stories}
+        self.assertNotIn("api_keys_missing", ids)
+
     def test_buggy_rule_does_not_break_the_engine(self) -> None:
         """If one rule raises, the others still run. We patch a
         rule to always raise."""

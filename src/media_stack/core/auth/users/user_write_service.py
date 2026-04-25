@@ -10,12 +10,16 @@ import logging
 import secrets
 from typing import Any
 
+from media_stack.core.auth.authz import Actor, requires_admin, requires_self_or_admin
 from media_stack.core.auth.users.models import User, UserState
 from media_stack.core.auth.users.async_propagation import (
     run_service_admin_propagation_async,
 )
 from media_stack.core.auth.users.orphan_adoption import (
     OrphanAdoptionFinder, adopt_into_provider,
+)
+from media_stack.core.auth.users.password_ticket_store import (
+    mint_ticket_fields as _mint_password_ticket,
 )
 from media_stack.core.auth.users.provider_self_heal import (
     heal_missing_provider_user as _heal_missing_provider_user,
@@ -43,6 +47,7 @@ class UserWriteService(UserServiceBase):
     def _payload_for(self, role_slug: str, provider_id: str) -> dict[str, Any]:
         return self._mapper.payload_for(self._roles.require(role_slug), provider_id)
 
+    @requires_admin
     def create_user(
         self,
         *,
@@ -51,7 +56,7 @@ class UserWriteService(UserServiceBase):
         display_name: str,
         role_slug: str,
         password: str = "",
-        actor: str = "system",
+        actor: Actor | str = "system",
         skip_policy_check: bool = False,
     ) -> dict[str, Any]:
         # skip_policy_check is for bootstrap flows given an operator-
@@ -65,6 +70,8 @@ class UserWriteService(UserServiceBase):
         if source is None:
             raise UserServiceError("no source-of-truth provider configured")
 
+        actor_label = actor.audit_label
+
         admin_supplied = bool(password)
         password = password or self._generate_password()
         if admin_supplied and not skip_policy_check:
@@ -73,13 +80,9 @@ class UserWriteService(UserServiceBase):
                 raise UserServiceError(_check.reason or "password rejected by policy")
         sso_groups = self._sso_groups_for(role_slug)
 
-        # Early orphan-adoption: scan providers up-front for an
-        # existing record that matches this username/email. When one
-        # is found, take the adoption branch instead of the normal
-        # create. Running this BEFORE ``self._store.create()`` avoids
-        # the create/soft-delete round-trip and makes the audit log
-        # read "adopt" instead of "create then error then cleanup".
-        # (v1.0.169 — see orphan_adoption.py for the root-cause story.)
+        # Early orphan-adoption: scan providers for an existing record
+        # matching this username/email. Running BEFORE _store.create()
+        # avoids a create/soft-delete round-trip. See orphan_adoption.py.
         candidate = OrphanAdoptionFinder(
             self._providers, source.name,
         ).find(username=username, email=email)
@@ -88,7 +91,8 @@ class UserWriteService(UserServiceBase):
                 source=source, candidate=candidate,
                 email=email, username=username, display_name=display_name,
                 role_slug=role_slug, password=password,
-                sso_groups=sso_groups, actor=actor,
+                sso_groups=sso_groups, actor=actor_label,
+                admin_supplied=admin_supplied,
             )
 
         user = self._store.create(
@@ -98,23 +102,27 @@ class UserWriteService(UserServiceBase):
         initial_history = self._policy.push_history([], password)
         if initial_history:
             self._store.update(user.id, password_history=initial_history)
-        self._provision_sot(source, user, password, display_name, sso_groups, actor)
+        self._provision_sot(source, user, password, display_name, sso_groups, actor_label)
         secondary = self._provision_secondaries(
             user, password, display_name, sso_groups, role_slug,
         )
 
         self._audit.append(
-            actor=actor, action="create_user", target=user.email, result="ok",
+            actor=actor_label, action="create_user", target=user.email, result="ok",
             detail={"user_id": user.id, "role": role_slug, "secondary": secondary},
         )
         result = user.to_dict()
-        result["generated_password"] = password
         result["secondary_results"] = secondary
+        # Admin-supplied passwords bypass the ticket (caller already
+        # knows plaintext); generated ones go through the store.
+        if not admin_supplied:
+            result.update(_mint_password_ticket(user.id, password))
         return result
 
     def _create_via_adoption(self, *, source, candidate, email, username,
                              display_name, role_slug, password,
-                             sso_groups, actor) -> dict[str, Any]:
+                             sso_groups, actor,
+                             admin_supplied: bool = False) -> dict[str, Any]:
         """Link a fresh central row to an existing source-of-truth
         record — the adoption branch of create_user. The central
         store gets a normal row (with a newly-generated id), its
@@ -157,9 +165,10 @@ class UserWriteService(UserServiceBase):
             },
         )
         result = user.to_dict()
-        result["generated_password"] = password
         result["secondary_results"] = secondary
         result["adopted"] = True
+        if not admin_supplied:
+            result.update(_mint_password_ticket(user.id, password))
         return result
 
     def _provision_sot(self, source, user, password, display_name, sso_groups, actor):
@@ -194,14 +203,15 @@ class UserWriteService(UserServiceBase):
                 results[provider.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
 
-    def delete_user(self, user_id: str, *, actor: str = "system") -> dict[str, Any]:
+    @requires_admin
+    def delete_user(self, user_id: str, *, actor: Actor | str = "system") -> dict[str, Any]:
         user = self._store.get(user_id)
         if not user:
             raise UserServiceError(f"user not found: {user_id}")
         provider_results = self._forall_providers_delete(user)
         self._store.soft_delete(user_id)
         self._audit.append(
-            actor=actor, action="delete_user", target=user.email, result="ok",
+            actor=actor.audit_label, action="delete_user", target=user.email, result="ok",
             detail={"user_id": user_id, "providers": provider_results},
         )
         return {"user_id": user_id, "providers": provider_results}
@@ -231,8 +241,9 @@ class UserWriteService(UserServiceBase):
             _log.debug("[DEBUG] revoke_sessions failed for %s/%s: %s",
                        provider.name, external_id, exc)
 
+    @requires_admin
     def set_role(self, user_id: str, role_slug: str,
-                 *, actor: str = "system") -> dict[str, Any]:
+                 *, actor: Actor | str = "system") -> dict[str, Any]:
         user = self._store.get(user_id)
         if not user:
             raise UserServiceError(f"user not found: {user_id}")
@@ -241,7 +252,7 @@ class UserWriteService(UserServiceBase):
         provider_results = self._apply_role_to_providers(user, role_slug)
         self._store.update(user_id, role_slug=role_slug)
         self._audit.append(
-            actor=actor, action="set_role", target=user.email, result="ok",
+            actor=actor.audit_label, action="set_role", target=user.email, result="ok",
             detail={"user_id": user_id, "role": role_slug, "providers": provider_results},
         )
         return {"user_id": user_id, "role_slug": role_slug, "providers": provider_results}
@@ -266,23 +277,26 @@ class UserWriteService(UserServiceBase):
                 results[provider.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
 
+    @requires_admin
     def set_state(self, user_id: str, state: UserState,
-                  *, actor: str = "system") -> dict[str, Any]:
+                  *, actor: Actor | str = "system") -> dict[str, Any]:
         user = self._store.get(user_id)
         if not user:
             raise UserServiceError(f"user not found: {user_id}")
         self._store.update(user_id, state=state)
         self._audit.append(
-            actor=actor, action="set_state", target=user.email, result="ok",
+            actor=actor.audit_label, action="set_state", target=user.email, result="ok",
             detail={"user_id": user_id, "state": state.value},
         )
         return {"user_id": user_id, "state": state.value}
 
+    @requires_self_or_admin(param="user_id")
     def reset_password(self, user_id: str, *, password: str = "",
-                       actor: str = "system") -> dict[str, Any]:
+                       actor: Actor | str = "system") -> dict[str, Any]:
         user = self._store.get(user_id)
         if not user:
             raise UserServiceError(f"user not found: {user_id}")
+        actor_label = actor.audit_label
         admin_supplied = bool(password)
         password = password or self._generate_password()
         if admin_supplied:
@@ -302,18 +316,14 @@ class UserWriteService(UserServiceBase):
         if source in ("env-seed", "env-legacy"):
             update_fields["source"] = "rotated"
         self._store.update(user_id, **update_fields)
-        # Provider propagation is on the synchronous path because the
-        # source-of-truth provider (Authelia) is what actually
-        # authenticates the user's next sign-in. If we returned before
-        # Authelia was updated, the user would log out, try to sign in
-        # with their new password, and fail.
+        # Provider propagation is synchronous: the source-of-truth
+        # (Authelia) must be updated before we return, otherwise the
+        # user logs out and cannot sign in with the new password.
         provider_results = self._forall_providers_set_password(user, password)
-        # Service-admin propagation (Sonarr/Radarr/qBittorrent/etc.) is
-        # downstream replica work — slow HTTP calls that don't gate
-        # the user's next sign-in. Run them in a daemon thread so the
-        # response goes back as soon as Authelia is sync'd.
-        # Errors from the background path land in the audit log when
-        # they happen, not in this response.
+        # Service-admin propagation (Sonarr/Radarr/qBittorrent/etc.)
+        # is downstream replica work — runs in a daemon thread so the
+        # response ships as soon as Authelia is sync'd. Errors from
+        # the background path land in the audit log when they happen.
         role = self._roles.get(user.role_slug)
         propagated_in_background = bool(
             role is not None and role.propagate_to_service_admins
@@ -321,10 +331,10 @@ class UserWriteService(UserServiceBase):
         if propagated_in_background:
             self._propagate_to_service_admins_async(
                 password, user_id=user_id, user_email=user.email,
-                actor=actor,
+                actor=actor_label,
             )
         self._audit.append(
-            actor=actor, action="reset_password", target=user.email, result="ok",
+            actor=actor_label, action="reset_password", target=user.email, result="ok",
             detail={
                 "user_id": user_id,
                 "providers": provider_results,
@@ -333,14 +343,14 @@ class UserWriteService(UserServiceBase):
                 ),
             },
         )
-        return {
-            "user_id": user_id,
-            "generated_password": password,
-            "providers": provider_results,
+        response: dict[str, Any] = {
+            "user_id": user_id, "providers": provider_results,
             "service_admins": (
-                "scheduled_async" if propagated_in_background else {}
-            ),
+                "scheduled_async" if propagated_in_background else {}),
         }
+        if not admin_supplied:
+            response.update(_mint_password_ticket(user_id, password))
+        return response
 
     def _propagate_to_service_admins_async(
         self, password: str, *,
@@ -387,5 +397,4 @@ class UserWriteService(UserServiceBase):
             except Exception as exc:  # noqa: BLE001
                 results[adapter.name] = f"error: {str(exc)[:_ERR_LEN]}"
         return results
-
 

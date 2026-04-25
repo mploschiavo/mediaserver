@@ -331,3 +331,25 @@ class ApiTokenStore:
             if count:
                 self._save(tokens)
         return count
+
+    def rotate_signing_secret(self) -> int:
+        """Mass-revoke every live bearer token.
+
+        Tokens are stored as SHA-256 hashes of random plaintexts
+        rather than being signed with a rotating secret, so the
+        equivalent of "rotate the signing secret" is a sweep of
+        ``revoked=True`` across every live row. Returns the count of
+        tokens that transitioned. Intended use: incident-response
+        emergency revoke, to guarantee every outstanding token is
+        dead regardless of kind or family.
+        """
+        count = 0
+        with self._lock:
+            tokens = dict(self._load())
+            for tok in tokens.values():
+                if not tok.revoked:
+                    tok.revoked = True
+                    count += 1
+            if count:
+                self._save(tokens)
+        return count

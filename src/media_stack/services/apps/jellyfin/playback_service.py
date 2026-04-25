@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse
 from media_stack.api.services.registry import service_internal_url
+from media_stack.core.http import HTTP_2XX_JELLYFIN_STATUSES, HTTP_OK
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -80,7 +81,7 @@ class JellyfinPlaybackService:
             {},
         )
         status, user_payload, body = d.jellyfin_request(jellyfin_url, user_path, jellyfin_api_key)
-        if status != 200 or not isinstance(user_payload, dict):
+        if status != HTTP_OK or not isinstance(user_payload, dict):
             raise RuntimeError(
                 f"Jellyfin playback: failed reading user ({user_id}) (HTTP {status}): {body}"
             )
@@ -106,7 +107,7 @@ class JellyfinPlaybackService:
                 f"/Users/{parse.quote(user_id, safe='')}/Views",
                 jellyfin_api_key,
             )
-            if status != 200 or not isinstance(views_payload, dict):
+            if status != HTTP_OK or not isinstance(views_payload, dict):
                 d.log(
                     "[WARN] Jellyfin playback: could not read user views for My Media exclusions "
                     f"(HTTP {status}): {body}"
@@ -181,7 +182,7 @@ class JellyfinPlaybackService:
                 method="POST",
                 payload=desired_user_cfg,
             )
-            if status not in (200, 201, 202, 204):
+            if status not in HTTP_2XX_JELLYFIN_STATUSES:
                 raise RuntimeError(
                     f"Jellyfin playback: failed updating user defaults (HTTP {status}): {body}"
                 )
@@ -210,7 +211,7 @@ class JellyfinPlaybackService:
             "/System/Configuration",
             jellyfin_api_key,
         )
-        if status != 200 or not isinstance(server_payload, dict):
+        if status != HTTP_OK or not isinstance(server_payload, dict):
             raise RuntimeError(
                 f"Jellyfin playback: failed reading server config (HTTP {status}): {body}"
             )
@@ -232,7 +233,7 @@ class JellyfinPlaybackService:
                 method="POST",
                 payload=desired_server_cfg,
             )
-            if status not in (200, 201, 202, 204):
+            if status not in HTTP_2XX_JELLYFIN_STATUSES:
                 raise RuntimeError(
                     f"Jellyfin playback: failed updating server defaults (HTTP {status}): {body}"
                 )
@@ -300,7 +301,7 @@ class JellyfinPlaybackService:
                     status, display_payload, body = d.jellyfin_request(
                         jellyfin_url, path, jellyfin_api_key
                     )
-                    if status != 200 or not isinstance(display_payload, dict):
+                    if status != HTTP_OK or not isinstance(display_payload, dict):
                         d.log(
                             f"[WARN] Jellyfin playback: unable to load DisplayPreferences '{pref_id}' "
                             f"(client={client}, HTTP {status}): {body}"
@@ -353,7 +354,7 @@ class JellyfinPlaybackService:
                         method="POST",
                         payload=desired_display,
                     )
-                    if status not in (200, 201, 202, 204):
+                    if status not in HTTP_2XX_JELLYFIN_STATUSES:
                         d.log(
                             f"[WARN] Jellyfin playback: failed updating DisplayPreferences '{pref_id}' "
                             f"(client={client}, HTTP {status}): {body}"
@@ -375,7 +376,7 @@ class JellyfinPlaybackService:
                 "/Plugins",
                 jellyfin_api_key,
             )
-            if status == 200 and isinstance(installed_plugins, list):
+            if status == HTTP_OK and isinstance(installed_plugins, list):
                 has_intro_skip = any(
                     d.normalize_plugin_name(item.get("Name") or item.get("name") or "")
                     == d.normalize_plugin_name("Intro Skipper")

@@ -1,6 +1,6 @@
 # Upgrades
 
-Media Stack ships as a pinned controller image (`harbor.iomio.io/library/media-stack-controller:vX.Y.Z`). The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
+Media Stack ships as a pinned controller image (`harbor.iomio.io/library/media-stack-controller:vX.Y.Z`) plus a separately versioned UI image (`harbor.iomio.io/library/media-stack-ui:vX.Y.Z` — currently `v1.1.0`, the React 19 rewrite). The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
 
 ## Routine upgrade
 
