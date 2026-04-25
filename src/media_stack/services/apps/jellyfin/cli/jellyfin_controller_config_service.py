@@ -1,32 +1,10 @@
-from __future__ import annotations
+"""Shim — moved to
+``media_stack.infrastructure.jellyfin.controller_config_service`` in
+ADR-0002 Phase 16-D batch 1. Phase 16-F removes this shim.
+"""
 
-import argparse
-import os
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class JellyfinBootstrapConfig:
-    namespace: str
-    secret_name: str
-    service_name: str
-    wait_seconds: int
-    app_name: str
-
-
-def parse_jellyfin_bootstrap_config(argv=None) -> JellyfinBootstrapConfig:
-    parser = argparse.ArgumentParser(
-        prog="bin/ensure-jellyfin-bootstrap.sh",
-        description=(
-            "Completes Jellyfin first-run bootstrap and syncs API key/user id into media-stack secret."
-        ),
-    )
-    parser.parse_args(argv)
-
-    return JellyfinBootstrapConfig(
-        namespace=os.environ.get("NAMESPACE", "media-stack"),
-        secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets"),
-        service_name=os.environ.get("JELLYFIN_SERVICE_NAME", "jellyfin"),
-        wait_seconds=int(os.environ.get("JELLYFIN_BOOTSTRAP_WAIT_SECONDS", "180")),
-        app_name=os.environ.get("JELLYFIN_API_KEY_APP_NAME", "media-stack-controller"),
-    )
+from media_stack.infrastructure.jellyfin.controller_config_service import *  # noqa: F401,F403
+from media_stack.infrastructure.jellyfin.controller_config_service import (  # noqa: F401
+    JellyfinBootstrapConfig,
+    parse_jellyfin_bootstrap_config,
+)

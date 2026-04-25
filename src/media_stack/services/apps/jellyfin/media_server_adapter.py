@@ -1,9 +1,9 @@
-"""Jellyfin media-server adapter."""
+"""Shim — moved to
+``media_stack.adapters.jellyfin.media_server_adapter`` in ADR-0002
+Phase 16-D batch 1. Phase 16-F removes this shim.
+"""
 
-from __future__ import annotations
-
-from media_stack.services.media_server_adapters.planned import PlannedMediaServerAdapter
-
-
-class JellyfinMediaServerAdapter(PlannedMediaServerAdapter):
-    """Jellyfin-specific bootstrap orchestration."""
+from media_stack.adapters.jellyfin.media_server_adapter import *  # noqa: F401,F403
+from media_stack.adapters.jellyfin.media_server_adapter import (  # noqa: F401
+    JellyfinMediaServerAdapter,
+)
