@@ -1,5 +1,11 @@
 # Media Stack Controller — Development Image
-# Includes full source, tests, docs, and dev tools.
+#
+# ADR-0001 Phase 12-E: production image (controller.Dockerfile) now
+# installs from a pre-built wheel and ships zero source. The dev
+# image deliberately keeps the source tree mounted under
+# /opt/media-stack so operators can `docker run -it … bash` and edit
+# in place; the editable install (`pip install -e .`) reflects edits
+# without a rebuild. That's the whole point of the dev variant.
 #
 # Build:  docker build -f docker/controller.dev.Dockerfile -t media-stack-controller:dev .
 # Usage:  docker run -it media-stack-controller:dev python3 -m pytest tests/
@@ -24,7 +30,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/media-stack
 
-RUN pip install --no-cache-dir bcrypt docker kubernetes pyyaml requests
+# Same runtime-deps install as production (controller.Dockerfile) so
+# the dev image stays a faithful proxy. argon2-cffi + bcrypt require
+# a C toolchain on alpine; purge build-deps after install.
+RUN apk add --no-cache openssl \
+    && apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
+    && pip install --no-cache-dir \
+        argon2-cffi \
+        bcrypt \
+        docker \
+        jsonschema \
+        kubernetes \
+        pyyaml \
+        requests \
+    && apk del .build-deps
 
 # Full repo copy (production + dev). The dev image keeps ``bin/``
 # because the shell wrappers (release.sh, regen-dist.sh, etc.) are
