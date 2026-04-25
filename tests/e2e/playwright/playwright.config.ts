@@ -19,6 +19,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      name: 'session-visibility',
+      testMatch: [
+        'session-visibility.spec.ts',
+        'session-visibility-a11y.spec.ts',
+      ],
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
       name: 'screenshots',
       testMatch: ['screenshot-capture.spec.ts'],
       use: { ...devices['Desktop Chrome'] },

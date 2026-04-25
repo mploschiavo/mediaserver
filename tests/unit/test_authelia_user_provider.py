@@ -121,5 +121,127 @@ class AutheliaFileProviderTests(unittest.TestCase):
                 p.update_user("bad", groups=["x"])
 
 
+class AutheliaAccountStateTests(unittest.TestCase):
+    """Coverage for disable/enable/is_disabled and the protocol
+    conformance the session-visibility feature requires."""
+
+    def _provider_with_user(self, tmp: str, username: str = "jane"):
+        p = AutheliaFileProvider(users_db_path=Path(tmp) / "users_database.yml")
+        p.create_user(
+            username=username, email=f"{username}@x",
+            display_name=username.capitalize(), password="pw",
+            groups=["family"],
+        )
+        return p
+
+    def test_user_starts_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            self.assertFalse(p.is_disabled("jane"))
+
+    def test_disable_sets_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            p.disable_user("jane")
+            self.assertTrue(p.is_disabled("jane"))
+            data = yaml.safe_load((Path(tmp) / "users_database.yml").read_text())
+            self.assertIs(data["users"]["jane"]["disabled"], True)
+
+    def test_enable_clears_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            p.disable_user("jane")
+            p.enable_user("jane")
+            self.assertFalse(p.is_disabled("jane"))
+            data = yaml.safe_load((Path(tmp) / "users_database.yml").read_text())
+            # We remove the key entirely when enabling, rather than
+            # setting it to false — keeps the yaml minimal so admins
+            # reading the file don't see noise.
+            self.assertNotIn("disabled", data["users"]["jane"])
+
+    def test_disable_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            p.disable_user("jane")
+            p.disable_user("jane")  # twice
+            self.assertTrue(p.is_disabled("jane"))
+
+    def test_enable_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            p.enable_user("jane")  # already enabled
+            self.assertFalse(p.is_disabled("jane"))
+
+    def test_disable_missing_user_raises(self):
+        from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditError
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            with self.assertRaises((AutheliaProviderError, SafeYamlEditError)):
+                p.disable_user("nobody")
+
+    def test_is_disabled_missing_user_returns_false(self):
+        # Defensive: caller asked about an unknown user; don't raise.
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            self.assertFalse(p.is_disabled("nobody"))
+
+    def test_is_disabled_missing_file_returns_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = AutheliaFileProvider(
+                users_db_path=Path(tmp) / "does_not_exist.yml",
+            )
+            self.assertFalse(p.is_disabled("jane"))
+
+    def test_satisfies_account_state_protocol(self):
+        from media_stack.core.auth.users.visibility_protocols import (
+            AccountStateProvider,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider_with_user(tmp)
+            self.assertIsInstance(p, AccountStateProvider)
+
+
+class AutheliaOptionalProtocolsTests(unittest.TestCase):
+    """Authelia file backend implements these as conservative no-op /
+    empty — real enforcement lives in a separate session-admin impl
+    that reads Authelia's sqlite DB."""
+
+    def _provider(self, tmp: str) -> AutheliaFileProvider:
+        return AutheliaFileProvider(users_db_path=Path(tmp) / "users_database.yml")
+
+    def test_revoke_session_is_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider(tmp)
+            # Neither known nor unknown session raises.
+            p.revoke_session("jane", "session-xyz")
+            p.revoke_session("nobody", "unknown")
+
+    def test_mfa_state_is_none(self):
+        from media_stack.core.auth.users.visibility_protocols import MFAState
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider(tmp)
+            state = p.mfa_state("jane")
+            self.assertIsInstance(state, MFAState)
+            self.assertFalse(state.enrolled)
+
+    def test_list_api_tokens_is_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider(tmp)
+            self.assertEqual(p.list_api_tokens("jane"), [])
+
+    def test_revoke_api_token_is_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider(tmp)
+            p.revoke_api_token("jane", "tk-1")
+
+    def test_satisfies_session_admin_protocol(self):
+        from media_stack.core.auth.users.visibility_protocols import (
+            SessionAdminProvider,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._provider(tmp)
+            self.assertIsInstance(p, SessionAdminProvider)
+
+
 if __name__ == "__main__":
     unittest.main()

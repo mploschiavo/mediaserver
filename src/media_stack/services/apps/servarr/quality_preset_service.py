@@ -59,6 +59,11 @@ PRESETS = [
 class QualityPresetService:
     """Fetch and apply TRASHguides quality presets."""
 
+    def _svc_base_url(self, svc: Any) -> str:
+        # Single source of truth for the cluster-internal arr URL so the
+        # ``http://host:port`` literal does not repeat across every method.
+        return f"http://{svc.host}:{svc.port}"
+
     def list_presets(self) -> dict[str, Any]:
         """Return available quality presets."""
         return {"presets": PRESETS}
@@ -78,7 +83,7 @@ class QualityPresetService:
 
         _http = HttpClient()
         _, profiles, _ = _http.request(
-            f"http://{svc.host}:{svc.port}", "/api/v3/qualityprofile", api_key=key
+            self._svc_base_url(svc), "/api/v3/qualityprofile", api_key=key
         )
         if not isinstance(profiles, list):
             return {"error": "Failed to fetch profiles"}
@@ -120,7 +125,7 @@ class QualityPresetService:
 
         _http = HttpClient()
         _, cfs, _ = _http.request(
-            f"http://{svc.host}:{svc.port}", "/api/v3/customformat", api_key=key
+            self._svc_base_url(svc), "/api/v3/customformat", api_key=key
         )
         if not isinstance(cfs, list):
             return {"error": "Failed to fetch custom formats"}
@@ -146,7 +151,7 @@ class QualityPresetService:
 
         _http = HttpClient()
         _, profile, _ = _http.request(
-            f"http://{svc.host}:{svc.port}", f"/api/v3/qualityprofile/{profile_id}", api_key=key
+            self._svc_base_url(svc), f"/api/v3/qualityprofile/{profile_id}", api_key=key
         )
         if not isinstance(profile, dict):
             return {"error": "Failed to fetch profile"}
@@ -168,7 +173,7 @@ class QualityPresetService:
             return {"error": f"Quality '{quality_name}' not found in profile"}
 
         _, result, _ = _http.request(
-            f"http://{svc.host}:{svc.port}", f"/api/v3/qualityprofile/{profile_id}",
+            self._svc_base_url(svc), f"/api/v3/qualityprofile/{profile_id}",
             api_key=key, method="PUT", payload=profile,
         )
         return {"status": "updated", "quality": quality_name, "enabled": enabled}
@@ -188,14 +193,14 @@ class QualityPresetService:
 
         _http = HttpClient()
         _, profile, _ = _http.request(
-            f"http://{svc.host}:{svc.port}", f"/api/v3/qualityprofile/{profile_id}", api_key=key
+            self._svc_base_url(svc), f"/api/v3/qualityprofile/{profile_id}", api_key=key
         )
         if not isinstance(profile, dict):
             return {"error": "Failed to fetch profile"}
 
         profile["upgradeAllowed"] = enabled
         _http.request(
-            f"http://{svc.host}:{svc.port}", f"/api/v3/qualityprofile/{profile_id}",
+            self._svc_base_url(svc), f"/api/v3/qualityprofile/{profile_id}",
             api_key=key, method="PUT", payload=profile,
         )
         return {"status": "updated", "upgradeAllowed": enabled}
@@ -254,7 +259,7 @@ class QualityPresetService:
             return {"error": f"Fetch failed: {str(exc)[:120]}"}
 
         _http = HttpClient()
-        base = f"http://{svc.host}:{svc.port}"
+        base = self._svc_base_url(svc)
         _, existing, _ = _http.request(base, "/api/v3/customformat", api_key=key)
         existing_names = {cf.get("name", "") for cf in (existing or [])}
 

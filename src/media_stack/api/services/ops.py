@@ -15,6 +15,9 @@ from typing import Any
 logger = logging.getLogger("controller_api")
 
 from ._resolve import resolve_config_path
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (registry is a leaf config module — no cycle with ops)
+from .registry import SERVICES as _SERVICES
 
 
 class OpsService:
@@ -313,8 +316,7 @@ class OpsService:
             import importlib
             client = docker.from_env()
             # Dynamically load GPU module from the media server's app layer
-            from .registry import SERVICES
-            ms = next((s for s in SERVICES if s.category == "media"), None)
+            ms = next((s for s in _SERVICES if s.category == "media"), None)
             if ms:
                 gpu_mod = importlib.import_module(f"media_stack.services.apps.{ms.id}.gpu")
                 check_fn = getattr(gpu_mod, f"check_{ms.id}_gpu", None)
@@ -347,8 +349,7 @@ class OpsService:
         and container restart logic.
         """
         import importlib
-        from .registry import SERVICES
-        ms = next((s for s in SERVICES if s.category == "media"), None)
+        ms = next((s for s in _SERVICES if s.category == "media"), None)
         if not ms:
             return {"status": "error", "error": "No media server in registry"}
         try:
@@ -370,7 +371,6 @@ class OpsService:
         snapshot: dict[str, str] = {}
         # Build snapshot list from the service registry — every service that
         # declares an api_key_config path has a config file worth snapshotting.
-        from .registry import SERVICES as _SERVICES
         patterns: list[tuple[str, str]] = []
         for svc in _SERVICES:
             if svc.api_key_config:
@@ -472,7 +472,16 @@ class OpsService:
         }
 
     def get_service_logs(self, service_name: str, lines: int = 100) -> dict[str, Any]:
-        """Fetch recent logs from a service container or pod."""
+        """Fetch recent logs from a service container or pod.
+
+        The K8s lookup tries `app=<service_name>` first (which covers
+        Sonarr/Radarr/etc. whose Deployments are labelled with the
+        bare service name), then falls back to `app=media-stack-<name>`
+        for the platform-internal services (controller, ui) whose
+        labels carry the project prefix. Without the fallback, asking
+        the dashboard for "controller" logs returned an empty list
+        plus the misleading "No pods found for controller" string.
+        """
         namespace = os.environ.get("K8S_NAMESPACE", "")
         try:
             if namespace:
@@ -482,9 +491,23 @@ class OpsService:
                 except Exception:
                     k8s_config.load_kube_config()
                 v1 = k8s_client.CoreV1Api()
-                pods = v1.list_namespaced_pod(namespace, label_selector=f"app={service_name}")
-                if not pods.items:
-                    return {"lines": [], "error": f"No pods found for {service_name}"}
+                candidates = [service_name, f"media-stack-{service_name}"]
+                pods = None
+                for candidate in candidates:
+                    found = v1.list_namespaced_pod(
+                        namespace, label_selector=f"app={candidate}",
+                    )
+                    if found.items:
+                        pods = found
+                        break
+                if pods is None:
+                    return {
+                        "lines": [],
+                        "error": (
+                            f"No pods found for {service_name} "
+                            f"(tried labels: {', '.join(candidates)})"
+                        ),
+                    }
                 log_text = v1.read_namespaced_pod_log(
                     name=pods.items[0].metadata.name, namespace=namespace, tail_lines=lines,
                 )
@@ -496,7 +519,7 @@ class OpsService:
                 log_text = container.logs(tail=lines).decode("utf-8", errors="replace")
                 return {"lines": log_text.splitlines()[-lines:]}
         except Exception as exc:
-            return {"lines": [], "error": str(exc)[:80]}
+            return {"lines": [], "error": str(exc)[:200]}
 
 
 _instance = OpsService()

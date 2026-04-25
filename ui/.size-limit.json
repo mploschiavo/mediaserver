@@ -1,0 +1,32 @@
+[
+  {
+    "name": "main app (index)",
+    "path": "dist/assets/index-*.js",
+    "limit": "200 KB",
+    "gzip": true
+  },
+  {
+    "name": "ui chunk (framer-motion + cmdk + sonner + vaul + lucide)",
+    "path": "dist/assets/ui-*.js",
+    "limit": "90 KB",
+    "gzip": true
+  },
+  {
+    "name": "tanstack chunk (react-query + react-router + react-table)",
+    "path": "dist/assets/tanstack-*.js",
+    "limit": "48 KB",
+    "gzip": true
+  },
+  {
+    "name": "css (index)",
+    "path": "dist/assets/index-*.css",
+    "limit": "14 KB",
+    "gzip": true
+  },
+  {
+    "name": "total JS (all dist/assets/*.js)",
+    "path": "dist/assets/*.js",
+    "limit": "320 KB",
+    "gzip": true
+  }
+]

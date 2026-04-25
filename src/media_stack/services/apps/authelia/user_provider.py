@@ -17,6 +17,10 @@ from media_stack.core.auth.users.provider import (
     ProviderHealth,
 )
 from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditor
+from media_stack.core.auth.users.visibility_protocols import (
+    APIToken,
+    MFAState,
+)
 
 _DISPLAYNAME_KEY = "displayname"
 
@@ -205,3 +209,95 @@ class AutheliaFileProvider:
         longer exists. Nothing to do here.
         """
         del external_id
+
+    def revoke_session(self, external_id: str, session_id: str) -> None:
+        """Per-session revoke is not reachable via the file backend.
+
+        The canonical way to kill a specific Authelia session is to
+        delete its row from the ``user_sessions`` table in
+        ``db.sqlite3``. That's a separate ``AutheliaSessionAdmin``
+        concern and lives in ``services.apps.authelia.session_admin``
+        (planned). Calling revoke here is a best-effort request; the
+        null behaviour is safe because disabling the user (see
+        ``disable_user``) already prevents any future request on that
+        session from being authorized.
+        """
+        del external_id, session_id
+
+    # ---- AccountStateProvider -------------------------------------------
+    #
+    # Authelia's users_database.yml supports a ``disabled: true`` flag
+    # per user. When set, its auth middleware rejects the user at the
+    # next request with 403 regardless of password correctness. Flag
+    # changes are picked up by the watch: true config option within
+    # a few seconds, so no explicit reload is needed on this path.
+
+    def disable_user(self, external_id: str) -> None:
+        self._set_disabled(external_id, True)
+
+    def enable_user(self, external_id: str) -> None:
+        self._set_disabled(external_id, False)
+
+    def is_disabled(self, external_id: str) -> bool:
+        if not self._path.is_file():
+            return False
+        import yaml
+        try:
+            data = yaml.safe_load(self._path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            return False
+        entry = (data.get("users", {}) or {}).get(external_id)
+        if not isinstance(entry, dict):
+            return False
+        return bool(entry.get("disabled", False))
+
+    def _set_disabled(self, external_id: str, disabled: bool) -> None:
+        def _mutate(current: dict[str, Any]) -> dict[str, Any]:
+            users = dict(current.get("users") or {})
+            entry = users.get(external_id)
+            if not isinstance(entry, dict):
+                raise AutheliaProviderError(
+                    f"user {external_id!r} not found",
+                )
+            entry = dict(entry)
+            if disabled:
+                entry["disabled"] = True
+            else:
+                entry.pop("disabled", None)
+            users[external_id] = entry
+            new = dict(current)
+            new["users"] = users
+            return new
+
+        self._editor().edit(_mutate)
+
+    # ---- MFAStateProvider (best-effort, file backend) ------------------
+
+    def mfa_state(self, external_id: str) -> MFAState:
+        """File backend reports MFA only from the ``groups`` heuristic.
+
+        Authelia's real MFA state (TOTP secrets, WebAuthn creds) lives
+        in the Authelia sqlite DB, which we don't touch from this
+        provider. A dedicated ``AutheliaSessionAdmin`` reads it — see
+        the planned ``services.apps.authelia.session_admin`` module.
+        For users, returning ``MFAState.none()`` here is the correct
+        conservative answer: "don't claim MFA we can't verify."
+        """
+        del external_id
+        return MFAState.none()
+
+    # ---- APITokenProvider ------------------------------------------------
+
+    def list_api_tokens(self, external_id: str) -> list[APIToken]:
+        """Authelia file-backend does not issue long-lived API tokens.
+
+        OIDC short-lived tokens are minted on the fly by Authelia's
+        OIDC provider and are not persisted in a way the file backend
+        can enumerate. A dedicated session-admin impl handles the
+        OIDC surface; this one reports no tokens.
+        """
+        del external_id
+        return []
+
+    def revoke_api_token(self, external_id: str, token_id: str) -> None:
+        del external_id, token_id

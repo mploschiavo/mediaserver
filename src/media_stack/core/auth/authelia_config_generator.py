@@ -164,22 +164,18 @@ class AutheliaConfigGenerator:
         """Build access control rules based on per-service auth policy."""
         rules: list[dict[str, Any]] = []
 
-        # LAN bypass: home-stack default is "no friction inside the
-        # house, SSO at the perimeter". RFC 1918 + loopback ranges
-        # skip the sign-in challenge entirely; anything outside those
-        # ranges falls through to the one_factor / two_factor rules
-        # below. Tighten this to ``one_factor`` (or remove the rule)
-        # if your LAN is hostile or if every client should sign in.
-        rules.append({
-            "domain": [f"*.{self._opts.base_domain}"],
-            "networks": [
-                "192.168.0.0/16",
-                "10.0.0.0/8",
-                "172.16.0.0/12",
-                "127.0.0.0/8",
-            ],
-            "policy": "bypass",
-        })
+        # LAN policy: every client signs in once via Authelia SSO.
+        # Authelia's session cookie is scoped to ``base_domain`` so the
+        # one challenge unlocks every ``*.<base_domain>`` host for the
+        # session lifetime — there is no per-app re-prompt under SSO.
+        #
+        # TODO(auth): expose this as a per-deployment opt-in so a
+        # homelab operator can re-enable the historical RFC-1918 +
+        # loopback bypass for friction-free LAN access. Track at
+        # AutheliaOptions.lan_bypass: bool = False (default) — when
+        # True, prepend the bypass rule the way the pre-v1.0.176
+        # generator did. See `.ratchets/notes/auth-lan-bypass.md`
+        # for the migration plan.
 
         # Native auth services (Jellyfin etc.) — bypass ext_authz entirely
         # These are handled at the Envoy level (no ext_authz filter on route),
@@ -259,7 +255,15 @@ class AutheliaConfigGenerator:
             cookie_domain = f"{sub}.{base}"
             authelia_host = f"auth.{sub}.{base}"
         authelia_url = f"{scheme}://{authelia_host}{port_suffix}"
-        gateway_url = f"{scheme}://{self._opts.gateway_host}{port_suffix}"
+        # Post-login Authelia bounces the user to this URL. Pre-v1.0.179
+        # we sent them to the bare gateway root, which Envoy routed to
+        # the legacy `media-stack-controller` page — confusing now that
+        # the React dashboard at `/app/media-stack-ui/` is the canonical
+        # operator front door. Pin to the UI path here.
+        gateway_url = (
+            f"{scheme}://{self._opts.gateway_host}{port_suffix}"
+            f"/app/media-stack-ui/"
+        )
 
         config: dict[str, Any] = {
             "server": {

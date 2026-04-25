@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse
 from media_stack.api.services.registry import service_internal_url
+from media_stack.core.http import HTTP_OK
 
 HttpRequestFn = Callable[..., tuple[int, Any, str]]
 NormalizeUrlFn = Callable[[str], str]
@@ -67,7 +68,7 @@ class SabnzbdService:
             sab_api_key,
             {"mode": "get_config", "section": section},
         )
-        if status != 200 or not isinstance(data, dict):
+        if status != HTTP_OK or not isinstance(data, dict):
             raise RuntimeError(
                 f"SABnzbd: failed reading config section '{section}' (HTTP {status}): {body}"
             )
@@ -121,7 +122,7 @@ class SabnzbdService:
                     "value": desired_normalized,
                 },
             )
-            if status != 200:
+            if status != HTTP_OK:
                 raise RuntimeError(f"SABnzbd: failed setting misc.{key} (HTTP {status}): {body}")
             if isinstance(data, dict) and data.get("status") is False:
                 raise RuntimeError(f"SABnzbd: API rejected misc.{key} update request: {body}")
@@ -176,7 +177,7 @@ class SabnzbdService:
                 ).strip(),
             },
         )
-        if status != 200:
+        if status != HTTP_OK:
             raise RuntimeError(
                 f"SABnzbd: failed seeding placeholder server for non-wizard startup (HTTP {status}): {body}"
             )
@@ -212,7 +213,7 @@ class SabnzbdService:
                 current_by_name[name.lower()] = self.normalize_mapping_path(entry.get("dir"))
         else:
             status, data, body = self.request(sab_url, sab_api_key, {"mode": "get_cats"})
-            if status != 200 or not isinstance(data, dict):
+            if status != HTTP_OK or not isinstance(data, dict):
                 raise RuntimeError(f"SABnzbd: failed listing categories (HTTP {status}): {body}")
             for category_name in self.coerce_list(data.get("categories")):
                 c = str(category_name).strip()
@@ -256,7 +257,7 @@ class SabnzbdService:
                     "dir": category_dir,
                 },
             )
-            if status != 200:
+            if status != HTTP_OK:
                 raise RuntimeError(
                     f"SABnzbd: failed creating category '{category}' (HTTP {status}): {body}"
                 )

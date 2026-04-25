@@ -163,6 +163,67 @@ tags:
     description: Webhook management and testing
   - name: Dashboard
     description: Web dashboard and API documentation UI
+  - name: Auth
+    description: |
+      Authentication and authorization — identity, login/logout, OIDC
+      provider configuration, service auth policies, session cookies.
+  - name: Users
+    description: |
+      User-management CRUD — admin operations on user accounts, roles,
+      reconciliation with external providers, bulk import, and
+      per-user session / login-history visibility.
+  - name: Invites
+    description: Invitation tokens — create, accept, revoke.
+  - name: Tokens
+    description: |
+      API token lifecycle — programmatic-client bearer tokens with
+      refresh/revoke semantics and a family-wide revoke for incident
+      response.
+  - name: Me
+    description: |
+      Self-service endpoints for the authenticated user — current
+      identity, own sessions/tokens/MFA state, "this wasn't me",
+      revoke-other-sessions.
+  - name: Sessions
+    description: |
+      Cross-user session visibility (admin) — the live active-session
+      list aggregated from every auth provider.
+  - name: Bans
+    description: |
+      User and IP bans — CRUD on the ban-store with remove endpoints.
+      IP bans are merged into Authelia `access_control` rules on save.
+  - name: SecurityVisibility
+    description: |
+      Derived security signals surfaced to admins — failed logins,
+      new-location alerts, concurrent-session counts, emergency
+      revoke-all.
+  - name: AuditLog
+    description: |
+      Hash-chained audit log — recent entries, chain verification, and
+      head/tail pointers for offline verifiers.
+  - name: TLS
+    description: |
+      Controller TLS certificate management — describe, download the
+      public cert, install a custom bundle, regenerate the self-signed
+      cert.
+  - name: PasswordPolicy
+    description: |
+      Password-policy configuration + the single-use password-ticket
+      store used to hand off freshly-minted plaintext passwords.
+  - name: Stack
+    description: |
+      In-place stack upgrade — check for newer releases and trigger a
+      compose pull + rolling restart from the controller UI.
+  - name: Networking
+    description: |
+      Routing / DNS / gateway diagnostics — URL reachability probes,
+      access-URL discovery, gateway-hostname inventory.
+  - name: Jobs
+    description: |
+      Contract-driven job framework — discovered jobs, tree view,
+      schedule CRUD, run history.
+  - name: Branding
+    description: White-label branding config and brand assets.
 
 # ---------------------------------------------------------------------------
 # Reusable components
@@ -175,6 +236,16 @@ components:
       description: |
         HTTP Basic Auth. Username from STACK_ADMIN_USERNAME (default: admin),
         password from STACK_ADMIN_PASSWORD.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Bearer token for programmatic clients. Tokens are minted via
+        `POST /api/tokens` (short-lived access tokens + refresh tokens),
+        rotated via `POST /api/tokens/refresh`, and revoked via
+        `POST /api/tokens/{token_id}` or the family-wide revoke at
+        `POST /api/tokens/revoke-family`.
 
   schemas:
     Error:
@@ -184,6 +255,41 @@ components:
           type: string
           example: "not found"
       required: [error]
+
+    Guardrail:
+      type: object
+      description: >-
+        One row in the cross-domain guardrail registry. Threshold
+        merges defaults + operator overrides. last_status is one of
+        "ok", "info", "warning", "critical", "disabled", or "unknown".
+      properties:
+        id:
+          type: string
+          example: storage:per_mount_threshold
+        domain:
+          type: string
+          enum: [storage, bandwidth, external_api, media_quality, job_health, auth, dependency, cost]
+        description:
+          type: string
+        threshold:
+          type: object
+          additionalProperties: true
+        default_threshold:
+          type: object
+          additionalProperties: true
+        last_status:
+          type: string
+        last_severity:
+          type: string
+        last_severity_streak:
+          type: integer
+        last_evaluated_at:
+          type: number
+        last_triggered_at:
+          type: number
+        disabled:
+          type: boolean
+      required: [id, domain, description, threshold]
 
     ActionAccepted:
       type: object
@@ -418,21 +524,69 @@ components:
                   items:
                     type: string
 
+    LivetvUrlEntry:
+      type: object
+      description: |
+        One named tuner/guide URL. Used in both the `tuners[]` and
+        `guides[]` arrays under `/api/livetv-sources`.
+      required: [url, name]
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "https://iptv-org.github.io/iptv/countries/us.m3u"
+        name:
+          type: string
+          example: Default
+      additionalProperties: true
+
+    PolicyBound:
+      type: object
+      description: |
+        floor/ceiling/default tuple that bounds a numeric policy value.
+        The UI hydrates `min`, `max`, and the placeholder default from
+        these.
+      required: [floor, ceiling, default]
+      properties:
+        floor:
+          type: integer
+        ceiling:
+          type: integer
+        default:
+          type: integer
+
+    RecentMediaItem:
+      type: object
+      description: |
+        One recently-added item from an *arr service. Title is the only
+        guaranteed-non-empty field; `added` may be empty when the source
+        timestamp is unknown.
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: "The Last of Us"
+        added:
+          type: string
+          description: ISO-8601 timestamp; empty string when unknown.
+          example: ""
+      additionalProperties: true
+
     RoutingConfig:
       type: object
       properties:
         base_domain:
           type: string
-          example: example.com
+          example: io
         stack_subdomain:
           type: string
-          example: media-stack
+          example: iomio
         gateway_host:
           type: string
-          example: apps.media-stack.example.com
+          example: m.iomio.io
         gateway_port:
           type: integer
-          example: 80
+          example: 443
         app_path_prefix:
           type: string
           example: /app
@@ -440,13 +594,21 @@ components:
           type: string
           enum: [hybrid, subdomain, path]
           example: hybrid
+        scheme:
+          type: string
+          description: Optional URL scheme override (`http`/`https`); empty when defaulted.
+          example: ""
         internet_exposed:
           type: boolean
-          example: false
+          example: true
         direct_hosts:
           type: object
+          description: Per-service direct hostnames that bypass the gateway.
           additionalProperties:
             type: string
+          example:
+            media_server: jf.iomio.io
+            auth: auth.iomio.io
 
     GpuInfo:
       type: object
@@ -1137,7 +1299,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [bootstrap, finalize, auto-indexers, restart-apps, sync-indexers, envoy-config, reconcile]
+            enum: [bootstrap, finalize, auto-indexers, restart-apps, sync-indexers, envoy-config, reconcile, "media-integrity:scan", "media-integrity:reconcile", "media-integrity:enforce-config", "media-integrity:resolve-review"]
           description: The action to trigger
       requestBody:
         required: false
@@ -1978,10 +2140,15 @@ paths:
     get:
       operationId: getJellyfinLibraries
       tags: [Content]
-      summary: Jellyfin libraries
+      summary: Jellyfin libraries (live + configured)
       description: |
-        Returns the virtual folder (library) list from Jellyfin, including
-        library name, collection type, content paths, and item count.
+        Returns the configured library set (always present, sourced from
+        the bootstrap profile or persisted overrides) plus the live
+        virtual-folder list pulled from Jellyfin when reachable.
+
+        `live[]` is non-empty only after Jellyfin has been bootstrapped
+        and the controller can reach its REST API; consumers should fall
+        back to `configured[]` for tile counts and library names.
       responses:
         "200":
           description: Jellyfin library list
@@ -1990,40 +2157,114 @@ paths:
               schema:
                 type: object
                 properties:
-                  libraries:
+                  live:
                     type: array
+                    description: |
+                      Virtual folders reported by the live Jellyfin
+                      instance. Empty until Jellyfin is reachable.
                     items:
                       type: object
                       properties:
                         name:
                           type: string
-                        type:
+                        collection_type:
                           type: string
                         paths:
                           type: array
                           items:
                             type: string
-                        count:
+                        item_count:
                           type: integer
+                      additionalProperties: true
+                  configured:
+                    type: array
+                    description: |
+                      Libraries declared by the controller's profile or
+                      a previous POST to this endpoint. Always populated.
+                    items:
+                      type: object
+                      required: [name, collection_type, paths]
+                      properties:
+                        name:
+                          type: string
+                          example: Movies
+                        collection_type:
+                          type: string
+                          enum: [movies, tvshows, music, books, mixed, homevideos, musicvideos, photos, livetv]
+                          example: movies
+                        paths:
+                          type: array
+                          items:
+                            type: string
+                          example: ["/media/movies"]
+                  source:
+                    type: string
+                    description: |
+                      Where `configured` came from — `defaults` (built-in
+                      profile), `profile` (operator-edited), or `persisted`
+                      (POST overrides).
+                    enum: [defaults, profile, persisted]
+                    example: defaults
+                  media_server:
+                    type: string
+                    description: Which media server this library set targets.
+                    enum: [jellyfin, emby, plex]
+                    example: jellyfin
               example:
-                libraries:
+                live: []
+                configured:
                   - name: Movies
-                    type: movies
+                    collection_type: movies
                     paths: ["/media/movies"]
-                    count: 891
                   - name: TV Shows
-                    type: tvshows
+                    collection_type: tvshows
                     paths: ["/media/tv"]
-                    count: 142
+                  - name: Music
+                    collection_type: music
+                    paths: ["/media/music"]
+                  - name: Books
+                    collection_type: books
+                    paths: ["/media/books"]
+                source: defaults
+                media_server: jellyfin
+    post:
+      operationId: updateLibraries
+      tags: [Config]
+      summary: Update configured libraries
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
 
   /api/recent:
     get:
       operationId: getRecent
       tags: [Content]
-      summary: Recently added items
+      summary: Recently added items (per *arr service)
       description: |
-        Returns the 5 most recently added items from Sonarr (series) and
-        Radarr (movies). Useful for "recently added" widgets.
+        Returns the most recently added items from each *arr service the
+        controller is aware of. The top-level `recent` key maps a service
+        identifier (`radarr`, `sonarr`, `lidarr`, `readarr`) to the
+        service-specific list. Empty arrays appear for services that are
+        configured but currently quiet; missing services were never
+        configured.
+
+        Each item carries at minimum `{title, added}`. The `added` field
+        is best-effort: some controller variants emit an empty string
+        when the upstream timestamp is unknown.
       responses:
         "200":
           description: Recently added items per service
@@ -2031,26 +2272,59 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [recent]
                 properties:
                   recent:
                     type: object
+                    description: |
+                      Service-keyed map. Known keys are `radarr`,
+                      `sonarr`, `lidarr`, `readarr` — additional keys
+                      may appear for newer *arr integrations.
+                    properties:
+                      radarr:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RecentMediaItem'
+                      sonarr:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RecentMediaItem'
+                      lidarr:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RecentMediaItem'
+                      readarr:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RecentMediaItem'
                     additionalProperties:
                       type: array
                       items:
-                        type: object
-                        properties:
-                          title:
-                            type: string
-                          added:
-                            type: string
+                        $ref: '#/components/schemas/RecentMediaItem'
               example:
                 recent:
-                  sonarr:
-                    - title: "The Last of Us"
-                      added: "2026-04-05"
                   radarr:
-                    - title: "Oppenheimer"
-                      added: "2026-04-06"
+                    - title: "The Super Mario Galaxy Movie"
+                      added: ""
+                    - title: "Your Heart Will Be Broken"
+                      added: ""
+                    - title: "Vengeance"
+                      added: ""
+                    - title: "Project Hail Mary"
+                      added: ""
+                    - title: "The Mortuary Assistant"
+                      added: ""
+                  sonarr:
+                    - title: "Breaking Bad"
+                      added: ""
+                    - title: "Stranger Things"
+                      added: ""
+                    - title: "The Last of Us"
+                      added: ""
+                    - title: "The Boys"
+                      added: ""
+                    - title: "Severance"
+                      added: ""
 
   # =========================================================================
   # Keys
@@ -2236,6 +2510,27 @@ paths:
                 would_trigger: true
 
   /api/guardrails:
+    get:
+      operationId: listGuardrails
+      tags: [Guardrails]
+      summary: Cross-domain guardrail registry
+      description: >-
+        Returns every registered guardrail with its current threshold,
+        last evaluation status, and last-fire timestamp. Domains:
+        storage, bandwidth, external_api, media_quality, job_health,
+        auth, dependency, cost.
+      responses:
+        "200":
+          description: Guardrail registry snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guardrails:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Guardrail'
     post:
       operationId: updateGuardrails
       tags: [Disk]
@@ -2347,14 +2642,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/RoutingConfig'
               example:
-                base_domain: example.com
-                stack_subdomain: media-stack
-                gateway_host: apps.media-stack.example.com
-                gateway_port: 80
+                base_domain: io
+                stack_subdomain: iomio
+                gateway_host: m.iomio.io
+                gateway_port: 443
                 app_path_prefix: /app
                 strategy: hybrid
-                internet_exposed: false
-                direct_hosts: {}
+                scheme: ""
+                internet_exposed: true
+                direct_hosts:
+                  media_server: jf.iomio.io
+                  auth: auth.iomio.io
     post:
       operationId: updateRouting
       tags: [Routing]
@@ -4134,3 +4432,3817 @@ paths:
             text/html:
               schema:
                 type: string
+
+  /dashboard:
+    get:
+      operationId: getDashboardAlias
+      tags: [Dashboard]
+      summary: Web dashboard (alias of `/`)
+      responses:
+        "200":
+          description: Dashboard HTML
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/static/{asset}:
+    get:
+      operationId: getStaticAsset
+      tags: [Dashboard]
+      summary: Static asset (Swagger UI, branding SVGs, etc.)
+      parameters:
+        - in: path
+          name: asset
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset bytes
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Branding
+  # =========================================================================
+
+  /api/branding:
+    get:
+      operationId: getBranding
+      tags: [Branding]
+      summary: Brand config (name, homepage, wordmark, icon, illustration)
+      responses:
+        "200":
+          description: Brand config
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [brand]
+                properties:
+                  brand:
+                    type: object
+                    description: |
+                      Display-only brand metadata. The controller serves
+                      the SVG/PNG assets out of `/api/static/...` so the
+                      UI can reference the URLs verbatim.
+                    properties:
+                      name:
+                        type: string
+                        description: Product/wordmark display name.
+                        example: iomio.io
+                      homepage_url:
+                        type: string
+                        format: uri
+                        example: https://iomio.io
+                      tagline:
+                        type: string
+                        example: Media Stack Controller
+                      wordmark:
+                        type: string
+                        description: URL of the wordmark SVG/PNG.
+                        example: /api/static/iomio-wordmark.svg
+                      icon:
+                        type: string
+                        description: URL of the square icon (favicon-style).
+                        example: /api/static/iomio-icon.svg
+                      illustration:
+                        type: string
+                        description: URL of the hero/empty-state illustration.
+                        example: /api/static/iomio-orbit.svg
+                    additionalProperties: true
+              example:
+                brand:
+                  name: iomio.io
+                  homepage_url: https://iomio.io
+                  tagline: Media Stack Controller
+                  wordmark: /api/static/iomio-wordmark.svg
+                  icon: /api/static/iomio-icon.svg
+                  illustration: /api/static/iomio-orbit.svg
+
+  # =========================================================================
+  # Auth
+  # =========================================================================
+
+  /api/auth/config:
+    get:
+      operationId: getAuthConfig
+      tags: [Auth]
+      summary: Current auth configuration
+      responses:
+        "200":
+          description: Auth config snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    description: Active auth strategy.
+                    enum: [authelia, "authelia+oidc", authentik, basic, none]
+                    example: authelia
+                  internet_exposed:
+                    type: boolean
+                    description: |
+                      True when the controller is reachable from the
+                      public internet — drives whether app-auth is
+                      required for local addresses.
+                    example: false
+                  oidc_provider:
+                    type: string
+                    description: |
+                      Currently-active OIDC provider key. Singular —
+                      the controller models exactly one configured
+                      provider. Use `oidc_config` for its parameters.
+                    example: local
+                  oidc_config:
+                    type: object
+                    description: |
+                      Provider-specific configuration for the active
+                      `oidc_provider`. Keys depend on provider type
+                      (e.g. `client_id`, `discovery_url`, `issuer`).
+                    additionalProperties: true
+                    example: {}
+                  per_service:
+                    type: object
+                    description: |
+                      Per-service auth-policy overrides. Keys are
+                      service ids (`sonarr`, `radarr`, ...); values
+                      are policy strings or partial policy objects.
+                    additionalProperties: true
+                    example: {}
+                  app_auth:
+                    type: object
+                    description: |
+                      Controller-level admin-cookie configuration. The
+                      `enabled`/`required` pair gates the basic-auth
+                      fallback used when the SSO gateway is unreachable.
+                    properties:
+                      enabled:
+                        type: boolean
+                        example: true
+                      method:
+                        type: string
+                        enum: [None, Basic, Bearer]
+                        example: None
+                      required:
+                        type: string
+                        enum: [Always, DisabledForLocalAddresses, Never]
+                        example: DisabledForLocalAddresses
+                      fail_on_error:
+                        type: boolean
+                        example: false
+                      username_env:
+                        type: string
+                        example: STACK_ADMIN_USERNAME
+                      password_env:
+                        type: string
+                        example: STACK_ADMIN_PASSWORD
+                    additionalProperties: true
+                  app_auth_method:
+                    type: string
+                    description: Convenience alias for `app_auth.method`.
+                    example: None
+                  app_auth_summary:
+                    type: string
+                    description: Human-readable summary of the active app-auth posture.
+                    example: "SSO gateway — arr apps trust local network (no second login)"
+              example:
+                mode: authelia
+                internet_exposed: false
+                oidc_provider: local
+                oidc_config: {}
+                per_service: {}
+                app_auth:
+                  enabled: true
+                  method: None
+                  required: DisabledForLocalAddresses
+                  fail_on_error: false
+                  username_env: STACK_ADMIN_USERNAME
+                  password_env: STACK_ADMIN_PASSWORD
+                app_auth_method: None
+                app_auth_summary: "SSO gateway — arr apps trust local network (no second login)"
+    post:
+      operationId: updateAuthConfig
+      tags: [Auth]
+      summary: Update auth configuration
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated auth config
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Forbidden
+
+  /api/auth/identity:
+    get:
+      operationId: getAuthIdentity
+      tags: [Auth]
+      summary: Resolved caller identity (Authelia/Authentik + cookie)
+      responses:
+        "200":
+          description: Identity envelope
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                  user:
+                    type: string
+                  display_name:
+                    type: string
+                  email:
+                    type: string
+                  groups:
+                    type: string
+
+  /api/auth/login:
+    post:
+      operationId: authLogin
+      tags: [Auth]
+      summary: Mint a session cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Session established; Set-Cookie set
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          description: Rate limited
+
+  /api/auth/logout:
+    post:
+      operationId: authLogout
+      tags: [Auth]
+      summary: Revoke session cookie
+      responses:
+        "200":
+          description: Session revoked
+
+  /api/auth/modes:
+    get:
+      operationId: getAuthModes
+      tags: [Auth]
+      summary: Supported auth modes
+      responses:
+        "200":
+          description: Mode list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modes:
+                    type: array
+                    items:
+                      type: string
+
+  /api/auth/oidc-providers:
+    get:
+      operationId: getOidcProviders
+      tags: [Auth]
+      summary: Configured OIDC providers
+      responses:
+        "200":
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+
+  /api/auth/parse-oidc:
+    post:
+      operationId: parseOidcConfig
+      tags: [Auth]
+      summary: Parse uploaded OIDC provider JSON
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Parsed OIDC config
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /api/auth/service-policies:
+    get:
+      operationId: getServiceAuthPolicies
+      tags: [Auth]
+      summary: Per-service auth policies
+      responses:
+        "200":
+          description: Service policies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: object
+                    additionalProperties: true
+
+  # =========================================================================
+  # Me (self-service)
+  # =========================================================================
+
+  /api/me:
+    get:
+      operationId: getMe
+      tags: [Me]
+      summary: Authenticated user's record
+      responses:
+        "200":
+          description: Caller identity + user record
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/me/mfa-state:
+    get:
+      operationId: getMyMfaState
+      tags: [Me]
+      summary: Caller's MFA enrollment state
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: MFA state
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me/revoke-others:
+    post:
+      operationId: revokeMyOtherSessions
+      tags: [Me]
+      summary: Revoke all of the caller's sessions except the current one
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Other sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked:
+                    type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          description: Rate limited
+
+  /api/me/sessions:
+    get:
+      operationId: getMySessions
+      tags: [Me]
+      summary: Caller's own active sessions
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active sessions for the caller
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me/this-wasnt-me:
+    post:
+      operationId: disownSuspiciousSession
+      tags: [Me]
+      summary: Caller disowns a session/login flagged by anomaly detection
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                audit_id:
+                  type: string
+      responses:
+        "200":
+          description: Disowned; session revoked, password forced-rotate
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me/tokens:
+    get:
+      operationId: getMyTokens
+      tags: [Me]
+      summary: Caller's own API tokens (aggregated across providers)
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Aggregated token list (secrets redacted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Users (admin)
+  # =========================================================================
+
+  /api/users:
+    get:
+      operationId: listUsers
+      tags: [Users]
+      summary: List users
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createUser
+      tags: [Users]
+      summary: Create user
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                username:
+                  type: string
+                display_name:
+                  type: string
+                role_slug:
+                  type: string
+                password:
+                  type: string
+              required: [username, role_slug]
+      responses:
+        "200":
+          description: User created (plaintext password never returned; see `/api/password-tickets/{id}`)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Forbidden
+        "429":
+          description: Rate limited
+
+  /api/users-bulk-import:
+    post:
+      operationId: bulkImportUsers
+      tags: [Users]
+      summary: Bulk-create users from a CSV/JSON payload
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users-reconcile:
+    get:
+      operationId: getUsersReconcileReport
+      tags: [Users]
+      summary: Diff between the controller user-store and external providers
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Reconcile diffs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diffs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users-reconcile/import:
+    post:
+      operationId: importOrphanUser
+      tags: [Users]
+      summary: Import an orphan provider user into the controller store
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider_name:
+                  type: string
+                external_id:
+                  type: string
+                role_slug:
+                  type: string
+              required: [provider_name, external_id]
+      responses:
+        "200":
+          description: Imported user
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users-reconcile/unlink:
+    post:
+      operationId: unlinkGhostUser
+      tags: [Users]
+      summary: Unlink a ghost user-provider binding
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                provider_name:
+                  type: string
+              required: [user_id, provider_name]
+      responses:
+        "200":
+          description: Unlinked
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/user-providers:
+    get:
+      operationId: listUserProviders
+      tags: [Users]
+      summary: Health snapshot of every auth provider
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users/{user_id}:
+    get:
+      operationId: getUser
+      tags: [Users]
+      summary: Single user record
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User detail
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/users/{user_id}/delete:
+    post:
+      operationId: deleteUser
+      tags: [Users]
+      summary: Delete user (sudo-equivalent POST — mirrors DELETE semantics)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          description: Rate limited
+
+  /api/users/{user_id}/login-history:
+    get:
+      operationId: getUserLoginHistory
+      tags: [Users]
+      summary: Per-user login history (first-seen IPs, impossible-travel signal)
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Login history entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/users/{user_id}/reset-password:
+    post:
+      operationId: resetUserPassword
+      tags: [Users]
+      summary: Admin-triggered password reset for a user (password-ticket handoff)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Ticket-bearing response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          description: Rate limited (pw-reset bucket)
+
+  /api/users/{user_id}/revoke-sessions:
+    post:
+      operationId: revokeAllUserSessions
+      tags: [Users]
+      summary: Revoke every session for the target user
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/users/{user_id}/role:
+    post:
+      operationId: setUserRole
+      tags: [Users]
+      summary: Change a user's role
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_slug]
+              properties:
+                role_slug:
+                  type: string
+      responses:
+        "200":
+          description: Role updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/users/{user_id}/sessions:
+    get:
+      operationId: listUserSessions
+      tags: [Users]
+      summary: List a user's active sessions
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/users/{user_id}/sessions/{session_id}/revoke:
+    post:
+      operationId: revokeSingleUserSession
+      tags: [Users]
+      summary: Revoke a single session on a target user
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/users/{user_id}/state:
+    post:
+      operationId: setUserState
+      tags: [Users]
+      summary: Change a user's state (active/disabled/deleted)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [active, disabled, deleted]
+      responses:
+        "200":
+          description: State updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/roles:
+    get:
+      operationId: listRoles
+      tags: [Users]
+      summary: All roles
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/roles/{role_slug}:
+    post:
+      operationId: updateRole
+      tags: [Users]
+      summary: Update a role's grants
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: role_slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Role updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Invites
+  # =========================================================================
+
+  /api/invites:
+    get:
+      operationId: listInvites
+      tags: [Invites]
+      summary: List pending invites
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Invites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createInvite
+      tags: [Invites]
+      summary: Create an invitation token
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Invite created
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/invites/accept:
+    post:
+      operationId: acceptInvite
+      tags: [Invites]
+      summary: Redeem an invite token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Accepted
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /api/invites/{invite_id}:
+    post:
+      operationId: revokeInvite
+      tags: [Invites]
+      summary: Revoke an invite
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: invite_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Tokens
+  # =========================================================================
+
+  /api/tokens:
+    get:
+      operationId: listTokens
+      tags: [Tokens]
+      summary: List all API tokens (admin)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createToken
+      tags: [Tokens]
+      summary: Mint an API token
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Token issued (raw value returned once)
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/tokens/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Tokens]
+      summary: Exchange a refresh token for a fresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+              required: [refresh_token]
+      responses:
+        "200":
+          description: New access token
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/tokens/revoke-family:
+    post:
+      operationId: revokeTokenFamily
+      tags: [Tokens]
+      summary: Revoke an entire token family (incident-response)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Family revoked
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/tokens/{token_id}:
+    post:
+      operationId: revokeToken
+      tags: [Tokens]
+      summary: Revoke a single token
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: token_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Sessions (visibility)
+  # =========================================================================
+
+  /api/sessions/active:
+    get:
+      operationId: listActiveSessions
+      tags: [Sessions]
+      summary: Aggregated active-session list across every provider
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Forbidden
+
+  # =========================================================================
+  # Bans
+  # =========================================================================
+
+  /api/bans/ips:
+    get:
+      operationId: listIpBans
+      tags: [Bans]
+      summary: List IP bans (merged into Authelia access_control on save)
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: IP bans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bans:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createIpBan
+      tags: [Bans]
+      summary: Ban an IP/CIDR
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cidr:
+                  type: string
+                reason:
+                  type: string
+                expires_at:
+                  type: string
+              required: [cidr]
+      responses:
+        "200":
+          description: Ban created
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/bans/ips/{cidr}/remove:
+    post:
+      operationId: removeIpBan
+      tags: [Bans]
+      summary: Lift an IP ban
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: cidr
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ban removed
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/bans/users:
+    get:
+      operationId: listUserBans
+      tags: [Bans]
+      summary: List user bans
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User bans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bans:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createUserBan
+      tags: [Bans]
+      summary: Ban a user
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                reason:
+                  type: string
+                expires_at:
+                  type: string
+              required: [username]
+      responses:
+        "200":
+          description: Ban created
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/bans/users/{username}/remove:
+    post:
+      operationId: removeUserBan
+      tags: [Bans]
+      summary: Lift a user ban
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ban removed
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Security visibility
+  # =========================================================================
+
+  /api/emergency-revoke-all:
+    post:
+      operationId: emergencyRevokeAll
+      tags: [SecurityVisibility]
+      summary: Emergency revoke of every session + token stack-wide
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Emergency revoke complete
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Forbidden
+        "429":
+          description: Rate limited
+
+  /api/security/concurrent:
+    get:
+      operationId: getConcurrentSessions
+      tags: [SecurityVisibility]
+      summary: Per-user concurrent-session counts
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Concurrent session counts
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/security/failed-logins:
+    get:
+      operationId: getFailedLogins
+      tags: [SecurityVisibility]
+      summary: Recent failed-login attempts (rate-limit signal)
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Failed-login entries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/security/new-locations:
+    get:
+      operationId: getNewLocations
+      tags: [SecurityVisibility]
+      summary: Users who logged in from a previously-unseen IP/location
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: New-location entries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Audit log
+  # =========================================================================
+
+  /api/audit-log:
+    get:
+      operationId: getAuditLog
+      tags: [AuditLog]
+      summary: Recent audit entries
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+        - in: query
+          name: action
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/audit-log/head:
+    get:
+      operationId: getAuditLogHead
+      tags: [AuditLog]
+      summary: Current head pointer of the hash-chained audit log
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Head pointer + hash
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/audit-log/verify:
+    get:
+      operationId: verifyAuditLogChain
+      tags: [AuditLog]
+      summary: Verify the audit-log hash chain
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  detail:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Verification raised
+
+  # =========================================================================
+  # Media integrity — anti-duplicate-download contract
+  # =========================================================================
+
+  /api/media-integrity/status:
+    get:
+      operationId: getMediaIntegrityStatus
+      tags: [MediaIntegrity]
+      summary: Last-pass status for the media-integrity subsystem
+      description: |
+        Returns the most recent enforcement + reconciliation outcomes
+        across every Servarr (Radarr/Sonarr/Lidarr/Readarr) and Bazarr
+        adapter. Read-only; surfaces the Security-tab "media integrity"
+        card. Authenticated users can read; admin not required.
+      x-status: planned
+      x-target-release: v1.x-media-integrity
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Last-pass status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  last_enforce:
+                    type: object
+                    additionalProperties: true
+                  last_reconcile:
+                    type: object
+                    additionalProperties: true
+                  policy_version:
+                    type: integer
+                  servarr_adapters:
+                    type: array
+                    items:
+                      type: string
+                  bazarr_present:
+                    type: boolean
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "503":
+          description: Service not yet configured
+
+  /api/media-integrity/progress:
+    get:
+      operationId: getMediaIntegrityProgress
+      tags: [MediaIntegrity]
+      summary: Poll-able progress of the in-flight reconcile/enforce pass
+      description: |
+        Returns ``{"in_progress": false}`` when idle, or
+        ``{"in_progress": true, "op": "reconcile"|"enforce_config", "phase": "running", "started_at": "iso-ts"}``.
+        UI polls this while a button is depressed so the user sees a
+        spinner instead of a silent network request.
+      x-status: planned
+      x-target-release: v1.x-media-integrity
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Progress snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "503":
+          description: Service not yet configured
+
+  /api/media-integrity/reconcile:
+    post:
+      operationId: triggerMediaIntegrityReconcile
+      tags: [MediaIntegrity]
+      summary: Trigger a reconciliation pass on-demand (admin)
+      description: |
+        Walks every adapter, heals duplicate files via the canonical
+        winner-picking rules (highest quality-profile rank, earliest
+        added, smallest size), and emits ``media_integrity.duplicate_resolved``
+        events. Idempotent via ``Idempotency-Key`` header. Admin-only.
+        ``?dry_run=1`` reports what WOULD be deleted without touching
+        disk. 409 if a pass is already running.
+      x-status: planned
+      x-target-release: v1.x-media-integrity
+      parameters:
+        - in: query
+          name: dry_run
+          schema:
+            type: string
+            enum: ["0", "1"]
+          description: When "1", report the plan without deleting any file.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Reconciliation summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Admin required
+        "409":
+          description: A reconcile pass is already in progress
+        "503":
+          description: Service not yet configured
+
+  /api/media-integrity/resolve-review:
+    post:
+      operationId: resolveMediaIntegrityReview
+      tags: [MediaIntegrity]
+      summary: Operator picks a winner for an ambiguous duplicate (admin)
+      description: |
+        Invoked from the "Keep this one" button on the needs-review
+        chip. Deletes every OTHER candidate file (Servarr) or every
+        other subtitle in the same (language, forced, hi) group
+        (Bazarr). Audited with ``operator_resolved=true``. Shares the
+        reconcile mutex → 409 if a reconcile pass is running.
+      x-status: planned
+      x-target-release: v1.x-media-integrity
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app, release_id]
+              properties:
+                app:
+                  type: string
+                  enum: [radarr, sonarr, lidarr, readarr, bazarr]
+                release_id:
+                  type: string
+                winner_file_id:
+                  type: string
+                  description: Required for Servarr.
+                winner_sub_path:
+                  type: string
+                  description: Required for Bazarr.
+                release_kind:
+                  type: string
+                  enum: [movie, episode]
+                language:
+                  type: string
+                forced:
+                  type: boolean
+                hi:
+                  type: boolean
+      responses:
+        "200":
+          description: Resolution summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    type: string
+                  release_id:
+                    type: string
+                  deleted_count:
+                    type: integer
+                  bytes_freed:
+                    type: integer
+        "400":
+          description: Missing required fields or unknown app
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Admin required
+        "409":
+          description: A reconcile pass is already in progress
+        "503":
+          description: Service not yet configured
+
+  /api/media-integrity/enforce-config:
+    post:
+      operationId: triggerMediaIntegrityEnforceConfig
+      tags: [MediaIntegrity]
+      summary: Apply the canonical *arr policy to every adapter (admin)
+      description: |
+        Brings every adapter's mediamanagement + naming + Bazarr
+        settings back into compliance with
+        ``contracts/servarr-policy.yaml``. Failures on one adapter
+        do not stop enforcement on the others. Audited.
+      x-status: planned
+      x-target-release: v1.x-media-integrity
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Enforcement summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Admin required
+        "503":
+          description: Service not yet configured
+
+  # =========================================================================
+  # TLS
+  # =========================================================================
+
+  /api/tls/certificate:
+    get:
+      operationId: describeTlsCertificate
+      tags: [TLS]
+      summary: Describe the installed controller TLS certificate
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Certificate metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "500":
+          description: Internal error
+    post:
+      operationId: installTlsCertificate
+      tags: [TLS]
+      summary: Install a custom PEM cert+key bundle
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cert_pem:
+                  type: string
+                key_pem:
+                  type: string
+              required: [cert_pem, key_pem]
+      responses:
+        "200":
+          description: Installed
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/tls/certificate/download:
+    get:
+      operationId: downloadTlsCertificate
+      tags: [TLS]
+      summary: Download the public cert PEM (no private key)
+      responses:
+        "200":
+          description: PEM bytes
+          content:
+            application/x-pem-file:
+              schema:
+                type: string
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          description: Internal error
+
+  /api/tls/certificate/regenerate:
+    post:
+      operationId: regenerateTlsCertificate
+      tags: [TLS]
+      summary: Regenerate the self-signed controller certificate
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Regenerated
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Internal error
+
+  # =========================================================================
+  # Password policy + tickets
+  # =========================================================================
+
+  /api/password-policy:
+    get:
+      operationId: getPasswordPolicy
+      tags: [PasswordPolicy]
+      summary: Current password policy + bounds
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [policy, bounds]
+                properties:
+                  policy:
+                    type: object
+                    description: |
+                      Currently-active policy values. POST the same
+                      shape to `/api/password-policy` to update.
+
+                      v1.0.182 expanded the shape to expose explicit
+                      booleans for each character class. The legacy
+                      `require_classes` integer is kept on the read
+                      side (derived from the booleans) for back-compat;
+                      on writes the booleans win and `require_classes`
+                      is ignored.
+                    properties:
+                      min_length:
+                        type: integer
+                        example: 12
+                      require_classes:
+                        type: integer
+                        description: |
+                          DEPRECATED on writes. Read-side count of
+                          enabled character-class booleans (1–4).
+                        example: 3
+                      require_uppercase:
+                        type: boolean
+                        example: true
+                      require_lowercase:
+                        type: boolean
+                        example: true
+                      require_digit:
+                        type: boolean
+                        example: true
+                      require_special:
+                        type: boolean
+                        example: false
+                      history_len:
+                        type: integer
+                        description: |
+                          How many recent passwords to remember and
+                          forbid for re-use. 0 disables history.
+                        example: 5
+                      max_age_days:
+                        type: integer
+                        description: |
+                          Force rotation after N days. 0 = never.
+                        example: 0
+                      lockout_threshold:
+                        type: integer
+                        description: |
+                          Failed attempts before account lockout.
+                          0 disables.
+                        example: 5
+                      lockout_window_minutes:
+                        type: integer
+                        description: |
+                          Duration of the lockout in minutes.
+                        example: 15
+                    additionalProperties: true
+                  bounds:
+                    type: object
+                    description: |
+                      Per-field min/max/default. Drives the `min` and
+                      `max` attributes on the form inputs + sliders.
+                      The keys mirror the numeric fields on `policy`.
+                    properties:
+                      min_length:
+                        $ref: '#/components/schemas/PolicyBound'
+                      require_classes:
+                        $ref: '#/components/schemas/PolicyBound'
+                      history_len:
+                        $ref: '#/components/schemas/PolicyBound'
+                      max_age_days:
+                        $ref: '#/components/schemas/PolicyBound'
+                      lockout_threshold:
+                        $ref: '#/components/schemas/PolicyBound'
+                      lockout_window_minutes:
+                        $ref: '#/components/schemas/PolicyBound'
+                    additionalProperties:
+                      $ref: '#/components/schemas/PolicyBound'
+              example:
+                policy:
+                  min_length: 12
+                  require_uppercase: true
+                  require_lowercase: true
+                  require_digit: true
+                  require_special: false
+                  require_classes: 3
+                  history_len: 5
+                  max_age_days: 0
+                  lockout_threshold: 5
+                  lockout_window_minutes: 15
+                bounds:
+                  min_length:
+                    floor: 4
+                    ceiling: 128
+                    default: 12
+                  require_classes:
+                    floor: 1
+                    ceiling: 4
+                    default: 3
+                  history_len:
+                    floor: 0
+                    ceiling: 20
+                    default: 5
+                  max_age_days:
+                    floor: 0
+                    ceiling: 365
+                    default: 0
+                  lockout_threshold:
+                    floor: 0
+                    ceiling: 50
+                    default: 5
+                  lockout_window_minutes:
+                    floor: 0
+                    ceiling: 1440
+                    default: 15
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: updatePasswordPolicy
+      tags: [PasswordPolicy]
+      summary: Update the password policy
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: |
+                Partial update — any field omitted is preserved. The
+                booleans take precedence over the deprecated
+                `require_classes` integer; on a body that has only the
+                booleans, `require_classes` is ignored on the write path
+                (and re-derived on the next read).
+              properties:
+                min_length:
+                  type: integer
+                require_uppercase:
+                  type: boolean
+                require_lowercase:
+                  type: boolean
+                require_digit:
+                  type: boolean
+                require_special:
+                  type: boolean
+                require_classes:
+                  type: integer
+                  deprecated: true
+                history_len:
+                  type: integer
+                max_age_days:
+                  type: integer
+                lockout_threshold:
+                  type: integer
+                lockout_window_minutes:
+                  type: integer
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Persist failed
+
+  /api/password-tickets/{ticket_id}:
+    get:
+      operationId: consumePasswordTicket
+      tags: [PasswordPolicy]
+      summary: Single-use plaintext-password retrieval (admin-only, audited, rate-limited)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticket_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Plaintext password (ticket burned on read)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Forbidden
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          description: Rate limited
+
+  # =========================================================================
+  # Stack upgrade
+  # =========================================================================
+
+  /api/stack/update:
+    get:
+      operationId: checkStackUpdate
+      tags: [Stack]
+      summary: Check for newer published release
+      responses:
+        "200":
+          description: Update probe result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/stack/upgrade:
+    post:
+      operationId: triggerStackUpgrade
+      tags: [Stack]
+      summary: Trigger an in-place stack upgrade (gated by STACK_UPDATE_ALLOW_INPLACE)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target:
+                  type: string
+      responses:
+        "200":
+          description: Upgrade accepted or rejected with instructions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/stack/upgrade/{task_id}:
+    get:
+      operationId: getStackUpgradeStatus
+      tags: [Stack]
+      summary: Progress of a stack-upgrade task
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Health extensions
+  # =========================================================================
+
+  /api/auto-heal:
+    get:
+      operationId: getAutoHealStatus
+      tags: [Health]
+      summary: Auto-heal service status
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/auto-heal/enabled:
+    post:
+      operationId: setAutoHealEnabled
+      tags: [Health]
+      summary: Toggle auto-heal on/off
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+              required: [enabled]
+      responses:
+        "200":
+          description: Toggled
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auto-heal/run:
+    post:
+      operationId: runAutoHeal
+      tags: [Health]
+      summary: Trigger an auto-heal pass now
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Heal result
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/password-propagation:
+    get:
+      operationId: getPasswordPropagationReport
+      tags: [Health]
+      summary: Check admin password propagation to each service's local user record
+      description: >-
+        Read-only metadata probe. For services with a local per-user password
+        store (today: Jellyfin), GET the user list via the API key and report
+        whether the admin user's ``HasPassword`` flag is true. NO authentication
+        attempt is made against any service — this endpoint never touches
+        ``/Users/AuthenticateByName`` or equivalent password-login endpoints.
+        Distinct from ``/api/credentials``, which verifies the API key works.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: >-
+            Per-service status. Values: ``ok`` (password present),
+            ``not_propagated`` (user exists with HasPassword=false),
+            ``no_user`` (admin row missing), ``no_key`` (no API key),
+            ``error`` (transport / parse), ``n/a`` (service has no local
+            password concept, e.g. *arr apps using API key only).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/credentials:
+    get:
+      operationId: getCredentialsReport
+      tags: [Health]
+      summary: Credential validation across services
+      responses:
+        "200":
+          description: Credential status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: revalidateCredentials
+      tags: [Health]
+      summary: Ad-hoc credential revalidation for a service list
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                services:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Revalidation result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/failed-services:
+    get:
+      operationId: getFailedServices
+      tags: [Health]
+      summary: Services that have tripped the failure threshold
+      responses:
+        "200":
+          description: Failed services
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  failed_services:
+                    type: array
+                    items:
+                      type: string
+                  count:
+                    type: integer
+
+  /api/health/config-integrity:
+    get:
+      operationId: getConfigIntegrity
+      tags: [Health]
+      summary: Per-service config-integrity check
+      responses:
+        "200":
+          description: Integrity report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/health/crashloops:
+    get:
+      operationId: getCrashloops
+      tags: [Health]
+      summary: Crashloop detection across services
+      responses:
+        "200":
+          description: Crashloop report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/health/stories:
+    get:
+      operationId: getHealthStories
+      tags: [Health]
+      summary: Composed health-narrative stories for the dashboard
+      responses:
+        "200":
+          description: Stories
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # =========================================================================
+  # Networking / gateway diagnostics
+  # =========================================================================
+
+  /api/access-urls:
+    get:
+      operationId: getAccessUrls
+      tags: [Networking]
+      summary: Clickable URLs for the controller across every known host/IP
+      responses:
+        "200":
+          description: Access URL map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/dns-check:
+    get:
+      operationId: dnsCheck
+      tags: [Networking]
+      summary: Lightweight DNS-resolution probe
+      parameters:
+        - in: query
+          name: host
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: DNS-resolution result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "500":
+          description: Probe failed
+
+  /api/gateway-hostnames:
+    get:
+      operationId: getGatewayHostnames
+      tags: [Networking]
+      summary: Hostnames Envoy is configured to serve
+      responses:
+        "200":
+          description: Hostname list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hostnames:
+                    type: array
+                    items:
+                      type: string
+        "500":
+          description: Read failed
+
+  /api/route-probe:
+    get:
+      operationId: singleRouteProbe
+      tags: [Networking]
+      summary: Server-side probe of one URL (bypasses mixed-content + self-signed)
+      parameters:
+        - in: query
+          name: url
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Probe result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "500":
+          description: Probe failed
+
+  /api/routing-probe:
+    get:
+      operationId: routingMatrixProbe
+      tags: [Networking]
+      summary: Server-side matrix probe across every service's four access URLs
+      responses:
+        "200":
+          description: Matrix result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "500":
+          description: Probe failed
+
+  # =========================================================================
+  # Content / *arr helpers
+  # =========================================================================
+
+  /api/arr-webhooks:
+    get:
+      operationId: ensureArrScanWebhooks
+      tags: [Content]
+      summary: Ensure every *arr has the Jellyfin-scan webhook registered
+      responses:
+        "200":
+          description: Webhook registration state
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/custom-formats/import:
+    post:
+      operationId: importCustomFormats
+      tags: [Content]
+      summary: Import Trash-style custom formats into a Servarr service
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Import result
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/custom-formats/{service}:
+    get:
+      operationId: getCustomFormats
+      tags: [Content]
+      summary: Current custom-format definitions for a Servarr service
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Custom formats
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/discovery/popular-tv:
+    get:
+      operationId: getPopularTv
+      tags: [Content]
+      summary: Sonarr CustomImport feed of popular TV (TVMaze-backed)
+      responses:
+        "200":
+          description: List of {tvdbId, title}
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+
+  /api/download-client-settings:
+    get:
+      operationId: getDownloadClientSettings
+      tags: [Content]
+      summary: Download-client connection settings (qBittorrent, SABnzbd)
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: updateDownloadClientSettings
+      tags: [Content]
+      summary: Update download-client connection settings
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/import-lists-all:
+    get:
+      operationId: listAllImportLists
+      tags: [Content]
+      summary: Import lists aggregated across every *arr
+      responses:
+        "200":
+          description: Combined list view
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/import-lists/{service}/{list_id}/delete:
+    post:
+      operationId: deleteImportList
+      tags: [Content]
+      summary: Delete an import list
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: list_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/import-lists/{service}/{list_id}/toggle:
+    post:
+      operationId: toggleImportList
+      tags: [Content]
+      summary: Enable/disable an import list
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: list_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Toggled
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/indexers/{indexer_id}:
+    post:
+      operationId: deleteIndexer
+      tags: [Content]
+      summary: Delete an indexer (DELETE is tunneled via _method)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: indexer_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/indexers/{indexer_id}/toggle:
+    post:
+      operationId: toggleIndexer
+      tags: [Content]
+      summary: Enable/disable an indexer
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: indexer_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enable:
+                  type: boolean
+      responses:
+        "200":
+          description: Toggled
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/quality-presets:
+    get:
+      operationId: listQualityPresets
+      tags: [Content]
+      summary: Curated Trash-derived quality-profile presets
+      responses:
+        "200":
+          description: Presets
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/quality-profiles/toggle:
+    post:
+      operationId: toggleQualityProfile
+      tags: [Content]
+      summary: Enable/disable a quality profile on a Servarr service
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Toggled
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/quality-profiles/{service}:
+    get:
+      operationId: getQualityProfilesForService
+      tags: [Content]
+      summary: Current quality-profile config for a Servarr service
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # =========================================================================
+  # Config extensions
+  # =========================================================================
+
+  /api/config-drift:
+    get:
+      operationId: getConfigDrift
+      tags: [Config]
+      summary: Drift between on-disk config and contracts
+      responses:
+        "200":
+          description: Drift report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/config/libraries:
+    get:
+      operationId: getConfiguredLibraries
+      tags: [Config]
+      summary: Configured libraries (source of truth)
+      responses:
+        "200":
+          description: Libraries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/custom-service:
+    post:
+      operationId: addCustomService
+      tags: [Config]
+      summary: Register a custom service in the registry
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Registered
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/discovery-lists:
+    get:
+      operationId: getDiscoveryLists
+      tags: [Config]
+      summary: Configured discovery lists
+      responses:
+        "200":
+          description: Discovery lists
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: updateDiscoveryLists
+      tags: [Config]
+      summary: Update discovery lists
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/display-preferences:
+    get:
+      operationId: getDisplayPreferences
+      tags: [Config]
+      summary: Jellyfin display preferences (backdrop, custom prefs, per-library)
+      description: |
+        Returns the display-preferences configuration that the controller
+        pushes to Jellyfin clients. **Server-side only** — these are
+        Jellyfin client knobs (backdrops, home sections, per-library
+        sort order). They are NOT browser-UI preferences for the
+        controller dashboard; the dashboard's theme/density live in
+        `next-themes` + `localStorage`.
+      responses:
+        "200":
+          description: Display preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: Whether display-prefs sync to Jellyfin clients is active.
+                    example: true
+                  show_backdrop:
+                    type: boolean
+                    description: Cinema-style backdrops on detail pages.
+                    example: true
+                  custom_prefs:
+                    type: object
+                    description: |
+                      Free-form Jellyfin client knobs. Keys are the
+                      Jellyfin pref names (e.g. `enableThemeVideos`,
+                      `homesection0`); values are strings or booleans.
+                    additionalProperties: true
+                    example:
+                      enableNextVideoInfoOverlay: true
+                      enableBackdrops: true
+                      enableLibraryBackdrops: true
+                      enableThemeVideos: true
+                      homesection0: smalllibrarytiles
+                      homesection1: resume
+                      homesection2: latestmedia
+                      homesection3: nextup
+                      homesection4: livetv
+                      homesection5: activerecordings
+                      homesection6: none
+                      homesection7: none
+                      homesection8: none
+                      homesection9: none
+                  per_library_prefs:
+                    type: object
+                    description: |
+                      Per-library override map. Keyed by library kind
+                      (`movies`/`tv`/`music`/`books`); values are
+                      Jellyfin display-pref objects (SortBy, SortOrder,
+                      etc.).
+                    additionalProperties:
+                      type: object
+                      additionalProperties: true
+                    example:
+                      movies:
+                        SortBy: DateCreated,SortName
+                        SortOrder: Descending
+                  clients:
+                    type: array
+                    description: |
+                      Jellyfin client identifiers the prefs apply to.
+                      Default targets are `emby` (legacy app) and
+                      `jellyfin-web` (browser).
+                    items:
+                      type: string
+                    example: [emby, jellyfin-web]
+              example:
+                enabled: true
+                show_backdrop: true
+                custom_prefs:
+                  enableNextVideoInfoOverlay: true
+                  enableBackdrops: true
+                  enableLibraryBackdrops: true
+                  enableThemeVideos: true
+                  homesection0: smalllibrarytiles
+                  homesection1: resume
+                  homesection2: latestmedia
+                  homesection3: nextup
+                  homesection4: livetv
+                  homesection5: activerecordings
+                  homesection6: none
+                  homesection7: none
+                  homesection8: none
+                  homesection9: none
+                per_library_prefs:
+                  movies:
+                    SortBy: DateCreated,SortName
+                    SortOrder: Descending
+                  tv:
+                    SortBy: DateCreated,SortName
+                    SortOrder: Descending
+                  music:
+                    SortBy: DateCreated,SortName
+                    SortOrder: Descending
+                  books:
+                    SortBy: DateCreated,SortName
+                    SortOrder: Descending
+                clients: [emby, jellyfin-web]
+    post:
+      operationId: updateDisplayPreferences
+      tags: [Config]
+      summary: Update Jellyfin display preferences
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/download-analytics:
+    get:
+      operationId: getDownloadAnalytics
+      tags: [Config]
+      summary: Aggregated download analytics
+      responses:
+        "200":
+          description: Analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/download-categories:
+    get:
+      operationId: getDownloadCategories
+      tags: [Config]
+      summary: Download client categories
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: updateDownloadCategories
+      tags: [Config]
+      summary: Update download-client categories
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/epg-health:
+    get:
+      operationId: runEpgHealth
+      tags: [Config]
+      summary: Probe EPG providers and report health
+      responses:
+        "200":
+          description: EPG health
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/epg-providers:
+    get:
+      operationId: listEpgProviders
+      tags: [Config]
+      summary: Configured EPG (guide) providers
+      responses:
+        "200":
+          description: Providers + cached health
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/iptv-countries:
+    get:
+      operationId: listIptvCountries
+      tags: [Config]
+      summary: Available IPTV-country presets
+      responses:
+        "200":
+          description: Countries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/livetv-sources:
+    get:
+      operationId: getLiveTvSources
+      tags: [Config]
+      summary: Live-TV sources (M3U/EPG URLs)
+      description: |
+        Returns the configured M3U tuner URLs (`tuners[]`) and EPG XMLTV
+        guide URLs (`guides[]`) as parallel lists. The single currently
+        active tuner / guide is duplicated into the scalar `tuner_url`
+        and `guide_url` fields for clients that only render the active
+        pair.
+      responses:
+        "200":
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tuners:
+                    type: array
+                    description: Available IPTV M3U tuner playlists.
+                    items:
+                      $ref: '#/components/schemas/LivetvUrlEntry'
+                  guides:
+                    type: array
+                    description: Available EPG XMLTV guide URLs.
+                    items:
+                      $ref: '#/components/schemas/LivetvUrlEntry'
+                  tuner_url:
+                    type: string
+                    description: Currently-selected tuner URL (matches one entry in `tuners[]`).
+                    example: "https://iptv-org.github.io/iptv/countries/us.m3u"
+                  guide_url:
+                    type: string
+                    description: Currently-selected guide URL (matches one entry in `guides[]`).
+                    example: "https://iptv-epg.org/files/epg-us.xml"
+                  load_all_tuners:
+                    type: boolean
+                    description: |
+                      When true, Jellyfin loads every entry in `tuners[]`
+                      (multi-tuner mode); when false, only `tuner_url`.
+                    example: false
+                  source:
+                    type: string
+                    description: Where the configuration was loaded from.
+                    enum: [profile, persisted, defaults]
+                    example: profile
+              example:
+                tuners:
+                  - url: "https://iptv-org.github.io/iptv/countries/us.m3u"
+                    name: Default
+                guides:
+                  - url: "https://iptv-epg.org/files/epg-us.xml"
+                    name: Default
+                tuner_url: "https://iptv-org.github.io/iptv/countries/us.m3u"
+                guide_url: "https://iptv-epg.org/files/epg-us.xml"
+                load_all_tuners: false
+                source: profile
+    post:
+      operationId: updateLiveTvSources
+      tags: [Config]
+      summary: Update live-TV sources
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/log-level:
+    get:
+      operationId: getLogLevel
+      tags: [Config]
+      summary: Current logging level
+      responses:
+        "200":
+          description: Log level
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  level:
+                    type: string
+    post:
+      operationId: setLogLevel
+      tags: [Config]
+      summary: Set runtime log level
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level]
+              properties:
+                level:
+                  type: string
+                  enum: [DEBUG, INFO, WARN, ERROR]
+      responses:
+        "200":
+          description: Level updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/metadata-settings:
+    get:
+      operationId: getMetadataSettings
+      tags: [Config]
+      summary: Metadata-preset configuration
+      responses:
+        "200":
+          description: Metadata settings
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: updateMetadataSettings
+      tags: [Config]
+      summary: Update metadata preset
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/onboarding:
+    get:
+      operationId: getOnboardingStatus
+      tags: [Config]
+      summary: First-run onboarding progress
+      responses:
+        "200":
+          description: Onboarding status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/storage-breakdown:
+    get:
+      operationId: getStorageBreakdown
+      tags: [Disk]
+      summary: Per-directory storage breakdown
+      responses:
+        "200":
+          description: Breakdown tree
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/telemetry:
+    get:
+      operationId: getTelemetry
+      tags: [Config]
+      summary: Collect or push anonymised telemetry
+      responses:
+        "200":
+          description: Telemetry payload
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/validate-migration:
+    post:
+      operationId: validateMigrationTarget
+      tags: [Disk]
+      summary: Validate a migration target path
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_path:
+                  type: string
+              required: [target_path]
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # =========================================================================
+  # Jobs + schedules
+  # =========================================================================
+
+  /api/jobs:
+    get:
+      operationId: listJobs
+      tags: [Jobs]
+      summary: Discovered jobs + dependency tree + run history
+      description: |
+        Returns the controller's job catalog. `jobs[]` is the discovered
+        job descriptors (handler, phase, priority); `tree` is the
+        dependency graph (phase → job ids); `history[]` is the most
+        recent runs (success / failure / duration). `count` is the
+        cardinality of `jobs[]` for clients that don't want to walk
+        the array twice.
+      responses:
+        "200":
+          description: Jobs view
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    description: Discovered job descriptors.
+                    items:
+                      type: object
+                      required: [name, handler, phase]
+                      properties:
+                        name:
+                          type: string
+                          example: configure-categories
+                        handler:
+                          type: string
+                          description: Dotted Python path to the handler callable.
+                          example: media_stack.services.apps.qbittorrent.configure_categories_job:configure_categories
+                        phase:
+                          type: string
+                          description: Bootstrap phase the job runs in.
+                          example: download_clients
+                        priority:
+                          type: integer
+                          description: |
+                            Within a phase, jobs run in ascending
+                            priority order. Lower runs first.
+                          example: 10
+                        requires:
+                          type: array
+                          items:
+                            type: string
+                          description: Names of jobs that must succeed before this one runs.
+                          example: []
+                        max_attempts:
+                          type: integer
+                          nullable: true
+                          example: null
+                        non_blocking:
+                          type: boolean
+                          description: |
+                            When true a failure does not abort the
+                            phase; the controller logs and proceeds.
+                          example: false
+                        after:
+                          type: array
+                          items:
+                            type: string
+                          description: Jobs this one prefers to run after (soft-ordering).
+                          example: []
+                        label:
+                          type: string
+                          description: Human-readable label for the operator UI.
+                          example: Update download categories
+                        service:
+                          type: string
+                          description: Service the job mutates (used for grouping in the UI).
+                          example: qbittorrent
+                      additionalProperties: true
+                  tree:
+                    type: object
+                    description: |
+                      Phase-keyed dependency graph. Each phase value is
+                      a job-id-keyed map of dependency lists, suitable
+                      for rendering as a collapsible tree.
+                    additionalProperties: true
+                  count:
+                    type: integer
+                    description: Cardinality of `jobs[]`.
+                    example: 14
+                  history:
+                    type: array
+                    description: Most recent job runs (newest first).
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum: [succeeded, failed, cancelled, running]
+                        started_at:
+                          type: string
+                        finished_at:
+                          type: string
+                        duration_ms:
+                          type: integer
+                        attempt:
+                          type: integer
+                        error:
+                          type: string
+                        source:
+                          type: string
+                          description: |
+                            Who triggered this run. The token before
+                            the optional ``:<sub-tag>`` is one of
+                            ``cron`` / ``manual`` / ``auto-heal`` /
+                            ``scheduler`` / ``unknown``.
+
+                            * ``cron`` — one of the three k8s
+                              CronJobs. Sub-tagged with the mode,
+                              e.g. ``cron:reconcile``,
+                              ``cron:media-server-prewarm``,
+                              ``cron:media-hygiene``.
+                            * ``manual`` — operator clicked "Run
+                              now" via ``POST /actions/{name}``.
+                              The ``actor`` field carries the
+                              authenticated username.
+                            * ``auto-heal`` — controller's recovery
+                              cascade reacting to crashloops or
+                              post-action failures.
+                            * ``scheduler`` — in-process scheduler
+                              firing a recurring action.
+                            * ``unknown`` — pre-1.0.180 entries on
+                              disk plus any call site that didn't
+                              classify itself. The reader backfills
+                              this default when an entry on disk
+                              lacks the ``source`` key.
+
+                            The UI persona-questions agent treats
+                            anything matching ``^cron(:|$)`` as a
+                            cron run for badge selection.
+                          pattern: '^(cron|manual|auto-heal|scheduler|unknown)(:[A-Za-z0-9_.-]+)?$'
+                          x-source-heads: [cron, manual, auto-heal, scheduler, unknown]
+                          example: cron:reconcile
+                        actor:
+                          type: string
+                          nullable: true
+                          description: |
+                            Authenticated username when ``source`` is
+                            ``manual``. ``null`` for cron / auto-heal /
+                            scheduler / unknown runs.
+                          example: alice
+                      additionalProperties: true
+              example:
+                jobs:
+                  - name: configure-categories
+                    handler: media_stack.services.apps.qbittorrent.configure_categories_job:configure_categories
+                    phase: download_clients
+                    priority: 10
+                    requires: []
+                    max_attempts: null
+                    non_blocking: false
+                    after: []
+                    label: Update download categories
+                    service: qbittorrent
+                  - name: configure-arr-clients
+                    handler: media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients
+                    phase: download_clients
+                    priority: 10
+                    requires: []
+                    max_attempts: null
+                    non_blocking: false
+                    after: []
+                    label: Update download client config
+                    service: sonarr
+                tree: {}
+                count: 2
+                history: []
+
+  /api/schedules:
+    get:
+      operationId: listSchedules
+      tags: [Jobs]
+      summary: Configured schedules
+      responses:
+        "200":
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: addSchedule
+      tags: [Jobs]
+      summary: Add a recurring schedule
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                interval_seconds:
+                  type: integer
+                label:
+                  type: string
+      responses:
+        "200":
+          description: Added
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/schedules/{schedule_id}/delete:
+    post:
+      operationId: deleteSchedule
+      tags: [Jobs]
+      summary: Remove a schedule
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # =========================================================================
+  # Operations — media-server reset + per-service reset + logs filter
+  # =========================================================================
+
+  /api/logs:
+    get:
+      operationId: getLogRingBuffer
+      tags: [Operations]
+      summary: Controller log ring buffer (optionally filtered by action)
+      parameters:
+        - in: query
+          name: after_seq
+          required: false
+          schema:
+            type: integer
+        - in: query
+          name: action
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ring-buffer entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  count:
+                    type: integer
+
+  /api/media-server/reset:
+    post:
+      operationId: mediaServerReset
+      tags: [Security]
+      summary: Hard-reset the media server's admin credentials (DB-level)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+              required: [password]
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/services/{service_id}/reset:
+    post:
+      operationId: hardResetService
+      tags: [Operations]
+      summary: Hard-reset a service (restart + re-discover key + re-run preflight)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: service_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # =========================================================================
+  # Guardrails — per-rule operations on the cross-domain registry
+  # =========================================================================
+
+  /api/guardrails/{id}:
+    post:
+      operationId: updateGuardrailThreshold
+      tags: [Guardrails]
+      summary: Update a guardrail threshold (operator override)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold:
+                  type: object
+                  additionalProperties: true
+              required: [threshold]
+      responses:
+        "200":
+          description: Updated threshold
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/guardrails/{id}/test:
+    post:
+      operationId: testGuardrail
+      tags: [Guardrails]
+      summary: Dry-run a single guardrail evaluation
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Evaluation result without remediation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  would_trigger:
+                    type: boolean
+                  severity:
+                    type: string
+                    nullable: true
+                  current_value: {}
+                  threshold:
+                    type: object
+                    additionalProperties: true
+                  description:
+                    type: string
+
+  /api/guardrails/{id}/disable:
+    post:
+      operationId: disableGuardrail
+      tags: [Guardrails]
+      summary: Soft-disable / re-enable a guardrail rule
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                disabled:
+                  type: boolean
+              required: [disabled]
+      responses:
+        "200":
+          description: Disable state set
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # =========================================================================
+  # Webhooks — *arr ingest
+  # =========================================================================
+
+  /webhooks/arr:
+    post:
+      operationId: receiveArrWebhook
+      tags: [Webhooks]
+      summary: Ingest an Arr import/grab webhook and trigger Jellyfin scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Scan triggered (if applicable)
+        "403":
+          description: HMAC signature missing or invalid

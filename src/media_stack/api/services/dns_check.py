@@ -33,6 +33,11 @@ from typing import Any
 
 _log = logging.getLogger("media_stack.dns_check")
 
+# Public IP echo providers. Both return "1.2.3.4\n" with a minimal payload
+# so the dashboard's per-keystroke polling stays snappy. ipify is primary
+# because it's purpose-built and more reliable; ifconfig.me is the backup.
+_PUBLIC_IP_ECHO_PROVIDERS: tuple[str, ...] = ("https://api.ipify.org", "https://ifconfig.me/ip")
+
 
 def _resolve_host(host: str) -> str | None:
     try:
@@ -86,10 +91,9 @@ def _cluster_ips() -> list[str]:
         _maybe_add(explicit)
 
     # Public IP echo — short timeout because the dashboard polls
-    # /api/dns-check on every keystroke. api.ipify.org is the canonical
-    # provider; ifconfig.me as backup. Either returns "1.2.3.4\n".
+    # /api/dns-check on every keystroke.
     import urllib.request
-    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+    for url in _PUBLIC_IP_ECHO_PROVIDERS:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "media-stack/dns-check"})
             with urllib.request.urlopen(req, timeout=3) as resp:

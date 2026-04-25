@@ -22,7 +22,14 @@ from media_stack.api.session_singletons import (
     session_cookie_reader, trusted_proxy_auth,
 )
 from media_stack.api.services.registry import SERVICES as _SERVICES
+from media_stack.api.services.media_integrity_handlers import (
+    _instance as _media_integrity_handlers,
+)
+from media_stack.api.services.security_get_handlers import (
+    _SessionVisibilityGetHelper,
+)
 from media_stack.api.tls_factory import build_default_tls_service
+from media_stack.core.auth.rate_limiter import RateLimiter
 from media_stack.core.auth.users.user_service_factory import (
     build_default_api_token_store,
     build_default_invite_service,
@@ -39,20 +46,49 @@ from .services import config as config_svc
 from .services import metrics as metrics_svc
 from .services import ops as ops_svc
 
+# Admin-read security endpoints (sessions, bans, security reports,
+# audit head) live behind a dedicated bucket. Wider than the
+# user-mgmt POST bucket (60 burst vs 10) because reads are less
+# sensitive, but still narrow enough that an attacker enumerating
+# session ids or ban cidrs hits a wall. Per-IP keyed in the
+# dispatcher so one IP can't DoS the whole security UI.
+_SECURITY_READ_BUCKET_CAPACITY = 60
+_SECURITY_READ_REFILL_PER_SECOND = 5.0
+_security_read_limiter = RateLimiter(
+    capacity=_SECURITY_READ_BUCKET_CAPACITY,
+    refill_per_second=_SECURITY_READ_REFILL_PER_SECOND,
+)
+
+# Session-visibility GETs dispatcher. Admin reads go through the
+# rate limiter above; /api/me/* GETs ride the global POST limiter
+# by sharing the same per-IP credit line isn't possible on the GET
+# side, so we rely on the authz check (scope-to-self) as the
+# defence-in-depth layer.
+_sessviz_handler = _SessionVisibilityGetHelper()
+
+_SECURITY_READ_PATHS: frozenset[str] = frozenset({
+    "/api/sessions/active",
+    "/api/audit-log/head",
+    "/api/bans/users",
+    "/api/bans/ips",
+    "/api/security/failed-logins",
+    "/api/security/new-locations",
+    "/api/security/concurrent",
+})
+
 if TYPE_CHECKING:
     from .server import ControllerAPIHandler
 import logging
 
 # ---------------------------------------------------------------------------
-# Dashboard / static assets
+# OpenAPI YAML (kept — API contract; the UI calls /api/openapi.yaml)
 # ---------------------------------------------------------------------------
-
-_DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
-_DASHBOARD_HTML = ""
-try:
-    _DASHBOARD_HTML = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8")
-except Exception:
-    _DASHBOARD_HTML = "<html><body><h1>Dashboard not found</h1></body></html>"
+#
+# Dashboard HTML, /api/static/* and /api/docs (Swagger UI HTML wrapper)
+# are no longer served by the Python controller — a separate UI
+# container now owns those assets. Requests to those paths return
+# ``410 GONE`` from the dispatcher with a Location pointer to the UI.
+# (v1.0.175.)
 
 _OPENAPI_YAML_PATH = Path(__file__).parent / "openapi.yaml"
 _OPENAPI_YAML = ""
@@ -137,6 +173,16 @@ class GetRequestHandler:
             handler._json_response(200, health_svc.get_health_history())
         elif path == "/api/credentials":
             handler._json_response(200, health_svc.probe_credentials())
+        elif path == "/api/password-propagation":
+            # Separate from /api/credentials: read-only check that
+            # the stack admin password has been propagated to each
+            # service's local user record. See
+            # ``HealthService.probe_password_propagation`` for the
+            # full design note — this endpoint does NOT attempt
+            # authentication; it reads metadata via the API key.
+            handler._json_response(
+                200, health_svc.probe_password_propagation(),
+            )
         elif path == "/api/health/config-integrity":
             from .services import config_integrity as integrity_svc
             handler._json_response(200, {
@@ -199,6 +245,12 @@ class GetRequestHandler:
                 "policy": cfg.load_values(),
                 "bounds": cfg.bounds(),
             })
+        elif path.startswith("/api/password-tickets/"):
+            # Single-use retrieval of a plaintext password that the
+            # user-write service minted during create / reset. The
+            # ticket is burned on first read. Admin-only,
+            # rate-limited in the pw-reset bucket, audit-logged.
+            _handle_password_ticket_consume(handler, path)
         elif path == "/api/routing-probe":
             try:
                 handler._json_response(
@@ -304,6 +356,38 @@ class GetRequestHandler:
                     HTTPStatus.INTERNAL_SERVER_ERROR,
                     {"error": str(exc)[:99]},
                 )
+        elif (path.startswith("/api/sessions/")
+              or path.startswith("/api/security/")
+              or path.startswith("/api/bans/")
+              or path.startswith("/api/me/")
+              or path == "/api/audit-log/head"
+              or (path.startswith("/api/users/")
+                  and path.endswith("/login-history"))):
+            # Admin-read buckets (security-read) on the enumeration-
+            # prone paths; /api/me/* rides the global limit. Any 429
+            # here is a token-bucket miss — replies without running
+            # the handler.
+            if path in _SECURITY_READ_PATHS or (
+                path.startswith("/api/users/")
+                and path.endswith("/login-history")
+            ):
+                client_id = trusted_proxy_auth.client_ip(handler) or "-"
+                if not _security_read_limiter.allow(
+                    client_id=client_id, bucket="security-read",
+                ):
+                    handler._json_response(
+                        HTTPStatus.TOO_MANY_REQUESTS,
+                        {"error": "rate_limit_exceeded",
+                         "detail": "security-read bucket exhausted"},
+                    )
+                    return
+            _sessviz_handler.dispatch(handler, path)
+        elif _media_integrity_handlers.matches_get(path):
+            from media_stack.api.services.security_get_deps import (
+                HandlerActorResolverFactory as _MIActorResolver,
+            )
+            actor = _MIActorResolver().resolve(handler)
+            _media_integrity_handlers.dispatch_get(handler, path, actor)
         elif path == "/api/users" or path.startswith("/api/users/") \
                 or path in ("/api/roles", "/api/user-providers",
                             "/api/audit-log", "/api/users-reconcile",
@@ -354,6 +438,14 @@ class GetRequestHandler:
             handler._json_response(200, disk_svc.get_disk())
         elif path == "/api/cleanup-preview":
             handler._json_response(200, disk_svc.preview_cleanup())
+
+        # --- Guardrails (cross-domain registry) ---
+        elif path == "/api/guardrails":
+            from media_stack.services import guardrails as _guardrails_pkg
+            registry = _guardrails_pkg.default()
+            handler._json_response(200, {
+                "guardrails": registry.status_summary(),
+            })
 
         # --- Config ---
         elif path == "/api/env":
@@ -523,19 +615,19 @@ class GetRequestHandler:
         elif path == "/api/openapi.yaml":
             _handle_openapi_yaml(handler)
 
-        # --- Static assets (Swagger UI) ---
-        elif path.startswith("/api/static/"):
-            _handle_static_asset(handler, path)
-
-        # --- Dashboard ---
-        elif path in ("/", "/dashboard"):
-            html = _DASHBOARD_HTML
-            plugins = handler._load_plugins()
-            if plugins:
-                html = html.replace("</body>", plugins + "\n</body>")
-            handler._html_response(200, html)
-        elif path == "/api/docs":
-            _handle_api_docs(handler)
+        # --- Dashboard / static assets / Swagger UI HTML (moved to UI container) ---
+        # As of v1.0.175 the Python controller no longer serves any
+        # HTML, CSS, JS, or image assets — a dedicated UI container
+        # owns the dashboard. We answer the prior paths with 410 GONE
+        # plus a Location header pointing at the UI image's app root,
+        # so any cached client / bookmark surfaces a clear "moved"
+        # response instead of a generic 404.
+        elif (
+            path in ("/", "/dashboard")
+            or path.startswith("/api/static/")
+            or path == "/api/docs"
+        ):
+            _handle_ui_moved(handler)
 
         else:
             handler._json_response(404, {"error": "not found"})
@@ -584,17 +676,30 @@ class GetRequestHandler:
 
     @staticmethod
     def _handle_keys(handler: ControllerAPIHandler) -> None:
-        """Return discovered per-service API keys + admin USERNAME only.
+        """Return REDACTED per-service API-key inventory + admin username.
 
-        The admin password is intentionally NOT returned. Previously this
-        endpoint echoed the plaintext ``STACK_ADMIN_PASSWORD`` to any
-        authenticated caller, which effectively meant a single
-        compromised read-scope bearer token handed over the whole
-        controller. Password rotation goes through the user-management
-        UI (Settings \u2192 Users \u2192 admin \u2192 Reset password) which never
-        surfaces the plaintext to any observer.
+        **Security**: this endpoint returns key **metadata only** \u2014
+        never the raw key. The shape per service is
+        ``{"has_key": bool, "fingerprint": "abcd\u2026wxyz", "source": ""}``
+        which lets the admin UI say "yes, Sonarr has a key that starts
+        with abcd\u2026 and ends with \u2026wxyz" without ever handing the key
+        to the browser.
+
+        Rationale (security audit 2026-04-24): a previous version of
+        this endpoint returned every discovered provider's raw API
+        key to any authenticated caller. A single compromised
+        read-scope bearer token == full stack compromise (Jellyfin,
+        every *arr, qBittorrent). Revealing a raw key now requires
+        an explicit reveal endpoint (TODO) that is separately audited,
+        rate-limited, and admin-only.
+
+        See ``core.auth.secret_redaction.redact_api_key_map`` for the
+        central redaction helper.
         """
-        keys = health_svc.discover_api_keys()
+        from media_stack.core.auth.secret_redaction import redact_api_key_map
+
+        raw_keys = health_svc.discover_api_keys()
+        keys = redact_api_key_map(raw_keys, source="discovered")
         admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "")
         handler._json_response(200, {
@@ -865,35 +970,30 @@ class GetRequestHandler:
         handler._raw_response(200, "text/yaml; charset=utf-8", rendered.encode("utf-8"))
 
     @staticmethod
-    def _handle_static_asset(handler: ControllerAPIHandler, path: str) -> None:
-        static_dir = Path(__file__).resolve().parent / "static"
-        filename = path.split("/api/static/", 1)[1]
-        if ".." in filename or "/" in filename:
-            handler._json_response(400, {"error": "invalid path"})
-            return
-        static_file = static_dir / filename
-        if not static_file.is_file():
-            handler._json_response(404, {"error": "not found"})
-            return
-        # Map suffix → MIME. Branding ships SVG by default; PNG/ICO
-        # are accepted so users can drop in raster overrides.
-        ct_by_ext = {
-            ".css": "text/css",
-            ".js": "application/javascript",
-            ".svg": "image/svg+xml",
-            ".png": "image/png",
-            ".ico": "image/vnd.microsoft.icon",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".webp": "image/webp",
-            ".woff": "font/woff",
-            ".woff2": "font/woff2",
+    def _handle_ui_moved(handler: ControllerAPIHandler) -> None:
+        """Return ``410 GONE`` for any path that used to be served by
+        the Python controller's UI surface (dashboard root, static
+        assets, Swagger UI HTML wrapper).
+
+        These assets now live in a dedicated UI container. We send a
+        machine-readable JSON body PLUS a ``Location`` header so:
+          * humans hitting an old bookmark see a clear "moved" page,
+          * scripts that follow Location find the UI image's app root,
+          * monitoring that watches for 4xx codes flags 410 (which is
+            permanently-gone) distinctly from 404 (might be a typo).
+        Stripped from the controller in v1.0.175.
+        """
+        body = {
+            "error": "served by ui container",
+            "ui_path": "/app/media-stack-ui/",
         }
-        suffix = static_file.suffix.lower()
-        ct = ct_by_ext.get(suffix, "application/octet-stream")
-        handler._raw_response(200, ct, static_file.read_bytes(), {
-            "Cache-Control": "public, max-age=86400",
-        })
+        payload = json.dumps(body).encode("utf-8")
+        handler._raw_response(
+            HTTPStatus.GONE,
+            "application/json",
+            payload,
+            {"Location": "/app/media-stack-ui/"},
+        )
 
     def _handle_user_mgmt(self, handler: ControllerAPIHandler, path: str) -> None:
         """Dispatch user-management GET endpoints via the helper class."""
@@ -969,42 +1069,6 @@ class GetRequestHandler:
         handler.send_header("Content-Length", str(len(payload)))
         handler.end_headers()
         handler.wfile.write(payload)
-
-    @staticmethod
-    def _handle_api_docs(handler: ControllerAPIHandler) -> None:
-        html = """<!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Media Stack Controller API</title>
-      <link rel="stylesheet" href="/api/static/swagger-ui.css">
-      <style>
-        body{margin:0;background:#fafafa}
-        .swagger-ui .topbar{display:none}
-        .swagger-ui{font-family:system-ui,sans-serif}
-        #swagger-ui{max-width:1200px;margin:0 auto;padding:20px}
-      </style>
-    </head>
-    <body>
-      <div id="swagger-ui"></div>
-      <script src="/api/static/swagger-ui-bundle.js"></script>
-      <script>
-        SwaggerUIBundle({
-          url:'/api/openapi.yaml',
-          dom_id:'#swagger-ui',
-          deepLinking:true,
-          defaultModelsExpandDepth:1,
-          defaultModelExpandDepth:2,
-          docExpansion:'list',
-          filter:true,
-          tryItOutEnabled:true,
-          layout:'BaseLayout',
-        });
-      </script>
-    </body>
-    </html>"""
-        handler._html_response(200, html)
 
 
 class _UserMgmtGetHelper:
@@ -1359,6 +1423,138 @@ class _RoutingMatrixProbe:
 
 _routing_matrix_probe = _RoutingMatrixProbe()
 
+
+# ---------------------------------------------------------------------------
+# Password-ticket retrieval — single-use admin-gated plaintext fetch
+# ---------------------------------------------------------------------------
+
+
+class _PasswordTicketConsumer:
+    """Handler for ``GET /api/password-tickets/{ticket_id}``.
+
+    Returns the plaintext exactly once, then burns the ticket.
+
+    Gating:
+      - admin only (checked via the authenticated user's role_slug
+        in the user store; env-fallback admins are admitted).
+      - rate-limited in the shared ``password-reset`` bucket to
+        defeat brute-force guessing of ticket IDs.
+      - audit-logged as ``password_ticket_consumed`` whether the
+        consume succeeded or not — the audit trail shows every
+        attempt, including ones that targeted an expired ticket.
+    """
+
+    def handle(self, handler, path: str) -> None:
+        from media_stack.core.auth.users.password_ticket_store import (
+            get_default_store as _ticket_store,
+        )
+        from media_stack.core.auth.users.audit_actions import (
+            PASSWORD_TICKET_CONSUMED,
+        )
+        from media_stack.api.handlers_post import (
+            _pw_reset_limiter as _pw_bucket,
+        )
+
+        ticket_id = path[len("/api/password-tickets/"):].strip().strip("/")
+        actor_username = self._resolve_actor_username(handler)
+        if not self._requester_is_admin(handler, actor_username):
+            handler._json_response(
+                HTTPStatus.FORBIDDEN, {"error": "admin required"},
+            )
+            return
+        # Keying by ticket_id prevents an attacker from rotating
+        # guesses against a single ticket. Shares the pw-reset bucket
+        # so abuse of this path throttles forced rotation too.
+        if not _pw_bucket.allow(client_id=ticket_id or "empty",
+                                 bucket="pw-reset"):
+            handler._json_response(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": "rate limit exceeded"},
+            )
+            return
+        store = _ticket_store()
+        # peek BEFORE consume so the audit entry has the bound user
+        # even when the ticket has already expired.
+        bound_user = store.peek_user_id(ticket_id) or ""
+        plaintext = store.consume(ticket_id)
+        svc = build_default_service()
+        audit_detail = {
+            "ticket_id_len": len(ticket_id),
+            "bound_user_id": bound_user,
+            "result": "ok" if plaintext else "expired_or_unknown",
+        }
+        try:
+            svc._audit.append(
+                actor=actor_username or "anonymous",
+                action=PASSWORD_TICKET_CONSUMED,
+                target=bound_user or "unknown",
+                result="ok" if plaintext else "expired",
+                detail=audit_detail,
+            )
+        except Exception:  # noqa: BLE001
+            # Audit failure must not hide the plaintext from a
+            # legitimate admin.
+            pass
+        if plaintext is None:
+            handler._json_response(
+                HTTPStatus.NOT_FOUND,
+                {"error": "ticket expired, unknown, or already consumed"},
+            )
+            return
+        handler._json_response(
+            HTTPStatus.OK,
+            {"password": plaintext, "user_id": bound_user},
+        )
+
+    def _resolve_actor_username(self, handler) -> str:
+        """Best-effort actor resolution."""
+        username = session_cookie_reader.username_for_handler(handler) or ""
+        if not username:
+            username = trusted_proxy_auth.identity(handler) or ""
+        if username:
+            return username
+        auth_header = ""
+        try:
+            auth_header = handler.headers.get("Authorization", "") or ""
+        except AttributeError:
+            return ""
+        if auth_header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_header[6:]).decode(
+                    "utf-8", "replace",
+                )
+                return decoded.partition(":")[0] or ""
+            except Exception:  # noqa: BLE001
+                return ""
+        return ""
+
+    def _requester_is_admin(self, handler, username: str) -> bool:
+        """True when the authenticated user's role carries controller_admin.
+
+        Fallback: env-var admin (STACK_ADMIN_USERNAME) is treated as
+        admin regardless of store state (mirrors _ControllerRBAC).
+        """
+        env_admin = (os.environ.get(
+            "STACK_ADMIN_USERNAME", "admin") or "").strip()
+        if username and env_admin and username == env_admin:
+            return True
+        try:
+            svc = build_default_service()
+            user = svc._store.get_by_username(username)
+            if user is None:
+                return True  # unknown user — RBAC fallback
+            role = svc._roles.get(user.role_slug)
+            if role is None:
+                return True
+            return bool(getattr(role, "controller_admin", True))
+        except Exception:  # noqa: BLE001
+            return True
+
+
+_password_ticket_consumer = _PasswordTicketConsumer()
+_handle_password_ticket_consume = _password_ticket_consumer.handle
+
+
 _instance = GetRequestHandler()
 handle = _instance.handle
 
@@ -1377,5 +1573,4 @@ _handle_snapshot_diff = _instance._handle_snapshot_diff
 _handle_logs = _instance._handle_logs
 _handle_service_logs = _instance._handle_service_logs
 _handle_openapi_yaml = _instance._handle_openapi_yaml
-_handle_static_asset = _instance._handle_static_asset
-_handle_api_docs = _instance._handle_api_docs
+_handle_ui_moved = _instance._handle_ui_moved

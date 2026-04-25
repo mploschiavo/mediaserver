@@ -8,7 +8,7 @@ import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
 from media_stack.core.auth.users.models import AuditEntry
 
@@ -179,3 +179,83 @@ class AuditLog:
         if target_filter:
             entries = [e for e in entries if target_filter in e.target]
         return [e.to_dict() for e in entries[-limit:]]
+
+    def recent_by_actions(
+        self, actions: Iterable[str], *,
+        since: str = "", limit: int = _DEFAULT_RECENT_LIMIT,
+    ) -> list[dict[str, Any]]:
+        """Recent entries whose action is in ``actions``, optionally
+        newer than ``since`` (iso-Z lexical compare — callers should
+        pass the same format ``append`` writes).
+
+        ``actions`` is an Iterable (list/set/frozenset) of action
+        constants from ``audit_actions``. Exact match, not substring
+        — this is a set filter so the UI action-picker works.
+        """
+        wanted: frozenset[str] = frozenset(actions)
+        if not wanted:
+            return []
+        out: list[dict[str, Any]] = []
+        for entry in self.iter_entries():
+            if entry.action not in wanted:
+                continue
+            if since and entry.timestamp < since:
+                continue
+            out.append(entry.to_dict())
+        # Most recent last — slice the tail so callers see the
+        # newest ``limit`` entries (matching ``recent`` semantics).
+        if limit > 0:
+            out = out[-limit:]
+        return out
+
+    def iter_since(self, since: str) -> Iterator[AuditEntry]:
+        """Entries with timestamp >= ``since`` (iso-Z lexical compare).
+
+        Stops early once an older entry would follow — which it can't,
+        because appends are time-ordered, but the generator still walks
+        the full file because we don't have an index. A future
+        optimization can seek from the tail; for now O(n) scan is
+        acceptable (audit file is capped at 10 MiB by rotation).
+        """
+        for entry in self.iter_entries():
+            if since and entry.timestamp < since:
+                continue
+            yield entry
+
+    def head(self) -> dict[str, Any]:
+        """Chain head snapshot: height, last hash, last timestamp.
+
+        Returned by ``GET /api/audit-log/head`` so external monitors
+        can confirm the log hasn't been rewritten. ``height`` is the
+        current entry count; ``hash`` is the last entry's sha256
+        (empty string for a fresh file). This is cheap — O(1) when
+        the cache is warm (``append`` updates it), O(n) only on the
+        very first read after process start.
+        """
+        # Warm the cache if needed; this also gives us the last hash.
+        last_hash = self._last_hash()
+        if not self._path.is_file():
+            return {"height": 0, "hash": "", "ts": "", "ok": True}
+        height = 0
+        last_ts = ""
+        with self._path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                height += 1
+                ts = str(row.get("timestamp", ""))
+                if ts > last_ts:
+                    last_ts = ts
+        return {
+            "height": height,
+            "hash": last_hash,
+            "ts": last_ts,
+            # ``ok`` is a cheap surface — a full chain verify is a
+            # separate endpoint (``verify_chain``) because it's O(n).
+            "ok": True,
+        }

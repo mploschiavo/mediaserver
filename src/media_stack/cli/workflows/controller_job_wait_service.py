@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -97,7 +96,7 @@ class ControllerJobWaitService:
             check=False,
         )
         if job_table.stdout.strip():
-            print(job_table.stdout.rstrip())
+            logger.info(job_table.stdout.rstrip())
 
         pod_table = self.kube.run(
             [
@@ -114,7 +113,7 @@ class ControllerJobWaitService:
             check=False,
         )
         if pod_table.stdout.strip():
-            print(pod_table.stdout.rstrip())
+            logger.info(pod_table.stdout.rstrip())
 
     def _pod_schedule_reason_and_message(self, pod: dict[str, Any]) -> tuple[str, str]:
         for condition in pod.get("status", {}).get("conditions", []) or []:
@@ -130,9 +129,9 @@ class ControllerJobWaitService:
         if "Events:" not in lines:
             return
         idx = lines.index("Events:")
-        print("[PENDING] Events:")
+        logger.info("[PENDING] Events:")
         for line in lines[idx + 1 : idx + 16]:
-            print(f"[PENDING] {line}")
+            logger.info("[PENDING] %s", line)
 
     def _tail_pod_logs(self, pod_name: str, lines: int = 8) -> None:
         logs = self.kube.run(
@@ -141,7 +140,7 @@ class ControllerJobWaitService:
         )
         if logs.stdout.strip():
             for line in logs.stdout.rstrip().splitlines():
-                print(f"[JOB] {line}")
+                logger.info("[JOB] %s", line)
 
     def _logs_contain_success_marker(self, job_name: str) -> bool:
         logs = self.kube.run(
@@ -165,18 +164,18 @@ class ControllerJobWaitService:
             check=False,
         )
         if describe_job.stdout.strip():
-            print(describe_job.stdout.rstrip())
+            logger.info(describe_job.stdout.rstrip())
         if describe_job.stderr.strip():
-            print(describe_job.stderr.rstrip(), file=sys.stderr)
+            logger.error(describe_job.stderr.rstrip())
 
         pods_wide = self.kube.run(
             ["-n", self.cfg.namespace, "get", "pods", "-l", selector, "-o", "wide"],
             check=False,
         )
         if pods_wide.stdout.strip():
-            print(pods_wide.stdout.rstrip())
+            logger.info(pods_wide.stdout.rstrip())
         if pods_wide.stderr.strip():
-            print(pods_wide.stderr.rstrip(), file=sys.stderr)
+            logger.error(pods_wide.stderr.rstrip())
 
         pods = self._get_pods(selector)
         if pods:
@@ -187,9 +186,9 @@ class ControllerJobWaitService:
                     check=False,
                 )
                 if describe_pod.stdout.strip():
-                    print(describe_pod.stdout.rstrip())
+                    logger.info(describe_pod.stdout.rstrip())
                 if describe_pod.stderr.strip():
-                    print(describe_pod.stderr.rstrip(), file=sys.stderr)
+                    logger.error(describe_pod.stderr.rstrip())
 
         job_logs = self.kube.run(
             [
@@ -203,9 +202,9 @@ class ControllerJobWaitService:
             check=False,
         )
         if job_logs.stdout.strip():
-            print(job_logs.stdout.rstrip())
+            logger.info(job_logs.stdout.rstrip())
         if job_logs.stderr.strip():
-            print(job_logs.stderr.rstrip(), file=sys.stderr)
+            logger.error(job_logs.stderr.rstrip())
 
     def wait_for_job(self, *, job_name: str, selector: str) -> None:
         start = self.now()

@@ -2,6 +2,59 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [ui-v1.1.0] — 2026-04-24
+
+### UI
+- **Full luxury React 19 rewrite of the dashboard.** Replaces the prior
+  thin Preact placeholder. Stack: React 19 + Vite 6 + Tailwind v4 (beta) +
+  shadcn/ui + Tanstack Router/Query/Table + Framer Motion + cmdk + Sonner +
+  Vaul + Geist Variable fonts.
+- **Mobile-first.** 44px touch-target floor, `safe-area-inset-*`,
+  `@media (hover:hover)` to suppress hover-stuck on touch devices, bottom
+  nav.
+- **PWA.** Manifest + service worker (NetworkOnly `/api/*`, CacheFirst Geist
+  CDN), install-prompt, offline-friendly app shell, 3 home-screen shortcuts
+  (Media Integrity, Logs, Reconcile now).
+- **Theming.** Light/dark via `next-themes` + OKLCH palette; honors system
+  preference.
+- **Routes.** `/media-integrity` (adapter health, reconcile/enforce,
+  needs-review queue with optimistic updates), `/content`, `/logs`, `/ops`,
+  `/routing`, `/webhooks`, `/users`, `/me`. Plus `/profile`, `/settings`
+  placeholders and a `$.tsx` 404 catchall.
+- **Polish.** ErrorBoundary with diagnostics-copy, SkeletonCard /
+  SkeletonTable primitives, skip-link a11y, in-app `CommandPalette` (cmdk)
+  bound to ⌘K, `ConnectionStatus` indicator polling `/api/health`.
+
+### Fixed
+- `ConnectionStatus.tsx` was polling `/api/healthz` (404 in prod) — corrected
+  to `/api/health`.
+- PWA PNG icons (`public/icons/*.png`) shipped as 0-byte placeholders —
+  regenerated from SVG sources via ImageMagick.
+
+### Quality ratchets (new)
+- `pnpm size` — `size-limit` enforcing per-chunk + total JS gzip budget
+  (250 KB ceiling; current 240.8 KB).
+- `pnpm check:todos` — TODO/FIXME count snapshot at `.ratchets/todos.json`
+  (currently 11).
+- `pnpm lint` — flat ESLint config locks `no-console`, `no-only-tests`,
+  `@typescript-eslint/no-explicit-any` at 0.
+- a11y: `vitest-axe` against AppShell / CommandPalette / UserMenu /
+  MediaIntegrity routes, blocks `serious` + `critical` violations.
+- Path-contract test: every `/api/*` literal in `src/` must exist in the
+  OpenAPI spec.
+- Manifest contract: every PNG referenced from `dist/manifest.webmanifest`
+  must exist + match declared dimensions.
+
+### Distribution
+- Image: `harbor.iomio.io/library/media-stack-ui:v1.1.0` — already deployed
+  (k8s + compose manifests pinned). Tests: 462/462 passing. Bundle:
+  240.8 KB total JS gzip.
+
+### Auth
+- Unchanged. Cookies issued by Authelia, validated by Envoy `ext_authz`;
+  the UI sends `credentials: "same-origin"`. No new tokens, no
+  localStorage credentials.
+
 ## [v1.0.94] — 2026-04-19
 
 ### Security

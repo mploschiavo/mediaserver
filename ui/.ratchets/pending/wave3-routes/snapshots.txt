@@ -1,0 +1,6 @@
+ROUTE_FILE: src/routes/snapshots.tsx
+ROUTE_NAME: SnapshotsRoute
+ROUTE_PATH: /snapshots
+SIDEBAR_SECTION: Operations
+SIDEBAR_LABEL: Snapshots
+SIDEBAR_ICON: Camera

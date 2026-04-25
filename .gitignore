@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+.coverage
+.coverage.*
 
 tests/e2e/playwright/node_modules/
 tests/e2e/playwright/playwright-report/
@@ -11,6 +13,9 @@ docker/.env
 node_modules/
 package.json
 package-lock.json
+# UI workspace MUST commit its own package + lockfile so CI / fresh clones can build
+!ui/package.json
+!ui/pnpm-lock.yaml
 docker/config/
 docker/data/
 docker/media/

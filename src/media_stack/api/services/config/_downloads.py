@@ -6,6 +6,13 @@ from media_stack.core.logging_utils import log_swallowed
 from typing import Any
 
 from ._profile import ProfileService
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (registry and app_config_service are leaf modules — no cycle)
+from ..registry import SERVICES as _SERVICES
+from media_stack.services.app_config_service import (
+    load_app_config,
+    update_app_config_section,
+)
 import logging
 
 
@@ -19,8 +26,7 @@ class DownloadConfigService:
     def _default_torrent_client_id() -> str:
         """Derive the default torrent client from the service registry capabilities."""
         try:
-            from ..registry import SERVICES
-            for svc in SERVICES:
+            for svc in _SERVICES:
                 caps = getattr(svc, "capabilities", None) or {}
                 if isinstance(caps, dict) and caps.get("torrent_client"):
                     return svc.id
@@ -34,7 +40,6 @@ class DownloadConfigService:
         return bindings.get("torrent_client") or self._default_torrent_client_id()
 
     def get_download_categories(self) -> dict[str, Any]:
-        from media_stack.services.app_config_service import load_app_config
         tc_id = self._torrent_client_id()
         if tc_id:
             app_cfg = load_app_config(tc_id)
@@ -53,7 +58,6 @@ class DownloadConfigService:
             return {"error": "At least one category is required"}
         tc_id = self._torrent_client_id()
         if tc_id:
-            from media_stack.services.app_config_service import update_app_config_section
             result = update_app_config_section(tc_id, "categories", categories)
             if "error" not in result:
                 result["categories"] = categories

@@ -1,0 +1,117 @@
+# Canonical *arr policy — single source of truth for media-management
+# behaviour across Radarr, Sonarr, Lidarr, Readarr (Servarr family) +
+# Bazarr (separate adapter, same contract).
+#
+# This contract is designed so non-technical users never touch a knob.
+# The controller's ServarrConfigEnforcer reads these values once and
+# applies them to every *arr at boot and on every scheduler run.
+# Per-*arr API field names are NOT in this file — the adapters map
+# canonical keys to the right field for each app (see
+# ``src/media_stack/services/media_integrity/adapters/*``).
+#
+# Anti-duplicate-download invariants (the primary reason this contract
+# exists). Every flag below has a direct link to why. Removing a flag
+# reopens the failure mode.
+#
+#   auto_unmonitor_previously_downloaded=true  — once a release is
+#       downloaded, the *arr stops searching for it. Without this,
+#       every RSS sweep can re-grab the same movie/episode.
+#
+#   use_hardlinks=true                         — the torrent file and
+#       the library file share an inode. Deleting one side cleans up
+#       the other, no orphan on disk. Requires download + library
+#       mounts to be on the same filesystem (already true on our
+#       compose + k8s layouts — see docs/deploy-parity.md).
+#
+#   rename_files=true                          — every import writes
+#       to a canonical path the *arr owns. Filename drift can't
+#       trigger the "movieFileDeleted" desync that caused the
+#       2026-04-24 Spider-Man incident.
+#
+#   unmonitor_deleted=false                    — if a file is manually
+#       removed, don't re-search for it. Prevents "delete bad file →
+#       *arr grabs another copy → also bad" cycles.
+#
+#   delete_empty_folders=true                  — collapse orphan
+#       season/artist folders so reconcile can tell "empty release"
+#       from "partial release."
+
+version: 1
+
+media_management:
+  # anti-dupe: stop re-grabbing content already downloaded
+  auto_unmonitor_previously_downloaded: true
+
+  # anti-dupe + space: share inodes so qBit + library see the same
+  # bytes; deleting either side cleans the other
+  use_hardlinks: true
+
+  # hygiene: collapse empty release folders so reconciler can tell
+  # "nothing imported yet" from "partial import"
+  delete_empty_folders: true
+
+  # Bazarr / extras: pull .srt, .ass, .vtt alongside the video during
+  # import so sub-download doesn't fire a second time
+  import_extra_files: true
+  extra_file_extensions: "srt,ass,ssa,vtt,smi,sub"
+
+  # Protection: refuse imports under a sane free-space floor so we
+  # don't half-import and leave a truncated file on disk
+  skip_free_space_check: false
+  minimum_free_space_mb: 500
+
+  # We create release folders on-demand from imports — don't
+  # pre-create empties that would confuse the reconciler's
+  # "zero releases" check
+  create_empty_media_folders: false
+
+  # Probed per-app: Radarr 5.x exposes ``autoUnmonitorDeletedMovies``;
+  # older releases hide it. Adapter probes and applies when present.
+  unmonitor_deleted: false
+
+naming:
+  # Canonical paths → no filename drift → no DB/file desync
+  rename_files: true
+
+quality:
+  # ``cutoff`` = the tier AT WHICH upgrades STOP. Setting this to
+  # WEBDL-1080p means:
+  #   - if the library has HDTV-1080p → keep searching for WEBDL-1080p+
+  #   - once WEBDL-1080p or better exists → stop
+  # Previously on our cluster this was HDTV-1080p — the weakest 1080p
+  # tier — which let any 1080p variant replace any other and
+  # contributed to the Spider-Man dupe. WEBDL-1080p is a safer floor.
+  cutoff: "WEBDL-1080p"
+
+  # Allow upgrades toward higher tiers (Bluray, Remux) without racing
+  # to replace; the cutoff above bounds the enforcement.
+  upgrade_allowed: true
+
+# ---------------------------------------------------------------------------
+# Bazarr (subtitles) — same anti-dupe shape, different knobs.
+#
+# The 8 Bazarr dupes on the cluster (2026-04-24) were all caused by
+# a subtitle provider cascade re-downloading .en.srt from a second
+# provider after the first had already succeeded. The settings below
+# prevent that.
+#
+#   rename_files=true      — subs follow the canonical video filename
+#       so an import from a second provider overwrites the first
+#       instead of sitting next to it.
+#
+#   auto_sync=true         — subtitle download is synchronous with the
+#       video import; no second download pass fires for the same
+#       episode/language/flag combo.
+#
+#   upgrade_allowed=true   — once a high-score sub exists, Bazarr
+#       stops searching. Without this, every sweep re-downloads.
+#
+#   ignore_deleted=true    — if a user manually removes a sub, don't
+#       re-search and re-download it.
+# ---------------------------------------------------------------------------
+
+bazarr:
+  rename_files: true
+  auto_sync: true
+  upgrade_allowed: true
+  ignore_deleted: true

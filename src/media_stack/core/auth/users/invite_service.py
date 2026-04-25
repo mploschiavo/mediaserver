@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from media_stack.core.auth.authz import Actor, requires_admin
 from media_stack.core.auth.users.invite_store import InviteStore
 from media_stack.core.auth.users.models import Invite
 
@@ -33,16 +34,19 @@ class InviteService:
         self._create_user = user_creator
         self._audit = audit
 
-    def create_invite(self, *, email: str, role_slug: str, actor: str,
+    @requires_admin
+    def create_invite(self, *, email: str, role_slug: str,
+                      actor: Actor | str,
                       ttl_hours: int = 24) -> dict[str, Any]:
         if not email or not role_slug:
             raise InviteError("email and role_slug are required")
+        actor_label = actor.audit_label if isinstance(actor, Actor) else str(actor)
         invite, token = self._invites.create(
-            email=email, role_slug=role_slug, created_by=actor,
+            email=email, role_slug=role_slug, created_by=actor_label,
             ttl_hours=ttl_hours,
         )
         self._audit.append(
-            actor=actor, action="invite_created", target=email, result="ok",
+            actor=actor_label, action="invite_created", target=email, result="ok",
             detail={"invite_id": invite.id, "role": role_slug,
                     "expires_at": invite.expires_at, "ttl_hours": ttl_hours},
         )
@@ -53,6 +57,12 @@ class InviteService:
 
     def accept(self, *, token: str, username: str, display_name: str,
                password: str, actor: str = "invitee") -> dict[str, Any]:
+        # ``accept`` is intentionally undecorated: callers are
+        # unauthenticated invitees holding a one-time token. The token
+        # itself is the authorization — anyone with a valid one can
+        # redeem it. The internal ``_create_user`` call is gated via
+        # a system-actor (see below) so it passes its own
+        # ``@requires_admin`` check.
         if not token or not username or not password:
             raise InviteError("token, username, password required")
         invite = self._invites.find_by_token(token)
@@ -64,14 +74,15 @@ class InviteService:
             raise InviteError("invite expired")
 
         # Delegate to the normal create flow (policy check, provider
-        # provisioning, audit).
+        # provisioning, audit). System actor — the invite mechanism
+        # itself is creating the user on behalf of the invitee.
         result = self._create_user(
             email=invite.email,
             username=username,
             display_name=display_name or username,
             role_slug=invite.role_slug,
             password=password,
-            actor=f"invite:{invite.id}",
+            actor=Actor.system(f"invite:{invite.id}"),
         )
         self._invites.accept(invite.id)
         self._audit.append(
@@ -91,14 +102,16 @@ class InviteService:
             out.append(d)
         return out
 
-    def revoke(self, invite_id: str, actor: str) -> dict[str, Any]:
+    @requires_admin
+    def revoke(self, invite_id: str, *, actor: Actor | str) -> dict[str, Any]:
         all_invites = {i.id: i for i in self._invites.list_all()}
         inv = all_invites.get(invite_id)
         if inv is None:
             raise InviteError(f"unknown invite: {invite_id}")
+        actor_label = actor.audit_label if isinstance(actor, Actor) else str(actor)
         self._invites.revoke(invite_id)
         self._audit.append(
-            actor=actor, action="invite_revoked", target=inv.email,
+            actor=actor_label, action="invite_revoked", target=inv.email,
             result="ok", detail={"invite_id": invite_id},
         )
         return {"invite_id": invite_id, "status": "revoked"}

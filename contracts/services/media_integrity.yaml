@@ -1,0 +1,95 @@
+# =============================================================================
+# Media-Integrity — duplicate-prevention subsystem registered as native
+# Jobs in the framework (v1.0.184).
+# =============================================================================
+#
+# Before v1.0.184 the media-integrity subsystem ran its own in-process
+# scheduler (``MediaIntegrityScheduler``) and exposed POST endpoints
+# (``/api/media-integrity/reconcile`` etc.) that bypassed the unified
+# Job framework. History didn't show up in ``GET /api/jobs.history[]``
+# and operator-triggered runs weren't actor-tagged.
+#
+# This contract registers four jobs in the framework:
+#
+# - ``media-integrity:scan``         — every 15 min cadence, cheap
+#   read-only status snapshot that populates the dashboard card.
+# - ``media-integrity:reconcile``    — every 6 h cadence, full
+#   duplicate reconcile across every *arr + Bazarr.
+# - ``media-integrity:enforce-config`` — daily at 04:00 UTC,
+#   pushes canonical *arr + Bazarr policy. Idempotent.
+# - ``media-integrity:resolve-review`` — manual-only (no schedule);
+#   trigger-only with parameters supplied via ``ctx``.
+#
+# The schedules themselves are seeded into the controller's
+# scheduler service at boot (see
+# ``cli/commands/controller_serve.py::_scheduler_loop``) — that's the
+# single existing cadence driver. The interval-based scheduler
+# matches the cadences the legacy daemon-thread scheduler enforced
+# (15 min reconcile / 5 min status). The legacy daemon thread is
+# removed; ``MediaIntegrityScheduler`` is now a deprecated no-op.
+#
+# This is NOT a "service" in the dashboard sense — the id
+# ``media_integrity`` is reserved for job hosting. The service block
+# exists only because the discovery loader requires it.
+# =============================================================================
+
+service:
+  id: media_integrity
+  name: Media Integrity
+  desc: Duplicate-prevention subsystem (registered as native Jobs)
+  category: infrastructure
+  host: ""
+  port: 0
+  web_ui: false
+  scalable: false
+
+plugin:
+  technology: media_integrity
+
+  jobs:
+
+    "media-integrity:scan":
+      handler: "media_stack.services.media_integrity.job_handlers:media_integrity_scan"
+      label: "Media-integrity status scan"
+      # ``post`` phase keeps these jobs out of the bootstrap critical
+      # path. Cheap read; runs every 15 min via the seeded scheduler
+      # entry. Returning {"skipped": "..."} is the right outcome when
+      # the subsystem isn't configured (missing API keys etc.) — the
+      # framework records it as ``skipped``, not ``error``.
+      phase: post
+      priority: 80
+      requires: []
+
+    "media-integrity:reconcile":
+      handler: "media_stack.services.media_integrity.job_handlers:media_integrity_reconcile"
+      label: "Reconcile duplicate downloads"
+      # Full reconcile pass — heavy (touches every *arr + Bazarr).
+      # Seeded to fire every 6 h. Manual triggers from the SPA
+      # (POST /api/media-integrity/reconcile) route through this job
+      # too so history reflects every invocation under a single
+      # name.
+      phase: post
+      priority: 81
+      requires: []
+
+    "media-integrity:enforce-config":
+      handler: "media_stack.services.media_integrity.job_handlers:media_integrity_enforce_config"
+      label: "Enforce *arr / Bazarr policy"
+      # Pushes the canonical servarr-policy.yaml to every adapter.
+      # Idempotent — re-applying an already-correct field is a no-op.
+      # Seeded daily at 04:00 UTC.
+      phase: post
+      priority: 82
+      requires: []
+
+    "media-integrity:resolve-review":
+      handler: "media_stack.services.media_integrity.job_handlers:media_integrity_resolve_review"
+      label: "Apply operator-resolved review item"
+      # Trigger-only — never cron-scheduled. Parameters land on the
+      # JobContext via _mi_review_* attributes set by the HTTP
+      # wrapper in handlers_post.py before run_job() is called.
+      # Returns ``skipped`` when invoked without parameters so a
+      # mistaken /actions/{name} POST doesn't crash the dispatcher.
+      phase: post
+      priority: 83
+      requires: []

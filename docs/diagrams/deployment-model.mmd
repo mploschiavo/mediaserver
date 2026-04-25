@@ -7,12 +7,14 @@ flowchart TB
     subgraph ENV1[Namespace: media-dev]
       K8S1[Kustomize Manifests]
       BOOT1[Controller API :9100]
+      UI1[media-stack-ui :8080]
       ENVOY1[Envoy Gateway]
       APPS1[19 Configured Apps]
     end
     subgraph ENV2[Namespace: media-stack]
       K8S2[Kustomize Manifests]
       BOOT2[Controller API :9100]
+      UI2[media-stack-ui :8080]
       ENVOY2[Envoy Gateway]
       APPS2[19 Configured Apps]
     end
@@ -21,6 +23,7 @@ flowchart TB
   subgraph COMPOSE[Docker Compose Path]
     DC[docker-compose.yml]
     BOOT3[Controller :9100]
+    UI3["media-stack-ui<br/>${UI_PORT:-9101}:8080"]
     ENVOY3[Envoy Gateway :80]
     APPS3[19 Configured Apps]
   end
@@ -33,11 +36,17 @@ flowchart TB
 
   K8S1 --> BOOT1 --> APPS1
   BOOT1 --> ENVOY1
+  K8S1 --> UI1
+  UI1 -->|/api/*| BOOT1
   K8S2 --> BOOT2 --> APPS2
   BOOT2 --> ENVOY2
+  K8S2 --> UI2
+  UI2 -->|/api/*| BOOT2
 
   DC --> BOOT3 --> APPS3
   BOOT3 --> ENVOY3
+  DC --> UI3
+  UI3 -->|/api/*| BOOT3
 
   style ENV1 fill:#e8f2ff,stroke:#1f4f99,stroke-width:2px
   style ENV2 fill:#e9ffe8,stroke:#1a7f37,stroke-width:2px

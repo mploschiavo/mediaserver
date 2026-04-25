@@ -17,6 +17,10 @@ import yaml
 from media_stack.core.logging_utils import log_swallowed
 
 from media_stack.core.auth.gateway_policy import AuthContractService
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (registry and _resolve are leaf utility modules — no cycle with auth_config)
+from media_stack.api.services.registry import SERVICES as _SERVICES
+from media_stack.api.services import _resolve as _resolve_mod
 
 
 class AuthConfigService:
@@ -55,14 +59,12 @@ class AuthConfigService:
 
     def get_service_policies(self) -> list[dict[str, Any]]:
         """Return per-service auth policies (resolved from contract + profile)."""
-        from media_stack.api.services.registry import SERVICES
-
         profile = self._load_profile()
         auth_cfg = profile.get("auth") or {}
         profile_per_service = auth_cfg.get("per_service") or {}
 
         result: list[dict[str, Any]] = []
-        for svc in SERVICES:
+        for svc in _SERVICES:
             policy = self._contract.resolve_service_policy(
                 svc.id, svc.category, profile_per_service
             )
@@ -138,8 +140,6 @@ class AuthConfigService:
           oidc_config: dict — OIDC config (client_id, client_secret, etc.)
           per_service: dict — per-service policy overrides
         """
-        from media_stack.api.services import _resolve as _resolve_mod
-
         resolved = _resolve_mod.resolve_profile_path(
             os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
         )
@@ -155,104 +155,139 @@ class AuthConfigService:
         auth = profile.setdefault("auth", {})
         changed: list[str] = []
 
-        # Update mode/provider
-        if "mode" in updates:
-            new_mode = str(updates["mode"]).strip().lower()
-            modes = self._contract.get_modes()
-            if new_mode not in modes:
-                return {"error": f"Unknown auth mode: {new_mode}"}
-            if auth.get("provider") != new_mode:
-                auth["provider"] = new_mode
-                auth["mode"] = new_mode
-                changed.append("mode")
+        mode_err = self._apply_mode_update(profile, auth, updates, changed)
+        if mode_err:
+            return mode_err
+        self._apply_oidc_and_per_service_updates(auth, updates, changed)
 
-                # Set enabled based on mode
-                auth["enabled"] = new_mode != "none"
+        if not changed:
+            return {"status": "no_changes", "auth": auth}
 
-                # Set middleware default
-                mode_spec = modes[new_mode]
-                if mode_spec.provider_service:
-                    from media_stack.core.auth.provider_registry import load_builtin_auth_provider_specs
-                    for spec in load_builtin_auth_provider_specs():
-                        if spec.key == new_mode:
-                            auth["middleware"] = spec.default_middleware
-                            break
-                else:
-                    auth.pop("middleware", None)
+        persist_err = self._persist_auth_changes(profile, profile_path)
+        if persist_err:
+            return persist_err
 
-                # Sync app_auth with gateway auth mode:
-                # When SSO is active, disable built-in auth on protected arr apps
-                # so users don't get double-prompted after SSO login.
-                # When SSO is off, re-enable Forms auth on arr apps.
-                app_auth = profile.setdefault("app_auth", {})
-                if mode_spec.gateway_auth:
-                    # SSO active → use ProfileConfig.effective_app_auth_method
-                    # which returns External (trust reverse proxy).
-                    # CRITICAL: use a distinct variable here; reusing
-                    # `profile` would shadow the dict we write below,
-                    # leaving a non-serializable ProfileConfig object
-                    # as the write target — yaml.dump produces a
-                    # Python-tag payload that fails safe_load on
-                    # every subsequent read. Caught by the auth-mode
-                    # round-trip test in
-                    # tests/unit/test_auth_mode_round_trip.py.
-                    try:
-                        from media_stack.services.profile_config import get_profile_config
-                        pconfig = get_profile_config()
-                        app_auth["method"] = pconfig.effective_app_auth_method
-                    except Exception:
-                        app_auth["method"] = "External"
-                    app_auth["required"] = "DisabledForLocalAddresses"
-                    app_auth["enabled"] = True
-                    changed.append(f"app_auth.method={app_auth['method']} (SSO proxy)")
-                else:
-                    # No SSO → re-enable Forms auth so apps have their own login
-                    if new_mode == "none":
-                        app_auth["enabled"] = False
-                        app_auth["method"] = "None"
-                        changed.append("app_auth.disabled (no auth)")
-                    else:
-                        # basic mode → keep Forms on arr apps
-                        app_auth["enabled"] = True
-                        app_auth["method"] = "Forms"
-                        app_auth["required"] = "DisabledForLocalAddresses"
-                        changed.append("app_auth.method=Forms")
+        self._trigger_auth_regen(changed, action_trigger)
+        return {"status": "updated", "changed": changed, "auth": auth}
 
-        # Update OIDC provider
+    def _apply_mode_update(
+        self,
+        profile: dict[str, Any],
+        auth: dict[str, Any],
+        updates: dict[str, Any],
+        changed: list[str],
+    ) -> dict[str, Any] | None:
+        """Apply the ``mode``/``provider`` swap, returning an error dict on bad input.
+
+        Owning this branch outside of ``update_auth_config`` keeps the
+        complex SSO/app_auth sync out of the orchestration path.
+        """
+        if "mode" not in updates:
+            return None
+        new_mode = str(updates["mode"]).strip().lower()
+        modes = self._contract.get_modes()
+        if new_mode not in modes:
+            return {"error": f"Unknown auth mode: {new_mode}"}
+        if auth.get("provider") == new_mode:
+            return None
+        auth["provider"] = new_mode
+        auth["mode"] = new_mode
+        auth["enabled"] = new_mode != "none"
+        changed.append("mode")
+        mode_spec = modes[new_mode]
+        self._apply_middleware_default(auth, new_mode, mode_spec)
+        self._sync_app_auth_with_mode(profile, new_mode, mode_spec, changed)
+        return None
+
+    @staticmethod
+    def _apply_middleware_default(
+        auth: dict[str, Any], new_mode: str, mode_spec: Any,
+    ) -> None:
+        """Set ``auth.middleware`` from the provider registry when applicable."""
+        if mode_spec.provider_service:
+            from media_stack.core.auth.provider_registry import load_builtin_auth_provider_specs
+            for spec in load_builtin_auth_provider_specs():
+                if spec.key == new_mode:
+                    auth["middleware"] = spec.default_middleware
+                    break
+        else:
+            auth.pop("middleware", None)
+
+    @staticmethod
+    def _sync_app_auth_with_mode(
+        profile: dict[str, Any],
+        new_mode: str,
+        mode_spec: Any,
+        changed: list[str],
+    ) -> None:
+        """Sync ``app_auth`` on arr services when gateway auth mode changes.
+
+        When SSO is active we trust the reverse proxy and disable built-
+        in auth so users don't get double-prompted. When SSO is off we
+        re-enable Forms auth so each arr app has its own login page.
+        Reusing ``profile`` as the local name here would shadow the
+        dict we later write back — see v1.0.165 tests/unit/test_auth_
+        mode_round_trip.py for the bug this caused.
+        """
+        app_auth = profile.setdefault("app_auth", {})
+        if mode_spec.gateway_auth:
+            try:
+                from media_stack.services.profile_config import get_profile_config
+                pconfig = get_profile_config()
+                app_auth["method"] = pconfig.effective_app_auth_method
+            except Exception:
+                app_auth["method"] = "External"
+            app_auth["required"] = "DisabledForLocalAddresses"
+            app_auth["enabled"] = True
+            changed.append(f"app_auth.method={app_auth['method']} (SSO proxy)")
+        elif new_mode == "none":
+            app_auth["enabled"] = False
+            app_auth["method"] = "None"
+            changed.append("app_auth.disabled (no auth)")
+        else:
+            # basic mode → keep Forms on arr apps
+            app_auth["enabled"] = True
+            app_auth["method"] = "Forms"
+            app_auth["required"] = "DisabledForLocalAddresses"
+            changed.append("app_auth.method=Forms")
+
+    @staticmethod
+    def _apply_oidc_and_per_service_updates(
+        auth: dict[str, Any],
+        updates: dict[str, Any],
+        changed: list[str],
+    ) -> None:
+        """Apply OIDC provider/config and per-service policy diffs in-place."""
         if "oidc_provider" in updates:
             new_oidc = str(updates["oidc_provider"]).strip().lower()
             if auth.get("oidc_provider") != new_oidc:
                 auth["oidc_provider"] = new_oidc
                 changed.append("oidc_provider")
-
-        # Update OIDC config
         if "oidc_config" in updates and isinstance(updates["oidc_config"], dict):
             existing = auth.setdefault("oidc_config", {})
             for k, v in updates["oidc_config"].items():
                 if str(v).strip():
                     existing[str(k)] = str(v).strip()
                     changed.append(f"oidc_config.{k}")
-
-        # Update per-service policies
         if "per_service" in updates and isinstance(updates["per_service"], dict):
             per_svc = auth.setdefault("per_service", {})
             valid_policies = {"protected", "native", "public"}
             for svc_id, policy in updates["per_service"].items():
                 policy_str = str(policy).strip().lower()
-                if policy_str in valid_policies:
-                    if per_svc.get(svc_id) != policy_str:
-                        per_svc[svc_id] = policy_str
-                        changed.append(f"per_service.{svc_id}")
+                if policy_str in valid_policies and per_svc.get(svc_id) != policy_str:
+                    per_svc[svc_id] = policy_str
+                    changed.append(f"per_service.{svc_id}")
 
-        if not changed:
-            return {"status": "no_changes", "auth": auth}
+    @staticmethod
+    def _persist_auth_changes(
+        profile: dict[str, Any], profile_path: Path,
+    ) -> dict[str, Any] | None:
+        """Write auth-overrides (authoritative) and best-effort profile YAML.
 
-        # Persist — auth-overrides on the writable PVC is the
-        # authoritative store; profile YAML is best-effort. On K8s
-        # the profile is a read-only ConfigMap mount, so the profile
-        # write fails silently and only the overrides file survives
-        # restarts. _load_profile() merges them at read time.
-        # (v1.0.165 — same dual-write pattern as routing-overrides.)
+        The overrides PVC file is the durable store; the profile mount
+        is read-only on K8s so its write is allowed to fail. Same dual-
+        write pattern the routing-overrides path established in v1.0.160.
+        """
         override_root = os.environ.get("CONFIG_ROOT", "/srv-config")
         overrides_path = Path(override_root) / ".controller" / "auth-overrides.yaml"
         overrides_path.parent.mkdir(parents=True, exist_ok=True)
@@ -276,31 +311,35 @@ class AuthConfigService:
             # Best-effort — read-only mount is expected on K8s. The
             # auth-overrides file above is the durable store.
             pass
+        return None
 
-        # Trigger downstream regen. Without configure-auth, Authelia
-        # never gets its config file rewritten — the stored mode says
-        # "authelia" but the container has no user-database entries
-        # and can't authenticate anyone. Without envoy-config, the
-        # gateway's ext_authz filter points at the old provider.
-        if action_trigger:
-            mode_changed = any(
-                c.startswith("mode") or c.startswith("per_service")
-                for c in changed)
-            app_auth_changed = any(
-                c.startswith("app_auth") for c in changed)
-            oidc_changed = any(
-                c.startswith("oidc") for c in changed)
-            if mode_changed:
-                action_trigger("envoy-config", {})
-                action_trigger("configure-auth", {})
-            elif oidc_changed:
-                # OIDC-only edit (client_id/secret) — Authelia needs a
-                # config rewrite but Envoy's wiring is unchanged.
-                action_trigger("configure-auth", {})
-            if app_auth_changed:
-                action_trigger("bootstrap", {})
+    @staticmethod
+    def _trigger_auth_regen(
+        changed: list[str], action_trigger: Callable | None,
+    ) -> None:
+        """Fire downstream regen jobs based on which fields changed.
 
-        return {"status": "updated", "changed": changed, "auth": auth}
+        Without ``configure-auth`` Authelia never gets its config
+        rewritten; without ``envoy-config`` the gateway's ext_authz
+        filter still points at the old provider. Kept isolated so the
+        main update flow doesn't carry the trigger-matrix logic.
+        """
+        if not action_trigger:
+            return
+        mode_changed = any(
+            c.startswith("mode") or c.startswith("per_service") for c in changed
+        )
+        app_auth_changed = any(c.startswith("app_auth") for c in changed)
+        oidc_changed = any(c.startswith("oidc") for c in changed)
+        if mode_changed:
+            action_trigger("envoy-config", {})
+            action_trigger("configure-auth", {})
+        elif oidc_changed:
+            # OIDC-only edit (client_id/secret) — Authelia needs a
+            # config rewrite but Envoy's wiring is unchanged.
+            action_trigger("configure-auth", {})
+        if app_auth_changed:
+            action_trigger("bootstrap", {})
 
     def _load_profile(self) -> dict[str, Any]:
         """Load the profile YAML, with dashboard auth-overrides merged
@@ -311,8 +350,6 @@ class AuthConfigService:
         as the routing-overrides flow — persist edits to a writable
         PVC location and merge them at read time. (v1.0.165 — auth
         side of the same shape v1.0.160 fixed for routing.)"""
-        from media_stack.api.services import _resolve as _resolve_mod
-
         resolved = _resolve_mod.resolve_profile_path(
             os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
         )

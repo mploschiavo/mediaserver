@@ -21,6 +21,50 @@ logger = logging.getLogger("controller_api")
 
 from .registry import SERVICES, read_api_key_from_file
 
+
+def _running_k8s_pod_names(namespace: str) -> set[str]:
+    """Return the ``app``/``name`` labels of Running pods in *namespace*.
+
+    Extracted from ``_get_running_containers`` to drop the enclosing
+    ``if namespace:`` branch from 5 levels of nesting down to 2. The
+    entire body is best-effort — any failure to talk to the API
+    yields an empty set rather than propagating.
+    """
+    names: set[str] = set()
+    try:
+        from kubernetes import client as k8s_client, config as k8s_config
+        try:
+            k8s_config.load_incluster_config()
+        except Exception:
+            k8s_config.load_kube_config()
+        v1 = k8s_client.CoreV1Api()
+        pods = v1.list_namespaced_pod(namespace)
+        for p in pods.items:
+            if p.status.phase != "Running":
+                continue
+            labels = p.metadata.labels or {}
+            names.add(labels.get("app", p.metadata.name))
+    except Exception as exc:
+        log_swallowed(exc)
+    return names
+
+
+def _running_compose_container_names() -> set[str]:
+    """Return the names of locally running Docker Compose containers.
+
+    Counterpart to ``_running_k8s_pod_names`` — kept as a module-level
+    helper so the dispatcher stays readable.
+    """
+    names: set[str] = set()
+    try:
+        import docker
+        client = docker.from_env()
+        for c in client.containers.list():
+            names.add(c.name)
+    except Exception as exc:
+        log_swallowed(exc)
+    return names
+
 # Build probe dicts from the service registry — no hardcoded service details here
 SERVICE_PROBES: dict[str, tuple[str, int, str]] = {
     s.id: (s.host, s.port, s.health_path) for s in SERVICES
@@ -57,9 +101,28 @@ class HealthService:
         self,
         services: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Probe admin credentials for specified services (or all login-capable services).
+        """Probe that each service's connectivity credential is valid.
 
-        Used by the ad-hoc revalidation API endpoint.
+        **Split from password-propagation** (2026-04-24 incident): this
+        method now validates the **API key** where a service exposes one
+        (``auth_mode == "X-Emby-Token"`` or ``"X-Api-Key"``), via a
+        **read-only** ``GET <auth_path>`` call. It no longer POSTs to
+        ``/Users/AuthenticateByName`` — that endpoint has side effects
+        (increments ``InvalidLoginAttemptCount`` on every miss, races on
+        the user row) and was the source of a noisy Jellyfin 400 flood
+        in production. See ``probe_password_propagation`` for the
+        separate admin-supplied password check.
+
+        Services without an API key (e.g. qBittorrent form auth) still
+        fall through to ``_probe_login`` with the admin creds.
+
+        Per-service status values:
+          * ``ok``            — API key / login works.
+          * ``fail``          — credential rejected.
+          * ``error``         — transport / parsing failure.
+          * ``disabled``      — service has auth turned off.
+          * ``no_key``        — no API key discovered AND service
+                                requires one; password path unavailable.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -70,14 +133,47 @@ class HealthService:
         if services:
             targets = {k: v for k, v in LOGIN_PROBES.items() if k in services}
 
+        # For per-service routing decisions we need the auth_path +
+        # auth_mode (API key shape). Build a small side-index from
+        # SERVICES so we don't change the LOGIN_PROBES tuple shape.
+        svc_meta: dict[str, tuple[str, str]] = {
+            s.id: (s.auth_path, s.auth_mode) for s in SERVICES
+        }
+
         def _check(name: str) -> tuple[str, str]:
             host, port, path, mode = targets[name]
             svc_key = all_keys.get(name, "")
-            logger.debug("[DEBUG] Credential probe: svc=%s, host=%s:%d, path=%s, mode=%s, "
-                         "user=%s, has_api_key=%s", name, host, port, path, mode,
-                         admin_user, bool(svc_key))
-            result = _probe_login(host, port, path, mode, admin_user, admin_pass, api_key=svc_key)
-            logger.debug("[DEBUG] Credential probe result: svc=%s → %s", name, result)
+            auth_path, auth_mode = svc_meta.get(name, ("", ""))
+            logger.debug(
+                "[DEBUG] Credential probe: svc=%s, host=%s:%d, path=%s, "
+                "mode=%s, auth_mode=%s, has_api_key=%s",
+                name, host, port, path, mode, auth_mode, bool(svc_key),
+            )
+            # Prefer the API-key path when the service exposes a
+            # token-based auth surface. Read-only GETs on
+            # ``<auth_path>`` cannot mutate the user row, so no
+            # concurrency races and no "failed login" noise in the
+            # downstream service's log.
+            if auth_mode in ("X-Emby-Token", "X-Api-Key"):
+                if not svc_key:
+                    return name, "no_key"
+                result = self._probe_api_key_health(
+                    host, port, auth_path or path, auth_mode, svc_key,
+                )
+                logger.debug(
+                    "[DEBUG] API-key probe result: svc=%s → %s",
+                    name, result,
+                )
+                return name, result
+            # Fall through for services without a token-based API
+            # (e.g. qBittorrent form-login is the last caller here).
+            result = _probe_login(
+                host, port, path, mode, admin_user, admin_pass,
+                api_key=svc_key,
+            )
+            logger.debug(
+                "[DEBUG] Login probe result: svc=%s → %s", name, result,
+            )
             return name, result
 
         results: dict[str, str] = {}
@@ -92,6 +188,165 @@ class HealthService:
 
         ok_count = sum(1 for v in results.values() if v == "ok")
         return {"credentials": results, "ok": ok_count, "total": len(results)}
+
+    def probe_password_propagation(
+        self,
+        services: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Confirm the stack admin's password propagated to each
+        service's **local** user record.
+
+        Distinct from ``probe_credentials``:
+
+        - ``probe_credentials`` asks *"does the API key work?"* — a
+          connectivity check. No password involved.
+        - ``probe_password_propagation`` asks *"did the stack-admin
+          password reset reach this service's local user store?"* —
+          a sync check. No authentication attempt; just a metadata
+          read via the API key.
+
+        For Jellyfin this GETs ``/Users/{user_id}`` and reads the
+        ``HasPassword`` boolean. A ``true`` means a password is
+        stored (i.e. the propagation step at the end of
+        ``UserWriteService.reset_password`` succeeded). A ``false``
+        means the user row exists but the password was never set —
+        common when Jellyfin auto-provisioned the admin via OIDC
+        first-login and the stack's local-password propagation was
+        never run.
+
+        Per-service status values:
+          * ``ok``             — local password is set.
+          * ``not_propagated`` — user exists but ``HasPassword=false``;
+                                 run the admin-reset flow to fix.
+          * ``no_user``        — admin user not found in the service.
+          * ``no_key``         — can't even check; API key missing.
+          * ``error``          — transport / parsing failure.
+          * ``n/a``            — service doesn't have a per-user
+                                 local-password concept (e.g. *arr
+                                 apps use API key only).
+
+        Admin-only. Read-only. No side effects.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+        all_keys = self.discover_api_keys()
+        targets = LOGIN_PROBES
+        if services:
+            targets = {k: v for k, v in LOGIN_PROBES.items() if k in services}
+
+        # Only services with a local user-password store can be
+        # checked meaningfully. Today that's Jellyfin. Jellyseerr uses
+        # OIDC + JSON local accounts — its API exposes a similar
+        # ``HasPassword`` per user, so it's added below as support.
+        supported: dict[str, dict[str, str]] = {
+            "jellyfin": {
+                "user_list_path": "/Users",
+                "has_password_key": "HasPassword",
+                "auth_header": "X-Emby-Token",
+            },
+        }
+
+        def _check(name: str) -> tuple[str, str]:
+            meta = supported.get(name)
+            if meta is None:
+                return name, "n/a"
+            host, port, *_ = targets[name]
+            svc_key = all_keys.get(name, "")
+            if not svc_key:
+                return name, "no_key"
+            return name, self._probe_has_password(
+                host=host, port=port, api_key=svc_key, admin_user=admin_user,
+                user_list_path=meta["user_list_path"],
+                has_password_key=meta["has_password_key"],
+                auth_header=meta["auth_header"],
+            )
+
+        results: dict[str, str] = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {pool.submit(_check, name): name for name in targets}
+            for future in as_completed(futures):
+                try:
+                    name, status = future.result()
+                    results[name] = status
+                except Exception:
+                    results[futures[future]] = "error"
+
+        ok_count = sum(1 for v in results.values() if v == "ok")
+        checked = sum(1 for v in results.values() if v not in ("n/a",))
+        return {
+            "password_propagation": results,
+            "ok": ok_count,
+            "checked": checked,
+            "total": len(results),
+        }
+
+    @staticmethod
+    def _probe_api_key_health(
+        host: str, port: int, path: str, auth_mode: str, api_key: str,
+    ) -> str:
+        """GET the service's auth-check path with the token header.
+
+        Returns ``"ok"`` on any 2xx, ``"fail"`` on 401/403, ``"error"``
+        otherwise. No side effects on the target — purely a read.
+        """
+        url = f"http://{host}:{port}{path}"
+        header_name = auth_mode  # "X-Emby-Token" / "X-Api-Key"
+        req = urllib.request.Request(
+            url, headers={header_name: api_key}, method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return "ok" if 200 <= resp.status < 300 else "fail"
+        except urllib.error.HTTPError as exc:
+            return "fail" if exc.code in (401, 403) else "error"
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            logger.debug("API-key probe %s:%d failed: %s", host, port, exc)
+            return "error"
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "API-key probe %s:%d unexpected error: %s", host, port, exc,
+            )
+            return "error"
+
+    @staticmethod
+    def _probe_has_password(
+        *,
+        host: str, port: int, api_key: str, admin_user: str,
+        user_list_path: str, has_password_key: str, auth_header: str,
+    ) -> str:
+        """Read the service's user list, find the admin row, return
+        whether its ``HasPassword`` (or equivalent) field is true.
+
+        GET-only; no writes, no authentication attempts.
+        """
+        url = f"http://{host}:{port}{user_list_path}"
+        req = urllib.request.Request(
+            url, headers={auth_header: api_key}, method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if not (200 <= resp.status < 300):
+                    return "error"
+                body = json.loads(resp.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            return "error" if exc.code not in (401, 403) else "no_key"
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            logger.debug(
+                "HasPassword probe %s:%d failed: %s", host, port, exc,
+            )
+            return "error"
+
+        if not isinstance(body, list):
+            return "error"
+        target = (admin_user or "admin").strip().lower()
+        for user in body:
+            if not isinstance(user, dict):
+                continue
+            if str(user.get("Name", "")).strip().lower() != target:
+                continue
+            return "ok" if bool(user.get(has_password_key, False)) else "not_propagated"
+        return "no_user"
 
     def discover_api_keys(self) -> dict[str, str]:
         """Read API keys.
@@ -120,11 +375,16 @@ class HealthService:
 
         # Bootstrap fallback: env vars for services whose config
         # file isn't readable yet (cold start, never-bootstrapped).
+        # Routed through ``runtime_keys.read_service_api_key`` so the
+        # 30s cache is shared across this and every endpoint-side caller —
+        # avoids re-statting every config file under a hot dashboard
+        # render.
+        from .runtime_keys import read_service_api_key
         env_map = {s.id: s.api_key_env for s in SERVICES if s.api_key_env}
-        for app, env_key in env_map.items():
+        for app, _env_key in env_map.items():
             if app in keys:
                 continue
-            val = (os.environ.get(env_key) or "").strip()
+            val = read_service_api_key(app)
             if val:
                 keys[app] = val
 
@@ -159,33 +419,16 @@ class HealthService:
 
     @staticmethod
     def _get_running_containers() -> set[str]:
-        """Get names of running containers (compose) or pods (K8s)."""
+        """Get names of running containers (compose) or pods (K8s).
+
+        Dispatches to the appropriate helper by whether ``K8S_NAMESPACE``
+        is set — flattened from a 5-deep ``if/try/try/for/if`` into two
+        guard-style helpers so each branch reads linearly.
+        """
         namespace = os.environ.get("K8S_NAMESPACE", "")
-        names: set[str] = set()
         if namespace:
-            try:
-                from kubernetes import client as k8s_client, config as k8s_config
-                try:
-                    k8s_config.load_incluster_config()
-                except Exception:
-                    k8s_config.load_kube_config()
-                v1 = k8s_client.CoreV1Api()
-                pods = v1.list_namespaced_pod(namespace)
-                for p in pods.items:
-                    if p.status.phase == "Running":
-                        labels = p.metadata.labels or {}
-                        names.add(labels.get("app", p.metadata.name))
-            except Exception as exc:
-                log_swallowed(exc)
-        else:
-            try:
-                import docker
-                client = docker.from_env()
-                for c in client.containers.list():
-                    names.add(c.name)
-            except Exception as exc:
-                log_swallowed(exc)
-        return names
+            return _running_k8s_pod_names(namespace)
+        return _running_compose_container_names()
 
     def probe_services(self, cache: Any) -> dict[str, Any]:
         """Probe all services: reachability + authenticated API validation."""
@@ -463,6 +706,7 @@ _instance = HealthService()
 
 # Backward compat — callers use module-level functions
 probe_credentials = _instance.probe_credentials
+probe_password_propagation = _instance.probe_password_propagation
 discover_api_keys = _instance.discover_api_keys
 _get_running_containers = _instance._get_running_containers
 probe_services = _instance.probe_services

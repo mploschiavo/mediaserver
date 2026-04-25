@@ -25,6 +25,7 @@ flowchart LR
     Maintainerr[Maintainerr]
     Unpackerr[Unpackerr]
     Flare[FlareSolverr]
+    UI[media-stack-ui<br/>SPA :8080<br/>reverse-proxies /api/*]
     Bootstrap[Controller<br/>HTTP API + Dashboard :9100]
   end
 
@@ -45,7 +46,9 @@ flowchart LR
   Envoy --> Tautulli
   Envoy --> Maintainerr
   Envoy --> Plex
+  Envoy --> UI
   Envoy --> Bootstrap
+  UI -->|/api/*| Bootstrap
 
   Jellyseerr --> Sonarr
   Jellyseerr --> Radarr

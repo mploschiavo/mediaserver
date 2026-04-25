@@ -19,3 +19,7 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
+markers = [
+    "integration: talks to real external services; requires env-var-gated setup",
+    "smoke: full-stack docker compose smoke test; opt-in via -m smoke",
+]

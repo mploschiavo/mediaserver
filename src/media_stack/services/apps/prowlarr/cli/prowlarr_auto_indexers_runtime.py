@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 import time
@@ -15,6 +16,11 @@ from typing import Any
 from media_stack.core.defaults import default_controller_image
 from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
+
+# Module logger for diagnostic/kubectl pass-through output. The top-level
+# info()/warn()/err() helpers below remain print-based because they emit
+# user-facing CLI progress lines with wall-clock timestamps.
+logger = logging.getLogger("prowlarr_auto_indexers")
 
 
 def ts() -> str:
@@ -348,7 +354,7 @@ class ProwlarrAutoIndexerRunner:
             check=False,
         )
         if job_table.stdout.strip():
-            print(job_table.stdout.rstrip())
+            logger.info(job_table.stdout.rstrip())
 
         pod_table = self.kube.run(
             [
@@ -365,7 +371,7 @@ class ProwlarrAutoIndexerRunner:
             check=False,
         )
         if pod_table.stdout.strip():
-            print(pod_table.stdout.rstrip())
+            logger.info(pod_table.stdout.rstrip())
 
     def _pending_scheduling_message(self, pod: dict[str, Any]) -> str:
         for condition in pod.get("status", {}).get("conditions", []) or []:
@@ -400,9 +406,9 @@ class ProwlarrAutoIndexerRunner:
         if "Events:" in lines:
             idx = lines.index("Events:")
             events = lines[idx : idx + 16]
-            print("[PENDING] Events:")
+            logger.info("[PENDING] Events:")
             for line in events[1:]:
-                print(f"[PENDING] {line}")
+                logger.info("[PENDING] %s", line)
 
     def wait_for_job(self) -> None:
         job_name = "media-stack-prowlarr-auto-indexers"
@@ -522,14 +528,14 @@ class ProwlarrAutoIndexerRunner:
             check=False,
         )
         if describe_job.stdout.strip():
-            print(describe_job.stdout.rstrip())
+            logger.info(describe_job.stdout.rstrip())
 
         pods_wide = self.kube.run(
             ["-n", self.cfg.namespace, "get", "pods", "-l", selector, "-o", "wide"],
             check=False,
         )
         if pods_wide.stdout.strip():
-            print(pods_wide.stdout.rstrip())
+            logger.info(pods_wide.stdout.rstrip())
 
         pods = self._pod_items(self._get_pods(selector))
         if pods:
@@ -540,7 +546,7 @@ class ProwlarrAutoIndexerRunner:
                     check=False,
                 )
                 if describe_pod.stdout.strip():
-                    print(describe_pod.stdout.rstrip())
+                    logger.info(describe_pod.stdout.rstrip())
 
         logs = self.kube.run(
             [
@@ -554,7 +560,7 @@ class ProwlarrAutoIndexerRunner:
             check=False,
         )
         if logs.stdout.strip():
-            print(logs.stdout.rstrip())
+            logger.info(logs.stdout.rstrip())
 
     def print_job_logs(self) -> None:
         logs = self.kube.run(
@@ -569,4 +575,4 @@ class ProwlarrAutoIndexerRunner:
             check=False,
         )
         if logs.stdout.strip():
-            print(logs.stdout.rstrip())
+            logger.info(logs.stdout.rstrip())

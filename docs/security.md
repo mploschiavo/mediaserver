@@ -106,6 +106,99 @@ The [`security-baseline-harness`](../.github/workflows/ci.yml) job runs two laye
 
 The pattern: the harness-unit layer means the **quality of the checks themselves** can't regress silently, even when no live target is available. The per-service layer means the **state of each service** is measured whenever a target is present.
 
+## Session visibility & security reporting
+
+The session-visibility feature ([feature contract](security-a11y-contract.md),
+[resume doc](roadmap/session-visibility-resume.md)) adds a defense-in-depth
+layer on top of the baseline.
+
+### What it delivers
+
+- **Aggregated session view** (`GET /api/sessions/active`) — one list
+  covering every live session across the controller, Authelia
+  (MFA enrollment + last-activity via `db.sqlite3`), Jellyfin
+  (`/Sessions`), and future backends. Per row: username, device
+  class (TV/phone/tablet/desktop/CLI), client IP, first-seen-IP
+  flag, provider-specific session ID, connected-since.
+- **Security analytics**:
+  - `GET /api/security/failed-logins` — credential-stuffing
+    clusters grouped by /24, sorted by attempt count.
+  - `GET /api/security/new-locations` — successful logins from a
+    (user, /24) pair never seen in the prior 90 days.
+  - `GET /api/security/concurrent` — users holding ≥ N live
+    sessions (shared-credential / ATO signal).
+- **Bans** — `BanStore` under `${CONFIG_ROOT}/controller/bans.json`
+  with atomic writes, schema-versioned. User bans cascade to
+  Authelia (`disabled: true` flag in `users_database.yml`), Jellyfin
+  (`IsDisabled` Policy bit) and revoke all live sessions. IP bans
+  sync into Authelia's `configuration.yml` access_control rules
+  via a pinned managed rule so Envoy's ext_authz hook enforces
+  them at the edge.
+- **Emergency revoke** — one admin click revokes every session on
+  every provider and rotates short-lived secrets; heavily audited.
+- **Audit chain head** — `GET /api/audit-log/head` exposes
+  `{height, hash, ts}` for external tamper-evidence monitors.
+- **User self-service** — `/api/me/sessions`, `/api/me/tokens`,
+  `/api/me/this-wasnt-me`, `/api/me/revoke-others`.
+
+### Security posture (CIA + AAA)
+
+Pillars documented in [security-a11y-contract.md § 0](security-a11y-contract.md).
+Highlights:
+
+- **Confidentiality** — `/api/keys` returns fingerprints
+  (`abcd…wxyz`), never raw provider keys. Passwords flow via
+  single-use retrieval tickets (`/api/password-tickets/{id}`),
+  never in response bodies. `Cache-Control: no-store` on every
+  auth-gated response.
+- **Integrity** — hash-chained audit log; every mutating endpoint
+  is CSRF-protected and accepts `Idempotency-Key`.
+- **Availability** — per-IP + per-user rate limiting on login and
+  mutating endpoints. `security-read` bucket caps enumeration
+  attempts on `/api/sessions` and `/api/security/*`.
+- **Authentication** — Authelia SSO is required (file-backend mode
+  during init only). MFA state read from Authelia's sqlite for the
+  dashboard; per-user MFA enforcement delegated to Authelia.
+- **Authorization** — decorator-based at the service layer
+  (`@requires_authenticated`, `@requires_admin`,
+  `@requires_self_or_admin`, `@requires_role`,
+  `@forbidden_for_impersonation`). Enforced by a ratchet.
+- **Accounting** — `login_success / login_failure / login_blocked
+  / login_rate_limited / logout / session_revoked /
+  emergency_revoke_all / password_change / ban_* / anomaly_*`
+  actions land in the hash-chained audit log.
+
+### New ratchets (CI-enforced)
+
+12 session-visibility ratchets, all in `tests/unit/test_*_ratchet.py`:
+
+| Ratchet | Scope |
+|---|---|
+| `test_authz_decorator_ratchet.py` | every authz-scoped service method carries `__authz__` |
+| `test_pluggable_authelia_ratchet.py` | no direct Authelia imports outside `services/apps/authelia/` |
+| `test_security_headers_ratchet.py` | every canonical preset emits CSP + HSTS + COOP/CORP/Cache-Control + X-Frame + X-CTO + Permissions-Policy |
+| `test_no_secret_in_api_responses_ratchet.py` | GET handlers don't echo raw API keys |
+| `test_no_plaintext_password_in_response_ratchet.py` | user-service returns `password_ticket`, never `generated_password` |
+| `test_api_key_not_in_url_query_ratchet.py` | credentials flow via headers, not URL query |
+| `test_auth_events_audited_ratchet.py` | login path writes audit entries |
+| `test_trusted_proxy_ip_ratchet.py` | audit IP comes from trusted-proxy helper, not `client_address` |
+| `test_csrf_on_mutating_security_endpoints_ratchet.py` | `/api/bans/**`, `/api/sessions/**`, `/api/password-tickets/**` are CSRF-enforced |
+| `test_rate_limit_bucket_coverage_ratchet.py` | every security endpoint goes through a rate limiter |
+| `test_idempotency_key_ratchet.py` | mutating ban/revoke handlers accept `Idempotency-Key` |
+| `test_sqli_static_scan_ratchet.py` | `.execute(...)` calls never interpolate user input into SQL |
+
+### Threat model (quick)
+
+| Threat | Mitigation |
+|---|---|
+| Stolen session cookie replayed from another IP | `SessionStore.verify_binding` flags IP-prefix / device-class change |
+| Credential stuffing | per-IP login rate limit + `login_failure` clusters surfaced in the UI |
+| UI double-submit bans IP twice | `Idempotency-Key` header accepted on all ban/revoke endpoints |
+| Operator leaks dashboard URL | `Cache-Control: no-store` + auth-gated — browser/proxy never retains |
+| Cross-origin steal via `<iframe>` | `X-Frame-Options: DENY` + `frame-ancestors 'none'` + COOP `same-origin` |
+| SSRF via notification webhook | `_WebhookUrlValidator` blocks RFC-1918, link-local, loopback, `*.svc` |
+| Compromised third-party script | CSP `require-trusted-types-for 'script'` (STRICT preset) + no `unsafe-inline` for new admin pages |
+
 ---
 
 **Project Steward**

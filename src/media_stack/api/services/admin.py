@@ -71,25 +71,33 @@ class AdminService:
         if not svc:
             return {"status": "error", "error": f"Unknown service '{service_id}'"}
 
-        # Media server or any service with app-layer hard_reset: delegate
         ops = _load_app_admin_ops(service_id)
         if ops and hasattr(ops, "hard_reset"):
             username = options.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
             password = options.get("password", os.environ.get("STACK_ADMIN_PASSWORD", ""))
             return ops.hard_reset(username, password)
 
-        restarted = False
-        key_discovered = False
-        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        restarted = self._restart_and_wait_healthy(service_id, svc)
+        key_discovered = self._rediscover_api_key(svc, service_id)
+        return {
+            "status": "reset",
+            "service": service_id,
+            "restarted": restarted,
+            "key_discovered": key_discovered,
+        }
 
-        # 1. Restart the container
+    def _restart_and_wait_healthy(self, service_id: str, svc: Any) -> bool:
+        """Restart the container and poll its health endpoint up to ~30s.
+
+        Separated so ``hard_reset_service`` can treat restart+health as
+        one atomic precondition before moving to key rediscovery.
+        """
+        restarted = False
         try:
             result = self.restart_service(service_id)
             restarted = result.get("status") == "restarted"
         except Exception as exc:
             log_swallowed(exc)
-
-        # 2. Wait for health endpoint
         if restarted and svc.host and svc.port:
             import time
             health_url = f"http://{svc.host}:{svc.port}{svc.health_path}"
@@ -102,28 +110,28 @@ class AdminService:
                 except Exception as exc:
                     log_swallowed(exc)
                     continue
+        return restarted
 
-        # 3. Re-discover API key if service has one
-        if svc.api_key_env:
-            try:
-                key = read_api_key_from_file(service_id, config_root)
-                source = "config_file"
-                if not key:
-                    key = read_api_key_via_http(service_id)
-                    source = "http"
-                if key:
-                    os.environ[svc.api_key_env] = key
-                    self.persist_keys_to_secret({svc.api_key_env: key})
-                    key_discovered = True
-            except Exception as exc:
-                log_swallowed(exc)
+    def _rediscover_api_key(self, svc: Any, service_id: str) -> bool:
+        """Re-read the API key (file → HTTP) and persist it to env + secret.
 
-        return {
-            "status": "reset",
-            "service": service_id,
-            "restarted": restarted,
-            "key_discovered": key_discovered,
-        }
+        Returns True when a key was found; False if the service has no
+        ``api_key_env`` at all or the readers all returned empty.
+        """
+        if not svc.api_key_env:
+            return False
+        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        try:
+            key = read_api_key_from_file(service_id, config_root)
+            if not key:
+                key = read_api_key_via_http(service_id)
+            if key:
+                os.environ[svc.api_key_env] = key
+                self.persist_keys_to_secret({svc.api_key_env: key})
+                return True
+        except Exception as exc:
+            log_swallowed(exc)
+        return False
 
     def _discover_jellyfin_admin_user_id(self, base_url: str, api_key: str, preferred_name: str = "admin") -> str:
         """Find the admin user ID in Jellyfin."""
@@ -167,57 +175,75 @@ class AdminService:
                 continue
             if _filter is not None and svc.id not in _filter:
                 continue
-
-            # Jellyfin: rotate via API, not file
             if svc.api_key_format == "sqlite":
-                try:
-                    old_key = _read_key_sqlite(Path(config_root) / svc.api_key_config)
-                    if old_key:
-                        req = urllib.request.Request(
-                            f"http://{svc.host}:{svc.port}/Auth/Keys?app=media-stack-controller",
-                            method="POST", headers={"X-Emby-Token": old_key},
-                        )
-                        urllib.request.urlopen(req, timeout=5)
-                        new_key = _read_key_sqlite(Path(config_root) / svc.api_key_config)
-                        if new_key and new_key != old_key:
-                            os.environ[svc.api_key_env] = new_key
-                            rotated[svc.api_key_env] = new_key
-                except Exception as exc:
-                    errors.append(f"{svc.id}: {exc}")
+                self._rotate_sqlite_key(svc, config_root, rotated, errors)
                 continue
-
-            # File-based rotation
-            cfg_path = Path(config_root) / svc.api_key_config
-            if not cfg_path.is_file():
-                continue
-
-            writer = _KEY_WRITERS.get(svc.api_key_format)
-            if not writer:
-                continue
-
-            try:
-                new_key = uuid.uuid4().hex
-                if svc.api_key_format == "json":
-                    new_key = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes).decode("utf-8")
-                writer(cfg_path, new_key)
-                os.environ[svc.api_key_env] = new_key
-                rotated[svc.api_key_env] = new_key
-                file_based_services.append(svc.id)
-            except Exception as exc:
-                errors.append(f"{svc.id}: {exc}")
+            self._rotate_file_key(svc, config_root, rotated, errors, file_based_services)
 
         self.persist_keys_to_secret(rotated)
+        restarted = self._restart_after_rotation(file_based_services)
+        return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors, "restarted": restarted}
 
-        # Auto-restart file-based services
-        restarted = []
+    @staticmethod
+    def _rotate_sqlite_key(
+        svc: Any, config_root: str,
+        rotated: dict[str, str], errors: list[str],
+    ) -> None:
+        """Rotate a SQLite-backed API key (Jellyfin) via its Auth API.
+
+        Jellyfin's DB blob holds the key, so we ask Jellyfin to mint a
+        new one and then re-read the file to capture it — direct edits
+        don't propagate.
+        """
+        try:
+            old_key = _read_key_sqlite(Path(config_root) / svc.api_key_config)
+            if old_key:
+                req = urllib.request.Request(
+                    f"http://{svc.host}:{svc.port}/Auth/Keys?app=media-stack-controller",
+                    method="POST", headers={"X-Emby-Token": old_key},
+                )
+                urllib.request.urlopen(req, timeout=5)
+                new_key = _read_key_sqlite(Path(config_root) / svc.api_key_config)
+                if new_key and new_key != old_key:
+                    os.environ[svc.api_key_env] = new_key
+                    rotated[svc.api_key_env] = new_key
+        except Exception as exc:
+            errors.append(f"{svc.id}: {exc}")
+
+    @staticmethod
+    def _rotate_file_key(
+        svc: Any, config_root: str,
+        rotated: dict[str, str], errors: list[str],
+        file_based_services: list[str],
+    ) -> None:
+        """Write a fresh API key into the service's config file via registry writer."""
+        cfg_path = Path(config_root) / svc.api_key_config
+        if not cfg_path.is_file():
+            return
+        writer = _KEY_WRITERS.get(svc.api_key_format)
+        if not writer:
+            return
+        try:
+            new_key = uuid.uuid4().hex
+            if svc.api_key_format == "json":
+                new_key = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes).decode("utf-8")
+            writer(cfg_path, new_key)
+            os.environ[svc.api_key_env] = new_key
+            rotated[svc.api_key_env] = new_key
+            file_based_services.append(svc.id)
+        except Exception as exc:
+            errors.append(f"{svc.id}: {exc}")
+
+    def _restart_after_rotation(self, file_based_services: list[str]) -> list[str]:
+        """Auto-restart every service whose file-on-disk key we just rewrote."""
+        restarted: list[str] = []
         for svc_id in file_based_services:
             try:
                 self.restart_service(svc_id)
                 restarted.append(svc_id)
             except Exception as exc:
                 log_swallowed(exc)
-
-        return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors, "restarted": restarted}
+        return restarted
 
     # -----------------------------------------------------------------------
     # Password reset — registry-driven
@@ -233,10 +259,43 @@ class AdminService:
         username = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         updated: list[str] = []
         errors: list[str] = []
-
         _filter = set(target_services) if target_services else None
 
-        # 1. Services with app-layer admin_ops.reset_password() — dynamic dispatch
+        handled_ids = self._reset_via_app_admin_ops(
+            _filter, username, old_password, new_password, config_root,
+            updated, errors,
+        )
+        self._reset_via_password_api(
+            _filter, username, new_password, config_root,
+            handled_ids, updated, errors,
+        )
+        self._reset_via_password_config(
+            _filter, username, new_password, config_root,
+            handled_ids, updated, errors,
+        )
+
+        # Update env + secret
+        os.environ["STACK_ADMIN_PASSWORD"] = new_password
+        self.persist_keys_to_secret({"STACK_ADMIN_PASSWORD": new_password, "STACK_ADMIN_USERNAME": username})
+
+        restarted = self._restart_file_based_services(updated)
+        return {"status": "updated", "services": updated, "errors": errors, "restarted": restarted}
+
+    @staticmethod
+    def _reset_via_app_admin_ops(
+        _filter: set[str] | None,
+        username: str,
+        old_password: str,
+        new_password: str,
+        config_root: str,
+        updated: list[str],
+        errors: list[str],
+    ) -> set[str]:
+        """Step 1: dynamic dispatch to each service's ``admin_ops.reset_password``.
+
+        Returns the set of service IDs handled here so subsequent passes
+        can skip them without re-doing the work.
+        """
         handled_ids: set[str] = set()
         for svc in SERVICES:
             if _filter is not None and svc.id not in _filter:
@@ -249,12 +308,26 @@ class AdminService:
                 elif err:
                     errors.append(f"{svc.id}: {err}")
                 handled_ids.add(svc.id)
+        return handled_ids
 
-        # 2. Arr apps — registry-driven via password_api_path
+    def _reset_via_password_api(
+        self,
+        _filter: set[str] | None,
+        username: str,
+        new_password: str,
+        config_root: str,
+        handled_ids: set[str],
+        updated: list[str],
+        errors: list[str],
+    ) -> None:
+        """Step 2: PUT to each arr-style service's ``password_api_path``.
+
+        Enables Forms auth if currently None — otherwise the password
+        change would silently land on a login page that still reports
+        "disabled".
+        """
         for svc in get_services_with_password_api():
-            if svc.id in handled_ids:
-                continue
-            if _filter is not None and svc.id not in _filter:
+            if svc.id in handled_ids or (_filter is not None and svc.id not in _filter):
                 continue
             try:
                 api_key = os.environ.get(svc.api_key_env, "") or self._read_key(svc, config_root)
@@ -270,7 +343,6 @@ class AdminService:
                 cfg["username"] = username
                 cfg["password"] = new_password
                 cfg["passwordConfirmation"] = new_password
-                # Enable Forms auth if currently disabled — prevents "disabled" login status
                 if str(cfg.get("authenticationMethod", "")).lower() in ("none", ""):
                     cfg["authenticationMethod"] = "forms"
                 put_req = urllib.request.Request(
@@ -283,13 +355,20 @@ class AdminService:
             except Exception as exc:
                 errors.append(f"{svc.id}: {exc}")
 
-        # (Bazarr and other services with custom password APIs are now handled
-        #  via app-layer admin_ops.py dispatch in step 1 above.)
-
-        # 5. Config-file-based password services — registry-driven
+    @staticmethod
+    def _reset_via_password_config(
+        _filter: set[str] | None,
+        username: str,
+        new_password: str,
+        config_root: str,
+        handled_ids: set[str],
+        updated: list[str],
+        errors: list[str],
+    ) -> None:
+        """Step 3: edit YAML/INI password config files in place."""
         for svc in get_services_with_password_config():
             if svc.id in updated or svc.id in handled_ids:
-                continue  # Already handled
+                continue
             if _filter is not None and svc.id not in _filter:
                 continue
             cfg_path = Path(config_root) / svc.password_config
@@ -318,12 +397,9 @@ class AdminService:
             except Exception as exc:
                 errors.append(f"{svc.id}: {exc}")
 
-        # 5. Update env + secret
-        os.environ["STACK_ADMIN_PASSWORD"] = new_password
-        self.persist_keys_to_secret({"STACK_ADMIN_PASSWORD": new_password, "STACK_ADMIN_USERNAME": username})
-
-        # 6. Auto-restart file-based services
-        restarted = []
+    def _restart_file_based_services(self, updated: list[str]) -> list[str]:
+        """Restart every config-file-based service whose password we rewrote."""
+        restarted: list[str] = []
         for svc in get_services_with_password_config():
             if svc.id in updated:
                 try:
@@ -331,8 +407,7 @@ class AdminService:
                     restarted.append(svc.id)
                 except Exception as exc:
                     log_swallowed(exc)
-
-        return {"status": "updated", "services": updated, "errors": errors, "restarted": restarted}
+        return restarted
 
     def _read_key(self, svc: Any, config_root: str) -> str:
         """Read API key for a service using its registry format."""

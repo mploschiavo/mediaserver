@@ -11,6 +11,9 @@ from typing import Any
 
 from .. import _resolve as _resolve_mod
 from ._profile import ProfileService
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (registry is a leaf data module — no cycle with _diagnostics)
+from ..registry import SERVICES as _REGISTRY_SERVICES
 import logging
 
 
@@ -70,7 +73,7 @@ class DiagnosticsService:
         resolved_profile = _resolve_mod.resolve_profile_path(os.environ.get("BOOTSTRAP_PROFILE_FILE", ""))
         if resolved_profile:
             backup["profile_raw"] = Path(resolved_profile).read_text(encoding="utf-8", errors="replace")
-        from ..registry import SERVICES as _backup_svcs
+        _backup_svcs = _REGISTRY_SERVICES
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
         service_configs: dict[str, str] = {}
         if config_root.is_dir():
@@ -120,7 +123,7 @@ class DiagnosticsService:
         restored: list[str] = []
         skipped: list[str] = []
         errors: list[str] = []
-        from ..registry import SERVICES as _restore_svcs
+        _restore_svcs = _REGISTRY_SERVICES
         valid_paths: set[str] = set()
         for svc in _restore_svcs:
             if svc.api_key_config:

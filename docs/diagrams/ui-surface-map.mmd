@@ -1,21 +1,59 @@
 flowchart LR
-  HOME[homepage.local\nLanding and onboarding]
-  REQUEST[jellyseerr.local\nRequest UX]
-  PLAY[jellyfin.local\nPlayback UX]
-  OPS[sonarr/radarr/lidarr/readarr/prowlarr\nOperator surface]
-  DL[qbittorrent/sabnzbd\nTransport surface]
-  HYG[maintainerr.local\nRetention UX]
+  subgraph SHELL[AppShell + Layout Primitives]
+    TOPBAR[TopBar]
+    SIDE["Sidebar (>= md)"]
+    BNAV["BottomNav (<= sm)"]
+    CMDK["CommandPalette (Cmd+K, cmdk)"]
+    USRMENU[UserMenu]
+    EBOUND[ErrorBoundary]
+    SKEL["SkeletonCard / SkeletonTable"]
+    CONN[ConnectionStatus]
+    PULL[PullToRefresh]
+  end
 
-  HOME --> REQUEST
-  HOME --> PLAY
-  HOME --> OPS
-  HOME --> HYG
-  REQUEST --> OPS
-  OPS --> DL
-  OPS --> PLAY
-  HYG --> PLAY
+  subgraph ROUTES[SPA Routes - media-stack-ui v1.1.0]
+    HOME["/ Home / dashboard"]
+    MI["/media-integrity\nStatusOverview, AdapterTable,\nNeedsReviewPanel,\nReconcileButton, EnforceButton,\nProgressBar shimmer"]
+    CONTENT["/content"]
+    LOGS["/logs"]
+    OPS["/ops"]
+    ROUTING["/routing"]
+    HOOKS["/webhooks"]
+    USERS["/users"]
+    ME["/me"]
+    PROFILE["/profile (placeholder)"]
+    SETTINGS["/settings (placeholder)"]
+    NF["$ 404 catchall\nLost your way / Go home / Back"]
+  end
+
+  subgraph PWA[PWA Surface]
+    INSTALL[Install Prompt]
+    SW["Service Worker\nNetworkOnly /api/*\nCacheFirst Geist"]
+    SHORTCUTS["3 Manifest Shortcuts:\nMedia Integrity / Logs / Reconcile now"]
+  end
+
+  subgraph AUTH[Auth Surface]
+    AUTHELIA["Authelia\n(issues cookie)"]
+    EXTAUTHZ["Envoy ext_authz\n(validates cookie)"]
+    FETCH["fetch credentials: same-origin\n(no client tokens, no localStorage)"]
+  end
+
+  SHELL --> ROUTES
+  CMDK -.quick nav.-> ROUTES
+  SHORTCUTS -.deep links.-> MI
+  SHORTCUTS -.deep links.-> LOGS
+  SHORTCUTS -.deep links.-> ROUTING
+
+  ROUTES -->|/api/*| FETCH
+  FETCH --> EXTAUTHZ
+  AUTHELIA --> EXTAUTHZ
+  EXTAUTHZ -->|verified| BACKEND[(media-stack-controller :9100)]
+
+  SW -.intercepts.-> FETCH
 
   style HOME fill:#fff2cc,stroke:#946200,stroke-width:2px
-  style REQUEST fill:#ffe0f0,stroke:#8f2f5d,stroke-width:2px
-  style PLAY fill:#dff7ff,stroke:#0b7285,stroke-width:2px
-  style HYG fill:#f3f0ff,stroke:#5f3dc4,stroke-width:2px
+  style MI fill:#ffe0f0,stroke:#8f2f5d,stroke-width:2px
+  style LOGS fill:#dff7ff,stroke:#0b7285,stroke-width:2px
+  style ROUTING fill:#f3f0ff,stroke:#5f3dc4,stroke-width:2px
+  style NF fill:#fde2e2,stroke:#9b1c1c,stroke-width:2px
+  style BACKEND fill:#eef2ff,stroke:#1f2937,stroke-width:2px

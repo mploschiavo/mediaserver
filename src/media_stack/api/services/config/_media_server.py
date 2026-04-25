@@ -8,6 +8,13 @@ from typing import Any
 import yaml
 
 from ._profile import ProfileService
+# hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
+# (app_config_service is a leaf module — no cycle)
+from media_stack.services.app_config_service import (
+    load_app_config,
+    update_app_config_section,
+)
+from ..registry import _find_services_dir
 import logging
 
 
@@ -19,7 +26,6 @@ class LibraryConfigService:
 
     def get_libraries(self) -> dict[str, Any]:
         """Return configured libraries from per-app config, profile, or contract defaults."""
-        from media_stack.services.app_config_service import load_app_config
         ms_id = self._profile.media_server_id()
         app_cfg = load_app_config(ms_id) if ms_id else {}
         if "libraries" in app_cfg:
@@ -30,7 +36,6 @@ class LibraryConfigService:
             return {"libraries": ms_overrides["libraries"], "source": "profile", "media_server": ms_id}
         libs = []
         try:
-            from ..registry import _find_services_dir
             svc_dir = _find_services_dir()
             svc_yaml = (svc_dir / f"{ms_id}.yaml") if svc_dir and ms_id else None
             if svc_yaml and svc_yaml.is_file():
@@ -47,7 +52,6 @@ class LibraryConfigService:
         ms_id = self._profile.media_server_id()
         if not ms_id:
             return {"error": "No media server configured"}
-        from media_stack.services.app_config_service import update_app_config_section
         result = update_app_config_section(ms_id, "libraries", libraries)
         if "error" not in result:
             result["libraries"] = libraries

@@ -64,6 +64,30 @@ def _dispatch_action(
     """Route an action to the appropriate handler."""
     from media_stack.cli.commands.job_framework import run_job
 
+    # Pull the trigger-source / actor metadata out of overrides
+    # before they get logged or passed onward. ``_source`` /
+    # ``_actor`` are control-plane fields, not user-set toggles —
+    # leaving them in overrides would cause _apply_overrides to
+    # log them and the action queue to surface them in the
+    # pending-actions UI. The HTTP handler stamps ``_source =
+    # "manual"`` and the auto-heal scheduler stamps
+    # ``_source = "auto-heal"``; cron entrypoints set
+    # ``_source = "cron:<mode>"`` directly via run_job's keyword.
+    source = overrides.pop("_source", None)
+    actor = overrides.pop("_actor_username", None)
+    # Backwards-compat: older POSTs only set ``_triggered_by``.
+    # Map ``user`` (or any non-system value) to ``manual`` so the
+    # history entry is still tagged with intent rather than the
+    # default ``unknown``.
+    if source is None:
+        legacy_trigger = str(overrides.get("_triggered_by", "")).strip().lower()
+        if legacy_trigger == "scheduler":
+            source = "scheduler"
+        elif legacy_trigger and legacy_trigger != "system":
+            source = "manual"
+            if not actor:
+                actor = legacy_trigger
+
     _apply_overrides(overrides)
     runtime_platform.log(f"[DEBUG] Action dispatch: name={action_name}, overrides={overrides}, "
                          f"config_root={os.environ.get('CONFIG_ROOT','?')}, "
@@ -77,7 +101,7 @@ def _dispatch_action(
     # prereqs, and runs the handler. A ratchet test
     # (``test_no_action_special_cases``) keeps this function from
     # accruing per-action elif branches again.
-    result = run_job(action_name)
+    result = run_job(action_name, source=source, actor=actor)
     if not result:
         raise ValueError(f"Unknown action: {action_name}")
     if result.get("error"):

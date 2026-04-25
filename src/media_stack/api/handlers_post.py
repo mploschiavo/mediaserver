@@ -19,9 +19,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from media_stack.api.actor_resolver import ActorResolver as _ActorResolver
 from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME,
     session_store as _session_store,
+    trusted_proxy_auth as _trusted_proxy_auth,
 )
 from media_stack.core.observability.security_counters import security_counters
 
@@ -36,8 +38,16 @@ from media_stack.core.edge.tls_certificate_service import (
 
 _dumps = _dumps_mod.dumps
 
+from media_stack.core.auth.authz import Actor
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.auth.rate_limiter import RateLimiter
+from media_stack.core.auth.users.audit_actions import (
+    LOGIN_BLOCKED,
+    LOGIN_FAILURE,
+    LOGIN_RATE_LIMITED,
+    LOGIN_SUCCESS,
+    LOGOUT,
+)
 from media_stack.core.auth.users.models import UserState
 from media_stack.core.auth.users.safe_yaml_edit import SafeYamlEditor
 from media_stack.core.auth.users.user_service import UserServiceError
@@ -92,6 +102,12 @@ from .services import config as config_svc
 from .services import disk as disk_svc
 from .services import health as health_svc
 from .services import ops as ops_svc
+from .services.media_integrity_handlers import (
+    _instance as _media_integrity_handlers,
+)
+from .services.security_post_handlers import (
+    _security_post_handlers,
+)
 
 if TYPE_CHECKING:
     from .server import ControllerAPIHandler
@@ -99,6 +115,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger("controller_api")
 
 _ERR_LEN = 99
+
+
+class _HandlerActorResolverFactory:
+    """Lazy wrapper so the test harness's ``patch(...)`` of
+    ``build_default_service`` / ``_trusted_proxy_auth`` still takes
+    effect. A bare ``ActorResolver(build_service=build_default_service)``
+    captures the import-time name and sails past the patched symbol.
+    """
+
+    def resolve(self, handler, body: dict) -> Actor:
+        impl = _ActorResolver(
+            build_service=build_default_service,
+            client_ip_for=_trusted_proxy_auth.client_ip,
+        )
+        return impl.resolve(handler, body or {})
+
+
+_actor_resolver = _HandlerActorResolverFactory()
 
 
 class _WebhookUrlValidator:
@@ -227,28 +261,68 @@ class _SessionLoginHelper:
     (``ms_session=...; HttpOnly; Secure; SameSite=Strict; Path=/``).
 
     POST /api/auth/logout reads the ms_session cookie and revokes it.
+
+    Every branch — success, bad-credentials, missing fields, rate
+    limited, IP/user banned (when a BanStore is wired) — writes an
+    entry to the hash-chained audit log. Forensic playback of a
+    break-in hinges on these entries existing; without them, only
+    the winning request was recorded, not the 10 000 brute-force
+    attempts that preceded it.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, ban_store=None) -> None:
         self._env = os.environ
+        # BanStore integration is a follow-up (tracked in
+        # docs/security-a11y-contract.md). When present, an IP or
+        # username listed as banned short-circuits the login with a
+        # LOGIN_BLOCKED audit entry. When ``None``, the check is a
+        # no-op. The injected object is expected to expose
+        # ``is_ip_banned(ip) -> bool`` and ``is_user_banned(u) -> bool``.
+        self._ban_store = ban_store
 
     def login(self, handler) -> None:
         body = handler._read_json_body() or {}
         username = str(body.get("username", "")).strip()
         password = str(body.get("password", ""))
         if not username or not password:
+            # Missing fields aren't strictly a "login failure" in the
+            # credential sense but are still a signal of form-tampering
+            # / malformed client code. Record as LOGIN_FAILURE with a
+            # reason so a dashboard can split them.
+            self._audit_login_event(
+                handler, LOGIN_FAILURE, username=username,
+                reason="missing_fields",
+            )
             handler._json_response(
                 HTTPStatus.BAD_REQUEST,
                 {"error": "username and password required"},
             )
             return
+        if self._ban_hit(username, handler):
+            self._audit_login_event(
+                handler, LOGIN_BLOCKED, username=username,
+                reason="ban_list",
+            )
+            handler._json_response(
+                HTTPStatus.FORBIDDEN,
+                {"error": "login blocked"},
+            )
+            return
         if not self._verify_credentials(username, password):
+            self._audit_login_event(
+                handler, LOGIN_FAILURE, username=username,
+                reason="bad_credentials",
+            )
             handler._json_response(
                 HTTPStatus.UNAUTHORIZED,
                 {"error": "invalid credentials"},
             )
             return
         _sess, plaintext = _session_store.create(owner_username=username)
+        self._audit_login_event(
+            handler, LOGIN_SUCCESS, username=username,
+            reason="cookie_mint",
+        )
         self._send_cookie_response(handler, plaintext, expires=False)
 
     def logout(self, handler) -> None:
@@ -259,11 +333,105 @@ class _SessionLoginHelper:
                 cookie_raw = headers.get("Cookie", "") or ""
             except AttributeError:
                 cookie_raw = ""
+        revoked_for: str = ""
         for chunk in cookie_raw.split(";"):
             k, _, v = chunk.strip().partition("=")
             if k == SESSION_COOKIE_NAME and v:
-                _session_store.revoke(v.strip())
+                token = v.strip()
+                # Resolve the owner BEFORE revoking so the audit
+                # entry can name the account even though ``revoke``
+                # returns only a bool.
+                try:
+                    sess = _session_store.get(token)
+                    if sess is not None:
+                        revoked_for = str(
+                            getattr(sess, "owner_username", "") or ""
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
+                _session_store.revoke(token)
+        self._audit_login_event(
+            handler, LOGOUT, username=revoked_for, reason="cookie_revoke",
+        )
         self._send_cookie_response(handler, "", expires=True)
+
+    def _ban_hit(self, username: str, handler) -> bool:
+        """True when the BanStore marks this IP or user as banned.
+
+        Without a BanStore wired in (the default), always returns
+        False — the upstream IP-lockout tracker still runs as a
+        coarser defence.
+        """
+        store = self._ban_store
+        if store is None:
+            return False
+        try:
+            ip = self._client_ip(handler)
+            if ip and getattr(store, "is_ip_banned", lambda _: False)(ip):
+                return True
+            if username and getattr(store, "is_user_banned", lambda _: False)(username):
+                return True
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] BanStore check raised: %s", exc,
+            )
+        return False
+
+    def _audit_login_event(
+        self, handler, action: str,
+        *, username: str, reason: str,
+    ) -> None:
+        """Write an AuthEvent to the hash-chained audit log.
+
+        Safe to call before / during / after the cookie mint. Never
+        raises — an audit-log outage must not be able to block a
+        login from going through."""
+        try:
+            svc = build_default_service()
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] audit_login_event: service build: %s", exc,
+            )
+            return
+        try:
+            actor_label = username if (
+                action == LOGIN_SUCCESS and username
+            ) else (username or "anonymous")
+            svc._audit.append(
+                actor=actor_label,
+                action=action,
+                target=username or "unknown",
+                result="ok" if action == LOGIN_SUCCESS else "fail",
+                ip=self._client_ip(handler),
+                user_agent=self._user_agent(handler),
+                detail={"reason": reason, "provider": "controller"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] audit_login_event: append raised: %s", exc,
+            )
+
+    @staticmethod
+    def _client_ip(handler) -> str:
+        """Real client IP for the login audit + ban paths.
+
+        Delegates to ``trusted_proxy_auth.client_ip`` so a login that
+        arrives via Envoy/Authelia gets banned at the attacker's IP,
+        not at the proxy hop. See
+        ``session_singletons.TrustedProxyAuth.client_ip`` for the
+        exact resolution rules and strict-fallback semantics.
+        """
+        try:
+            return _trusted_proxy_auth.client_ip(handler)
+        except Exception:  # noqa: BLE001
+            return ""
+
+    @staticmethod
+    def _user_agent(handler) -> str:
+        try:
+            return str(handler.headers.get("User-Agent", "") or "")
+        except Exception:  # noqa: BLE001
+            return ""
 
     def _verify_credentials(self, username: str, password: str) -> bool:
         """Check the username/password against the controller user store
@@ -545,7 +713,7 @@ class _UserMgmtPostHelper:
 
     def invite_revoke(self, path: str, actor: str) -> dict:
         invite_id = path.rsplit("/", 1)[-1]
-        return build_default_invite_service().revoke(invite_id, actor)
+        return build_default_invite_service().revoke(invite_id, actor=actor)
 
     def bulk_import(self, svc, body: dict, actor: str) -> dict:
         rows = body.get("users") or []
@@ -562,11 +730,19 @@ class _UserMgmtPostHelper:
                     role_slug=str(row.get("role_slug", "adult")).strip() or "adult",
                     actor=actor,
                 )
-                imported.append({
+                row_out: dict = {
                     "email": result["email"],
                     "user_id": result["id"],
-                    "generated_password": result.get("generated_password", ""),
-                })
+                }
+                # Service emits the ticket fields; copy them per-row
+                # so the caller's JSON has one retrieval handle per
+                # imported account. Absent when an admin-supplied
+                # password was provided for the row (no ticket needed).
+                if "password_ticket" in result:
+                    row_out["password_ticket"] = result["password_ticket"]
+                if "ticket_expires_at" in result:
+                    row_out["ticket_expires_at"] = result["ticket_expires_at"]
+                imported.append(row_out)
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{row.get('email', '')}: {str(exc)[:_ERR_LEN]}")
         return {"imported": imported, "errors": errors,
@@ -627,6 +803,31 @@ class _UserMgmtPostHelper:
 _user_mgmt_helper = _UserMgmtPostHelper()
 
 
+def _strip_legacy_plaintext(result: dict | None) -> dict | None:
+    """Belt-and-braces: swap any ``generated_password`` still present
+    in a service result for a single-use retrieval ticket.
+
+    The ticket swap happens inside ``UserWriteService`` now, so in
+    production this function is a near-no-op. It's retained because
+    (a) test fixtures commonly mock services to return the legacy
+    shape — we want the HTTP response to honor the NEW contract
+    regardless of the fixture — and (b) any future caller that
+    accidentally falls back to the pre-migration shape gets
+    automatically upgraded to a ticket instead of leaking plaintext.
+    """
+    if not isinstance(result, dict):
+        return result
+    plaintext = result.pop("generated_password", None)
+    if plaintext:
+        user_id = str(result.get("user_id") or result.get("id") or "")
+        if user_id:
+            from media_stack.core.auth.users.password_ticket_store import (
+                mint_ticket_fields as _mint_ticket_fields,
+            )
+            result.update(_mint_ticket_fields(user_id, str(plaintext)))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Main dispatcher
 # ---------------------------------------------------------------------------
@@ -673,6 +874,42 @@ class PostRequestHandler:
         # POST /api/tls/certificate/regenerate — self-signed refresh
         if handler.path == "/api/tls/certificate/regenerate":
             _tls_handler.regenerate(handler)
+            return
+
+        # Session-visibility security POSTs: admin session revoke, user
+        # / IP bans, emergency revoke, self-service endpoints. The
+        # helper reads the ``Idempotency-Key`` header and threads it
+        # into the BanStore + cache for retry-safety. Strip the query
+        # string for route-matching (defensive — these endpoints do not
+        # currently take query params, but the dispatch-strips-query
+        # ratchet enforces consistency across every handler).
+        _sec_path_clean = handler.path.split("?", 1)[0]
+        if _security_post_handlers.matches(_sec_path_clean):
+            self._handle_security_post(handler)
+            return
+
+        # Media-integrity POSTs: reconcile + enforce-config + resolve-review.
+        # Admin-only. Strip the query string before route-matching:
+        # ``reconcile?dry_run=1`` must match the same route as
+        # ``reconcile``. The dry_run flag is parsed from the raw path.
+        #
+        # As of v1.0.184 these now route through ``JobRunner.run`` so
+        # every invocation (manual or scheduled) lands in the unified
+        # ``/api/jobs.history[]`` feed. The response shape is preserved
+        # for backwards compat with UI v1.3.x — auth, idempotency, CSRF,
+        # admin gating, and concurrency (409) still flow through
+        # ``MediaIntegrityHandlers``; the wrapper shims the service
+        # call onto ``run_job(...)`` for the happy path so history is
+        # written exactly once.
+        _mi_path_clean = handler.path.split("?", 1)[0]
+        if _media_integrity_handlers.matches_post(_mi_path_clean):
+            if not self._preflight(handler):
+                return
+            body = handler._read_json_body() or {}
+            actor = _actor_resolver.resolve(handler, body)
+            _dispatch_media_integrity_via_job(
+                handler, handler.path, body, actor,
+            )
             return
 
         # POST /run -- backward-compatible alias
@@ -884,6 +1121,70 @@ class PostRequestHandler:
             handler._json_response(200, disk_svc.update_guardrails(body))
             return
 
+        # POST /api/guardrails/{id}            — update threshold
+        # POST /api/guardrails/{id}/test       — dry-run evaluation
+        # POST /api/guardrails/{id}/disable    — soft-disable toggle
+        if handler.path.startswith("/api/guardrails/"):
+            from media_stack.services import guardrails as _guardrails_pkg
+            registry = _guardrails_pkg.default()
+            tail = handler.path[len("/api/guardrails/"):]
+            parts = tail.split("/", 1)
+            rule_id = parts[0]
+            sub = parts[1] if len(parts) > 1 else ""
+            body = handler._read_json_body() or {}
+            if registry.get(rule_id) is None:
+                handler._json_response(
+                    404, {"error": f"unknown guardrail: {rule_id}"},
+                )
+                return
+            if sub == "":
+                threshold = body.get("threshold")
+                if not isinstance(threshold, dict):
+                    handler._json_response(
+                        400,
+                        {"error": "body must include 'threshold' object"},
+                    )
+                    return
+                handler._json_response(
+                    200, registry.update_threshold(rule_id, threshold),
+                )
+                return
+            if sub == "test":
+                # Dry-run: collect a fresh state and run only the
+                # named rule. The registry's evaluate_one returns a
+                # Trigger or None — we lift the relevant fields into
+                # the wire shape the UI displays.
+                from media_stack.services.guardrails.state_collector import (
+                    collect_state,
+                )
+                snapshot = collect_state()
+                snapshot[f"_threshold:{rule_id}"] = registry.threshold_for(rule_id)
+                trigger = registry.evaluate_one(rule_id, snapshot)
+                if trigger is None:
+                    handler._json_response(200, {
+                        "would_trigger": False,
+                        "severity": None,
+                        "current_value": None,
+                        "threshold": registry.threshold_for(rule_id),
+                    })
+                    return
+                handler._json_response(200, {
+                    "would_trigger": True,
+                    "severity": trigger.severity,
+                    "current_value": trigger.current_value,
+                    "threshold": trigger.threshold,
+                    "description": trigger.description,
+                })
+                return
+            if sub == "disable":
+                disabled = bool(body.get("disabled", True))
+                handler._json_response(
+                    200, registry.set_disabled(rule_id, disabled),
+                )
+                return
+            handler._json_response(404, {"error": "unknown guardrail subpath"})
+            return
+
         # POST /api/libraries
         if handler.path == "/api/libraries":
             body = handler._read_json_body()
@@ -1079,9 +1380,16 @@ class PostRequestHandler:
                     ms = SERVICE_MAP.get("jellyfin")
                     if ms and api_key:
                         import urllib.request
+                        # Jellyfin 10.11 accepts ``X-Emby-Token`` in
+                        # place of the legacy ``?api_key=`` query
+                        # parameter. Moving the credential into a
+                        # header keeps it out of access logs and
+                        # proxy telemetry. See
+                        # tests/unit/test_api_key_not_in_url_query_ratchet.py
                         urllib.request.urlopen(urllib.request.Request(
-                            f"http://{ms.host}:{ms.port}/Library/Refresh?api_key={api_key}",
+                            f"http://{ms.host}:{ms.port}/Library/Refresh",
                             method="POST",
+                            headers={"X-Emby-Token": api_key},
                         ), timeout=5)
                         _rp.log(f"[OK] Jellyfin scan triggered by arr webhook ({event})")
                 except Exception as exc:
@@ -1236,12 +1544,40 @@ class PostRequestHandler:
 
         handler._json_response(404, {"error": "not found"})
 
+    def _handle_security_post(
+        self, handler: ControllerAPIHandler,
+    ) -> None:
+        """Dispatch session-visibility POST endpoints.
+
+        The ``Idempotency-Key`` request header is honoured by
+        ``SecurityPostHandlers.dispatch`` via the shared
+        :class:`IdempotencyCache`; a repeat within TTL returns the
+        cached response body without re-firing any side effect. The
+        literal ``handler.headers.get("Idempotency-Key", "")`` is
+        read inside ``SecurityPostHandlers._idem_key`` — the
+        idempotency ratchet's AST scan accepts any receiver of
+        ``.headers.get("Idempotency-Key", ...)``.
+        """
+        if not self._preflight(handler):
+            return
+        body = handler._read_json_body() or {}
+        actor = _actor_resolver.resolve(handler, body)
+        _security_post_handlers.dispatch(
+            handler, handler.path, body, actor,
+        )
+
     def _handle_user_mgmt(self, handler: ControllerAPIHandler) -> None:
         """Dispatch user-management POST endpoints."""
         if not self._preflight(handler):
             return
         body = handler._read_json_body()
-        actor = str(body.get("_actor", "") or "controller-ui")
+        # Resolve is_admin from the caller's role rather than passing a
+        # blanket True. The resolver also plumbs the trusted-proxy
+        # client IP and user-agent onto the Actor so downstream audit
+        # entries tie back to the real client, not the Envoy hop. Legacy
+        # bootstrap (env-var admin, missing role catalog) falls back to
+        # is_admin=True — see ActorResolver.resolve.
+        actor = _actor_resolver.resolve(handler, body or {})
         svc = build_default_service()
         try:
             result = self._dispatch_user_mgmt(handler.path, svc, body, actor)
@@ -1269,6 +1605,14 @@ class PostRequestHandler:
         client_id = self._client_ip(handler)
         if not _global_post_limiter.allow(client_id=client_id,
                                            bucket="global-post"):
+            # Audit login-path rate limiting specifically so brute-
+            # force attempts that trip the global bucket still show up
+            # as LOGIN_RATE_LIMITED in the auth-event timeline.
+            if handler.path == "/api/auth/login":
+                _session_login_helper._audit_login_event(
+                    handler, LOGIN_RATE_LIMITED,
+                    username="", reason="global_post_bucket",
+                )
             handler._json_response(
                 HTTPStatus.TOO_MANY_REQUESTS,
                 {"error": "rate limit exceeded; slow down"},
@@ -1286,10 +1630,18 @@ class PostRequestHandler:
         return True
 
     def _client_ip(self, handler) -> str:
-        addr = getattr(handler, "client_address", None)
-        if addr and len(addr) >= 1:
-            return str(addr[0])
-        return "-"
+        """Per-IP bucket key for the global POST + user-mgmt rate
+        limiters. Uses the trusted-proxy resolver so an attacker
+        behind Envoy doesn't share a bucket with every other client
+        on the proxy hop (which would either lock out everyone or
+        let them all slip under the limit at once).
+        """
+        ip = ""
+        try:
+            ip = _trusted_proxy_auth.client_ip(handler)
+        except Exception:  # noqa: BLE001
+            ip = ""
+        return ip or "-"
 
     def _preflight(self, handler) -> bool:
         # User-mgmt-specific tighter limit (CSRF already handled globally).
@@ -1415,8 +1767,8 @@ class PostRequestHandler:
                 return False
         return True
 
-    def _user_create(self, svc, body: dict, actor: str) -> dict:
-        return svc.create_user(
+    def _user_create(self, svc, body: dict, actor: Actor) -> dict:
+        result = svc.create_user(
             email=str(body.get("email", "")).strip(),
             username=str(body.get("username", "")).strip(),
             display_name=str(body.get("display_name", "")).strip(),
@@ -1424,8 +1776,9 @@ class PostRequestHandler:
             password=str(body.get("password", "") or ""),
             actor=actor,
         )
+        return _strip_legacy_plaintext(result) or {}
 
-    def _user_action(self, path: str, svc, body: dict, actor: str) -> dict | None:
+    def _user_action(self, path: str, svc, body: dict, actor: Actor) -> dict | None:
         parts = path.split("/")
         if len(parts) < 4:
             raise UserServiceError("user id required")
@@ -1438,8 +1791,12 @@ class PostRequestHandler:
                 user_id, str(body.get("role_slug", "")).strip(), actor=actor),
             "state": lambda: svc.set_state(
                 user_id, UserState(str(body.get("state", "active"))), actor=actor),
-            "reset-password": lambda: svc.reset_password(
-                user_id, password=str(body.get("password", "") or ""), actor=actor),
+            "reset-password": lambda: _strip_legacy_plaintext(
+                svc.reset_password(
+                    user_id, password=str(body.get("password", "") or ""),
+                    actor=actor,
+                ),
+            ),
             "delete": lambda: svc.delete_user(user_id, actor=actor),
             "revoke-sessions": lambda: _user_mgmt_helper.revoke_sessions(
                 svc, user_id, actor),
@@ -1515,3 +1872,247 @@ handle = _instance.handle
 _build_known_actions = _instance._build_known_actions
 _handle_service_api_key_post = _instance._handle_service_api_key_post
 KNOWN_ACTIONS = _build_known_actions()
+
+
+# ---------------------------------------------------------------------------
+# Media-integrity POST → Job framework wrapper
+# ---------------------------------------------------------------------------
+#
+# Backwards-compatible shim: the SPA still calls
+# ``POST /api/media-integrity/{reconcile,enforce-config,resolve-review}``
+# but every invocation now flows through ``JobRunner.run`` so the
+# unified ``/api/jobs.history[]`` reflects the run.
+#
+# The original handler (``MediaIntegrityHandlers``) still owns:
+#   - admin gating + 401/403 mapping
+#   - idempotency cache (Idempotency-Key header)
+#   - 409 mapping for ``MediaIntegrityInProgress``
+#   - body validation (``app``/``release_id``/winner-* for resolve-review)
+#
+# The shim plugs ``run_job`` between dispatch_post and the underlying
+# service method so the history line is written exactly once. The
+# response shape is preserved (raw service result on the happy path)
+# so the SPA's existing fetch handlers don't break.
+# ---------------------------------------------------------------------------
+
+_MI_PATH_TO_JOB = {
+    "/api/media-integrity/reconcile": "media-integrity:reconcile",
+    "/api/media-integrity/enforce-config": "media-integrity:enforce-config",
+    "/api/media-integrity/resolve-review": "media-integrity:resolve-review",
+}
+
+
+def _dispatch_media_integrity_via_job(handler, path, body, actor):
+    """Route a media-integrity POST through ``JobRunner`` while
+    preserving the legacy response shape.
+
+    Inlines the gating the legacy handler did (admin check,
+    idempotency cache, 409 mapping, body validation for
+    resolve-review), then dispatches the heavy work through
+    ``run_job(...)`` so the unified ``/api/jobs.history[]`` reflects
+    the call. The response body is the raw service payload (not the
+    JobRunner summary) so UI v1.3.x's existing fetch handlers don't
+    break.
+    """
+    from media_stack.cli.commands.job_framework import run_job
+    from media_stack.services.media_integrity.service import (
+        MediaIntegrityInProgress,
+    )
+
+    bare_path = path.split("?", 1)[0]
+    job_name = _MI_PATH_TO_JOB.get(bare_path)
+    if job_name is None:
+        # Defensive fall-through to the legacy handler (it returns 404).
+        _media_integrity_handlers.dispatch_post(handler, path, body, actor)
+        return
+
+    service = getattr(_media_integrity_handlers, "_service", None)
+    if service is None:
+        handler._json_response(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            {"error": "media-integrity service not configured"},
+        )
+        return
+
+    # Auth gating mirrors MediaIntegrityHandlers._require_admin.
+    if not getattr(actor, "is_admin", False):
+        handler._json_response(
+            HTTPStatus.FORBIDDEN, {"error": "admin required"},
+        )
+        return
+
+    # Idempotency cache reuse — the legacy handler's cache is the
+    # source of truth so repeat POSTs within TTL still replay the
+    # cached payload (with no JobRunner side effects).
+    idem_key = ""
+    headers_obj = getattr(handler, "headers", None)
+    if headers_obj is not None:
+        try:
+            idem_key = str(
+                headers_obj.get("Idempotency-Key", "") or "",
+            ).strip()
+        except Exception:
+            idem_key = ""
+    actor_label = getattr(actor, "audit_label", None) or "user"
+    cache = getattr(_media_integrity_handlers, "_cache", None)
+    if cache is not None and idem_key:
+        cached = cache.get(actor_label, idem_key)
+        if cached is not None:
+            handler._json_response(HTTPStatus.OK, cached)
+            return
+
+    # Branch on endpoint. ``reconcile`` honours ``?dry_run=1``: dry
+    # runs stay read-only (no JobRunner / no history entry) since
+    # the framework only owns committed runs.
+    raw_qs = path.partition("?")[2]
+    query = _parse_query_string(raw_qs)
+
+    try:
+        if bare_path == "/api/media-integrity/reconcile":
+            dry_run = query.get("dry_run", "") in ("1", "true", "yes")
+            if dry_run:
+                payload = service.reconcile(
+                    actor=actor_label, dry_run=True,
+                )
+            else:
+                payload = _run_mi_job_and_extract(
+                    run_job, job_name, actor_label, "reconcile",
+                )
+        elif bare_path == "/api/media-integrity/enforce-config":
+            payload = _run_mi_job_and_extract(
+                run_job, job_name, actor_label, "enforce",
+            )
+        elif bare_path == "/api/media-integrity/resolve-review":
+            payload = _resolve_review_via_job(
+                run_job, body or {}, actor_label,
+            )
+        else:  # pragma: no cover — _MI_PATH_TO_JOB guards this
+            handler._json_response(
+                HTTPStatus.NOT_FOUND, {"error": "not found"},
+            )
+            return
+    except MediaIntegrityInProgress:
+        handler._json_response(
+            HTTPStatus.CONFLICT, {"error": "already in progress"},
+        )
+        return
+    except ValueError as exc:
+        handler._json_response(
+            HTTPStatus.BAD_REQUEST, {"error": str(exc)[:_ERR_LEN]},
+        )
+        return
+
+    if cache is not None and idem_key:
+        cache.put(actor_label, idem_key, payload)
+    handler._json_response(HTTPStatus.OK, payload)
+
+
+def _parse_query_string(raw: str) -> dict:
+    """Minimal parser mirroring media_integrity_handlers' ``_parse_query``
+    — single-value pairs, last-write wins."""
+    if not raw:
+        return {}
+    from urllib.parse import parse_qsl
+    return {k: v for k, v in parse_qsl(raw, keep_blank_values=True)}
+
+
+def _run_mi_job_and_extract(
+    run_job_fn, job_name: str, actor_label: str, payload_key: str,
+):
+    """Invoke a media-integrity job via run_job and return the raw
+    service payload (legacy response shape).
+
+    Translates ``status: skipped`` with an "already in progress"
+    reason back into the ``MediaIntegrityInProgress`` exception so
+    the caller can map it to HTTP 409 — the legacy handler's
+    contract."""
+    from media_stack.services.media_integrity.service import (
+        MediaIntegrityInProgress,
+    )
+    result = run_job_fn(job_name, source="manual", actor=actor_label)
+    jobs = (result or {}).get("jobs") or {}
+    entry = jobs.get(job_name) or {}
+    if payload_key in entry:
+        return entry[payload_key]
+    status = entry.get("status")
+    if status in ("skipped", "prereq_not_met"):
+        skip_msg = entry.get("skipped") or entry.get("reason") or ""
+        if "already in progress" in str(skip_msg):
+            raise MediaIntegrityInProgress(job_name)
+        return {"status": "skipped", "reason": skip_msg}
+    if status == "error":
+        return {"error": entry.get("error", "job failed")}
+    # Fallback — unexpected shape. Surface the JobRunner summary so
+    # the caller has *something* to render.
+    return result
+
+
+def _resolve_review_via_job(run_job_fn, body: dict, actor_label: str):
+    """Validate body params, stash them on TLS, then run the job.
+
+    Mirrors MediaIntegrityHandlers._run_resolve_review's validation
+    so 400s come out before the job dispatches."""
+    app = str(body.get("app", "") or "").strip()
+    release_id = str(body.get("release_id", "") or "").strip()
+    if not app:
+        raise ValueError("app is required")
+    if not release_id:
+        raise ValueError("release_id is required")
+    winner_file_id = body.get("winner_file_id")
+    winner_sub_path = body.get("winner_sub_path")
+    if winner_file_id is None and winner_sub_path is None:
+        raise ValueError("winner_file_id or winner_sub_path required")
+    params = {
+        "_mi_review_app": app,
+        "_mi_review_release_id": release_id,
+        "_mi_review_winner_file_id": winner_file_id,
+        "_mi_review_winner_sub_path": winner_sub_path,
+        "_mi_review_release_kind": body.get("release_kind"),
+        "_mi_review_language": body.get("language"),
+        "_mi_review_forced": bool(body.get("forced", False)),
+        "_mi_review_hi": bool(body.get("hi", False)),
+    }
+    with _mi_review_params(params):
+        return _run_mi_job_and_extract(
+            run_job_fn,
+            "media-integrity:resolve-review",
+            actor_label,
+            "resolve_review",
+        )
+
+
+# Thread-local carrier for resolve-review parameters. The Job framework
+# constructs its own ``JobContext`` inside ``run_job``; we can't pass
+# kwargs through, so we stash them on a context-managed thread local
+# and have ``media_integrity_resolve_review`` read them off the active
+# JobContext at handler-call time.
+import contextlib as _contextlib
+import threading as _threading
+
+_MI_REVIEW_TLS = _threading.local()
+
+
+@_contextlib.contextmanager
+def _mi_review_params(params: dict):
+    """Stash resolve-review parameters for the duration of one
+    run_job invocation. The job handler
+    (``media_stack.services.media_integrity.job_handlers``) reads them
+    via the module-level helper rather than from JobContext attrs, so
+    no JobContext monkey-patching is needed. Reset on exit so a leak
+    between requests can't poison a later run."""
+    from media_stack.services.media_integrity import job_handlers as _jh
+    prev = getattr(_MI_REVIEW_TLS, "params", None)
+    _MI_REVIEW_TLS.params = dict(params)
+    _jh.set_review_params(dict(params))
+    try:
+        yield
+    finally:
+        if prev is None:
+            try:
+                del _MI_REVIEW_TLS.params
+            except AttributeError:
+                pass
+            _jh.set_review_params(None)
+        else:
+            _MI_REVIEW_TLS.params = prev
+            _jh.set_review_params(prev)

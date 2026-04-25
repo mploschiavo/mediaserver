@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 from media_stack.api.services.registry import service_internal_url
+from media_stack.core.http import HTTP_2XX_ACCEPTED_STATUSES, HTTP_OK
 
 
 class OpenSeerrApiOps:
@@ -26,7 +27,7 @@ class OpenSeerrApiOps:
         status, current, body = svc.http_request(
             jellyseerr_url, "/api/v1/settings/main", api_key=jellyseerr_key
         )
-        if status != 200 or not isinstance(current, dict):
+        if status != HTTP_OK or not isinstance(current, dict):
             raise RuntimeError(f"Jellyseerr: failed to read main settings (HTTP {status}): {body}")
 
         desired_type = int(media_server_type)
@@ -41,7 +42,7 @@ class OpenSeerrApiOps:
             method="POST",
             payload={"mediaServerType": desired_type},
         )
-        if status in (200, 201, 202):
+        if status in HTTP_2XX_ACCEPTED_STATUSES:
             svc.log(f"[OK] Jellyseerr: set mediaServerType={desired_type}")
             return
 
@@ -83,7 +84,7 @@ class OpenSeerrApiOps:
             method="POST",
             payload=payload,
         )
-        if status in (200, 201, 202):
+        if status in HTTP_2XX_ACCEPTED_STATUSES:
             svc.log("[OK] Jellyseerr: configured Jellyfin connection")
             return
 
@@ -116,7 +117,7 @@ class OpenSeerrApiOps:
             method="POST",
             payload=test_payload,
         )
-        if status != 200 or not isinstance(test_data, dict):
+        if status != HTTP_OK or not isinstance(test_data, dict):
             raise RuntimeError(f"Jellyseerr: Radarr connection test failed (HTTP {status}): {body}")
 
         profiles = test_data.get("profiles") or []
@@ -165,7 +166,7 @@ class OpenSeerrApiOps:
         status, existing, body = svc.http_request(
             jellyseerr_url, "/api/v1/settings/radarr", api_key=jellyseerr_key
         )
-        if status != 200 or not isinstance(existing, list):
+        if status != HTTP_OK or not isinstance(existing, list):
             raise RuntimeError(f"Jellyseerr: failed to list Radarr settings (HTTP {status}): {body}")
 
         current = svc.find_existing_servarr(
@@ -188,7 +189,7 @@ class OpenSeerrApiOps:
                 method="PUT",
                 payload=payload,
             )
-            if status in (200, 201, 202):
+            if status in HTTP_2XX_ACCEPTED_STATUSES:
                 svc.log("[OK] Jellyseerr: updated Radarr service mapping")
                 return
             raise RuntimeError(f"Jellyseerr: failed updating Radarr mapping (HTTP {status}): {body}")
@@ -200,7 +201,7 @@ class OpenSeerrApiOps:
             method="POST",
             payload=payload,
         )
-        if status in (200, 201, 202):
+        if status in HTTP_2XX_ACCEPTED_STATUSES:
             svc.log("[OK] Jellyseerr: created Radarr service mapping")
             return
         raise RuntimeError(f"Jellyseerr: failed creating Radarr mapping (HTTP {status}): {body}")
@@ -232,7 +233,7 @@ class OpenSeerrApiOps:
             method="POST",
             payload=test_payload,
         )
-        if status != 200 or not isinstance(test_data, dict):
+        if status != HTTP_OK or not isinstance(test_data, dict):
             raise RuntimeError(f"Jellyseerr: Sonarr connection test failed (HTTP {status}): {body}")
 
         profiles = test_data.get("profiles") or []
@@ -326,7 +327,7 @@ class OpenSeerrApiOps:
         status, existing, body = svc.http_request(
             jellyseerr_url, "/api/v1/settings/sonarr", api_key=jellyseerr_key
         )
-        if status != 200 or not isinstance(existing, list):
+        if status != HTTP_OK or not isinstance(existing, list):
             raise RuntimeError(f"Jellyseerr: failed to list Sonarr settings (HTTP {status}): {body}")
 
         current = svc.find_existing_servarr(
@@ -349,7 +350,7 @@ class OpenSeerrApiOps:
                 method="PUT",
                 payload=payload,
             )
-            if status in (200, 201, 202):
+            if status in HTTP_2XX_ACCEPTED_STATUSES:
                 svc.log("[OK] Jellyseerr: updated Sonarr service mapping")
                 return
             raise RuntimeError(f"Jellyseerr: failed updating Sonarr mapping (HTTP {status}): {body}")
@@ -361,7 +362,7 @@ class OpenSeerrApiOps:
             method="POST",
             payload=payload,
         )
-        if status in (200, 201, 202):
+        if status in HTTP_2XX_ACCEPTED_STATUSES:
             svc.log("[OK] Jellyseerr: created Sonarr service mapping")
             return
         raise RuntimeError(f"Jellyseerr: failed creating Sonarr mapping (HTTP {status}): {body}")

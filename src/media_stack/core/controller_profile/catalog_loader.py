@@ -46,21 +46,79 @@ class CatalogLoaderService:
     @lru_cache(maxsize=8)
     def _load_bootstrap_profile_catalog_cached(path_token: str) -> Any:
         from media_stack.core.controller_profile.models import ControllerProfileCatalog
-    
+
+        payload = CatalogLoaderService._read_catalog_payload(path_token)
+        CatalogLoaderService._enrich_apps_from_registry(payload)
+
+        auth_providers, auth_disabled_provider, auth_provider_middleware_defaults = (
+            CatalogLoaderService._parse_auth_section(payload)
+        )
+        app_keys, app_aliases = CatalogLoaderService._parse_apps_section(payload)
+        install_profiles = CatalogLoaderService._parse_install_profiles(
+            payload, app_keys, app_aliases,
+        )
+        bool_true_tokens, bool_false_tokens = CatalogLoaderService._parse_boolean_tokens(payload)
+        chaos = CatalogLoaderService._parse_chaos_defaults(
+            payload, bool_true_tokens, bool_false_tokens,
+        )
+        live_tv = CatalogLoaderService._parse_live_tv_defaults(payload)
+
+        return ControllerProfileCatalog(
+            deployment_aliases=_normalize_alias_dict(
+                payload.get("deployment_aliases"), field_name="deployment_aliases",
+            ),
+            purpose_values=_normalize_string_list(
+                payload.get("purpose_values"), field_name="purpose_values",
+            ),
+            route_strategy_aliases=_normalize_alias_dict(
+                payload.get("route_strategy_aliases"), field_name="route_strategy_aliases",
+            ),
+            auth_providers=auth_providers,
+            auth_disabled_provider=auth_disabled_provider,
+            auth_provider_middleware_defaults=auth_provider_middleware_defaults,
+            app_keys=app_keys,
+            app_aliases=app_aliases,
+            install_profiles=install_profiles,
+            bool_true_tokens=bool_true_tokens,
+            bool_false_tokens=bool_false_tokens,
+            chaos_default_enabled=chaos["enabled"],
+            chaos_default_duration_minutes=chaos["duration_minutes"],
+            chaos_default_interval_seconds=chaos["interval_seconds"],
+            chaos_allowed_actions=chaos["allowed_actions"],
+            chaos_default_actions=chaos["default_actions"],
+            live_tv_tuner_urls=live_tv["tuner_urls"],
+            live_tv_guide_urls=live_tv["guide_urls"],
+            live_tv_default_program_icon_url=live_tv["default_program_icon_url"],
+        )
+
+    @staticmethod
+    def _read_catalog_payload(path_token: str) -> dict:
+        """Read and validate the catalog YAML, falling back to the image path.
+
+        Encapsulates the file-existence probe and YAML-shape validation
+        so the main loader can treat the payload as a guaranteed dict.
+        """
         path = Path(path_token)
         if not path.exists():
             # Try image-embedded path
             path = Path("/opt/media-stack/contracts/media-stack.catalog.yaml")
         if not path.exists():
             raise ValueError(f"Bootstrap profile catalog file not found: {path}")
-    
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
         if payload is None:
             payload = {}
         if not isinstance(payload, dict):
             raise ValueError("Bootstrap profile catalog must contain an object at root")
-    
-        # Enrich apps.keys from service registry if available
+        return payload
+
+    @staticmethod
+    def _enrich_apps_from_registry(payload: dict) -> None:
+        """Merge live registry app IDs into catalog ``apps.keys``.
+
+        Keeps the YAML-bound catalog in sync with runtime-registered
+        services without requiring every new service to be re-added to
+        the bootstrap YAML manually.
+        """
         try:
             from media_stack.api.services.registry import SERVICES
             registry_app_keys = [s.id for s in SERVICES]
@@ -71,22 +129,17 @@ class CatalogLoaderService:
                     apps_section.setdefault("keys", []).append(key)
         except Exception as exc:
             log_swallowed(exc)
-    
-        deployment_aliases = _normalize_alias_dict(
-            payload.get("deployment_aliases"),
-            field_name="deployment_aliases",
-        )
-        purpose_values = _normalize_string_list(
-            payload.get("purpose_values"),
-            field_name="purpose_values",
-        )
-        route_strategy_aliases = _normalize_alias_dict(
-            payload.get("route_strategy_aliases"),
-            field_name="route_strategy_aliases",
-        )
+
+    @staticmethod
+    def _parse_auth_section(payload: dict) -> tuple[tuple[str, ...], str, dict]:
+        """Return (auth_providers, auth_disabled_provider, middleware_defaults).
+
+        Validates cross-references (disabled provider must be in the
+        list; middleware-default keys must exist) in one place instead
+        of scattering the raise-points across the loader.
+        """
         auth_providers = _normalize_string_list(
-            payload.get("auth_providers"),
-            field_name="auth_providers",
+            payload.get("auth_providers"), field_name="auth_providers",
         )
         auth_disabled_provider = str(payload.get("auth_disabled_provider") or "").strip().lower()
         if not auth_disabled_provider:
@@ -111,17 +164,20 @@ class CatalogLoaderService:
                         f"'{provider_key}'"
                     )
                 normalized_auth_defaults[provider_key] = str(raw_middleware or "").strip()
-        auth_provider_middleware_defaults = merge_auth_provider_defaults(
+        return auth_providers, auth_disabled_provider, merge_auth_provider_defaults(
             provider_keys=auth_providers,
             catalog_defaults=normalized_auth_defaults,
         )
-    
+
+    @staticmethod
+    def _parse_apps_section(payload: dict) -> tuple[tuple[str, ...], dict[str, str]]:
+        """Return (app_keys, app_aliases) from the ``apps`` object."""
         apps_payload = payload.get("apps")
         if not isinstance(apps_payload, dict):
             raise ValueError("apps must be an object in bootstrap profile catalog")
         app_keys = _normalize_string_list(apps_payload.get("keys"), field_name="apps.keys")
         app_key_set = set(app_keys)
-    
+
         raw_aliases = apps_payload.get("aliases")
         app_aliases: dict[str, str] = {}
         if raw_aliases is not None:
@@ -138,30 +194,39 @@ class CatalogLoaderService:
                         "Targets must be present in apps.keys."
                     )
                 app_aliases[alias_key] = alias_target
-    
+        return app_keys, app_aliases
+
+    @staticmethod
+    def _parse_install_profiles(
+        payload: dict,
+        app_keys: tuple[str, ...],
+        app_aliases: dict[str, str],
+    ) -> dict[str, tuple[str, ...]]:
+        """Return the install-profile map (profile_name → enabled app tuple).
+
+        Supports ``*`` expansion, alias resolution, and deduping — moving
+        this out of the loader keeps the tricky profile-shape branching
+        isolated.
+        """
         install_profiles_payload = payload.get("install_profiles")
         if not isinstance(install_profiles_payload, dict) or not install_profiles_payload:
             raise ValueError("install_profiles must be a non-empty object")
-    
+        app_key_set = set(app_keys)
         install_profiles: dict[str, tuple[str, ...]] = {}
         for raw_profile_name, raw_profile_spec in install_profiles_payload.items():
             profile_name = str(raw_profile_name or "").strip().lower()
             if not profile_name:
                 continue
-    
             enabled_raw: Any
             if isinstance(raw_profile_spec, dict):
                 enabled_raw = raw_profile_spec.get("enabled_apps")
             else:
                 enabled_raw = raw_profile_spec
-    
             if isinstance(enabled_raw, str) and enabled_raw.strip() == "*":
                 install_profiles[profile_name] = app_keys
                 continue
-    
             if not isinstance(enabled_raw, list):
                 raise ValueError(f"install_profiles.{profile_name}.enabled_apps must be a list or '*'")
-    
             enabled_list: list[str] = []
             seen: set[str] = set()
             for raw_app in enabled_raw:
@@ -178,7 +243,11 @@ class CatalogLoaderService:
                 seen.add(app_name)
                 enabled_list.append(app_name)
             install_profiles[profile_name] = tuple(enabled_list)
-    
+        return install_profiles
+
+    @staticmethod
+    def _parse_boolean_tokens(payload: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return (true_tokens, false_tokens) from the catalog's token list."""
         boolean_tokens = payload.get("boolean_tokens")
         if not isinstance(boolean_tokens, dict):
             raise ValueError("boolean_tokens must be an object")
@@ -188,103 +257,92 @@ class CatalogLoaderService:
         false_tokens_raw = boolean_tokens.get("false")
         if false_tokens_raw is None:
             false_tokens_raw = boolean_tokens.get(False)
-        bool_true_tokens = _normalize_string_list(
-            true_tokens_raw,
-            field_name="boolean_tokens.true",
+        return (
+            _normalize_string_list(true_tokens_raw, field_name="boolean_tokens.true"),
+            _normalize_string_list(false_tokens_raw, field_name="boolean_tokens.false"),
         )
-        bool_false_tokens = _normalize_string_list(
-            false_tokens_raw,
-            field_name="boolean_tokens.false",
-        )
-    
-        chaos_defaults_payload = payload.get("chaos_defaults")
-        if chaos_defaults_payload is None:
-            chaos_defaults_payload = {}
+
+    @staticmethod
+    def _parse_chaos_defaults(
+        payload: dict,
+        bool_true_tokens: tuple[str, ...],
+        bool_false_tokens: tuple[str, ...],
+    ) -> dict[str, Any]:
+        """Return the chaos-defaults block, bounded and with actions normalized.
+
+        Clipped into its own helper because the min/max validation on
+        each numeric field is policy, not orchestration — the loader
+        should only care that it got a well-formed block back.
+        """
+        chaos_defaults_payload = payload.get("chaos_defaults") or {}
         if not isinstance(chaos_defaults_payload, dict):
             raise ValueError("chaos_defaults must be an object when provided")
-        chaos_default_enabled = _as_bool_with_tokens(
-            chaos_defaults_payload.get("enabled"),
-            default=False,
-            true_tokens=bool_true_tokens,
-            false_tokens=bool_false_tokens,
-        )
-        chaos_default_duration_minutes = _to_positive_int(
-            chaos_defaults_payload.get("duration_minutes"),
-            default=5,
-            field_name="chaos_defaults.duration_minutes",
-            minimum=1,
-            maximum=120,
-        )
-        chaos_default_interval_seconds = _to_positive_int(
-            chaos_defaults_payload.get("interval_seconds"),
-            default=60,
-            field_name="chaos_defaults.interval_seconds",
-            minimum=0,
-            maximum=3600,
-        )
-        chaos_allowed_actions = _normalize_string_list_allow_empty(
+        allowed = _normalize_string_list_allow_empty(
             chaos_defaults_payload.get("allowed_actions"),
             field_name="chaos_defaults.allowed_actions",
             default=("restart_container", "pause_container", "network_disconnect"),
         )
-        chaos_default_actions = _normalize_chaos_actions(
-            chaos_defaults_payload.get("actions"),
-            allowed=chaos_allowed_actions,
-            default=chaos_allowed_actions,
-        )
-    
+        return {
+            "enabled": _as_bool_with_tokens(
+                chaos_defaults_payload.get("enabled"),
+                default=False,
+                true_tokens=bool_true_tokens,
+                false_tokens=bool_false_tokens,
+            ),
+            "duration_minutes": _to_positive_int(
+                chaos_defaults_payload.get("duration_minutes"),
+                default=5,
+                field_name="chaos_defaults.duration_minutes",
+                minimum=1, maximum=120,
+            ),
+            "interval_seconds": _to_positive_int(
+                chaos_defaults_payload.get("interval_seconds"),
+                default=60,
+                field_name="chaos_defaults.interval_seconds",
+                minimum=0, maximum=3600,
+            ),
+            "allowed_actions": allowed,
+            "default_actions": _normalize_chaos_actions(
+                chaos_defaults_payload.get("actions"),
+                allowed=allowed,
+                default=allowed,
+            ),
+        }
+
+    @staticmethod
+    def _parse_live_tv_defaults(payload: dict) -> dict[str, Any]:
+        """Return tuner/guide/icon URLs from ``live_tv_defaults`` (all required)."""
         live_tv_defaults = payload.get("live_tv_defaults")
         if not isinstance(live_tv_defaults, dict):
             raise ValueError("live_tv_defaults must be an object")
-        live_tv_tuner_urls = _coerce_url_list(
+        tuner_urls = _coerce_url_list(
             live_tv_defaults.get("tuner_urls")
             or live_tv_defaults.get("tuner_url")
             or live_tv_defaults.get("playlists")
         )
-        live_tv_guide_urls = _coerce_url_list(
+        guide_urls = _coerce_url_list(
             live_tv_defaults.get("guide_urls")
             or live_tv_defaults.get("guide_url")
             or live_tv_defaults.get("guides")
         )
-        live_tv_default_program_icon_urls = _coerce_url_list(
+        icon_urls = _coerce_url_list(
             live_tv_defaults.get("default_program_icon_urls")
             or live_tv_defaults.get("default_program_icon_url")
         )
-        live_tv_default_program_icon_url = (
-            str(live_tv_default_program_icon_urls[0]).strip()
-            if live_tv_default_program_icon_urls
-            else ""
-        )
-        if not live_tv_tuner_urls:
+        default_program_icon_url = str(icon_urls[0]).strip() if icon_urls else ""
+        if not tuner_urls:
             raise ValueError("live_tv_defaults must define at least one tuner URL")
-        if not live_tv_guide_urls:
+        if not guide_urls:
             raise ValueError("live_tv_defaults must define at least one guide URL")
-        if not live_tv_default_program_icon_url:
+        if not default_program_icon_url:
             raise ValueError(
                 "live_tv_defaults.default_program_icon_urls (or default_program_icon_url) is required"
             )
-    
-        return ControllerProfileCatalog(
-            deployment_aliases=deployment_aliases,
-            purpose_values=purpose_values,
-            route_strategy_aliases=route_strategy_aliases,
-            auth_providers=auth_providers,
-            auth_disabled_provider=auth_disabled_provider,
-            auth_provider_middleware_defaults=auth_provider_middleware_defaults,
-            app_keys=app_keys,
-            app_aliases=app_aliases,
-            install_profiles=install_profiles,
-            bool_true_tokens=bool_true_tokens,
-            bool_false_tokens=bool_false_tokens,
-            chaos_default_enabled=chaos_default_enabled,
-            chaos_default_duration_minutes=chaos_default_duration_minutes,
-            chaos_default_interval_seconds=chaos_default_interval_seconds,
-            chaos_allowed_actions=chaos_allowed_actions,
-            chaos_default_actions=chaos_default_actions,
-            live_tv_tuner_urls=live_tv_tuner_urls,
-            live_tv_guide_urls=live_tv_guide_urls,
-            live_tv_default_program_icon_url=live_tv_default_program_icon_url,
-        )
+        return {
+            "tuner_urls": tuner_urls,
+            "guide_urls": guide_urls,
+            "default_program_icon_url": default_program_icon_url,
+        }
     
     
     def load_bootstrap_profile_catalog(self, path: Path | None = None) -> Any:

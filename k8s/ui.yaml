@@ -1,0 +1,214 @@
+# media-stack-ui — production-grade Kubernetes manifests.
+#
+# This file ships the static dashboard / single-page UI container
+# (nginx-on-alpine, non-root, listens on :8080). It is the user-
+# facing front-end that Envoy fronts at /app/media-stack-ui/*.
+# The container reverse-proxies its own /api/* requests to the
+# media-stack-controller Service at :9100 (see API_UPSTREAM env).
+#
+# Resources defined here:
+#   - ServiceAccount (no RBAC; UI does not call the K8s API)
+#   - Deployment (2 replicas, RollingUpdate, anti-affinity, probes,
+#     hardened securityContext)
+#   - Service (ClusterIP — Envoy is the only ingress path)
+#   - PodDisruptionBudget (minAvailable: 1 — paired with 2 replicas
+#     and maxUnavailable: 0 for zero-downtime voluntary evictions)
+#   - NetworkPolicy (ingress from in-namespace pods + kubelet,
+#     egress to controller:9100 + DNS)
+#
+# Image is published as harbor.iomio.io/library/media-stack-ui;
+# tag is pinned via kustomize ``images:`` block, mirroring the
+# controller's release flow.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+  labels:
+    app: media-stack-ui
+  annotations:
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: media-stack-ui
+  template:
+    metadata:
+      labels:
+        app: media-stack-ui
+    spec:
+      serviceAccountName: media-stack-ui
+      imagePullSecrets:
+        - name: harbor-pull
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        fsGroup: 101
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: media-stack-ui
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: ui
+          image: harbor.iomio.io/library/media-stack-ui:v1.3.3
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            # Upstream the nginx /api/* reverse-proxy points at.
+            # Set explicitly (rather than relying on the image
+            # default) so operators can grep this manifest to see
+            # the wiring without inspecting the image.
+            - name: API_UPSTREAM
+              value: "media-stack-controller:9100"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            # nginx writes to /var/cache/nginx and /var/run; flipping
+            # readOnlyRootFilesystem to true requires emptyDir mounts
+            # for both paths. Left false intentionally — revisit when
+            # the image is rebuilt with explicit writable tmpfs vols.
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+  labels:
+    app: media-stack-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: media-stack-ui
+  ports:
+    # Service port matches container port (8080) so the Envoy
+    # generator's _DEFAULT_SERVICE_PORTS map (which is shared with
+    # the compose path) routes correctly in both deployments.
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: media-stack-ui
+---
+# NetworkPolicy — zero-trust ingress/egress for the UI pod.
+# microk8s ships calico by default which honours NetworkPolicy.
+# If a cluster is running a CNI without policy support (flannel
+# vanilla, etc.) this object is silently no-op and harmless.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: media-stack-ui
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Any pod in the media-stack namespace (Envoy in particular)
+    # may hit :8080. Kubelet probes originate from the node and
+    # are not subject to namespace-scoped selectors, so we also
+    # allow the host network range; calico treats kubelet probes
+    # as host-network traffic which matches an empty ``from``.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: media-stack
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Kubelet healthcheck path — empty ``from`` allows host-network
+    # traffic (node IPs) which is where kubelet probes originate.
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # API reverse-proxy upstream.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: media-stack-controller
+      ports:
+        - protocol: TCP
+          port: 9100
+    # DNS — kube-dns / coredns lives in kube-system.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

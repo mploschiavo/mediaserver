@@ -1,0 +1,6 @@
+ROUTE_FILE: src/routes/jobs.tsx
+ROUTE_NAME: JobsRoute
+ROUTE_PATH: /jobs
+SIDEBAR_SECTION: Observability
+SIDEBAR_LABEL: Jobs
+SIDEBAR_ICON: Workflow

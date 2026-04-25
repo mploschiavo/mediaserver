@@ -1,0 +1,6 @@
+ROUTE_FILE: src/routes/security.tsx
+ROUTE_NAME: SecurityRoute
+ROUTE_PATH: /security
+SIDEBAR_SECTION: Security
+SIDEBAR_LABEL: Security signals
+SIDEBAR_ICON: ShieldAlert

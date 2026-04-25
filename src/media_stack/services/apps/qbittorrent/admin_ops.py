@@ -40,13 +40,14 @@ class QbittorrentAdminOps:
         except Exception as exc:
             log_swallowed(exc)
 
+        qbit_base = f"http://{svc.host}:{svc.port}"
         for try_pw in passwords_to_try:
             try:
                 cj = http.cookiejar.CookieJar()
                 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
                 login_data = f"username={username}&password={try_pw}".encode()
                 req = urllib.request.Request(
-                    f"http://{svc.host}:{svc.port}/api/v2/auth/login", data=login_data,
+                    f"{qbit_base}/api/v2/auth/login", data=login_data,
                 )
                 try:
                     resp = opener.open(req, timeout=5)
@@ -62,7 +63,7 @@ class QbittorrentAdminOps:
                     continue
                 prefs = json.dumps({"web_ui_password": new_password})
                 req2 = urllib.request.Request(
-                    f"http://{svc.host}:{svc.port}/api/v2/app/setPreferences",
+                    f"{qbit_base}/api/v2/app/setPreferences",
                     data=("json=" + urllib.parse.quote(prefs)).encode(),
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )

@@ -2,13 +2,29 @@
 
 from __future__ import annotations
 
-import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from urllib import parse
 
 import yaml
+
+from .controller_config_policy_helpers import (
+    _apply_discovery_auto_flags,
+    _homepage_direct_host,
+    _homepage_host_token,
+    _host_name,
+    _host_with_port,
+    _normalize_port,
+    _normalize_prefix,
+    _path_prefix_url_base,
+    _public_port,
+    _set_bool_path,
+    _set_enabled,
+    _slugify,
+    _tokenize,
+    _url_host,
+    _walk_path,
+)
 
 _POLICY_CATALOG_PATH = (
     Path(__file__).resolve().parents[5] / "contracts" / "media-stack.bootstrap.policy.yaml"
@@ -18,15 +34,6 @@ _IMAGE_POLICY_PATH = Path("/opt/media-stack/contracts/media-stack.bootstrap.poli
 
 class StackControllerConfigPolicy:
 
-    @staticmethod
-    def _tokenize(value: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
-
-    @staticmethod
-    def _slugify(value: str) -> str:
-        """Lowercase slug preserving hyphens — used for URL path segments."""
-        return re.sub(r"[^a-z0-9\-]+", "", str(value or "").strip().lower()).strip("-")
-
     def parse_selected_apps_csv(self, value: str) -> set[str]:
         selected: set[str] = set()
         for raw in str(value or "").split(","):
@@ -34,41 +41,6 @@ class StackControllerConfigPolicy:
             if token:
                 selected.add(token)
         return selected
-
-    @staticmethod
-    def _set_enabled(section: dict[str, Any] | None, enabled: bool) -> None:
-        if not isinstance(section, dict):
-            return
-        if "enabled" in section:
-            section["enabled"] = bool(enabled)
-
-    @staticmethod
-    def _walk_path(cfg: dict[str, object], path: str) -> dict[str, Any] | None:
-        token = str(path or "").strip()
-        if not token:
-            return None
-        current: Any = cfg
-        for segment in token.split("."):
-            if not isinstance(current, dict):
-                return None
-            current = current.get(segment)
-        if isinstance(current, dict):
-            return current
-        return None
-
-    @staticmethod
-    def _set_bool_path(cfg: dict[str, object], path: str, value: bool) -> None:
-        token = str(path or "").strip()
-        if not token:
-            return
-        parent_path, _, leaf = token.rpartition(".")
-        leaf_name = str(leaf or "").strip()
-        if not leaf_name:
-            return
-        parent: Any = cfg if not parent_path else _walk_path(cfg, parent_path)
-        if not isinstance(parent, dict):
-            return
-        parent[leaf_name] = bool(value)
 
     @staticmethod
     @lru_cache(maxsize=4)
@@ -198,171 +170,81 @@ class StackControllerConfigPolicy:
                     tokens.add(token)
         return tokens
 
-    @staticmethod
-    def _normalize_prefix(value: str) -> str:
-        token = str(value or "").strip()
-        if not token:
-            return "/app"
-        if not token.startswith("/"):
-            token = f"/{token}"
-        token = token.rstrip("/")
-        return token or "/app"
-
-    @staticmethod
-    def _url_host(url: str) -> str:
-        token = str(url or "").strip()
-        if token.startswith("https://"):
-            token = token[len("https://") :]
-        elif token.startswith("http://"):
-            token = token[len("http://") :]
-        return token.rstrip("/")
-
-    @staticmethod
-    def _normalize_port(value: object) -> str:
-        token = str(value or "").strip()
-        if token.startswith(":"):
-            token = token[1:]
-        if not token or not token.isdigit():
-            return ""
-        port = int(token)
-        if port < 1 or port > 65535:
-            return ""
-        return str(port)
-
-    @staticmethod
-    def _public_port(value: object, *, scheme: str) -> str:
-        token = _normalize_port(value)
-        if not token:
-            return ""
-        if scheme == "http" and token == "80":
-            return ""
-        if scheme == "https" and token == "443":
-            return ""
-        return token
-
-    @staticmethod
-    def _host_name(value: str) -> str:
-        text = str(value or "").strip().lower()
-        if not text:
-            return ""
-        parsed = parse.urlparse(text if "://" in text else f"http://{text}")
-        return str(parsed.hostname or "").strip().lower()
-
-    @staticmethod
-    def _host_with_port(value: str, *, port: str) -> str:
-        text = str(value or "").strip().lower()
-        if not text:
-            return ""
-        if not port:
-            return text
-        parsed = parse.urlparse(text if "://" in text else f"http://{text}")
-        host = str(parsed.hostname or "").strip().lower()
-        if not host:
-            return text
-        selected_port = str(parsed.port) if parsed.port else port
-        path = str(parsed.path or "")
-        query = str(parsed.query or "")
-        fragment = str(parsed.fragment or "")
-        out = f"{host}:{selected_port}{path}"
-        if query:
-            out = f"{out}?{query}"
-        if fragment:
-            out = f"{out}#{fragment}"
-        return out
-
-    @staticmethod
-    def _homepage_host_token(value: str) -> str:
-        """Extract a URL-safe slug from a homepage host entry.
-
-        Preserves hyphens so the token can be used directly as a URL path
-        segment that matches Envoy/K8s service names (e.g. media-stack-controller).
-        """
-        text = str(value or "").strip().lower()
-        if not text:
-            return ""
-        parsed = parse.urlparse(text if "://" in text else f"http://{text}")
-        path = str(parsed.path or "").strip("/")
-        if path:
-            parts = [part for part in path.split("/") if part]
-            if parts:
-                if len(parts) >= 2 and parts[0] == "app":
-                    return _slugify(parts[1])
-                return _slugify(parts[-1])
-        host = str(parsed.netloc or "").split(":", 1)[0]
-        prefix = host.split(".", 1)[0]
-        return _slugify(prefix)
-
-    @staticmethod
-    def _homepage_direct_host(value: str, *, internet_exposed: bool, ingress: str, token: str) -> str:
-        text = str(value or "").strip().lower()
-        parsed = parse.urlparse(text if "://" in text else f"http://{text}")
-        host = str(parsed.netloc or "").split(":", 1)[0].strip().lower()
-        if not host:
-            host = str(parsed.path or "").strip().split("/", 1)[0].strip().lower()
-        if not host:
-            if internet_exposed and ingress:
-                return f"{token}.{ingress}"
-            return f"{token}.local"
-        if internet_exposed and ingress and host.endswith(".local"):
-            return f"{host[:-6]}.{ingress}"
-        return host
-
-    @staticmethod
-    def _path_prefix_url_base(token: str, prefix: str) -> str:
-        app_token = _tokenize(token)
-        if not app_token:
-            return ""
-        normalized_prefix = _normalize_prefix(prefix)
-        return f"{normalized_prefix}/{app_token}"
-
     def apply_selected_apps_policy(self, cfg: dict[str, object], *, selected_apps_csv: str) -> None:
         policy = _selected_apps_policy_cfg()
-        app_toggle_sections = _policy_map(policy, "app_toggle_sections")
-        arr_app_keys = _policy_set(policy, "arr_app_keys")
-        selected_app_expansions = _policy_map_of_sets(policy, "selected_app_expansions")
-        homepage_host_reserved_tokens = _policy_set(policy, "homepage_host_reserved_tokens")
-        arr_disable_sections = _policy_list(policy, "arr_disable_sections_when_unselected")
-        arr_discovery_reserved_keys = _policy_set(policy, "arr_discovery_reserved_keys")
-        jellyfin_disable_sections = _policy_list(policy, "jellyfin_disable_sections_when_unselected")
-        maintainerr_integrations_section = str(
-            policy.get("maintainerr_integrations_section") or ""
-        ).strip()
-        jellyfin_home_rails_cleanup_path = str(
-            policy.get("jellyfin_home_rails_cleanup_path") or ""
-        ).strip()
-
         selected = parse_selected_apps_csv(selected_apps_csv)
         if not selected:
             return
-        if selected_app_expansions:
-            pending = list(selected)
-            while pending:
-                token = pending.pop()
-                for expanded in selected_app_expansions.get(token, set()):
-                    if expanded in selected:
-                        continue
-                    selected.add(expanded)
-                    pending.append(expanded)
+
+        selected_app_expansions = _policy_map_of_sets(policy, "selected_app_expansions")
+        self._expand_selected_apps(selected, selected_app_expansions)
+        arr_app_keys = _policy_set(policy, "arr_app_keys")
         selected_arr = bool(arr_app_keys.intersection(selected))
 
-        homepage_cfg = cfg.get("homepage")
-        if isinstance(homepage_cfg, dict):
-            hosts = homepage_cfg.get("hosts")
-            if isinstance(hosts, list):
-                filtered_hosts: list[str] = []
-                for raw_host in hosts:
-                    host_text = str(raw_host or "").strip()
-                    if not host_text:
-                        continue
-                    token = _homepage_host_token(host_text)
-                    if token and token not in selected and token not in homepage_host_reserved_tokens:
-                        continue
-                    filtered_hosts.append(host_text)
-                homepage_cfg["hosts"] = filtered_hosts
-
-        for app_key, section_key in app_toggle_sections.items():
+        self._filter_homepage_hosts_by_selection(
+            cfg, selected, _policy_set(policy, "homepage_host_reserved_tokens"),
+        )
+        for app_key, section_key in _policy_map(policy, "app_toggle_sections").items():
             _set_enabled(cfg.get(section_key), app_key in selected)
+        self._filter_arr_apps_and_discovery(
+            cfg, selected, selected_arr, policy,
+        )
+        self._apply_unselected_arr_side_effects(cfg, selected)
+        self._apply_unselected_download_clients(cfg, selected)
+        self._apply_jellyfin_disable_when_unselected(cfg, selected, policy)
+        if "maintainerr" not in selected:
+            maintainerr_integrations_section = str(
+                policy.get("maintainerr_integrations_section") or ""
+            ).strip()
+            _set_enabled(_walk_path(cfg, maintainerr_integrations_section), False)
+        self._filter_app_auth_include_by_selection(cfg, selected)
 
+    @staticmethod
+    def _expand_selected_apps(
+        selected: set[str], selected_app_expansions: dict[str, set[str]],
+    ) -> None:
+        """Transitively expand selection via the policy's expansion map."""
+        if not selected_app_expansions:
+            return
+        pending = list(selected)
+        while pending:
+            token = pending.pop()
+            for expanded in selected_app_expansions.get(token, set()):
+                if expanded in selected:
+                    continue
+                selected.add(expanded)
+                pending.append(expanded)
+
+    @staticmethod
+    def _filter_homepage_hosts_by_selection(
+        cfg: dict[str, object], selected: set[str], reserved: set[str],
+    ) -> None:
+        """Drop Homepage tiles whose host token isn't selected or reserved."""
+        homepage_cfg = cfg.get("homepage")
+        if not isinstance(homepage_cfg, dict):
+            return
+        hosts = homepage_cfg.get("hosts")
+        if not isinstance(hosts, list):
+            return
+        filtered_hosts: list[str] = []
+        for raw_host in hosts:
+            host_text = str(raw_host or "").strip()
+            if not host_text:
+                continue
+            token = _homepage_host_token(host_text)
+            if token and token not in selected and token not in reserved:
+                continue
+            filtered_hosts.append(host_text)
+        homepage_cfg["hosts"] = filtered_hosts
+
+    @staticmethod
+    def _filter_arr_apps_and_discovery(
+        cfg: dict[str, object],
+        selected: set[str],
+        selected_arr: bool,
+        policy: dict[str, Any],
+    ) -> None:
+        """Filter arr_apps list, disable related sections, prune discovery lists."""
         arr_apps = cfg.get("arr_apps")
         if isinstance(arr_apps, list):
             filtered = []
@@ -375,11 +257,12 @@ class StackControllerConfigPolicy:
             cfg["arr_apps"] = filtered
 
         if not selected_arr:
-            for section in arr_disable_sections:
+            for section in _policy_list(policy, "arr_disable_sections_when_unselected"):
                 _set_enabled(cfg.get(section), False)
 
         arr_discovery_lists = cfg.get("arr_discovery_lists")
         if isinstance(arr_discovery_lists, dict):
+            arr_discovery_reserved_keys = _policy_set(policy, "arr_discovery_reserved_keys")
             for key in list(arr_discovery_lists.keys()):
                 if _tokenize(key) in arr_discovery_reserved_keys:
                     continue
@@ -387,12 +270,16 @@ class StackControllerConfigPolicy:
                 if token and token not in selected:
                     arr_discovery_lists.pop(key, None)
 
+    @staticmethod
+    def _apply_unselected_arr_side_effects(
+        cfg: dict[str, object], selected: set[str],
+    ) -> None:
+        """Turn off Sonarr seeding + Jellyseerr integrations + Prowlarr state."""
         if "sonarr" not in selected:
             sonarr_seed = cfg.get("sonarr_seed_series")
             if isinstance(sonarr_seed, dict):
                 sonarr_seed["enabled"] = False
                 sonarr_seed["search_for_missing_episodes"] = False
-
         jellyseerr = cfg.get("jellyseerr")
         if isinstance(jellyseerr, dict):
             if isinstance(jellyseerr.get("radarr"), dict):
@@ -401,16 +288,19 @@ class StackControllerConfigPolicy:
                 jellyseerr["sonarr"]["enabled"] = "sonarr" in selected
             if "jellyseerr" not in selected:
                 jellyseerr["enabled"] = False
-
         if "prowlarr" not in selected:
             cfg["prowlarr_url"] = ""
             cfg["prowlarr_indexers"] = []
             cfg["trigger_indexer_sync"] = False
             cfg["prowlarr_auto_add_tested_indexers"] = False
-
         if "flaresolverr" not in selected:
             _set_enabled(cfg.get("flaresolverr"), False)
 
+    @staticmethod
+    def _apply_unselected_download_clients(
+        cfg: dict[str, object], selected: set[str],
+    ) -> None:
+        """Defang qBittorrent / SABnzbd config when not selected."""
         download_clients = cfg.get("download_clients")
         if isinstance(download_clients, dict):
             if "qbittorrent" not in selected:
@@ -423,7 +313,6 @@ class StackControllerConfigPolicy:
                 if isinstance(sab_cfg, dict):
                     sab_cfg["configure_arr_clients"] = False
                     sab_cfg["login_required"] = False
-
         technology_bindings = cfg.get("technology_bindings")
         if isinstance(technology_bindings, dict):
             if "qbittorrent" not in selected:
@@ -431,28 +320,40 @@ class StackControllerConfigPolicy:
             if "sabnzbd" not in selected:
                 technology_bindings["usenet_client"] = ""
 
-        if "jellyfin" not in selected:
-            for section in jellyfin_disable_sections:
-                _set_enabled(cfg.get(section), False)
-            _set_bool_path(cfg, jellyfin_home_rails_cleanup_path, False)
-            if isinstance(jellyseerr, dict):
-                jelly_cfg = jellyseerr.get("jellyfin")
-                if isinstance(jelly_cfg, dict):
-                    jelly_cfg["configure"] = False
+    @staticmethod
+    def _apply_jellyfin_disable_when_unselected(
+        cfg: dict[str, object], selected: set[str], policy: dict[str, Any],
+    ) -> None:
+        """Disable jellyfin-adjacent sections and cleanup path when unselected."""
+        if "jellyfin" in selected:
+            return
+        for section in _policy_list(policy, "jellyfin_disable_sections_when_unselected"):
+            _set_enabled(cfg.get(section), False)
+        cleanup_path = str(policy.get("jellyfin_home_rails_cleanup_path") or "").strip()
+        _set_bool_path(cfg, cleanup_path, False)
+        jellyseerr = cfg.get("jellyseerr")
+        if isinstance(jellyseerr, dict):
+            jelly_cfg = jellyseerr.get("jellyfin")
+            if isinstance(jelly_cfg, dict):
+                jelly_cfg["configure"] = False
 
-        if "maintainerr" not in selected:
-            _set_enabled(_walk_path(cfg, maintainerr_integrations_section), False)
-
+    @staticmethod
+    def _filter_app_auth_include_by_selection(
+        cfg: dict[str, object], selected: set[str],
+    ) -> None:
+        """Trim ``app_auth.include`` to apps that survived the selection filter."""
         app_auth = cfg.get("app_auth")
-        if isinstance(app_auth, dict):
-            include = app_auth.get("include")
-            if isinstance(include, list):
-                filtered = []
-                for item in include:
-                    token = _tokenize(str(item))
-                    if token in selected:
-                        filtered.append(item)
-                app_auth["include"] = filtered
+        if not isinstance(app_auth, dict):
+            return
+        include = app_auth.get("include")
+        if not isinstance(include, list):
+            return
+        filtered = []
+        for item in include:
+            token = _tokenize(str(item))
+            if token in selected:
+                filtered.append(item)
+        app_auth["include"] = filtered
 
     def apply_api_key_policy(self, cfg: dict[str, object], *, preconfigure_api_keys: bool) -> None:
         """Disable app auth setup when API key provisioning is opted out."""
@@ -468,20 +369,7 @@ class StackControllerConfigPolicy:
         arr_discovery_lists = cfg.get("arr_discovery_lists")
         if isinstance(arr_discovery_lists, dict):
             arr_discovery_lists["trigger_initial_sync"] = download_enabled
-            for value in arr_discovery_lists.values():
-                if not isinstance(value, list):
-                    continue
-                for item in value:
-                    if not isinstance(item, dict):
-                        continue
-                    for key in (
-                        "enable_auto",
-                        "enable_automatic_add",
-                        "search_on_add",
-                        "should_search",
-                    ):
-                        if key in item:
-                            item[key] = download_enabled
+            _apply_discovery_auto_flags(arr_discovery_lists, download_enabled)
 
         sonarr_seed_series = cfg.get("sonarr_seed_series")
         if isinstance(sonarr_seed_series, dict):
@@ -497,7 +385,7 @@ class StackControllerConfigPolicy:
                 if isinstance(app_cfg, dict):
                     app_cfg["prevent_search"] = not download_enabled
 
-    def apply_edge_url_policy(self, 
+    def apply_edge_url_policy(self,
         cfg: dict[str, object],
         *,
         internet_exposed: bool,
@@ -508,6 +396,41 @@ class StackControllerConfigPolicy:
         app_path_prefix: str,
         media_server_direct_host: str,
     ) -> None:
+        ctx = self._edge_url_context(
+            internet_exposed=internet_exposed,
+            route_strategy=route_strategy,
+            ingress_domain=ingress_domain,
+            app_gateway_host=app_gateway_host,
+            app_gateway_port=app_gateway_port,
+            app_path_prefix=app_path_prefix,
+            media_server_direct_host=media_server_direct_host,
+        )
+        self._apply_jellyseerr_external_url(cfg, ctx)
+        self._apply_app_auth_path_prefix_bases(cfg, ctx)
+
+        homepage_cfg = cfg.get("homepage")
+        if not isinstance(homepage_cfg, dict):
+            return
+        self._apply_device_onboarding_links(homepage_cfg, ctx)
+        self._rewrite_homepage_hosts(cfg, homepage_cfg, ctx)
+
+    @staticmethod
+    def _edge_url_context(
+        *,
+        internet_exposed: bool,
+        route_strategy: str,
+        ingress_domain: str,
+        app_gateway_host: str,
+        app_gateway_port: str,
+        app_path_prefix: str,
+        media_server_direct_host: str,
+    ) -> dict[str, Any]:
+        """Pre-compute scheme/ports/prefix so each helper takes one ctx arg.
+
+        Packs ``public_url`` as a callable into the context so downstream
+        helpers can resolve any app's public URL without re-deriving the
+        strategy every time.
+        """
         scheme = "https" if bool(internet_exposed) else "http"
         strategy = str(route_strategy or "").strip().lower()
         gateway_host = str(app_gateway_host or "").strip().lower()
@@ -528,96 +451,167 @@ class StackControllerConfigPolicy:
                 return ""
             return f"{scheme}://{token}.{ingress}"
 
+        return {
+            "scheme": scheme,
+            "strategy": strategy,
+            "gateway_host_with_port": gateway_host_with_port,
+            "direct_host_with_port": direct_host_with_port,
+            "public_port": public_port,
+            "ingress": ingress,
+            "prefix": prefix,
+            "internet_exposed": bool(internet_exposed),
+            "public_url": _public_url,
+        }
+
+    @staticmethod
+    def _apply_jellyseerr_external_url(cfg: dict[str, object], ctx: dict[str, Any]) -> None:
+        """Pin Jellyseerr's external Jellyfin URL to the derived public URL."""
         jellyseerr_cfg = cfg.get("jellyseerr")
-        if isinstance(jellyseerr_cfg, dict):
-            jellyfin_cfg = jellyseerr_cfg.get("jellyfin")
-            if isinstance(jellyfin_cfg, dict):
-                jellyfin_public = _public_url("jellyfin")
-                if jellyfin_public:
-                    jellyfin_cfg["external_url"] = jellyfin_public
-
-        app_auth_cfg = cfg.get("app_auth")
-        if isinstance(app_auth_cfg, dict):
-            include = app_auth_cfg.get("include")
-            include_values = include if isinstance(include, list) else []
-            path_prefix_url_bases: dict[str, str] = {}
-            if strategy in {"path-prefix", "hybrid"} and gateway_host_with_port:
-                for token in sorted(_path_prefix_url_base_tokens(cfg, include_values)):
-                    path_prefix_url_bases[token] = _path_prefix_url_base(token, prefix)
-            app_auth_cfg["path_prefix_url_base_by_app"] = path_prefix_url_bases
-
-        homepage_cfg = cfg.get("homepage")
-        if not isinstance(homepage_cfg, dict):
+        if not isinstance(jellyseerr_cfg, dict):
             return
+        jellyfin_cfg = jellyseerr_cfg.get("jellyfin")
+        if not isinstance(jellyfin_cfg, dict):
+            return
+        jellyfin_public = ctx["public_url"]("jellyfin")
+        if jellyfin_public:
+            jellyfin_cfg["external_url"] = jellyfin_public
 
+    @staticmethod
+    def _apply_app_auth_path_prefix_bases(
+        cfg: dict[str, object], ctx: dict[str, Any],
+    ) -> None:
+        """Record the public path-prefix URL base per app on ``app_auth``."""
+        app_auth_cfg = cfg.get("app_auth")
+        if not isinstance(app_auth_cfg, dict):
+            return
+        include = app_auth_cfg.get("include")
+        include_values = include if isinstance(include, list) else []
+        path_prefix_url_bases: dict[str, str] = {}
+        if ctx["strategy"] in {"path-prefix", "hybrid"} and ctx["gateway_host_with_port"]:
+            for token in sorted(_path_prefix_url_base_tokens(cfg, include_values)):
+                path_prefix_url_bases[token] = _path_prefix_url_base(token, ctx["prefix"])
+        app_auth_cfg["path_prefix_url_base_by_app"] = path_prefix_url_bases
+
+    @staticmethod
+    def _apply_device_onboarding_links(
+        homepage_cfg: dict[str, object], ctx: dict[str, Any],
+    ) -> None:
+        """Seed Jellyfin + Jellyseerr device-onboarding URLs from public URLs."""
         device_cfg = homepage_cfg.get("device_onboarding")
-        if isinstance(device_cfg, dict):
-            jellyfin_public = _public_url("jellyfin")
-            jellyseerr_public = _public_url("jellyseerr")
-            if jellyfin_public:
-                device_cfg["jellyfin_url"] = jellyfin_public
-                device_cfg["jellyfin_short_link"] = _url_host(jellyfin_public)
-            if jellyseerr_public:
-                device_cfg["jellyseerr_url"] = jellyseerr_public
-                device_cfg["jellyseerr_short_link"] = _url_host(jellyseerr_public)
+        if not isinstance(device_cfg, dict):
+            return
+        jellyfin_public = ctx["public_url"]("jellyfin")
+        jellyseerr_public = ctx["public_url"]("jellyseerr")
+        if jellyfin_public:
+            device_cfg["jellyfin_url"] = jellyfin_public
+            device_cfg["jellyfin_short_link"] = _url_host(jellyfin_public)
+        if jellyseerr_public:
+            device_cfg["jellyseerr_url"] = jellyseerr_public
+            device_cfg["jellyseerr_short_link"] = _url_host(jellyseerr_public)
 
+    @classmethod
+    def _rewrite_homepage_hosts(
+        cls,
+        cfg: dict[str, object],
+        homepage_cfg: dict[str, object],
+        ctx: dict[str, Any],
+    ) -> None:
+        """Rewrite Homepage tiles to match the active routing strategy."""
         hosts = homepage_cfg.get("hosts")
         if not isinstance(hosts, list):
             return
-
-        # Determine the active edge router so the inactive one is excluded from tiles.
         active_edge_provider = _tokenize(
             str((cfg.get("adapter_hooks") or {}).get("edge", {}).get("router_provider", ""))
         )
         edge_router_tokens = {"traefik", "envoy"}
-
-        rewritten_hosts: list[str] = []
+        strategy = ctx["strategy"]
+        gateway_host_with_port = ctx["gateway_host_with_port"]
         if strategy == "path-prefix" and gateway_host_with_port:
-            for raw_host in hosts:
-                token = _homepage_host_token(str(raw_host or ""))
-                if not token:
-                    continue
-                if token in edge_router_tokens and token != active_edge_provider:
-                    continue
-                rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
+            rewritten_hosts = cls._homepage_hosts_path_prefix(
+                hosts, ctx, active_edge_provider, edge_router_tokens,
+            )
         elif strategy == "hybrid" and gateway_host_with_port:
-            for raw_host in hosts:
-                host = str(raw_host or "").strip().lower()
-                if not host:
-                    continue
-                token = _homepage_host_token(host)
-                if not token:
-                    continue
-                if token in edge_router_tokens and token != active_edge_provider:
-                    continue
-                if token == "jellyfin":
-                    if direct_host_with_port:
-                        rewritten_hosts.append(direct_host_with_port)
-                    continue
-                if token == "homepage":
-                    homepage_direct_host = _homepage_direct_host(
-                        host,
-                        internet_exposed=bool(internet_exposed),
-                        ingress=ingress,
-                        token=token,
-                    )
-                    rewritten_hosts.append(_host_with_port(homepage_direct_host, port=public_port))
-                    continue
-                rewritten_hosts.append(f"{gateway_host_with_port}{prefix}/{token}")
+            rewritten_hosts = cls._homepage_hosts_hybrid(
+                hosts, ctx, active_edge_provider, edge_router_tokens,
+            )
         else:
-            for raw_host in hosts:
-                host = str(raw_host or "").strip().lower()
-                if not host:
-                    continue
-                token = _homepage_host_token(host)
-                if token in edge_router_tokens and token != active_edge_provider:
-                    continue
-                if ingress and host.endswith(".local"):
-                    host = f"{host[:-6]}.{ingress}"
-                rewritten_hosts.append(_host_with_port(host, port=public_port))
-            if direct_host_with_port:
-                rewritten_hosts.append(direct_host_with_port)
+            rewritten_hosts = cls._homepage_hosts_default(
+                hosts, ctx, active_edge_provider, edge_router_tokens,
+            )
+        homepage_cfg["hosts"] = cls._dedupe_hosts(rewritten_hosts)
 
+    @staticmethod
+    def _homepage_hosts_path_prefix(
+        hosts: list, ctx: dict[str, Any],
+        active_edge_provider: str, edge_router_tokens: set[str],
+    ) -> list[str]:
+        """Under path-prefix strategy every tile collapses to gateway+prefix+token."""
+        rewritten: list[str] = []
+        for raw_host in hosts:
+            token = _homepage_host_token(str(raw_host or ""))
+            if not token:
+                continue
+            if token in edge_router_tokens and token != active_edge_provider:
+                continue
+            rewritten.append(f"{ctx['gateway_host_with_port']}{ctx['prefix']}/{token}")
+        return rewritten
+
+    @staticmethod
+    def _homepage_hosts_hybrid(
+        hosts: list, ctx: dict[str, Any],
+        active_edge_provider: str, edge_router_tokens: set[str],
+    ) -> list[str]:
+        """Hybrid strategy: Jellyfin goes direct, homepage stays native, rest gateway."""
+        rewritten: list[str] = []
+        for raw_host in hosts:
+            host = str(raw_host or "").strip().lower()
+            if not host:
+                continue
+            token = _homepage_host_token(host)
+            if not token:
+                continue
+            if token in edge_router_tokens and token != active_edge_provider:
+                continue
+            if token == "jellyfin":
+                if ctx["direct_host_with_port"]:
+                    rewritten.append(ctx["direct_host_with_port"])
+                continue
+            if token == "homepage":
+                homepage_direct_host = _homepage_direct_host(
+                    host,
+                    internet_exposed=ctx["internet_exposed"],
+                    ingress=ctx["ingress"],
+                    token=token,
+                )
+                rewritten.append(_host_with_port(homepage_direct_host, port=ctx["public_port"]))
+                continue
+            rewritten.append(f"{ctx['gateway_host_with_port']}{ctx['prefix']}/{token}")
+        return rewritten
+
+    @staticmethod
+    def _homepage_hosts_default(
+        hosts: list, ctx: dict[str, Any],
+        active_edge_provider: str, edge_router_tokens: set[str],
+    ) -> list[str]:
+        """Subdomain strategy: swap .local for ingress suffix, append direct host."""
+        rewritten: list[str] = []
+        for raw_host in hosts:
+            host = str(raw_host or "").strip().lower()
+            if not host:
+                continue
+            token = _homepage_host_token(host)
+            if token in edge_router_tokens and token != active_edge_provider:
+                continue
+            if ctx["ingress"] and host.endswith(".local"):
+                host = f"{host[:-6]}.{ctx['ingress']}"
+            rewritten.append(_host_with_port(host, port=ctx["public_port"]))
+        if ctx["direct_host_with_port"]:
+            rewritten.append(ctx["direct_host_with_port"])
+        return rewritten
+
+    @staticmethod
+    def _dedupe_hosts(rewritten_hosts: list[str]) -> list[str]:
+        """Remove case-insensitive duplicates while preserving order."""
         deduped: list[str] = []
         seen: set[str] = set()
         for host in rewritten_hosts:
@@ -626,7 +620,7 @@ class StackControllerConfigPolicy:
                 continue
             seen.add(token)
             deduped.append(token)
-        homepage_cfg["hosts"] = deduped
+        return deduped
 
     def apply_bootstrap_runtime_policy(self, 
         cfg: dict[str, object],
@@ -673,11 +667,12 @@ apply_api_key_policy = _instance.apply_api_key_policy
 apply_content_download_policy = _instance.apply_content_download_policy
 apply_edge_url_policy = _instance.apply_edge_url_policy
 apply_bootstrap_runtime_policy = _instance.apply_bootstrap_runtime_policy
-_set_bool_path = _instance._set_bool_path
-_set_enabled = _instance._set_enabled
-_slugify = _instance._slugify
-_tokenize = _instance._tokenize
-_walk_path = _instance._walk_path
+# Pure helpers (``_tokenize``, ``_slugify``, ``_walk_path``, ``_set_bool_path``,
+# ``_set_enabled``, ``_normalize_prefix``, ``_url_host``, ``_normalize_port``,
+# ``_public_port``, ``_host_name``, ``_host_with_port``, ``_homepage_host_token``,
+# ``_homepage_direct_host``, ``_path_prefix_url_base``) are now imported at the
+# top of this module from ``controller_config_policy_helpers`` — they are
+# already module-level and no re-export is required.
 _load_policy_catalog = StackControllerConfigPolicy._load_policy_catalog
 _selected_apps_policy_cfg = _instance._selected_apps_policy_cfg
 _policy_map = _instance._policy_map
@@ -686,12 +681,3 @@ _policy_map_of_sets = _instance._policy_map_of_sets
 _policy_list = _instance._policy_list
 _section_enabled = _instance._section_enabled
 _path_prefix_url_base_tokens = _instance._path_prefix_url_base_tokens
-_normalize_prefix = _instance._normalize_prefix
-_url_host = _instance._url_host
-_normalize_port = _instance._normalize_port
-_public_port = _instance._public_port
-_host_name = _instance._host_name
-_host_with_port = _instance._host_with_port
-_homepage_host_token = _instance._homepage_host_token
-_homepage_direct_host = _instance._homepage_direct_host
-_path_prefix_url_base = _instance._path_prefix_url_base

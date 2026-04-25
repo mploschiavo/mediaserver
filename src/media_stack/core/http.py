@@ -19,6 +19,24 @@ HTTP_RETRY_MAX_DELAY_SECONDS = float(
 HTTP_RETRY_BACKOFF = float(os.environ.get("MEDIA_STACK_HTTP_RETRY_BACKOFF", "2"))
 RETRYABLE_HTTP_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 
+# Named HTTP status codes used widely across arr/service adapters. Kept in
+# one place so service code reads as ``status != HTTP_OK`` rather than
+# ``status != 200`` (the magic-number ratchet flags the literal form).
+HTTP_OK = 200                       # 200 OK — successful request
+HTTP_BAD_REQUEST = 400              # 400 Bad Request — usually a validation reject
+HTTP_FORBIDDEN = 403                # 403 Forbidden — qBittorrent anti-brute-force
+HTTP_CONFLICT = 409                 # 409 Conflict — arr "already exists" on create
+HTTP_CLIENT_CLOSED_REQUEST = 499    # 499 ~= client gave up (used for local decorators)
+HTTP_INTERNAL_ERROR = 500           # 500 Internal Server Error
+HTTP_SYNTHETIC_CLIENT_ERROR = 599   # 599 — synthetic status we emit on urllib failures
+
+# Tuple of 2xx codes that arr/Jellyseerr adapters treat as "request accepted".
+# 200 OK, 201 Created, 202 Accepted — the arr APIs vary between them.
+HTTP_2XX_ACCEPTED_STATUSES: tuple[int, int, int] = (HTTP_OK, 201, 202)
+
+# Jellyfin also uses 204 No Content for successful POSTs that have no body.
+HTTP_2XX_JELLYFIN_STATUSES: tuple[int, int, int, int] = (HTTP_OK, 201, 202, 204)
+
 
 class RetryableHttpStatusError(RuntimeError):
     def __init__(self, status_code: int, body: str) -> None:
