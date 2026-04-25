@@ -209,7 +209,7 @@ Recorded here so future readers don't reintroduce them:
 
 When you need a visual that isn't here:
 
-1. Open `docs/ui-design-system.md` (this file) and add the new
+1. Open `docs/reference/ui-design-system.md` (this file) and add the new
    component: name, when to use, sample usage, allowed variants.
 2. Implement it as a wrapper over a shadcn/Radix primitive where
    possible. If it's wholly new, place it under

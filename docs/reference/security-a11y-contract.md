@@ -306,7 +306,7 @@ Before opening a PR that adds an endpoint under `/api/sessions/*`,
 - [ ] Unit test covers 200 + 401 + 403 + 404 + 4xx shapes.
 - [ ] Playwright test covers the UI affordance.
 - [ ] Lighthouse score still ≥95 on the affected tab.
-- [ ] `docs/security.md` updated if the endpoint changes the threat model.
+- [ ] `docs/how-to/security.md` updated if the endpoint changes the threat model.
 
 ## 10. Password handoff redesign (2026-04-24)
 

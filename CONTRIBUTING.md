@@ -4,7 +4,7 @@ Thanks for being here. Media Stack is small enough that the process is light.
 
 ## Reporting a bug
 
-Use the [bug-report template](.github/ISSUE_TEMPLATE/bug_report.yml). Skim the [troubleshooting guide](docs/troubleshooting.md) and search [existing issues](../../issues) first.
+Use the [bug-report template](.github/ISSUE_TEMPLATE/bug_report.yml). Skim the [troubleshooting guide](docs/how-to/troubleshooting.md) and search [existing issues](../../issues) first.
 
 What helps a maintainer fix your bug fast:
 
@@ -31,7 +31,7 @@ What slows things down: "It doesn't work" with no version, no logs, and no repro
 
 ## Development setup
 
-See [docs/deployment.md → Prerequisites — developer](docs/deployment.md#prerequisites--developer) for the full toolchain. Short version:
+See [docs/how-to/deployment.md → Prerequisites — developer](docs/how-to/deployment.md#prerequisites--developer) for the full toolchain. Short version:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -55,7 +55,7 @@ bash bin/test.sh
 
 ## Adding a service
 
-See [docs/internals/adding-a-service.md](docs/internals/adding-a-service.md) (forthcoming) or follow the pattern in `contracts/services/` + `src/media_stack/services/apps/`. Two-location rule: the service contract lives in `contracts/services/<name>.yaml`, the implementation lives in `src/media_stack/services/apps/<name>/`. Zero platform code changes.
+See [docs/architecture/adding-a-service.md](docs/architecture/adding-a-service.md) (forthcoming) or follow the pattern in `contracts/services/` + `src/media_stack/services/apps/`. Two-location rule: the service contract lives in `contracts/services/<name>.yaml`, the implementation lives in `src/media_stack/services/apps/<name>/`. Zero platform code changes.
 
 ## Coding conventions
 

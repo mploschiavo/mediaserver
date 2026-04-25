@@ -25,10 +25,10 @@ Bootstrap takes 3-5 minutes the first time. Open the controller dashboard at <ht
 
 | You want to... | Go to |
 |---|---|
-| **Deploy and use the stack** | [Quickstart](docs/quickstart.md) |
-| **Understand all deployment options** | [Deployment](docs/deployment.md) |
-| **Maintain a running stack** | [Operations](docs/operations.md) + [Troubleshooting](docs/troubleshooting.md) |
-| **Extend the code or add a service** | [internals/principles.md](docs/internals/principles.md), then [internals/architecture.md](docs/internals/architecture.md) |
+| **Deploy and use the stack** | [Quickstart](docs/tutorials/quickstart.md) |
+| **Understand all deployment options** | [Deployment](docs/how-to/deployment.md) |
+| **Maintain a running stack** | [Operations](docs/how-to/operations.md) + [Troubleshooting](docs/how-to/troubleshooting.md) |
+| **Extend the code or add a service** | [internals/principles.md](docs/architecture/principles.md), then [internals/architecture.md](docs/architecture/overview.md) |
 | **Look something up** | [reference/](docs/reference/) |
 | **Report a bug or contribute** | [CONTRIBUTING.md](CONTRIBUTING.md) |
 

@@ -261,7 +261,7 @@ kubectl -n media-stack get pods | grep envoy
 **Movies not downloading?**
 Open the controller dashboard, click "Discover Indexers", then check Prowlarr for working indexers.
 
-See [docs/troubleshooting.md](docs/troubleshooting.md) for more.
+See [docs/how-to/troubleshooting.md](docs/how-to/troubleshooting.md) for more.
 
 ---
 
