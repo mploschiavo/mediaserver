@@ -204,7 +204,7 @@ Implementation: [job_framework.py](../src/media_stack/cli/commands/job_framework
 job signals completion, then re-evaluates the ready set. No polling,
 no fixed sleeps.
 
-Ratchet: [test_v1_0_122_batch6_ratchets.py](../tests/unit/test_v1_0_122_batch6_ratchets.py)
+Ratchet: [test_runtime_invariants_ratchets.py](../tests/unit/test_runtime_invariants_ratchets.py)
 `NonBlockingJobsHaveAfterDeps` runs an end-to-end runner test that
 asserts a downstream `after:`-dependent sibling does NOT start before
 the non_blocking upstream finishes.
