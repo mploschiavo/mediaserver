@@ -6,6 +6,7 @@ import {
   Camera,
   FileText,
   GaugeCircle,
+  Github,
   KeyRound,
   Layers,
   type LucideIcon,
@@ -97,6 +98,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
 ];
 
 const SECONDARY_ITEMS: NavItem[] = [
+  { to: "/api-docs", label: "API docs", icon: BookOpen },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -151,8 +153,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             "hover:bg-bg-2 hover:text-fg",
           )}
         >
-          <BookOpen className="size-4 shrink-0" aria-hidden />
-          <span>Docs</span>
+          <Github className="size-4 shrink-0" aria-hidden />
+          <span>Source</span>
         </a>
       </div>
     </motion.aside>
