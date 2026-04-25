@@ -126,10 +126,7 @@ media-stack-generate-envoy-config = "media_stack.services.edge.envoy_config_gene
 media-stack-render-arch-diagrams = "media_stack.cli.commands.render_architecture_diagrams_main:main"
 media-stack-run-unit-tests = "media_stack.cli.commands.run_unit_tests_main:main"
 
-# Phase 12-B migration (DONE) — these three modules moved out of
-# bin/ into src/media_stack/cli/commands/ in v1.0.190. Their old
-# paths still work via 2-line deprecation shims at the original
-# bin/ locations; the shims will be removed in v1.0.192.
+# Phase 12-B migration (DONE in v1.0.190; bin/ shims removed v1.0.192).
 media-stack-probe-promises = "media_stack.cli.commands.probe_promises:main"
 media-stack-render-promises = "media_stack.cli.commands.render_promises_reference:main"
 media-stack-scaffold-job-test = "media_stack.cli.commands.scaffold_job_test:main"

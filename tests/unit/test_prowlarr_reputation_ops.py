@@ -256,7 +256,25 @@ class TestSetIndexerEnabled(unittest.TestCase):
 
 
 class TestAutoAddTestedIndexers(unittest.TestCase):
-    """Tests for auto_add_tested_indexers end-to-end behavior."""
+    """Tests for auto_add_tested_indexers end-to-end behavior.
+
+    The setUp here disables the curated-allowlist filter (added in
+    v1.0.130; see ``contracts/curated-indexers.yaml``) so tests run
+    against the historic "discover everything" path without depending
+    on what slugs the YAML happens to contain. Tests that want to
+    exercise the curated-filter path stop the patch and provide
+    their own.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._curated_patch = patch(
+            "media_stack.services.apps.prowlarr.reputation_ops."
+            "ProwlarrReputationOps._load_curated_allowed_definitions",
+            return_value=None,
+        )
+        self._curated_patch.start()
+        self.addCleanup(self._curated_patch.stop)
 
     def _make_service(self):
         service = MagicMock()

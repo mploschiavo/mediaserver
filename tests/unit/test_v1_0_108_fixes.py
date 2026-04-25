@@ -217,6 +217,7 @@ class FlaresolverrProxyIdFallbackChain(unittest.TestCase):
             ],
         }
         svc = self._make_svc([
+            (200, [], ""),                      # GET /tag — no sync-* tags
             (200, [schema], ""),                # GET schema
             (200, [existing_proxy], ""),        # GET existing — found
             (200, {}, ""),                      # PUT update — empty {}

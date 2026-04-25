@@ -198,8 +198,9 @@ def from_env(
     ``JELLYFIN_API_KEY`` (required — without it Jellyfin returns
     401 and we'd register a permanently-unavailable provider).
     """
+    from media_stack.api.services.registry import service_internal_url
     e = env if env is not None else os.environ
-    url = (e.get("JELLYFIN_URL") or "http://jellyfin:8096").strip()
+    url = (e.get("JELLYFIN_URL") or service_internal_url("jellyfin")).strip()
     api_key = (e.get("JELLYFIN_API_KEY") or "").strip()
     if not url or not api_key:
         _log.info(

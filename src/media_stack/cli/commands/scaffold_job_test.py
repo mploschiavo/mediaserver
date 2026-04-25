@@ -24,7 +24,7 @@ from pathlib import Path
 
 _TEMPLATE = '''"""Tests for the ``{job_name}`` job.
 
-Generated from ``bin/scaffold_job_test.py`` — fill in the four
+Generated from ``media-stack-scaffold-job-test`` — fill in the four
 scenarios below. The pattern is documented in
 ``tests/jobs/README.md``.
 
