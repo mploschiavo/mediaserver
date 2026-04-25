@@ -69,7 +69,7 @@ export function useAddWebhook(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input) =>
-      fetcher<AddWebhookResult>("webhooks", {
+      fetcher<AddWebhookResult>("api/webhooks", {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -96,7 +96,7 @@ export function useDeleteWebhook(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id }) =>
-      fetcher<unknown>(`webhooks?id=${encodeURIComponent(id)}`, {
+      fetcher<unknown>(`api/webhooks?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
@@ -124,7 +124,7 @@ export function useTestWebhooks(): UseMutationResult<
 > {
   return useMutation({
     mutationFn: () =>
-      fetcher<TestWebhooksResult>("webhooks/test", { method: "POST" }),
+      fetcher<TestWebhooksResult>("api/webhooks/test", { method: "POST" }),
   });
 }
 

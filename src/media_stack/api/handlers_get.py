@@ -132,7 +132,7 @@ class GetRequestHandler:
             handler._json_response(200 if info else 404, {app_name: info} if info else {"error": f"app '{app_name}' not found"})
         elif path == "/config":
             handler._json_response(200, {"config": dict(handler.state.runtime_config)})
-        elif path == "/webhooks":
+        elif path in ("/webhooks", "/api/webhooks"):
             handler._json_response(200, {"webhook_urls": list(handler.state.webhook_urls)})
 
         # --- SSE ---
@@ -512,9 +512,13 @@ class GetRequestHandler:
                     "requires": job.requires,
                     "sub_jobs": [_tree(s) for s in job.sub_jobs],
                 }
+            # `tree` is a list so the SPA's `asArray<JobTreeNode>(raw.tree)`
+            # passes through unchanged. Pre-v1.0.186 we emitted a bare
+            # object here and the UI's coerce helper collapsed it to []
+            # — Jobs page tree silently rendered empty.
             handler._json_response(200, {
                 "jobs": jobs,
-                "tree": _tree(root),
+                "tree": [_tree(root)],
                 "count": len(jobs),
                 "history": get_job_history(),
             })
