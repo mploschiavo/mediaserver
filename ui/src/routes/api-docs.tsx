@@ -77,33 +77,49 @@ function ApiDocsPage() {
   // React 19 supports custom elements but TS doesn't ship JSX types
   // for them; using dangerouslySetInnerHTML avoids needing a JSX
   // type augmentation for a single tag.
+  //
+  // ``layout="responsive"`` flips between the three-pane sidebar
+  // form (wide screens) and the single-column stacked form (narrow)
+  // so the AppShell's 240px left rail doesn't squash the operations
+  // panel + Try-It column on a typical 1280px laptop.
   useEffect(() => {
     if (!ready || !containerRef.current) return;
     containerRef.current.innerHTML =
       '<elements-api ' +
       'apiDescriptionUrl="/api/openapi.json" ' +
       'router="hash" ' +
-      'layout="sidebar" ' +
+      'layout="responsive" ' +
       'tryItCredentialsPolicy="same-origin" ' +
-      'style="display:block;height:100%;width:100%"></elements-api>';
+      'style="display:block;height:100%;width:100%;min-height:100%"></elements-api>';
   }, [ready]);
 
   if (error) {
     return (
-      <div className="flex h-[calc(100vh-3.5rem)] w-full items-center justify-center text-danger">
+      <div className="flex h-[80dvh] w-full items-center justify-center text-danger">
         Failed to load API docs: {error}
       </div>
     );
   }
 
+  // ``100dvh`` (dynamic viewport) excludes the mobile URL bar,
+  // matching what the user actually sees. We subtract a generous
+  // 7rem for the AppShell's top chrome — banners (UpgradeBanner,
+  // TriggeredBanner) plus TopBar can stack to ~6rem; the extra
+  // 1rem of padding keeps the bottom edge from kissing the
+  // BottomNav on mobile.
+  //
+  // The wrapper also forces ``min-w-0`` so the flex parent
+  // (AppShell main) lets us shrink past the children's preferred
+  // width — without it Stoplight's longest operation IDs cause
+  // horizontal overflow that triggers a page-level scrollbar.
   return (
-    <div className="h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-bg-0">
+    <div className="flex h-[calc(100dvh-7rem)] min-w-0 w-full flex-col overflow-hidden bg-bg-0">
       {!ready && (
         <div className="flex h-full w-full items-center justify-center text-fg-muted">
           Loading API reference…
         </div>
       )}
-      <div ref={containerRef} className="h-full w-full" />
+      <div ref={containerRef} className="min-h-0 flex-1 w-full" />
     </div>
   );
 }
