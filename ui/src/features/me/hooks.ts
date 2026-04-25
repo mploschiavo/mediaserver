@@ -5,7 +5,7 @@
 // iterate independently while the shared hooks file is being reworked
 // by neighboring agents.
 //
-// Backend reference: src/media_stack/api/openapi.yaml under the
+// Backend reference: contracts/api/openapi.yaml under the
 // `Me`, `Tokens`, and `Users` tags.
 
 import {

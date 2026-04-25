@@ -35,7 +35,7 @@ export interface LogsSearch {
  * Render a single log line with a level tag the eye can scan. Accepts
  * either the structured `LogLineShape` or a raw string (which is what
  * the controller's `/api/logs/{service}` actually returns — see
- * `src/media_stack/api/openapi.yaml`). Strings are scanned for an
+ * `contracts/api/openapi.yaml`). Strings are scanned for an
  * ERROR/WARN/INFO/DEBUG token to derive the level + colour.
  *
  * Re-exported here so existing imports (`from "@/routes/logs"`) keep

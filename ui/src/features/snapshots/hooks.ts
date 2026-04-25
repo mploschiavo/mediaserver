@@ -1,6 +1,6 @@
 // Feature-local hooks for the Snapshots / Backup / Restore surface.
 //
-// Endpoints (verified against src/media_stack/api/openapi.yaml):
+// Endpoints (verified against contracts/api/openapi.yaml):
 //   GET    /api/snapshots                 -> list config snapshots
 //   POST   /api/snapshot                  -> take a snapshot now
 //   GET    /api/snapshots/{filename}      -> read one snapshot's content

@@ -1,6 +1,6 @@
 // Feature-local hooks for the /settings -> Telemetry surface.
 //
-// Backend reference: src/media_stack/api/openapi.yaml only
+// Backend reference: contracts/api/openapi.yaml only
 // declares `GET /api/telemetry` (operationId: getTelemetry).
 // The audit asked for opt-in/out, so we POST to the same path
 // for consent updates — the controller has accepted POST on

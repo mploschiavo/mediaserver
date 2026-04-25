@@ -1,5 +1,5 @@
 // AUTO-GENERATED — do not edit by hand.
-// Source: src/media_stack/api/openapi.yaml + tests/fixtures/api_responses
+// Source: contracts/api/openapi.yaml + tests/fixtures/api_responses
 // Regenerate: python3 tools/gen-fixture-codegen-validation.py
 //
 // What this exists for

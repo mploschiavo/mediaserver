@@ -89,8 +89,14 @@ import logging
 # container now owns those assets. Requests to those paths return
 # ``410 GONE`` from the dispatcher with a Location pointer to the UI.
 # (v1.0.175.)
+#
+# Spec lives at ``contracts/api/openapi.yaml`` since ADR-0001 Phase 4
+# (v1.0.195). Walk up from this file (api/ → media_stack/ → src/) to
+# the repo root, then into the contracts tree.
 
-_OPENAPI_YAML_PATH = Path(__file__).parent / "openapi.yaml"
+_OPENAPI_YAML_PATH = (
+    Path(__file__).resolve().parents[3] / "contracts" / "api" / "openapi.yaml"
+)
 _OPENAPI_YAML = ""
 try:
     _OPENAPI_YAML = _OPENAPI_YAML_PATH.read_text(encoding="utf-8")

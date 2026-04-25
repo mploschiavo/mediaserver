@@ -1,4 +1,4 @@
-"""Ratchet: keep ``src/media_stack/api/openapi.yaml`` honest about the
+"""Ratchet: keep ``contracts/api/openapi.yaml`` honest about the
 routes ``handlers_get.py`` / ``handlers_post.py`` actually dispatch.
 
 The OpenAPI spec is hand-maintained — the audit flagged a pattern
@@ -33,7 +33,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _API_DIR = _REPO_ROOT / "src" / "media_stack" / "api"
 _HANDLERS_GET = _API_DIR / "handlers_get.py"
 _HANDLERS_POST = _API_DIR / "handlers_post.py"
-_SPEC = _API_DIR / "openapi.yaml"
+_SPEC = _REPO_ROOT / "contracts" / "api" / "openapi.yaml"
 
 # --- Allowlists -----------------------------------------------------------
 # Every entry needs a one-line reason; no silent opt-outs.

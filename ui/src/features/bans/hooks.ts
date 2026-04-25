@@ -5,7 +5,7 @@
 //   - IP/CIDR bans, keyed by CIDR
 //
 // Each registry has list/add/remove operations. The shapes here are
-// hand-typed against `src/media_stack/api/openapi.yaml` (`/api/bans/*`,
+// hand-typed against `contracts/api/openapi.yaml` (`/api/bans/*`,
 // schemas are `additionalProperties: true` so we keep the strict slice
 // the UI renders and let extra fields pass through).
 

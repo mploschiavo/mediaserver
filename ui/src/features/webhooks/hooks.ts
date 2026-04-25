@@ -15,7 +15,7 @@
 //   - 401 emission to the global auth event bus.
 //
 // OpenAPI path mapping (verified against
-// src/media_stack/api/openapi.yaml — paths are non-`/api`-prefixed):
+// contracts/api/openapi.yaml — paths are non-`/api`-prefixed):
 //   POST   /webhooks         body: { url }              -> add
 //   POST   /webhooks/test                                 -> test all
 //   GET    /api/arr-webhooks                              -> arr config

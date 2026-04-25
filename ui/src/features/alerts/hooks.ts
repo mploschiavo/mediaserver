@@ -1,5 +1,5 @@
 // Feature-local hooks for the /settings -> Alerts surface. The
-// OpenAPI spec at `src/media_stack/api/openapi.yaml` does not
+// OpenAPI spec at `contracts/api/openapi.yaml` does not
 // expose any alert-rule endpoint (only `/api/health`,
 // `/api/health/stories`, `/api/health-history`, etc.), so the
 // prior dashboard's pattern of `localStorage`-backed rules
@@ -16,7 +16,7 @@
 // AlertEngine sees the same rule list the card mutates without
 // either having to call into the React tree.
 //
-// Backend reference: src/media_stack/api/openapi.yaml — confirmed
+// Backend reference: contracts/api/openapi.yaml — confirmed
 // no alert-rule operationId on any of the surveyed paths.
 //
 // asArray() from `@/lib/coerce` is used to defang any malformed

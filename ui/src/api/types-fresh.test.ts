@@ -1,6 +1,6 @@
 /**
  * Ratchet: ``src/api/types.ts`` must be a faithful regen of
- * ``src/media_stack/api/openapi.yaml`` via openapi-typescript.
+ * ``contracts/api/openapi.yaml`` via openapi-typescript.
  *
  * Why this exists
  * ----------------
@@ -37,7 +37,7 @@ import { describe, it, expect } from "vitest";
 const COMMITTED_TYPES_PATH = resolve(__dirname, "types.ts");
 const SPEC_PATH = resolve(
   __dirname,
-  "../../../src/media_stack/api/openapi.yaml",
+  "../../../contracts/api/openapi.yaml",
 );
 
 describe("openapi-typescript codegen freshness", () => {
@@ -79,7 +79,7 @@ describe("openapi-typescript codegen freshness", () => {
         writeFileSync(diffPath, summarizeDiff(committed, fresh));
         expect(
           fresh,
-          "src/api/types.ts is stale vs src/media_stack/api/openapi.yaml. " +
+          "src/api/types.ts is stale vs contracts/api/openapi.yaml. " +
             "Run `npm run gen:api` and commit the result. " +
             `Drift summary at ${diffPath}.`,
         ).toEqual(committed);

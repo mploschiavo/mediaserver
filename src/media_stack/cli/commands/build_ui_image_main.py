@@ -134,7 +134,7 @@ def run(cfg: BuildUIImageConfig) -> int:
         return 1
 
     # Build context is the repo root: the Dockerfile's build stage
-    # COPY-s ui/ AND src/media_stack/api/openapi.yaml, both of which
+    # COPY-s ui/ AND contracts/api/openapi.yaml, both of which
     # are siblings under cfg.root_dir.
     run_command(
         [

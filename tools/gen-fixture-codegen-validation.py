@@ -44,7 +44,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC_PATH = ROOT / "src" / "media_stack" / "api" / "openapi.yaml"
+SPEC_PATH = ROOT / "contracts" / "api" / "openapi.yaml"
 FIXTURES_DIR = ROOT / "tests" / "fixtures" / "api_responses"
 OUT_PATH = ROOT / "ui" / "src" / "api" / "fixture-codegen-validation.ts"
 
