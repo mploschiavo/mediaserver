@@ -29,10 +29,14 @@ RUN apk add --no-cache openssl \
 # installed the runtime libs above; pip would otherwise pull
 # fresh copies and bloat the image.
 COPY VERSION /opt/media-stack/VERSION
+COPY README.md /opt/media-stack/README.md
 COPY pyproject.toml /opt/media-stack/pyproject.toml
 COPY src /opt/media-stack/src
 COPY config/defaults /opt/media-stack/config/defaults
 COPY contracts /opt/media-stack/contracts
+# Hatchling reads README.md for the long-description metadata
+# field at build time — the COPY above is required even though
+# the runtime never reads it.
 RUN pip install --no-deps --no-cache-dir /opt/media-stack
 
 # Shell wrappers under ``bin/`` (release.sh, regen-dist.sh, etc.)

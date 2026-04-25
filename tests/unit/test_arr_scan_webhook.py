@@ -47,7 +47,7 @@ class EnsureArrScanWebhooksTests(unittest.TestCase):
 
     def test_no_api_keys_returns_error_per_service(self):
         with patch(
-            "media_stack.api.services.content.discover_api_keys",
+            "media_stack.api.services.content_analytics_mixin.discover_api_keys",
             return_value={},
         ), patch(
             "media_stack.api.services.content.SERVICE_MAP",
@@ -61,7 +61,7 @@ class EnsureArrScanWebhooksTests(unittest.TestCase):
 
     def test_registers_when_missing(self):
         with patch(
-            "media_stack.api.services.content.discover_api_keys",
+            "media_stack.api.services.content_analytics_mixin.discover_api_keys",
             return_value={"sonarr": "key-s", "radarr": "key-r"},
         ), patch(
             "media_stack.api.services.content.SERVICE_MAP",
@@ -77,7 +77,7 @@ class EnsureArrScanWebhooksTests(unittest.TestCase):
 
     def test_skips_when_already_registered(self):
         with patch(
-            "media_stack.api.services.content.discover_api_keys",
+            "media_stack.api.services.content_analytics_mixin.discover_api_keys",
             return_value={"sonarr": "key-s", "radarr": "key-r"},
         ), patch(
             "media_stack.api.services.content.SERVICE_MAP",
