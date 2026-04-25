@@ -1995,7 +1995,7 @@ def _persist_preflight_keys_to_secret_safe(
     - K8s deploys: patch the ``media-stack-secrets`` Secret. RBAC errors
       (403 on ``patch`` of secrets) come back as
       ``status: rbac-denied`` so the dashboard can prompt the operator
-      to re-apply ``k8s/controller.yaml`` instead of silently doing
+      to re-apply ``k8s/base/controller/controller.yaml`` instead of silently doing
       nothing.
     - Compose deploys: no K8s namespace → ``status: skipped-no-k8s``.
       Discovered values still live in ``os.environ`` for the running
@@ -2035,7 +2035,7 @@ def _persist_preflight_keys_to_secret_safe(
     except Exception as exc:
         message = str(exc)
         # Surface RBAC denials specifically — the operator can fix this
-        # by re-applying ``k8s/controller.yaml``; an opaque "Forbidden"
+        # by re-applying ``k8s/base/controller/controller.yaml``; an opaque "Forbidden"
         # in the job log isn't actionable.
         status = "rbac-denied" if "403" in message or "Forbidden" in message else "error"
         return {

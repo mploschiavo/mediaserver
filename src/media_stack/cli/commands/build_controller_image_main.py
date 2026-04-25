@@ -49,7 +49,7 @@ def parse_config(argv: list[str] | None = None) -> BuildControllerImageConfig:
     root_dir = repo_root_from_script_file(__file__)
     parser = argparse.ArgumentParser(
         prog="bin/build-controller-image.sh",
-        description="Build controller image used by k8s/controller.yaml, docker-compose.yml, and CronJobs.",
+        description="Build controller image used by k8s/base/controller/controller.yaml, docker-compose.yml, and CronJobs.",
     )
     parser.add_argument(
         "--image",
