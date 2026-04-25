@@ -1493,13 +1493,17 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.set_envvar(key, value))
             return
 
-        # POST /webhooks/test
-        if handler.path == "/webhooks/test":
+        # POST /webhooks/test  or  POST /api/webhooks/test
+        if handler.path in ("/webhooks/test", "/api/webhooks/test"):
             handler._json_response(200, handler._test_webhook())
             return
 
-        # POST /cancel or POST /actions/cancel -- cancel running action
-        if handler.path in ("/cancel", "/actions/cancel"):
+        # POST /cancel, POST /actions/cancel, POST /api/actions/cancel
+        # -- cancel running action. /api/actions/* is the canonical
+        # path for SPA-issued requests (the UI's nginx only proxies
+        # /api/*); the bare /actions/* paths are kept as legacy
+        # aliases for direct curl / older operators.
+        if handler.path in ("/cancel", "/actions/cancel", "/api/actions/cancel"):
             cancelled = handler.state.cancel_action()
             handler._json_response(200, {
                 "status": "cancel_requested" if cancelled else "no_action_running",
@@ -1507,14 +1511,15 @@ class PostRequestHandler:
             })
             return
 
-        # POST /actions/{name}
-        if handler.path.startswith("/actions/"):
-            action_name = handler.path[len("/actions/"):]
-            if action_name not in KNOWN_ACTIONS:
-                handler._json_response(404, {"error": f"unknown action '{action_name}'", "known": sorted(KNOWN_ACTIONS)})
+        # POST /actions/{name}  or  POST /api/actions/{name}
+        for prefix in ("/api/actions/", "/actions/"):
+            if handler.path.startswith(prefix):
+                action_name = handler.path[len(prefix):]
+                if action_name not in KNOWN_ACTIONS:
+                    handler._json_response(404, {"error": f"unknown action '{action_name}'", "known": sorted(KNOWN_ACTIONS)})
+                    return
+                handler._handle_action(action_name)
                 return
-            handler._handle_action(action_name)
-            return
 
         # POST /config
         if handler.path == "/config":
@@ -1527,8 +1532,10 @@ class PostRequestHandler:
             handler._json_response(200, {"status": "updated", "config": updated})
             return
 
-        # POST /webhooks
-        if handler.path == "/webhooks":
+        # POST /webhooks  or  POST /api/webhooks (canonical for SPA;
+        # nginx only proxies /api/* — the bare /webhooks path stays
+        # for direct curl / arr-side webhook receivers).
+        if handler.path in ("/webhooks", "/api/webhooks"):
             body = handler._read_json_body()
             url = body.get("url", "").strip()
             if url:

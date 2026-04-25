@@ -45,7 +45,12 @@ describe("guardrails feature hooks", () => {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(fetcherMock).toHaveBeenCalledWith("api/guardrails");
+    // The hook now passes `silenceAuthEvent: true` so a 401 from the
+    // banner-mount query never bounces the SPA off whatever page the
+    // operator was on. Lock both the path and the option.
+    expect(fetcherMock).toHaveBeenCalledWith("api/guardrails", {
+      silenceAuthEvent: true,
+    });
     expect(result.current.data?.guardrails.length).toBe(1);
   });
 

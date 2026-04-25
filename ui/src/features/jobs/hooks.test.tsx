@@ -68,7 +68,12 @@ describe("jobs feature hooks", () => {
     expect(data.count).toBeUndefined();
   });
 
-  it("useRunAction POSTs /actions/{name} (NOT /api/actions/{name})", async () => {
+  // v1.3.6 fix: prior to this, useRunAction POSTed to bare
+  // `/actions/<name>` and 405'd in production because the SPA's
+  // nginx (`docker/ui-nginx.conf`) only proxies `/api/*` to the
+  // controller. The path MUST be `api/actions/<name>` now; the
+  // controller-side handler accepts both for backward compat.
+  it("useRunAction POSTs api/actions/{name} (must be /api/* — see ratchet)", async () => {
     fetcherMock.mockResolvedValue({ task_id: "task-123" });
     const { result } = renderHook(
       () => useRunAction("scan-completed-downloads"),
@@ -77,13 +82,12 @@ describe("jobs feature hooks", () => {
     const out = await result.current.mutateAsync();
     expect(out.task_id).toBe("task-123");
     expect(fetcherMock).toHaveBeenCalledWith(
-      "/actions/scan-completed-downloads",
+      "api/actions/scan-completed-downloads",
       expect.objectContaining({ method: "POST" }),
     );
-    // Critically, the path is NOT prefixed with `/api/`.
-    const calledPath = fetcherMock.mock.calls[0]?.[0];
-    expect(typeof calledPath).toBe("string");
-    expect(calledPath as string).not.toMatch(/^\/?api\//);
+    // The path MUST go through /api/* so nginx proxies it correctly.
+    const calledPath = fetcherMock.mock.calls[0]?.[0] as string;
+    expect(calledPath).toMatch(/^api\//);
   });
 
   it("useRunAction encodes the action name", async () => {
@@ -95,18 +99,18 @@ describe("jobs feature hooks", () => {
     await result.current.mutateAsync();
     const calledPath = fetcherMock.mock.calls[0]?.[0] as string;
     expect(calledPath).toBe(
-      `/actions/${encodeURIComponent("with spaces & symbols")}`,
+      `api/actions/${encodeURIComponent("with spaces & symbols")}`,
     );
   });
 
-  it("useCancelAction POSTs /actions/cancel", async () => {
+  it("useCancelAction POSTs api/actions/cancel", async () => {
     fetcherMock.mockResolvedValue({ cancelled: true });
     const { result } = renderHook(() => useCancelAction(), {
       wrapper: makeWrapper(),
     });
     await result.current.mutateAsync();
     expect(fetcherMock).toHaveBeenCalledWith(
-      "/actions/cancel",
+      "api/actions/cancel",
       expect.objectContaining({ method: "POST" }),
     );
   });

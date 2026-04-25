@@ -36,6 +36,16 @@ export interface FetcherInit extends Omit<RequestInit, "body"> {
   // When set, sent verbatim. When omitted on mutating methods, a fresh
   // UUID is generated. Pass an empty string to opt out entirely.
   idempotencyKey?: string;
+  /**
+   * When true, a 401 from this request will NOT emit the global
+   * `unauthenticated` event (i.e. won't redirect the whole SPA to
+   * Authelia). Use for advisory queries that mount globally — e.g.
+   * the guardrails-triggered banner — where a 401 means "user isn't
+   * authorised for *this* feature" and bouncing the entire app would
+   * be wrong. Mutations and primary content reads should NOT set
+   * this — those still redirect on 401 like before.
+   */
+  silenceAuthEvent?: boolean;
 }
 
 export type AuthEvent = "unauthenticated";
@@ -155,7 +165,11 @@ export async function fetcher<T>(
     }
   }
 
-  const { idempotencyKey: _drop, ...rest } = init;
+  const {
+    idempotencyKey: _drop,
+    silenceAuthEvent: _silence,
+    ...rest
+  } = init;
   void _drop;
 
   const res = await fetch(buildUrl(path), {
@@ -165,7 +179,7 @@ export async function fetcher<T>(
     credentials: rest.credentials ?? "same-origin",
   });
 
-  if (res.status === 401) emitAuth("unauthenticated");
+  if (res.status === 401 && !_silence) emitAuth("unauthenticated");
 
   const body = await readBody(res);
   if (!res.ok) {

@@ -44,7 +44,7 @@ describe("webhooks feature hooks", () => {
       event_type: "movie.imported",
     });
     expect(fetcherMock).toHaveBeenCalledWith(
-      "webhooks",
+      "api/webhooks",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -62,7 +62,7 @@ describe("webhooks feature hooks", () => {
     });
     await result.current.mutateAsync({ id: "wh-77" });
     expect(fetcherMock).toHaveBeenCalledWith(
-      "webhooks?id=wh-77",
+      "api/webhooks?id=wh-77",
       expect.objectContaining({ method: "DELETE" }),
     );
   });
@@ -74,7 +74,7 @@ describe("webhooks feature hooks", () => {
     });
     await result.current.mutateAsync();
     expect(fetcherMock).toHaveBeenCalledWith(
-      "webhooks/test",
+      "api/webhooks/test",
       expect.objectContaining({ method: "POST" }),
     );
   });

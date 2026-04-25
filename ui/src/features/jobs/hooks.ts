@@ -133,9 +133,19 @@ export function useJobs(): UseQueryResult<JobsResponse> {
     queryKey: JOBS_QUERY_KEY,
     queryFn: async () => {
       const raw = await fetcher<RawJobsResponse>("api/jobs");
+      // The controller historically emitted `tree` as a SINGLE object
+      // (the root JobTreeNode); v1.0.186+ wraps it in a list to match
+      // the SPA's typed shape. Coerce defensively so both shapes
+      // render correctly — bare object becomes a 1-element array.
+      const rawTree = raw.tree;
+      const treeArr = Array.isArray(rawTree)
+        ? rawTree
+        : rawTree && typeof rawTree === "object"
+          ? [rawTree as JobTreeNode]
+          : [];
       return {
         jobs: asArray<JobMeta>(raw.jobs),
-        tree: asArray<JobTreeNode>(raw.tree),
+        tree: treeArr as readonly JobTreeNode[],
         history: asArray<JobHistoryEntry>(raw.history),
         count: typeof raw.count === "number" ? raw.count : undefined,
       };
@@ -166,10 +176,13 @@ export function useRunAction(
   const qc = useQueryClient();
   return useMutation<RunActionResult, Error, void>({
     mutationFn: () =>
-      // Built via template string so the path-contract scanner never
-      // sees a literal `/actions/...` prefixed path. The scanner only
-      // matches `/api/*` literals; this falls through unmatched.
-      fetcher<RunActionResult>(`/actions/${encodeURIComponent(name)}`, {
+      // MUST go through `api/...` — the SPA's nginx only proxies
+      // `/api/*` to the controller. A bare `/actions/<name>` falls
+      // into the SPA-fallback `try_files` block and returns 405 on
+      // POST (nginx default for static-file locations). The
+      // controller registers both `/api/actions/<name>` and the
+      // legacy `/actions/<name>` for backward compat.
+      fetcher<RunActionResult>(`api/actions/${encodeURIComponent(name)}`, {
         method: "POST",
       }),
     onSuccess: () => {
@@ -187,7 +200,7 @@ export function useCancelAction(): UseMutationResult<unknown, Error, void> {
   const qc = useQueryClient();
   return useMutation<unknown, Error, void>({
     mutationFn: () =>
-      fetcher<unknown>("/actions/cancel", { method: "POST" }),
+      fetcher<unknown>("api/actions/cancel", { method: "POST" }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: JOBS_QUERY_KEY });
     },

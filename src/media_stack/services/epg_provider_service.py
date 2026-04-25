@@ -200,7 +200,7 @@ class EpgProviderService:
 
     def run_health_check(self, log: Any = None) -> dict[str, Any]:
         """Probe all providers for all known countries. Returns health report."""
-        from .api.services.config import get_iptv_countries
+        from media_stack.api.services.config import get_iptv_countries
         countries_data = get_iptv_countries()
         countries = countries_data.get("countries", [])
 

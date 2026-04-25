@@ -84,12 +84,30 @@ export function useGuardrails(): UseQueryResult<GuardrailsResponse> {
   return useQuery<GuardrailsResponse>({
     queryKey: GUARDRAILS_QUERY_KEY,
     queryFn: async () => {
-      const raw = await fetcher<RawGuardrailsResponse>("api/guardrails");
+      // `silenceAuthEvent`: this query mounts globally (TriggeredBanner
+      // in AppShell) on every page. A 401 here means "user isn't
+      // authorised for guardrails", NOT "session is dead" — bouncing
+      // the whole SPA to Authelia would unmount whatever page the
+      // operator was on (caused the v1.3.4 "Logs page briefly shows
+      // then disappears" bug). The banner just renders nothing on
+      // error; React Query continues polling at refetchInterval.
+      const raw = await fetcher<RawGuardrailsResponse>("api/guardrails", {
+        silenceAuthEvent: true,
+      });
       return {
         guardrails: asArray<Guardrail>(raw.guardrails),
       };
     },
     refetchInterval: 30_000,
+    // Don't retry 4xx — re-firing an admin-gated endpoint that the
+    // user isn't allowed to call just wastes round-trips.
+    retry: (failureCount, err) => {
+      const status = (err as { status?: number } | undefined)?.status;
+      if (typeof status === "number" && status >= 400 && status < 500) {
+        return false;
+      }
+      return failureCount < 1;
+    },
   });
 }
 
