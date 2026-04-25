@@ -296,12 +296,24 @@ class GetRequestHandler:
             # tab to warn before save when the typed gateway_host
             # doesn't resolve, or resolves to a different machine than
             # this cluster. Doesn't open HTTP connections — DNS only.
+            #
+            # Two modes:
+            #   - ``?host=<name>`` — single-host check, returned as a
+            #     flat object (used by the in-form save validator).
+            #   - no query string — bulk check across every hostname
+            #     the routing config implies. Returns ``{"entries":
+            #     [...]}`` for the SPA's DNS-resolution table, which
+            #     pre-populates from routing config rather than asking
+            #     the operator to type each hostname manually.
             try:
                 from media_stack.api.services import dns_check as _dns_check
                 from urllib.parse import urlparse, parse_qs
                 qs = parse_qs(urlparse(handler.path).query)
                 host = (qs.get("host") or [""])[0]
-                handler._json_response(HTTPStatus.OK, _dns_check.check(host))
+                if host.strip():
+                    handler._json_response(HTTPStatus.OK, _dns_check.check(host))
+                else:
+                    handler._json_response(HTTPStatus.OK, _dns_check.check_all())
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
                     HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -1176,26 +1188,83 @@ class _GatewayHostnameProbe:
         self._env = os.environ
 
     def read(self) -> list[str]:
-        cfg_path = self._locate_envoy_yaml()
-        if cfg_path is None:
-            return []
-        try:
-            text = cfg_path.read_text(encoding="utf-8")
-        except OSError:
-            return []
-        # vhost domains live under `domains:` blocks; a cheap regex
-        # over the whole file is sufficient because Envoy only lists
-        # hostnames under that key, and bogus matches (e.g. image
-        # pins) are filtered out by the domain-suffix check below.
-        domain_suffix = self._env.get(
-            "GATEWAY_DOMAIN_SUFFIX", ".media-stack.local",
-        )
+        # Primary source: routing config. The dashboard renders this
+        # list as the "hostnames Envoy serves" inventory — the routing
+        # config IS the source of truth for that, since it drives both
+        # the envoy.yaml render and the Ingress patcher. Pulling from
+        # config also works on K8s where the controller writes
+        # envoy.yaml into a ConfigMap, not a path the controller pod
+        # itself can read back, so the regex-over-file path returns
+        # empty even when the gateway is fully configured.
         hostnames: set[str] = set()
-        for match in self._HOST_RE.finditer(text):
-            host = match.group(0)
-            if host.endswith(domain_suffix):
-                hostnames.add(host)
+        try:
+            from media_stack.api.services import config as config_svc
+            from media_stack.api.services.registry import SERVICES
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
+            SERVICES = []  # type: ignore[assignment]
+            config_svc = None  # type: ignore[assignment]
+        if config_svc is not None:
+            try:
+                routing = config_svc.get_routing()
+            except Exception as exc:  # noqa: BLE001
+                log_swallowed(exc)
+                routing = {}
+            base = str(routing.get("base_domain") or "").strip()
+            sub = str(routing.get("stack_subdomain") or "").strip()
+            gw_host = str(routing.get("gateway_host") or "").strip()
+            if gw_host:
+                hostnames.add(gw_host)
+            if base and sub:
+                for svc in SERVICES:
+                    hostnames.add(f"{svc.id}.{sub}.{base}")
+            direct_hosts = routing.get("direct_hosts") or {}
+            if isinstance(direct_hosts, dict):
+                for value in direct_hosts.values():
+                    if isinstance(value, str) and value.strip():
+                        hostnames.add(value.strip())
+
+        # Secondary source: regex over envoy.yaml when present.
+        # Filtered by the configured ``GATEWAY_DOMAIN_SUFFIX`` only when
+        # the env var is explicitly set — defaulting to ".media-stack.local"
+        # silently dropped every legitimate hostname on real
+        # deployments (m.iomio.io, *.example.com). When the suffix is
+        # left at its default, we accept any host the regex finds so
+        # the file-derived list isn't empty in practice.
+        cfg_path = self._locate_envoy_yaml()
+        if cfg_path is not None:
+            try:
+                text = cfg_path.read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+            if text:
+                explicit_suffix = self._env.get("GATEWAY_DOMAIN_SUFFIX", "").strip()
+                for match in self._HOST_RE.finditer(text):
+                    host = match.group(0)
+                    if explicit_suffix:
+                        if not host.endswith(explicit_suffix):
+                            continue
+                    elif not self._looks_like_hostname(host):
+                        # Without an explicit suffix the regex will
+                        # also match IPs, image tags, and version
+                        # strings ("1.2.3.4", "envoyproxy/envoy:1.34.0").
+                        # Reject those defensively so the file-derived
+                        # set doesn't pollute the operator's hostname
+                        # inventory.
+                        continue
+                    hostnames.add(host)
         return sorted(hostnames)
+
+    @staticmethod
+    def _looks_like_hostname(value: str) -> bool:
+        """Heuristic — accept only labels that contain a non-numeric
+        first component. Filters out ``1.2.3.4``-style IP addresses
+        and ``v1.2.3``-style version pins that the Envoy config has
+        no business advertising as a virtual host."""
+        head = value.split(".", 1)[0]
+        if not head:
+            return False
+        return not head.isdigit() and not (head[0] == "v" and head[1:].isdigit())
 
     def _locate_envoy_yaml(self) -> Path | None:
         for candidate in (
@@ -1257,8 +1326,10 @@ class _RoutingMatrixProbe:
                          "media-stack-controller", ctrl_port, ctrl_port))
         host_ip = self._env.get("HOST_IP_OVERRIDE", "127.0.0.1")
         results: dict = {}
+        rows: list[dict] = []
+        probed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         for svc_id, _name, svc_host, svc_port, svc_direct_port in services:
-            results[svc_id] = self._probe_service(
+            svc_result = self._probe_service(
                 svc_id, svc_host, svc_port,
                 direct_port=svc_direct_port,
                 scheme=scheme, gw_port=gw_port,
@@ -1266,11 +1337,38 @@ class _RoutingMatrixProbe:
                 gw_internal_port=gw_internal_port,
                 routing=routing, host_ip=host_ip,
             )
-        return {"routing": {
-            "scheme": scheme, "gateway_port": gw_port,
-            "gateway_host": routing["gateway_host"],
-            "app_path_prefix": routing["app_path_prefix"],
-        }, "services": results}
+            results[svc_id] = svc_result
+            # Flatten to the row shape the SPA's routing matrix consumes.
+            # The "external" URL is the one a real user types — the
+            # gateway path-prefix URL. The "internal" URL is the
+            # in-cluster direct service probe. We pick the gateway probe
+            # as the row-level status because that's the route the user
+            # actually exercises.
+            gw_probe = svc_result.get("gateway") or {}
+            direct_probe = svc_result.get("direct") or {}
+            external_url = gw_probe.get("url") or ""
+            internal_url = direct_probe.get("url") or ""
+            status_code = int(gw_probe.get("code") or 0)
+            rows.append({
+                "app": svc_id,
+                "internal_url": internal_url,
+                "external_url": external_url,
+                "ok": bool(gw_probe.get("ok")),
+                "status_code": status_code,
+                "status": status_code,
+                "latency_ms": int(gw_probe.get("ms") or 0),
+                "probed_at": probed_at,
+                "error": str(gw_probe.get("error") or ""),
+            })
+        return {
+            "rows": rows,
+            "routing": {
+                "scheme": scheme, "gateway_port": gw_port,
+                "gateway_host": routing["gateway_host"],
+                "app_path_prefix": routing["app_path_prefix"],
+            },
+            "services": results,
+        }
 
     def _probe_service(self, svc_id, svc_host, svc_port, *,
                        scheme, gw_port, gw_internal, gw_internal_port,
