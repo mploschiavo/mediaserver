@@ -1,7 +1,38 @@
-"""Reusable bootstrap helpers for media-stack automation.
+"""Adapters layer — driving (IN) and driven (OUT) integrations.
 
-App-specific adapters are loaded dynamically from services/apps/<id>/adapters.py
-at first access — no hardcoded service imports.
+Status (Phase 16-A): this package currently hosts the legacy
+flat helpers (``common.py``, ``http_client.py``, ``servarr.py``,
+``defaults.py``) plus the lazy app-loader below. Phase 16-D will
+restructure into per-tech sub-packages — ``adapters/jellyfin/``,
+``adapters/sonarr/``, etc. — each implementing a port declared
+under ``interfaces/``. The 16-A commit deliberately leaves the
+existing 5 files in place; no migration here.
+
+Layering rules (enforced by
+``tests/unit/test_architecture_layering.py``):
+
+* ``adapters/`` MAY import from ``interfaces/`` (Protocols /
+  ABCs — adapters implement ports).
+* ``adapters/`` MAY import from ``domain/`` for pure-data types
+  (entities, value objects). They MUST NOT depend on domain
+  behaviour beyond what a port surfaces.
+* ``adapters/`` MUST NOT import from ``application/`` — the use
+  case calls into the adapter, not the other way around.
+* ``adapters/`` SHOULD NOT import from peer ``adapters/`` — if
+  one adapter needs another, the dependency goes through a port
+  or through the composition root.
+
+The lazy ``_load_app_adapter`` helper below is a Phase 16-A bridge:
+it dispatches ``adapters/<name>`` calls into ``services/apps/<tech>/``
+until 16-D moves the adapter code here. The dispatching mechanism
+itself stays — what changes in 16-D is *where* the loaded module
+lives.
+
+Reusable bootstrap helpers for media-stack automation.
+
+App-specific adapters are loaded dynamically from
+``services/apps/<id>/adapters.py`` at first access — no hardcoded
+service imports.
 """
 
 import importlib
