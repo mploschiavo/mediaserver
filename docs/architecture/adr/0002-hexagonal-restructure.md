@@ -316,3 +316,43 @@ lands, at its own cadence.
 ADR proposed. **Phase 16-A (scaffolding + base port interfaces)
 can start as soon as ADR-0001 Phase 12 stabilizes.** Subsequent
 phases are independent PRs.
+
+### Phase status
+
+| Phase | State | Landed in |
+|-------|-------|-----------|
+| 16-A — scaffold + base ports + layering ratchet | DONE | v1.0.195 |
+| 16-B — migrate `core/auth/` | TODO | — |
+| 16-C — migrate `core/platforms/` | TODO | — |
+| 16-D — migrate `services/apps/<tech>/` (4 batches) | TODO | — |
+| 16-E — cross-cutting + remaining domain | TODO | — |
+| 16-F — strict-mode ratchet + drop shims | TODO | — |
+| 16-G — `media_stack.public` surface | TODO | — |
+
+#### Phase 16-A — what shipped
+
+* New packages (each with a substantial layering-rules docstring
+  in its `__init__.py`):
+  * `src/media_stack/domain/`
+  * `src/media_stack/application/`
+  * `src/media_stack/infrastructure/`
+  * `src/media_stack/interfaces/`
+  * `src/media_stack/adapters/` got an updated `__init__.py`
+    docstring; existing 5 legacy files left untouched (migration
+    is Phase 16-D).
+* Six base ports under `interfaces/`: `adapter.py`, `job.py`,
+  `media_server.py`, `arr.py`, `notification.py`, `store.py`.
+* Five new ratchet rules in
+  `tests/unit/test_architecture_layering.py`:
+  * `DomainLayerIsPureTest` — `domain/` ↛ `{adapters,
+    infrastructure, application, services.apps}`
+  * `ApplicationLayerDependsOnDomainAndPortsTest` —
+    `application/` ↛ `{adapters, infrastructure}`
+  * `AdaptersDoNotReachUpwardTest` — `adapters/` ↛ `application/`
+  * `InfrastructureDoesNotReachUpwardTest` —
+    `infrastructure/` ↛ `application/`
+  * `InterfacesIsLeafTest` — `interfaces/` ↛ `{domain,
+    application, adapters, infrastructure}`
+* All five hexagon allowlists ship empty (`EXPECTED_*_TOTAL = 0`)
+  because the new packages start empty. Phase 16-B onwards can
+  add TODO-tagged temporary entries; 16-F drops them.
