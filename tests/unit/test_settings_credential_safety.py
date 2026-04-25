@@ -33,11 +33,6 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-DASHBOARD_HTML = (
-    ROOT / "src" / "media_stack" / "api" / "dashboard.html"
-).read_text(encoding="utf-8")
-
-
 class EnvvarsMaskingTests(unittest.TestCase):
     """The endpoint behaviour itself — masks secrets, returns
     everything else as-is."""
@@ -107,71 +102,3 @@ class EnvvarsMaskingTests(unittest.TestCase):
         os.environ["STACK_ADMIN_PASSWORD"] = ""
         result = self._envvars()
         self.assertEqual(result["STACK_ADMIN_PASSWORD"], "")
-
-
-class DashboardSettingsPanelTests(unittest.TestCase):
-    """The HTML/JS side. Pattern-match on ``dashboard.html`` to
-    catch the credential-leak regression at the source."""
-
-    def test_no_reveal_password_function(self) -> None:
-        """The old ``revealPassword(btn)`` function dumped
-        STACK_ADMIN_PASSWORD into the DOM. It must not come
-        back."""
-        self.assertNotIn(
-            "function revealPassword",
-            DASHBOARD_HTML,
-            "revealPassword() leaks STACK_ADMIN_PASSWORD — the "
-            "Settings panel must use a rotation link instead.",
-        )
-
-    def test_no_show_password_button(self) -> None:
-        """The old "Show" button on the password row called
-        revealPassword. Pin the absence so a copy-paste regression
-        fails this test."""
-        self.assertNotIn(
-            "onclick=\"revealPassword(this)\"",
-            DASHBOARD_HTML,
-            "A 'Show' button on the password row leaks the seed "
-            "credential.",
-        )
-
-    def test_settings_password_row_links_to_change_flow(self) -> None:
-        """Positive signal: the password row should mention
-        "Change password" so the user has a path forward."""
-        self.assertIn(
-            "Change password",
-            DASHBOARD_HTML,
-            "Settings panel must offer a Change-password action "
-            "in place of the old Show button.",
-        )
-
-    def test_settings_username_load_runs_on_modal_open(self) -> None:
-        """Pin the bug shape: the symptom of "Loading..." stuck
-        forever was a ``setTimeout(...,100)`` at module scope that
-        ran 100ms after page load — the modal didn't exist yet, so
-        the function silently returned. The fix is a function
-        called from inside ``showSettings()`` after innerHTML is
-        set."""
-        self.assertIn(
-            "loadSettingsAdminUsername()",
-            DASHBOARD_HTML,
-            "Expected a callable that loads the username when the "
-            "modal opens, not a fire-once setTimeout at module "
-            "scope.",
-        )
-        # And that function uses /api/auth/identity (the
-        # authenticated user) before falling back to /api/keys —
-        # not /api/envvars (env var, may be stale after rotation).
-        idx = DASHBOARD_HTML.find("function loadSettingsAdminUsername")
-        self.assertGreater(idx, -1)
-        body = DASHBOARD_HTML[idx:idx + 800]
-        self.assertIn("/api/auth/identity", body)
-        self.assertNotIn(
-            "/api/envvars", body,
-            "Username must come from the authenticated session, "
-            "not the env var (which may be the pre-rotation seed).",
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()

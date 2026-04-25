@@ -178,45 +178,6 @@ class RecyclarrPlaceholderRemoved(unittest.TestCase):
                 f"{name} still defines a recyclarr service backed by "
                 "hashicorp/http-echo — the placeholder is back.",
             )
-
-
-class DashboardToastSafety(unittest.TestCase):
-
-    def test_safe_err_text_helper_present(self) -> None:
-        path = ROOT / "src/media_stack/api/dashboard.html"
-        text = path.read_text(encoding="utf-8")
-        self.assertIn(
-            "function _safeErrText", text,
-            "_safeErrText helper removed — toast leak guard is gone.",
-        )
-
-    def test_no_raw_etostring_in_toast_calls(self) -> None:
-        """toast(e.toString(),...) was the original leak pattern."""
-        path = ROOT / "src/media_stack/api/dashboard.html"
-        text = path.read_text(encoding="utf-8")
-        # Allow `_safeErrText(e)` but not raw `e.toString()` directly
-        # inside a toast(...) call.
-        leaks = re.findall(r"toast\([^)]*?\be\.toString\(\)", text)
-        self.assertFalse(
-            leaks,
-            f"{len(leaks)} toast(...) call(s) still pass e.toString() "
-            "directly — replace with _safeErrText(e).",
-        )
-
-    def test_no_raw_error_message_in_toast_calls(self) -> None:
-        """``toast('Error: '+e.message,true)`` is the other leak shape."""
-        path = ROOT / "src/media_stack/api/dashboard.html"
-        text = path.read_text(encoding="utf-8")
-        leaks = re.findall(
-            r"toast\(\s*'Error:[^']*'\s*\+\s*e\.message", text
-        )
-        self.assertFalse(
-            leaks,
-            f"{len(leaks)} toast(...) call(s) still concatenate "
-            "e.message directly — replace with _safeErrText(e).",
-        )
-
-
 class StackUpdateEndpointsRegistered(unittest.TestCase):
 
     def test_get_endpoint_in_handlers(self) -> None:

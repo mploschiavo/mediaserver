@@ -49,7 +49,6 @@ FILES_OVER_400_LINES_RATCHET = 53   # large files — split into modules
 HARDCODED_URLS_RATCHET = 132        # URLs should come from contracts/config
 DUPLICATE_STRINGS_5PLUS_RATCHET = 85  # extract to constants or config
 MAGIC_NUMBERS_OVER_100_RATCHET = 1016  # extract to named constants
-NO_BROWSER_DIALOGS_RATCHET = 30  # alert/confirm/prompt in dashboard.html — use msUI.* instead
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0
@@ -419,33 +418,6 @@ class TestHygieneRatchets(unittest.TestCase):
                     if node.func.id == "print":
                         count += 1
         self._ratchet("PRINT_STATEMENTS_RATCHET", count, PRINT_STATEMENTS_RATCHET)
-
-    def test_no_browser_dialogs(self):
-        """Dashboard code must use msUI.notify/.confirm/.prompt/.reveal
-        instead of the browser's native alert/confirm/prompt dialogs.
-
-        Rationale: the native dialogs are unstyled, block the event
-        loop, cannot be themed to match the app, can't show rich
-        content (e.g. a copyable password), and look like they were
-        designed in 1995. msUI provides promise-based replacements that
-        match the dashboard's visual language.
-
-        The ratchet counts every match and must trend toward zero.
-        If you are introducing a new dialog, use msUI. If you are
-        removing one, lower NO_BROWSER_DIALOGS_RATCHET to the new count.
-        """
-        import re
-        dashboard = SRC / "media_stack" / "api" / "dashboard.html"
-        if not dashboard.is_file():
-            return  # defensive: ratchet is a no-op if the file moves
-        text = dashboard.read_text(encoding="utf-8")
-        # Match bare calls to alert/confirm/prompt, but not msUI.confirm
-        # or window.confirm-style attribute access. \b anchors avoid
-        # matching longer identifiers like "preconfirm" or "myalert".
-        pattern = re.compile(r"(?<![.\w])(alert|confirm|prompt)\s*\(")
-        count = len(pattern.findall(text))
-        self._ratchet("NO_BROWSER_DIALOGS_RATCHET", count,
-                      NO_BROWSER_DIALOGS_RATCHET)
 
     def test_files_over_400_lines(self):
         """Large files are hard to navigate — split into modules."""

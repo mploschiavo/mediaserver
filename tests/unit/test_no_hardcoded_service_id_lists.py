@@ -147,75 +147,9 @@ class HardcodedServiceIdListRatchet(unittest.TestCase):
         )
 
 
-# ----------------------------------------------------------------------
-# #3 — wizard text must use _techBindings, not a literal media-server name
-# ----------------------------------------------------------------------
-
-
-_DASHBOARD = (
-    ROOT / "src" / "media_stack" / "api" / "dashboard.html"
-).read_text(encoding="utf-8")
-
-
-class WizardBindingRatchet(unittest.TestCase):
-
-    def test_wizard_does_not_hardcode_media_server_name(self) -> None:
-        """The wizard must construct media-server-related copy from
-        the profile binding (``_techBindings.media_server`` →
-        SVC_MAP lookup), not from string literals. Pin: inside
-        ``renderWizardSteps``, the strings "Jellyfin", "Plex",
-        "Emby" must NOT appear as literal copy. They may appear in
-        comments or as IDs inside SVC_MAP lookups."""
-        idx = _DASHBOARD.find("function renderWizardSteps")
-        self.assertGreater(idx, -1)
-        # Walk to the end of the function — naïve close-brace match
-        # at depth 0 would miss this for sure, but every closing
-        # </div> + the troubleshooting section gives us a stable
-        # end marker.
-        end = _DASHBOARD.find("function dismissWizard", idx)
-        if end == -1:
-            end = idx + 8000
-        body = _DASHBOARD[idx:end]
-        # Strip JS comments + commented HTML before scanning.
-        # Block comments first, then line comments.
-        cleaned = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
-        cleaned = re.sub(r"//[^\n]*", "", cleaned)
-        cleaned = re.sub(r"<!--.*?-->", "", cleaned, flags=re.DOTALL)
-        # Now look for media-server names inside string literals
-        # that aren't part of an attribute list (style, etc.).
-        bad: list[str] = []
-        for media_name in ("Jellyfin", "Plex", "Emby"):
-            pattern = re.compile(
-                # JS string literal containing the word, but NOT
-                # immediately preceded by ``mediaName`` (template
-                # build) or appearing inside _techBindings/SVC_MAP
-                # context.
-                r"['\"][^'\"]*\b" + media_name + r"\b[^'\"]*['\"]"
-            )
-            for m in pattern.finditer(cleaned):
-                snippet = m.group(0)
-                # Whitelist patterns: bookmarks/groups text or the
-                # docstring at the top.
-                if "Open <b>" in cleaned[max(0, m.start()-20):m.end()+20]:
-                    continue  # this is template that uses mediaName already
-                if media_name in ("Jellyfin",):
-                    # The fallback default in mediaName resolver is
-                    # legitimate ("|| 'jellyfin'").
-                    if cleaned[max(0, m.start()-15):m.start()].endswith("|| '"):
-                        continue
-                    if cleaned[max(0, m.start()-15):m.start()].endswith("|| \""):
-                        continue
-                bad.append(snippet[:80])
-        self.assertFalse(
-            bad,
-            "Wizard text hardcodes a media-server name as a literal "
-            "string:\n  - " + "\n  - ".join(bad)
-            + "\n\nUse the ``mediaName`` variable (resolved from "
-              "_techBindings.media_server). Hardcoded names produce "
-              "wrong copy on stacks that deployed a different "
-              "media server.",
-        )
-
-
+# #3 — wizard text must use _techBindings, not a literal media-server
+# name. Retired with dashboard.html in v1.0.193 — the SPA wizard at
+# ``ui/src/components/wizard/`` owns this assertion now via its own
+# vitest suite.
 if __name__ == "__main__":
     unittest.main()

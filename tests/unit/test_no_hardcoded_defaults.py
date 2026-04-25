@@ -63,10 +63,6 @@ def _collect_files() -> list[Path]:
             if "node_modules" in str(js_file):
                 continue
             files.append(js_file)
-    # Dashboard HTML (contains inline JS)
-    dashboard = SRC_ROOT / "api" / "dashboard.html"
-    if dashboard.is_file():
-        files.append(dashboard)
     # Docker compose
     compose = PROJECT_ROOT / "docker" / "docker-compose.yml"
     if compose.is_file():

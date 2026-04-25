@@ -26,7 +26,7 @@ Bug classes covered:
        test_ function)
   M7   every openapi.yaml path has a backend handler — the
        v1.0.117 DashboardEndpointParity ratchet covers
-       dashboard.html → backend; this ratchet covers
+       SPA UI fetches → backend; this ratchet covers
        openapi.yaml → backend (different consumers, same drift)
 """
 

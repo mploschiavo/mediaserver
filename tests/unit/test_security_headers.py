@@ -197,7 +197,7 @@ class PresetDifferentiationTests(unittest.TestCase):
 
     def test_legacy_does_not_have_trusted_types(self) -> None:
         # Trusted Types on the legacy dashboard would break every
-        # inline DOM sink in dashboard.html. Legacy preset omits it.
+        # the inline DOM sinks the legacy dashboard used. Legacy preset omits it.
         csp = LEGACY_DASHBOARD_POLICY.as_header_dict()[
             "Content-Security-Policy"]
         self.assertNotIn("require-trusted-types-for", csp)
