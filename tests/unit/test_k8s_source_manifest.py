@@ -21,7 +21,13 @@ K8S_DIR = ROOT / "k8s"
 
 
 def _load_all_k8s_documents() -> list[dict]:
-    """Load all YAML documents from k8s/ source files."""
+    """Load all YAML documents from k8s/ source files.
+
+    Phase 5 (ADR-0001) regrouped flat manifests under
+    k8s/base/<concern>/. Resources in kustomization.yaml are
+    relative paths (e.g. "base/apps/core.yaml") that resolve
+    from K8S_DIR.
+    """
     docs = []
     if not K8S_DIR.is_dir():
         return docs
@@ -31,7 +37,11 @@ def _load_all_k8s_documents() -> list[dict]:
         kust = yaml.safe_load(kustomization.read_text()) or {}
         resources = kust.get("resources", [])
     else:
-        resources = [f.name for f in K8S_DIR.glob("*.yaml") if f.name != "kustomization.yaml"]
+        resources = [
+            str(f.relative_to(K8S_DIR))
+            for f in K8S_DIR.rglob("*.yaml")
+            if f.name != "kustomization.yaml"
+        ]
 
     for resource_file in resources:
         path = K8S_DIR / resource_file

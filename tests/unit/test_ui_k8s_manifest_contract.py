@@ -1,4 +1,4 @@
-"""Contract tests for ``k8s/ui.yaml`` — the UI container's k8s manifest.
+"""Contract tests for ``k8s/base/ui/ui.yaml`` — the UI container's k8s manifest.
 
 Parses the multi-document YAML and verifies the production hardening
 shape: ServiceAccount, Deployment (replicas=2, maxUnavailable=0,
@@ -22,7 +22,8 @@ import pytest
 import yaml
 
 ROOT: Path = Path(__file__).resolve().parents[2]
-MANIFEST_PATH: Path = ROOT / "k8s" / "ui.yaml"
+# Phase 5 (ADR-0001) moved k8s/ui.yaml to k8s/base/ui/ui.yaml.
+MANIFEST_PATH: Path = ROOT / "k8s" / "base" / "ui" / "ui.yaml"
 
 
 def _load_docs() -> list[dict[str, Any]]:

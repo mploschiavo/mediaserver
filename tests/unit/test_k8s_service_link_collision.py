@@ -83,15 +83,21 @@ APPS_NEEDING_SERVICE_LINK_DISABLE = {
 
 
 def _load_k8s_docs() -> list[dict]:
-    """Load every YAML doc in k8s/*.yaml, not just the default
+    """Load every YAML doc under k8s/, not just the default
     kustomization. Optional manifests like auth-authentik.yaml live
     outside the default kustomization (they're profile-gated) but
     still need to satisfy the service-link contract — a user who
-    enables the authentik profile expects it to come up cleanly."""
+    enables the authentik profile expects it to come up cleanly.
+
+    Phase 5 (ADR-0001) regrouped manifests under k8s/base/<concern>/,
+    so the scan walks recursively and skips overlay directories
+    (profiles/, all/) that re-aggregate the base files."""
     docs: list[dict] = []
     if not K8S_DIR.is_dir():
         return docs
-    for path in sorted(K8S_DIR.glob("*.yaml")):
+    base_dir = K8S_DIR / "base"
+    scan_root = base_dir if base_dir.is_dir() else K8S_DIR
+    for path in sorted(scan_root.rglob("*.yaml")):
         if path.name == "kustomization.yaml":
             continue
         try:
