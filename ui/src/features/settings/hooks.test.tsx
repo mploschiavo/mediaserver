@@ -5,7 +5,9 @@ import type { ReactNode } from "react";
 
 import {
   isSensitiveKey,
+  settingsKeys,
   useConfigDrift,
+  useDeleteEnvVar,
   useDisplayPreferences,
   useEffectiveEnv,
   useEnvVars,
@@ -14,6 +16,7 @@ import {
   useSaveDisplayPreferences,
   useSaveProfile,
   useSetLogLevel,
+  type EnvVarsResponse,
 } from "./hooks";
 
 function createWrapper() {
@@ -144,6 +147,95 @@ describe("settings feature hooks", () => {
     expect(String(url)).toMatch(/api\/log-level$/);
     expect((init as RequestInit).method).toBe("POST");
     expect((init as RequestInit).body).toContain("debug");
+  });
+
+  describe("useDeleteEnvVar", () => {
+    it("POSTs /api/envvars/delete with the key body", async () => {
+      fetchMock.mockResolvedValue(
+        ok({ status: "deleted", key: "TZ", existed: true }),
+      );
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useDeleteEnvVar(), {
+        wrapper: Wrapper,
+      });
+      await result.current.mutateAsync({ key: "TZ" });
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(String(url)).toMatch(/api\/envvars\/delete$/);
+      expect((init as RequestInit).method).toBe("POST");
+      expect((init as RequestInit).body).toContain("TZ");
+    });
+
+    it("optimistically drops the row from the cached env-vars list", async () => {
+      fetchMock.mockImplementation(
+        () =>
+          // Hold the response open so the optimistic snapshot can be
+          // observed before the mutation settles.
+          new Promise<Response>((resolve) =>
+            setTimeout(
+              () => resolve(ok({ status: "deleted", key: "TZ", existed: true })),
+              30,
+            ),
+          ),
+      );
+      // Cache entries set via ``setQueryData`` without an active
+      // ``useQuery`` observer are subject to immediate GC under the
+      // shared ``gcTime: 0`` config. Override here so the
+      // optimistic-update path can read the seeded data.
+      const qc = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: Infinity, staleTime: Infinity },
+          mutations: { retry: false },
+        },
+      });
+      const Wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      );
+      qc.setQueryData<EnvVarsResponse>(settingsKeys.envVars, {
+        vars: [
+          { key: "TZ", value: "UTC" },
+          { key: "BOOTSTRAP_PROFILE", value: "/etc/profile" },
+        ],
+      });
+      const { result } = renderHook(() => useDeleteEnvVar(), {
+        wrapper: Wrapper,
+      });
+      const promise = result.current.mutateAsync({ key: "TZ" });
+      // Allow onMutate to run before we snapshot the cache.
+      await waitFor(() => {
+        const cached = qc.getQueryData<EnvVarsResponse>(settingsKeys.envVars);
+        expect(cached?.vars).toEqual([
+          { key: "BOOTSTRAP_PROFILE", value: "/etc/profile" },
+        ]);
+      });
+      await promise;
+    });
+
+    it("rolls the cache back when the server rejects the delete", async () => {
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ error: "key field required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const { qc, Wrapper } = createWrapper();
+      const initial: EnvVarsResponse = {
+        vars: [
+          { key: "TZ", value: "UTC" },
+          { key: "BOOTSTRAP_PROFILE", value: "/etc/profile" },
+        ],
+      };
+      qc.setQueryData<EnvVarsResponse>(settingsKeys.envVars, initial);
+      const { result } = renderHook(() => useDeleteEnvVar(), {
+        wrapper: Wrapper,
+      });
+      await expect(
+        result.current.mutateAsync({ key: "TZ" }),
+      ).rejects.toBeInstanceOf(Error);
+      // After onError + onSettled the cache is invalidated; until the
+      // refetch lands the rolled-back snapshot is what the UI sees.
+      const cached = qc.getQueryData<EnvVarsResponse>(settingsKeys.envVars);
+      expect(cached?.vars).toEqual(initial.vars);
+    });
   });
 
   describe("isSensitiveKey", () => {
