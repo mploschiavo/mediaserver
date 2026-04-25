@@ -1,0 +1,108 @@
+{
+  "history": {
+    "radarr": [
+      {
+        "date": "2026-04-25T04:02:54",
+        "event": "downloadFailed",
+        "title": "The Crucifix Blood of the Exorcist (2025) 1080p BRRip 5.1 x2"
+      },
+      {
+        "date": "2026-04-25T04:02:54",
+        "event": "downloadFailed",
+        "title": "Starbright (2026) 1080p WEBRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T04:02:53",
+        "event": "downloadFailed",
+        "title": "Psycho Killer (2026) 1080p WEBRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T04:02:53",
+        "event": "downloadFailed",
+        "title": "Pretty Lethal (2026) 1080p WEBRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T04:02:53",
+        "event": "downloadFailed",
+        "title": "War Machine (2026) 1080p BRRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T03:56:12",
+        "event": "grabbed",
+        "title": "The Crucifix Blood of the Exorcist (2025) 1080p BRRip 5.1 x2"
+      },
+      {
+        "date": "2026-04-25T03:54:09",
+        "event": "grabbed",
+        "title": "Starbright (2026) 1080p WEBRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T03:54:01",
+        "event": "grabbed",
+        "title": "Psycho Killer (2026) 1080p WEBRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T03:53:55",
+        "event": "grabbed",
+        "title": "Pretty Lethal (2026) 1080p WEBRip 5.1 x264 -YTS"
+      },
+      {
+        "date": "2026-04-25T03:53:50",
+        "event": "grabbed",
+        "title": "War Machine (2026) 1080p BRRip 5.1 x264 -YTS"
+      }
+    ],
+    "sonarr": [
+      {
+        "date": "2026-04-24T12:26:23",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E10.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:26:11",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E09.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:25:59",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E03.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:25:47",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E08.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:25:34",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E06.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:25:22",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E02.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:25:12",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E12.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:25:00",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E01.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:24:47",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E13.1080p.BluRay.x265[eztv"
+      },
+      {
+        "date": "2026-04-24T12:24:36",
+        "event": "episodeFileDeleted",
+        "title": "/media/tv/Haven/Season 1/Haven.S01E05.1080p.BluRay.x265[eztv"
+      }
+    ]
+  }
+}

@@ -1,0 +1,602 @@
+[
+  {
+    "title": "Breaking Bad",
+    "tvdbId": 81189
+  },
+  {
+    "title": "Band of Brothers",
+    "tvdbId": 74205
+  },
+  {
+    "title": "Game of Thrones",
+    "tvdbId": 121361
+  },
+  {
+    "title": "The Wire",
+    "tvdbId": 79126
+  },
+  {
+    "title": "Firefly",
+    "tvdbId": 78874
+  },
+  {
+    "title": "Sherlock",
+    "tvdbId": 176941
+  },
+  {
+    "title": "The Twilight Zone",
+    "tvdbId": 73587
+  },
+  {
+    "title": "Person of Interest",
+    "tvdbId": 248742
+  },
+  {
+    "title": "Stargate SG\u00b71",
+    "tvdbId": 72449
+  },
+  {
+    "title": "Stargate Atlantis",
+    "tvdbId": 70851
+  },
+  {
+    "title": "Rick and Morty",
+    "tvdbId": 275274
+  },
+  {
+    "title": "Gravity Falls",
+    "tvdbId": 259972
+  },
+  {
+    "title": "The Sopranos",
+    "tvdbId": 75299
+  },
+  {
+    "title": "Avatar: The Last Airbender",
+    "tvdbId": 74852
+  },
+  {
+    "title": "Planet Earth",
+    "tvdbId": 79257
+  },
+  {
+    "title": "Fargo",
+    "tvdbId": 269613
+  },
+  {
+    "title": "Justified",
+    "tvdbId": 134241
+  },
+  {
+    "title": "House",
+    "tvdbId": 73255
+  },
+  {
+    "title": "Battlestar Galactica",
+    "tvdbId": 73545
+  },
+  {
+    "title": "Downton Abbey",
+    "tvdbId": 193131
+  },
+  {
+    "title": "Star Trek: The Next Generation",
+    "tvdbId": 71470
+  },
+  {
+    "title": "The IT Crowd",
+    "tvdbId": 79216
+  },
+  {
+    "title": "Deadwood",
+    "tvdbId": 72023
+  },
+  {
+    "title": "Oz",
+    "tvdbId": 70682
+  },
+  {
+    "title": "Vikings",
+    "tvdbId": 260449
+  },
+  {
+    "title": "Orphan Black",
+    "tvdbId": 260315
+  },
+  {
+    "title": "Fringe",
+    "tvdbId": 82066
+  },
+  {
+    "title": "Banshee",
+    "tvdbId": 259765
+  },
+  {
+    "title": "Line of Duty",
+    "tvdbId": 260092
+  },
+  {
+    "title": "Farscape",
+    "tvdbId": 70522
+  },
+  {
+    "title": "The X-Files",
+    "tvdbId": 77398
+  },
+  {
+    "title": "The West Wing",
+    "tvdbId": 72521
+  },
+  {
+    "title": "Futurama",
+    "tvdbId": 73871
+  },
+  {
+    "title": "Dark Angel",
+    "tvdbId": 76148
+  },
+  {
+    "title": "Better Call Saul",
+    "tvdbId": 273181
+  },
+  {
+    "title": "The Shield",
+    "tvdbId": 78261
+  },
+  {
+    "title": "Shameless",
+    "tvdbId": 161511
+  },
+  {
+    "title": "The Americans",
+    "tvdbId": 261690
+  },
+  {
+    "title": "Peaky Blinders",
+    "tvdbId": 270915
+  },
+  {
+    "title": "Buffy the Vampire Slayer",
+    "tvdbId": 70327
+  },
+  {
+    "title": "Friends",
+    "tvdbId": 79168
+  },
+  {
+    "title": "The Office",
+    "tvdbId": 73244
+  },
+  {
+    "title": "Eureka",
+    "tvdbId": 79334
+  },
+  {
+    "title": "M*A*S*H",
+    "tvdbId": 70994
+  },
+  {
+    "title": "Spartacus",
+    "tvdbId": 129261
+  },
+  {
+    "title": "Batman: The Animated Series",
+    "tvdbId": 76168
+  },
+  {
+    "title": "Grimm",
+    "tvdbId": 248736
+  },
+  {
+    "title": "Supernatural",
+    "tvdbId": 78901
+  },
+  {
+    "title": "Utopia",
+    "tvdbId": 264991
+  },
+  {
+    "title": "Boardwalk Empire",
+    "tvdbId": 84947
+  },
+  {
+    "title": "Silicon Valley",
+    "tvdbId": 277165
+  },
+  {
+    "title": "The Newsroom",
+    "tvdbId": 256227
+  },
+  {
+    "title": "Dexter",
+    "tvdbId": 79349
+  },
+  {
+    "title": "Black Sails",
+    "tvdbId": 262407
+  },
+  {
+    "title": "Black Mirror",
+    "tvdbId": 253463
+  },
+  {
+    "title": "Broadchurch",
+    "tvdbId": 266398
+  },
+  {
+    "title": "Veronica Mars",
+    "tvdbId": 73730
+  },
+  {
+    "title": "Babylon 5",
+    "tvdbId": 70726
+  },
+  {
+    "title": "Star Trek",
+    "tvdbId": 77526
+  },
+  {
+    "title": "Star Trek: Deep Space Nine",
+    "tvdbId": 72073
+  },
+  {
+    "title": "Scrubs",
+    "tvdbId": 76156
+  },
+  {
+    "title": "Star Wars: The Clone Wars",
+    "tvdbId": 83268
+  },
+  {
+    "title": "Fawlty Towers",
+    "tvdbId": 75932
+  },
+  {
+    "title": "Luther",
+    "tvdbId": 159591
+  },
+  {
+    "title": "Rome",
+    "tvdbId": 73508
+  },
+  {
+    "title": "Doctor Who",
+    "tvdbId": 76107
+  },
+  {
+    "title": "The Knick",
+    "tvdbId": 279977
+  },
+  {
+    "title": "Sons of Anarchy",
+    "tvdbId": 82696
+  },
+  {
+    "title": "South Park",
+    "tvdbId": 75897
+  },
+  {
+    "title": "Elementary",
+    "tvdbId": 255316
+  },
+  {
+    "title": "Archer",
+    "tvdbId": 110381
+  },
+  {
+    "title": "Community",
+    "tvdbId": 94571
+  },
+  {
+    "title": "Longmire",
+    "tvdbId": 253491
+  },
+  {
+    "title": "Warehouse 13",
+    "tvdbId": 84676
+  },
+  {
+    "title": "The Pacific",
+    "tvdbId": 85539
+  },
+  {
+    "title": "Star Trek: Voyager",
+    "tvdbId": 74550
+  },
+  {
+    "title": "Seinfeld",
+    "tvdbId": 79169
+  },
+  {
+    "title": "The Unit",
+    "tvdbId": 75707
+  },
+  {
+    "title": "Strike Back",
+    "tvdbId": 148581
+  },
+  {
+    "title": "Homeland",
+    "tvdbId": 247897
+  },
+  {
+    "title": "Penny Dreadful",
+    "tvdbId": 265766
+  },
+  {
+    "title": "The Killing",
+    "tvdbId": 210171
+  },
+  {
+    "title": "The Originals",
+    "tvdbId": 266883
+  },
+  {
+    "title": "Castle",
+    "tvdbId": 83462
+  },
+  {
+    "title": "Hell on Wheels",
+    "tvdbId": 212961
+  },
+  {
+    "title": "The Mentalist",
+    "tvdbId": 82459
+  },
+  {
+    "title": "Lost",
+    "tvdbId": 73739
+  },
+  {
+    "title": "24",
+    "tvdbId": 76290
+  },
+  {
+    "title": "Chuck",
+    "tvdbId": 80348
+  },
+  {
+    "title": "House of Cards",
+    "tvdbId": 262980
+  },
+  {
+    "title": "Hannibal",
+    "tvdbId": 259063
+  },
+  {
+    "title": "Doctor Who",
+    "tvdbId": 78804
+  },
+  {
+    "title": "The Venture Bros.",
+    "tvdbId": 72306
+  },
+  {
+    "title": "Arrested Development",
+    "tvdbId": 72173
+  },
+  {
+    "title": "White Collar",
+    "tvdbId": 108611
+  },
+  {
+    "title": "Terminator: The Sarah Connor Chronicles",
+    "tvdbId": 80344
+  },
+  {
+    "title": "Northern Exposure",
+    "tvdbId": 71383
+  },
+  {
+    "title": "Prison Break",
+    "tvdbId": 360115
+  },
+  {
+    "title": "Star Trek: Enterprise",
+    "tvdbId": 73893
+  },
+  {
+    "title": "Better Off Ted",
+    "tvdbId": 84021
+  },
+  {
+    "title": "MacGyver",
+    "tvdbId": 77847
+  },
+  {
+    "title": "Young Dracula",
+    "tvdbId": 80248
+  },
+  {
+    "title": "Doc Martin",
+    "tvdbId": 79285
+  },
+  {
+    "title": "True Detective",
+    "tvdbId": 270633
+  },
+  {
+    "title": "Forever",
+    "tvdbId": 281535
+  },
+  {
+    "title": "Brooklyn Nine-Nine",
+    "tvdbId": 269586
+  },
+  {
+    "title": "Bones",
+    "tvdbId": 75682
+  },
+  {
+    "title": "The Blacklist",
+    "tvdbId": 266189
+  },
+  {
+    "title": "Criminal Minds",
+    "tvdbId": 75710
+  },
+  {
+    "title": "The Simpsons",
+    "tvdbId": 71663
+  },
+  {
+    "title": "Blue Bloods",
+    "tvdbId": 164981
+  },
+  {
+    "title": "The Good Wife",
+    "tvdbId": 95451
+  },
+  {
+    "title": "CSI: Crime Scene Investigation",
+    "tvdbId": 72546
+  },
+  {
+    "title": "Ray Donovan",
+    "tvdbId": 259866
+  },
+  {
+    "title": "Suits",
+    "tvdbId": 247808
+  },
+  {
+    "title": "Parks and Recreation",
+    "tvdbId": 84912
+  },
+  {
+    "title": "Teen Wolf",
+    "tvdbId": 175001
+  },
+  {
+    "title": "Halt and Catch Fire",
+    "tvdbId": 271910
+  },
+  {
+    "title": "Stargate Universe",
+    "tvdbId": 83237
+  },
+  {
+    "title": "It's Always Sunny in Philadelphia",
+    "tvdbId": 75805
+  },
+  {
+    "title": "Ripper Street",
+    "tvdbId": 260485
+  },
+  {
+    "title": "Six Feet Under",
+    "tvdbId": 75450
+  },
+  {
+    "title": "Mad Men",
+    "tvdbId": 80337
+  },
+  {
+    "title": "Angel",
+    "tvdbId": 71035
+  },
+  {
+    "title": "Smallville",
+    "tvdbId": 72218
+  },
+  {
+    "title": "Dead Like Me",
+    "tvdbId": 72129
+  },
+  {
+    "title": "Married... with Children",
+    "tvdbId": 76385
+  },
+  {
+    "title": "Charmed",
+    "tvdbId": 70626
+  },
+  {
+    "title": "Psych",
+    "tvdbId": 79335
+  },
+  {
+    "title": "Gilmore Girls",
+    "tvdbId": 76568
+  },
+  {
+    "title": "Murdoch Mysteries",
+    "tvdbId": 81670
+  },
+  {
+    "title": "Leverage",
+    "tvdbId": 82339
+  },
+  {
+    "title": "Southland",
+    "tvdbId": 84645
+  },
+  {
+    "title": "QI",
+    "tvdbId": 72716
+  },
+  {
+    "title": "The Graham Norton Show",
+    "tvdbId": 80660
+  },
+  {
+    "title": "Friday Night Lights",
+    "tvdbId": 79337
+  },
+  {
+    "title": "Being Human",
+    "tvdbId": 81386
+  },
+  {
+    "title": "Pushing Daisies",
+    "tvdbId": 80351
+  },
+  {
+    "title": "The Dead Zone",
+    "tvdbId": 77955
+  },
+  {
+    "title": "Continuum",
+    "tvdbId": 258171
+  },
+  {
+    "title": "Marvel's Agents of S.H.I.E.L.D.",
+    "tvdbId": 263365
+  },
+  {
+    "title": "Chicago P.D.",
+    "tvdbId": 269641
+  },
+  {
+    "title": "Chicago Fire",
+    "tvdbId": 258541
+  },
+  {
+    "title": "NCIS",
+    "tvdbId": 72108
+  },
+  {
+    "title": "The Big Bang Theory",
+    "tvdbId": 80379
+  },
+  {
+    "title": "The Walking Dead",
+    "tvdbId": 153021
+  },
+  {
+    "title": "The Middle",
+    "tvdbId": 95021
+  },
+  {
+    "title": "Haven",
+    "tvdbId": 158661
+  },
+  {
+    "title": "Parenthood",
+    "tvdbId": 94551
+  },
+  {
+    "title": "The Leftovers",
+    "tvdbId": 269689
+  }
+]

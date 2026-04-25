@@ -1,0 +1,430 @@
+{
+  "guardrails": [
+    {
+      "default_threshold": {
+        "max_concurrent": 25
+      },
+      "description": "Hard ceiling on concurrent active sessions. Fires when the live count crosses the threshold \u2014 useful to spot credential sharing or token-replay attacks.",
+      "disabled": false,
+      "domain": "auth",
+      "id": "auth:concurrent_session_spike",
+      "last_evaluated_at": 1777137634.4118032,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_concurrent": 25
+      }
+    },
+    {
+      "default_threshold": {
+        "alert_count": 5
+      },
+      "description": "Wraps the in-process FailedLoginTracker. Fires when any username has crossed the alert threshold within the window.",
+      "disabled": false,
+      "domain": "auth",
+      "id": "auth:failed_login_spike",
+      "last_evaluated_at": 1777137634.4117846,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "alert_count": 5
+      }
+    },
+    {
+      "default_threshold": {
+        "max_idle_minutes": 60
+      },
+      "description": "Auto-revokes sessions that haven't seen activity in the configured idle window. Defence against unattended consoles.",
+      "disabled": false,
+      "domain": "auth",
+      "id": "auth:session_inactivity",
+      "last_evaluated_at": 1777137634.411814,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_idle_minutes": 60
+      }
+    },
+    {
+      "default_threshold": {
+        "max_concurrent": 8
+      },
+      "description": "Limits how many downloads can run concurrently. Too many in flight causes thrashing and indexer rate-limit cascades.",
+      "disabled": false,
+      "domain": "bandwidth",
+      "id": "bandwidth:concurrent_downloads_cap",
+      "last_evaluated_at": 1777137634.4118292,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_concurrent": 8
+      }
+    },
+    {
+      "default_threshold": {
+        "max_gb_per_day": 0
+      },
+      "description": "Caps daily torrent upload to avoid blowing past the user's ISP limit. Throttles qBit when the cap is breached.",
+      "disabled": false,
+      "domain": "bandwidth",
+      "id": "bandwidth:daily_upload_cap",
+      "last_evaluated_at": 1777137634.4118223,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_gb_per_day": 0
+      }
+    },
+    {
+      "default_threshold": {
+        "max_429s_per_window": 6
+      },
+      "description": "Counts 429s from any single indexer in the last 5 minutes. A burst signals the stack is about to be banned.",
+      "disabled": false,
+      "domain": "bandwidth",
+      "id": "bandwidth:indexer_429_window",
+      "last_evaluated_at": 1777137634.4118369,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_429s_per_window": 6
+      }
+    },
+    {
+      "default_threshold": {
+        "max_gb_per_month": 0
+      },
+      "description": "Cloud egress GB/month cap. Self-hosted deployments leave this disabled (max_gb=0) \u2014 placeholder until egress telemetry wires up.",
+      "disabled": false,
+      "domain": "cost",
+      "id": "cost:egress_gb_month_cap",
+      "last_evaluated_at": 1777137634.4118435,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_gb_per_month": 0
+      }
+    },
+    {
+      "default_threshold": {
+        "max_minutes": 5
+      },
+      "description": "Authelia, Jellyfin or Jellyseerr unreachable for longer than the threshold. The longer the outage the higher the severity.",
+      "disabled": false,
+      "domain": "dependency",
+      "id": "dep:provider_unreachable",
+      "last_evaluated_at": 1777137634.4118514,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_minutes": 5
+      }
+    },
+    {
+      "default_threshold": {
+        "max_429s_per_hour": 30
+      },
+      "description": "Aggregates 429 responses from indexers across the last hour; high counts predict an upcoming IP-level ban.",
+      "disabled": false,
+      "domain": "external_api",
+      "id": "api:indexer_ban_risk",
+      "last_evaluated_at": 1777137634.4118743,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_429s_per_hour": 30
+      }
+    },
+    {
+      "default_threshold": {
+        "max_per_day": 200,
+        "warn_at_percent": 80
+      },
+      "description": "Tracks OpenSubtitles daily download quota. Free tier is 5/day, VIP 1000/day; the rule fires before the burn-out so subtitle search keeps working for the rest of the day.",
+      "disabled": false,
+      "domain": "external_api",
+      "id": "api:opensubtitles_quota",
+      "last_evaluated_at": 1777137634.41186,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_per_day": 200,
+        "warn_at_percent": 80
+      }
+    },
+    {
+      "default_threshold": {
+        "max_calls_per_day": 100000
+      },
+      "description": "TMDB has a 50 req/sec rolling cap. This rule tracks daily budget so a runaway scrape doesn't get the API key flagged.",
+      "disabled": false,
+      "domain": "external_api",
+      "id": "api:tmdb_call_budget",
+      "last_evaluated_at": 1777137634.4118674,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_calls_per_day": 100000
+      }
+    },
+    {
+      "default_threshold": {
+        "max_cycles_per_hour": 10
+      },
+      "description": "Auto-heal cycles per hour. A high rate signals a service is stuck in a heal/break loop.",
+      "disabled": false,
+      "domain": "job_health",
+      "id": "job:auto_heal_cycle_cap",
+      "last_evaluated_at": 1777137634.4119787,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_cycles_per_hour": 10
+      }
+    },
+    {
+      "default_threshold": {
+        "max_consecutive": 3
+      },
+      "description": "A specific job has erred for the last N runs in a row. Distinct from job-flapping \u2014 this fires earlier and harder.",
+      "disabled": false,
+      "domain": "job_health",
+      "id": "job:consecutive_errors",
+      "last_evaluated_at": 1777137634.4119716,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_consecutive": 3
+      }
+    },
+    {
+      "default_threshold": {
+        "max_seconds": 300
+      },
+      "description": "Largest single-job elapsed time in the recent history. A long tail means an upstream service is timing out repeatedly.",
+      "disabled": false,
+      "domain": "job_health",
+      "id": "job:runtime_cap",
+      "last_evaluated_at": 1777137634.4119232,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 1777137329.2732565,
+      "threshold": {
+        "max_seconds": 300
+      }
+    },
+    {
+      "default_threshold": {
+        "max_count": 25
+      },
+      "description": "Number of duplicates surfaced across radarr/sonarr/lidarr by the anti-duplicate engine. A high count means dedupe is falling behind.",
+      "disabled": false,
+      "domain": "media_quality",
+      "id": "media:duplicate_count",
+      "last_evaluated_at": 1777137634.4119864,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_count": 25
+      }
+    },
+    {
+      "default_threshold": {
+        "max_count": 100
+      },
+      "description": "Files on disk that no *arr database references. A handful is fine; sustained growth signals a broken import pipeline.",
+      "disabled": false,
+      "domain": "media_quality",
+      "id": "media:orphan_files",
+      "last_evaluated_at": 1777137634.411993,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_count": 100
+      }
+    },
+    {
+      "default_threshold": {
+        "max_age_hours": 12
+      },
+      "description": "Oldest stuck import in the queue. If it's been there longer than the threshold, manual intervention is needed.",
+      "disabled": false,
+      "domain": "media_quality",
+      "id": "media:stuck_imports_age",
+      "last_evaluated_at": 1777137634.412,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_age_hours": 12
+      }
+    },
+    {
+      "default_threshold": {
+        "min_free_gib": 10.0
+      },
+      "description": "Fires when any mount has less than the configured GiB of free space, even if percent-used is fine on a very large volume.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:free_space_floor",
+      "last_evaluated_at": 1777137634.4120224,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "min_free_gib": 10.0
+      }
+    },
+    {
+      "default_threshold": {
+        "max_percent": 90.0
+      },
+      "description": "Fires when inode usage is above the threshold \u2014 small-file libraries (music, books) can run out of inodes long before bytes.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:inode_floor",
+      "last_evaluated_at": 1777137634.4120386,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_percent": 90.0
+      }
+    },
+    {
+      "default_threshold": {
+        "ceilings_gb": {
+          "books": 0,
+          "movies": 0,
+          "music": 0,
+          "tv": 0
+        }
+      },
+      "description": "Operator-defined GB ceilings for /srv-stack/media/{movies,tv,music,books}. A breach signals a runaway library.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:per_content_type_quota",
+      "last_evaluated_at": 1777137634.4120324,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "ceilings_gb": {
+          "books": 0,
+          "movies": 0,
+          "music": 0,
+          "tv": 0
+        }
+      }
+    },
+    {
+      "default_threshold": {
+        "max_percent": 85.0,
+        "per_mount": {},
+        "target_percent": 75.0
+      },
+      "description": "Warns when any monitored mount exceeds the per-mount used-percent threshold. Critical above max, warning above target.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:per_mount_threshold",
+      "last_evaluated_at": 1777137634.412012,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_percent": 85.0,
+        "per_mount": {},
+        "target_percent": 75.0
+      }
+    },
+    {
+      "default_threshold": {
+        "max_age_days": 30,
+        "max_count": 50
+      },
+      "description": "Too many snapshots, or snapshots older than the retention horizon, block disk reclaim and slow restore-on-corrupt.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:snapshot_retention",
+      "last_evaluated_at": 1777137634.4120572,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_age_days": 30,
+        "max_count": 50
+      }
+    },
+    {
+      "default_threshold": {
+        "max_age_days": 14
+      },
+      "description": "Items in *arr Recycle Bins older than the configured age should be purged to reclaim disk.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:trash_retention",
+      "last_evaluated_at": 1777137634.412051,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "max_age_days": 14
+      }
+    },
+    {
+      "default_threshold": {
+        "multiplier": 2.0
+      },
+      "description": "Unpacker scratch must be at least 2\u00d7 the largest in-flight archive or extraction will fail mid-stream.",
+      "disabled": false,
+      "domain": "storage",
+      "id": "storage:unpacker_scratch_floor",
+      "last_evaluated_at": 1777137634.412045,
+      "last_severity": "",
+      "last_severity_streak": 0,
+      "last_status": "ok",
+      "last_triggered_at": 0.0,
+      "threshold": {
+        "multiplier": 2.0
+      }
+    }
+  ]
+}

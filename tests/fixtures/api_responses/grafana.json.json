@@ -1,0 +1,61 @@
+{
+  "dashboard": {
+    "panels": [
+      {
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "red",
+                  "value": 0
+                },
+                {
+                  "color": "green",
+                  "value": 14
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "media_stack_healthy_total",
+            "legendFormat": "Healthy"
+          }
+        ],
+        "title": "Services Up",
+        "type": "stat"
+      },
+      {
+        "gridPos": {
+          "h": 8,
+          "w": 18,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "media_stack_service_latency_ms",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "title": "Service Latency",
+        "type": "timeseries"
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "title": "Media Stack"
+  },
+  "overwrite": true
+}

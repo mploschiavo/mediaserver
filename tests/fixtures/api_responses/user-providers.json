@@ -1,0 +1,22 @@
+{
+  "providers": [
+    {
+      "detail": "",
+      "name": "authelia",
+      "ok": true,
+      "source_of_truth": true
+    },
+    {
+      "detail": "status=200",
+      "name": "jellyfin",
+      "ok": true,
+      "source_of_truth": false
+    },
+    {
+      "detail": "status=200",
+      "name": "jellyseerr",
+      "ok": true,
+      "source_of_truth": false
+    }
+  ]
+}

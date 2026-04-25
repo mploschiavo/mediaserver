@@ -1,0 +1,79 @@
+{
+  "providers": [
+    {
+      "description": "File-based users managed by the auth provider directly",
+      "display_name": "Local Accounts",
+      "key": "local",
+      "required_fields": []
+    },
+    {
+      "description": "Auth0 by Okta \u2014 cloud identity platform",
+      "display_name": "Auth0",
+      "key": "auth0",
+      "required_fields": [
+        "tenant",
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "description": "Okta Workforce/Customer Identity",
+      "display_name": "Okta",
+      "key": "okta",
+      "required_fields": [
+        "domain",
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "description": "Google Workspace or personal Gmail accounts",
+      "display_name": "Google",
+      "key": "google",
+      "required_fields": [
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "description": "Azure AD / Microsoft 365 accounts",
+      "display_name": "Microsoft Entra ID",
+      "key": "microsoft",
+      "required_fields": [
+        "tenant_id",
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "description": "GitHub OAuth (limited OIDC \u2014 email + username only)",
+      "display_name": "GitHub",
+      "key": "github",
+      "required_fields": [
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "description": "Self-hosted open-source IdP",
+      "display_name": "Keycloak",
+      "key": "keycloak",
+      "required_fields": [
+        "host",
+        "realm",
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "description": "Any OIDC-compliant identity provider",
+      "display_name": "Custom OIDC Provider",
+      "key": "custom",
+      "required_fields": [
+        "discovery_url",
+        "client_id",
+        "client_secret"
+      ]
+    }
+  ]
+}

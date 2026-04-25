@@ -1,0 +1,102 @@
+{
+  "stats": [
+    {
+      "averageGrabResponseTime": 0,
+      "averageResponseTime": 907,
+      "indexerId": 1,
+      "indexerName": "The Pirate Bay",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 8,
+      "numberOfFailedRssQueries": 2,
+      "numberOfGrabs": 216,
+      "numberOfQueries": 1492,
+      "numberOfRssQueries": 205
+    },
+    {
+      "averageGrabResponseTime": 0,
+      "averageResponseTime": 279,
+      "indexerId": 2,
+      "indexerName": "SubsPlease",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 0,
+      "numberOfFailedRssQueries": 0,
+      "numberOfGrabs": 0,
+      "numberOfQueries": 3651,
+      "numberOfRssQueries": 284
+    },
+    {
+      "averageGrabResponseTime": 5091,
+      "averageResponseTime": 348,
+      "indexerId": 5,
+      "indexerName": "YTS",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 0,
+      "numberOfFailedRssQueries": 0,
+      "numberOfGrabs": 190,
+      "numberOfQueries": 2053,
+      "numberOfRssQueries": 64
+    },
+    {
+      "averageGrabResponseTime": 0,
+      "averageResponseTime": 61,
+      "indexerId": 3,
+      "indexerName": "showRSS",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 0,
+      "numberOfFailedRssQueries": 0,
+      "numberOfGrabs": 39,
+      "numberOfQueries": 3507,
+      "numberOfRssQueries": 107
+    },
+    {
+      "averageGrabResponseTime": 0,
+      "averageResponseTime": 280,
+      "indexerId": 4,
+      "indexerName": "Nyaa.si",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 0,
+      "numberOfFailedRssQueries": 0,
+      "numberOfGrabs": 8,
+      "numberOfQueries": 24125,
+      "numberOfRssQueries": 903
+    },
+    {
+      "averageGrabResponseTime": 0,
+      "averageResponseTime": 144,
+      "indexerId": 7,
+      "indexerName": "1337x",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 1,
+      "numberOfFailedRssQueries": 9,
+      "numberOfGrabs": 0,
+      "numberOfQueries": 1,
+      "numberOfRssQueries": 9
+    },
+    {
+      "averageGrabResponseTime": 0,
+      "averageResponseTime": 197,
+      "indexerId": 6,
+      "indexerName": "EZTV",
+      "numberOfAuthQueries": 0,
+      "numberOfFailedAuthQueries": 0,
+      "numberOfFailedGrabs": 0,
+      "numberOfFailedQueries": 1,
+      "numberOfFailedRssQueries": 8,
+      "numberOfGrabs": 0,
+      "numberOfQueries": 1,
+      "numberOfRssQueries": 8
+    }
+  ]
+}

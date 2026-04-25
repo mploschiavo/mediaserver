@@ -1,0 +1,36 @@
+{
+  "modes": [
+    {
+      "controller_auth": "none",
+      "description": "No authentication on gateway or controller. Trusted LAN only.",
+      "display_name": "No Authentication",
+      "gateway_auth": false,
+      "key": "none",
+      "provider_service": ""
+    },
+    {
+      "controller_auth": "basic",
+      "description": "HTTP Basic Auth on the controller. No gateway-level auth. Good for local networks with minimal security.\n",
+      "display_name": "Basic Auth",
+      "gateway_auth": false,
+      "key": "basic",
+      "provider_service": ""
+    },
+    {
+      "controller_auth": "forwarded",
+      "description": "Authelia forward-auth via Envoy ext_authz. Single sign-on with local accounts, OIDC upstream, or LDAP. Lightweight (single Go binary).\n",
+      "display_name": "Authelia (SSO)",
+      "gateway_auth": true,
+      "key": "authelia",
+      "provider_service": "authelia"
+    },
+    {
+      "controller_auth": "forwarded",
+      "description": "Authentik forward-auth via Envoy ext_authz. Full identity provider with OIDC/SAML federation. Heavier resource usage (~1GB RAM).\n",
+      "display_name": "Authentik (IdP)",
+      "gateway_auth": true,
+      "key": "authentik",
+      "provider_service": "authentik"
+    }
+  ]
+}

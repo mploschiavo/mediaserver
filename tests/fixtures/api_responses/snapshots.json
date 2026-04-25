@@ -1,0 +1,10 @@
+{
+  "dir": "/srv-config/.snapshots",
+  "snapshots": [
+    {
+      "created": "2026-04-25 16:53:00",
+      "file": "snapshot-20260425T165300.json",
+      "size": 28008
+    }
+  ]
+}

@@ -77,6 +77,44 @@ def build_ext_authz_filter(
                             {"prefix": "x-", "ignore_case": True},
                         ],
                     },
+                    # Authelia /api/verify computes the post-login
+                    # `rd` redirect from the URL it sees on the auth
+                    # check. It does NOT read X-Forwarded-Uri on this
+                    # legacy endpoint — only X-Original-URL overrides
+                    # the request path. Without X-Original-URL it
+                    # falls back to the request URI Envoy sent it
+                    # (the path_prefix `/api/verify?rd=...&authz_path=
+                    # /app/...`), producing a malformed rd that loops
+                    # back through verify forever. Confirmed in
+                    # production: Authelia logs show
+                    #   "Access to https://m.iomio.io/api/verify?rd=
+                    #    ...&authz_path=/api/health"
+                    # even when X-Forwarded-Uri=/api/health is set.
+                    #
+                    # X-Forwarded-{Method,Proto,Host} are still set —
+                    # Authelia uses Host for cookie-scope checks and
+                    # Method for the verify-vs-redirect decision, and
+                    # they're cheap. X-Original-URL is the load-bearing
+                    # one for the rd path.
+                    # NOTE: this field takes envoy.config.core.v3.HeaderValue
+                    # (bare {key, value}), NOT HeaderValueOption (the
+                    # {header: {...}, append_action: ...} shape used
+                    # by route-level request_headers_to_add). Mixing
+                    # them up was the cause of v1.0.188's load-time
+                    # crash: "no such field: 'header' has unknown
+                    # fields" — fail-closed Envoy refuses to start.
+                    "headers_to_add": [
+                        {"key": "X-Original-URL",
+                         "value": "%REQ(X-FORWARDED-PROTO)%://%REQ(:AUTHORITY)%%REQ(:PATH)%"},
+                        {"key": "X-Forwarded-Method",
+                         "value": "%REQ(:METHOD)%"},
+                        {"key": "X-Forwarded-Proto",
+                         "value": "%REQ(X-FORWARDED-PROTO)%"},
+                        {"key": "X-Forwarded-Host",
+                         "value": "%REQ(:AUTHORITY)%"},
+                        {"key": "X-Forwarded-Uri",
+                         "value": "%REQ(:PATH)%"},
+                    ],
                 },
                 "authorization_response": {
                     "allowed_upstream_headers": {
@@ -184,30 +222,14 @@ def inject_ext_authz_into_payload(
             router_idx = i
             break
 
-    # Merge auth header injection into the EXISTING base Lua filter.
-    # Multiple Lua filters break envoy_on_response callbacks, so all
-    # Lua code must live in a single filter. The base template Lua
-    # (filter[0]) already has envoy_on_request and envoy_on_response.
-    # We prepend auth header code to envoy_on_request.
-    base_lua = http_filters[0] if http_filters and http_filters[0].get("name") == "envoy.filters.http.lua" else None
-    if base_lua and "inline_code" in base_lua.get("typed_config", {}):
-        old_code = base_lua["typed_config"]["inline_code"]
-        # Inject auth header setup at the START of envoy_on_request
-        auth_request_code = (
-            '  -- [AUTH] Set forwarded headers for ext_authz\n'
-            '  handle:headers():replace("x-forwarded-host", handle:headers():get(":authority") or "")\n'
-            '  handle:headers():replace("x-forwarded-uri", handle:headers():get(":path") or "/")\n'
-            '  handle:headers():replace("x-forwarded-proto", "https")\n'
-            '  handle:headers():replace("x-forwarded-method", handle:headers():get(":method") or "GET")\n'
-        )
-        # Insert after "function envoy_on_request(handle)" line
-        old_code = old_code.replace(
-            'function envoy_on_request(handle)\n',
-            'function envoy_on_request(handle)\n' + auth_request_code,
-            1,
-        )
-        base_lua["typed_config"]["inline_code"] = old_code
-
+    # The X-Forwarded-* headers Authelia /api/verify needs are added
+    # via Envoy's native authorization_request.headers_to_add (see
+    # build_ext_authz_filter). Earlier revisions tried to splice
+    # those replace() calls into the base template's
+    # envoy_on_request, but the template defines only
+    # envoy_on_response — str.replace silently no-op'd, Authelia got
+    # no X-Forwarded-Uri, and the post-login rd looped back through
+    # /api/verify instead of landing on the user's target.
     ext_authz_filter = build_ext_authz_filter(policy.ext_authz, auth_portal_url)
     if router_idx is not None:
         http_filters.insert(router_idx, ext_authz_filter)

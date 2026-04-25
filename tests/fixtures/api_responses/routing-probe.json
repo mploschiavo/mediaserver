@@ -1,0 +1,738 @@
+{
+  "routing": {
+    "app_path_prefix": "/app",
+    "gateway_host": "m.iomio.io",
+    "gateway_port": 443,
+    "scheme": "https"
+  },
+  "services": {
+    "authelia": {
+      "direct": {
+        "code": 200,
+        "ms": 1,
+        "ok": true,
+        "url": "http://127.0.0.1:9091/"
+      },
+      "gateway": {
+        "code": 200,
+        "ms": 2,
+        "ok": true,
+        "url": "https://m.iomio.io/app/authelia/"
+      },
+      "localhost": {
+        "code": 200,
+        "ms": 3,
+        "ok": true,
+        "url": "https://localhost/app/authelia/"
+      },
+      "subdomain": {
+        "code": 200,
+        "ms": 1,
+        "ok": true,
+        "url": "https://authelia.iomio.io/"
+      }
+    },
+    "authentik": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:9000/"
+      },
+      "gateway": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://m.iomio.io/app/authentik/"
+      },
+      "localhost": {
+        "code": 503,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/authentik/"
+      },
+      "subdomain": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://authentik.iomio.io/"
+      }
+    },
+    "bazarr": {
+      "direct": {
+        "code": 200,
+        "ms": 4,
+        "ok": true,
+        "url": "http://127.0.0.1:6767/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/bazarr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/bazarr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://bazarr.iomio.io/"
+      }
+    },
+    "controller": {
+      "direct": {
+        "code": 501,
+        "ms": 1,
+        "ok": true,
+        "url": "http://127.0.0.1:9100/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/controller/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 3,
+        "ok": true,
+        "url": "https://localhost/app/controller/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://controller.iomio.io/"
+      }
+    },
+    "core": {
+      "direct": {
+        "code": 0,
+        "error": "no service host",
+        "ok": false,
+        "url": "http://127.0.0.1:0/"
+      },
+      "gateway": {
+        "code": 404,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/core/"
+      },
+      "localhost": {
+        "code": 404,
+        "ms": 2,
+        "ok": true,
+        "url": "https://localhost/app/core/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://core.iomio.io/"
+      }
+    },
+    "emby": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:8096/"
+      },
+      "gateway": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://m.iomio.io/app/emby/"
+      },
+      "localhost": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://localhost/app/emby/"
+      },
+      "subdomain": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://emby.iomio.io/"
+      }
+    },
+    "envoy": {
+      "direct": {
+        "code": 200,
+        "ms": 0,
+        "ok": true,
+        "url": "http://127.0.0.1:9901/"
+      },
+      "gateway": {
+        "code": 200,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/envoy/"
+      },
+      "localhost": {
+        "code": 200,
+        "ms": 2,
+        "ok": true,
+        "url": "https://localhost/app/envoy/"
+      },
+      "subdomain": {
+        "code": 200,
+        "ms": 1,
+        "ok": true,
+        "url": "https://envoy.iomio.io/"
+      }
+    },
+    "flaresolverr": {
+      "direct": {
+        "code": 200,
+        "ms": 2,
+        "ok": true,
+        "url": "http://127.0.0.1:8191/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/flaresolverr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/flaresolverr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://flaresolverr.iomio.io/"
+      }
+    },
+    "grabit": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:0/"
+      },
+      "gateway": {
+        "code": 404,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/grabit/"
+      },
+      "localhost": {
+        "code": 404,
+        "ms": 2,
+        "ok": true,
+        "url": "https://localhost/app/grabit/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://grabit.iomio.io/"
+      }
+    },
+    "homepage": {
+      "direct": {
+        "code": 200,
+        "ms": 3,
+        "ok": true,
+        "url": "http://127.0.0.1:3000/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/homepage/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/homepage/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://homepage.iomio.io/"
+      }
+    },
+    "jdownloader": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:5800/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/jdownloader/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/jdownloader/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://jdownloader.iomio.io/"
+      }
+    },
+    "jellyfin": {
+      "direct": {
+        "code": 302,
+        "ms": 1,
+        "ok": true,
+        "url": "http://127.0.0.1:8096/"
+      },
+      "gateway": {
+        "code": 302,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/jellyfin/"
+      },
+      "localhost": {
+        "code": 302,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/jellyfin/"
+      },
+      "subdomain": {
+        "code": 302,
+        "ms": 0,
+        "ok": true,
+        "url": "https://jellyfin.iomio.io/"
+      }
+    },
+    "jellyseerr": {
+      "direct": {
+        "code": 307,
+        "ms": 1052,
+        "ok": true,
+        "url": "http://127.0.0.1:5055/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/jellyseerr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/jellyseerr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://jellyseerr.iomio.io/"
+      }
+    },
+    "lidarr": {
+      "direct": {
+        "code": 401,
+        "ms": 6,
+        "ok": true,
+        "url": "http://127.0.0.1:8686/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/lidarr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 2,
+        "ok": true,
+        "url": "https://localhost/app/lidarr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://lidarr.iomio.io/"
+      }
+    },
+    "maintainerr": {
+      "direct": {
+        "code": 404,
+        "ms": 3,
+        "ok": true,
+        "url": "http://127.0.0.1:6246/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/maintainerr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/maintainerr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://maintainerr.iomio.io/"
+      }
+    },
+    "media_integrity": {
+      "direct": {
+        "code": 0,
+        "error": "no service host",
+        "ok": false,
+        "url": "http://127.0.0.1:0/"
+      },
+      "gateway": {
+        "code": 404,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/media_integrity/"
+      },
+      "localhost": {
+        "code": 404,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/media_integrity/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://media_integrity.iomio.io/"
+      }
+    },
+    "mythtv": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:6544/"
+      },
+      "gateway": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://m.iomio.io/app/mythtv/"
+      },
+      "localhost": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://localhost/app/mythtv/"
+      },
+      "subdomain": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://mythtv.iomio.io/"
+      }
+    },
+    "nzbget": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:6789/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/nzbget/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/nzbget/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://nzbget.iomio.io/"
+      }
+    },
+    "plex": {
+      "direct": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "http://127.0.0.1:32400/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/plex/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/plex/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://plex.iomio.io/"
+      }
+    },
+    "prowlarr": {
+      "direct": {
+        "code": 401,
+        "ms": 2,
+        "ok": true,
+        "url": "http://127.0.0.1:9696/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/prowlarr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/prowlarr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://prowlarr.iomio.io/"
+      }
+    },
+    "qbittorrent": {
+      "direct": {
+        "code": 200,
+        "ms": 2,
+        "ok": true,
+        "url": "http://127.0.0.1:8080/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/qbittorrent/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/qbittorrent/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://qbittorrent.iomio.io/"
+      }
+    },
+    "radarr": {
+      "direct": {
+        "code": 401,
+        "ms": 3,
+        "ok": true,
+        "url": "http://127.0.0.1:7878/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/radarr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/radarr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://radarr.iomio.io/"
+      }
+    },
+    "readarr": {
+      "direct": {
+        "code": 401,
+        "ms": 7,
+        "ok": true,
+        "url": "http://127.0.0.1:8787/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/readarr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/readarr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://readarr.iomio.io/"
+      }
+    },
+    "sabnzbd": {
+      "direct": {
+        "code": 303,
+        "ms": 3,
+        "ok": true,
+        "url": "http://127.0.0.1:8085/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/sabnzbd/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/sabnzbd/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://sabnzbd.iomio.io/"
+      }
+    },
+    "sonarr": {
+      "direct": {
+        "code": 401,
+        "ms": 2,
+        "ok": true,
+        "url": "http://127.0.0.1:8989/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/sonarr/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/sonarr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://sonarr.iomio.io/"
+      }
+    },
+    "tautulli": {
+      "direct": {
+        "code": 303,
+        "ms": 3,
+        "ok": true,
+        "url": "http://127.0.0.1:8181/"
+      },
+      "gateway": {
+        "code": 401,
+        "ms": 0,
+        "ok": true,
+        "url": "https://m.iomio.io/app/tautulli/"
+      },
+      "localhost": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/tautulli/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 0,
+        "ok": true,
+        "url": "https://tautulli.iomio.io/"
+      }
+    },
+    "traefik": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:8080/"
+      },
+      "gateway": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://m.iomio.io/app/traefik/"
+      },
+      "localhost": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://localhost/app/traefik/"
+      },
+      "subdomain": {
+        "code": 503,
+        "ms": 0,
+        "ok": true,
+        "url": "https://traefik.iomio.io/"
+      }
+    },
+    "unpackerr": {
+      "direct": {
+        "code": 0,
+        "error": "[Errno -2] Name does not resolve",
+        "ok": false,
+        "url": "http://127.0.0.1:0/"
+      },
+      "gateway": {
+        "code": 404,
+        "ms": 1,
+        "ok": true,
+        "url": "https://m.iomio.io/app/unpackerr/"
+      },
+      "localhost": {
+        "code": 404,
+        "ms": 1,
+        "ok": true,
+        "url": "https://localhost/app/unpackerr/"
+      },
+      "subdomain": {
+        "code": 401,
+        "ms": 1,
+        "ok": true,
+        "url": "https://unpackerr.iomio.io/"
+      }
+    }
+  }
+}

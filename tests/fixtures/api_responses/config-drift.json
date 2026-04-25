@@ -1,0 +1,24 @@
+{
+  "clean": false,
+  "drifts": [
+    {
+      "actual": "io",
+      "area": "routing",
+      "expected": "local",
+      "key": "base_domain"
+    },
+    {
+      "actual": "m.iomio.io",
+      "area": "routing",
+      "expected": "k8.media-stack.local",
+      "key": "gateway_host"
+    },
+    {
+      "actual": "443",
+      "area": "routing",
+      "expected": "80",
+      "key": "gateway_port"
+    }
+  ],
+  "total": 3
+}

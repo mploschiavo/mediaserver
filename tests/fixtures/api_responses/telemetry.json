@@ -1,0 +1,36 @@
+{
+  "cluster_id": "459b40b2-1542-44b1-9c77-cb24895cb962",
+  "cluster_name": "media-stack-controller-68c9d58854-tqjr8",
+  "controller": {
+    "hostname": "media-stack-controller-68c9d58854-tqjr8",
+    "platform": "media-stack",
+    "python": "3.12.13",
+    "uptime_hours": 386.2,
+    "version": "1.0.187"
+  },
+  "jobs": {
+    "avg_duration_s": 75.4,
+    "errors": 0,
+    "ok": 44,
+    "runs_24h": 20
+  },
+  "media": {
+    "active_downloads": 0,
+    "indexers": 7,
+    "libraries": 4,
+    "livetv_tuners": 1,
+    "storage_gb": 0
+  },
+  "network": {
+    "containers": 0,
+    "per_container": {},
+    "rx_gb": 0.19,
+    "tx_gb": 0.03
+  },
+  "services": {
+    "healthy": 0,
+    "total": 28,
+    "unhealthy": 28
+  },
+  "ts": 1777137762.4137137
+}

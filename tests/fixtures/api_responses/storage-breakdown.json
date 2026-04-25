@@ -1,0 +1,31 @@
+{
+  "breakdown": [
+    {
+      "bytes": 338533469746,
+      "display": "315.3 GB",
+      "name": "movies",
+      "path": "/srv-stack/media/movies"
+    },
+    {
+      "bytes": 113156727936,
+      "display": "105.4 GB",
+      "name": "tv",
+      "path": "/srv-stack/media/tv"
+    },
+    {
+      "bytes": 7688177865,
+      "display": "7.2 GB",
+      "name": "music",
+      "path": "/srv-stack/media/music"
+    },
+    {
+      "bytes": 930481736,
+      "display": "887 MB",
+      "name": "books",
+      "path": "/srv-stack/media/books"
+    }
+  ],
+  "media_root": "/srv-stack/media",
+  "total_bytes": 460308857283,
+  "total_display": "428.7 GB"
+}

@@ -54,6 +54,19 @@ _HANDLER_ONLY_ALLOWLIST: frozenset[str] = frozenset({
     "/api/bans/",
     "/api/me/",
     "/api/security/",
+    # ``/api/``-prefix aliases of spec'd routes. The handlers accept
+    # BOTH the un-prefixed and ``/api/``-prefixed form for
+    # backward compat with older clients hitting the controller
+    # directly (no Envoy prefix-strip). The canonical paths
+    # (``/actions/cancel``, ``/webhooks``, ``/webhooks/test``) ARE
+    # spec'd; documenting their aliases would just clone three
+    # entries with no operational value. Aliases live at:
+    #   handlers_post.py:1506 — /api/actions/cancel
+    #   handlers_post.py:1538 — /api/webhooks
+    #   handlers_post.py:1497 — /api/webhooks/test
+    "/api/actions/cancel",
+    "/api/webhooks",
+    "/api/webhooks/test",
 })
 
 # Spec routes that don't show up as exact strings in handlers_*
@@ -66,6 +79,17 @@ _SPEC_ONLY_ALLOWLIST: frozenset[str] = frozenset({
     # has a spec entry; this is an alternate entry point into the
     # same code path, driven by the service registry.
     "/api/jellyfin/reset",
+    # Templated path — handler dispatches via prefix-startswith
+    # (``for prefix in ("/api/actions/", "/actions/"): if
+    # path.startswith(prefix): action_name = path[len(prefix):]``)
+    # at handlers_post.py:1515. The ratchet's AST walk only sees
+    # exact-string ``path == "/foo"`` comparisons and won't pick up
+    # this pattern. The action name resolves at runtime against
+    # ACTION_PRIORITY + the action registry, so there's no finite
+    # set of literal paths to enumerate. Cancel is dispatched
+    # separately (literal match) and is spec'd; this template is
+    # the catch-all.
+    "/actions/{name}",
 })
 
 

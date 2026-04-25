@@ -1,0 +1,181 @@
+{
+  "healthy": 17,
+  "services": {
+    "authelia": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "n/a",
+      "ms": 4,
+      "status": "ok"
+    },
+    "authentik": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "bazarr": {
+      "auth": "ok",
+      "code": 401,
+      "login": "n/a",
+      "ms": 9,
+      "status": "ok"
+    },
+    "controller": {
+      "auth": "n/a",
+      "code": 200,
+      "ms": 0,
+      "status": "ok"
+    },
+    "core": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "emby": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "envoy": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "n/a",
+      "ms": 6,
+      "status": "ok"
+    },
+    "flaresolverr": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "n/a",
+      "ms": 7,
+      "status": "ok"
+    },
+    "grabit": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "homepage": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "n/a",
+      "ms": 8,
+      "status": "ok"
+    },
+    "jdownloader": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "jellyfin": {
+      "auth": "ok",
+      "code": 200,
+      "login": "error",
+      "ms": 12,
+      "status": "ok"
+    },
+    "jellyseerr": {
+      "auth": "ok",
+      "code": 200,
+      "login": "n/a",
+      "ms": 10,
+      "status": "ok"
+    },
+    "lidarr": {
+      "auth": "ok",
+      "code": 200,
+      "login": "error",
+      "ms": 12,
+      "status": "ok"
+    },
+    "maintainerr": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "n/a",
+      "ms": 6,
+      "status": "ok"
+    },
+    "media_integrity": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "mythtv": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "nzbget": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "plex": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "n/a",
+      "ms": 4,
+      "status": "ok"
+    },
+    "prowlarr": {
+      "auth": "ok",
+      "code": 200,
+      "login": "error",
+      "ms": 10,
+      "status": "ok"
+    },
+    "qbittorrent": {
+      "auth": "n/a",
+      "code": 200,
+      "login": "ok",
+      "ms": 4,
+      "status": "ok"
+    },
+    "radarr": {
+      "auth": "ok",
+      "code": 200,
+      "login": "error",
+      "ms": 10,
+      "status": "ok"
+    },
+    "readarr": {
+      "auth": "ok",
+      "code": 200,
+      "login": "error",
+      "ms": 8,
+      "status": "ok"
+    },
+    "sabnzbd": {
+      "auth": "ok",
+      "code": 404,
+      "login": "n/a",
+      "ms": 6,
+      "status": "error"
+    },
+    "sonarr": {
+      "auth": "ok",
+      "code": 200,
+      "login": "error",
+      "ms": 9,
+      "status": "ok"
+    },
+    "tautulli": {
+      "auth": "no_key",
+      "code": 200,
+      "login": "n/a",
+      "ms": 5,
+      "status": "ok"
+    },
+    "traefik": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    },
+    "unpackerr": {
+      "auth": "n/a",
+      "ms": 0,
+      "status": "disabled"
+    }
+  },
+  "total": 28
+}

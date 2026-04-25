@@ -1,0 +1,44 @@
+{
+  "completed": 4,
+  "is_first_run": false,
+  "progress_pct": 67,
+  "steps": [
+    {
+      "detail": "17/28 healthy",
+      "id": "services_running",
+      "label": "Services running",
+      "status": "warn"
+    },
+    {
+      "detail": "9/10 keys",
+      "id": "api_keys",
+      "label": "API keys discovered",
+      "status": "warn"
+    },
+    {
+      "detail": "4 libraries",
+      "id": "libraries",
+      "label": "Media libraries configured",
+      "status": "ok"
+    },
+    {
+      "detail": "m.iomio.io",
+      "id": "routing",
+      "label": "Network routing configured",
+      "status": "ok"
+    },
+    {
+      "detail": "qbittorrent, sabnzbd",
+      "id": "download_clients",
+      "label": "Download clients configured",
+      "status": "ok"
+    },
+    {
+      "detail": "Run 'Configure All' to bootstrap the stack",
+      "id": "bootstrap",
+      "label": "Initial bootstrap completed",
+      "status": "ok"
+    }
+  ],
+  "total": 6
+}

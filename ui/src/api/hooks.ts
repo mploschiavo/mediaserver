@@ -11,20 +11,18 @@ import {
 } from "@tanstack/react-query";
 
 import { api } from "./endpoints";
+import { fetcher } from "./client";
 import type {
   AuditLogShape,
   BrandingShape,
   EnforceReportShape,
   HealthShape,
   IdentityShape,
-  LibraryStatsShape,
   LogSource,
   LogStreamShape,
-  MeProfileShape,
   MediaIntegrityProgressShape,
   MediaIntegrityStatusShape,
   OpsHealthShape,
-  RecentAdditionsShape,
   ReconcileReportShape,
   ResolveReviewInput,
   ResolveReviewOutput,
@@ -44,14 +42,11 @@ const KEYS = {
   auditLog: (limit: number, action?: string) =>
     ["audit-log", { limit, action: action ?? null }] as const,
   sessions: ["sessions", "active"] as const,
-  libraryStats: ["library", "stats"] as const,
-  recentAdditions: ["library", "recent"] as const,
   logs: (source: LogSource) => ["logs", source] as const,
   routing: ["routing"] as const,
   webhooks: ["webhooks"] as const,
   users: ["users"] as const,
   opsHealth: ["ops", "health"] as const,
-  meProfile: ["me", "profile"] as const,
 };
 
 export function useHealth(): UseQueryResult<HealthShape> {
@@ -162,35 +157,18 @@ export function useSessions(): UseQueryResult<SessionsShape> {
   });
 }
 
-// ---- Skeleton-tab hooks ---------------------------------------------------
-// Each hook below renders real-shape data so the new dashboard tabs can
-// flush out their visuals while the controller endpoints catch up. When
-// the endpoint lands, replace the `Promise.resolve(...)` body with the
-// matching `api.*` call and drop the TODO comment.
-
-export function useLibraryStats(): UseQueryResult<LibraryStatsShape> {
-  return useQuery({
-    queryKey: KEYS.libraryStats,
-    // TODO(api): GET /api/library/stats — counts per kind across the stack.
-    queryFn: () =>
-      Promise.resolve<LibraryStatsShape>({
-        movies: 0,
-        tv: 0,
-        tracks: 0,
-        books: 0,
-      }),
-  });
-}
-
-export function useRecentAdditions(
-  limit = 6,
-): UseQueryResult<RecentAdditionsShape> {
-  return useQuery({
-    queryKey: [...KEYS.recentAdditions, limit] as const,
-    // TODO(api): GET /api/library/recent?window=24h&limit=N
-    queryFn: () => Promise.resolve<RecentAdditionsShape>({ items: [] }),
-  });
-}
+// ---- Cross-tab hooks ------------------------------------------------------
+// These hooks call the live controller and adapt the response into the
+// UI shapes declared in `shapes.ts`. Earlier revisions stubbed several
+// of them with `Promise.resolve(...)` placeholders pending endpoints;
+// the stub-hook ratchet (`stub-hook-ratchet.test.ts`) now blocks
+// regressions.
+//
+// `useLibraryStats`, `useRecentAdditions`, `useMeProfile` were stubbed
+// AND had no consumers — deleted in the burn-down. The /me page reads
+// from `features/me/hooks.ts` (which calls /api/me directly); the
+// /content page reads `useLibraries` (already wired). Re-introduce
+// these only when a new consumer needs them.
 
 export function useLogs(
   source: LogSource | undefined,
@@ -205,66 +183,120 @@ export function useLogs(
   });
 }
 
+/**
+ * Live `/api/routing` shape — flat config blob from the controller's
+ * routing service. We adapt to the strategy-only `RoutingShape` here
+ * because the per-app health column the UI envisioned doesn't have
+ * a backing endpoint yet (consumers fall back to /api/health for
+ * that). When `/api/routing/dashboard` lands, expand `apps`.
+ */
+interface RoutingApiResponse {
+  strategy?: string;
+  base_domain?: string;
+  gateway_host?: string;
+  internet_exposed?: boolean;
+}
+
 export function useRouting(): UseQueryResult<RoutingShape> {
   return useQuery({
     queryKey: KEYS.routing,
-    // TODO(api): GET /api/routing — strategy + per-app health.
-    queryFn: () =>
-      Promise.resolve<RoutingShape>({
+    queryFn: async () => {
+      const raw = await fetcher<RoutingApiResponse>("api/routing");
+      const strategy = (raw.strategy === "subdomain" || raw.strategy === "path")
+        ? raw.strategy
+        : "hybrid";
+      const adapted: RoutingShape = {
         strategy: {
-          strategy: "subdomain",
-          base_domain: "media.local",
-          external_hostname: "media.local",
+          strategy,
+          base_domain: raw.base_domain || "",
+          external_hostname: raw.gateway_host || raw.base_domain || "",
         },
         apps: [],
-      }),
+      };
+      return adapted;
+    },
   });
+}
+
+/**
+ * `/api/webhooks` returns ``{webhook_urls: string[]}`` — a flat list
+ * of registered URLs. The UI's `WebhookEntryShape` expects per-entry
+ * id/events/last_fired_at; until the controller tracks those (no
+ * persistent registry yet), we synthesize id/events from the URL
+ * itself so the table renders something useful instead of empty.
+ */
+interface WebhooksApiResponse {
+  webhook_urls?: readonly string[];
 }
 
 export function useWebhooks(): UseQueryResult<WebhooksShape> {
   return useQuery({
     queryKey: KEYS.webhooks,
-    // TODO(api): GET /api/webhooks
-    queryFn: () => Promise.resolve<WebhooksShape>({ webhooks: [] }),
+    queryFn: async () => {
+      const raw = await fetcher<WebhooksApiResponse>("api/webhooks");
+      const urls = raw.webhook_urls ?? [];
+      return {
+        webhooks: urls.map((url, idx) => ({
+          id: String(idx),
+          url,
+          events: [],
+        })),
+      } as WebhooksShape;
+    },
   });
+}
+
+/**
+ * `/api/users` emits the canonical user record (``state``,
+ * ``role_slug``, ``provider_refs``...). The UI's `UserEntryShape`
+ * uses `status` and a narrowed `role` enum — adapt here. Aggregate
+ * counts (``admins``, ``pending_invites``) are derived client-side
+ * because the controller doesn't roll them up server-side yet.
+ */
+interface UserApiRecord {
+  id: string;
+  username: string;
+  state?: string;
+  role_slug?: string;
+  last_login_at?: string;
+}
+
+interface UsersApiResponse {
+  users?: readonly UserApiRecord[];
 }
 
 export function useUsers(): UseQueryResult<UsersShape> {
   return useQuery({
     queryKey: KEYS.users,
-    // TODO(api): GET /api/users — paginated user directory.
-    queryFn: () =>
-      Promise.resolve<UsersShape>({ users: [], admins: 0, pending_invites: 0 }),
+    queryFn: async () => {
+      const raw = await fetcher<UsersApiResponse>("api/users");
+      const users = (raw.users ?? []).map((u) => {
+        const role: "admin" | "operator" | "viewer" = u.role_slug === "superadmin"
+          ? "admin"
+          : u.role_slug === "operator" ? "operator" : "viewer";
+        const status: "active" | "disabled" | "pending" = u.state === "disabled"
+          ? "disabled"
+          : u.state === "pending" ? "pending" : "active";
+        return {
+          id: u.id,
+          username: u.username,
+          role,
+          status,
+          last_login_at: u.last_login_at || undefined,
+        };
+      });
+      const admins = users.filter((u) => u.role === "admin").length;
+      const pending = users.filter((u) => u.status === "pending").length;
+      return { users, admins, pending_invites: pending } as UsersShape;
+    },
   });
 }
 
 export function useOpsHealth(): UseQueryResult<OpsHealthShape> {
   return useQuery({
     queryKey: KEYS.opsHealth,
-    // TODO(api): GET /api/ops/health — aggregated runtime stats.
-    queryFn: () =>
-      Promise.resolve<OpsHealthShape>({
-        uptime_seconds: 0,
-        containers: 0,
-        disk_used_pct: 0,
-        last_bootstrap_at: new Date(0).toISOString(),
-      }),
-  });
-}
-
-export function useMeProfile(): UseQueryResult<MeProfileShape> {
-  return useQuery({
-    queryKey: KEYS.meProfile,
-    // TODO(api): GET /api/me — sessions, tokens, MFA state.
-    queryFn: () =>
-      Promise.resolve<MeProfileShape>({
-        username: "you",
-        display_name: "You",
-        email: "",
-        sessions: [],
-        tokens: [],
-        mfa: { enabled: false },
-      }),
+    queryFn: () => fetcher<OpsHealthShape>("api/ops/health"),
+    refetchInterval: 30_000,
   });
 }
 

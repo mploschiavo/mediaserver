@@ -113,6 +113,37 @@ def _update_jellyfin_scan_interval(scan_interval: Any) -> dict[str, Any]:
         return {"error": str(exc)[:80]}
 
 
+def _pick_poster_url(images: Any) -> str:
+    """Extract a poster URL from an arr `images` array.
+
+    radarr/sonarr/lidarr/readarr return per-item images as
+    ``[{coverType: "poster"|"fanart"|"banner"|..., url, remoteUrl}, ...]``.
+    Prefer ``coverType=="poster"``, then ``"cover"``, then the first
+    entry. ``url`` is the local arr-served path; ``remoteUrl`` points
+    at TMDB/TVDB. We return ``url`` first because it stays valid even
+    when the upstream metadata source is throttled or the item has
+    been deleted from TMDB. Empty string when no images are present
+    so the UI's ``item.poster ? <img/> : <placeholder/>`` branch
+    works cleanly.
+    """
+    if not isinstance(images, list):
+        return ""
+    by_type: dict[str, str] = {}
+    first_url = ""
+    for entry in images:
+        if not isinstance(entry, dict):
+            continue
+        url = str(entry.get("url") or entry.get("remoteUrl") or "")
+        if not url:
+            continue
+        if not first_url:
+            first_url = url
+        cover = str(entry.get("coverType") or "").lower()
+        if cover and cover not in by_type:
+            by_type[cover] = url
+    return by_type.get("poster") or by_type.get("cover") or first_url
+
+
 def _profile_summary(profile: dict[str, Any]) -> dict[str, Any]:
     """Flatten a single arr quality-profile payload into a dashboard shape.
 
@@ -405,7 +436,18 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
         """
         first_seen: str | None = None
         for svc in SERVICES:
-            if svc.category != "media-server" or not svc.host or not svc.port:
+            # Registry uses category="media" (was "media-server" in an
+            # earlier registry shape — the rename was never propagated
+            # here). With the stale string, this loop matched zero
+            # services, the function returned {libraries: []}, and the
+            # `/api/libraries` handler reported `live: []` + `source:
+            # defaults`. The dashboard's banner mis-attributed that to a
+            # missing JELLYFIN_API_KEY, even though the env was fine and
+            # Jellyfin was reachable. Iteration order (alphabetical id)
+            # plus the `if not key: continue` guard means we hit emby
+            # (no api_key_env, skipped) → jellyfin (success, return) →
+            # never reach jellyseerr/mythtv/plex.
+            if svc.category != "media" or not svc.host or not svc.port:
                 continue
             first_seen = first_seen or svc.id
             key = read_service_api_key(svc.id)
@@ -420,11 +462,30 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 )
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     data = json.loads(resp.read())
-                libs = [
-                    {"name": lib.get("Name", ""), "type": lib.get("CollectionType", ""),
-                     "paths": lib.get("Locations", []), "count": lib.get("ItemCount", 0)}
-                    for lib in (data if isinstance(data, list) else [])
-                ]
+                libs: list[dict[str, Any]] = []
+                for lib in (data if isinstance(data, list) else []):
+                    ctype = lib.get("CollectionType") or ""
+                    libs.append({
+                        # Field names match the UI's `LiveLibraryEntry`
+                        # contract (collection_type/item_count, not
+                        # type/count). Without these names the
+                        # LibraryStatsTiles fallback path fires and
+                        # the dashboard shows "1 1 1 1" (configured-
+                        # libraries-per-type) instead of real counts.
+                        "name": lib.get("Name", ""),
+                        "collection_type": ctype,
+                        "paths": lib.get("Locations", []),
+                        # /Library/VirtualFolders.ItemCount is metadata
+                        # and is `null` even on populated libraries
+                        # (confirmed against Jellyfin 10.x). Query
+                        # /Items.TotalRecordCount per library for the
+                        # authoritative count.
+                        "item_count": self._jellyfin_library_item_count(
+                            svc.host, svc.port, auth_header, key,
+                            parent_id=str(lib.get("ItemId") or ""),
+                            collection_type=ctype,
+                        ),
+                    })
                 return {"libraries": libs}
             except Exception as exc:
                 return {"libraries": [], "error": f"{svc.id}: {str(exc)[:80]}"}
@@ -434,6 +495,48 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 "error": f"no API key for {first_seen}",
             }
         return {"libraries": []}
+
+    # Map Jellyfin CollectionType → IncludeItemTypes for the per-library
+    # /Items count query. "music" → "Audio" (songs/tracks) matches the
+    # dashboard's "Tracks" tile label; "tvshows" → "Series" mirrors the
+    # convention of counting shows-not-episodes for a library overview.
+    _JELLYFIN_ITEM_TYPE_FOR: dict[str, str] = {
+        "movies": "Movie",
+        "tvshows": "Series",
+        "music": "Audio",
+        "books": "Book",
+        "boxsets": "BoxSet",
+    }
+
+    def _jellyfin_library_item_count(
+        self, host: str, port: int, auth_header: str, key: str,
+        parent_id: str, collection_type: str,
+    ) -> int:
+        """Return TotalRecordCount for one Jellyfin library.
+
+        /Library/VirtualFolders.ItemCount is null on production deploys
+        even for libraries that contain content; /Items?Recursive=true
+        &Limit=0 returns the authoritative count via TotalRecordCount.
+        Fails closed to 0 on any error so a single library outage
+        doesn't take the whole list down."""
+        item_type = self._JELLYFIN_ITEM_TYPE_FOR.get(collection_type, "")
+        params = ["Recursive=true", "Limit=0"]
+        if item_type:
+            params.append(f"IncludeItemTypes={item_type}")
+        if parent_id:
+            params.append(f"ParentId={parent_id}")
+        try:
+            req = urllib.request.Request(
+                f"http://{host}:{port}/Items?{'&'.join(params)}",
+                headers={auth_header: key},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            total = data.get("TotalRecordCount")
+            return int(total) if isinstance(total, (int, float)) else 0
+        except Exception as exc:
+            log_swallowed(exc)
+            return 0
 
     def get_recent(self) -> dict[str, Any]:
         """Fetch recently added items from arr apps."""
@@ -453,8 +556,23 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     data = json.loads(resp.read())
                 items = data[:5] if isinstance(data, list) else []
+                # arr APIs (radarr v3 / sonarr v3 / lidarr / readarr)
+                # use `added` (ISO datetime) — the older `dateAdded`
+                # is a Sonarr v2 / *-arr legacy field. Try `added`
+                # first, fall back to `dateAdded` for any service
+                # still on the older shape.
+                #
+                # Posters come from the `images` array, each entry
+                # is {coverType: "poster"|"fanart"|..., url, remoteUrl}.
+                # Prefer the poster cover type; fall back to the first
+                # image. The UI's RecentAdditionsCard reads `poster`
+                # (the canonical name in features/library/hooks.ts).
                 return name, [
-                    {"title": i.get("title", ""), "added": str(i.get("dateAdded", ""))[:10]}
+                    {
+                        "title": i.get("title", ""),
+                        "added": str(i.get("added") or i.get("dateAdded") or "")[:10],
+                        "poster": _pick_poster_url(i.get("images")),
+                    }
                     for i in items
                 ]
             except Exception:

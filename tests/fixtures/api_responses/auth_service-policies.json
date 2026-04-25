@@ -1,0 +1,200 @@
+{
+  "services": [
+    {
+      "category": "infrastructure",
+      "policy": "public",
+      "service_id": "authelia",
+      "service_name": "Authelia",
+      "source": "contract"
+    },
+    {
+      "category": "infrastructure",
+      "policy": "public",
+      "service_id": "authentik",
+      "service_name": "Authentik",
+      "source": "contract"
+    },
+    {
+      "category": "automation",
+      "policy": "protected",
+      "service_id": "bazarr",
+      "service_name": "Bazarr",
+      "source": "contract"
+    },
+    {
+      "category": "infrastructure",
+      "policy": "public",
+      "service_id": "core",
+      "service_name": "Core Operations",
+      "source": "contract"
+    },
+    {
+      "category": "media",
+      "policy": "native",
+      "service_id": "emby",
+      "service_name": "Emby",
+      "source": "contract"
+    },
+    {
+      "category": "infrastructure",
+      "policy": "public",
+      "service_id": "envoy",
+      "service_name": "Envoy",
+      "source": "contract"
+    },
+    {
+      "category": "management",
+      "policy": "protected",
+      "service_id": "flaresolverr",
+      "service_name": "FlareSolverr",
+      "source": "contract"
+    },
+    {
+      "category": "downloads",
+      "policy": "protected",
+      "service_id": "grabit",
+      "service_name": "Grabit",
+      "source": "contract"
+    },
+    {
+      "category": "management",
+      "policy": "protected",
+      "service_id": "homepage",
+      "service_name": "Homepage",
+      "source": "contract"
+    },
+    {
+      "category": "downloads",
+      "policy": "protected",
+      "service_id": "jdownloader",
+      "service_name": "JDownloader",
+      "source": "contract"
+    },
+    {
+      "category": "media",
+      "policy": "native",
+      "service_id": "jellyfin",
+      "service_name": "Jellyfin",
+      "source": "contract"
+    },
+    {
+      "category": "media",
+      "policy": "protected",
+      "service_id": "jellyseerr",
+      "service_name": "Jellyseerr",
+      "source": "contract"
+    },
+    {
+      "category": "automation",
+      "policy": "protected",
+      "service_id": "lidarr",
+      "service_name": "Lidarr",
+      "source": "contract"
+    },
+    {
+      "category": "management",
+      "policy": "protected",
+      "service_id": "maintainerr",
+      "service_name": "Maintainerr",
+      "source": "contract"
+    },
+    {
+      "category": "infrastructure",
+      "policy": "public",
+      "service_id": "media_integrity",
+      "service_name": "Media Integrity",
+      "source": "contract"
+    },
+    {
+      "category": "media",
+      "policy": "native",
+      "service_id": "mythtv",
+      "service_name": "MythTV",
+      "source": "contract"
+    },
+    {
+      "category": "downloads",
+      "policy": "protected",
+      "service_id": "nzbget",
+      "service_name": "NZBGet",
+      "source": "contract"
+    },
+    {
+      "category": "media",
+      "policy": "native",
+      "service_id": "plex",
+      "service_name": "Plex",
+      "source": "contract"
+    },
+    {
+      "category": "automation",
+      "policy": "protected",
+      "service_id": "prowlarr",
+      "service_name": "Prowlarr",
+      "source": "contract"
+    },
+    {
+      "category": "downloads",
+      "policy": "protected",
+      "service_id": "qbittorrent",
+      "service_name": "qBittorrent",
+      "source": "contract"
+    },
+    {
+      "category": "automation",
+      "policy": "protected",
+      "service_id": "radarr",
+      "service_name": "Radarr",
+      "source": "contract"
+    },
+    {
+      "category": "automation",
+      "policy": "protected",
+      "service_id": "readarr",
+      "service_name": "Readarr",
+      "source": "contract"
+    },
+    {
+      "category": "downloads",
+      "policy": "protected",
+      "service_id": "sabnzbd",
+      "service_name": "SABnzbd",
+      "source": "contract"
+    },
+    {
+      "category": "automation",
+      "policy": "protected",
+      "service_id": "sonarr",
+      "service_name": "Sonarr",
+      "source": "contract"
+    },
+    {
+      "category": "management",
+      "policy": "protected",
+      "service_id": "tautulli",
+      "service_name": "Tautulli",
+      "source": "contract"
+    },
+    {
+      "category": "infrastructure",
+      "policy": "public",
+      "service_id": "traefik",
+      "service_name": "Traefik",
+      "source": "contract"
+    },
+    {
+      "category": "downloads",
+      "policy": "protected",
+      "service_id": "unpackerr",
+      "service_name": "Unpackerr",
+      "source": "contract"
+    },
+    {
+      "category": "infrastructure",
+      "policy": "protected",
+      "service_id": "media-stack-controller",
+      "service_name": "Controller",
+      "source": "contract"
+    }
+  ]
+}

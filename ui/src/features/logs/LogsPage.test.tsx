@@ -9,11 +9,28 @@ const multiState = vi.hoisted(() => ({
   error: null as Error | null,
 }));
 
+const navigateMock = vi.hoisted(() => vi.fn());
+
 vi.mock("./hooks", async () => {
   const actual = await vi.importActual<typeof import("./hooks")>("./hooks");
   return {
     ...actual,
     useMultiLogs: () => multiState,
+  };
+});
+
+// LogsPage routes its URL write-through through Tanstack Router's
+// `useNavigate` (the bug fix for the splat-404 regression — raw
+// `history.replaceState` re-fed the deployed prefix back through a
+// router with no basepath set). Tests run without a RouterProvider,
+// so we stub `useNavigate` to a spy and assert against its calls.
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof import(
+    "@tanstack/react-router"
+  );
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
   };
 });
 
@@ -32,6 +49,7 @@ describe("LogsPage", () => {
     multiState.error = null;
     window.localStorage.clear();
     window.history.replaceState({}, "", "/logs");
+    navigateMock.mockReset();
   });
 
   it("loads with the controller source pre-selected by default", () => {
@@ -138,10 +156,26 @@ describe("LogsPage", () => {
   it("writes ?filter= back to the URL after a debounce", async () => {
     renderWithProviders(<LogsPage />);
     await userEvent.type(screen.getByTestId("logs-search"), "boom");
-    // The page debounces writes by 300ms; wait for the URL update.
+    // The page debounces writes by 300ms; wait for the navigate
+    // call. Asserting on `navigateMock` (rather than
+    // `window.location.search`) keeps the test honest about what the
+    // page does — it routes the URL update through Tanstack Router
+    // so the basepath gets honored in production.
     await waitFor(
       () => {
-        expect(window.location.search).toContain("filter=boom");
+        const last = navigateMock.mock.calls.at(-1)?.[0] as
+          | {
+              to?: string;
+              replace?: boolean;
+              search?: ((prev: object) => Record<string, unknown>) | object;
+            }
+          | undefined;
+        expect(last).toBeDefined();
+        expect(last?.to).toBe("/logs");
+        expect(last?.replace).toBe(true);
+        const next =
+          typeof last?.search === "function" ? last.search({}) : last?.search;
+        expect(next).toMatchObject({ filter: "boom" });
       },
       { timeout: 1500 },
     );

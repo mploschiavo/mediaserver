@@ -171,6 +171,12 @@ class GetRequestHandler:
             handler._json_response(200, result)
         elif path == "/api/health-history":
             handler._json_response(200, health_svc.get_health_history())
+        elif path == "/api/ops/health":
+            # Aggregated runtime stats for the /ops dashboard tile.
+            # Replaces the UI-side `Promise.resolve(...)` stub that
+            # produced the "12/31/1969" bootstrap timestamp. See
+            # HealthService.get_ops_health for the field semantics.
+            handler._json_response(200, health_svc.get_ops_health())
         elif path == "/api/credentials":
             handler._json_response(200, health_svc.probe_credentials())
         elif path == "/api/password-propagation":
@@ -417,13 +423,22 @@ class GetRequestHandler:
         elif path == "/api/import-lists":
             handler._json_response(200, content_svc.get_import_lists())
         elif path == "/api/libraries":
-            # Merge live Jellyfin libraries with configured libraries
+            # Merge live Jellyfin libraries with configured libraries.
+            # `source` advertises which list the dashboard should
+            # consider authoritative: "live" when Jellyfin returned
+            # libraries, else passthrough of `configured.source`
+            # (typically "defaults" / "profile"). The UI's
+            # LibraryDataSourceBanner predicate keys on this field —
+            # without the "live" branch, the "showing bootstrap
+            # defaults" banner stays up even after live counts
+            # populate, falsely blaming JELLYFIN_API_KEY.
             live = content_svc.get_jellyfin_libraries()
             configured = config_svc.get_libraries()
+            live_libs = live.get("libraries", [])
             handler._json_response(200, {
-                "live": live.get("libraries", []),
+                "live": live_libs,
                 "configured": configured.get("libraries", []),
-                "source": configured.get("source", "unknown"),
+                "source": "live" if live_libs else configured.get("source", "unknown"),
                 "media_server": configured.get("media_server", ""),
             })
         elif path == "/api/recent":

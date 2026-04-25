@@ -1,0 +1,17 @@
+{
+  "app_auth": {
+    "enabled": true,
+    "fail_on_error": false,
+    "method": "None",
+    "password_env": "STACK_ADMIN_PASSWORD",
+    "required": "DisabledForLocalAddresses",
+    "username_env": "STACK_ADMIN_USERNAME"
+  },
+  "app_auth_method": "None",
+  "app_auth_summary": "SSO gateway \u2014 arr apps trust local network (no second login)",
+  "internet_exposed": false,
+  "mode": "authelia",
+  "oidc_config": {},
+  "oidc_provider": "local",
+  "per_service": {}
+}

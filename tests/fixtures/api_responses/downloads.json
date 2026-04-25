@@ -1,0 +1,16 @@
+{
+  "nzbget": {
+    "active": 0,
+    "error": "<urlopen error [Errno -2] Name does not resolve>",
+    "items": []
+  },
+  "qbittorrent": {
+    "active": 0,
+    "items": []
+  },
+  "sabnzbd": {
+    "active": 0,
+    "items": [],
+    "speed": "0 KB/s"
+  }
+}

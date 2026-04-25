@@ -1,0 +1,55 @@
+[
+  {
+    "ids": [
+      "authelia",
+      "authentik",
+      "core",
+      "envoy",
+      "media_integrity",
+      "traefik",
+      "controller"
+    ],
+    "label": "Infrastructure"
+  },
+  {
+    "ids": [
+      "bazarr",
+      "lidarr",
+      "prowlarr",
+      "radarr",
+      "readarr",
+      "sonarr"
+    ],
+    "label": "Automation"
+  },
+  {
+    "ids": [
+      "emby",
+      "jellyfin",
+      "jellyseerr",
+      "mythtv",
+      "plex"
+    ],
+    "label": "Media"
+  },
+  {
+    "ids": [
+      "flaresolverr",
+      "homepage",
+      "maintainerr",
+      "tautulli"
+    ],
+    "label": "Management"
+  },
+  {
+    "ids": [
+      "grabit",
+      "jdownloader",
+      "nzbget",
+      "qbittorrent",
+      "sabnzbd",
+      "unpackerr"
+    ],
+    "label": "Downloads"
+  }
+]

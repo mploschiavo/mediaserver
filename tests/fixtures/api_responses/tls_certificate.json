@@ -1,0 +1,10 @@
+{
+  "fingerprint_sha256": "",
+  "issuer": "",
+  "not_after": "",
+  "not_before": "",
+  "path": "/srv-config/certs/media-stack.crt",
+  "present": false,
+  "sans": [],
+  "subject": ""
+}

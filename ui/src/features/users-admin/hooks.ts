@@ -647,17 +647,101 @@ export function useUpdatePasswordPolicy(): UseMutationResult<
 // Provider reconciliation
 // =====================
 
+// Live ``/api/users-reconcile`` shape: one entry per provider, with
+// orphan / ghost arrays nested inside. The UI's ProviderReconcileCard
+// iterates a FLAT list of one diff per orphan/ghost, keyed on
+// ``kind``. Pre-fix the card rendered three "diff (unknown)" wrapper
+// rows and never reached the actual 3 orphans inside them. Flatten
+// here so the card consumes the shape it was written against.
+interface RawReconcileOrphan {
+  external_id?: string;
+  username?: string;
+  email?: string;
+  groups?: readonly string[];
+}
+
+interface RawReconcileProviderDiff {
+  provider?: string;
+  matched?: number;
+  orphans?: readonly RawReconcileOrphan[];
+  ghosts?: readonly RawReconcileOrphan[];
+}
+
+interface RawReconcileResponse {
+  diffs?: readonly RawReconcileProviderDiff[];
+}
+
 export function useUsersReconcile(): UseQueryResult<ReconcileResponse> {
   return useQuery({
     queryKey: usersAdminKeys.reconcile,
-    queryFn: () => fetcher<ReconcileResponse>("api/users-reconcile"),
+    queryFn: async () => {
+      const raw = await fetcher<RawReconcileResponse>("api/users-reconcile");
+      const flat: ReconcileDiff[] = [];
+      for (const group of raw.diffs ?? []) {
+        const provider_name = group.provider;
+        for (const orphan of group.orphans ?? []) {
+          flat.push({
+            provider_name,
+            external_id: orphan.external_id,
+            username: orphan.username,
+            email: orphan.email,
+            kind: "orphan",
+          });
+        }
+        for (const ghost of group.ghosts ?? []) {
+          flat.push({
+            provider_name,
+            external_id: ghost.external_id,
+            username: ghost.username,
+            email: ghost.email,
+            kind: "ghost",
+          });
+        }
+      }
+      return { diffs: flat } as ReconcileResponse;
+    },
   });
+}
+
+// `/api/user-providers` emits per-PROVIDER-system status (`{name, ok,
+// source_of_truth, detail}`) — useful for provider-system health,
+// but NOT what ProviderReconcileCard renders. The card wants a
+// per-USER table with each provider's external_id. That data lives
+// on `/api/users` as `provider_refs: {authelia: "admin"}`. Reshape
+// here. Pre-fix the card iterated provider-system records and
+// produced three ghost rows of all-dashes.
+interface RawUserRecord {
+  id: string;
+  username: string;
+  email?: string;
+  provider_refs?: Record<string, string>;
+}
+
+interface RawUsersResponse {
+  users?: readonly RawUserRecord[];
 }
 
 export function useUserProviders(): UseQueryResult<UserProvidersResponse> {
   return useQuery({
     queryKey: usersAdminKeys.providers,
-    queryFn: () => fetcher<UserProvidersResponse>("api/user-providers"),
+    queryFn: async () => {
+      const raw = await fetcher<RawUsersResponse>("api/users");
+      const providers = (raw.users ?? []).map((u) => {
+        const refs = u.provider_refs ?? {};
+        const providerMap: Record<string, { external_id?: string }> = {};
+        for (const [name, externalId] of Object.entries(refs)) {
+          if (typeof externalId === "string" && externalId) {
+            providerMap[name] = { external_id: externalId };
+          }
+        }
+        return {
+          user_id: u.id,
+          username: u.username,
+          providers: providerMap,
+        };
+      });
+      return { providers } as UserProvidersResponse;
+    },
   });
 }
 

@@ -1,0 +1,295 @@
+{
+  "namespaces": [
+    {
+      "current": true,
+      "namespace": "media-stack",
+      "pods": 21,
+      "problems": [],
+      "running": 21
+    }
+  ],
+  "pod_metrics": [
+    {
+      "cpu": "612499n",
+      "memory": "25732Ki",
+      "pod": "authelia-757576bfb-snsbx"
+    },
+    {
+      "cpu": "11195371n",
+      "memory": "187160Ki",
+      "pod": "bazarr-5bd985c598-r7t66"
+    },
+    {
+      "cpu": "9866935n",
+      "memory": "49120Ki",
+      "pod": "envoy-764557f5f6-bgt7f"
+    },
+    {
+      "cpu": "496361n",
+      "memory": "194192Ki",
+      "pod": "flaresolverr-8497c74596-bs5d6"
+    },
+    {
+      "cpu": "735632n",
+      "memory": "108464Ki",
+      "pod": "homepage-6f9599d749-9lgm4"
+    },
+    {
+      "cpu": "1048755175n",
+      "memory": "1682736Ki",
+      "pod": "jellyfin-69cc7ccbbc-rtwwk"
+    },
+    {
+      "cpu": "0",
+      "memory": "32788Ki",
+      "pod": "jellyfin-auto-collections-7fcb8d5957-jgpkd"
+    },
+    {
+      "cpu": "4738713n",
+      "memory": "189380Ki",
+      "pod": "jellyseerr-79d45654d9-jtbhd"
+    },
+    {
+      "cpu": "21395663n",
+      "memory": "132836Ki",
+      "pod": "lidarr-584dd5d5f5-nmz7m"
+    },
+    {
+      "cpu": "523716n",
+      "memory": "260968Ki",
+      "pod": "maintainerr-b89dc8797-jbvwc"
+    },
+    {
+      "cpu": "284706120n",
+      "memory": "107304Ki",
+      "pod": "media-stack-controller-68c9d58854-tqjr8"
+    },
+    {
+      "cpu": "85759n",
+      "memory": "10672Ki",
+      "pod": "media-stack-ui-5b7b48bbfb-66f49"
+    },
+    {
+      "cpu": "147190n",
+      "memory": "10632Ki",
+      "pod": "media-stack-ui-5b7b48bbfb-r4fcb"
+    },
+    {
+      "cpu": "4752141n",
+      "memory": "176492Ki",
+      "pod": "plex-5f85974cc9-8m2lj"
+    },
+    {
+      "cpu": "3069009n",
+      "memory": "201496Ki",
+      "pod": "prowlarr-594647897-knv9m"
+    },
+    {
+      "cpu": "1542870n",
+      "memory": "143536Ki",
+      "pod": "qbittorrent-fd47989fc-zxnbs"
+    },
+    {
+      "cpu": "8361239n",
+      "memory": "153520Ki",
+      "pod": "radarr-848dcc959f-gxwtm"
+    },
+    {
+      "cpu": "4846232n",
+      "memory": "93168Ki",
+      "pod": "readarr-588b89d8bd-tvjjx"
+    },
+    {
+      "cpu": "2873616n",
+      "memory": "56676Ki",
+      "pod": "sabnzbd-5ccff4fd74-gwcjh"
+    },
+    {
+      "cpu": "4875465n",
+      "memory": "122904Ki",
+      "pod": "sonarr-8686dbc974-526ps"
+    },
+    {
+      "cpu": "722761n",
+      "memory": "75216Ki",
+      "pod": "tautulli-775b9c7768-964qz"
+    }
+  ],
+  "services": [
+    {
+      "cpu_request": "50m",
+      "image": "authelia/authelia:4.38",
+      "mem_request": "64Mi",
+      "name": "authelia",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e",
+      "mem_request": "256Mi",
+      "name": "bazarr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "",
+      "image": "envoyproxy/envoy:v1.31.2",
+      "mem_request": "",
+      "name": "envoy",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e",
+      "mem_request": "256Mi",
+      "name": "flaresolverr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c",
+      "mem_request": "256Mi",
+      "name": "homepage",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85",
+      "mem_request": "256Mi",
+      "name": "jellyfin",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "50m",
+      "image": "ghcr.io/ghomashudson/jellyfin-auto-collections:latest",
+      "mem_request": "128Mi",
+      "name": "jellyfin-auto-collections",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "fallenbagel/jellyseerr:preview-OIDC",
+      "mem_request": "256Mi",
+      "name": "jellyseerr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/lidarr@sha256:dbffcf91da47d48e09e613857032c95a62755b928a71a7718688e3ab03fbbd26",
+      "mem_request": "256Mi",
+      "name": "lidarr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "ghcr.io/maintainerr/maintainerr:3.3.0",
+      "mem_request": "256Mi",
+      "name": "maintainerr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "",
+      "image": "harbor.iomio.io/library/media-stack-controller:v1.0.187",
+      "mem_request": "",
+      "name": "media-stack-controller",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "25m",
+      "image": "harbor.iomio.io/library/media-stack-ui:v1.3.7",
+      "mem_request": "32Mi",
+      "name": "media-stack-ui",
+      "ready": 2,
+      "replicas": 2
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95",
+      "mem_request": "256Mi",
+      "name": "plex",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82",
+      "mem_request": "256Mi",
+      "name": "prowlarr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/qbittorrent@sha256:570aeb63bdedcb5f9dd2500bd8f0a75581ba07c518c05cabbef0cfeb15451b3f",
+      "mem_request": "256Mi",
+      "name": "qbittorrent",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb",
+      "mem_request": "256Mi",
+      "name": "radarr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "docker.io/linuxserver/readarr@sha256:4f291128d1a5538be73c2a30473d7cdd0820e223dc8b8533b0cbc5659000dcbe",
+      "mem_request": "256Mi",
+      "name": "readarr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f",
+      "mem_request": "256Mi",
+      "name": "sabnzbd",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2",
+      "mem_request": "256Mi",
+      "name": "sonarr",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a",
+      "mem_request": "256Mi",
+      "name": "tautulli",
+      "ready": 1,
+      "replicas": 1
+    },
+    {
+      "cpu_request": "100m",
+      "image": "ghcr.io/unpackerr/unpackerr@sha256:89e13608521ece21dd300c39229fd595a55fbf4b8152771af5670a7455b5c747",
+      "mem_request": "256Mi",
+      "name": "unpackerr",
+      "ready": 0,
+      "replicas": 1
+    }
+  ],
+  "totals": {
+    "container_count": 21,
+    "cpu_display": "1.4 cores",
+    "cpu_millicores": 1403,
+    "memory_display": "3.8Gi",
+    "memory_mi": 3909
+  }
+}

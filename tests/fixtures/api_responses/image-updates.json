@@ -1,0 +1,175 @@
+{
+  "images": [
+    {
+      "days_old": 0,
+      "image": "authelia/authelia:4.38",
+      "last_updated": "2026-04-25 04:09:24",
+      "name": "authelia",
+      "stale": false,
+      "tag": "4.38"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/bazarr@sha256:9a631194c0dee21c85b5bff59e23610e1ae2f54594e922973949d271102e585e",
+      "last_updated": "2026-04-23 23:14:31",
+      "name": "bazarr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 0,
+      "image": "envoyproxy/envoy:v1.31.2",
+      "last_updated": "2026-04-25 16:00:00",
+      "name": "envoy",
+      "stale": false,
+      "tag": "v1.31.2"
+    },
+    {
+      "days_old": 1,
+      "image": "ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e",
+      "last_updated": "2026-04-23 23:13:39",
+      "name": "flaresolverr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c",
+      "last_updated": "2026-04-23 23:13:53",
+      "name": "homepage",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85",
+      "last_updated": "2026-04-23 23:14:12",
+      "name": "jellyfin",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "ghcr.io/ghomashudson/jellyfin-auto-collections:latest",
+      "last_updated": "2026-04-23 23:13:53",
+      "name": "jellyfin-auto-collections",
+      "stale": false,
+      "tag": "latest"
+    },
+    {
+      "days_old": 1,
+      "image": "fallenbagel/jellyseerr:preview-OIDC",
+      "last_updated": "2026-04-23 23:14:15",
+      "name": "jellyseerr",
+      "stale": false,
+      "tag": "preview-OIDC"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/lidarr@sha256:dbffcf91da47d48e09e613857032c95a62755b928a71a7718688e3ab03fbbd26",
+      "last_updated": "2026-04-23 23:14:52",
+      "name": "lidarr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "ghcr.io/maintainerr/maintainerr:3.3.0",
+      "last_updated": "2026-04-23 23:14:43",
+      "name": "maintainerr",
+      "stale": false,
+      "tag": "3.3.0"
+    },
+    {
+      "days_old": 0,
+      "image": "harbor.iomio.io/library/media-stack-controller:v1.0.187",
+      "last_updated": "2026-04-25 16:52:10",
+      "name": "media-stack-controller",
+      "stale": false,
+      "tag": "v1.0.187"
+    },
+    {
+      "days_old": 0,
+      "image": "harbor.iomio.io/library/media-stack-ui:v1.3.7",
+      "last_updated": "2026-04-25 09:25:50",
+      "name": "media-stack-ui",
+      "stale": false,
+      "tag": "v1.3.7"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95",
+      "last_updated": "2026-04-23 23:14:41",
+      "name": "plex",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/prowlarr@sha256:9ef5d8bf832edcacb6082f9262cb36087854e78eb7b1c3e1d4375056055b2d82",
+      "last_updated": "2026-04-23 23:15:02",
+      "name": "prowlarr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/qbittorrent@sha256:570aeb63bdedcb5f9dd2500bd8f0a75581ba07c518c05cabbef0cfeb15451b3f",
+      "last_updated": "2026-04-23 23:15:03",
+      "name": "qbittorrent",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb",
+      "last_updated": "2026-04-23 23:15:14",
+      "name": "radarr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "docker.io/linuxserver/readarr@sha256:4f291128d1a5538be73c2a30473d7cdd0820e223dc8b8533b0cbc5659000dcbe",
+      "last_updated": "2026-04-23 23:15:07",
+      "name": "readarr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f",
+      "last_updated": "2026-04-23 23:15:00",
+      "name": "sabnzbd",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2",
+      "last_updated": "2026-04-23 23:15:11",
+      "name": "sonarr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a",
+      "last_updated": "2026-04-23 23:15:12",
+      "name": "tautulli",
+      "stale": false,
+      "tag": "pinned (digest)"
+    },
+    {
+      "days_old": 1,
+      "image": "ghcr.io/unpackerr/unpackerr@sha256:89e13608521ece21dd300c39229fd595a55fbf4b8152771af5670a7455b5c747",
+      "last_updated": "2026-04-23 23:13:13",
+      "name": "unpackerr",
+      "stale": false,
+      "tag": "pinned (digest)"
+    }
+  ],
+  "pinned": 20,
+  "stale": 0,
+  "total": 21
+}

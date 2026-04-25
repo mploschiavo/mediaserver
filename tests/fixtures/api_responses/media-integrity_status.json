@@ -1,0 +1,19 @@
+{
+  "bazarr_present": true,
+  "last_enforce": {
+    "detail": {},
+    "ts": ""
+  },
+  "last_reconcile": {
+    "detail": {},
+    "ts": ""
+  },
+  "missing_api_keys": [],
+  "policy_version": 1,
+  "servarr_adapters": [
+    "lidarr",
+    "radarr",
+    "readarr",
+    "sonarr"
+  ]
+}

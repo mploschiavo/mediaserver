@@ -72,6 +72,19 @@ export function EpgProvidersCard() {
   );
 }
 
+/**
+ * Pick the most informative URL field. Live providers carry
+ * ``url_template`` (e.g. ``"https://iptv-epg.org/files/epg-{code}.xml"``);
+ * a few legacy entries also have ``base_url``. Showing the template
+ * tells the operator which catalog this entry belongs to and the
+ * countries it covers (the ``{code}`` placeholder is the per-country
+ * fan-out). Falling back to ``base_url`` covers the rare provider
+ * with no template, and "—" only fires when both are missing.
+ */
+function providerUrl(p: EpgProvider): string {
+  return p.url_template || p.base_url || "";
+}
+
 function ProvidersTable({ providers }: { providers: readonly EpgProvider[] }) {
   const columns: ResponsiveTableColumn<EpgProvider>[] = [
     {
@@ -80,28 +93,39 @@ function ProvidersTable({ providers }: { providers: readonly EpgProvider[] }) {
       cell: (row) => <span className="font-medium text-fg">{row.name}</span>,
     },
     {
-      id: "base-url",
-      header: "Base URL",
-      cell: (row) => (
-        <span
-          className="font-mono text-xs text-fg-muted"
-          title={row.base_url ?? ""}
-        >
-          {row.base_url || "—"}
-        </span>
-      ),
+      id: "url-template",
+      header: "URL pattern",
+      cell: (row) => {
+        const url = providerUrl(row);
+        return (
+          <span
+            className="font-mono text-xs text-fg-muted"
+            title={url || row.notes || ""}
+          >
+            {url || "—"}
+          </span>
+        );
+      },
     },
     {
       id: "auth",
-      header: "Auth",
-      cell: (row) =>
-        row.requires_auth ? (
-          <Badge variant="warning" data-testid={`epg-auth-${providerKey(row)}`}>
-            <Lock aria-hidden className="size-3" /> requires auth
-          </Badge>
-        ) : (
-          <Badge variant="default">open</Badge>
-        ),
+      header: "Status",
+      cell: (row) => {
+        if (row.requires_auth) {
+          return (
+            <Badge variant="warning" data-testid={`epg-auth-${providerKey(row)}`}>
+              <Lock aria-hidden className="size-3" /> requires auth
+            </Badge>
+          );
+        }
+        // Newer providers expose `enabled: false` to mean "shipped but
+        // disabled in this profile". Treat as a distinct state — the
+        // earlier "open" / "requires auth" binary missed it.
+        if (row.enabled === false) {
+          return <Badge variant="default">disabled</Badge>;
+        }
+        return <Badge variant="default">open</Badge>;
+      },
     },
   ];
 
@@ -110,29 +134,37 @@ function ProvidersTable({ providers }: { providers: readonly EpgProvider[] }) {
       rows={[...providers]}
       rowKey={providerKey}
       columns={columns}
-      card={(row) => (
-        <div
-          className="flex flex-col gap-1"
-          data-testid={`epg-provider-card-${providerKey(row)}`}
-        >
-          <span className="font-medium text-fg">{row.name}</span>
-          <span
-            className="truncate font-mono text-xs text-fg-muted"
-            title={row.base_url ?? ""}
+      card={(row) => {
+        const url = providerUrl(row);
+        return (
+          <div
+            className="flex flex-col gap-1"
+            data-testid={`epg-provider-card-${providerKey(row)}`}
           >
-            {row.base_url || "—"}
-          </span>
-          <div>
-            {row.requires_auth ? (
-              <Badge variant="warning">
-                <Lock aria-hidden className="size-3" /> requires auth
-              </Badge>
-            ) : (
-              <Badge variant="default">open</Badge>
-            )}
+            <span className="font-medium text-fg">{row.name}</span>
+            <span
+              className="truncate font-mono text-xs text-fg-muted"
+              title={url || row.notes || ""}
+            >
+              {url || "—"}
+            </span>
+            <div>
+              {row.requires_auth ? (
+                <Badge variant="warning">
+                  <Lock aria-hidden className="size-3" /> requires auth
+                </Badge>
+              ) : row.enabled === false ? (
+                <Badge variant="default">disabled</Badge>
+              ) : (
+                <Badge variant="default">open</Badge>
+              )}
+            </div>
+            {row.notes ? (
+              <span className="text-xs text-fg-muted">{row.notes}</span>
+            ) : null}
           </div>
-        </div>
-      )}
+        );
+      }}
     />
   );
 }

@@ -1,0 +1,48 @@
+{
+  "enabled": 7,
+  "indexers": [
+    {
+      "enable": true,
+      "id": 7,
+      "name": "1337x",
+      "protocol": "torrent"
+    },
+    {
+      "enable": true,
+      "id": 6,
+      "name": "EZTV",
+      "protocol": "torrent"
+    },
+    {
+      "enable": true,
+      "id": 4,
+      "name": "Nyaa.si",
+      "protocol": "torrent"
+    },
+    {
+      "enable": true,
+      "id": 3,
+      "name": "showRSS",
+      "protocol": "torrent"
+    },
+    {
+      "enable": true,
+      "id": 2,
+      "name": "SubsPlease",
+      "protocol": "torrent"
+    },
+    {
+      "enable": true,
+      "id": 1,
+      "name": "The Pirate Bay",
+      "protocol": "torrent"
+    },
+    {
+      "enable": true,
+      "id": 5,
+      "name": "YTS",
+      "protocol": "torrent"
+    }
+  ],
+  "total": 7
+}

@@ -1,0 +1,58 @@
+{
+  "recent": {
+    "radarr": [
+      {
+        "added": "2026-04-23",
+        "poster": "/app/radarr/MediaCover/1/poster.jpg?lastWrite=639125830627516445",
+        "title": "The Super Mario Galaxy Movie"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/radarr/MediaCover/2/poster.jpg?lastWrite=639125830626556439",
+        "title": "Your Heart Will Be Broken"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/radarr/MediaCover/3/poster.jpg?lastWrite=639125830645296555",
+        "title": "Vengeance"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/radarr/MediaCover/4/poster.jpg?lastWrite=639125830645726557",
+        "title": "Project Hail Mary"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/radarr/MediaCover/5/poster.jpg?lastWrite=639125830666236684",
+        "title": "The Mortuary Assistant"
+      }
+    ],
+    "sonarr": [
+      {
+        "added": "2026-04-23",
+        "poster": "/app/sonarr/MediaCover/1/poster.jpg?lastWrite=639125830472045486",
+        "title": "Breaking Bad"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/sonarr/MediaCover/2/poster.jpg?lastWrite=639125830529465840",
+        "title": "Stranger Things"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/sonarr/MediaCover/3/poster.jpg?lastWrite=639125830559726027",
+        "title": "The Last of Us"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/sonarr/MediaCover/4/poster.jpg?lastWrite=639125830582026164",
+        "title": "The Boys"
+      },
+      {
+        "added": "2026-04-23",
+        "poster": "/app/sonarr/MediaCover/5/poster.jpg?lastWrite=639125830657036627",
+        "title": "Severance"
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "app_path_prefix": "/app",
+  "base_domain": "io",
+  "direct_hosts": {
+    "auth": "auth.iomio.io",
+    "media_server": "jf.iomio.io"
+  },
+  "gateway_host": "m.iomio.io",
+  "gateway_port": 443,
+  "internet_exposed": true,
+  "scheme": "",
+  "stack_subdomain": "iomio",
+  "strategy": "hybrid"
+}

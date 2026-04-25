@@ -1,0 +1,27 @@
+{
+  "file": "/profile/profile.yaml",
+  "moved_to_app_config": [
+    "live_tv_defaults"
+  ],
+  "profile": {
+    "install_profile": "standard",
+    "kind": "media_stack_profile",
+    "metadata": {
+      "name": "media-stack",
+      "platform": "k8s",
+      "purpose": "standard"
+    },
+    "resources": {
+      "disk_space_gb": 500,
+      "network_cidr": "192.168.1.0/24"
+    },
+    "schema_version": 1,
+    "technology_bindings": {
+      "indexer_manager": "prowlarr",
+      "media_server": "jellyfin",
+      "request_manager": "jellyseerr",
+      "torrent_client": "qbittorrent",
+      "usenet_client": "sabnzbd"
+    }
+  }
+}

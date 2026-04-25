@@ -1,0 +1,209 @@
+{
+  "countries": [
+    {
+      "code": "us",
+      "guide_url": "https://iptv-epg.org/files/epg-us.xml",
+      "name": "United States",
+      "tuner_url": ""
+    },
+    {
+      "code": "gb",
+      "guide_url": "https://iptv-epg.org/files/epg-gb.xml",
+      "name": "United Kingdom",
+      "tuner_url": ""
+    },
+    {
+      "code": "ca",
+      "guide_url": "https://iptv-epg.org/files/epg-ca.xml",
+      "name": "Canada",
+      "tuner_url": ""
+    },
+    {
+      "code": "au",
+      "guide_url": "https://iptv-epg.org/files/epg-au.xml",
+      "name": "Australia",
+      "tuner_url": ""
+    },
+    {
+      "code": "de",
+      "guide_url": "https://iptv-epg.org/files/epg-de.xml",
+      "name": "Germany",
+      "tuner_url": ""
+    },
+    {
+      "code": "fr",
+      "guide_url": "https://iptv-epg.org/files/epg-fr.xml",
+      "name": "France",
+      "tuner_url": ""
+    },
+    {
+      "code": "es",
+      "guide_url": "https://iptv-epg.org/files/epg-es.xml",
+      "name": "Spain",
+      "tuner_url": ""
+    },
+    {
+      "code": "it",
+      "guide_url": "https://iptv-epg.org/files/epg-it.xml",
+      "name": "Italy",
+      "tuner_url": ""
+    },
+    {
+      "code": "br",
+      "guide_url": "https://iptv-epg.org/files/epg-br.xml",
+      "name": "Brazil",
+      "tuner_url": ""
+    },
+    {
+      "code": "mx",
+      "guide_url": "https://iptv-epg.org/files/epg-mx.xml",
+      "name": "Mexico",
+      "tuner_url": ""
+    },
+    {
+      "code": "jp",
+      "guide_url": "https://iptv-epg.org/files/epg-jp.xml",
+      "name": "Japan",
+      "tuner_url": ""
+    },
+    {
+      "code": "kr",
+      "guide_url": "https://iptv-epg.org/files/epg-kr.xml",
+      "name": "South Korea",
+      "tuner_url": ""
+    },
+    {
+      "code": "in",
+      "guide_url": "https://iptv-epg.org/files/epg-in.xml",
+      "name": "India",
+      "tuner_url": ""
+    },
+    {
+      "code": "nl",
+      "guide_url": "https://iptv-epg.org/files/epg-nl.xml",
+      "name": "Netherlands",
+      "tuner_url": ""
+    },
+    {
+      "code": "se",
+      "guide_url": "https://iptv-epg.org/files/epg-se.xml",
+      "name": "Sweden",
+      "tuner_url": ""
+    },
+    {
+      "code": "no",
+      "guide_url": "https://iptv-epg.org/files/epg-no.xml",
+      "name": "Norway",
+      "tuner_url": ""
+    },
+    {
+      "code": "dk",
+      "guide_url": "https://iptv-epg.org/files/epg-dk.xml",
+      "name": "Denmark",
+      "tuner_url": ""
+    },
+    {
+      "code": "fi",
+      "guide_url": "https://iptv-epg.org/files/epg-fi.xml",
+      "name": "Finland",
+      "tuner_url": ""
+    },
+    {
+      "code": "pl",
+      "guide_url": "https://iptv-epg.org/files/epg-pl.xml",
+      "name": "Poland",
+      "tuner_url": ""
+    },
+    {
+      "code": "pt",
+      "guide_url": "https://iptv-epg.org/files/epg-pt.xml",
+      "name": "Portugal",
+      "tuner_url": ""
+    },
+    {
+      "code": "ru",
+      "guide_url": "https://iptv-epg.org/files/epg-ru.xml",
+      "name": "Russia",
+      "tuner_url": ""
+    },
+    {
+      "code": "za",
+      "guide_url": "https://iptv-epg.org/files/epg-za.xml",
+      "name": "South Africa",
+      "tuner_url": ""
+    },
+    {
+      "code": "ar",
+      "guide_url": "https://iptv-epg.org/files/epg-ar.xml",
+      "name": "Argentina",
+      "tuner_url": ""
+    },
+    {
+      "code": "co",
+      "guide_url": "https://iptv-epg.org/files/epg-co.xml",
+      "name": "Colombia",
+      "tuner_url": ""
+    },
+    {
+      "code": "cl",
+      "guide_url": "https://iptv-epg.org/files/epg-cl.xml",
+      "name": "Chile",
+      "tuner_url": ""
+    },
+    {
+      "code": "tr",
+      "guide_url": "https://iptv-epg.org/files/epg-tr.xml",
+      "name": "Turkey",
+      "tuner_url": ""
+    },
+    {
+      "code": "il",
+      "guide_url": "https://iptv-epg.org/files/epg-il.xml",
+      "name": "Israel",
+      "tuner_url": ""
+    },
+    {
+      "code": "ae",
+      "guide_url": "https://iptv-epg.org/files/epg-ae.xml",
+      "name": "UAE",
+      "tuner_url": ""
+    },
+    {
+      "code": "cn",
+      "guide_url": "https://iptv-epg.org/files/epg-cn.xml",
+      "name": "China",
+      "tuner_url": ""
+    },
+    {
+      "code": "tw",
+      "guide_url": "https://iptv-epg.org/files/epg-tw.xml",
+      "name": "Taiwan",
+      "tuner_url": ""
+    },
+    {
+      "code": "ph",
+      "guide_url": "https://iptv-epg.org/files/epg-ph.xml",
+      "name": "Philippines",
+      "tuner_url": ""
+    },
+    {
+      "code": "th",
+      "guide_url": "https://iptv-epg.org/files/epg-th.xml",
+      "name": "Thailand",
+      "tuner_url": ""
+    },
+    {
+      "code": "id",
+      "guide_url": "https://iptv-epg.org/files/epg-id.xml",
+      "name": "Indonesia",
+      "tuner_url": ""
+    },
+    {
+      "code": "hk",
+      "guide_url": "https://iptv-epg.org/files/epg-hk.xml",
+      "name": "Hong Kong",
+      "tuner_url": ""
+    }
+  ],
+  "source": "defaults"
+}

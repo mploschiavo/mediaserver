@@ -1,0 +1,3785 @@
+{
+  "count": 630,
+  "logs": [
+    {
+      "action": "",
+      "msg": "[INFO] Bootstrap service listening on :9100",
+      "seq": 1,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] Dashboard: http://127.0.0.1:9100/",
+      "seq": 2,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] Actions: POST /actions/{name} | GET /status",
+      "seq": 3,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] SSE log stream: GET /logs/stream",
+      "seq": 4,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] Media integrity: service ready (driven by JobRunner; legacy scheduler removed)",
+      "seq": 5,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] Auto-run: queuing initial bootstrap action",
+      "seq": 6,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap [bootstrap-1]: dispatching (timeout=1800s)",
+      "seq": 7,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[DEBUG] Spawning subprocess for action=bootstrap, pid=parent:1",
+      "seq": 8,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[DEBUG] Subprocess started: pid=63",
+      "seq": 9,
+      "ts": "2026-04-25T16:52:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: starting (overrides={})",
+      "seq": 10,
+      "ts": "2026-04-25T16:52:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] JobRunner: 41 jobs to dispatch",
+      "seq": 11,
+      "ts": "2026-04-25T16:52:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Live TV: 1 guides resolved, 1 tuners selected (load_all_tuners=False, skipped=0)",
+      "seq": 12,
+      "ts": "2026-04-25T16:52:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] seed-runtime-overrides: starting",
+      "seq": 13,
+      "ts": "2026-04-25T16:52:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] seed-runtime-overrides: complete (0.0s)",
+      "seq": 14,
+      "ts": "2026-04-25T16:52:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] seed-runtime-overrides: ok (0.0s) \u2014 1/41 done, 40 remaining",
+      "seq": 15,
+      "ts": "2026-04-25T16:52:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] discover-api-keys: starting",
+      "seq": 16,
+      "ts": "2026-04-25T16:52:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] jellyfin: starting",
+      "seq": 17,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "Jellyfin preflight: waiting for http://jellyfin:8096",
+      "seq": 18,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "Jellyfin startup wizard already completed.",
+      "seq": 19,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "Jellyfin: stack admin auth failed, trying empty password fallback",
+      "seq": 20,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "Jellyfin: direct auth failed, trying startup-user resolution",
+      "seq": 21,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] jellyfin: failed (Jellyfin: could not authenticate after wizard completion)",
+      "seq": 22,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] Running 7 handlers in parallel...",
+      "seq": 23,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] lidarr: starting",
+      "seq": 24,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] prowlarr: starting",
+      "seq": 25,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] qbittorrent: starting",
+      "seq": 26,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] radarr: starting",
+      "seq": 27,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] readarr: starting",
+      "seq": 28,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] sabnzbd: starting",
+      "seq": 29,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "qBittorrent preflight: waiting for http://qbittorrent:8080",
+      "seq": 30,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "SABnzbd preflight: config already aligned, no changes needed",
+      "seq": 31,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] sabnzbd: complete",
+      "seq": 32,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] sonarr: starting",
+      "seq": 33,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "qBittorrent: stack-admin credentials already valid",
+      "seq": 34,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] qbittorrent: complete",
+      "seq": 35,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched sonarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 36,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched sonarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 37,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched sonarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 38,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched sonarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 39,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched sonarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 40,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched radarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 41,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched radarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 42,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched radarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 43,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched radarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 44,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched lidarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 45,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched radarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 46,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched lidarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 47,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched lidarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 48,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched lidarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 49,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched readarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 50,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched readarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 51,
+      "ts": "2026-04-25T16:52:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched readarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 52,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched readarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 53,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched prowlarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 54,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched 5 apps, restarting...",
+      "seq": 55,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched readarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 56,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched prowlarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 57,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched 5 apps, restarting...",
+      "seq": 58,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched prowlarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 59,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched 4 apps, restarting...",
+      "seq": 60,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched 4 apps, restarting...",
+      "seq": 61,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched prowlarr AuthenticationRequired=DisabledForLocalAddresses",
+      "seq": 62,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: patched 5 apps, restarting...",
+      "seq": 63,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted sonarr (K8s pod delete)",
+      "seq": 64,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted sonarr (K8s pod delete)",
+      "seq": 65,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted sonarr (K8s pod delete)",
+      "seq": 66,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted sonarr (K8s pod delete)",
+      "seq": 67,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted sonarr (K8s pod delete)",
+      "seq": 68,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted radarr (K8s pod delete)",
+      "seq": 69,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted radarr (K8s pod delete)",
+      "seq": 70,
+      "ts": "2026-04-25T16:52:05"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted radarr (K8s pod delete)",
+      "seq": 71,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted radarr (K8s pod delete)",
+      "seq": 72,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted radarr (K8s pod delete)",
+      "seq": 73,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted lidarr (K8s pod delete)",
+      "seq": 74,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted readarr (K8s pod delete)",
+      "seq": 75,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted lidarr (K8s pod delete)",
+      "seq": 76,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted lidarr (K8s pod delete)",
+      "seq": 77,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted lidarr (K8s pod delete)",
+      "seq": 78,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted readarr (K8s pod delete)",
+      "seq": 79,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted readarr (K8s pod delete)",
+      "seq": 80,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted readarr (K8s pod delete)",
+      "seq": 81,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted readarr (K8s pod delete)",
+      "seq": 82,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: waiting 15s for pod recreation...",
+      "seq": 83,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted prowlarr (K8s pod delete)",
+      "seq": 84,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: waiting 15s for pod recreation...",
+      "seq": 85,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted prowlarr (K8s pod delete)",
+      "seq": 86,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: waiting 15s for pod recreation...",
+      "seq": 87,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted prowlarr (K8s pod delete)",
+      "seq": 88,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: restarted prowlarr (K8s pod delete)",
+      "seq": 89,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: waiting 15s for pod recreation...",
+      "seq": 90,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: waiting 15s for pod recreation...",
+      "seq": 91,
+      "ts": "2026-04-25T16:52:06"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: sonarr ready",
+      "seq": 92,
+      "ts": "2026-04-25T16:52:41"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: sonarr ready",
+      "seq": 93,
+      "ts": "2026-04-25T16:52:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: radarr ready",
+      "seq": 94,
+      "ts": "2026-04-25T16:52:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: readarr ready",
+      "seq": 95,
+      "ts": "2026-04-25T16:52:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: sonarr ready",
+      "seq": 96,
+      "ts": "2026-04-25T16:52:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: radarr ready",
+      "seq": 97,
+      "ts": "2026-04-25T16:52:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: lidarr ready",
+      "seq": 98,
+      "ts": "2026-04-25T16:52:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: readarr ready",
+      "seq": 99,
+      "ts": "2026-04-25T16:52:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: prowlarr ready",
+      "seq": 100,
+      "ts": "2026-04-25T16:52:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] radarr: complete",
+      "seq": 101,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: sonarr ready",
+      "seq": 102,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: radarr ready",
+      "seq": 103,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: lidarr ready",
+      "seq": 104,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: readarr ready",
+      "seq": 105,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: prowlarr ready",
+      "seq": 106,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] prowlarr: complete",
+      "seq": 107,
+      "ts": "2026-04-25T16:52:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: sonarr ready",
+      "seq": 108,
+      "ts": "2026-04-25T16:52:45"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: radarr ready",
+      "seq": 109,
+      "ts": "2026-04-25T16:52:45"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: lidarr ready",
+      "seq": 110,
+      "ts": "2026-04-25T16:52:45"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: readarr ready",
+      "seq": 111,
+      "ts": "2026-04-25T16:52:45"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: prowlarr ready",
+      "seq": 112,
+      "ts": "2026-04-25T16:52:45"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] lidarr: complete",
+      "seq": 113,
+      "ts": "2026-04-25T16:52:45"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: radarr ready",
+      "seq": 114,
+      "ts": "2026-04-25T16:52:46"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: lidarr ready",
+      "seq": 115,
+      "ts": "2026-04-25T16:52:46"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: readarr ready",
+      "seq": 116,
+      "ts": "2026-04-25T16:52:46"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] readarr: complete",
+      "seq": 117,
+      "ts": "2026-04-25T16:52:46"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "ARR preflight: prowlarr ready",
+      "seq": 118,
+      "ts": "2026-04-25T16:52:47"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[PREFLIGHT] sonarr: complete",
+      "seq": 119,
+      "ts": "2026-04-25T16:52:47"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] discover-api-keys: SKIPPED \u2014 ['tautulli: no key on disk'] (43.9s)",
+      "seq": 120,
+      "ts": "2026-04-25T16:52:47"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] discover-api-keys: skipped (43.9s) \u2014 2/41 done, 39 remaining",
+      "seq": 121,
+      "ts": "2026-04-25T16:52:47"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] run-legacy-pipeline: starting",
+      "seq": 122,
+      "ts": "2026-04-25T16:52:47"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Config policy applied (auto_download_content=False)",
+      "seq": 123,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Bootstrap plan: mode=full, arr_apps=4, indexer_entries=0, sab_remote_path_mappings=0, media_server_livetv_tuners=1, media_server_livetv_guides=1, auto_indexers=False, configure_arr_clients=True, configure_torrent_arr_clients=True, configure_sab_arr_clients=False, configure_arr_media_management=True, configure_arr_quality_upgrade=True, configure_arr_download_handling=True, configure_arr_discovery_lists=True, set_torrent_categories=True, torrent_client_login_required=True, refresh_health_after_setup=True, app_auth_enabled=True, configure_dashboard=True, configure_subtitles=True, configure_request_manager=True, configure_media_server_libraries=True, configure_media_server_livetv=True, configure_media_server_plugins=True, configure_media_server_playback=True, configure_media_server_home_rails=True, configure_auto_collections=True, configure_disk_guardrails=True, configure_media_server_prewarm=True, configure_media_hygiene=True, configure_media_policy=True, configure_media_policy_integrations=True, fully_preconfigured=True, trigger_sync=True",
+      "seq": 124,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: detected API base /api/v1",
+      "seq": 125,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: auth settings applied (method=External, required=DisabledForLocalAddresses)",
+      "seq": 126,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Maintainerr policy rules: custom directory missing: /srv-config/maintainerr/rules",
+      "seq": 127,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr policy: already up-to-date at /srv-config/maintainerr/policy.json",
+      "seq": 128,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Waiting for 4 services in parallel...",
+      "seq": 129,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Preparing download clients in parallel...",
+      "seq": 130,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qBittorrent: authenticated for bootstrap automation",
+      "seq": 131,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qBittorrent: storage defaults set (save_path=/data/torrents/completed, temp_path=/data/torrents/incomplete, temp_path_enabled=True, auto_tmm_enabled=True, bypass_local_auth=True, bypass_auth_subnet_whitelist_enabled=True, host_header_validation_enabled=False, reverse_proxy_support_enabled=True, csrf_protection_enabled=False, whitelist_count=5)",
+      "seq": 132,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qBittorrent: category already exists: tv",
+      "seq": 133,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qBittorrent: category already exists: movies",
+      "seq": 134,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qBittorrent: category already exists: music",
+      "seq": 135,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qBittorrent: category already exists: books",
+      "seq": 136,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Configuring 4 Arr apps in parallel...",
+      "seq": 137,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[STEP] Processing Sonarr (Sonarr)",
+      "seq": 138,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[STEP] Processing Radarr (Radarr)",
+      "seq": 139,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[STEP] Processing Lidarr (Lidarr)",
+      "seq": 140,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[STEP] Processing Readarr (Readarr)",
+      "seq": 141,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: detected API base /api/v3",
+      "seq": 142,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: detected API base /api/v3",
+      "seq": 143,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: detected API base /api/v1",
+      "seq": 144,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: detected API base /api/v1",
+      "seq": 145,
+      "ts": "2026-04-25T16:52:48"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: auth settings applied (method=External, required=DisabledForLocalAddresses)",
+      "seq": 146,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: detected API base /api/v1",
+      "seq": 147,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: using path-aware app URL http://readarr:8787/app/readarr for bootstrap operations",
+      "seq": 148,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: metadata source already set to https://api.bookinfo.pro",
+      "seq": 149,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: media management already set (hardlinks=True)",
+      "seq": 150,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: auth settings applied (method=External, required=DisabledForLocalAddresses)",
+      "seq": 151,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: detected API base /api/v3",
+      "seq": 152,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: using path-aware app URL http://sonarr:8989/app/sonarr for bootstrap operations",
+      "seq": 153,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: root folder already exists: /media/books",
+      "seq": 154,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: auth settings applied (method=External, required=DisabledForLocalAddresses)",
+      "seq": 155,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: detected API base /api/v1",
+      "seq": 156,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: using path-aware app URL http://lidarr:8686/app/lidarr for bootstrap operations",
+      "seq": 157,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: auth settings applied (method=External, required=DisabledForLocalAddresses)",
+      "seq": 158,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: media management already set (hardlinks=True)",
+      "seq": 159,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: detected API base /api/v3",
+      "seq": 160,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: using path-aware app URL http://radarr:7878/app/radarr for bootstrap operations",
+      "seq": 161,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: updated download handling (CDH=True, removeCompleted=False, removeFailed=True, autoRedownloadFailed=True)",
+      "seq": 162,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: media management already set (hardlinks=True)",
+      "seq": 163,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: media management already set (hardlinks=True)",
+      "seq": 164,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: root folder already exists: /media/tv",
+      "seq": 165,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: updated download handling (CDH=True, removeCompleted=False, removeFailed=True, autoRedownloadFailed=True)",
+      "seq": 166,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: root folder already exists: /media/movies",
+      "seq": 167,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: root folder already exists: /media/music",
+      "seq": 168,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: updated download handling (CDH=True, removeCompleted=False, removeFailed=True, autoRedownloadFailed=True)",
+      "seq": 169,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: quality-upgrade policy already set (allowUpgrades=True, cutoff=9)",
+      "seq": 170,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: updated download handling (CDH=True, removeCompleted=False, removeFailed=True, autoRedownloadFailed=True)",
+      "seq": 171,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: quality-upgrade policy already set (allowUpgrades=True, cutoff=9)",
+      "seq": 172,
+      "ts": "2026-04-25T16:52:49"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated application link for Radarr",
+      "seq": 173,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated application link for Lidarr",
+      "seq": 174,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated application link for Sonarr",
+      "seq": 175,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated application link for Readarr",
+      "seq": 176,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: updated qBittorrent download client",
+      "seq": 177,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: updated qBittorrent download client",
+      "seq": 178,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: updated qBittorrent download client",
+      "seq": 179,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: updated qBittorrent download client",
+      "seq": 180,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: using quality profile 'Any' (id=1) for discovery lists",
+      "seq": 181,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: using quality profile 'HD-1080p' (id=4) for discovery lists",
+      "seq": 182,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: using metadata profile id 1 for discovery lists",
+      "seq": 183,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: using quality profile 'eBook' (id=1) for discovery lists",
+      "seq": 184,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: using quality profile 'HD-1080p' (id=4) for discovery lists",
+      "seq": 185,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: using metadata profile id 1 for discovery lists",
+      "seq": 186,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: updated discovery list 'Popular TV (TVMaze)'",
+      "seq": 187,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: updated discovery list 'Last.fm Top Rock Artists (Top 10)'",
+      "seq": 188,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: discovery list reconcile complete (created=0, updated=1, deleted=0, skipped=0)",
+      "seq": 189,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: updated discovery list 'Goodreads Popular Science Fiction'",
+      "seq": 190,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: updated discovery list 'Last.fm Top Pop Artists (Top 10)'",
+      "seq": 191,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: updated discovery list 'Goodreads Readarr Top 100'",
+      "seq": 192,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: discovery list reconcile complete (created=0, updated=2, deleted=0, skipped=0)",
+      "seq": 193,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: triggered CheckHealth",
+      "seq": 194,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: updated discovery list 'TMDb Trending Movies'",
+      "seq": 195,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: updated discovery list 'Last.fm Top Hip-Hop Artists (Top 10)'",
+      "seq": 196,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: triggered CheckHealth",
+      "seq": 197,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: updated discovery list 'Last.fm Top Electronic Artists (Top 10)'",
+      "seq": 198,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: discovery list reconcile complete (created=0, updated=4, deleted=0, skipped=0)",
+      "seq": 199,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: triggered CheckHealth",
+      "seq": 200,
+      "ts": "2026-04-25T16:52:52"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: updated discovery list 'TMDb Popular Movies'",
+      "seq": 201,
+      "ts": "2026-04-25T16:52:54"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: updated discovery list 'TMDb Top Rated Movies'",
+      "seq": 202,
+      "ts": "2026-04-25T16:52:58"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Stale file cleanup: pruned 1 files",
+      "seq": 203,
+      "ts": "2026-04-25T16:53:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (60s elapsed, timeout 1800s)",
+      "seq": 204,
+      "ts": "2026-04-25T16:53:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: updated discovery list 'TMDb Upcoming Movies'",
+      "seq": 205,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: discovery list reconcile complete (created=0, updated=4, deleted=0, skipped=0)",
+      "seq": 206,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: triggered CheckHealth",
+      "seq": 207,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Bootstrap complete.",
+      "seq": 208,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] run-legacy-pipeline: complete (14.7s)",
+      "seq": 209,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] run-legacy-pipeline: ok (14.7s) \u2014 3/41 done, 38 remaining",
+      "seq": 210,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-auth: starting",
+      "seq": 211,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Authelia config written: authelia/configuration.yml, authelia/users_database.yml",
+      "seq": 212,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-auth: complete (0.4s)",
+      "seq": 213,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-auth: ok (0.4s) \u2014 4/41 done, 37 remaining",
+      "seq": 214,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] envoy-config: starting",
+      "seq": 215,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Generating Envoy config",
+      "seq": 216,
+      "ts": "2026-04-25T16:53:02"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Envoy config written",
+      "seq": 217,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Envoy pod restarted (K8s)",
+      "seq": 218,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] envoy-config: complete (1.5s)",
+      "seq": 219,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] envoy-config: ok (1.5s) \u2014 5/41 done, 36 remaining",
+      "seq": 220,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ingress-config: starting",
+      "seq": 221,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] ingress-config: complete (0.1s)",
+      "seq": 222,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ingress-config: ok (0.1s) \u2014 6/41 done, 35 remaining",
+      "seq": 223,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-libraries: starting",
+      "seq": 224,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 225,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: already present: Movies",
+      "seq": 226,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: tuning already matches desired config for 'Movies'",
+      "seq": 227,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: already present: TV Shows",
+      "seq": 228,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: tuning already matches desired config for 'TV Shows'",
+      "seq": 229,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: already present: Music",
+      "seq": 230,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: tuning already matches desired config for 'Music'",
+      "seq": 231,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: already present: Books",
+      "seq": 232,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: tuning already matches desired config for 'Books'",
+      "seq": 233,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin libraries: reconcile complete (added=0, tuned=0)",
+      "seq": 234,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-libraries: complete (0.3s)",
+      "seq": 235,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-libraries: ok (0.3s) \u2014 7/41 done, 34 remaining",
+      "seq": 236,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-livetv: starting",
+      "seq": 237,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-livetv: started (non-blocking) \u2014 7/41 done, 34 remaining",
+      "seq": 238,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-plugins: starting",
+      "seq": 239,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] EPG merge: 182 unique tvg-ids from 1 M3U files",
+      "seq": 240,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] EPG merge: downloading https://iptv-epg.org/files/epg-us.xml...",
+      "seq": 241,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 242,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: repositories already match desired config",
+      "seq": 243,
+      "ts": "2026-04-25T16:53:04"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Intro Skipper",
+      "seq": 244,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Bazarr",
+      "seq": 245,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: TMDb Box Sets",
+      "seq": 246,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: TheTVDB",
+      "seq": 247,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: DLNA",
+      "seq": 248,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Fanart",
+      "seq": 249,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Artwork",
+      "seq": 250,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Open Subtitles",
+      "seq": 251,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Trakt",
+      "seq": 252,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Google Books",
+      "seq": 253,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Cover Art Archive",
+      "seq": 254,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Discogs",
+      "seq": 255,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: LrcLib Lyrics",
+      "seq": 256,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: already installed: Local Intros",
+      "seq": 257,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin plugins: reconcile complete (install_requested=0, already_installed=14)",
+      "seq": 258,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-plugins: complete (3.3s)",
+      "seq": 259,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-plugins: ok (3.3s) \u2014 8/41 done, 33 remaining",
+      "seq": 260,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-playback: starting",
+      "seq": 261,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 262,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin playback: user defaults already match desired config",
+      "seq": 263,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin playback: server defaults already match desired config",
+      "seq": 264,
+      "ts": "2026-04-25T16:53:08"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin playback: updated display preferences (count=16, clients=['emby', 'jellyfin-web'])",
+      "seq": 265,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin playback: Intro Skipper plugin is installed",
+      "seq": 266,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin playback: reconcile complete",
+      "seq": 267,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-playback: complete (4.1s)",
+      "seq": 268,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-playback: ok (4.1s) \u2014 9/41 done, 32 remaining",
+      "seq": 269,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-home-screen: starting",
+      "seq": 270,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 271,
+      "ts": "2026-04-25T16:53:12"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin home rails: disabled; cleaned up synthetic collections (removed=0, checked=7)",
+      "seq": 272,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-home-screen: complete (1.3s)",
+      "seq": 273,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-home-screen: ok (1.3s) \u2014 10/41 done, 31 remaining",
+      "seq": 274,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-collections: starting",
+      "seq": 275,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 276,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin Auto Collections: config already up-to-date at /srv-config/jellyfin-auto-collections/config.yaml",
+      "seq": 277,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-collections: complete (0.2s)",
+      "seq": 278,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-collections: ok (0.2s) \u2014 11/41 done, 30 remaining",
+      "seq": 279,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-categories: starting",
+      "seq": 280,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] configure-categories: SKIPPED \u2014 no arr apps with API keys available (0.0s)",
+      "seq": 281,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-categories: skipped (0.0s) \u2014 12/41 done, 29 remaining",
+      "seq": 282,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-arr-clients: starting",
+      "seq": 283,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] configure-arr-clients: SKIPPED \u2014 no arr services registered (0.0s)",
+      "seq": 284,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-arr-clients: skipped (0.0s) \u2014 13/41 done, 28 remaining",
+      "seq": 285,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-indexers: starting",
+      "seq": 286,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-indexers: started (non-blocking) \u2014 13/41 done, 28 remaining",
+      "seq": 287,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] discover-indexers: starting",
+      "seq": 288,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Auto-indexer: building runner with auto_prowlarr_indexers=True",
+      "seq": 289,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] discover-indexers: started (non-blocking) \u2014 13/41 done, 28 remaining",
+      "seq": 290,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-jellyseerr: starting",
+      "seq": 291,
+      "ts": "2026-04-25T16:53:13"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: local-admin seed updated user (email=admin, username=admin, user_id=1)",
+      "seq": 292,
+      "ts": "2026-04-25T16:53:14"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyseerr: Sonarr API key resolved",
+      "seq": 293,
+      "ts": "2026-04-25T16:53:14"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyseerr: Radarr API key resolved",
+      "seq": 294,
+      "ts": "2026-04-25T16:53:14"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Config policy applied (auto_download_content=False)",
+      "seq": 295,
+      "ts": "2026-04-25T16:53:14"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: local-admin seed updated user (email=admin, username=admin, user_id=1)",
+      "seq": 296,
+      "ts": "2026-04-25T16:53:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: main settings already correct",
+      "seq": 297,
+      "ts": "2026-04-25T16:53:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 298,
+      "ts": "2026-04-25T16:53:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Bootstrap plan: mode=full, arr_apps=4, indexer_entries=0, sab_remote_path_mappings=0, media_server_livetv_tuners=1, media_server_livetv_guides=1, auto_indexers=True, configure_arr_clients=True, configure_torrent_arr_clients=True, configure_sab_arr_clients=False, configure_arr_media_management=True, configure_arr_quality_upgrade=True, configure_arr_download_handling=True, configure_arr_discovery_lists=True, set_torrent_categories=True, torrent_client_login_required=True, refresh_health_after_setup=True, app_auth_enabled=True, configure_dashboard=True, configure_subtitles=True, configure_request_manager=True, configure_media_server_libraries=True, configure_media_server_livetv=True, configure_media_server_plugins=True, configure_media_server_playback=True, configure_media_server_home_rails=True, configure_auto_collections=True, configure_disk_guardrails=True, configure_media_server_prewarm=True, configure_media_hygiene=True, configure_media_policy=True, configure_media_policy_integrations=True, fully_preconfigured=True, trigger_sync=True",
+      "seq": 299,
+      "ts": "2026-04-25T16:53:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: configured Jellyfin connection",
+      "seq": 300,
+      "ts": "2026-04-25T16:53:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated FlareSolverr proxy 'FlareSolverr' (http://flaresolverr:8191/)",
+      "seq": 301,
+      "ts": "2026-04-25T16:53:19"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: updated Radarr service mapping",
+      "seq": 302,
+      "ts": "2026-04-25T16:53:21"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated FlareSolverr proxy 'FlareSolverr' (http://flaresolverr:8191/)",
+      "seq": 303,
+      "ts": "2026-04-25T16:53:22"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: FlareSolverr proxy connection test passed",
+      "seq": 304,
+      "ts": "2026-04-25T16:53:23"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: triggered ApplicationIndexerSync (forceSync=true)",
+      "seq": 305,
+      "ts": "2026-04-25T16:53:24"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Arr indexer sync summary: apps=0, stale_found=0, stale_removed=0, stale_kept=0",
+      "seq": 306,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: indexer pipeline completed (arr_apps=0, indexers=0, auto_add=False)",
+      "seq": 307,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-indexers: complete (11.3s)",
+      "seq": 308,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-indexers: ok (11.3s) \u2014 non-blocking finished",
+      "seq": 309,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: FlareSolverr proxy connection test passed",
+      "seq": 310,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: updated Sonarr service mapping",
+      "seq": 311,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 312,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: wrote Jellyfin settings via file bootstrap",
+      "seq": 313,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: detected API base /api/v3",
+      "seq": 314,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: wrote Radarr settings via file bootstrap",
+      "seq": 315,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: detected API base /api/v3",
+      "seq": 316,
+      "ts": "2026-04-25T16:53:25"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: wrote Sonarr settings via file bootstrap",
+      "seq": 317,
+      "ts": "2026-04-25T16:53:27"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: settings file bootstrap applied",
+      "seq": 318,
+      "ts": "2026-04-25T16:53:27"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyseerr: enabling 2 Jellyfin libraries: Movies, TV Shows",
+      "seq": 319,
+      "ts": "2026-04-25T16:53:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: wrote 2 enabled libraries to settings.json",
+      "seq": 320,
+      "ts": "2026-04-25T16:53:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyseerr: restarted (k8s)",
+      "seq": 321,
+      "ts": "2026-04-25T16:53:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-jellyseerr: complete (14.9s)",
+      "seq": 322,
+      "ts": "2026-04-25T16:53:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-jellyseerr: ok (14.9s) \u2014 15/41 done, 26 remaining",
+      "seq": 323,
+      "ts": "2026-04-25T16:53:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] apply-arr-runtime-defaults: starting",
+      "seq": 324,
+      "ts": "2026-04-25T16:53:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] apply-arr-runtime-defaults: complete (0.4s)",
+      "seq": 325,
+      "ts": "2026-04-25T16:53:29"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] apply-arr-runtime-defaults: ok (0.4s) \u2014 16/41 done, 25 remaining",
+      "seq": 326,
+      "ts": "2026-04-25T16:53:29"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] validate-credentials: starting",
+      "seq": 327,
+      "ts": "2026-04-25T16:53:29"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] EPG merge: https://iptv-epg.org/files/epg-us.xml: 12865 EPG channels, 224 matched to M3U",
+      "seq": 328,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Validating admin credentials against running services",
+      "seq": 329,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Auto indexer: loaded curated allowlist from /opt/media-stack/contracts/curated-indexers.yaml (21 definitions)",
+      "seq": 330,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Auto indexer: curated allowlist active (7/629 candidates kept; see contracts/curated-indexers.yaml to edit)",
+      "seq": 331,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Auto indexer: testing 7 candidates with 8 parallel workers",
+      "seq": 332,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[CRED] jellyfin: passed",
+      "seq": 333,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[CRED] lidarr: passed",
+      "seq": 334,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[CRED] prowlarr: passed",
+      "seq": 335,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] qbittorrent: credential check failed (no_key) \u2014 will attempt password sync",
+      "seq": 336,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[CRED] radarr: passed",
+      "seq": 337,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[CRED] readarr: passed",
+      "seq": 338,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[CRED] sonarr: passed",
+      "seq": 339,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Syncing credentials to 1 service(s): qbittorrent",
+      "seq": 340,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Auto indexer summary: scanned=7/7, attempted=0, added=0, skipped_existing=7, skipped_excluded=0, skipped_test=0, skipped_quarantined=0, failed_create=0, untested_fallback_added=0, cf_blocked=0, cf_recovered_via_proxy=0, quarantined_now=0",
+      "seq": 341,
+      "ts": "2026-04-25T16:53:30"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qbittorrent: password synced",
+      "seq": 342,
+      "ts": "2026-04-25T16:53:31"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] 1/7 credential checks did not pass \u2014 review STACK_ADMIN_USERNAME / STACK_ADMIN_PASSWORD or service setup",
+      "seq": 343,
+      "ts": "2026-04-25T16:53:31"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] validate-credentials: complete (2.5s)",
+      "seq": 344,
+      "ts": "2026-04-25T16:53:31"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] validate-credentials: ok (2.5s) \u2014 17/41 done, 24 remaining",
+      "seq": 345,
+      "ts": "2026-04-25T16:53:31"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] post-setup: starting",
+      "seq": 346,
+      "ts": "2026-04-25T16:53:31"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: triggered ApplicationIndexerSync (forceSync=true)",
+      "seq": 347,
+      "ts": "2026-04-25T16:53:31"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Config policy applied (auto_download_content=False)",
+      "seq": 348,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: detected API base /api/v3",
+      "seq": 349,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: detected API base /api/v3",
+      "seq": 350,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: detected API base /api/v1",
+      "seq": 351,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: detected API base /api/v1",
+      "seq": 352,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Arr indexer sync summary: apps=4, stale_found=0, stale_removed=0, stale_kept=0",
+      "seq": 353,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Auto-indexer discovery complete",
+      "seq": 354,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] discover-indexers: complete (19.7s)",
+      "seq": 355,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] discover-indexers: ok (19.7s) \u2014 non-blocking finished",
+      "seq": 356,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Bootstrap plan: mode=full, arr_apps=4, indexer_entries=0, sab_remote_path_mappings=0, media_server_livetv_tuners=1, media_server_livetv_guides=1, auto_indexers=False, configure_arr_clients=True, configure_torrent_arr_clients=True, configure_sab_arr_clients=False, configure_arr_media_management=True, configure_arr_quality_upgrade=True, configure_arr_download_handling=True, configure_arr_discovery_lists=True, set_torrent_categories=True, torrent_client_login_required=True, refresh_health_after_setup=True, app_auth_enabled=True, configure_dashboard=True, configure_subtitles=True, configure_request_manager=True, configure_media_server_libraries=True, configure_media_server_livetv=True, configure_media_server_plugins=True, configure_media_server_playback=True, configure_media_server_home_rails=True, configure_auto_collections=True, configure_disk_guardrails=True, configure_media_server_prewarm=True, configure_media_hygiene=True, configure_media_policy=True, configure_media_policy_integrations=True, fully_preconfigured=True, trigger_sync=True",
+      "seq": 357,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Phase 'post_servarr_pre_media_steps': running 3 steps in parallel",
+      "seq": 358,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] EPG merge: wrote merged-epg.xml \u2014 182 channels, 181 with programmes, 19803 programmes from 1 sources (29.0s)",
+      "seq": 359,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Live TV: using merged EPG (181 channels, 19803 programmes)",
+      "seq": 360,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: using Jellyseerr API key from env JELLYSEERR_API_KEY",
+      "seq": 361,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] Maintainerr: optional Tautulli main settings skipped. Maintainerr: Tautulli API key is required and /srv-config/tautulli/config.ini does not exist.",
+      "seq": 362,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: configured main settings",
+      "seq": 363,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: using radarr API key from env RADARR_API_KEY",
+      "seq": 364,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: configured radarr integration",
+      "seq": 365,
+      "ts": "2026-04-25T16:53:33"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: radarr connection test passed",
+      "seq": 366,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: using sonarr API key from env SONARR_API_KEY",
+      "seq": 367,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: configured sonarr integration",
+      "seq": 368,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: sonarr connection test passed",
+      "seq": 369,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: using Jellyseerr API key from env JELLYSEERR_API_KEY",
+      "seq": 370,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: seerr integration already configured",
+      "seq": 371,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyfin Live TV: prepared tuner playlist (https://iptv-org.github.io/iptv/countries/us.m3u -> /config/livetv-tuners/iptv-org-us-epg.m3u, total=1355, kept=186, dropped=1169, normalized_ids=1353, guide_filter=on)",
+      "seq": 372,
+      "ts": "2026-04-25T16:53:34"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyfin Live TV: prepared XMLTV guide (/config/livetv-guides/merged-epg.xml -> /config/livetv-guides/merged-epg.xml, programmes=19803, icons_added=19803, categories_added=19803)",
+      "seq": 373,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 374,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyfin Live TV: state before reconcile (tuner_keys=1, tuners=1, guide_keys=1, guides=1, source=/srv-config/jellyfin/config/livetv.xml)",
+      "seq": 375,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyfin Live TV: recreated managed guide binding (type=xmltv, path=/config/livetv-guides/merged-epg.xml, id=f7fe26ad264c484986ad4726f78993c3)",
+      "seq": 376,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: seerr connection test passed",
+      "seq": 377,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] Maintainerr: optional tautulli integration skipped. Maintainerr: Tautulli API key is required and /srv-config/tautulli/config.ini does not exist.",
+      "seq": 378,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Maintainerr: rule 'Delete Played Music After 30 Days' skipped \u2014 target libraries not present (music).",
+      "seq": 379,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Maintainerr: rule 'Delete Read Books After 30 Days' skipped \u2014 target libraries not present (books).",
+      "seq": 380,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] Maintainerr: rule 'Leaving Soon (5 Day Warning) (Movies)' had no translatable conditions; using watched-content fallback condition.",
+      "seq": 381,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] Maintainerr: rule 'Leaving Soon (5 Day Warning) (TV Shows)' had no translatable conditions; using watched-content fallback condition.",
+      "seq": 382,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyfin Live TV: state after cleanup (tuner_keys=1, tuners=1, guide_keys=0, guides=0, source=/srv-config/jellyfin/config/livetv.xml)",
+      "seq": 383,
+      "ts": "2026-04-25T16:53:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin Live TV: tuner already exists (m3u /config/livetv-tuners/iptv-org-us-epg.m3u)",
+      "seq": 384,
+      "ts": "2026-04-25T16:53:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin Live TV: added guide (xmltv /config/livetv-guides/merged-epg.xml)",
+      "seq": 385,
+      "ts": "2026-04-25T16:53:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: synced policy rules (created=0, updated=9, total_desired=9)",
+      "seq": 386,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Maintainerr: integration reconcile complete",
+      "seq": 387,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Phase 'post_servarr_post_media_steps': running 3 steps in parallel",
+      "seq": 388,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Homepage: services config already up-to-date at /srv-config/homepage/services.yaml",
+      "seq": 389,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Disk guardrails: usage check (path=/srv-stack, used=54.99%, total=1.17 TiB, available=541.30 GiB, max=65.00%, target=58.00%)",
+      "seq": 390,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Disk guardrails: usage is within threshold.",
+      "seq": 391,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: detected API base /api/v3",
+      "seq": 392,
+      "ts": "2026-04-25T16:53:39"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin Live TV: channel refresh complete (TasksRefreshChannels: Completed)",
+      "seq": 393,
+      "ts": "2026-04-25T16:53:40"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: queue cleanup found no failed records.",
+      "seq": 394,
+      "ts": "2026-04-25T16:53:40"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: detected API base /api/v3",
+      "seq": 395,
+      "ts": "2026-04-25T16:53:40"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: queue cleanup found no records.",
+      "seq": 396,
+      "ts": "2026-04-25T16:53:40"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: detected API base /api/v1",
+      "seq": 397,
+      "ts": "2026-04-25T16:53:40"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: queue cleanup found no records.",
+      "seq": 398,
+      "ts": "2026-04-25T16:53:41"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: detected API base /api/v1",
+      "seq": 399,
+      "ts": "2026-04-25T16:53:41"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: queue cleanup found no records.",
+      "seq": 400,
+      "ts": "2026-04-25T16:53:41"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Media hygiene filesystem cleanup: temp=0, zero_byte=0, duplicates=0, empty_dirs=0",
+      "seq": 401,
+      "ts": "2026-04-25T16:53:41"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] qB IP filter: skipping download due to min refresh interval (last_success=1777073525, min_hours=24.0).",
+      "seq": 402,
+      "ts": "2026-04-25T16:53:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qB IP filter: preferences applied (enabled=True, path=/data/torrents/ipfilter.dat, downloaded=False).",
+      "seq": 403,
+      "ts": "2026-04-25T16:53:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qB queue guardrails: no over-budget category pruning required.",
+      "seq": 404,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qB queue guardrails: no over-limit queue pruning required.",
+      "seq": 405,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] qB queue guardrails: no stale/slow torrent pruning required.",
+      "seq": 406,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Media hygiene: reconcile complete (queue_deleted=0, queue_errors=0, qbit_ipfilter={'enabled': True, 'downloaded': False, 'applied': True, 'skipped_reason': 'min_refresh_interval', 'source_url': 'https://github.com/DavidMoore/ipfilter/releases/download/lists/ipfilter.dat', 'target_path': '/srv-stack/data/torrents/ipfilter.dat', 'bytes': 18113040}, qbit_queue={'enabled': True, 'dry_run': False, 'total': 0, 'over_limit_candidates': 0, 'stale_candidates': 0, 'over_budget_candidates': 0, 'over_limit_deleted': 0, 'stale_deleted': 0, 'over_budget_deleted': 0, 'by_category': {}, 'by_category_budget': {}}, qbit_dupes={'enabled': False, 'dry_run': False, 'groups': 0, 'candidates': 0, 'deleted': 0}, qbit_errors=0, fs={'removed_temp': 0, 'removed_zero': 0, 'removed_dupes': 0, 'removed_empty_dirs': 0})",
+      "seq": 407,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[POST-BOOTSTRAP] unpackerr: starting",
+      "seq": 408,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "Unpackerr: wrote config with 4 API keys to /srv-config/unpackerr/unpackerr.conf",
+      "seq": 409,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "Unpackerr: restarted unpackerr",
+      "seq": 410,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[POST-BOOTSTRAP] unpackerr: complete",
+      "seq": 411,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Finalize completed",
+      "seq": 412,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] post-setup: complete (11.7s)",
+      "seq": 413,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] post-setup: ok (11.7s) \u2014 19/41 done, 22 remaining",
+      "seq": 414,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] restart-apps: starting",
+      "seq": 415,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] restart-apps: nothing to do (blanket restarts intentionally disabled)",
+      "seq": 416,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] restart-apps: complete (0.2s)",
+      "seq": 417,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] restart-apps: ok (0.2s) \u2014 20/41 done, 21 remaining",
+      "seq": 418,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:scan: starting",
+      "seq": 419,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] media-integrity:scan: SKIPPED \u2014 media-integrity service not configured (0.0s)",
+      "seq": 420,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:scan: skipped (0.0s) \u2014 21/41 done, 20 remaining",
+      "seq": 421,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-auto-scan: starting",
+      "seq": 422,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Auto-scan webhook: registered=[], already=['sonarr', 'radarr'], errors={}",
+      "seq": 423,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-auto-scan: complete (0.1s)",
+      "seq": 424,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-auto-scan: ok (0.1s) \u2014 22/41 done, 19 remaining",
+      "seq": 425,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:reconcile: starting",
+      "seq": 426,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] media-integrity:reconcile: SKIPPED \u2014 media-integrity service not configured (0.0s)",
+      "seq": 427,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:reconcile: skipped (0.0s) \u2014 23/41 done, 18 remaining",
+      "seq": 428,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:enforce-config: starting",
+      "seq": 429,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] media-integrity:enforce-config: SKIPPED \u2014 media-integrity service not configured (0.0s)",
+      "seq": 430,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:enforce-config: skipped (0.0s) \u2014 24/41 done, 17 remaining",
+      "seq": 431,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:resolve-review: starting",
+      "seq": 432,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] media-integrity:resolve-review: SKIPPED \u2014 media-integrity service not configured (0.0s)",
+      "seq": 433,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] media-integrity:resolve-review: skipped (0.0s) \u2014 25/41 done, 16 remaining",
+      "seq": 434,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-qbittorrent-categories: starting",
+      "seq": 435,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] ensure-qbittorrent-categories: SKIPPED \u2014 ['movies', 'tv', 'music', 'books'] (0.0s)",
+      "seq": 436,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-qbittorrent-categories: skipped (0.0s) \u2014 26/41 done, 15 remaining",
+      "seq": 437,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-jellyfin-libraries: starting",
+      "seq": 438,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] ensure-jellyfin-libraries: SKIPPED \u2014 ['Movies', 'TV Shows', 'Music', 'Books'] (0.2s)",
+      "seq": 439,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-jellyfin-libraries: skipped (0.2s) \u2014 27/41 done, 14 remaining",
+      "seq": 440,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-sonarr-seed-series: starting",
+      "seq": 441,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] ensure-sonarr-seed-series: SKIPPED \u2014 no series names in contracts/defaults/arr.yaml (0.0s)",
+      "seq": 442,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-sonarr-seed-series: skipped (0.0s) \u2014 28/41 done, 13 remaining",
+      "seq": 443,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-jellyseerr-oidc: starting",
+      "seq": 444,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[WARN] ensure-jellyseerr-oidc: SKIPPED \u2014 oidc config already in sync (0.0s)",
+      "seq": 445,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-jellyseerr-oidc: skipped (0.0s) \u2014 29/41 done, 12 remaining",
+      "seq": 446,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-arr-jellyfin-notifier: starting",
+      "seq": 447,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] ensure-arr-jellyfin-notifier: complete (0.0s)",
+      "seq": 448,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-arr-jellyfin-notifier: ok (0.0s) \u2014 30/41 done, 11 remaining",
+      "seq": 449,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] run-media-hygiene: starting",
+      "seq": 450,
+      "ts": "2026-04-25T16:53:43"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] run-media-hygiene: complete (0.2s)",
+      "seq": 451,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] run-media-hygiene: ok (0.2s) \u2014 31/41 done, 10 remaining",
+      "seq": 452,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] refresh-media: starting",
+      "seq": 453,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin: using API key from env JELLYFIN_API_KEY",
+      "seq": 454,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: book sidecar artwork reconcile complete (scanned=176, written=0, skipped=176, failed=0)",
+      "seq": 455,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: music sidecar artwork reconcile complete (scanned=40, written=0, skipped=40, failed=0)",
+      "seq": 456,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: requested library metadata/artwork refresh",
+      "seq": 457,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: requested Live TV channel refresh via scheduled task 'TasksRefreshChannels'",
+      "seq": 458,
+      "ts": "2026-04-25T16:53:44"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: requested Live TV guide refresh via scheduled task 'Refresh Guide'",
+      "seq": 459,
+      "ts": "2026-04-25T16:53:46"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Jellyfin prewarm: waiting for refresh settle before artwork health check (20s)",
+      "seq": 460,
+      "ts": "2026-04-25T16:53:46"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Scheduler: firing 'scan-completed-downloads' (every 900s)",
+      "seq": 461,
+      "ts": "2026-04-25T16:54:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (120s elapsed, timeout 1800s)",
+      "seq": 462,
+      "ts": "2026-04-25T16:54:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: metadata backfill refresh requested for Music (targets=80, requested=80, failed=0)",
+      "seq": 463,
+      "ts": "2026-04-25T16:54:11"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: metadata backfill refresh requested for Books (targets=80, requested=80, failed=0)",
+      "seq": 464,
+      "ts": "2026-04-25T16:54:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: metadata backfill found no missing items for Movies",
+      "seq": 465,
+      "ts": "2026-04-25T16:54:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: metadata backfill found no missing items for TV Shows",
+      "seq": 466,
+      "ts": "2026-04-25T16:54:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: collection-folder image refresh complete (attempted=4, refreshed=4, failed=0)",
+      "seq": 467,
+      "ts": "2026-04-25T16:54:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: metadata backfill complete (candidates=160, requested=160, failed=0, folder_refreshed=4, folder_failed=0)",
+      "seq": 468,
+      "ts": "2026-04-25T16:54:16"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: artwork coverage for Music = 100.0% (276/276)",
+      "seq": 469,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: artwork coverage for Books = 98.9% (178/180)",
+      "seq": 470,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: artwork coverage for Movies = 100.0% (108/108)",
+      "seq": 471,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: artwork coverage for TV Shows = 100.0% (146/146)",
+      "seq": 472,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: artwork coverage for Live TV = 100.0% (185/185)",
+      "seq": 473,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin prewarm: reconcile complete",
+      "seq": 474,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] refresh-media: complete (33.9s)",
+      "seq": 475,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] refresh-media: ok (33.9s) \u2014 32/41 done, 9 remaining",
+      "seq": 476,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-bazarr-language-profile: starting",
+      "seq": 477,
+      "ts": "2026-04-25T16:54:17"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] ensure-bazarr-language-profile: complete (2.4s)",
+      "seq": 478,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-bazarr-language-profile: ok (2.4s) \u2014 33/41 done, 8 remaining",
+      "seq": 479,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] scan-completed-downloads: starting",
+      "seq": 480,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] scan-completed-downloads: complete (0.0s)",
+      "seq": 481,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] scan-completed-downloads: ok (0.0s) \u2014 34/41 done, 7 remaining",
+      "seq": 482,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] recover-stuck-imports: starting",
+      "seq": 483,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] recover-stuck-imports: complete (0.1s)",
+      "seq": 484,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] recover-stuck-imports: ok (0.1s) \u2014 35/41 done, 6 remaining",
+      "seq": 485,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] tag-indexers-for-apps: starting",
+      "seq": 486,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] tag-indexers-for-apps: started (non-blocking) \u2014 35/41 done, 6 remaining",
+      "seq": 487,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-arr-download-client: starting",
+      "seq": 488,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] ensure-arr-download-client: complete (0.3s)",
+      "seq": 489,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] ensure-arr-download-client: ok (0.3s) \u2014 36/41 done, 5 remaining",
+      "seq": 490,
+      "ts": "2026-04-25T16:54:20"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] indexer-app-match: Lidarr now filters by tag 'sync-lidarr'",
+      "seq": 491,
+      "ts": "2026-04-25T16:54:22"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] indexer-app-match: Radarr now filters by tag 'sync-radarr'",
+      "seq": 492,
+      "ts": "2026-04-25T16:54:24"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] indexer-app-match: Readarr now filters by tag 'sync-readarr'",
+      "seq": 493,
+      "ts": "2026-04-25T16:54:26"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] indexer-app-match: Sonarr now filters by tag 'sync-sonarr'",
+      "seq": 494,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] tag-indexers-for-apps: complete (8.5s)",
+      "seq": 495,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] tag-indexers-for-apps: ok (8.5s) \u2014 non-blocking finished",
+      "seq": 496,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] reset-prowlarr-app-mappings: starting",
+      "seq": 497,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] reset-prowlarr-app-mappings: complete (0.1s)",
+      "seq": 498,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] reset-prowlarr-app-mappings: ok (0.1s) \u2014 38/41 done, 3 remaining",
+      "seq": 499,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] push-indexers: starting",
+      "seq": 500,
+      "ts": "2026-04-25T16:54:28"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Config policy applied (auto_download_content=False)",
+      "seq": 501,
+      "ts": "2026-04-25T16:54:29"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Bootstrap plan: mode=full, arr_apps=4, indexer_entries=0, sab_remote_path_mappings=0, media_server_livetv_tuners=1, media_server_livetv_guides=1, auto_indexers=False, configure_arr_clients=True, configure_torrent_arr_clients=True, configure_sab_arr_clients=False, configure_arr_media_management=True, configure_arr_quality_upgrade=True, configure_arr_download_handling=True, configure_arr_discovery_lists=True, set_torrent_categories=True, torrent_client_login_required=True, refresh_health_after_setup=True, app_auth_enabled=True, configure_dashboard=True, configure_subtitles=True, configure_request_manager=True, configure_media_server_libraries=True, configure_media_server_livetv=True, configure_media_server_plugins=True, configure_media_server_playback=True, configure_media_server_home_rails=True, configure_auto_collections=True, configure_disk_guardrails=True, configure_media_server_prewarm=True, configure_media_hygiene=True, configure_media_policy=True, configure_media_policy_integrations=True, fully_preconfigured=True, trigger_sync=True",
+      "seq": 502,
+      "ts": "2026-04-25T16:54:29"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: updated FlareSolverr proxy 'FlareSolverr' (http://flaresolverr:8191/)",
+      "seq": 503,
+      "ts": "2026-04-25T16:54:32"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: FlareSolverr proxy connection test passed",
+      "seq": 504,
+      "ts": "2026-04-25T16:54:35"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Prowlarr: triggered ApplicationIndexerSync (forceSync=true)",
+      "seq": 505,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Sonarr: detected API base /api/v3",
+      "seq": 506,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Radarr: detected API base /api/v3",
+      "seq": 507,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Lidarr: detected API base /api/v1",
+      "seq": 508,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Readarr: detected API base /api/v1",
+      "seq": 509,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Arr indexer sync summary: apps=4, stale_found=0, stale_removed=0, stale_kept=0",
+      "seq": 510,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Indexer sync complete",
+      "seq": 511,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] push-indexers: complete (7.5s)",
+      "seq": 512,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] push-indexers: ok (7.5s) \u2014 39/41 done, 2 remaining",
+      "seq": 513,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] mass-search-throttled: starting",
+      "seq": 514,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] mass-search-throttled: started (non-blocking) \u2014 39/41 done, 2 remaining",
+      "seq": 515,
+      "ts": "2026-04-25T16:54:36"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (180s elapsed, timeout 1800s)",
+      "seq": 516,
+      "ts": "2026-04-25T16:55:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin Live TV: guide refresh triggered but timeout waiting for ['Refresh Guide'] after 120s",
+      "seq": 517,
+      "ts": "2026-04-25T16:55:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] Jellyfin Live TV: reconcile complete (tuners_added=0, guides_added=1)",
+      "seq": 518,
+      "ts": "2026-04-25T16:55:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] configure-livetv: complete (157.9s)",
+      "seq": 519,
+      "ts": "2026-04-25T16:55:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] configure-livetv: ok (157.9s) \u2014 non-blocking finished",
+      "seq": 520,
+      "ts": "2026-04-25T16:55:42"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Scheduler: firing 'media-integrity:scan' (every 900s)",
+      "seq": 521,
+      "ts": "2026-04-25T16:56:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (240s elapsed, timeout 1800s)",
+      "seq": 522,
+      "ts": "2026-04-25T16:56:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (300s elapsed, timeout 1800s)",
+      "seq": 523,
+      "ts": "2026-04-25T16:57:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (361s elapsed, timeout 1800s)",
+      "seq": 524,
+      "ts": "2026-04-25T16:58:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (421s elapsed, timeout 1800s)",
+      "seq": 525,
+      "ts": "2026-04-25T16:59:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (481s elapsed, timeout 1800s)",
+      "seq": 526,
+      "ts": "2026-04-25T17:00:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (541s elapsed, timeout 1800s)",
+      "seq": 527,
+      "ts": "2026-04-25T17:01:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Scheduler: firing 'run-media-hygiene' (every 3600s)",
+      "seq": 528,
+      "ts": "2026-04-25T17:02:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Scheduler: firing 'mass-search-throttled' (every 3600s)",
+      "seq": 529,
+      "ts": "2026-04-25T17:02:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (601s elapsed, timeout 1800s)",
+      "seq": 530,
+      "ts": "2026-04-25T17:02:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] Scheduler: firing 'recover-stuck-imports' (every 1800s)",
+      "seq": 531,
+      "ts": "2026-04-25T17:03:00"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (661s elapsed, timeout 1800s)",
+      "seq": 532,
+      "ts": "2026-04-25T17:03:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: still running (721s elapsed, timeout 1800s)",
+      "seq": 533,
+      "ts": "2026-04-25T17:04:01"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[OK] mass-search-throttled: complete (567.3s)",
+      "seq": 534,
+      "ts": "2026-04-25T17:04:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[JOB] mass-search-throttled: ok (567.3s) \u2014 non-blocking finished",
+      "seq": 535,
+      "ts": "2026-04-25T17:04:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[INFO] JobRunner: complete \u2014 30 ok, 11 skipped, 0 errors (720.2s)",
+      "seq": 536,
+      "ts": "2026-04-25T17:04:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[ACTION] bootstrap: complete",
+      "seq": 537,
+      "ts": "2026-04-25T17:04:03"
+    },
+    {
+      "action": "bootstrap",
+      "msg": "[DEBUG] Subprocess finished: pid=63, exit_code=0, error=no",
+      "seq": 538,
+      "ts": "2026-04-25T17:04:04"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] Initial bootstrap complete \u2014 service is ready",
+      "seq": 539,
+      "ts": "2026-04-25T17:04:04"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[ACTION] media-integrity:scan [media-integrity:scan-2]: dispatching (timeout=1800s)",
+      "seq": 540,
+      "ts": "2026-04-25T17:04:04"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[DEBUG] Spawning subprocess for action=media-integrity:scan, pid=parent:1",
+      "seq": 541,
+      "ts": "2026-04-25T17:04:04"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[DEBUG] Subprocess started: pid=1129",
+      "seq": 542,
+      "ts": "2026-04-25T17:04:04"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[ACTION] media-integrity:scan: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 543,
+      "ts": "2026-04-25T17:04:06"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 544,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[JOB] media-integrity:scan: starting",
+      "seq": 545,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[WARN] media-integrity:scan: SKIPPED \u2014 media-integrity service not configured (0.0s)",
+      "seq": 546,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[JOB] media-integrity:scan: skipped (0.0s) \u2014 1/1 done, 0 remaining",
+      "seq": 547,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[INFO] JobRunner: complete \u2014 0 ok, 1 skipped, 0 errors (0.0s)",
+      "seq": 548,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[ACTION] media-integrity:scan: complete",
+      "seq": 549,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[DEBUG] Subprocess finished: pid=1129, exit_code=0, error=no",
+      "seq": 550,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[ACTION] scan-completed-downloads [scan-completed-downloads-3]: dispatching (timeout=1800s)",
+      "seq": 551,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[DEBUG] Spawning subprocess for action=scan-completed-downloads, pid=parent:1",
+      "seq": 552,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[DEBUG] Subprocess started: pid=1158",
+      "seq": 553,
+      "ts": "2026-04-25T17:04:07"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[ACTION] scan-completed-downloads: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 554,
+      "ts": "2026-04-25T17:04:09"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 555,
+      "ts": "2026-04-25T17:04:10"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[JOB] scan-completed-downloads: starting",
+      "seq": 556,
+      "ts": "2026-04-25T17:04:10"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[OK] scan-completed-downloads: complete (0.1s)",
+      "seq": 557,
+      "ts": "2026-04-25T17:04:10"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[JOB] scan-completed-downloads: ok (0.1s) \u2014 1/1 done, 0 remaining",
+      "seq": 558,
+      "ts": "2026-04-25T17:04:10"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[INFO] JobRunner: complete \u2014 1 ok, 0 skipped, 0 errors (0.1s)",
+      "seq": 559,
+      "ts": "2026-04-25T17:04:10"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[ACTION] scan-completed-downloads: complete",
+      "seq": 560,
+      "ts": "2026-04-25T17:04:10"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[DEBUG] Subprocess finished: pid=1158, exit_code=0, error=no",
+      "seq": 561,
+      "ts": "2026-04-25T17:04:11"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[ACTION] run-media-hygiene [run-media-hygiene-4]: dispatching (timeout=1800s)",
+      "seq": 562,
+      "ts": "2026-04-25T17:04:11"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[DEBUG] Spawning subprocess for action=run-media-hygiene, pid=parent:1",
+      "seq": 563,
+      "ts": "2026-04-25T17:04:11"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[DEBUG] Subprocess started: pid=1191",
+      "seq": 564,
+      "ts": "2026-04-25T17:04:11"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[ACTION] run-media-hygiene: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 565,
+      "ts": "2026-04-25T17:04:12"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 566,
+      "ts": "2026-04-25T17:04:13"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[JOB] run-media-hygiene: starting",
+      "seq": 567,
+      "ts": "2026-04-25T17:04:13"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[INFO] Live TV: 1 guides resolved, 1 tuners selected (load_all_tuners=False, skipped=0)",
+      "seq": 568,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[OK] run-media-hygiene: complete (0.5s)",
+      "seq": 569,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[JOB] run-media-hygiene: ok (0.5s) \u2014 1/1 done, 0 remaining",
+      "seq": 570,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[INFO] JobRunner: complete \u2014 1 ok, 0 skipped, 0 errors (0.5s)",
+      "seq": 571,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[ACTION] run-media-hygiene: complete",
+      "seq": 572,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "run-media-hygiene",
+      "msg": "[DEBUG] Subprocess finished: pid=1191, exit_code=0, error=no",
+      "seq": 573,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled [mass-search-throttled-5]: dispatching (timeout=1800s)",
+      "seq": 574,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[DEBUG] Spawning subprocess for action=mass-search-throttled, pid=parent:1",
+      "seq": 575,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[DEBUG] Subprocess started: pid=1222",
+      "seq": 576,
+      "ts": "2026-04-25T17:04:14"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 577,
+      "ts": "2026-04-25T17:04:16"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 578,
+      "ts": "2026-04-25T17:04:17"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[JOB] mass-search-throttled: starting",
+      "seq": 579,
+      "ts": "2026-04-25T17:04:17"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[JOB] mass-search-throttled: started (non-blocking) \u2014 0/1 done, 1 remaining",
+      "seq": 580,
+      "ts": "2026-04-25T17:04:17"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (60s elapsed, timeout 1800s)",
+      "seq": 581,
+      "ts": "2026-04-25T17:05:14"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (120s elapsed, timeout 1800s)",
+      "seq": 582,
+      "ts": "2026-04-25T17:06:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (180s elapsed, timeout 1800s)",
+      "seq": 583,
+      "ts": "2026-04-25T17:07:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (240s elapsed, timeout 1800s)",
+      "seq": 584,
+      "ts": "2026-04-25T17:08:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[INFO] Scheduler: firing 'scan-completed-downloads' (every 900s)",
+      "seq": 585,
+      "ts": "2026-04-25T17:09:00"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (300s elapsed, timeout 1800s)",
+      "seq": 586,
+      "ts": "2026-04-25T17:09:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (361s elapsed, timeout 1800s)",
+      "seq": 587,
+      "ts": "2026-04-25T17:10:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[INFO] Scheduler: firing 'media-integrity:scan' (every 900s)",
+      "seq": 588,
+      "ts": "2026-04-25T17:11:00"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (421s elapsed, timeout 1800s)",
+      "seq": 589,
+      "ts": "2026-04-25T17:11:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (481s elapsed, timeout 1800s)",
+      "seq": 590,
+      "ts": "2026-04-25T17:12:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: still running (541s elapsed, timeout 1800s)",
+      "seq": 591,
+      "ts": "2026-04-25T17:13:15"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[OK] mass-search-throttled: complete (551.0s)",
+      "seq": 592,
+      "ts": "2026-04-25T17:13:28"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[JOB] mass-search-throttled: ok (551.0s) \u2014 non-blocking finished",
+      "seq": 593,
+      "ts": "2026-04-25T17:13:28"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[INFO] JobRunner: complete \u2014 1 ok, 0 skipped, 0 errors (551.0s)",
+      "seq": 594,
+      "ts": "2026-04-25T17:13:28"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[ACTION] mass-search-throttled: complete",
+      "seq": 595,
+      "ts": "2026-04-25T17:13:28"
+    },
+    {
+      "action": "mass-search-throttled",
+      "msg": "[DEBUG] Subprocess finished: pid=1222, exit_code=0, error=no",
+      "seq": 596,
+      "ts": "2026-04-25T17:13:29"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[ACTION] media-integrity:scan [media-integrity:scan-6]: dispatching (timeout=1800s)",
+      "seq": 597,
+      "ts": "2026-04-25T17:13:29"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[DEBUG] Spawning subprocess for action=media-integrity:scan, pid=parent:1",
+      "seq": 598,
+      "ts": "2026-04-25T17:13:29"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[DEBUG] Subprocess started: pid=1995",
+      "seq": 599,
+      "ts": "2026-04-25T17:13:29"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[ACTION] media-integrity:scan: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 600,
+      "ts": "2026-04-25T17:13:30"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 601,
+      "ts": "2026-04-25T17:13:31"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[JOB] media-integrity:scan: starting",
+      "seq": 602,
+      "ts": "2026-04-25T17:13:31"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[WARN] media-integrity:scan: SKIPPED \u2014 media-integrity service not configured (0.0s)",
+      "seq": 603,
+      "ts": "2026-04-25T17:13:31"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[JOB] media-integrity:scan: skipped (0.0s) \u2014 1/1 done, 0 remaining",
+      "seq": 604,
+      "ts": "2026-04-25T17:13:31"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[INFO] JobRunner: complete \u2014 0 ok, 1 skipped, 0 errors (0.0s)",
+      "seq": 605,
+      "ts": "2026-04-25T17:13:31"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[ACTION] media-integrity:scan: complete",
+      "seq": 606,
+      "ts": "2026-04-25T17:13:31"
+    },
+    {
+      "action": "media-integrity:scan",
+      "msg": "[DEBUG] Subprocess finished: pid=1995, exit_code=0, error=no",
+      "seq": 607,
+      "ts": "2026-04-25T17:13:32"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[ACTION] recover-stuck-imports [recover-stuck-imports-7]: dispatching (timeout=1800s)",
+      "seq": 608,
+      "ts": "2026-04-25T17:13:32"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[DEBUG] Spawning subprocess for action=recover-stuck-imports, pid=parent:1",
+      "seq": 609,
+      "ts": "2026-04-25T17:13:32"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[DEBUG] Subprocess started: pid=1998",
+      "seq": 610,
+      "ts": "2026-04-25T17:13:32"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[ACTION] recover-stuck-imports: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 611,
+      "ts": "2026-04-25T17:13:33"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 612,
+      "ts": "2026-04-25T17:13:34"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[JOB] recover-stuck-imports: starting",
+      "seq": 613,
+      "ts": "2026-04-25T17:13:34"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[OK] recover-stuck-imports: complete (0.1s)",
+      "seq": 614,
+      "ts": "2026-04-25T17:13:34"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[JOB] recover-stuck-imports: ok (0.1s) \u2014 1/1 done, 0 remaining",
+      "seq": 615,
+      "ts": "2026-04-25T17:13:34"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[INFO] JobRunner: complete \u2014 1 ok, 0 skipped, 0 errors (0.1s)",
+      "seq": 616,
+      "ts": "2026-04-25T17:13:34"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[ACTION] recover-stuck-imports: complete",
+      "seq": 617,
+      "ts": "2026-04-25T17:13:34"
+    },
+    {
+      "action": "recover-stuck-imports",
+      "msg": "[DEBUG] Subprocess finished: pid=1998, exit_code=0, error=no",
+      "seq": 618,
+      "ts": "2026-04-25T17:13:35"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[ACTION] scan-completed-downloads [scan-completed-downloads-8]: dispatching (timeout=1800s)",
+      "seq": 619,
+      "ts": "2026-04-25T17:13:35"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[DEBUG] Spawning subprocess for action=scan-completed-downloads, pid=parent:1",
+      "seq": 620,
+      "ts": "2026-04-25T17:13:35"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[DEBUG] Subprocess started: pid=2002",
+      "seq": 621,
+      "ts": "2026-04-25T17:13:35"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[ACTION] scan-completed-downloads: starting (overrides={'_triggered_by': 'scheduler'})",
+      "seq": 622,
+      "ts": "2026-04-25T17:13:36"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[INFO] JobRunner: 1 jobs to dispatch",
+      "seq": 623,
+      "ts": "2026-04-25T17:13:37"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[JOB] scan-completed-downloads: starting",
+      "seq": 624,
+      "ts": "2026-04-25T17:13:37"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[OK] scan-completed-downloads: complete (0.0s)",
+      "seq": 625,
+      "ts": "2026-04-25T17:13:37"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[JOB] scan-completed-downloads: ok (0.0s) \u2014 1/1 done, 0 remaining",
+      "seq": 626,
+      "ts": "2026-04-25T17:13:37"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[INFO] JobRunner: complete \u2014 1 ok, 0 skipped, 0 errors (0.0s)",
+      "seq": 627,
+      "ts": "2026-04-25T17:13:37"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[ACTION] scan-completed-downloads: complete",
+      "seq": 628,
+      "ts": "2026-04-25T17:13:37"
+    },
+    {
+      "action": "scan-completed-downloads",
+      "msg": "[DEBUG] Subprocess finished: pid=2002, exit_code=0, error=no",
+      "seq": 629,
+      "ts": "2026-04-25T17:13:38"
+    },
+    {
+      "action": "",
+      "msg": "[INFO] Live TV: 1 guides resolved, 1 tuners selected (load_all_tuners=False, skipped=0)",
+      "seq": 630,
+      "ts": "2026-04-25T17:22:17"
+    }
+  ]
+}

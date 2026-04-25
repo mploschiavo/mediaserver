@@ -1,0 +1,1284 @@
+{
+  "count": 41,
+  "history": [
+    {
+      "actor": "auto-heal",
+      "elapsed": 0.031,
+      "errors": 0,
+      "jobs": {
+        "guardrail:job:runtime_cap": {
+          "elapsed": 0,
+          "status": "skipped"
+        }
+      },
+      "ok": 0,
+      "skipped": 1,
+      "source": "auto-heal:guardrail:job:runtime_cap",
+      "ts": 1777137329.2734232
+    },
+    {
+      "actor": "auto-heal",
+      "elapsed": 0.034,
+      "errors": 0,
+      "jobs": {
+        "guardrail:job:runtime_cap": {
+          "elapsed": 0,
+          "status": "skipped"
+        }
+      },
+      "ok": 0,
+      "skipped": 1,
+      "source": "auto-heal:guardrail:job:runtime_cap",
+      "ts": 1777137268.2473452
+    },
+    {
+      "actor": null,
+      "elapsed": 0.0,
+      "errors": 0,
+      "jobs": {
+        "scan-completed-downloads": {
+          "elapsed": 0.0,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "scheduler",
+      "ts": 1777137217.655
+    },
+    {
+      "actor": null,
+      "elapsed": 0.1,
+      "errors": 0,
+      "jobs": {
+        "recover-stuck-imports": {
+          "elapsed": 0.1,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "scheduler",
+      "ts": 1777137214.7545218
+    },
+    {
+      "actor": null,
+      "elapsed": 0.0,
+      "errors": 0,
+      "jobs": {
+        "media-integrity:scan": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        }
+      },
+      "ok": 0,
+      "skipped": 1,
+      "source": "scheduler",
+      "ts": 1777137211.7678225
+    },
+    {
+      "actor": null,
+      "elapsed": 551.0,
+      "errors": 0,
+      "jobs": {
+        "mass-search-throttled": {
+          "elapsed": 551.0,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "scheduler",
+      "ts": 1777137208.8555202
+    },
+    {
+      "actor": null,
+      "elapsed": 1.03,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.03,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136963.1704643
+    },
+    {
+      "actor": null,
+      "elapsed": 1.15,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.15,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136902.138562
+    },
+    {
+      "actor": null,
+      "elapsed": 1.05,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.05,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136840.97842
+    },
+    {
+      "actor": null,
+      "elapsed": 1.25,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.25,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136779.9225874
+    },
+    {
+      "actor": null,
+      "elapsed": 1.1,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.1,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136718.592219
+    },
+    {
+      "actor": null,
+      "elapsed": 1.72,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.72,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136657.364688
+    },
+    {
+      "actor": "auto-heal",
+      "elapsed": 0.035,
+      "errors": 0,
+      "jobs": {
+        "guardrail:job:runtime_cap": {
+          "elapsed": 0,
+          "status": "skipped"
+        }
+      },
+      "ok": 0,
+      "skipped": 1,
+      "source": "auto-heal:guardrail:job:runtime_cap",
+      "ts": 1777136657.0565314
+    },
+    {
+      "actor": null,
+      "elapsed": 0.5,
+      "errors": 0,
+      "jobs": {
+        "run-media-hygiene": {
+          "elapsed": 0.5,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "scheduler",
+      "ts": 1777136654.332196
+    },
+    {
+      "actor": null,
+      "elapsed": 0.1,
+      "errors": 0,
+      "jobs": {
+        "scan-completed-downloads": {
+          "elapsed": 0.1,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "scheduler",
+      "ts": 1777136650.5148802
+    },
+    {
+      "actor": null,
+      "elapsed": 0.0,
+      "errors": 0,
+      "jobs": {
+        "media-integrity:scan": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        }
+      },
+      "ok": 0,
+      "skipped": 1,
+      "source": "scheduler",
+      "ts": 1777136647.170536
+    },
+    {
+      "actor": null,
+      "elapsed": 720.2,
+      "errors": 0,
+      "jobs": {
+        "apply-arr-runtime-defaults": {
+          "elapsed": 0.4,
+          "status": "ok"
+        },
+        "configure-arr-clients": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "configure-auth": {
+          "elapsed": 0.4,
+          "status": "ok"
+        },
+        "configure-auto-scan": {
+          "elapsed": 0.1,
+          "status": "ok"
+        },
+        "configure-categories": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "configure-collections": {
+          "elapsed": 0.2,
+          "status": "ok"
+        },
+        "configure-home-screen": {
+          "elapsed": 1.3,
+          "status": "ok"
+        },
+        "configure-indexers": {
+          "elapsed": 11.3,
+          "status": "ok"
+        },
+        "configure-jellyseerr": {
+          "elapsed": 14.9,
+          "status": "ok"
+        },
+        "configure-libraries": {
+          "elapsed": 0.3,
+          "status": "ok"
+        },
+        "configure-livetv": {
+          "elapsed": 157.9,
+          "status": "ok"
+        },
+        "configure-playback": {
+          "elapsed": 4.1,
+          "status": "ok"
+        },
+        "configure-plugins": {
+          "elapsed": 3.3,
+          "status": "ok"
+        },
+        "discover-api-keys": {
+          "elapsed": 43.9,
+          "status": "skipped"
+        },
+        "discover-indexers": {
+          "elapsed": 19.7,
+          "status": "ok"
+        },
+        "ensure-arr-download-client": {
+          "elapsed": 0.3,
+          "status": "ok"
+        },
+        "ensure-arr-jellyfin-notifier": {
+          "elapsed": 0.0,
+          "status": "ok"
+        },
+        "ensure-bazarr-language-profile": {
+          "elapsed": 2.4,
+          "status": "ok"
+        },
+        "ensure-jellyfin-libraries": {
+          "elapsed": 0.2,
+          "status": "skipped"
+        },
+        "ensure-jellyseerr-oidc": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "ensure-qbittorrent-categories": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "ensure-sonarr-seed-series": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "envoy-config": {
+          "elapsed": 1.5,
+          "status": "ok"
+        },
+        "ingress-config": {
+          "elapsed": 0.1,
+          "status": "ok"
+        },
+        "mass-search-throttled": {
+          "elapsed": 567.3,
+          "status": "ok"
+        },
+        "media-integrity:enforce-config": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "media-integrity:reconcile": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "media-integrity:resolve-review": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "media-integrity:scan": {
+          "elapsed": 0.0,
+          "status": "skipped"
+        },
+        "post-setup": {
+          "elapsed": 11.7,
+          "status": "ok"
+        },
+        "push-indexers": {
+          "elapsed": 7.5,
+          "status": "ok"
+        },
+        "recover-stuck-imports": {
+          "elapsed": 0.1,
+          "status": "ok"
+        },
+        "refresh-media": {
+          "elapsed": 33.9,
+          "status": "ok"
+        },
+        "reset-prowlarr-app-mappings": {
+          "elapsed": 0.1,
+          "status": "ok"
+        },
+        "restart-apps": {
+          "elapsed": 0.2,
+          "status": "ok"
+        },
+        "run-legacy-pipeline": {
+          "elapsed": 14.7,
+          "status": "ok"
+        },
+        "run-media-hygiene": {
+          "elapsed": 0.2,
+          "status": "ok"
+        },
+        "scan-completed-downloads": {
+          "elapsed": 0.0,
+          "status": "ok"
+        },
+        "seed-runtime-overrides": {
+          "elapsed": 0.0,
+          "status": "ok"
+        },
+        "tag-indexers-for-apps": {
+          "elapsed": 8.5,
+          "status": "ok"
+        },
+        "validate-credentials": {
+          "elapsed": 2.5,
+          "status": "ok"
+        }
+      },
+      "ok": 30,
+      "skipped": 11,
+      "source": "unknown",
+      "ts": 1777136643.7437377
+    },
+    {
+      "actor": null,
+      "elapsed": 1.09,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.09,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136595.596475
+    },
+    {
+      "actor": null,
+      "elapsed": 1.07,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.07,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136534.4868424
+    },
+    {
+      "actor": null,
+      "elapsed": 1.17,
+      "errors": 0,
+      "jobs": {
+        "auto-heal:snapshot": {
+          "elapsed": 1.17,
+          "status": "ok"
+        }
+      },
+      "ok": 1,
+      "skipped": 0,
+      "source": "auto-heal",
+      "ts": 1777136473.415583
+    }
+  ],
+  "jobs": [
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.qbittorrent.configure_categories_job:configure_categories",
+      "label": "Update download categories",
+      "max_attempts": null,
+      "name": "configure-categories",
+      "non_blocking": false,
+      "phase": "download_clients",
+      "priority": 10,
+      "requires": [],
+      "service": "qbittorrent"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients",
+      "label": "Update download client config",
+      "max_attempts": null,
+      "name": "configure-arr-clients",
+      "non_blocking": false,
+      "phase": "download_clients",
+      "priority": 10,
+      "requires": [],
+      "service": "sonarr"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.prowlarr.configure_indexers_job:configure_indexers",
+      "label": "Configure indexers",
+      "max_attempts": null,
+      "name": "configure-indexers",
+      "non_blocking": true,
+      "phase": "download_clients",
+      "priority": 20,
+      "requires": [],
+      "service": "prowlarr"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:discover_indexers",
+      "label": "Discover indexers",
+      "max_attempts": null,
+      "name": "discover-indexers",
+      "non_blocking": true,
+      "phase": "download_clients",
+      "priority": 30,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [
+        "discover-indexers"
+      ],
+      "handler": "media_stack.services.apps.core.job_adapters:tag_indexers_for_apps",
+      "label": "Match indexers to apps",
+      "max_attempts": null,
+      "name": "tag-indexers-for-apps",
+      "non_blocking": true,
+      "phase": "download_clients",
+      "priority": 35,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [
+        "tag-indexers-for-apps"
+      ],
+      "handler": "media_stack.services.apps.core.job_adapters:reset_prowlarr_app_mappings",
+      "label": "Repair indexer sync",
+      "max_attempts": null,
+      "name": "reset-prowlarr-app-mappings",
+      "non_blocking": false,
+      "phase": "download_clients",
+      "priority": 38,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [
+        "reset-prowlarr-app-mappings"
+      ],
+      "handler": "media_stack.services.apps.core.job_adapters:push_indexers",
+      "label": "Sync indexers to apps",
+      "max_attempts": null,
+      "name": "push-indexers",
+      "non_blocking": false,
+      "phase": "download_clients",
+      "priority": 40,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.core.auth.configure_auth_job:configure_auth",
+      "label": "Update authentication",
+      "max_attempts": null,
+      "name": "configure-auth",
+      "non_blocking": false,
+      "phase": "infrastructure",
+      "priority": 5,
+      "requires": [],
+      "service": "authelia"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:envoy_config",
+      "label": "Update proxy routes",
+      "max_attempts": null,
+      "name": "envoy-config",
+      "non_blocking": false,
+      "phase": "infrastructure",
+      "priority": 20,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ingress_config",
+      "label": "Update K8s Ingress rules from routing config",
+      "max_attempts": null,
+      "name": "ingress-config",
+      "non_blocking": false,
+      "phase": "infrastructure",
+      "priority": 21,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries",
+      "label": "Update libraries",
+      "max_attempts": null,
+      "name": "configure-libraries",
+      "non_blocking": false,
+      "phase": "media_server",
+      "priority": 10,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.configure_livetv_job:configure_livetv",
+      "label": "Update Live TV",
+      "max_attempts": null,
+      "name": "configure-livetv",
+      "non_blocking": true,
+      "phase": "media_server",
+      "priority": 20,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_plugins",
+      "label": "Update plugins",
+      "max_attempts": null,
+      "name": "configure-plugins",
+      "non_blocking": false,
+      "phase": "media_server",
+      "priority": 30,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_playback_defaults",
+      "label": "Update playback config",
+      "max_attempts": null,
+      "name": "configure-playback",
+      "non_blocking": false,
+      "phase": "media_server",
+      "priority": 40,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_home_rails",
+      "label": "Update home screen",
+      "max_attempts": null,
+      "name": "configure-home-screen",
+      "non_blocking": false,
+      "phase": "media_server",
+      "priority": 50,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config",
+      "label": "Update auto-collections",
+      "max_attempts": null,
+      "name": "configure-collections",
+      "non_blocking": false,
+      "phase": "media_server",
+      "priority": 60,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyseerr.configure_jellyseerr_job:configure_jellyseerr",
+      "label": "Update Jellyseerr",
+      "max_attempts": null,
+      "name": "configure-jellyseerr",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 5,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyseerr"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:apply_arr_runtime_defaults",
+      "label": "Update download settings",
+      "max_attempts": null,
+      "name": "apply-arr-runtime-defaults",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 55,
+      "requires": [
+        "arr_apps_reachable"
+      ],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:validate_credentials",
+      "label": "Validate credentials",
+      "max_attempts": null,
+      "name": "validate-credentials",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 60,
+      "requires": [
+        "media_server_api_key",
+        "arr_apps_reachable"
+      ],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:post_setup",
+      "label": "Finalize setup",
+      "max_attempts": null,
+      "name": "post-setup",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 70,
+      "requires": [
+        "media_server_api_key",
+        "media_server_reachable"
+      ],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:restart_apps",
+      "label": "Restart services",
+      "max_attempts": null,
+      "name": "restart-apps",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 80,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.media_integrity.job_handlers:media_integrity_scan",
+      "label": "Media-integrity status scan",
+      "max_attempts": null,
+      "name": "media-integrity:scan",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 80,
+      "requires": [],
+      "service": "media_integrity"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.servarr.configure_auto_scan_job:configure_auto_scan",
+      "label": "Update auto-scan",
+      "max_attempts": null,
+      "name": "configure-auto-scan",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 80,
+      "requires": [],
+      "service": "sonarr"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.media_integrity.job_handlers:media_integrity_reconcile",
+      "label": "Reconcile duplicate downloads",
+      "max_attempts": null,
+      "name": "media-integrity:reconcile",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 81,
+      "requires": [],
+      "service": "media_integrity"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.media_integrity.job_handlers:media_integrity_enforce_config",
+      "label": "Enforce *arr / Bazarr policy",
+      "max_attempts": null,
+      "name": "media-integrity:enforce-config",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 82,
+      "requires": [],
+      "service": "media_integrity"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.media_integrity.job_handlers:media_integrity_resolve_review",
+      "label": "Apply operator-resolved review item",
+      "max_attempts": null,
+      "name": "media-integrity:resolve-review",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 83,
+      "requires": [],
+      "service": "media_integrity"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_qbittorrent_categories",
+      "label": "qBit categories (movies/tv/music/books)",
+      "max_attempts": null,
+      "name": "ensure-qbittorrent-categories",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 84,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [
+        "ensure-qbittorrent-categories"
+      ],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_arr_download_client",
+      "label": "Wire qBit as download client on each *arr",
+      "max_attempts": null,
+      "name": "ensure-arr-download-client",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 85,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_jellyfin_libraries",
+      "label": "Ensure Jellyfin libraries (Movies/TV/Music/Books)",
+      "max_attempts": null,
+      "name": "ensure-jellyfin-libraries",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 86,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_sonarr_seed_series",
+      "label": "Seed Sonarr with starter series",
+      "max_attempts": null,
+      "name": "ensure-sonarr-seed-series",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 87,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_jellyseerr_oidc",
+      "label": "Wire Authelia SSO into Jellyseerr",
+      "max_attempts": null,
+      "name": "ensure-jellyseerr-oidc",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 88,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_arr_jellyfin_notifier",
+      "label": "Wire *arr \u2192 Jellyfin library refresh",
+      "max_attempts": null,
+      "name": "ensure-arr-jellyfin-notifier",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 89,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:run_media_hygiene",
+      "label": "Clean up downloads",
+      "max_attempts": null,
+      "name": "run-media-hygiene",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 90,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm",
+      "label": "Refresh media library",
+      "max_attempts": null,
+      "name": "refresh-media",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 90,
+      "requires": [
+        "media_server_reachable",
+        "media_server_api_key"
+      ],
+      "service": "jellyfin"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:ensure_bazarr_language_profile",
+      "label": "Set up Bazarr language profile",
+      "max_attempts": null,
+      "name": "ensure-bazarr-language-profile",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 91,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:scan_completed_downloads",
+      "label": "Scan completed downloads",
+      "max_attempts": null,
+      "name": "scan-completed-downloads",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 92,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:recover_stuck_imports",
+      "label": "Force-import files the *arr queue stalled on",
+      "max_attempts": null,
+      "name": "recover-stuck-imports",
+      "non_blocking": false,
+      "phase": "post",
+      "priority": 93,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [
+        "ensure-sonarr-seed-series",
+        "push-indexers"
+      ],
+      "handler": "media_stack.services.apps.core.job_adapters:mass_search_throttled",
+      "label": "Search missing (throttled)",
+      "max_attempts": null,
+      "name": "mass-search-throttled",
+      "non_blocking": true,
+      "phase": "post",
+      "priority": 95,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:seed_runtime_overrides",
+      "label": "Seed runtime overrides from profile",
+      "max_attempts": null,
+      "name": "seed-runtime-overrides",
+      "non_blocking": false,
+      "phase": "pre_bootstrap",
+      "priority": 5,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:discover_api_keys",
+      "label": "Discover API keys",
+      "max_attempts": null,
+      "name": "discover-api-keys",
+      "non_blocking": false,
+      "phase": "pre_bootstrap",
+      "priority": 10,
+      "requires": [],
+      "service": "core"
+    },
+    {
+      "after": [],
+      "handler": "media_stack.services.apps.core.job_adapters:run_legacy_pipeline",
+      "label": "Run legacy bootstrap",
+      "max_attempts": null,
+      "name": "run-legacy-pipeline",
+      "non_blocking": false,
+      "phase": "pre_bootstrap",
+      "priority": 20,
+      "requires": [],
+      "service": "core"
+    }
+  ],
+  "tree": [
+    {
+      "name": "bootstrap",
+      "requires": [],
+      "sub_jobs": [
+        {
+          "name": "configure-pre-bootstrap",
+          "requires": [],
+          "sub_jobs": [
+            {
+              "name": "seed-runtime-overrides",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "discover-api-keys",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "run-legacy-pipeline",
+              "requires": [],
+              "sub_jobs": []
+            }
+          ]
+        },
+        {
+          "name": "configure-infrastructure",
+          "requires": [],
+          "sub_jobs": [
+            {
+              "name": "configure-auth",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "envoy-config",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ingress-config",
+              "requires": [],
+              "sub_jobs": []
+            }
+          ]
+        },
+        {
+          "name": "configure-media-server",
+          "requires": [
+            "media_server_api_key",
+            "media_server_reachable"
+          ],
+          "sub_jobs": [
+            {
+              "name": "configure-libraries",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-livetv",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-plugins",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-playback",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-home-screen",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-collections",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            }
+          ]
+        },
+        {
+          "name": "configure-download-clients",
+          "requires": [],
+          "sub_jobs": [
+            {
+              "name": "configure-categories",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-arr-clients",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-indexers",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "discover-indexers",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "tag-indexers-for-apps",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "reset-prowlarr-app-mappings",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "push-indexers",
+              "requires": [],
+              "sub_jobs": []
+            }
+          ]
+        },
+        {
+          "name": "configure-post",
+          "requires": [
+            "arr_apps_reachable",
+            "media_server_api_key",
+            "media_server_reachable"
+          ],
+          "sub_jobs": [
+            {
+              "name": "configure-jellyseerr",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "apply-arr-runtime-defaults",
+              "requires": [
+                "arr_apps_reachable"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "validate-credentials",
+              "requires": [
+                "media_server_api_key",
+                "arr_apps_reachable"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "post-setup",
+              "requires": [
+                "media_server_api_key",
+                "media_server_reachable"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "restart-apps",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "media-integrity:scan",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "configure-auto-scan",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "media-integrity:reconcile",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "media-integrity:enforce-config",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "media-integrity:resolve-review",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-qbittorrent-categories",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-arr-download-client",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-jellyfin-libraries",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-sonarr-seed-series",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-jellyseerr-oidc",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-arr-jellyfin-notifier",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "run-media-hygiene",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "refresh-media",
+              "requires": [
+                "media_server_reachable",
+                "media_server_api_key"
+              ],
+              "sub_jobs": []
+            },
+            {
+              "name": "ensure-bazarr-language-profile",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "scan-completed-downloads",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "recover-stuck-imports",
+              "requires": [],
+              "sub_jobs": []
+            },
+            {
+              "name": "mass-search-throttled",
+              "requires": [],
+              "sub_jobs": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
