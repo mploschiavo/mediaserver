@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlparse
 from media_stack.api.actor_resolver import ActorResolver
 from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME,
+    session_cookie_reader,
     session_store,
     trusted_proxy_auth,
 )
@@ -93,14 +94,49 @@ class HandlerActorResolverFactory:
     """Lazy ``ActorResolver`` builder so test patches of
     ``build_default_service`` / ``trusted_proxy_auth`` take effect.
     A bare ``ActorResolver(build_service=build_default_service)``
-    captures the import-time name and sails past a ``patch(...)``."""
+    captures the import-time name and sails past a ``patch(...)``.
+
+    GETs don't carry a body, so the underlying ``ActorResolver`` would
+    default to ``_actor="controller-ui"`` — a literal placeholder that
+    tags every authenticated GET with the same anonymous label. We
+    pre-resolve the caller's username from the request context (session
+    cookie first, then trusted-proxy ``Remote-User``, mirroring
+    ``_build_me_response``) and inject it as ``_actor`` so downstream
+    services see the real user instead of ``controller-ui``.
+    """
 
     def resolve(self, handler: Any, body: dict | None = None) -> Actor:
         impl = ActorResolver(
             build_service=build_default_service,
             client_ip_for=trusted_proxy_auth.client_ip,
         )
-        return impl.resolve(handler, body or {})
+        merged = dict(body or {})
+        if not str(merged.get("_actor", "") or "").strip():
+            identity = self._identity_from_request(handler)
+            if identity:
+                merged["_actor"] = identity
+        return impl.resolve(handler, merged)
+
+    def _identity_from_request(self, handler: Any) -> str:
+        """Return the authenticated username on this request, or ''.
+
+        Resolution order matches ``_build_me_response`` in
+        ``handlers_get.py``: session cookie wins, then the trusted-
+        proxy ``Remote-User`` header (Authelia via Envoy ext_authz).
+        Basic-auth is skipped here — the GET dispatcher only fires
+        once the request has cleared the auth gate, so a Basic-auth
+        login that reaches this point already has a session cookie.
+        """
+        try:
+            cookie_user = session_cookie_reader.username_for_handler(handler)
+        except Exception:  # noqa: BLE001
+            cookie_user = ""
+        if cookie_user:
+            return cookie_user
+        try:
+            return str(trusted_proxy_auth.identity(handler) or "")
+        except Exception:  # noqa: BLE001
+            return ""
 
 
 class RequestPlumbing:

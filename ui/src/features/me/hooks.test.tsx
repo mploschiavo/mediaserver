@@ -93,7 +93,13 @@ describe("me feature hooks", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("useMeLoginHistory hits GET /api/users/{id}/login-history", async () => {
+  it("useMeLoginHistory hits GET /api/me/login-history", async () => {
+    // The hook used to fan the caller's `id` through the admin path
+    // `/api/users/{id}/login-history`, but that path filters audit
+    // entries by `target == user_id` while login events store the
+    // username in `target` — so the UUID id never matched. The
+    // controller exposes the self-scoped `/api/me/login-history`
+    // sibling that resolves the actor's username server-side.
     fetchMock.mockResolvedValue(ok({ entries: [] }));
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useMeLoginHistory("u1"), {
@@ -101,7 +107,7 @@ describe("me feature hooks", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(String(fetchMock.mock.calls[0]![0])).toMatch(
-      /api\/users\/u1\/login-history$/,
+      /api\/me\/login-history$/,
     );
   });
 
