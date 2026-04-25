@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Regenerate dist/ single-file deployment bundles from source.
+# Regenerate deploy/dist/ single-file deployment bundles from source.
 #
-# dist/docker-compose.yml — docker/docker-compose.yml + distribution header
-# dist/k8s-deploy.yaml    — kubectl kustomize k8s/ + distribution header
+# deploy/dist/docker-compose.yml — deploy/compose/docker-compose.yml + distribution header
+# deploy/dist/k8s-deploy.yaml    — kubectl kustomize deploy/k8s/ + distribution header
 #
-# Run after bumping image tags in docker/docker-compose.yml or
-# k8s/kustomization.yaml so the one-file bundles users download stay
+# Run after bumping image tags in deploy/compose/docker-compose.yml or
+# deploy/k8s/kustomization.yaml so the one-file bundles users download stay
 # in lockstep with the sources kubectl/compose apply from a checkout.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 REPO_ROOT="$(pwd)"
-DIST_DIR="${REPO_ROOT}/dist"
+DIST_DIR="${REPO_ROOT}/deploy/dist"
 
 mkdir -p "${DIST_DIR}"
 
@@ -36,7 +36,7 @@ if [ -z "${SKIP_VERSION_CHECK:-}" ] && command -v python3 >/dev/null && \
   fi
 fi
 
-echo "Regenerating dist/docker-compose.yml..."
+echo "Regenerating deploy/dist/docker-compose.yml..."
 {
     cat <<'EOF'
 # Media Automation Stack — Docker Compose Single-File Deploy (distribution snapshot)
@@ -49,18 +49,18 @@ echo "Regenerating dist/docker-compose.yml..."
 # Prerequisites: Docker Engine 24+ with Compose V2.
 #
 # NOTE: This file expects to run from a repo checkout. Bind mounts reference
-# ../config, ../contracts, ../examples. If you are using this file standalone,
-# clone the repo and run from the docker/ directory instead:
-#   git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver/docker
+# ../../config, ../../contracts, ../examples. If you are using this file
+# standalone, clone the repo and run from the deploy/compose/ directory instead:
+#   git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver/deploy/compose
 #   docker compose up -d
 #
-# Regenerate this file after editing docker/docker-compose.yml:
-#   bin/regen-dist.sh
+# Regenerate this file after editing deploy/compose/docker-compose.yml:
+#   bin/release/regen-dist.sh
 EOF
-    cat "${REPO_ROOT}/docker/docker-compose.yml"
+    cat "${REPO_ROOT}/deploy/compose/docker-compose.yml"
 } > "${DIST_DIR}/docker-compose.yml"
 
-echo "Regenerating dist/k8s-deploy.yaml..."
+echo "Regenerating deploy/dist/k8s-deploy.yaml..."
 {
     cat <<'EOF'
 # Media Automation Stack — Kubernetes Single-File Deploy
@@ -73,28 +73,29 @@ echo "Regenerating dist/k8s-deploy.yaml..."
 # Prerequisites: Kubernetes 1.25+ with a default StorageClass
 # More info: https://github.com/mploschiavo/mediaserver
 #
-# Generated from k8s/ manifests (kubectl kustomize k8s/).
-# Do NOT hand-edit — regenerate with `bin/regen-dist.sh`.
+# Generated from deploy/k8s/ manifests (kubectl kustomize deploy/k8s/).
+# Do NOT hand-edit — regenerate with `bin/release/regen-dist.sh`.
 EOF
     # ``--load-restrictor LoadRestrictionsNone`` is required because the
     # configMapGenerator for the profile lives at
     # ../examples/bootstrap-profiles/media-k8s-standard.yaml relative to
-    # k8s/ — kustomize's default security model rejects file references
+    # deploy/k8s/ — kustomize's default security model rejects file references
     # outside the kustomization root. We DO want the profile to live with
-    # other profiles, not under k8s/, so the flag is the right tradeoff.
+    # other profiles, not under deploy/k8s/, so the flag is the right tradeoff.
     # (v1.0.169 — previously the configMapGenerator was commented out so
     # this wasn't needed; enabling it for clean-deploy reproducibility
     # forced the flag.)
     #
     # ADR-0001 Phase 5 (v1.0.195): k8s/ flat manifests regrouped under
-    # k8s/base/<concern>/. The kustomization references them via relative
-    # paths (base/apps/core.yaml, base/edge/envoy.yaml, etc.); the apply
-    # entry point at k8s/ is unchanged.
-    kubectl kustomize --load-restrictor LoadRestrictionsNone "${REPO_ROOT}/k8s/"
+    # k8s/base/<concern>/. ADR-0001 Phase 6: k8s/ moved under deploy/k8s/.
+    # The kustomization references them via relative paths
+    # (base/apps/core.yaml, base/edge/envoy.yaml, etc.); the apply entry
+    # point at deploy/k8s/ is unchanged.
+    kubectl kustomize --load-restrictor LoadRestrictionsNone "${REPO_ROOT}/deploy/k8s/"
 } > "${DIST_DIR}/k8s-deploy.yaml"
 
 echo ""
-echo "dist/ regenerated:"
+echo "deploy/dist/ regenerated:"
 wc -l "${DIST_DIR}/docker-compose.yml" "${DIST_DIR}/k8s-deploy.yaml"
 controller_tag_k8s="$(grep -oE 'media-stack-controller:v[0-9.]+' "${DIST_DIR}/k8s-deploy.yaml" | head -1)"
 controller_tag_compose="$(grep -oE 'media-stack-controller:v[0-9.]+' "${DIST_DIR}/docker-compose.yml" | head -1)"

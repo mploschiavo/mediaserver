@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUN_PLAYWRIGHT="${RUN_PLAYWRIGHT:-0}"
 RUN_API_E2E="${RUN_API_E2E:-0}"
 STACK_NODE_IP="${STACK_NODE_IP:-}"

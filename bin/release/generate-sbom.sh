@@ -2,9 +2,9 @@
 # Generate an SPDX SBOM for the controller image using syft.
 #
 # Usage:
-#   bin/generate-sbom.sh                                   # latest local tag
-#   bin/generate-sbom.sh harbor.iomio.io/.../ctrl:v1.0.65  # specific image
-#   IMAGE=... bin/generate-sbom.sh                         # env var form
+#   bin/release/generate-sbom.sh                                   # latest local tag
+#   bin/release/generate-sbom.sh harbor.iomio.io/.../ctrl:v1.0.65  # specific image
+#   IMAGE=... bin/release/generate-sbom.sh                         # env var form
 #
 # Output: artifacts/sbom/<sanitized-image-name>.spdx.json
 #
@@ -13,7 +13,7 @@
 #              | sh -s -- -b ~/.local/bin
 set -Eeuo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${1:-${IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}}"
 
 if ! command -v syft >/dev/null 2>&1; then

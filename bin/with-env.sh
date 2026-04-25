@@ -13,10 +13,10 @@ Description:
   target namespace/project (or I_UNDERSTAND).
 
 Examples:
-  bash bin/with-env.sh examples/environments/media-dev.env.example \
-    bash bin/install.sh
-  bash bin/with-env.sh examples/environments/media-dev.env.example \
-    bash bin/deploy-stack.sh
+  bash bin/with-env.sh deploy/examples/environments/media-dev.env.example \
+    bash bin/install/install.sh
+  bash bin/with-env.sh deploy/examples/environments/media-dev.env.example \
+    bash bin/install/deploy-stack.sh
 EOF
   if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     exit 0

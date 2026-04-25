@@ -4,12 +4,12 @@
 #
 # Two modes:
 #
-#   ./bin/verify-fresh-install.sh           — probe ONLY (current state)
+#   ./bin/test/verify-fresh-install.sh      — probe ONLY (current state)
 #       Just hits each promise's probe against the live stack. Fast,
 #       safe, no side effects. Use to confirm your dev stack is
 #       healthy or after manually triggering bootstrap.
 #
-#   ./bin/verify-fresh-install.sh --wipe    — full clean install + probe
+#   ./bin/test/verify-fresh-install.sh --wipe — full clean install + probe
 #       Runs ``compose down -v --remove-orphans``, wipes config/
 #       (preserving defaults), wipes data/ and media/, brings the
 #       stack back up via ``compose up -d``, waits for the controller's
@@ -23,8 +23,8 @@
 #   2 — bootstrap timed out / stack not reachable
 #
 # Configurable via env:
-#   COMPOSE_FILE        default: docker/docker-compose.yml (relative to repo root)
-#   CONFIG_ROOT         default: ../config
+#   COMPOSE_FILE        default: deploy/compose/docker-compose.yml (relative to repo root)
+#   CONFIG_ROOT         default: ../../config (relative to compose file)
 #   BOOTSTRAP_TIMEOUT   default: 600 (seconds to wait for controller bootstrap)
 #   PROMISE_TIMEOUT     default: 15  (seconds per HTTP probe)
 #   CONTROLLER_URL      default: http://localhost:9100
@@ -37,11 +37,11 @@
 
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 
-COMPOSE_FILE="${COMPOSE_FILE:-docker/docker-compose.yml}"
-CONFIG_ROOT="${CONFIG_ROOT:-../config}"
+COMPOSE_FILE="${COMPOSE_FILE:-deploy/compose/docker-compose.yml}"
+CONFIG_ROOT="${CONFIG_ROOT:-../../config}"
 BOOTSTRAP_TIMEOUT="${BOOTSTRAP_TIMEOUT:-600}"
 CONTROLLER_URL="${CONTROLLER_URL:-http://localhost:9100}"
 ADMIN_USER="${ADMIN_USER:-admin}"
