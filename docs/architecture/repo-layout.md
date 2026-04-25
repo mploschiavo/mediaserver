@@ -63,7 +63,7 @@ under ADR-0001 Phase 6; per-app ownership is already expressed by
 - Platform manifests and cluster primitives: `k8s/`.
 - App wiring and defaults: `contracts/`, `config/`.
 - Technology registration and role bindings: `contracts/services/*.yaml`, `contracts/defaults/*.yaml`
-- Shared runtime lifecycle orchestration: `bin/controller.py`, `src/media_stack/services/runtime_factory/*`, `src/media_stack/cli/commands/`
+- Shared runtime lifecycle orchestration: `src/media_stack/cli/commands/controller_main.py` (the `media-stack-controller` console-script entry-point), `src/media_stack/services/runtime_factory/*`, `src/media_stack/cli/commands/`
 - App/technology behavior modules: `src/media_stack/services/apps/*` (fully isolated, extractable)
 - Quality gates and regressions: `tests/`
 - Product narrative and operator docs: `docs/`

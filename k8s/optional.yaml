@@ -447,7 +447,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: controller-reconcile
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.192
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.193
               imagePullPolicy: IfNotPresent
               env:
                 - name: SABNZBD_API_KEY
@@ -489,8 +489,7 @@ spec:
                 - name: FULLY_PRECONFIGURED
                   value: "1"
               command:
-                - python3
-                - /opt/media-stack/bin/controller.py
+                - media-stack-controller
                 - --config
                 - /controller-config/config.json
                 - --config-root
@@ -604,7 +603,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: jellyfin-prewarm
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.192
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.193
               imagePullPolicy: IfNotPresent
               env:
                 - name: JELLYFIN_API_KEY
@@ -630,8 +629,7 @@ spec:
                 - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
                   value: "15"
               command:
-                - python3
-                - /opt/media-stack/bin/controller.py
+                - media-stack-controller
                 - --mode
                 - media-server-prewarm
                 - --config
@@ -682,7 +680,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: media-hygiene
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.192
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.193
               imagePullPolicy: IfNotPresent
               env:
                 - name: STACK_ADMIN_USERNAME
@@ -732,8 +730,7 @@ spec:
                 - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
                   value: "15"
               command:
-                - python3
-                - /opt/media-stack/bin/controller.py
+                - media-stack-controller
                 - --mode
                 - media-hygiene
                 - --config

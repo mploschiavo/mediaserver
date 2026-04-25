@@ -14,7 +14,6 @@ LABEL org.opencontainers.image.title="Media Stack Controller" \
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/opt/media-stack/src:/opt/media-stack \
     MEDIA_STACK_VERSION=${VERSION}
 
 WORKDIR /opt/media-stack
@@ -24,30 +23,40 @@ RUN apk add --no-cache openssl \
     && pip install --no-cache-dir argon2-cffi bcrypt docker kubernetes pyyaml requests \
     && apk del .build-deps
 
+# Install the package so the ``[project.scripts]`` entry-points
+# (media-stack-controller, media-stack-generate-envoy-config, …)
+# land on /usr/local/bin. ``--no-deps`` because we already
+# installed the runtime libs above; pip would otherwise pull
+# fresh copies and bloat the image.
 COPY VERSION /opt/media-stack/VERSION
-COPY bin /opt/media-stack/bin
+COPY pyproject.toml /opt/media-stack/pyproject.toml
 COPY src /opt/media-stack/src
-# As of v1.0.175 the dashboard HTML, /api/static/* assets and the
-# Swagger UI HTML wrapper are owned by a separate UI container. The
-# Python source tree still ships the original files for ratchet
-# tests + dev workflows, but the runtime image MUST NOT contain
-# them — they're a 5000-line attack surface that's no longer
-# served. Strip them from the image right after the source COPY so
-# nothing reads them at runtime.
-RUN rm -rf /opt/media-stack/src/media_stack/api/static \
-    /opt/media-stack/src/media_stack/api/dashboard.html
 COPY config/defaults /opt/media-stack/config/defaults
 COPY contracts /opt/media-stack/contracts
+RUN pip install --no-deps --no-cache-dir /opt/media-stack
 
-# Generate bootstrap config JSON from contracts at build time
-RUN PYTHONPATH=/opt/media-stack/src python3 \
-    /opt/media-stack/src/media_stack/cli/commands/generate_bootstrap_config.py \
-    /opt/media-stack/contracts \
-    /opt/media-stack/contracts/media-stack.config.json \
-    /opt/media-stack/contracts/media-stack.profile.yaml \
+# Shell wrappers under ``bin/`` (release.sh, regen-dist.sh, etc.)
+# are dev-host tooling, not runtime. Skip them — the entry-points
+# above cover everything the container actually executes.
+
+# Generate bootstrap config JSON from contracts at build time.
+# Best-effort: if anything fails, the controller regenerates at
+# first boot from the same contracts.
+RUN media-stack-generate-bootstrap-config \
+        /opt/media-stack/contracts \
+        /opt/media-stack/contracts/media-stack.config.json \
+        /opt/media-stack/contracts/media-stack.profile.yaml \
     || echo "WARN: Config generation failed (will auto-generate at runtime)"
 
 EXPOSE 9100
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -qO- http://127.0.0.1:9100/healthz || exit 1
+
+# ENTRYPOINT is the controller console-script. Manifests pass
+# `--serve` and the rest as CMD — see k8s/controller.yaml /
+# docker-compose.yml. (Phase 12-C: replaces the old
+# ``python3 /opt/media-stack/bin/controller.py`` invocation;
+# bin/controller.py was a 5-line ``from … import main; main()``
+# wrapper around the same entry-point.)
+ENTRYPOINT ["media-stack-controller"]

@@ -110,7 +110,7 @@ If a behavior differs between UI and repo code, repo code wins after next reconc
 ## Architecture Layers
 - Orchestration entrypoints:
   - Bash wrappers in `bin/*.sh` (thin only)
-  - Python CLIs in `src/media_stack/cli/commands/*.py` (and `bin/controller.py` composition root)
+  - Python CLIs in `src/media_stack/cli/commands/*.py` (and the controller composition root in `src/media_stack/cli/commands/controller_main.py`)
 - Domain/service logic:
   - `src/media_stack/services/`
   - App-scoped compatibility/service modules in `src/media_stack/services/apps/<app>/`
@@ -317,7 +317,7 @@ Swap workflow:
 - Plugin manifests register handlers under `event_handlers.<EVENT>.<handler_key>`.
 - Runner/media-server phase plans must declare `event` + `handler` (legacy `operation` is compatibility-only).
 - Do not re-introduce bespoke per-operation wiring classes in orchestration layers.
-- `bin/controller.py` must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
+- `media_stack.cli.commands.controller_main` (the controller composition root) must not inject inline handler callables for runtime operations; runtime handlers must come from declarative `adapter_hooks.event_handlers`.
 - Runtime binding context must be sourced from `technology_bindings` (config/manifests), not hard-coded role maps in entrypoints.
 - Keep app-specific runtime modules under `src/media_stack/services/apps/<app>/runtime/*`; shared runtime modules must stay technology-neutral, and pipeline/discovery handler wiring belongs in app-scoped handler modules (`apps/<app>/runtime_ops.py`) plus declarative RunnerEvent config.
 - `TechnologyLifecycle*` orchestration classes are obsolete in this repo; lifecycle flow must be expressed through `RunnerEvent` plans and handlers.
@@ -455,7 +455,7 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 
 ## Controller Image Packaging Contract
 The controller service runs from a prebuilt image (`docker/controller.Dockerfile`).
-- Any new module imported by `bin/controller.py` must be included by the image build context.
+- Any new module imported by the controller composition root (`src/media_stack/cli/commands/controller_main.py`) must be included by the image build context.
 - Keep runtime Python under `bin/` and `src/media_stack/` so `COPY bin /opt/media-stack/bin` captures required modules.
 - Validate runtime changes by rebuilding/pushing the controller image before live bootstrap tests.
 - When code changes impact bootstrap/runtime behavior, rebuild the controller image before manual compose/k8s verification to avoid stale-image false negatives.
@@ -545,7 +545,7 @@ Current key test suites:
 
 ## Controller Image Dev Workflow
 
-Use this sequence whenever making changes to code that runs inside the controller container (`src/media_stack/services/**`, `bin/controller.py`, or any module imported by the controller).
+Use this sequence whenever making changes to code that runs inside the controller container (`src/media_stack/services/**`, `src/media_stack/cli/commands/controller_main.py`, or any module imported by the controller).
 
 ```
 # 1. Make code changes
@@ -566,7 +566,7 @@ Key rules:
 - Never test bootstrap runtime behavior with a stale image. Rebuild first, validate second.
 - `PUSH_IMAGE=0` builds and loads the image locally without pushing to the registry.
 - Changes to `src/media_stack/cli/commands/`, `src/media_stack/core/`, or `src/media_stack/services/apps/stack/controller_config_policy.py` (host-side policy handler) do **not** require an image rebuild — they take effect on the next deploy run.
-- Changes to `src/media_stack/services/runtime_factory/`, `src/media_stack/services/apps/*/`, or `bin/controller.py` **do** require an image rebuild.
+- Changes to `src/media_stack/services/runtime_factory/`, `src/media_stack/services/apps/*/`, or `src/media_stack/cli/commands/controller_main.py` **do** require an image rebuild.
 
 ## Validation Checklist (Pre-Merge)
 1. `bash -n bin/*.sh bin/*/*.sh`
@@ -618,7 +618,7 @@ Key rules:
 
 ## Refactor Sequencing (Ongoing)
 High-value next slices:
-1. Continue reducing `bin/controller.py` by extracting remaining cohesive domains.
+1. Continue reducing `src/media_stack/cli/commands/controller_main.py` by extracting remaining cohesive domains.
 2. Keep moving subprocess/network/file IO behind `src/media_stack/core/` adapters.
 3. Expand contract tests for additional shell wrappers and job-manifest parity.
 4. Promote typed config models incrementally for profile YAML and per-service YAML config sections.
