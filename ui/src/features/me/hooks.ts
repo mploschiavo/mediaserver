@@ -192,20 +192,26 @@ export function useMeMfaState(): UseQueryResult<MeMfaState> {
 }
 
 /**
- * Login history is keyed by `user_id` on the server (no `/api/me`
- * sibling exists in the spec). We resolve the caller's id from the
- * `/api/me` profile and fan it through the URL. Disabled until we
- * have a non-empty id.
+ * Login history for the authenticated caller. The controller exposes
+ * `/api/me/login-history` (registered in the session-visibility GET
+ * route table) which scopes the audit-log query to the resolved
+ * actor's username — no `user_id` parameter needed and no admin role
+ * required. The earlier admin-keyed `/api/users/{user_id}/login-
+ * history` shape doesn't work for self-service: it filtered audit
+ * entries by `target == user_id`, but login events store `target =
+ * username`, so the UUID `user_id` never matched anything.
+ *
+ * The `userId` argument is retained on the hook so existing callers
+ * compile, but it now only gates the query (so we don't fire before
+ * the `/api/me` profile has loaded) and is folded into the query key
+ * to keep React Query's cache scoped correctly.
  */
 export function useMeLoginHistory(
   userId: string | undefined,
 ): UseQueryResult<LoginHistoryResponse> {
   return useQuery({
     queryKey: meKeys.loginHistory(userId),
-    queryFn: () =>
-      fetcher<LoginHistoryResponse>(
-        `api/users/${encodeURIComponent(userId as string)}/login-history`,
-      ),
+    queryFn: () => fetcher<LoginHistoryResponse>("api/me/login-history"),
     enabled: typeof userId === "string" && userId.length > 0,
   });
 }

@@ -115,10 +115,27 @@ class _SessionVisibilityGetHelper:
 
     def _active_sessions(self, handler: Any) -> None:
         """GET /api/sessions/active. Authz: admin (SessionAggregator.list_all).
-        Bucket: security-read. Shape: ``{"sessions": [SessionDTO...]}``."""
+        Bucket: security-read. Shape: ``{"sessions": [SessionDTO...]}``.
+
+        SSO-empty fallback
+        ------------------
+        Under Authelia SSO the controller doesn't mint native
+        ``SessionStore`` sessions (the cookie lives in Authelia), and
+        the Authelia / Jellyfin / Jellyseerr ``SessionAdminProvider``
+        impls all degrade to ``[]`` in the file-backend default
+        deployment. The aggregator therefore returns an empty list
+        even though there's clearly at least one live session — the
+        admin staring at the page right now. When that happens we
+        synthesise a single "current caller" row from the resolved
+        ``Actor`` so the operator sees their own session instead of
+        the misleading "no live sessions" empty state.
+        """
         def _run(actor: Actor) -> dict:
             dtos = self._aggregator_getter().list_all(actor=actor)
-            return {"sessions": [d.to_dict() for d in dtos]}
+            payload = [d.to_dict() for d in dtos]
+            if not payload and actor.is_authenticated:
+                payload.append(_synth_caller_session(actor))
+            return {"sessions": payload}
         self._serve(handler, _run)
 
     def _user_login_history(self, handler: Any, user_id: str) -> None:
@@ -229,14 +246,28 @@ class _SessionVisibilityGetHelper:
     def _my_sessions(self, handler: Any) -> None:
         """GET /api/me/sessions. Authz: authenticated, scoped to self.
         Bucket: global. Shape:
-        ``{"sessions": [...], "current_session_id": "..."}``."""
+        ``{"sessions": [...], "current_session_id": "..."}``.
+
+        SSO-empty fallback
+        ------------------
+        Same shape as ``_active_sessions``: under Authelia SSO the
+        controller doesn't mint a native ``SessionStore`` row for the
+        caller, and the file-backend provider impls degrade to ``[]``.
+        Without the synth row the /me page renders "No active sessions"
+        even though the operator is staring at the page right now. We
+        manufacture a single ``SessionDTO``-shaped row from the
+        resolved ``Actor`` so the SSO case isn't visually broken.
+        """
         def _run(actor: Actor) -> dict:
             self._plumb.require_authenticated(actor)
             dtos = self._aggregator_getter().list_for_user(
                 username=actor.username, actor=actor,
             )
+            payload = [d.to_dict() for d in dtos]
+            if not payload:
+                payload.append(_synth_caller_session(actor))
             return {
-                "sessions": [d.to_dict() for d in dtos],
+                "sessions": payload,
                 "current_session_id": self._plumb.current_session_id(handler),
             }
         self._serve(handler, _run)
@@ -287,6 +318,36 @@ class _SessionVisibilityGetHelper:
             )
             return {"entries": list(entries)}
         self._serve(handler, _run)
+
+
+def _synth_caller_session(actor: Actor) -> dict:
+    """Mint a synthetic SessionDTO-shaped row for the current caller.
+
+    Used by ``/api/sessions/active`` when the cross-provider aggregate
+    is empty but the caller is clearly authenticated (the SSO case —
+    see ``_active_sessions`` docstring). The shape mirrors
+    ``SessionDTO.to_dict`` so the SPA's ``SessionsTable`` can render
+    it without a discriminator.
+
+    The row is marked ``revokable=False`` because the controller
+    didn't mint the underlying cookie (Authelia did) — the operator
+    revokes via the Authelia portal, not via this list. It's tagged
+    ``provider=actor.source_provider`` (typically ``"controller"``)
+    so the badge colour matches the rest of the column.
+    """
+    return {
+        "provider": actor.source_provider or "controller",
+        "session_id": "",
+        "username": actor.username,
+        "device": actor.user_agent,
+        "device_class": "",
+        "client": actor.user_agent,
+        "client_ip": actor.client_ip,
+        "first_seen_ip": False,
+        "connected_since": "",
+        "last_activity": "",
+        "revokable": False,
+    }
 
 
 __all__ = ["_SessionVisibilityGetHelper"]

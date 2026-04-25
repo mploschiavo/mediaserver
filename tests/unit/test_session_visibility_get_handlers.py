@@ -272,13 +272,66 @@ class TestActiveSessionsHappy(unittest.TestCase):
             {"provider": "controller", "session_id": "s1", "username": "alice"},
         ]})
 
-    def test_empty_result_has_empty_list_not_null(self):
-        helper, deps = _build_helper()
+    def test_empty_result_synthesises_caller_session(self):
+        # Under SSO the controller has no native sessions and the
+        # provider impls all degrade to []. Rather than render the
+        # misleading "no live sessions" empty state, the handler
+        # surfaces the caller's own identity as a synthetic row so
+        # the operator at least sees themselves on the page they're
+        # currently looking at.
+        helper, deps = _build_helper(
+            actor=Actor(
+                username="alice", is_admin=True,
+                client_ip="203.0.113.10",
+                user_agent="Mozilla/5.0 (X11; Linux x86_64)",
+            ),
+        )
+        deps["agg"].list_all_return = []
+        h = _FakeHandler(path="/api/sessions/active")
+        helper.dispatch(h, "/api/sessions/active")
+        self.assertEqual(h.status, 200)
+        self.assertIsNotNone(h.body)
+        sessions = h.body["sessions"]
+        self.assertEqual(len(sessions), 1)
+        synth = sessions[0]
+        self.assertEqual(synth["username"], "alice")
+        self.assertEqual(synth["provider"], "controller")
+        self.assertEqual(synth["client_ip"], "203.0.113.10")
+        self.assertEqual(
+            synth["client"], "Mozilla/5.0 (X11; Linux x86_64)",
+        )
+        # Synthetic rows are read-only — we don't own the underlying
+        # cookie, the operator revokes via the Authelia portal.
+        self.assertFalse(synth["revokable"])
+        self.assertEqual(synth["session_id"], "")
+
+    def test_empty_result_anonymous_actor_returns_empty(self):
+        # If somehow an anonymous actor reaches the dispatcher (it
+        # shouldn't, the @requires_admin gate would raise first), the
+        # synth fallback must NOT manufacture a phantom row — empty
+        # list is the right behaviour.
+        helper, deps = _build_helper(actor=Actor.anonymous())
         deps["agg"].list_all_return = []
         h = _FakeHandler(path="/api/sessions/active")
         helper.dispatch(h, "/api/sessions/active")
         self.assertEqual(h.status, 200)
         self.assertEqual(h.body, {"sessions": []})
+
+    def test_non_empty_aggregator_skips_synth(self):
+        # The synth row only fires when the aggregator returned
+        # nothing — once the provider impls start producing rows the
+        # synthetic placeholder must vanish so we don't double-count
+        # the caller.
+        helper, deps = _build_helper()
+        deps["agg"].list_all_return = [
+            _FakeDTO({"provider": "jellyfin", "session_id": "jf-1",
+                      "username": "alice"}),
+        ]
+        h = _FakeHandler(path="/api/sessions/active")
+        helper.dispatch(h, "/api/sessions/active")
+        self.assertEqual(h.status, 200)
+        self.assertEqual(len(h.body["sessions"]), 1)
+        self.assertEqual(h.body["sessions"][0]["provider"], "jellyfin")
 
 
 class TestActiveSessionsAuthz(unittest.TestCase):
@@ -551,13 +604,32 @@ class TestMySessions(unittest.TestCase):
         self.assertEqual(len(h.body["sessions"]), 1)
         self.assertIn("current_session_id", h.body)
 
-    def test_empty_sessions_shape(self):
-        helper, _ = _build_helper(
-            actor=Actor(username="alice", is_admin=False),
+    def test_empty_aggregate_synthesises_caller_session(self):
+        # Mirrors the SSO-empty fallback on /api/sessions/active: when
+        # the cross-provider aggregate is empty for the caller (the
+        # SSO case where the controller has no native row and the
+        # provider impls all degrade to []) we surface the operator's
+        # own identity as a synthetic row so the /me page doesn't
+        # render the misleading "No active sessions" empty state while
+        # they're staring at it.
+        helper, deps = _build_helper(
+            actor=Actor(
+                username="alice", is_admin=False,
+                client_ip="203.0.113.10",
+                user_agent="Mozilla/5.0 (X11; Linux x86_64)",
+            ),
         )
+        deps["agg"].list_for_user_return = []
         h = _FakeHandler(path="/api/me/sessions")
         helper.dispatch(h, "/api/me/sessions")
-        self.assertEqual(h.body["sessions"], [])
+        self.assertEqual(h.status, 200)
+        sessions = h.body["sessions"]
+        self.assertEqual(len(sessions), 1)
+        synth = sessions[0]
+        self.assertEqual(synth["username"], "alice")
+        self.assertEqual(synth["client_ip"], "203.0.113.10")
+        self.assertFalse(synth["revokable"])
+        self.assertEqual(synth["session_id"], "")
         self.assertEqual(h.body["current_session_id"], "")
 
     def test_unauthenticated_gets_401(self):
