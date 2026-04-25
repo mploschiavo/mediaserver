@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from urllib import error, request
 
-from media_stack.cli.workflows.cli_common import repo_root_from_script_file
+from media_stack.core.cli_common import repo_root_from_script_file
 
 from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 import logging

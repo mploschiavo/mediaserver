@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.exceptions import ConfigError  # noqa: E402
-from media_stack.cli.workflows.controller_component_resolver import (  # noqa: E402
+from media_stack.services.controller_component_resolver import (  # noqa: E402
     normalize_technology_token,
     canonicalize_technology,
     normalize_flag_token,

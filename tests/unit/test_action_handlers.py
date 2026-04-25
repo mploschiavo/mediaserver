@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands.action_handlers import (  # noqa: E402
+from media_stack.services.jobs.action_handlers import (  # noqa: E402
     action_discover_indexers,
     action_bootstrap,
     action_envoy_config,
@@ -18,7 +18,7 @@ from media_stack.cli.commands.action_handlers import (  # noqa: E402
     action_push_indexers,
 )
 
-LOG_PATH = "media_stack.cli.commands.action_handlers.runtime_platform.log"
+LOG_PATH = "media_stack.services.jobs.action_handlers.runtime_platform.log"
 
 
 def _ns(**kw):
@@ -221,7 +221,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict("os.environ", env, clear=True),
             mock.patch.dict(
                 "sys.modules",
-                {"media_stack.cli.commands.generate_envoy_config_main": gen_mod},
+                {"media_stack.services.edge.envoy_config_generator": gen_mod},
             ),
         ):
             action_envoy_config(_ns())
@@ -241,7 +241,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             ),
             mock.patch.dict(
                 "sys.modules",
-                {"media_stack.cli.commands.generate_envoy_config_main": gen_mod},
+                {"media_stack.services.edge.envoy_config_generator": gen_mod},
             ),
         ):
             import os
@@ -259,7 +259,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             ),
             mock.patch.dict(
                 "sys.modules",
-                {"media_stack.cli.commands.generate_envoy_config_main": gen_mod},
+                {"media_stack.services.edge.envoy_config_generator": gen_mod},
             ),
         ):
             action_envoy_config(_ns())
@@ -285,7 +285,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.cli.commands.generate_envoy_config_main": gen_mod,
+                    "media_stack.services.edge.envoy_config_generator": gen_mod,
                     "docker": docker_mod,
                 },
             ),
@@ -310,7 +310,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.cli.commands.generate_envoy_config_main": gen_mod,
+                    "media_stack.services.edge.envoy_config_generator": gen_mod,
                     "docker": docker_mod,
                 },
             ),
@@ -335,7 +335,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.cli.commands.generate_envoy_config_main": gen_mod,
+                    "media_stack.services.edge.envoy_config_generator": gen_mod,
                     "docker": docker_mod,
                 },
             ),
@@ -375,7 +375,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.cli.commands.generate_envoy_config_main": gen_mod,
+                    "media_stack.services.edge.envoy_config_generator": gen_mod,
                     "kubernetes": k8s_mod,
                     "kubernetes.client": k8s_client_mod,
                     "kubernetes.config": k8s_config_mod,
@@ -405,7 +405,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.cli.commands.generate_envoy_config_main": gen_mod,
+                    "media_stack.services.edge.envoy_config_generator": gen_mod,
                     "docker": bad_docker,
                 },
             ),
@@ -429,7 +429,7 @@ class ActionEnvoyConfigTests(unittest.TestCase):
             mock.patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.cli.commands.generate_envoy_config_main": gen_mod,
+                    "media_stack.services.edge.envoy_config_generator": gen_mod,
                     "docker": docker_mod,
                 },
             ),

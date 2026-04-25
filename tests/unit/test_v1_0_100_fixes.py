@@ -152,7 +152,7 @@ class ValidateCredentialsArrPrereqRatchet(unittest.TestCase):
         )
 
     def test_arr_apps_reachable_prereq_registered(self) -> None:
-        path = ROOT / "src/media_stack/cli/commands/job_framework.py"
+        path = ROOT / "src/media_stack/services/jobs/framework.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn(
             'register_prereq("arr_apps_reachable"', text,

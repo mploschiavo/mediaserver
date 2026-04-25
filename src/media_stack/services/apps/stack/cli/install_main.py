@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Callable
 from urllib import request
 
-from media_stack.cli.workflows.cli_common import repo_root_from_script_file
+from media_stack.core.cli_common import repo_root_from_script_file
 from media_stack.core.phase_tracker import PhaseTracker
 from media_stack.core.platforms.kubernetes.kube_client import resolve_kubectl_binary
 

@@ -489,7 +489,7 @@ class GetRequestHandler:
             handler._json_response(200, config_svc.get_discovery_lists())
         elif path == "/api/display-preferences":
             # Return current display preference config from contract defaults
-            from media_stack.cli.commands.job_framework import _load_cfg_from_contracts
+            from media_stack.services.jobs.framework import _load_cfg_from_contracts
             cfg = _load_cfg_from_contracts()
             playback = cfg.get("jellyfin_playback", {})
             dp = playback.get("display_preferences", {})
@@ -518,7 +518,7 @@ class GetRequestHandler:
             else:
                 handler._json_response(200, collect_metrics())
         elif path == "/api/jobs":
-            from media_stack.cli.commands.job_framework import discover_jobs_from_contracts, build_job_framework, get_job_history
+            from media_stack.services.jobs.framework import discover_jobs_from_contracts, build_job_framework, get_job_history
             jobs = discover_jobs_from_contracts()
             root = build_job_framework()
             def _tree(job):

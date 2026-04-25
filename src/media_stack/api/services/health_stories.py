@@ -634,7 +634,7 @@ def compose_live() -> dict:
     # Kept out of ``compose()`` because the rule input shape is
     # different — a list of batches, not the four signal dicts.
     try:
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             get_job_history,
         )
         history = list(get_job_history() or [])

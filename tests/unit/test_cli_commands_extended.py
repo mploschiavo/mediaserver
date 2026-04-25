@@ -312,7 +312,7 @@ class TestDeployVerifyTs(unittest.TestCase):
 # generate_envoy_config_main tests
 # ===================================================================
 
-from media_stack.cli.commands.generate_envoy_config_main import (
+from media_stack.services.edge.envoy_config_generator import (
     _csv,
     _load_bootstrap_edge_hooks,
     _load_profile,

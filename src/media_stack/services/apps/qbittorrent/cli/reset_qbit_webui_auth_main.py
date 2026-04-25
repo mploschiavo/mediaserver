@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from media_stack.cli.workflows.cli_common import kube_cmd, repo_root_from_script_file, run_command
+from media_stack.core.cli_common import kube_cmd, repo_root_from_script_file, run_command
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
 

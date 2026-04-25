@@ -725,7 +725,7 @@ def _build_action_priority() -> dict[str, int]:
     """Build ACTION_PRIORITY from core + contract-discovered jobs."""
     priorities = dict(_CORE_ACTION_PRIORITY)
     try:
-        from media_stack.cli.commands.job_framework import discover_jobs_from_contracts
+        from media_stack.services.jobs.framework import discover_jobs_from_contracts
         _PHASE_BASE = {"media_server": 40, "download_clients": 50, "default": 55, "post": 75}
         for job in discover_jobs_from_contracts():
             base = _PHASE_BASE.get(job["phase"], 55)

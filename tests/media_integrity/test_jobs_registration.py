@@ -42,7 +42,7 @@ if str(SRC) not in sys.path:
 def _reset_caches():
     """Force a fresh discovery scan per test so changes to the
     contract YAML are picked up without test-order dependencies."""
-    from media_stack.cli.commands import job_framework as jf
+    from media_stack.services.jobs import framework as jf
     jf._DISCOVERED_JOBS_CACHE = None
     jf._DISCOVERED_ALIASES_CACHE = None
     yield
@@ -51,7 +51,7 @@ def _reset_caches():
 
 
 def _discovered_by_name() -> dict:
-    from media_stack.cli.commands.job_framework import (
+    from media_stack.services.jobs.framework import (
         discover_jobs_from_contracts,
     )
     return {j["name"]: j for j in discover_jobs_from_contracts()}
@@ -94,7 +94,7 @@ def test_handlers_point_at_job_handlers_module() -> None:
 def test_handlers_resolve_to_callables() -> None:
     """The contract's handler strings must actually import — a typo
     would surface here, before the controller picks the job."""
-    from media_stack.cli.commands.job_framework import _resolve_handler
+    from media_stack.services.jobs.framework import _resolve_handler
     for name in (
         "media-integrity:scan",
         "media-integrity:reconcile",
@@ -198,11 +198,11 @@ def test_reconcile_via_run_job_writes_unified_history(
     )
     _api.set_service(_FakeService())
 
-    from media_stack.cli.commands.job_framework import (
+    from media_stack.services.jobs.framework import (
         run_job, get_job_history,
     )
     # Bust the discovery cache so the new contract is picked up.
-    import media_stack.cli.commands.job_framework as jf
+    import media_stack.services.jobs.framework as jf
     jf._DISCOVERED_JOBS_CACHE = None
     jf._DISCOVERED_ALIASES_CACHE = None
 
@@ -242,10 +242,10 @@ def test_reconcile_skips_when_service_not_configured(
     )
     _api.set_service(None)
 
-    import media_stack.cli.commands.job_framework as jf
+    import media_stack.services.jobs.framework as jf
     jf._DISCOVERED_JOBS_CACHE = None
     jf._DISCOVERED_ALIASES_CACHE = None
-    from media_stack.cli.commands.job_framework import run_job
+    from media_stack.services.jobs.framework import run_job
 
     result = run_job(
         "media-integrity:reconcile", source="cron", actor=None,
@@ -339,7 +339,7 @@ def test_http_post_still_returns_raw_service_shape(
     _api.set_service(_FakeService())
 
     # Reset job framework caches.
-    import media_stack.cli.commands.job_framework as jf
+    import media_stack.services.jobs.framework as jf
     jf._DISCOVERED_JOBS_CACHE = None
     jf._DISCOVERED_ALIASES_CACHE = None
 

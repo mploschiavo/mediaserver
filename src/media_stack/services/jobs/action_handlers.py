@@ -46,7 +46,7 @@ class ActionHandlerService:
     def _run_jobs_framework(self) -> None:
         """Execute the full job tree discovered from contracts/services/*.yaml."""
         try:
-            from media_stack.cli.commands.job_framework import (
+            from media_stack.services.jobs.framework import (
                 JobContext,
                 JobRunner,
                 build_job_framework,
@@ -129,7 +129,7 @@ class ActionHandlerService:
             os.environ["CONFIG_ROOT"] = "/srv-config"
 
         try:
-            from media_stack.cli.commands.generate_envoy_config_main import main as gen_main
+            from media_stack.services.edge.envoy_config_generator import main as gen_main
             gen_main()
         except SystemExit as exc:
             if exc.code:

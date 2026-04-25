@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass
 from typing import Iterable
 
-from media_stack.cli.workflows.cli_common import kube_cmd, run_command
+from media_stack.core.cli_common import kube_cmd, run_command
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
 

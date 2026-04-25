@@ -16,7 +16,7 @@ from media_stack.services.enums import BootstrapMode
 
 # Re-export everything that external code imports from this module.
 # This preserves backward compatibility for all existing import paths.
-from media_stack.cli.commands.controller_handlers import (  # noqa: F401
+from media_stack.services.jobs.controller_handlers import (  # noqa: F401
     _load_handler_specs,
     _resolve_config_path,
     _resolve_handler,
@@ -32,7 +32,7 @@ from media_stack.cli.commands.controller_dispatch import (  # noqa: F401
 from media_stack.cli.commands.controller_k8s import (  # noqa: F401
     _persist_preflight_keys_to_secret,
 )
-from media_stack.cli.commands.controller_runner import (  # noqa: F401
+from media_stack.services.jobs.controller_runner import (  # noqa: F401
     _build_config_policy,
     _build_runner,
 )
@@ -148,7 +148,7 @@ class ControllerMainCommand:
         it here rather than retrofitting every legacy step writer.
         """
         import time as _time
-        from media_stack.cli.commands.job_framework import _record_history
+        from media_stack.services.jobs.framework import _record_history
 
         mode = str(getattr(args, "mode", "") or "full").strip()
         source_tag = f"cron:{mode}" if mode else "cron"

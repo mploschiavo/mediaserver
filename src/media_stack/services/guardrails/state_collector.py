@@ -133,7 +133,7 @@ def collect_state(
 
     # Job history — used by job_health rules.
     try:
-        from media_stack.cli.commands.job_framework import get_job_history
+        from media_stack.services.jobs.framework import get_job_history
         state["job_history"] = list(get_job_history() or [])
     except Exception as exc:  # noqa: BLE001
         _log.debug("guardrails: job history collection failed: %s", exc)

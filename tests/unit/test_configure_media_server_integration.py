@@ -24,7 +24,7 @@ class TestConfigureLibrariesIntegration(unittest.TestCase):
         This catches the exact bug where JELLYFIN_API_KEY is empty and
         the job silently returns without creating any libraries.
         """
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             JobContext, _run_media_server_handler,
         )
 
@@ -44,7 +44,7 @@ class TestConfigureLibrariesIntegration(unittest.TestCase):
 
     def test_ensure_called_with_correct_config(self):
         """ensure_jellyfin_libraries must receive config with enabled libraries."""
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             JobContext, _run_media_server_handler,
         )
 
@@ -78,7 +78,7 @@ class TestConfigureLibrariesIntegration(unittest.TestCase):
 
     def test_ensure_receives_api_key_in_config(self):
         """The libraries config must have api_key_env so ensure() can resolve credentials."""
-        from media_stack.cli.commands.job_framework import JobContext
+        from media_stack.services.jobs.framework import JobContext
 
         ctx = JobContext()
         libs_cfg = ctx.cfg.get("jellyfin_libraries", {})
@@ -91,7 +91,7 @@ class TestConfigureLiveTvIntegration(unittest.TestCase):
     """End-to-end: configure-livetv must not skip."""
 
     def test_job_does_not_skip(self):
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             JobContext, _run_media_server_handler,
         )
         ctx = JobContext()
@@ -108,7 +108,7 @@ class TestConfigurePluginsIntegration(unittest.TestCase):
     """End-to-end: configure-plugins must not skip."""
 
     def test_job_does_not_skip(self):
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             JobContext, _run_media_server_handler,
         )
         ctx = JobContext()
@@ -121,7 +121,7 @@ class TestConfigurePluginsIntegration(unittest.TestCase):
         mock_ensure.assert_called_once()
 
     def test_plugins_config_has_install_list(self):
-        from media_stack.cli.commands.job_framework import JobContext
+        from media_stack.services.jobs.framework import JobContext
         ctx = JobContext()
         plugins_cfg = ctx.cfg.get("jellyfin_plugins", {})
         self.assertTrue(plugins_cfg.get("enabled"))
@@ -133,7 +133,7 @@ class TestConfigurePlaybackIntegration(unittest.TestCase):
     """End-to-end: configure-playback must not skip."""
 
     def test_job_does_not_skip(self):
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             JobContext, _run_media_server_handler,
         )
         ctx = JobContext()
@@ -150,7 +150,7 @@ class TestJobSkipIsNotSilent(unittest.TestCase):
     """Verify that Job.run() does NOT report [OK] when a handler skips."""
 
     def test_skipped_job_logs_warning_not_ok(self):
-        from media_stack.cli.commands.job_framework import Job, JobContext
+        from media_stack.services.jobs.framework import Job, JobContext
         import media_stack.services.runtime_platform as rp
 
         logged = []
@@ -174,7 +174,7 @@ class TestJobSkipIsNotSilent(unittest.TestCase):
 
     def test_skipped_sub_jobs_dont_run(self):
         """If a composite job is skipped, sub-jobs must NOT execute."""
-        from media_stack.cli.commands.job_framework import Job, JobContext
+        from media_stack.services.jobs.framework import Job, JobContext
 
         sub_ran = []
         parent = Job("parent", lambda ctx: {"skipped": "no server"})
@@ -189,7 +189,7 @@ class TestAllMediaServerJobsRun(unittest.TestCase):
 
     def test_all_jobs_dispatched(self):
         """Every discovered job must be dispatched by run_all_media_server_jobs."""
-        from media_stack.cli.commands.job_framework import (
+        from media_stack.services.jobs.framework import (
             run_all_media_server_jobs, PREREQS, discover_jobs_from_contracts,
         )
 

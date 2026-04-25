@@ -22,7 +22,7 @@ from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 from media_stack.core.state_store import CheckpointStateStore
 
-from media_stack.cli.workflows.controller_component_resolver import (
+from media_stack.services.controller_component_resolver import (
     ControllerComponentPlan,
     ControllerPhasePlanStep,
     PhaseSkipFlagSpec,
@@ -39,7 +39,7 @@ from media_stack.cli.workflows.controller_component_resolver import (
 )
 
 
-from media_stack.cli.workflows.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
+from media_stack.core.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
 
 
 @dataclass(frozen=True)

@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 # controller_component_resolver tests
 # ===================================================================
 
-from media_stack.cli.workflows.controller_component_resolver import (
+from media_stack.services.controller_component_resolver import (
     normalize_technology_token,
     canonicalize_technology,
     normalize_flag_token,

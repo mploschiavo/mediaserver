@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands.action_handlers import (  # noqa: E402
+from media_stack.services.jobs.action_handlers import (  # noqa: E402
     ActionHandlerService,
     _instance as _svc,
 )
@@ -55,10 +55,10 @@ class ActionBootstrapRunsJobsFrameworkTests(unittest.TestCase):
         fake_result = {"results": {"j1": {"status": "ok"}, "j2": {"status": "skipped"}}}
 
         with patch(
-            "media_stack.cli.commands.job_framework.build_job_framework",
+            "media_stack.services.jobs.framework.build_job_framework",
             return_value=fake_root,
         ), patch(
-            "media_stack.cli.commands.job_framework.JobRunner"
+            "media_stack.services.jobs.framework.JobRunner"
         ) as mock_runner:
             mock_runner.return_value.run.return_value = fake_result
             svc._run_jobs_framework()

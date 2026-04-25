@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from media_stack.core.exceptions import ConfigError, MediaStackError
-from media_stack.cli.workflows.cli_common import kube_cmd, run_command
+from media_stack.core.cli_common import kube_cmd, run_command
 
 
 

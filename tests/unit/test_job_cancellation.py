@@ -18,7 +18,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.cli.commands.job_framework import (
+from media_stack.services.jobs.framework import (
     CancelledError,
     Job,
     JobContext,
@@ -26,7 +26,7 @@ from media_stack.cli.commands.job_framework import (
     request_cancel,
     _is_cancel_requested,
 )
-import media_stack.cli.commands.job_framework as jf
+import media_stack.services.jobs.framework as jf
 
 
 class _ResetCancel:

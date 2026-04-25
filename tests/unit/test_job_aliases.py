@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 # Force a fresh discovery for each test class so we don't leak
 # cached state between tests.
-import media_stack.cli.commands.job_framework as _jf  # noqa: E402
+import media_stack.services.jobs.framework as _jf  # noqa: E402
 
 
 def _reset_caches() -> None:

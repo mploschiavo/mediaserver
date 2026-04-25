@@ -1,7 +1,7 @@
 """Job-framework handlers for the media-integrity subsystem.
 
 Each handler is a ``Callable[[JobContext], dict[str, Any]]`` so the
-``Job`` framework in ``media_stack.cli.commands.job_framework`` can
+``Job`` framework in ``media_stack.services.jobs.framework`` can
 invoke them through ``run_job(name, ...)``.
 
 The handlers delegate to the singleton ``MediaIntegrityService`` held
@@ -34,7 +34,7 @@ import logging
 import threading
 from typing import Any
 
-from media_stack.cli.commands.job_framework import JobContext
+from media_stack.services.jobs.framework import JobContext
 from media_stack.services.media_integrity.service import (
     MediaIntegrityInProgress,
 )

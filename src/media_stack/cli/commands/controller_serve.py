@@ -36,7 +36,7 @@ from media_stack.cli.commands.controller_dispatch import (
     _dispatch_action,
     _track_failed_service,
 )
-from media_stack.cli.commands.controller_handlers import (
+from media_stack.services.jobs.controller_handlers import (
     _resolve_config_path,
 )
 import logging
@@ -195,7 +195,7 @@ def _action_worker(
     import traceback as _tb
 
     def _on_sigterm(signum, frame):
-        from media_stack.cli.commands.job_framework import request_cancel
+        from media_stack.services.jobs.framework import request_cancel
         request_cancel()
         log_queue.put(("log", f"[ACTION] {action_name}: SIGTERM received, cancelling jobs"))
 
@@ -246,7 +246,7 @@ def _run_serve(args: argparse.Namespace) -> None:
         # This eliminates the need for a pre-built config JSON in compose mode
         runtime_platform.log("[INFO] Bootstrap config JSON not found — generating from contracts + profile")
         try:
-            from media_stack.cli.commands.controller_handlers import _auto_generate_config_json
+            from media_stack.services.jobs.controller_handlers import _auto_generate_config_json
             generated = _auto_generate_config_json(args.config)
             if generated:
                 args.config = generated

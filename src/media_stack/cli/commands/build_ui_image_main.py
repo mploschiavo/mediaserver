@@ -17,7 +17,7 @@ from pathlib import Path
 
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
-from media_stack.cli.workflows.cli_common import repo_root_from_script_file, run_command
+from media_stack.core.cli_common import repo_root_from_script_file, run_command
 
 
 # Image coordinates are duplicated from the profile YAML's controller block

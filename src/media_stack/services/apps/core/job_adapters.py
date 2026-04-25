@@ -6,7 +6,7 @@ Each adapter is a thin wrapper that:
 1. Constructs the legacy-style ``args``/``state``/``build_runner``
    collaborators that the original ``action_*`` handler expects.
 2. Calls into the existing handler in
-   ``media_stack.cli.commands.action_handlers``.
+   ``media_stack.services.jobs.action_handlers``.
 3. Returns ``{}`` (or a small status dict) to satisfy the job
    framework's ``Callable[[JobContext], dict]`` contract.
 
@@ -26,7 +26,7 @@ import argparse
 import os
 from typing import Any
 
-from media_stack.cli.commands.job_framework import JobContext
+from media_stack.services.jobs.framework import JobContext
 from media_stack.core.logging_utils import log_swallowed
 # hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
 # (api.services.registry is a leaf data module — no back-edge into this file)
@@ -186,7 +186,7 @@ def _stub_state() -> Any:
 
 def envoy_config(ctx: JobContext) -> dict:
     """Regenerate Envoy routing config + restart envoy."""
-    from media_stack.cli.commands.action_handlers import action_envoy_config
+    from media_stack.services.jobs.action_handlers import action_envoy_config
     action_envoy_config(_default_args(ctx))
     return {"action": "envoy-config"}
 
@@ -309,7 +309,7 @@ def seed_runtime_overrides(ctx: JobContext) -> dict:
 def validate_credentials(ctx: JobContext) -> dict:
     """Probe service admin credentials and auto-sync passwords for
     services that fail."""
-    from media_stack.cli.commands.action_handlers import (
+    from media_stack.services.jobs.action_handlers import (
         action_validate_credentials,
     )
     action_validate_credentials()
@@ -318,8 +318,8 @@ def validate_credentials(ctx: JobContext) -> dict:
 
 def restart_apps(ctx: JobContext) -> dict:
     """Restart all apps to pick up config changes."""
-    from media_stack.cli.commands.action_handlers import action_restart_apps
-    from media_stack.cli.commands.controller_handlers import (
+    from media_stack.services.jobs.action_handlers import action_restart_apps
+    from media_stack.services.jobs.controller_handlers import (
         _load_handler_specs, _run_handler_specs,
     )
     action_restart_apps(
@@ -345,10 +345,10 @@ def discover_indexers(ctx: JobContext) -> dict:
     prev = _os.environ.get("MEDIA_STACK_HTTP_RETRY_ATTEMPTS")
     _os.environ["MEDIA_STACK_HTTP_RETRY_ATTEMPTS"] = "1"
     try:
-        from media_stack.cli.commands.action_handlers import (
+        from media_stack.services.jobs.action_handlers import (
             action_discover_indexers,
         )
-        from media_stack.cli.commands.controller_runner import _build_runner
+        from media_stack.services.jobs.controller_runner import _build_runner
         action_discover_indexers(_default_args(ctx), _build_runner)
         return {"action": "discover-indexers"}
     finally:
@@ -376,7 +376,7 @@ def tag_indexers_for_apps(ctx: JobContext) -> dict:
     _http_request = _make_servarr_http_request()
 
     def _log(msg: str) -> None:
-        from media_stack.cli.commands.controller_runner import (
+        from media_stack.services.jobs.controller_runner import (
             runtime_platform,
         )
         runtime_platform.log(msg)
@@ -456,8 +456,8 @@ def reset_prowlarr_app_mappings(ctx: JobContext) -> dict:
 
 def push_indexers(ctx: JobContext) -> dict:
     """Trigger indexer-manager ApplicationIndexerSync."""
-    from media_stack.cli.commands.action_handlers import action_push_indexers
-    from media_stack.cli.commands.controller_runner import _build_runner
+    from media_stack.services.jobs.action_handlers import action_push_indexers
+    from media_stack.services.jobs.controller_runner import _build_runner
     action_push_indexers(_default_args(ctx), _build_runner)
     return {"action": "push-indexers"}
 
@@ -1788,7 +1788,7 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
     _http_request = _make_servarr_http_request()
 
     def _log(msg: str) -> None:
-        from media_stack.cli.commands.controller_runner import (
+        from media_stack.services.jobs.controller_runner import (
             runtime_platform,
         )
         runtime_platform.log(msg)
@@ -1823,9 +1823,9 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
 def post_setup(ctx: JobContext) -> dict:
     """Deferred post-bootstrap: media-server tuning, hygiene, app
     restarts."""
-    from media_stack.cli.commands.action_handlers import action_post_setup
-    from media_stack.cli.commands.controller_runner import _build_runner
-    from media_stack.cli.commands.controller_handlers import (
+    from media_stack.services.jobs.action_handlers import action_post_setup
+    from media_stack.services.jobs.controller_runner import _build_runner
+    from media_stack.services.jobs.controller_handlers import (
         _run_post_bootstrap,
     )
     action_post_setup(
@@ -1871,7 +1871,7 @@ def discover_api_keys(ctx: JobContext) -> dict:
     removes the env-var dispatch hack — every code path that wants
     a fresh tree walk now goes through the same ``run_job("bootstrap")``.
     """
-    from media_stack.cli.commands.controller_handlers import _run_preflights
+    from media_stack.services.jobs.controller_handlers import _run_preflights
     args = _default_args(ctx)
     state = _stub_state()
     skipped: list[str] = []
@@ -2059,7 +2059,7 @@ def run_legacy_pipeline(ctx: JobContext) -> dict:
     inline orchestration. As a contract job it slots into the
     pre_bootstrap phase right after ``discover-api-keys``, so per-
     app phase jobs find runtime state populated."""
-    from media_stack.cli.commands.controller_runner import _build_runner
+    from media_stack.services.jobs.controller_runner import _build_runner
     runner, runtime_state = _build_runner(_default_args(ctx))
     runner.run(runtime_state)
     return {"action": "run-legacy-pipeline"}
