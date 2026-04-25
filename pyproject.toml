@@ -1,3 +1,221 @@
+# Media Stack — controller + telemetry server + CLI distribution.
+#
+# This file is the project's Python distribution metadata. Two
+# things changed in v1.0.189: (1) we now declare the package as
+# pip-installable (PEP 621 [project] block + hatchling backend), and
+# (2) every operator-facing CLI is published as a console-script
+# entry point. The bin/ directory is shrinking to just shell wrappers
+# and operator tooling — first-class Python belongs in
+# src/media_stack/cli/commands/, not in bin/. See
+# docs/architecture/adr/0001-repo-restructure.md Phase 12 for the
+# full rationale.
+
+[build-system]
+# Hatchling: PEP 517-compliant, fast, no setup.py legacy. Reads
+# version from src/media_stack/version.py via dynamic discovery.
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "media-stack"
+description = "Orchestration controller + dashboard for the media automation stack"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+authors = [
+    { name = "Matthew Loschiavo", email = "mploschiavo@gmail.com" },
+]
+keywords = ["media", "jellyfin", "sonarr", "radarr", "automation", "kubernetes", "docker"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia",
+    "Topic :: System :: Systems Administration",
+]
+# Version is the single source of truth in src/media_stack/version.py
+# (which reads the VERSION file at build time). dynamic = ["version"]
+# means the build backend resolves it automatically.
+dynamic = ["version"]
+
+# Runtime dependencies — same set the controller.Dockerfile installs
+# explicitly. Pinning floors but not ceilings; tighten if a known-
+# bad upstream lands.
+dependencies = [
+    "argon2-cffi>=23.1.0",   # password hashing (admin reset, OIDC clients)
+    "bcrypt>=4.0",           # legacy hash compat for imported users
+    "docker>=7.0",           # compose-deploy + container introspection
+    "jsonschema>=4.19",      # OpenAPI response contract validation
+    "kubernetes>=29.0",      # k8s-deploy + namespace inspection
+    "pyyaml>=6.0",           # contracts/, openapi.yaml, profile parsing
+    "requests>=2.31",        # HTTP client across arr/jellyfin probes
+]
+
+[project.optional-dependencies]
+# Test deps — what `pip install -e .[dev]` pulls in alongside runtime.
+dev = [
+    "hypothesis>=6.100",     # property-based tests (.hypothesis/ cache exists)
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+# Future: telemetry server may grow its own optional extras.
+
+[project.urls]
+Homepage = "https://github.com/mploschiavo/mediaserver"
+Repository = "https://github.com/mploschiavo/mediaserver"
+Issues = "https://github.com/mploschiavo/mediaserver/issues"
+Documentation = "https://github.com/mploschiavo/mediaserver/tree/main/docs"
+
+# ---------------------------------------------------------------------------
+# Console-script entry points
+# ---------------------------------------------------------------------------
+# Every operator-facing CLI gets a `media-stack-<name>` binary on $PATH
+# after `pip install`. Containers invoke these by name (not file path),
+# eliminating the need for /opt/media-stack/bin/<file>.py and the
+# PYTHONPATH gymnastics bin/lib/run-python-cli.sh used to do.
+#
+# Convention:
+#   * Source lives in src/media_stack/cli/commands/<name>_main.py.
+#   * Each module exposes a `main` callable at module level (either
+#     a function or — per the existing class+instance pattern —
+#     `main = _instance.main`).
+#   * The script name uses kebab-case; the module uses snake_case.
+[project.scripts]
+# Composition root for the controller image. Replaces bin/controller.py
+# (5-line wrapper); the Dockerfile + k8s manifest now use this name
+# directly: `command: ["media-stack-controller", "--serve"]`.
+media-stack-controller = "media_stack.cli.commands.controller_main:main"
+
+# Bootstrap + install flows.
+media-stack-install = "media_stack.cli.commands.install_main:main"
+media-stack-bootstrap-all = "media_stack.cli.commands.controller_all_main:main"
+media-stack-watch-install = "media_stack.cli.commands.watch_install_main:main"
+
+# Image-build CLIs (called from bin/build-controller-image.sh and
+# bin/build-ui-image.sh; the .sh wrappers stay for operator
+# muscle-memory but `exec media-stack-build-controller "$@"`).
+media-stack-build-controller = "media_stack.cli.commands.build_controller_image_main:main"
+media-stack-build-ui = "media_stack.cli.commands.build_ui_image_main:main"
+
+# Deploy / verify flows.
+media-stack-deploy = "media_stack.cli.commands.deploy_stack_main:main"
+media-stack-deploy-verify = "media_stack.cli.commands.deploy_verify_main:main"
+media-stack-microk8s-reconcile = "media_stack.cli.commands.microk8s_reconcile_main:main"
+media-stack-microk8s-smoke = "media_stack.cli.commands.microk8s_smoke_test_main:main"
+
+# Operator tooling.
+media-stack-reset-admin = "media_stack.cli.commands.reset_admin_main:main"
+media-stack-backup = "media_stack.cli.commands.backup_stack_main:main"
+media-stack-restore = "media_stack.cli.commands.restore_stack_main:main"
+media-stack-run-job = "media_stack.cli.commands.run_controller_job_main:main"
+media-stack-setup-lan-tls = "media_stack.cli.commands.setup_lan_tls_main:main"
+media-stack-set-pvc-storage-class = "media_stack.cli.commands.set_pvc_storage_class_main:main"
+
+# Validation / diagnostic.
+media-stack-validate-config = "media_stack.cli.commands.validate_controller_config_main:main"
+media-stack-validate-profile = "media_stack.cli.commands.validate_controller_profile_main:main"
+media-stack-apply-scale-policy = "media_stack.cli.commands.apply_scale_policy_main:main"
+media-stack-generate-envoy-config = "media_stack.cli.commands.generate_envoy_config_main:main"
+media-stack-render-arch-diagrams = "media_stack.cli.commands.render_architecture_diagrams_main:main"
+media-stack-run-unit-tests = "media_stack.cli.commands.run_unit_tests_main:main"
+
+# Phase-12 migration targets — these CLIs currently live under bin/
+# as Python files, in violation of the "Python belongs under
+# src/media_stack/" rule. Listed here so the entry-point names exist
+# the moment the source files move; the actual file moves are a
+# follow-up commit.
+#
+# media-stack-probe-promises   = "media_stack.cli.commands.probe_promises:main"
+# media-stack-render-promises  = "media_stack.cli.commands.render_promises_reference:main"
+# media-stack-scaffold-job-test = "media_stack.cli.commands.scaffold_job_test:main"
+
+# ---------------------------------------------------------------------------
+# Plugin discovery — out-of-tree adapters
+# ---------------------------------------------------------------------------
+# Per ADR-0001 the longer-term hexagonal restructure positions
+# `services/apps/<tech>/` as in-tree adapters but the architecture
+# also supports out-of-tree adapters via setuptools entry-point
+# groups. A third-party `pip install media-stack-myapp` package can
+# declare an entry under `media_stack.adapters` to register itself
+# with the controller's adapter registry. This is the packaging-
+# layer expression of "pluggable, swappable apps".
+#
+# Wire-up lives in src/media_stack/services/apps/__init__.py (TBD —
+# Phase 15 hexagonal restructure). The group name is reserved here
+# so plugins built today against the documented contract are
+# forward-compatible.
+[project.entry-points."media_stack.adapters"]
+# Registered in-tree adapters can also live here for uniform discovery.
+# (Pending Phase 15 — leave block empty for now.)
+
+# ---------------------------------------------------------------------------
+# Hatch build configuration
+# ---------------------------------------------------------------------------
+[tool.hatch.version]
+# Read version from src/media_stack/version.py — keeps the VERSION
+# file as the canonical source. Single source of truth across:
+#   - VERSION (operator-edited)
+#   - pyproject.toml (this dynamic field)
+#   - Docker image labels (build arg)
+#   - runtime MEDIA_STACK_VERSION env var
+path = "src/media_stack/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/media_stack"]
+# Include the package's first-party YAML/JSON resources so the wheel
+# is self-contained. Without this, runtime would need the source
+# tree mounted alongside.
+include = [
+    "src/media_stack/**/*.py",
+    "src/media_stack/**/*.yaml",
+    "src/media_stack/**/*.yml",
+    "src/media_stack/**/*.json",
+]
+
+[tool.hatch.build.targets.wheel.shared-data]
+# Shared data installed alongside the wheel — read by the controller
+# at runtime. The OpenAPI spec moves under contracts/api/ in Phase
+# 4 of ADR-0001; until then it lives in src/media_stack/api/ and
+# ships inside the package itself (above).
+"contracts" = "share/media-stack/contracts"
+
+[tool.hatch.build.targets.sdist]
+# What lands in the source distribution (what `pip install media-stack`
+# from PyPI pulls when there's no wheel for the platform). Excludes
+# heavy paths that aren't needed to install + run.
+exclude = [
+    "/.claude",
+    "/.github",
+    "/.hypothesis",
+    "/.mypy_cache",
+    "/.pytest_cache",
+    "/.ratchets",
+    "/.ruff_cache",
+    "/.state",
+    "/.venv*",
+    "/config",
+    "/data",
+    "/dist",
+    "/docs",
+    "/k8s",
+    "/media",
+    "/node_modules",
+    "/test-results",
+    "/tests/fixtures",
+    "/ui",
+]
+
+# ---------------------------------------------------------------------------
+# Existing tool config (unchanged)
+# ---------------------------------------------------------------------------
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]
@@ -17,6 +235,11 @@ ignore = ["E501"]
 "tests/unit/*.py" = ["E402", "I001"]
 
 [tool.pytest.ini_options]
+# pythonpath kept as a transitional aid: existing tests import
+# `from media_stack.X import ...` and rely on src/ being on sys.path.
+# After `pip install -e .` lands in CI + dev workflow, this becomes
+# redundant — the editable install puts media_stack on sys.path
+# automatically. Keep until Phase 12-F lands.
 pythonpath = ["src", "."]
 testpaths = ["tests"]
 markers = [
