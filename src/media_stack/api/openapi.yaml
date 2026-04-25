@@ -3996,6 +3996,60 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
 
+  /api/envvars/delete:
+    post:
+      operationId: deleteEnvVar
+      tags: [Config]
+      summary: Remove an environment variable
+      description: |
+        Drop an environment variable from the controller process.
+        Symmetric with ``POST /api/envvars`` (set). The same prefix
+        allowlist applies — operators can only remove vars under the
+        platform-recognized prefix set, not arbitrary host vars.
+        Idempotent: returns ``existed: false`` when the key was
+        already absent rather than 4xx-ing on the no-op.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+            example:
+              key: TZ
+      responses:
+        "200":
+          description: Variable removed (or already absent).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [deleted]
+                  key:
+                    type: string
+                  existed:
+                    type: boolean
+              example:
+                status: deleted
+                key: TZ
+                existed: true
+        "400":
+          description: Missing key, or key not under an allowed prefix.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
   /api/manifests:
     get:
       operationId: getManifests

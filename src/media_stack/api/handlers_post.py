@@ -1493,6 +1493,27 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.set_envvar(key, value))
             return
 
+        # POST /api/envvars/delete — symmetric with the set above.
+        # Same prefix allowlist so the dashboard can't remove
+        # arbitrary host env vars (PATH, HOME, etc.) by accident
+        # or by spoofed admin request. Same single-process scope —
+        # persistence is the deployment's job, not this endpoint's.
+        if handler.path == "/api/envvars/delete":
+            body = handler._read_json_body()
+            key = body.get("key", "")
+            if not key:
+                handler._json_response(400, {"error": "key field required"})
+                return
+            _PLATFORM_PREFIXES = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
+            from .services.registry import SERVICES as _env_svcs
+            _svc_prefixes = {s.api_key_env.split("_")[0] + "_" for s in _env_svcs if s.api_key_env}
+            _allowed = set(_PLATFORM_PREFIXES) | _svc_prefixes
+            if not any(key.startswith(p) for p in _allowed):
+                handler._json_response(400, {"error": "env var must start with a known prefix (BOOTSTRAP_, STACK_, K8S_, CONTROLLER_, or a registered service prefix)"})
+                return
+            handler._json_response(200, config_svc.delete_envvar(key))
+            return
+
         # POST /webhooks/test  or  POST /api/webhooks/test
         if handler.path in ("/webhooks/test", "/api/webhooks/test"):
             handler._json_response(200, handler._test_webhook())
