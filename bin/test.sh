@@ -14,7 +14,7 @@ pushd "$ROOT_DIR" >/dev/null
 bash bin/lib/run-python-cli.sh run_unit_tests_main.py "$@"
 bash -n bin/*.sh bin/*/*.sh
 "$PYTHON_BIN" -m py_compile \
-  bin/controller.py \
+  src/media_stack/cli/commands/controller_main.py \
   src/media_stack/cli/commands/run_unit_tests_main.py \
   src/media_stack/cli/workflows/unit_test_runner_service.py \
   src/media_stack/services/apps/jellyfin/cli/ensure_jellyfin_controller_main.py

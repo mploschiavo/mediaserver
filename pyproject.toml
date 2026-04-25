@@ -123,6 +123,7 @@ media-stack-validate-config = "media_stack.cli.commands.validate_controller_conf
 media-stack-validate-profile = "media_stack.cli.commands.validate_controller_profile_main:main"
 media-stack-apply-scale-policy = "media_stack.cli.commands.apply_scale_policy_main:main"
 media-stack-generate-envoy-config = "media_stack.services.edge.envoy_config_generator:main"
+media-stack-generate-bootstrap-config = "media_stack.services.jobs.bootstrap_config_generator:main"
 media-stack-render-arch-diagrams = "media_stack.cli.commands.render_architecture_diagrams_main:main"
 media-stack-run-unit-tests = "media_stack.cli.commands.run_unit_tests_main:main"
 

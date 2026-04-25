@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__version__ = "1.0.192"
+__version__ = "1.0.193"
 """Package version. Keep in sync with ``VERSION`` at the repo root.
 ``bin/release.sh`` bumps both."""
 
