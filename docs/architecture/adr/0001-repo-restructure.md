@@ -329,7 +329,7 @@ docs/
 │   ├── operations/   auth/   storage/   networking/   ...
 ├── reference/              # Information — facts, configs, schemas
 │   ├── api/                # auto-generated from contracts/api/openapi.yaml
-│   ├── promises.md         # auto-generated from contracts/promises.yaml
+│   ├── promises.md         # auto-generated from .ratchets/promises/promises.yaml
 │   ├── cli/                # auto-generated from --help
 │   └── ui-design-system.md
 ├── architecture/           # Explanation — why
@@ -349,7 +349,7 @@ mkdocs.yml                  # NEW — drives a deployable doc site
    doc links fail PR.
 3. Auto-generated reference:
    - OpenAPI → `docs/reference/api/` (redoc-cli or similar)
-   - `contracts/promises.yaml` → `docs/reference/promises.md`
+   - `.ratchets/promises/promises.yaml` → `docs/reference/promises.md`
      (`media-stack-render-promises` already does this — point
      at the new path).
    - `--help` of every console-script → `docs/reference/cli/`
