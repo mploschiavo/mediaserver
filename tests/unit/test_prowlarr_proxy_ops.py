@@ -38,6 +38,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_create_new_proxy(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),          # schema
             (200, [], ""),                         # list proxies (none)
             (201, {"id": 1, "name": "FlareSolverr"}, ""),  # create
@@ -51,6 +52,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         existing = {"implementation": "FlareSolverr", "name": "FlareSolverr", "id": 5}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [existing], ""),
             (200, {"id": 5, "name": "FlareSolverr"}, ""),  # update
@@ -77,6 +79,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         other_schema = {"implementation": "OtherProxy", "configContract": "Other"}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [other_schema], ""),
         ]
         with self.assertRaises(RuntimeError) as ctx:
@@ -86,6 +89,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_proxy_list_failure_raises(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (500, None, "error"),
         ]
@@ -96,6 +100,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_proxy_list_non_list_raises(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, "not a list", ""),
         ]
@@ -105,6 +110,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_create_failure_raises(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (500, None, "create error"),
@@ -117,6 +123,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         existing = {"implementation": "FlareSolverr", "name": "FlareSolverr", "id": 3}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [existing], ""),
             (500, None, "update error"),
@@ -128,6 +135,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_test_connection_failure_raises(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -140,28 +148,32 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_test_connection_skipped(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key", {"test_connection": False})
-        self.assertEqual(svc.http_request.call_count, 3)
+        # 4 = tag-fetch (auto, v1.0.130) + schema + list + create
+        self.assertEqual(svc.http_request.call_count, 4)
 
     def test_custom_proxy_name(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1, "name": "MyFS"}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key", {"proxy_name": "MyFS"})
-        create_call = svc.http_request.call_args_list[2]
+        create_call = svc.http_request.call_args_list[3]
         self.assertEqual(create_call[1]["payload"]["name"], "MyFS")
 
     def test_custom_url(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -184,6 +196,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_url_trailing_slash_added(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -196,19 +209,21 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_default_proxy_name_is_flaresolverr(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
-        create_call = svc.http_request.call_args_list[2]
+        create_call = svc.http_request.call_args_list[3]
         self.assertEqual(create_call[1]["payload"]["name"], "FlareSolverr")
 
     def test_request_timeout_custom(self):
         svc = self._svc()
         svc.field_map.return_value = {"host": "", "requestTimeout": 60}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -221,6 +236,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         svc.field_map.return_value = {"host": "", "requestTimeout": 60}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -232,6 +248,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         svc.field_map.return_value = {"host": "", "requestTimeout": 60}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -240,6 +257,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key", {"request_timeout_seconds": -5})
 
     def test_tags_parsed_from_list(self):
+        # Explicit tags in cfg skip the auto /api/v1/tag fetch.
         svc = self._svc()
         svc.http_request.side_effect = [
             (200, [self._schema()], ""),
@@ -252,6 +270,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         self.assertEqual(create_call[1]["payload"]["tags"], [1, 2, 3])
 
     def test_tags_invalid_entries_skipped(self):
+        # Explicit tags in cfg skip the auto /api/v1/tag fetch.
         svc = self._svc()
         svc.http_request.side_effect = [
             (200, [self._schema()], ""),
@@ -266,38 +285,41 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_tags_none_gives_empty(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key", {"tags": None})
-        create_call = svc.http_request.call_args_list[2]
+        create_call = svc.http_request.call_args_list[3]
         self.assertEqual(create_call[1]["payload"]["tags"], [])
 
     def test_none_cfg_uses_defaults(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key", None)
-        create_call = svc.http_request.call_args_list[2]
+        create_call = svc.http_request.call_args_list[3]
         self.assertEqual(create_call[1]["payload"]["name"], "FlareSolverr")
 
     def test_match_existing_by_name(self):
         svc = self._svc()
         existing = {"implementation": "OtherImpl", "name": "FlareSolverr", "id": 9}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [existing], ""),
             (200, {"id": 9}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
-        update_call = svc.http_request.call_args_list[2]
+        update_call = svc.http_request.call_args_list[3]
         self.assertEqual(update_call[1]["method"], "PUT")
         self.assertIn("/9", update_call[0][1])
 
@@ -305,18 +327,20 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         existing = {"implementation": "FlareSolverr", "name": "DifferentName", "id": 11}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [existing], ""),
             (200, {"id": 11}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
-        update_call = svc.http_request.call_args_list[2]
+        update_call = svc.http_request.call_args_list[3]
         self.assertEqual(update_call[1]["method"], "PUT")
 
     def test_test_connection_201_accepted(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -329,6 +353,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_test_connection_202_accepted(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
@@ -346,6 +371,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         # current all lack an id — CREATE path has no current;
         # payload doesn't carry id until POST returns it), POST /test.
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, "not a dict", ""),
@@ -360,6 +386,7 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
         svc = self._svc()
         existing = {"implementation": "FlareSolverr", "name": "FlareSolverr", "id": 2}
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [existing], ""),
             (200, "not a dict", ""),
@@ -371,25 +398,27 @@ class TestEnsureFlaresolverrProxy(unittest.TestCase):
     def test_payload_implementation_always_flaresolverr(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
-        create_call = svc.http_request.call_args_list[2]
+        create_call = svc.http_request.call_args_list[3]
         self.assertEqual(create_call[1]["payload"]["implementation"], "FlareSolverr")
 
     def test_payload_enable_always_true(self):
         svc = self._svc()
         svc.http_request.side_effect = [
+            (200, [], ""),  # /api/v1/tag (auto, v1.0.130)
             (200, [self._schema()], ""),
             (200, [], ""),
             (201, {"id": 1}, ""),
             (200, {}, ""),
         ]
         ensure_flaresolverr_proxy(svc, "http://prowlarr", "key")
-        create_call = svc.http_request.call_args_list[2]
+        create_call = svc.http_request.call_args_list[3]
         self.assertTrue(create_call[1]["payload"]["enable"])
 
 

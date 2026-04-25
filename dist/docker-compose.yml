@@ -226,7 +226,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.169}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.192}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     command:
       - python3
@@ -677,7 +677,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.169}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.192}
     container_name: media-stack-controller
     command:
       - python3
@@ -780,3 +780,43 @@ services:
       - traefik.enable=true
       - traefik.http.routers.media-stack-controller.rule=Host(`controller.local`)
       - traefik.http.services.media-stack-controller.loadbalancer.server.port=9100
+
+  media-stack-ui:
+    container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-ui
+    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.8}
+    restart: unless-stopped
+    depends_on:
+      media-stack-controller:
+        condition: service_healthy
+    environment:
+      # The compose API service container/alias is media-stack-controller
+      # (NOT "bootstrap" — that's the conceptual name in the controller
+      # codebase). The UI proxies /api/* to this upstream over the
+      # default compose network.
+      API_UPSTREAM: media-stack-controller:9100
+    ports:
+      # Expose the dashboard on the host. Envoy normally fronts this
+      # at /app/media-stack-ui/, but giving the UI container its own
+      # host port lets operators bypass Envoy for debugging — same
+      # pattern Radarr/Sonarr/etc. use with their *_PORT vars.
+      - "${UI_PORT:-9101}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.2"
+        reservations:
+          memory: 32M
+          cpus: "0.025"
+    labels:
+      - "media-stack.io/role=ui"
+      - "media-stack.io/version=1.0.0"
+      - traefik.enable=true
+      - traefik.http.routers.media-stack-ui.rule=Host(`ui.local`)
+      - traefik.http.services.media-stack-ui.loadbalancer.server.port=8080

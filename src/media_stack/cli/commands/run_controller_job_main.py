@@ -66,7 +66,7 @@ from media_stack.cli.workflows.run_controller_job_cli_config_service import (
 from media_stack.core.cli_common import PhaseTracker, err, info, ts, warn  # noqa: E402
 import logging
 
-from .run_controller_job_priming_mixin import _RunBootstrapJobPrimingMixin
+from media_stack.cli.commands.run_controller_job_priming_mixin import _RunBootstrapJobPrimingMixin
 
 
 class RunBootstrapJobRunner(_RunBootstrapJobPrimingMixin):

@@ -26,6 +26,12 @@ metadata:
   name: media-stack-controller
   namespace: media-stack
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -539,6 +545,22 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  labels:
+    app: media-stack-ui
+  name: media-stack-ui
+  namespace: media-stack
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: media-stack-ui
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: plex
   namespace: media-stack
 spec:
@@ -924,6 +946,8 @@ spec:
   selector:
     matchLabels:
       app: authelia
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -1713,7 +1737,7 @@ spec:
           value: /profile/profile.yaml
         - name: BOOTSTRAP_CONFIG_FILE
           value: /controller-config/config.json
-        image: harbor.iomio.io/library/media-stack-controller:v1.0.171
+        image: harbor.iomio.io/library/media-stack-controller:v1.0.192
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1845,6 +1869,101 @@ spec:
       - name: stack-media
         persistentVolumeClaim:
           claimName: media-stack-media
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    media-stack.io/author: Matthew Loschiavo
+    media-stack.io/contact: mploschiavo@gmail.com
+    media-stack.io/linkedin: https://www.linkedin.com/in/matthewloschiavo
+    media-stack.io/site: https://matthewloschiavo.com
+  labels:
+    app: media-stack-ui
+  name: media-stack-ui
+  namespace: media-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: media-stack-ui
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: media-stack-ui
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: media-stack-ui
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - env:
+        - name: API_UPSTREAM
+          value: media-stack-controller:9100
+        image: harbor.iomio.io/library/media-stack-ui:v1.3.8
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+        name: ui
+        ports:
+        - containerPort: 8080
+          name: http
+        readinessProbe:
+          failureThreshold: 2
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 2
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 25m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 101
+          seccompProfile:
+            type: RuntimeDefault
+        startupProbe:
+          failureThreshold: 12
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 5
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      imagePullSecrets:
+      - name: harbor-pull
+      securityContext:
+        fsGroup: 101
+      serviceAccountName: media-stack-ui
+      terminationGracePeriodSeconds: 15
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -2576,7 +2695,7 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.171
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.192
             imagePullPolicy: IfNotPresent
             name: controller-reconcile
             volumeMounts:
@@ -2717,7 +2836,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.171
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.192
             imagePullPolicy: IfNotPresent
             name: jellyfin-prewarm
             volumeMounts:
@@ -2817,7 +2936,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.171
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.192
             imagePullPolicy: IfNotPresent
             name: media-hygiene
             volumeMounts:
@@ -2908,6 +3027,17 @@ spec:
       ttlSecondsAfterFinished: 900
   schedule: 45 */6 * * *
   successfulJobsHistoryLimit: 1
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: media-stack-ui
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -3209,3 +3339,44 @@ spec:
     - m.iomio.io
     - auth.iomio.io
     secretName: iomio-tls
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: media-stack-ui
+  namespace: media-stack
+spec:
+  egress:
+  - ports:
+    - port: 9100
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app: media-stack-controller
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: media-stack
+    ports:
+    - port: 8080
+      protocol: TCP
+  - ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: media-stack-ui
+  policyTypes:
+  - Ingress
+  - Egress

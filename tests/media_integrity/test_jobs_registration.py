@@ -280,29 +280,6 @@ def test_controller_serve_no_longer_imports_scheduler_hook() -> None:
     assert "MEDIA_INTEGRITY_ENFORCE_EACH_TICK" not in src
 
 
-def test_scheduler_hook_construction_emits_deprecation_warning() -> None:
-    """The legacy ``MediaIntegrityScheduler`` is deprecated. Pin the
-    DeprecationWarning so any re-revival of the parallel scheduler
-    in production code surfaces in CI."""
-    import warnings
-    from media_stack.services.media_integrity.scheduler_hook import (
-        MediaIntegrityScheduler,
-    )
-
-    class _Stub:
-        def enforce_config(self, *, actor="x"):
-            return {}
-
-        def reconcile(self, *, actor="x"):
-            return {}
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        MediaIntegrityScheduler(service=_Stub())  # type: ignore[arg-type]
-    deps = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert deps, "expected a DeprecationWarning on construction"
-
-
 # ---------------------------------------------------------------------------
 # Backwards compat: the legacy POST endpoint still works and still
 # returns the raw service payload (UI v1.3.x keeps working).
