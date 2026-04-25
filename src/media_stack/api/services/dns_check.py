@@ -151,6 +151,101 @@ def _cluster_ips() -> list[str]:
     return ips
 
 
+def _routing_hostnames() -> list[str]:
+    """Hostnames the operator's routing config implies should resolve to
+    this cluster: ``gateway_host``, the per-service subdomain hosts
+    (``<svc>.<stack>.<base>``), and any ``direct_hosts`` overrides.
+
+    Used by ``check_all`` when the dashboard's DNS card requests the
+    no-arg probe (``GET /api/dns-check``). Pre-fix the card asked for
+    one host at a time; the operator surface now wants the full table
+    pre-populated, which means we have to derive the list server-side
+    rather than hand it in via the query string.
+    """
+    try:
+        from media_stack.api.services import config as config_svc
+        from media_stack.api.services.registry import SERVICES
+    except Exception:
+        return []
+    try:
+        routing = config_svc.get_routing()
+    except Exception as exc:
+        _log.debug("get_routing failed in dns_check: %s", exc)
+        return []
+    base = str(routing.get("base_domain") or "").strip()
+    sub = str(routing.get("stack_subdomain") or "").strip()
+    gw = str(routing.get("gateway_host") or "").strip()
+    seen: list[str] = []
+
+    def _add(h: str) -> None:
+        h = (h or "").strip()
+        if h and h not in seen:
+            seen.append(h)
+
+    _add(gw)
+    if base and sub:
+        for svc in SERVICES:
+            _add(f"{svc.id}.{sub}.{base}")
+    direct_hosts = routing.get("direct_hosts") or {}
+    if isinstance(direct_hosts, dict):
+        for value in direct_hosts.values():
+            if isinstance(value, str):
+                _add(value)
+    return seen
+
+
+def check_all() -> dict[str, Any]:
+    """Run :func:`check` against every routing-derived hostname.
+
+    Response shape mirrors what the SPA's DNS-resolution card consumes:
+    ``{"entries": [{"hostname", "resolved", "status", "error"}, ...],
+        "cluster_ip": "...", "cluster_ips": [...]}``. ``status`` is
+    one of ``ok | missing | conflict`` so the badge picker on the UI
+    side doesn't have to translate from booleans.
+    """
+    cluster_ips = _cluster_ips()
+    primary = cluster_ips[0] if cluster_ips else ""
+    entries: list[dict[str, Any]] = []
+    for host in _routing_hostnames():
+        resolved = _resolve_host(host)
+        if resolved is None:
+            entries.append({
+                "hostname": host,
+                "host": host,
+                "resolved": [],
+                "ips": [],
+                "status": "missing",
+                "matches_cluster": None,
+                "cluster_ip": primary,
+                "error": "no DNS record",
+            })
+            continue
+        if cluster_ips and resolved not in cluster_ips:
+            status = "conflict"
+        elif cluster_ips:
+            status = "ok"
+        else:
+            # No way to compare — surface the resolution but don't
+            # mark green or amber.
+            status = "ok"
+        entries.append({
+            "hostname": host,
+            "host": host,
+            "resolved": [resolved],
+            "ips": [resolved],
+            "status": status,
+            "resolved_ip": resolved,
+            "cluster_ip": primary,
+            "matches_cluster": (resolved in cluster_ips) if cluster_ips else None,
+            "error": "",
+        })
+    return {
+        "entries": entries,
+        "cluster_ip": primary,
+        "cluster_ips": cluster_ips,
+    }
+
+
 def check(host: str) -> dict[str, Any]:
     """Resolve ``host`` and compare to the cluster's external IP.
 
