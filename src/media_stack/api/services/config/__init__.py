@@ -70,6 +70,7 @@ get_backup = _diagnostics.get_backup
 restore_backup = _diagnostics.restore_backup
 get_envvars = _diagnostics.get_envvars
 set_envvar = _diagnostics.set_envvar
+delete_envvar = _diagnostics.delete_envvar
 get_manifests = _diagnostics.get_manifests
 get_onboarding_status = _diagnostics.get_onboarding_status
 add_custom_service = _diagnostics.add_custom_service

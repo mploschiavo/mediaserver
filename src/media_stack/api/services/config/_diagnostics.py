@@ -218,6 +218,24 @@ class DiagnosticsService:
         os.environ[key] = value
         return {"status": "set", "key": key, "value": value}
 
+    def delete_envvar(self, key: str) -> dict[str, Any]:
+        """Drop an env var from the controller process's environment.
+
+        Symmetric with ``set_envvar`` — both touch only the running
+        process. Persistence is the deployment's job (k8s Secret,
+        compose .env, etc.); this endpoint exists so the dashboard
+        can remove a runtime-injected var without a controller
+        restart. The UI EnvVarsEditorCard had Add/Update wired to
+        ``set_envvar`` but no Delete affordance — operators had to
+        edit the secret + restart, which lost runtime state.
+
+        Returns ``existed: false`` when the key was already absent
+        so the dashboard can render an idempotent confirmation
+        rather than treating missing-key as an error."""
+        existed = key in os.environ
+        os.environ.pop(key, None)
+        return {"status": "deleted", "key": key, "existed": existed}
+
     def get_manifests(self) -> dict[str, Any]:
         namespace = os.environ.get("K8S_NAMESPACE", "")
         if namespace:

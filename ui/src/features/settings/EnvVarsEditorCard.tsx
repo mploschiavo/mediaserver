@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, Plus, Save } from "lucide-react";
+import { Eye, EyeOff, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError, fetcher } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,20 @@ export function EnvVarsEditorCard() {
       void qc.invalidateQueries({ queryKey: settingsKeys.envVars });
     },
   });
+  // POST /api/envvars/delete (server lacks DELETE method dispatch).
+  // Symmetric with the save above; the server's allow-prefix guard
+  // applies the same set of platform/service prefixes so the
+  // dashboard can't drop arbitrary host vars.
+  const deleteMutation = useMutation({
+    mutationFn: (key: string) =>
+      fetcher<unknown>("api/envvars/delete", {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: settingsKeys.envVars });
+    },
+  });
 
   const initial = useMemo(() => fromServer(envVars.data), [envVars.data]);
   const [rows, setRows] = useState<EditableRow[]>([]);
@@ -145,6 +159,29 @@ export function EnvVarsEditorCard() {
         },
       },
     );
+  };
+
+  const handleDeleteRow = (row: EditableRow) => {
+    if (row.isNew) {
+      // Unsaved row — drop locally without a server round-trip.
+      setRows((prev) => prev.filter((r) => r.rowId !== row.rowId));
+      return;
+    }
+    if (!row.key.trim()) return;
+    if (!window.confirm(`Remove ${row.key}? The variable is dropped from the controller process immediately.`)) {
+      return;
+    }
+    setPendingId(row.rowId);
+    deleteMutation.mutate(row.key, {
+      onSuccess: () => {
+        toast.success(`Removed ${row.key}`);
+        setPendingId(null);
+      },
+      onError: (err) => {
+        toast.error(errMsg(err, "Remove failed"));
+        setPendingId(null);
+      },
+    });
   };
 
   return (
@@ -255,6 +292,24 @@ export function EnvVarsEditorCard() {
                     >
                       <Save aria-hidden className="size-3.5" />
                       Save
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteRow(row)}
+                      loading={
+                        pendingId === row.rowId && deleteMutation.isPending
+                      }
+                      disabled={
+                        (pendingId === row.rowId && deleteMutation.isPending) ||
+                        (row.isNew && !row.key.trim())
+                      }
+                      data-testid={`envvars-delete-${row.rowId}`}
+                      aria-label={`Remove ${row.key || "row"}`}
+                      className="text-fg-muted hover:text-danger"
+                    >
+                      <Trash2 aria-hidden className="size-3.5" />
                     </Button>
                   </div>
                 </li>
