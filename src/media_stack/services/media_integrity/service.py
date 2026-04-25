@@ -31,6 +31,7 @@ the reconcile mutex because it mutates the same library state.
 from __future__ import annotations
 
 import threading
+from media_stack.core.logging_utils import log_swallowed
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -429,8 +430,8 @@ class MediaIntegrityService:
                         total_bytes_freed=bytes_freed,
                     )
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                log_swallowed(exc)
         if self._audit is not None:
             try:
                 self._audit.append(
@@ -445,8 +446,8 @@ class MediaIntegrityService:
                         "operator_resolved": True,
                     },
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                log_swallowed(exc)
 
 
 # ---------------------------------------------------------------------------

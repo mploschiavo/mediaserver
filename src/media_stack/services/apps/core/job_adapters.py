@@ -1906,8 +1906,8 @@ def discover_api_keys(ctx: JobContext) -> dict:
     try:
         from media_stack.api.services.runtime_keys import invalidate_cache
         invalidate_cache()
-    except Exception:
-        pass
+    except Exception as exc:
+        log_swallowed(exc)
 
     return {
         "action": "discover-api-keys",

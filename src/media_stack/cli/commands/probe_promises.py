@@ -21,6 +21,7 @@ output use --json.
 from __future__ import annotations
 
 import argparse
+from media_stack.core.logging_utils import log_swallowed
 import json
 import sys
 import urllib.request
@@ -159,8 +160,7 @@ def _kubectl_exec_python(snippet: str, timeout: int = 30) -> tuple[int, str, str
             ["kubectl", "-n", _K8S_NAMESPACE, "get", "pod",
              "-l", "app=media-stack-controller",
              "-o", "jsonpath={.items[?(@.status.phase=='Running')].metadata.name}"],
-            capture_output=True, text=True, timeout=10,
-        )
+            capture_output=True, text=True, timeout=10, check=False)
         names = (out.stdout or "").split()
         if not names:
             return (1, "", "no Running controller pod")
@@ -169,7 +169,7 @@ def _kubectl_exec_python(snippet: str, timeout: int = 30) -> tuple[int, str, str
            _K8S_CONTROLLER_POD, "-c", "controller", "--",
            "python3", "-c", snippet]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         return (out.returncode, out.stdout, out.stderr)
     except subprocess.TimeoutExpired:
         return (1, "", "timeout")
@@ -603,8 +603,7 @@ def _resolve_routing_vars() -> dict[str, str]:
              "deploy/media-stack-controller", "--",
              "python3", "-c",
              "import json; from media_stack.api.services.config import get_routing; print(json.dumps(get_routing() or {}))"],
-            capture_output=True, text=True, timeout=15,
-        )
+            capture_output=True, text=True, timeout=15, check=False)
         if result.returncode == 0:
             try:
                 routing = json.loads(result.stdout) or {}
@@ -613,10 +612,10 @@ def _resolve_routing_vars() -> dict[str, str]:
                     val = str(routing.get(key) or "").strip()
                     if val:
                         out[key] = val
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                log_swallowed(exc)
+    except Exception as exc:
+        log_swallowed(exc)
     _resolve_routing_vars._cached = out
     return out
 
@@ -672,8 +671,7 @@ def _probe_k8s_exec(probe: dict) -> tuple[bool, str]:
             ["kubectl", "-n", namespace, "get", "pod",
              "-l", pod_label, "-o",
              "jsonpath={.items[?(@.status.phase=='Running')].metadata.name}"],
-            capture_output=True, text=True, timeout=10,
-        )
+            capture_output=True, text=True, timeout=10, check=False)
         if find.returncode != 0:
             return (False, f"kubectl get pod failed: {find.stderr.strip()[:200]}")
         pod_names = find.stdout.split()
@@ -689,7 +687,7 @@ def _probe_k8s_exec(probe: dict) -> tuple[bool, str]:
     exec_args.append("--")
     exec_args.extend(resolved_cmd)
     try:
-        out = subprocess.run(exec_args, capture_output=True, text=True, timeout=30)
+        out = subprocess.run(exec_args, capture_output=True, text=True, timeout=30, check=False)
     except subprocess.TimeoutExpired:
         return (False, "kubectl exec timeout")
     except Exception as exc:
@@ -727,7 +725,7 @@ def _probe_k8s_resource(probe: dict) -> tuple[bool, str]:
     if label_selector:
         cmd.extend(["-l", label_selector])
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
     except FileNotFoundError:
         return (False, "kubectl not found on PATH")
     except subprocess.TimeoutExpired:

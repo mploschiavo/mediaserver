@@ -193,6 +193,12 @@ class AllExportsAreDefined(unittest.TestCase):
                                         and isinstance(el.value, str)
                                     ):
                                         all_names.append(el.value)
+                elif isinstance(node, ast.AnnAssign):
+                    # ``X: T = value`` — annotated module-level
+                    # assignments are valid Python and define ``X``
+                    # just like ``X = value``.
+                    if isinstance(node.target, ast.Name):
+                        defined.add(node.target.id)
                 elif isinstance(node, ast.ImportFrom):
                     for a in node.names:
                         defined.add(a.asname or a.name)
