@@ -1909,7 +1909,7 @@ spec:
       - env:
         - name: API_UPSTREAM
           value: media-stack-controller:9100
-        image: harbor.iomio.io/library/media-stack-ui:v1.3.8
+        image: harbor.iomio.io/library/media-stack-ui:v1.3.9
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3
