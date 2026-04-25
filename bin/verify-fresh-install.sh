@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # verify-fresh-install.sh — runtime probe of every promise in
-# contracts/promises.yaml.
+# .ratchets/promises/promises.yaml.
 #
 # Two modes:
 #

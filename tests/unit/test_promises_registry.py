@@ -1,6 +1,6 @@
 """L33 — meta-ratchet for the post-install promises registry.
 
-The registry (``contracts/promises.yaml``) is the source of truth for
+The registry (``.ratchets/promises/promises.yaml``) is the source of truth for
 "what works out-of-the-box after a fresh install." This ratchet keeps
 the registry consistent with the rest of the codebase:
 
@@ -66,7 +66,7 @@ ALLOWED_K8S_KINDS = {
 
 def _load_promises() -> dict:
     import yaml
-    path = ROOT / "contracts" / "promises.yaml"
+    path = ROOT / ".ratchets" / "promises" / "promises.yaml"
     if not path.is_file():
         return {}
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -134,7 +134,7 @@ class PromisesRegistryConsistent(unittest.TestCase):
     def test_registry_exists_and_has_promises(self):
         self.assertTrue(
             self.registry,
-            "contracts/promises.yaml is missing or empty. Without it "
+            ".ratchets/promises/promises.yaml is missing or empty. Without it "
             "the fresh-install acceptance script has nothing to "
             "verify and the meta-ratchet can't enforce convention.",
         )

@@ -38,7 +38,7 @@ Look-up material — generated from code where possible.
 |---|---|
 | [reference/configuration.md](reference/configuration.md) | All configurable knobs |
 | [reference/service-catalog.md](reference/service-catalog.md) | Per-service metadata + endpoints |
-| [reference/promises.md](reference/promises.md) | Generated from `contracts/promises.yaml` (cross-platform OTB guarantees) |
+| [reference/promises.md](reference/promises.md) | Generated from `.ratchets/promises/promises.yaml` (cross-platform OTB guarantees) |
 | [reference/promises-k8s.md](reference/promises-k8s.md) | Generated from `contracts/promises-k8s.yaml` (K8s-only guarantees) |
 | [reference/maintainerr-rules.md](reference/maintainerr-rules.md) | Maintainerr collection-rule schema |
 
