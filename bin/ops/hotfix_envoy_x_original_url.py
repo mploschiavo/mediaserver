@@ -18,7 +18,7 @@ Why text-based, not YAML-based:
   than parse + re-emit.
 
 Usage:
-    kubectl -n media-stack cp tools/hotfix_envoy_x_original_url.py \\
+    kubectl -n media-stack cp bin/ops/hotfix_envoy_x_original_url.py \\
         deploy/media-stack-controller:/tmp/hotfix2.py
     kubectl -n media-stack exec deploy/media-stack-controller -- \\
         python3 /tmp/hotfix2.py

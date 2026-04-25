@@ -79,7 +79,7 @@ _FIXTURES = ROOT / "tests" / "fixtures" / "api_responses"
 #     `health.json`  → `/api/health`
 #
 # That convention covers the ~100 parameter-free GETs the bulk
-# capture script writes (see `tools/recapture-all-fixtures.sh`).
+# capture script writes (see `bin/ops/recapture-all-fixtures.sh`).
 # Override only when the fixture lives somewhere the convention
 # doesn't reach: legacy paths without the `/api` prefix, dashed
 # filenames that should map to slashed paths, etc.
@@ -189,6 +189,13 @@ class ApiResponseContractTest(unittest.TestCase):
         a captured fixture. Without it, the contract test pool
         silently shrinks and drift creeps in for un-covered paths.
 
+        Bug class C — the SPA's Routing tab broke because
+        /api/routing-probe had no captured fixture; the test pool
+        therefore never invoked ``validate_response`` against the
+        live shape, and the spa<->handler mismatch
+        ({routing,services} vs {rows:[…]}) went unflagged. This
+        test is the gate that keeps that bug class from recurring.
+
         Skipped categories (intentional, won't fail this test):
           * Path-templated endpoints (/api/users/{id}) — need
             hand-picked representative parameters.
@@ -197,7 +204,9 @@ class ApiResponseContractTest(unittest.TestCase):
           * Endpoints whose 200 schema is non-JSON (file downloads,
             openapi.yaml itself, the redoc HTML, etc.).
           * POST-only paths — covered by request-body contract
-            tests, not response fixtures.
+            tests, not response fixtures. (The symmetric
+            ``test_no_orphaned_fixtures`` ensures we don't carry a
+            POST-fixture mapped to a path the spec dropped.)
 
         How to fix
         ----------
@@ -244,6 +253,86 @@ class ApiResponseContractTest(unittest.TestCase):
                 "CAPTURE.md) or mark the spec op `x-status: planned`. "
                 "Missing:\n  " + "\n  ".join(sorted(missing))
             )
+
+    def test_documented_endpoint_coverage_floor(self) -> None:
+        """Floor ratchet: this is the *count* of GET endpoints with a
+        200 application/json schema that have a captured fixture. The
+        number can only go UP. New endpoints land with a fixture; the
+        existing-endpoint cohort never shrinks (which would mean a
+        spec entry, fixture, or both got silently dropped).
+
+        Why this is separate from the missing-fixture check above:
+        ``test_every_documented_endpoint_has_a_fixture`` triggers when
+        a path is added to the spec without a fixture. This test
+        triggers when somebody *removes* a covered path from the spec
+        without removing the fixture (making it orphan, see below) AND
+        without lowering the floor — which would fail loudly here. It
+        catches the "delete an endpoint and its tests in the same PR"
+        anti-pattern that the orphan check would let through if the
+        deleter is thorough."""
+        spec = yaml.safe_load(_SPEC_PATH.read_text(encoding="utf-8"))
+        covered_paths: set[str] = set(ENDPOINTS.values())
+        coverable = 0
+        for path, ops in (spec.get("paths") or {}).items():
+            if "{" in path:
+                continue
+            if not isinstance(ops, dict):
+                continue
+            get_op = ops.get("get")
+            if not isinstance(get_op, dict):
+                continue
+            if str(get_op.get("x-status") or "").lower() == "planned":
+                continue
+            r200 = (get_op.get("responses") or {}).get("200")
+            if r200 is None:
+                r200 = (get_op.get("responses") or {}).get(200)
+            if not isinstance(r200, dict):
+                continue
+            content = r200.get("content") or {}
+            media = content.get("application/json")
+            if not isinstance(media, dict):
+                continue
+            if not isinstance(media.get("schema"), dict):
+                continue
+            if path in covered_paths:
+                coverable += 1
+        # Floor — only goes up. Bump after capturing new fixtures
+        # for newly-added GET endpoints. Leave a small slack so
+        # parallel agents adding endpoints don't have to bump in
+        # lock-step; the missing-fixture check above is the strict
+        # gate, this is the no-shrink complement.
+        floor = 60
+        self.assertGreaterEqual(
+            coverable, floor,
+            f"Documented GET fixture coverage shrank from floor "
+            f"{floor} to {coverable}. Either restore the dropped "
+            f"fixture(s) or, if the endpoint was intentionally retired, "
+            f"lower the floor in this test.",
+        )
+
+    def test_no_orphaned_fixtures(self) -> None:
+        """Symmetric coverage: every fixture file must map to a
+        path that exists in openapi.yaml. A stale fixture for a
+        retired endpoint silently keeps passing schema validation
+        because the validator picks up *no* schema for an unknown
+        path, so an orphaned fixture is dead weight that hides
+        when the spec drops a path the SPA still depends on.
+
+        How to fix
+        ----------
+        Either restore the deleted spec entry, or remove the
+        orphaned fixture file."""
+        spec = yaml.safe_load(_SPEC_PATH.read_text(encoding="utf-8"))
+        spec_paths = set((spec.get("paths") or {}).keys())
+        orphans: list[str] = []
+        for stem, path in sorted(ENDPOINTS.items()):
+            if path not in spec_paths:
+                orphans.append(f"{stem}.json -> {path} (not in openapi.yaml)")
+        self.assertEqual(
+            orphans, [],
+            "Fixtures map to paths not declared in openapi.yaml:\n  "
+            + "\n  ".join(orphans),
+        )
 
     def test_response_validates_against_schema(self) -> None:
         """The headline assertion: every captured response satisfies

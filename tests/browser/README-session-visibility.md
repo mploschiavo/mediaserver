@@ -15,7 +15,7 @@ session-visibility tabs.
 ## Prerequisites
 
 ```
-cd tests/e2e/playwright
+cd tests/browser
 npm install   # installs @playwright/test, @axe-core/playwright, axe-core, @lhci/cli
 ```
 
@@ -53,7 +53,7 @@ GH Action container:
   env:
     CONTROLLER_API_TEST: "1"
     CONTROLLER_URL: http://127.0.0.1:9100
-  working-directory: tests/e2e/playwright
+  working-directory: tests/browser
   run: |
     npm ci
     npx playwright install --with-deps chromium

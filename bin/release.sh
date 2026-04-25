@@ -51,6 +51,22 @@ if [[ -n "$NEW_VERSION" ]]; then
   echo "$NEW_VERSION" > "$REPO_ROOT/VERSION"
 fi
 VERSION=$(cat "$REPO_ROOT/VERSION" | tr -d '[:space:]')
+
+# Keep src/media_stack/version.py in sync with VERSION. Hatchling
+# reads the literal __version__ assignment from version.py at wheel
+# build time (Phase 12-E ships the controller image as a wheel
+# install), so a stale version.py would bake the wrong package
+# version into the image even when VERSION is correct. The two
+# files are documented as the single source of truth bumped
+# atomically by release.sh.
+VERSION_PY="$REPO_ROOT/src/media_stack/version.py"
+if [[ -f "$VERSION_PY" ]]; then
+  CURRENT_PY_VERSION=$(grep -E '^__version__ = ' "$VERSION_PY" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+  if [[ "$CURRENT_PY_VERSION" != "$VERSION" ]]; then
+    sed -i -E "s/^__version__ = \".*\"/__version__ = \"${VERSION}\"/" "$VERSION_PY"
+    echo "  Synced ${VERSION_PY} -> ${VERSION}"
+  fi
+fi
 GIT_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
 GIT_SHA_FULL=$(git -C "$REPO_ROOT" rev-parse HEAD)
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)

@@ -1,6 +1,6 @@
 /**
  * Ratchet: ``src/api/fixture-codegen-validation.ts`` must be a
- * faithful regen of ``tools/gen-fixture-codegen-validation.py``
+ * faithful regen of ``bin/ops/gen-fixture-codegen-validation.py``
  * over the current spec + fixture set.
  *
  * Why this exists
@@ -32,7 +32,7 @@ import { describe, it, expect } from "vitest";
 const COMMITTED_PATH = resolve(__dirname, "fixture-codegen-validation.ts");
 const GEN_SCRIPT = resolve(
   __dirname,
-  "../../../tools/gen-fixture-codegen-validation.py",
+  "../../../bin/ops/gen-fixture-codegen-validation.py",
 );
 const REPO_ROOT = resolve(__dirname, "../../..");
 const TARGET_REL = "ui/src/api/fixture-codegen-validation.ts";
@@ -64,7 +64,7 @@ describe("fixture-codegen-validation freshness", () => {
           expect(
             fresh,
             `${TARGET_REL} is stale vs the spec / fixtures. ` +
-              `Regenerate with: python3 tools/gen-fixture-codegen-validation.py — ` +
+              `Regenerate with: python3 bin/ops/gen-fixture-codegen-validation.py — ` +
               `or copy the regen output from ${stagedPath}.`,
           ).toEqual(committed);
         }

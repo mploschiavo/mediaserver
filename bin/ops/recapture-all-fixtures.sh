@@ -12,8 +12,8 @@
 # test's ENDPOINTS map is where you wire those up explicitly.
 #
 # Usage:
-#   bash tools/recapture-all-fixtures.sh          # default: media-stack ns
-#   NS=other-ns bash tools/recapture-all-fixtures.sh
+#   bash bin/ops/recapture-all-fixtures.sh          # default: media-stack ns
+#   NS=other-ns bash bin/ops/recapture-all-fixtures.sh
 
 set -euo pipefail
 

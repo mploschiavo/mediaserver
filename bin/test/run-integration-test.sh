@@ -10,7 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="$REPO_ROOT/docker"
-PLAYWRIGHT_DIR="$REPO_ROOT/tests/e2e/playwright"
+PLAYWRIGHT_DIR="$REPO_ROOT/tests/browser"
 
 # Defaults — override via env vars.
 : "${BOOTSTRAP_PROFILE_FILE:=$REPO_ROOT/examples/bootstrap-profiles/media-compose-standard.yaml}"
