@@ -229,6 +229,75 @@ export function useSetLogLevel(): UseMutationResult<
   });
 }
 
+export interface DeleteEnvVarResponse {
+  status?: string;
+  key?: string;
+  /** ``false`` when the key was already absent — server is idempotent. */
+  existed?: boolean;
+  [k: string]: unknown;
+}
+
+/**
+ * `POST /api/envvars/delete` — drop an env var from the controller
+ * process. Symmetric with the inline save mutation in
+ * ``EnvVarsEditorCard``: the server's allow-prefix guard limits
+ * removal to platform/service prefixes so the dashboard can't
+ * accidentally clear PATH/HOME. Idempotent on the server (already
+ * absent → ``existed: false``, still 200), so the optimistic drop
+ * is safe to reconcile on settle.
+ *
+ * Optimistic flow: filter the row out of the cached
+ * ``settingsKeys.envVars`` payload immediately so the table snaps
+ * before the network round-trip. On error, restore the snapshot we
+ * captured in ``onMutate`` and let ``onSettled`` re-fetch.
+ */
+export function useDeleteEnvVar(): UseMutationResult<
+  DeleteEnvVarResponse,
+  Error,
+  { key: string },
+  { previous: EnvVarsResponse | undefined }
+> {
+  const qc = useQueryClient();
+  return useMutation<
+    DeleteEnvVarResponse,
+    Error,
+    { key: string },
+    { previous: EnvVarsResponse | undefined }
+  >({
+    mutationFn: ({ key }) =>
+      fetcher<DeleteEnvVarResponse>("api/envvars/delete", {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      }),
+    onMutate: async ({ key }) => {
+      await qc.cancelQueries({ queryKey: settingsKeys.envVars });
+      const previous = qc.getQueryData<EnvVarsResponse>(settingsKeys.envVars);
+      if (previous) {
+        const filterByKey = (e: EnvVarEntry) =>
+          (e.key ?? e.name ?? "") !== key;
+        qc.setQueryData<EnvVarsResponse>(settingsKeys.envVars, {
+          ...previous,
+          vars: previous.vars
+            ? previous.vars.filter(filterByKey)
+            : previous.vars,
+          env_vars: previous.env_vars
+            ? previous.env_vars.filter(filterByKey)
+            : previous.env_vars,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        qc.setQueryData(settingsKeys.envVars, context.previous);
+      }
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: settingsKeys.envVars });
+    },
+  });
+}
+
 /**
  * Mask sensitive env values in render. The check is a simple
  * substring scan (case-insensitive) — sufficient for the spec's

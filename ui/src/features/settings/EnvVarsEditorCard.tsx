@@ -10,6 +10,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { asArray } from "@/lib/coerce";
@@ -17,6 +25,7 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   isSensitiveKey,
   settingsKeys,
+  useDeleteEnvVar,
   useEnvVars,
   type EnvVarEntry,
   type EnvVarsResponse,
@@ -97,22 +106,22 @@ export function EnvVarsEditorCard() {
   // POST /api/envvars/delete (server lacks DELETE method dispatch).
   // Symmetric with the save above; the server's allow-prefix guard
   // applies the same set of platform/service prefixes so the
-  // dashboard can't drop arbitrary host vars.
-  const deleteMutation = useMutation({
-    mutationFn: (key: string) =>
-      fetcher<unknown>("api/envvars/delete", {
-        method: "POST",
-        body: JSON.stringify({ key }),
-      }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: settingsKeys.envVars });
-    },
-  });
+  // dashboard can't drop arbitrary host vars. Optimistic update +
+  // rollback live in ``useDeleteEnvVar`` so the row snaps out before
+  // the network round-trip and slides back if the server rejects.
+  const deleteMutation = useDeleteEnvVar();
 
   const initial = useMemo(() => fromServer(envVars.data), [envVars.data]);
   const [rows, setRows] = useState<EditableRow[]>([]);
   const { revealed, toggle: toggleReveal } = useRevealedSet();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  /**
+   * Confirmation dialog state. We intentionally use the shared
+   * Radix dialog primitive rather than ``window.confirm`` —
+   * happy-dom's confirm is a no-op stub, and the modal lets us
+   * announce the destructive action via ``role="alertdialog"``.
+   */
+  const [confirmTarget, setConfirmTarget] = useState<EditableRow | null>(null);
 
   useEffect(() => {
     setRows(initial);
@@ -168,20 +177,29 @@ export function EnvVarsEditorCard() {
       return;
     }
     if (!row.key.trim()) return;
-    if (!window.confirm(`Remove ${row.key}? The variable is dropped from the controller process immediately.`)) {
-      return;
-    }
+    // Open the confirm dialog; the actual mutation runs from
+    // ``confirmDelete`` once the user accepts.
+    setConfirmTarget(row);
+  };
+
+  const confirmDelete = () => {
+    const row = confirmTarget;
+    if (!row) return;
+    setConfirmTarget(null);
     setPendingId(row.rowId);
-    deleteMutation.mutate(row.key, {
-      onSuccess: () => {
-        toast.success(`Removed ${row.key}`);
-        setPendingId(null);
+    deleteMutation.mutate(
+      { key: row.key },
+      {
+        onSuccess: () => {
+          toast.success(`Removed ${row.key}`);
+          setPendingId(null);
+        },
+        onError: (err) => {
+          toast.error(errMsg(err, "Remove failed"));
+          setPendingId(null);
+        },
       },
-      onError: (err) => {
-        toast.error(errMsg(err, "Remove failed"));
-        setPendingId(null);
-      },
-    });
+    );
   };
 
   return (
@@ -318,6 +336,45 @@ export function EnvVarsEditorCard() {
           </ul>
         )}
       </CardContent>
+      <Dialog
+        open={confirmTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmTarget(null);
+        }}
+      >
+        <DialogContent
+          role="alertdialog"
+          data-testid="envvars-delete-confirm"
+          className="max-w-sm"
+        >
+          <DialogHeader>
+            <DialogTitle>Remove environment variable?</DialogTitle>
+            <DialogDescription>
+              {confirmTarget
+                ? `${confirmTarget.key} will be dropped from the controller process immediately. This does not edit the deployment manifest.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmTarget(null)}
+              data-testid="envvars-delete-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={confirmDelete}
+              data-testid="envvars-delete-confirm-button"
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

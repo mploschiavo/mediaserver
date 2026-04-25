@@ -10,8 +10,11 @@ const envVarsState = vi.hoisted(() => ({
 }));
 const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
+// Cast to ``unknown`` so individual tests can return wider response
+// shapes (e.g. ``{ status, key, existed }`` from /api/envvars/delete)
+// without each ``mockImplementation`` having to reassert the type.
 const fetcherMock = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve({ ok: true })),
+  vi.fn((): Promise<unknown> => Promise.resolve({ ok: true })),
 );
 
 vi.mock("./hooks", async () => {
@@ -28,6 +31,19 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  return {
+    ...actual,
+    fetcher: fetcherMock,
+  };
+});
+
+// ``hooks.ts`` imports ``fetcher`` from ``@/api/client`` directly — a
+// distinct specifier from ``@/api`` above — so the per-row save mock
+// needs a sibling mock to intercept the ``useDeleteEnvVar`` call.
+vi.mock("@/api/client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/client")>(
+    "@/api/client",
+  );
   return {
     ...actual,
     fetcher: fetcherMock,
@@ -123,5 +139,59 @@ describe("EnvVarsEditorCard", () => {
       expect(toastError).toHaveBeenCalledWith("Key is required"),
     );
     expect(fetcherMock).not.toHaveBeenCalled();
+  });
+
+  it("opens a confirm dialog before posting to /api/envvars/delete", async () => {
+    envVarsState.data = { vars: [{ key: "HOSTNAME", value: "alpha" }] };
+    fetcherMock.mockImplementation(() =>
+      Promise.resolve({ status: "deleted", key: "HOSTNAME", existed: true }),
+    );
+    renderWithProviders(<EnvVarsEditorCard />);
+    await userEvent.click(screen.getByTestId("envvars-delete-HOSTNAME"));
+    // Dialog appears — and we have NOT yet hit the network.
+    const confirm = await screen.findByTestId("envvars-delete-confirm");
+    expect(confirm).toBeInTheDocument();
+    expect(fetcherMock).not.toHaveBeenCalled();
+    await userEvent.click(
+      screen.getByTestId("envvars-delete-confirm-button"),
+    );
+    await waitFor(() => expect(fetcherMock).toHaveBeenCalled());
+    const firstCall = fetcherMock.mock.calls[0] as
+      | [unknown, { method?: string; body?: string } | undefined]
+      | undefined;
+    const [path, init] = firstCall ?? [undefined, undefined];
+    expect(String(path)).toMatch(/api\/envvars\/delete$/);
+    expect(init?.method).toBe("POST");
+    expect(String(init?.body ?? "")).toContain("HOSTNAME");
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Removed HOSTNAME"),
+    );
+  });
+
+  it("cancelling the confirm dialog skips the delete request", async () => {
+    envVarsState.data = { vars: [{ key: "HOSTNAME", value: "alpha" }] };
+    renderWithProviders(<EnvVarsEditorCard />);
+    await userEvent.click(screen.getByTestId("envvars-delete-HOSTNAME"));
+    await screen.findByTestId("envvars-delete-confirm");
+    await userEvent.click(screen.getByTestId("envvars-delete-cancel"));
+    expect(fetcherMock).not.toHaveBeenCalled();
+  });
+
+  it("toasts the server error when delete fails", async () => {
+    envVarsState.data = { vars: [{ key: "HOSTNAME", value: "alpha" }] };
+    fetcherMock.mockImplementation(() =>
+      Promise.reject(new Error("env var must start with a known prefix")),
+    );
+    renderWithProviders(<EnvVarsEditorCard />);
+    await userEvent.click(screen.getByTestId("envvars-delete-HOSTNAME"));
+    await screen.findByTestId("envvars-delete-confirm");
+    await userEvent.click(
+      screen.getByTestId("envvars-delete-confirm-button"),
+    );
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "env var must start with a known prefix",
+      ),
+    );
   });
 });
