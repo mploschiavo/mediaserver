@@ -29,7 +29,7 @@ Example:
 bash bin/run-playwright-screenshots.sh 192.168.1.60 media-stack
 ```
 
-This runs `tests/e2e/playwright/tests/screenshot-capture.spec.ts` and writes one PNG per app host.
+This runs `tests/browser/tests/screenshot-capture.spec.ts` and writes one PNG per app host.
 The capture flow now attempts app login first (using credentials from env/Kubernetes secret),
 so screenshots reflect authenticated dashboards rather than pre-login shells.
 

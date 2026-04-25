@@ -409,10 +409,10 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - E2E tests must validate real browser behavior: DOM element rendering, navigation, button clicks, form submission — not just HTTP status codes.
 - Use Playwright with a real Chromium browser for all UI/navigation tests. HTTP-only API checks belong in separate `ux-smoke.spec.ts` / `ingress.spec.ts` files.
 - Test structure:
-  - `tests/e2e/playwright/tests/ux-smoke.spec.ts` — HTTP-level smoke (status codes, API reachability, tile link validation)
-  - `tests/e2e/playwright/tests/app-navigation.spec.ts` — Browser-level tests (page rendering, navigation, login, button clicks, asset integrity)
-  - `tests/e2e/playwright/tests/ingress.spec.ts` — Host-routing validation for subdomain mode
-  - `tests/e2e/playwright/tests/screenshot-capture.spec.ts` — Automated UI screenshots
+  - `tests/browser/tests/ux-smoke.spec.ts` — HTTP-level smoke (status codes, API reachability, tile link validation)
+  - `tests/browser/tests/app-navigation.spec.ts` — Browser-level tests (page rendering, navigation, login, button clicks, asset integrity)
+  - `tests/browser/tests/ingress.spec.ts` — Host-routing validation for subdomain mode
+  - `tests/browser/tests/screenshot-capture.spec.ts` — Automated UI screenshots
 - Every app routed through the edge proxy must have browser tests that verify:
   1. Initial page load renders real UI elements (not a blank page with 200 status)
   2. In-app navigation (Settings, sub-pages) stays within the app's base path
@@ -422,7 +422,7 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - For path-prefix routed apps, verify that clicking internal links (e.g., Settings) navigates to the correct path under `/app/<service>/`, not to a bare `/config/` or `/settings/`.
 - For apps with `url_base` configured (SABnzbd, ARR apps), verify that the app generates links with the correct base path.
 - When a routing or proxy fix is made, add or update the corresponding browser test to prevent regression.
-- Run browser tests after every deploy: `cd tests/e2e/playwright && npx playwright test --project=browser`.
+- Run browser tests after every deploy: `cd tests/browser && npx playwright test --project=browser`.
 
 ## App Seeding And First-Run Policy
 - Any app that is deployed for a profile (including dependency-expanded services) must be seeded out of first-run/setup-wizard state during bootstrap.

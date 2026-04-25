@@ -14,9 +14,9 @@ See [docs/architecture/testing.md](../docs/architecture/testing.md) for the full
 - `tests/unit/conftest.py` -- Autouse fixture that clears LRU caches between tests
 - `tests/unit/test_no_hardcoded_services.py` -- Architecture scanner (0 allowlist entries)
 - `tests/unit/test_singleton_cache_isolation.py` -- Cache isolation validation
-- `tests/e2e/playwright/` -- Playwright ingress/browser smoke tests
+- `tests/browser/` -- Playwright ingress/browser smoke tests (was `tests/e2e/playwright/`)
 - `tests/e2e/api/` -- API-level integration checks
-- `tests/e2e/playwright/tests/screenshot-capture.spec.ts` -- deterministic app UI screenshots
+- `tests/browser/tests/screenshot-capture.spec.ts` -- deterministic app UI screenshots
 
 ## Run locally
 ```bash

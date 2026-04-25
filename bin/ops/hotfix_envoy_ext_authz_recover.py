@@ -23,7 +23,7 @@ Headers added:
     forward compat with /api/authz/forward-auth.
 
 Usage:
-    kubectl -n media-stack cp tools/hotfix_envoy_ext_authz_recover.py \\
+    kubectl -n media-stack cp bin/ops/hotfix_envoy_ext_authz_recover.py \\
         deploy/media-stack-controller:/tmp/recover.py
     kubectl -n media-stack exec deploy/media-stack-controller -- \\
         python3 /tmp/recover.py

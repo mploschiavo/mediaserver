@@ -1,6 +1,6 @@
 // AUTO-GENERATED — do not edit by hand.
 // Source: contracts/api/openapi.yaml + tests/fixtures/api_responses
-// Regenerate: python3 tools/gen-fixture-codegen-validation.py
+// Regenerate: python3 bin/ops/gen-fixture-codegen-validation.py
 //
 // What this exists for
 // --------------------

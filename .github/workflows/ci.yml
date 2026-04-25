@@ -223,11 +223,11 @@ jobs:
           node-version: 22
 
       - name: Install Playwright test deps
-        working-directory: tests/e2e/playwright
+        working-directory: tests/browser
         run: npm ci
 
       - name: Validate Playwright test discovery
-        working-directory: tests/e2e/playwright
+        working-directory: tests/browser
         run: npx playwright test --list
 
   console-scripts-smoke:

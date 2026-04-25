@@ -6,7 +6,7 @@ mounted at /srv-config/envoy). Idempotent — re-running on an
 already-patched file is a no-op.
 
 Usage:
-    kubectl -n media-stack cp tools/hotfix_envoy_ext_authz_headers.py \\
+    kubectl -n media-stack cp bin/ops/hotfix_envoy_ext_authz_headers.py \\
         deploy/media-stack-controller:/tmp/hotfix.py
     kubectl -n media-stack exec deploy/media-stack-controller -- \\
         python3 /tmp/hotfix.py

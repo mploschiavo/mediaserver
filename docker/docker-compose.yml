@@ -16,7 +16,7 @@ x-arr-env: &arr-env
   TZ: ${TZ:-UTC}
 
 x-media-vols: &media-vols
-  - ${MEDIA_ROOT:-../media}/media:/media
+  - ${MEDIA_ROOT:-../media}:/media
   - ${DATA_ROOT:-../data}/torrents:/data/torrents
   - ${DATA_ROOT:-../data}/usenet:/data/usenet
 
@@ -47,7 +47,7 @@ services:
           /data/usenet/completed/movies \
           /data/usenet/completed/music \
           /data/usenet/completed/books \
-          /media/media /media/media/movies /media/media/tv /media/media/music /media/media/books; do
+          /media /media/movies /media/tv /media/music /media/books; do
           mkdir -p "$$d"
         done
         chown -R ${PUID:-1000}:${PGID:-1000} /cfg /data /media
@@ -317,7 +317,7 @@ services:
     volumes:
       - ${CONFIG_ROOT:-../config}/jellyfin:/config
       - ${DATA_ROOT:-../data}/transcode:/cache
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
     ports:
       - "${JELLYFIN_PORT:-8096}:8096"
     restart: unless-stopped
@@ -421,7 +421,7 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-../config}/sonarr:/config
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
       - ${DATA_ROOT:-../data}/torrents:/data/torrents
       - ${DATA_ROOT:-../data}/usenet:/data/usenet
     ports:
@@ -444,7 +444,7 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-../config}/radarr:/config
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
       - ${DATA_ROOT:-../data}/torrents:/data/torrents
       - ${DATA_ROOT:-../data}/usenet:/data/usenet
     ports:
@@ -467,7 +467,7 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-../config}/lidarr:/config
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
       - ${DATA_ROOT:-../data}/torrents:/data/torrents
       - ${DATA_ROOT:-../data}/usenet:/data/usenet
     ports:
@@ -490,7 +490,7 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-../config}/readarr:/config
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
       - ${DATA_ROOT:-../data}/torrents:/data/torrents
       - ${DATA_ROOT:-../data}/usenet:/data/usenet
     ports:
@@ -513,7 +513,7 @@ services:
     environment: *arr-env
     volumes:
       - ${CONFIG_ROOT:-../config}/bazarr:/config
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
     ports:
       - "${BAZARR_PORT:-6767}:6767"
     restart: unless-stopped
@@ -607,7 +607,7 @@ services:
       VERSION: docker
     volumes:
       - ${CONFIG_ROOT:-../config}/plex:/config
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
       - ${DATA_ROOT:-../data}/transcode:/transcode
     restart: unless-stopped
 
@@ -656,7 +656,7 @@ services:
     volumes:
       - ${CONFIG_ROOT:-../config}/jellyfin:/config
       - ${DATA_ROOT:-../data}/transcode:/cache
-      - ${MEDIA_ROOT:-../media}/media:/media
+      - ${MEDIA_ROOT:-../media}:/media
     restart: unless-stopped
 
   media-stack-controller:

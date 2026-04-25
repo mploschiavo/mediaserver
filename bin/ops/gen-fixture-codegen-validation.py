@@ -28,7 +28,7 @@ triangle.
 
 Usage
 -----
-    python3 tools/gen-fixture-codegen-validation.py
+    python3 bin/ops/gen-fixture-codegen-validation.py
 
 Output is deterministic — re-running with no spec/fixture changes
 produces identical bytes. The companion ``fixture-codegen-validation-fresh.test.ts``
@@ -97,7 +97,7 @@ def main() -> int:
 
     header = f'''// AUTO-GENERATED — do not edit by hand.
 // Source: {SPEC_PATH.relative_to(ROOT)} + {FIXTURES_DIR.relative_to(ROOT)}
-// Regenerate: python3 tools/gen-fixture-codegen-validation.py
+// Regenerate: python3 bin/ops/gen-fixture-codegen-validation.py
 //
 // What this exists for
 // --------------------

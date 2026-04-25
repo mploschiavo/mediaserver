@@ -18,7 +18,7 @@ echo "[INFO] NODE_IP: $NODE_IP"
 echo "[INFO] NAMESPACE: $NAMESPACE"
 echo "[INFO] HOSTS: $HOSTS_CSV"
 
-pushd "$ROOT_DIR/tests/e2e/playwright" >/dev/null
+pushd "$ROOT_DIR/tests/browser" >/dev/null
 if [[ ! -d node_modules ]]; then
   if ! npm ci; then
     npm install
