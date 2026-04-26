@@ -33,20 +33,38 @@ import yaml
 from .arr_protocol import ArrApp
 
 
-# Resolve policy contract path: repo-relative first, then container mount.
+# Resolve policy contract path: repo-relative first, then container
+# mount, then the install-root path the wheel-based image uses.
+# The factory bails with FileNotFoundError if none exist, leaving the
+# whole media-integrity subsystem disabled at boot — so this list is
+# load-bearing.
 _CONTRACT_PATH_REPO = (
     Path(__file__).resolve().parents[4] / "contracts" / "servarr-policy.yaml"
 )
+# Install-root used by ``deploy/compose/controller.Dockerfile`` (the
+# wheel-based image). v1.0.230 cluster has the file here, but the
+# loader was hard-coded to ``/contracts/...`` and silently disabled
+# the whole subsystem ("media-integrity service not configured" /
+# "No adapters configured" in the dashboard) — fixed by adding this
+# candidate above the legacy bind-mount path.
+_CONTRACT_PATH_INSTALL = Path("/opt/media-stack/contracts/servarr-policy.yaml")
 _CONTRACT_PATH_CONTAINER = Path("/contracts/servarr-policy.yaml")
+
+_CONTRACT_PATH_CANDIDATES = (
+    _CONTRACT_PATH_REPO,
+    _CONTRACT_PATH_INSTALL,
+    _CONTRACT_PATH_CONTAINER,
+)
 
 
 def _default_contract_path() -> Path:
     """Pick the policy path at call time so tests can monkeypatch."""
-    return (
-        _CONTRACT_PATH_REPO
-        if _CONTRACT_PATH_REPO.exists()
-        else _CONTRACT_PATH_CONTAINER
-    )
+    for candidate in _CONTRACT_PATH_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    # No file on disk — return the last (legacy) candidate so the
+    # caller's FileNotFoundError surfaces with a familiar path string.
+    return _CONTRACT_PATH_CONTAINER
 
 
 # ---------------------------------------------------------------------------
