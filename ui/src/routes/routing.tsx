@@ -3,9 +3,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DnsCheckCard } from "@/features/routing-admin/DnsCheckCard";
 import { EnvoyAdminSummaryCard } from "@/features/routing-admin/EnvoyAdminSummaryCard";
+import { ApexCatchAllCard } from "@/features/routing-admin/ApexCatchAllCard";
 import { ExposureCard } from "@/features/routing-admin/ExposureCard";
 import { GatewayHostnamesCard } from "@/features/routing-admin/GatewayHostnamesCard";
 import { HostnamesMatrix } from "@/features/routing-admin/HostnamesMatrix";
+import { PathAliasesCard } from "@/features/routing-admin/PathAliasesCard";
 import { ReachabilityMatrix } from "@/features/routing-admin/ReachabilityMatrix";
 import { RoutingStrategyCard } from "@/features/routing-admin/RoutingStrategyCard";
 import { TlsCertificateCard } from "@/features/routing-admin/TlsCertificateCard";
@@ -46,6 +48,10 @@ function RoutingPage() {
       <ExposureCard />
 
       <HostnamesMatrix />
+
+      <PathAliasesCard />
+
+      <ApexCatchAllCard />
 
       <EnvoyAdminSummaryCard />
 
