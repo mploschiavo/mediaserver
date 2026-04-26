@@ -43,12 +43,23 @@ interface NavSection {
 
 const PRIMARY_SECTIONS: NavSection[] = [
   {
+    // Media-only — what's actually in the operator's library. Logs
+    // and Routing previously lived here for historical reasons but
+    // they're operations/network concerns, not library concerns.
     label: "Library",
     items: [
       { to: "/content", label: "Content", icon: Layers, shortcut: "g c" },
       { to: "/livetv", label: "Live TV", icon: Tv },
-      { to: "/logs", label: "Logs", icon: FileText, shortcut: "g l" },
-      { to: "/routing", label: "Routing", icon: RouteIcon, shortcut: "g r" },
+    ],
+  },
+  {
+    // Edge gateway / DNS / TLS — promoted to its own group as the
+    // /routing page grew rich enough (Envoy admin-summary, latency
+    // percentiles, top-traffic, slowest-p99) to merit a dedicated
+    // navigation slot. URL stays /routing for muscle memory.
+    label: "Network",
+    items: [
+      { to: "/routing", label: "Edge gateway", icon: RouteIcon, shortcut: "g r" },
     ],
   },
   {
@@ -77,9 +88,12 @@ const PRIMARY_SECTIONS: NavSection[] = [
     ],
   },
   {
+    // Logs joins Jobs + Audit log here — all three are "what is the
+    // system doing right now / has done lately" surfaces.
     label: "Observability",
     items: [
       { to: "/jobs", label: "Jobs", icon: Workflow },
+      { to: "/logs", label: "Logs", icon: FileText, shortcut: "g l" },
       { to: "/audit-log", label: "Audit log", icon: ScrollText },
     ],
   },
