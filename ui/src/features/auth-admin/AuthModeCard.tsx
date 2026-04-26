@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/api";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { asArray } from "@/lib/coerce";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -136,13 +137,12 @@ export function AuthModeCard() {
         {config.isLoading ? (
           <Skeleton className="h-8 w-40" data-testid="auth-mode-loading" />
         ) : config.error ? (
-          <p
-            role="alert"
-            className="text-sm text-danger"
-            data-testid="auth-mode-error"
-          >
-            {config.error.message}
-          </p>
+          <div data-testid="auth-mode-error">
+            <ApiErrorTile
+              error={config.error}
+              onRetry={() => void config.refetch()}
+            />
+          </div>
         ) : (
           <div className="flex items-center gap-3">
             <Badge

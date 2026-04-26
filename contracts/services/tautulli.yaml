@@ -3,6 +3,15 @@ service:
   name: Tautulli
   desc: Analytics
   category: management
+  # Gated behind the ``tautulli`` compose profile / k8s overlay.
+  # Most home deploys don't run Tautulli (Plex-specific stats);
+  # marking it opt-in keeps the dashboard from showing
+  # "API key missing" / "service unhealthy" tiles for a service
+  # the operator never wired up. Re-enable by setting
+  # COMPOSE_PROFILES=...,tautulli (compose) or applying the
+  # tautulli overlay (k8s).
+  profiles:
+    - tautulli
   host: tautulli
   port: 8181
   health_path: /status

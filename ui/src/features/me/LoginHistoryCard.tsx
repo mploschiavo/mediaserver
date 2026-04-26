@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { CheckCircle2, History, ShieldAlert, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/api";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -153,20 +154,27 @@ export function LoginHistoryCard() {
             <Skeleton className="h-16 w-full" />
           </div>
         ) : history.error ? (
-          <div
-            role="alert"
-            data-testid="login-history-card-error"
-            className="text-sm text-danger"
-          >
-            {history.error.message}
+          <div data-testid="login-history-card-error">
+            <ApiErrorTile
+              error={history.error}
+              onRetry={() => void history.refetch()}
+            />
           </div>
         ) : entries.length === 0 ? (
-          <p
-            className="text-sm text-fg-muted"
+          <div
+            className="flex flex-col gap-1 text-sm text-fg-muted"
             data-testid="login-history-card-empty"
           >
-            No recent logins.
-          </p>
+            <span>No recent logins recorded.</span>
+            <span className="text-xs text-fg-faint">
+              Note: this surface only records signin events captured
+              by the controller's own audit log. Sessions established
+              via Authelia (the default flow) aren't currently
+              recorded here — tracked as a follow-up. Failed logins
+              against the controller's own /api/login endpoint do
+              show up.
+            </span>
+          </div>
         ) : (
           <ul className="flex flex-col gap-2" role="list">
             {entries.map((e, i) => {

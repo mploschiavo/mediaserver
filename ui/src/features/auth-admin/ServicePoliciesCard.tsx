@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Save, ShieldQuestion } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/api";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { asObjectMap } from "@/lib/coerce";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -235,13 +236,12 @@ export function ServicePoliciesCard() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : policies.error ? (
-          <p
-            role="alert"
-            className="px-6 py-4 text-sm text-danger"
-            data-testid="policies-error"
-          >
-            {policies.error.message}
-          </p>
+          <div className="px-6 py-4" data-testid="policies-error">
+            <ApiErrorTile
+              error={policies.error}
+              onRetry={() => void policies.refetch()}
+            />
+          </div>
         ) : rows.length === 0 ? (
           <div className="p-6">
             <EmptyState

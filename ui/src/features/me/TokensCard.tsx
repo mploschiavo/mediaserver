@@ -4,6 +4,7 @@ import { Copy, KeyRound, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -296,12 +297,11 @@ export function TokensCard() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : tokensQuery.error ? (
-            <div
-              role="alert"
-              data-testid="tokens-card-error"
-              className="px-6 py-4 text-sm text-danger"
-            >
-              {tokensQuery.error.message}
+            <div className="px-6 py-4" data-testid="tokens-card-error">
+              <ApiErrorTile
+                error={tokensQuery.error}
+                onRetry={() => void tokensQuery.refetch()}
+              />
             </div>
           ) : tokens.length === 0 ? (
             <p

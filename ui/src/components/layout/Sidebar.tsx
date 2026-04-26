@@ -186,16 +186,28 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 function BrandMark() {
   const branding = useBranding();
   const brand = (branding.data as BrandingShape | undefined)?.brand as
-    | (BrandingShape["brand"] & { name?: string; icon?: string })
+    | (BrandingShape["brand"] & {
+        name?: string;
+        icon?: string;
+        vendor?: string;
+      })
     | undefined;
-  // The runtime payload uses `brand.name` (and `brand.icon` for the
-  // square asset). Older shapes.ts hand-types still document
-  // `product_name`/`logo_url`; accept either so we don't regress
-  // mid-rollout.
+  // Naming model (matches the controller's branding defaults):
+  //   * ``brand.name``   — product short ("Media Stack")
+  //   * ``brand.vendor`` — company ("iomio") shown as a small "by …"
+  //     subtitle, never the primary wordmark.
+  //   * ``brand.icon``   — square SVG. We render it WITHOUT the
+  //     bg-accent backdrop because most icons carry their own
+  //     visual weight; the box-with-icon was the "boring green box
+  //     after login" the operator flagged. The Activity fallback
+  //     (used when no icon URL resolves) keeps the box because the
+  //     monochrome glyph needs the contrast.
   const productName =
     (brand && typeof brand.name === "string" && brand.name) ||
     (brand && typeof brand.product_name === "string" && brand.product_name) ||
     "Media Stack";
+  const vendor =
+    (brand && typeof brand.vendor === "string" && brand.vendor) || "";
   const iconUrl =
     (brand && typeof brand.icon === "string" && brand.icon) ||
     (brand && typeof brand.logo_url === "string" && brand.logo_url) ||
@@ -207,24 +219,34 @@ function BrandMark() {
       className="flex items-center gap-2 text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
       data-testid="sidebar-brand"
     >
-      <span className="flex size-7 items-center justify-center rounded-md bg-accent text-accent-fg shadow-sm">
-        {iconUrl ? (
-          <img
-            src={iconUrl}
-            alt=""
-            aria-hidden
-            className="size-4 object-contain"
-            data-testid="sidebar-brand-icon"
-          />
-        ) : (
+      {iconUrl ? (
+        <img
+          src={iconUrl}
+          alt=""
+          aria-hidden
+          className="size-7 object-contain"
+          data-testid="sidebar-brand-icon"
+        />
+      ) : (
+        <span className="flex size-7 items-center justify-center rounded-md bg-accent text-accent-fg shadow-sm">
           <Activity className="size-4" aria-hidden />
-        )}
-      </span>
-      <span
-        className="text-sm font-semibold tracking-tight"
-        data-testid="sidebar-brand-name"
-      >
-        {productName}
+        </span>
+      )}
+      <span className="flex flex-col leading-none">
+        <span
+          className="text-sm font-semibold tracking-tight"
+          data-testid="sidebar-brand-name"
+        >
+          {productName}
+        </span>
+        {vendor ? (
+          <span
+            className="mt-0.5 text-[10px] text-fg-faint"
+            data-testid="sidebar-brand-vendor"
+          >
+            by {vendor}
+          </span>
+        ) : null}
       </span>
     </Link>
   );

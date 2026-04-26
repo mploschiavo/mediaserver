@@ -1115,6 +1115,39 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.update_routing(body, handler.action_trigger))
             return
 
+        # POST /api/bazarr/subtitle-languages — overwrite the language
+        # list on a Bazarr profile. Body:
+        #   {profile_id: int|str, language_codes: ["en", "es"]}
+        if handler.path == "/api/bazarr/subtitle-languages":
+            body = handler._read_json_body() or {}
+            profile_id = body.get("profile_id")
+            codes = body.get("language_codes")
+            if profile_id is None:
+                handler._json_response(
+                    400, {"error": "profile_id is required"},
+                )
+                return
+            if not isinstance(codes, list) or not codes:
+                handler._json_response(
+                    400, {"error": "language_codes must be a non-empty list"},
+                )
+                return
+            try:
+                from media_stack.api.services import bazarr_proxy
+                result = bazarr_proxy.update_subtitle_languages(
+                    profile_id,
+                    [str(c) for c in codes],
+                    forced=bool(body.get("forced", False)),
+                    hi=bool(body.get("hi", False)),
+                )
+                if result.get("error"):
+                    handler._json_response(502, result)
+                else:
+                    handler._json_response(200, result)
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(500, {"error": str(exc)[:200]})
+            return
+
         # POST /api/auth/oidc/probe — server-side fetch of an OIDC
         # discovery URL. The browser-side fetch the operator was
         # using hits CORS or rate limits (Google in particular CORS-

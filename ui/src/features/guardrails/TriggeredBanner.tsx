@@ -57,7 +57,7 @@ export function TriggeredBanner() {
     >
       <a
         href={buildHref(worst.id)}
-        className="flex items-center gap-2 underline-offset-2 hover:underline"
+        className="flex flex-wrap items-center gap-2 underline-offset-2 hover:underline"
       >
         <ShieldAlert className="size-4 shrink-0" aria-hidden />
         <span>
@@ -65,7 +65,30 @@ export function TriggeredBanner() {
           {triggered.length === 1 ? "" : "s"} firing —{" "}
           <span className="font-mono">{worst.id}</span>
         </span>
+        <span className="text-xs opacity-80">
+          ·{" "}
+          <span title="Guardrails are continuous evaluations — they re-evaluate every interval (default 5min) and fire as long as the condition holds. They aren't 'jobs' that finish.">
+            re-evaluating every {formatInterval(query.data?.evaluation_interval_seconds)}
+          </span>
+          {" · "}firing for {formatFiringFor(worst.last_triggered_at)}
+        </span>
       </a>
     </div>
   );
+}
+
+function formatInterval(seconds?: number | null): string {
+  if (!seconds || seconds <= 0) return "5 min";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}min`;
+  return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+function formatFiringFor(triggeredAt?: number | null): string {
+  if (!triggeredAt) return "an unknown duration";
+  const elapsed = Date.now() / 1000 - triggeredAt;
+  if (elapsed < 60) return "<1min";
+  if (elapsed < 3600) return `${Math.round(elapsed / 60)}min`;
+  if (elapsed < 86400) return `${(elapsed / 3600).toFixed(1)}h`;
+  return `${(elapsed / 86400).toFixed(1)}d`;
 }

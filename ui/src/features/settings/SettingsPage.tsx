@@ -15,6 +15,7 @@ import { DisplayPrefsCard } from "./DisplayPrefsCard";
 import { LogLevelCard } from "./LogLevelCard";
 import { MetadataPreferencesCard } from "./MetadataPreferencesCard";
 import { SponsorCard } from "./SponsorCard";
+import { SubtitlePreferencesCard } from "./SubtitlePreferencesCard";
 
 /**
  * /settings — workspace + environment configuration. Profile YAML
@@ -69,6 +70,7 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="display" className="flex flex-col gap-4">
           <MetadataPreferencesCard />
+          <SubtitlePreferencesCard />
           <DisplayPrefsCard />
         </TabsContent>
         <TabsContent value="log-level" className="flex flex-col gap-4">

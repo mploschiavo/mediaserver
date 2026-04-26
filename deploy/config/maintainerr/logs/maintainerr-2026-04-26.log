@@ -1,0 +1,226 @@
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [SettingsService] Settings not found.. Creating initial settings
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [MediaServerFactory] No media server configured yet - skipping initialization
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [TasksService] Task Collection Handler created successfully
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [TasksService] Task Collection Log Cleaner created successfully
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [TasksService] Task Rule Maintenance created successfully
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [TasksService] Task Notification Timer created successfully
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [NestFactory] Starting Nest application...
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] ExternalApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] GracefulShutdownModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] DiscoveryModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] EventsModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] ServeStaticModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] EventEmitterModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] ScheduleModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmCoreModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TypeOrmModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] GitHubApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] JellyfinModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TasksModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] SeerrApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TautulliApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] InternalApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] TmdbApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] SettingsModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] LogsModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] ActionsModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] ServarrApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] AppModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] NotificationsModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] PlexApiModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] MediaServerModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] CollectionsModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [InstanceLoader] RulesModule dependencies initialized
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] AppController {/app/maintainerr/api/app}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/app/status, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/app/timezone, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/app/releases, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] LogsController {/app/maintainerr/api/logs}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/logs/stream, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/logs/files, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/logs/files/:file, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/logs/settings, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/logs/settings, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/logs/client-error, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] SettingsController {/app/maintainerr/api/settings}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/radarr, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/sonarr, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/version, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/database/download, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/api/generate, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/plex/auth, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings, PATCH} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/plex/token, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/setup, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/radarr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/radarr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/radarr/:id, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/radarr/:id, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/sonarr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/sonarr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/sonarr/:id, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/tautulli, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/tautulli, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/tautulli, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/tautulli, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/seerr, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/overseerr, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyseerr, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/seerr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/overseerr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyseerr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/seerr, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/overseerr, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyseerr, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/seerr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/overseerr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/jellyseerr, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyfin, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyfin/test, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyfin, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/jellyfin, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/sonarr/:id, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/test/plex, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/plex/devices/servers, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/cron/validate, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/media-server/switch/preview/:targetServerType, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/settings/media-server/switch, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] PlexApiLegacyController {/app/maintainerr/api/plex}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/libraries, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/:id/content/:page, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/:id/content/search/:query, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/meta/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/meta/:id/seen, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/users, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/meta/:id/children, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/:id/recent, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/:id/collections, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/:collectionId, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/:collectionId/children, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/search/:input, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/:collectionId/child/:childId, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/:collectionId/child/:childId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/update, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/create, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/:collectionId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/plex/library/collection/settings, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] MediaServerController {/app/maintainerr/api/media-server}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/type, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/libraries, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/library/:id/content, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/library/:id/content/search/:query, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/library/:id/recent, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/users, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/user/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/meta/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/meta/:id/children, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/meta/:id/seen, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/search/:query, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/library/:id/collections, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection/:id/children, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection/:id, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection/:collectionId/item/:itemId, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection/:collectionId/item/:itemId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/media-server/collection/visibility, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] ServarrApiController {/app/maintainerr/api/servarr}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/servarr/sonarr/:id/diskspace, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/servarr/radarr/:id/diskspace, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] SeerrApiController {/app/maintainerr/api/seerr}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/seerr/movie/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/seerr/show/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/seerr/request/:requestId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/seerr/media/:mediaId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/seerr/media/tmdb/:mediaId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] SeerrApiController {/app/maintainerr/api/overseerr}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/overseerr/movie/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/overseerr/show/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/overseerr/request/:requestId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/overseerr/media/:mediaId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/overseerr/media/tmdb/:mediaId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] SeerrApiController {/app/maintainerr/api/jellyseerr}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/jellyseerr/movie/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/jellyseerr/show/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/jellyseerr/request/:requestId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/jellyseerr/media/:mediaId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/jellyseerr/media/tmdb/:mediaId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] TautulliApiController {/app/maintainerr/api/tautulli}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] InternalApiController {/app/maintainerr/api/maintainerr}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] TmdbApiController {/app/maintainerr/api/moviedb}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/moviedb/person/:personId, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/moviedb/movie/imdb/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/moviedb/backdrop/:type/:tmdbId, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/moviedb/image/:type/:tmdbId, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] RulesController {/app/maintainerr/api/rules}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/constants, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/community, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/community/count, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/community/karma/history, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/exclusion, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/count, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/:id/rules, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/collection/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/:id, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/execute, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/:id/execute, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/execute/status, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/execute/stop, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/:id/execute/stop, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/exclusion, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/exclusion/:id, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/exclusions/:mediaServerId, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/community, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/community/karma, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/yaml/encode, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/yaml/decode, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/test, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/rules/migrate, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] CollectionsController {/app/maintainerr/api/collections}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/add, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/remove, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/removeCollection, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/handle, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/schedule/update, PUT} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/deactivate/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/activate/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/collection/:id, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/media/add, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/media, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/media, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/media/count, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/media/:id/content/:page, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/exclusions/:id/content/:page, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/collections/logs/:id/content/:page, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] TasksController {/app/maintainerr/api/tasks}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/tasks/:id/status, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] NotificationsController {/app/maintainerr/api/notifications}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/test, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/agents, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/types, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/configuration/add, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/configuration/connect, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/configuration/disconnect, POST} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/configurations, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/notifications/configuration/:id, DELETE} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RoutesResolver] EventsController {/app/maintainerr/api/events}:
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [RouterExplorer] Mapped {/app/maintainerr/api/events/stream, GET} route
+[maintainerr]  |  26/04/2026 21:37:19  [INFO] [NestApplication] Nest application successfully started
+[maintainerr]  |  26/04/2026 21:37:39  [INFO] [GracefulShutdownService] [http-terminator] Server closed successfully
